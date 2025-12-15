@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Manager AI",
+  "version": "1.0.0",
+  "description": "Organize your tabs and bookmarks with AI.",
+  "permissions": [
+    "sidePanel",
+    "tabs",
+    "activeTab",
+    "storage",
+    "unlimitedStorage",
+    "bookmarks"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "action": {
+    "default_title": "Open Tab Manager"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
