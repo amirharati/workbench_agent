@@ -27,6 +27,26 @@ export interface Snapshot {
   tabs: { title: string; url: string; favIconUrl: string }[];
 }
 
+export interface WorkspaceTab {
+  url: string;
+  title?: string;
+  favIconUrl?: string;
+}
+
+export interface WorkspaceWindow {
+  id: string;
+  name?: string;
+  tabs: WorkspaceTab[];
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+  windows: WorkspaceWindow[];
+}
+
 interface TabManagerDB extends DBSchema {
   collections: {
     key: string;
@@ -42,13 +62,18 @@ interface TabManagerDB extends DBSchema {
     key: number;
     value: Snapshot;
   };
+  workspaces: {
+    key: string;
+    value: Workspace;
+    indexes: { 'by-updated': number; 'by-name': string };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<TabManagerDB>>;
 
 export const getDB = () => {
   if (!dbPromise) {
-    dbPromise = openDB<TabManagerDB>('personal-tools-db', 1, {
+    dbPromise = openDB<TabManagerDB>('personal-tools-db', 2, {
       upgrade(db) {
         // Collections Store
         if (!db.objectStoreNames.contains('collections')) {
@@ -64,6 +89,12 @@ export const getDB = () => {
         // Snapshots Store
         if (!db.objectStoreNames.contains('snapshots')) {
           db.createObjectStore('snapshots', { keyPath: 'id', autoIncrement: true });
+        }
+        // Workspaces Store
+        if (!db.objectStoreNames.contains('workspaces')) {
+          const store = db.createObjectStore('workspaces', { keyPath: 'id' });
+          store.createIndex('by-updated', 'updated_at');
+          store.createIndex('by-name', 'name');
         }
       },
     });
@@ -154,12 +185,44 @@ export const addSnapshot = async (tabs: Snapshot['tabs']) => {
   });
 };
 
+// --- Workspace Helpers ---
+
+export const getAllWorkspaces = async () => {
+  const db = await getDB();
+  const all = await db.getAll('workspaces');
+  return all.sort((a, b) => b.updated_at - a.updated_at);
+};
+
+export const addWorkspace = async (name: string, windows: WorkspaceWindow[]) => {
+  const db = await getDB();
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  const ws: Workspace = { id, name, created_at: now, updated_at: now, windows };
+  await db.put('workspaces', ws);
+  return id;
+};
+
+export const updateWorkspace = async (id: string, updates: Partial<Pick<Workspace, 'name' | 'windows'>>) => {
+  const db = await getDB();
+  const existing = await db.get('workspaces', id);
+  if (!existing) return false;
+  const now = Date.now();
+  await db.put('workspaces', { ...existing, ...updates, updated_at: now });
+  return true;
+};
+
+export const deleteWorkspace = async (id: string) => {
+  const db = await getDB();
+  await db.delete('workspaces', id);
+};
+
 export const exportDB = async () => {
     const db = await getDB();
     const items = await db.getAll('items');
     const collections = await db.getAll('collections');
     const snapshots = await db.getAll('snapshots');
-    return JSON.stringify({ items, collections, snapshots }, null, 2);
+    const workspaces = await db.getAll('workspaces');
+    return JSON.stringify({ items, collections, snapshots, workspaces }, null, 2);
 };
 
 export const importDB = async (jsonString: string) => {
@@ -174,6 +237,11 @@ export const importDB = async (jsonString: string) => {
         if (data.collections) {
             const tx = db.transaction('collections', 'readwrite');
             await Promise.all(data.collections.map((col: Collection) => tx.store.put(col)));
+            await tx.done;
+        }
+        if (data.workspaces) {
+            const tx = db.transaction('workspaces', 'readwrite');
+            await Promise.all(data.workspaces.map((ws: Workspace) => tx.store.put(ws)));
             await tx.done;
         }
         // We typically don't restore old snapshots to avoid ID conflicts, but we can if needed.
