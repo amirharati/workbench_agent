@@ -36,12 +36,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing || !bottomPanelRef.current) return;
       const newHeight = window.innerHeight - e.clientY;
-      const minHeight = 44; // allow dragging down to just the header height
+      const minHeight = 150;
       const maxHeight = window.innerHeight - 200;
       if (newHeight >= minHeight && newHeight <= maxHeight) {
         setBottomPanelHeight(newHeight);
-      } else if (newHeight < minHeight) {
-        setBottomPanelHeight(minHeight);
       }
     };
 
@@ -144,30 +142,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               onRefresh={onRefresh}
             />
           </div>
-        )}
-
-        {/* Floating reopen control when collapsed */}
-        {isBottomPanelCollapsed && (
-          <button
-            onClick={() => setIsBottomPanelCollapsed(false)}
-            style={{
-              position: 'absolute',
-              right: '12px',
-              bottom: '12px',
-              padding: '0.45rem 0.65rem',
-              borderRadius: '9999px',
-              border: '1px solid #e5e7eb',
-              background: '#ffffff',
-              boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
-              cursor: 'pointer',
-              fontWeight: 800,
-              color: '#111827',
-              zIndex: 10
-            }}
-            title="Show Tab Commander"
-          >
-            Show Tab Commander
-          </button>
         )}
       </div>
     </div>

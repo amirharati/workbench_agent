@@ -267,16 +267,34 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     else setSelectedWindowIds(windows.map((w) => w.windowId));
   };
 
-  const handleTabClick = (tabId: number | undefined, windowId?: number) => {
+  const handleTabClick = async (tabId: number | undefined, windowId?: number) => {
+    // IMPORTANT: chrome.tabs.update(tabId?) treats tabId as optional.
+    // If we pass undefined, Chrome updates the currently selected tab -> feels like "always the same tab".
     if (typeof tabId !== 'number') return;
-    // Fire-and-forget: send message to service worker, don't await.
-    // Then blur this window so macOS doesn't snap focus back here.
-    chrome.runtime.sendMessage({ type: 'focus-tab', tabId, windowId }).catch(() => {
-      // Fallback if service worker not available
-      chrome.tabs.update(tabId, { active: true }).catch(() => {});
-    });
-    // Blur dashboard window to release focus and prevent snap-back
-    window.blur();
+    try {
+      await chrome.tabs.update(tabId, { active: true });
+      if (typeof windowId === 'number') {
+        await chrome.windows.update(windowId, { focused: true });
+      } else {
+        const tab = await chrome.tabs.get(tabId);
+        if (typeof tab.windowId === 'number') await chrome.windows.update(tab.windowId, { focused: true });
+      }
+    } catch (e) {
+      console.error('Failed to switch to tab:', e);
+    }
+  };
+
+  const handleFindWindow = async (e: React.MouseEvent, windowId: number) => {
+    e.stopPropagation();
+    try {
+      // "Find" behavior: aggressively focus window for a few seconds to help user locate it/desktop
+      for (let i = 0; i < 6; i++) {
+        await chrome.windows.update(windowId, { focused: true }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    } catch (err) {
+      console.error('Failed to find window:', err);
+    }
   };
 
   const handleCloseTab = async (e: React.MouseEvent, tabId: number) => {
@@ -1032,6 +1050,32 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   {!isCollapsedWindow && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.375rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <button
+                          onClick={(e) => handleFindWindow(e, w.windowId)}
+                          title="Locate window (flashes it)"
+                          style={{
+                            padding: '0.125rem 0.375rem',
+                            background: '#f0f9ff',
+                            border: '1px solid #bfdbfe',
+                            color: '#2563eb',
+                            cursor: 'pointer',
+                            borderRadius: '0.25rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            fontSize: '0.7rem',
+                            fontWeight: 600,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#dbeafe';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#f0f9ff';
+                          }}
+                        >
+                          <Search size={10} />
+                          Find
+                        </button>
                         {onCloseWindow && (
                           <button
                             onClick={(e) => handleCloseWindow(e, w.windowId)}
@@ -1120,6 +1164,35 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
                     {filteredTabsForSelection.length} {query ? 'matches' : 'tabs'}
                   </span>
+                  {selectedWindowIds.length === 1 && (
+                    <button
+                      onClick={(e) => handleFindWindow(e, selectedWindowIds[0])}
+                      title="Locate this window (flashes it)"
+                      style={{
+                        padding: '0.125rem 0.375rem',
+                        background: '#f0f9ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#2563eb',
+                        cursor: 'pointer',
+                        borderRadius: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        marginLeft: '0.5rem',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#dbeafe';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#f0f9ff';
+                      }}
+                    >
+                      <Search size={10} />
+                      Find
+                    </button>
+                  )}
                 </div>
                 {query && (
                   <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.125rem' }}>
