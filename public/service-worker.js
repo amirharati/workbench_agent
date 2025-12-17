@@ -8,7 +8,6 @@ chrome.sidePanel
 chrome.runtime.onInstalled.addListener(() => {
   console.log("Tab Manager AI installed.");
 });
-
 // Listen for focus-tab messages (must be at top level, not inside onInstalled)
 chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
   if (message?.type === 'focus-tab' && typeof message.tabId === 'number') {
@@ -33,3 +32,4 @@ chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
     return false;
   }
 });
+
