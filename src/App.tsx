@@ -6,8 +6,12 @@ import {
   importDB, 
   getAllCollections, 
   getAllWorkspaces,
+  getAllItems,
+  updateItem,
+  deleteItem,
   Collection,
-  Workspace
+  Workspace,
+  Item
 } from './lib/db';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
@@ -20,6 +24,7 @@ export interface WindowGroup {
 function App() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [isSidePanel, setIsSidePanel] = useState(false);
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
   const [status, setStatus] = useState('');
@@ -67,6 +72,8 @@ function App() {
     setCollections(allCollections);
     const allWorkspaces = await getAllWorkspaces();
     setWorkspaces(allWorkspaces);
+    const allItems = await getAllItems();
+    setItems(allItems.sort((a, b) => b.created_at - a.created_at));
   };
 
   useEffect(() => {
@@ -96,6 +103,36 @@ function App() {
     } else {
       showStatus('Cannot save this page');
     }
+  };
+
+  const handleAddBookmark = async (url: string, title?: string, collectionId?: string) => {
+    if (!url || !/^https?:\/\//i.test(url)) {
+      showStatus('Please enter a valid http(s) URL');
+      return;
+    }
+    const cleanTitle = title && title.trim().length > 0 ? title.trim() : url;
+    await addItem({
+      url,
+      title: cleanTitle,
+      favicon: undefined,
+      tags: [],
+      source: 'manual',
+      collectionId,
+    });
+    showStatus('Bookmark added');
+    await loadData();
+  };
+
+  const handleUpdateBookmark = async (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => {
+    await updateItem(id, updates);
+    await loadData();
+    showStatus('Bookmark updated');
+  };
+
+  const handleDeleteBookmark = async (id: string) => {
+    await deleteItem(id);
+    await loadData();
+    showStatus('Bookmark deleted');
   };
 
   const handleExport = async () => {
@@ -143,6 +180,7 @@ function App() {
         <SidePanelView
           collections={collections}
           onSaveTab={handleSaveCurrentTab}
+          onAddBookmark={handleAddBookmark}
           onExport={handleExport}
           onImport={handleImport}
           onOpenFullPage={handleOpenFullPage}
@@ -156,8 +194,13 @@ function App() {
   return (
     <DashboardLayout 
       windows={currentWindows}
+      collections={collections}
+      items={items}
       workspaces={workspaces}
       onWorkspacesChanged={loadData}
+      onAddBookmark={handleAddBookmark}
+      onUpdateBookmark={handleUpdateBookmark}
+      onDeleteBookmark={handleDeleteBookmark}
       onCloseTab={handleCloseTab}
       onCloseWindow={handleCloseWindow}
       onRefresh={loadCurrentWindows}

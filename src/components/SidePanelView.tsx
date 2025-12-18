@@ -5,6 +5,7 @@ import { Collection } from '../lib/db';
 interface SidePanelViewProps {
   collections: Collection[];
   onSaveTab: (collectionId?: string) => Promise<void>;
+  onAddBookmark: (url: string, title?: string, collectionId?: string) => Promise<void>;
   onExport: () => Promise<void>;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   onOpenFullPage: () => void;
@@ -14,12 +15,17 @@ interface SidePanelViewProps {
 export const SidePanelView: React.FC<SidePanelViewProps> = ({
   collections,
   onSaveTab,
+  onAddBookmark,
   onExport,
   onImport,
   onOpenFullPage,
   status,
 }) => {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [manualUrl, setManualUrl] = useState('');
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualCollectionId, setManualCollectionId] = useState<string | undefined>(undefined);
+  const [showManualForm, setShowManualForm] = useState(false);
 
   return (
     <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -98,6 +104,92 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           }}
         >
           {status}
+        </div>
+      )}
+
+      {/* Manual add bookmark (lightweight) */}
+      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+        <button
+          onClick={() => setShowManualForm((v) => !v)}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: '#2563eb',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            padding: '0.25rem 0',
+            textDecoration: 'underline'
+          }}
+        >
+          {showManualForm ? 'Hide add URL' : 'Add another URL'}
+        </button>
+      </div>
+      {showManualForm && (
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: '0.5rem', padding: '0.65rem', background: 'white', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          <input
+            value={manualUrl}
+            onChange={(e) => setManualUrl(e.target.value)}
+            placeholder="https://example.com"
+            style={{
+              width: '100%',
+              padding: '0.45rem 0.55rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.375rem',
+              fontSize: '0.85rem',
+            }}
+          />
+          <input
+            value={manualTitle}
+            onChange={(e) => setManualTitle(e.target.value)}
+            placeholder="Title (optional)"
+            style={{
+              width: '100%',
+              padding: '0.45rem 0.55rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.375rem',
+              fontSize: '0.85rem',
+            }}
+          />
+          <select
+            value={manualCollectionId || ''}
+            onChange={(e) => setManualCollectionId(e.target.value || undefined)}
+            style={{
+              width: '100%',
+              padding: '0.4rem 0.55rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.375rem',
+              fontSize: '0.85rem',
+              background: 'white',
+            }}
+          >
+            <option value="">Unsorted</option>
+            {collections.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={async () => {
+              if (!manualUrl.trim()) return;
+              await onAddBookmark(manualUrl.trim(), manualTitle.trim(), manualCollectionId);
+              setManualUrl('');
+              setManualTitle('');
+              setManualCollectionId(undefined);
+              setShowManualForm(false);
+            }}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              background: '#111827',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.85rem'
+            }}
+          >
+            Add bookmark
+          </button>
         </div>
       )}
 

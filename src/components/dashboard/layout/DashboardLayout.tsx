@@ -3,14 +3,19 @@ import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { BottomPanel } from './BottomPanel';
 import { WindowGroup } from '../../../App';
-import { Workspace } from '../../../lib/db';
+import { Workspace, Collection, Item } from '../../../lib/db';
 
 export type DashboardView = 'projects' | 'bookmarks' | 'notes' | 'collections' | 'workspaces';
 
 interface DashboardLayoutProps {
   windows: WindowGroup[];
+  collections: Collection[];
+  items: Item[];
   workspaces: Workspace[];
   onWorkspacesChanged?: () => Promise<void>;
+  onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<void>;
+  onUpdateBookmark?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
+  onDeleteBookmark?: (id: string) => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -18,8 +23,13 @@ interface DashboardLayoutProps {
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ 
   windows,
+  collections,
+  items,
   workspaces,
   onWorkspacesChanged,
+  onAddBookmark,
+  onUpdateBookmark,
+  onDeleteBookmark,
   onCloseTab,
   onCloseWindow,
   onRefresh
@@ -97,7 +107,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           overflow: 'auto', 
           padding: '1.5rem' 
         }}>
-          <MainContent activeView={activeView} workspaces={workspaces} />
+          <MainContent 
+            activeView={activeView} 
+            workspaces={workspaces} 
+            items={items}
+            collections={collections}
+            onAddBookmark={onAddBookmark}
+            onUpdateBookmark={onUpdateBookmark}
+            onDeleteBookmark={onDeleteBookmark}
+          />
         </div>
 
         {/* Resize Handle */}

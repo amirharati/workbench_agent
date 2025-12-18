@@ -1,15 +1,37 @@
 import React, { useMemo, useState } from 'react';
-import { Workspace } from '../../../lib/db';
+import { Workspace, Item, Collection } from '../../../lib/db';
 import { DashboardView } from './DashboardLayout';
 
 interface MainContentProps {
   activeView: DashboardView;
+  items: Item[];
+  collections: Collection[];
   workspaces: Workspace[];
+  onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<void>;
+  onUpdateBookmark?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
+  onDeleteBookmark?: (id: string) => Promise<void>;
 }
 
-export const MainContent: React.FC<MainContentProps> = ({ activeView, workspaces }) => {
+export const MainContent: React.FC<MainContentProps> = ({ 
+  activeView, 
+  items, 
+  collections, 
+  workspaces,
+  onAddBookmark,
+  onUpdateBookmark,
+  onDeleteBookmark
+}) => {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [selectedWindowIds, setSelectedWindowIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newUrl, setNewUrl] = useState('');
+  const [newTitle, setNewTitle] = useState('');
+  const [newCollectionId, setNewCollectionId] = useState<string | undefined>(undefined);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editCollectionId, setEditCollectionId] = useState<string | undefined>(undefined);
   const selectedWorkspace = useMemo(
     () => workspaces.find((w) => w.id === selectedWorkspaceId) || null,
     [workspaces, selectedWorkspaceId]
@@ -77,6 +99,81 @@ export const MainContent: React.FC<MainContentProps> = ({ activeView, workspaces
     } catch (e) {
       console.error('Open link failed', e);
     }
+  };
+
+  const openInNewTab = async (url: string) => {
+    if (!url.startsWith('http')) return;
+    try {
+      await chrome.tabs.create({ url, active: true });
+    } catch (e) {
+      window.open(url, '_blank');
+    }
+  };
+
+  const getDomain = (url: string) => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return url;
+    }
+  };
+
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((item) => {
+      const haystack = [
+        item.title,
+        item.url,
+        item.notes || '',
+        item.tags.join(' ')
+      ].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [items, searchQuery]);
+
+  const handleAddSubmit = async () => {
+    if (!newUrl.trim()) return;
+    if (!onAddBookmark) return;
+    await onAddBookmark(newUrl.trim(), newTitle.trim(), newCollectionId);
+    setShowAddModal(false);
+    setNewUrl('');
+    setNewTitle('');
+    setNewCollectionId(undefined);
+  };
+
+  const handleEditItem = (item: Item) => {
+    setEditingItem(item);
+    setEditTitle(item.title || '');
+    setEditNotes(item.notes || '');
+    setEditCollectionId(item.collectionId);
+  };
+
+  const closeEditModal = () => {
+    setEditingItem(null);
+    setEditTitle('');
+    setEditNotes('');
+    setEditCollectionId(undefined);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingItem || !onUpdateBookmark) return;
+    await onUpdateBookmark(editingItem.id, { 
+      title: editTitle || editingItem.title, 
+      notes: editNotes,
+      collectionId: editCollectionId
+    });
+    closeEditModal();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!onDeleteBookmark) return;
+    await onDeleteBookmark(id);
+  };
+
+  const formatDate = (ts: number) => {
+    const d = new Date(ts);
+    return d.toLocaleDateString();
   };
 
   const renderContent = () => {
@@ -151,102 +248,158 @@ export const MainContent: React.FC<MainContentProps> = ({ activeView, workspaces
         );
       case 'bookmarks':
         return (
-          <div style={{
-            background: 'white',
-            borderRadius: '0.5rem',
-            border: '1px solid #e5e7eb',
-            overflow: 'hidden'
-          }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{
-              padding: '1rem',
-              borderBottom: '1px solid #f3f4f6',
+              background: 'white',
+              border: '1px solid #e5e7eb',
+              borderRadius: '0.75rem',
+              padding: '0.75rem',
               display: 'flex',
-              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
               alignItems: 'center'
             }}>
-              <input 
-                type="text" 
-                placeholder="Search bookmarks..." 
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search title, url, tags, notes..."
                 style={{
-                  width: '256px',
-                  padding: '0.5rem 0.75rem',
+                  flex: '1 1 240px',
+                  minWidth: '240px',
+                  padding: '0.55rem 0.75rem',
                   border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
-                  fontSize: '0.875rem'
+                  borderRadius: '0.5rem',
+                  fontSize: '0.9rem'
                 }}
               />
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button style={{
-                  padding: '0.375rem 0.75rem',
-                  fontSize: '0.875rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
-                  background: 'white',
+              <button
+                onClick={() => setShowAddModal(true)}
+                style={{
+                  padding: '0.55rem 0.9rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid #111827',
+                  background: '#111827',
+                  color: 'white',
+                  fontWeight: 700,
                   cursor: 'pointer'
-                }}>
-                  Filter
-                </button>
-                <button style={{
-                  padding: '0.375rem 0.75rem',
-                  fontSize: '0.875rem',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '0.375rem',
-                  background: 'white',
-                  cursor: 'pointer'
-                }}>
-                  Sort
-                </button>
-              </div>
+                }}
+              >
+                + Add bookmark
+              </button>
             </div>
-            <table style={{ width: '100%', fontSize: '0.875rem', textAlign: 'left' }}>
-              <thead style={{ background: '#f9fafb', color: '#6b7280' }}>
-                <tr>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>Title</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>URL</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>Tags</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <tr 
-                    key={i} 
-                    style={{ 
-                      borderTop: '1px solid #f3f4f6',
-                      transition: 'background 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <td style={{ padding: '0.75rem 1rem', fontWeight: 500, color: '#111827' }}>
-                      React Documentation {i}
-                    </td>
-                    <td style={{ 
-                      padding: '0.75rem 1rem', 
-                      color: '#6b7280', 
-                      textOverflow: 'ellipsis',
-                      overflow: 'hidden',
-                      whiteSpace: 'nowrap',
-                      maxWidth: '300px'
-                    }}>
-                      https://react.dev/learn/example-{i}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <span style={{
-                        background: '#f3f4f6',
-                        color: '#4b5563',
-                        padding: '0.125rem 0.5rem',
-                        borderRadius: '0.25rem',
-                        fontSize: '0.75rem'
-                      }}>
-                        dev
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: '#9ca3af' }}>Dec 15</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+            <div style={{
+              background: 'white',
+              border: '1px solid #e5e7eb',
+              borderRadius: '0.75rem',
+              padding: '0.5rem',
+              minHeight: '200px'
+            }}>
+              {filteredItems.length === 0 ? (
+                <div style={{ padding: '1.25rem', textAlign: 'center', color: '#6b7280' }}>
+                  No bookmarks yet. Add one from here or save the current tab.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  {filteredItems.map((item) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 220px 140px 160px',
+                        gap: '0.5rem',
+                        alignItems: 'center',
+                        padding: '0.55rem 0.65rem',
+                        borderRadius: '0.6rem',
+                        border: '1px solid #f3f4f6',
+                        transition: 'border-color 0.2s, box-shadow 0.2s'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.03)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#f3f4f6'; e.currentTarget.style.boxShadow = 'none'; }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
+                        {item.favicon ? (
+                          <img src={item.favicon} alt="" style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0 }} />
+                        ) : (
+                          <div style={{ width: 18, height: 18, borderRadius: 4, background: '#e5e7eb', flexShrink: 0 }} />
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, color: '#111827', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {item.title || 'Untitled'}
+                          </div>
+                          <div style={{ color: '#6b7280', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {getDomain(item.url)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ color: '#6b7280', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.url}>
+                        {item.url}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                        {item.tags && item.tags.length > 0 ? (
+                          item.tags.map((t) => (
+                            <span key={t} style={{ fontSize: '0.75rem', background: '#f3f4f6', border: '1px solid #e5e7eb', padding: '0.1rem 0.45rem', borderRadius: '9999px', color: '#374151' }}>
+                              {t}
+                            </span>
+                          ))
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>—</span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{formatDate(item.created_at)}</span>
+                        <button
+                          onClick={() => openInNewTab(item.url)}
+                          style={{
+                            padding: '0.35rem 0.55rem',
+                            borderRadius: '0.45rem',
+                            border: '1px solid #e5e7eb',
+                            background: 'white',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                            color: '#111827'
+                          }}
+                        >
+                          Open
+                        </button>
+                        <button
+                          onClick={() => handleEditItem(item)}
+                          style={{
+                            padding: '0.35rem 0.55rem',
+                            borderRadius: '0.45rem',
+                            border: '1px solid #e5e7eb',
+                            background: 'white',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                            color: '#111827'
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          style={{
+                            padding: '0.35rem 0.55rem',
+                            borderRadius: '0.45rem',
+                            border: '1px solid #ef4444',
+                            background: '#fef2f2',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                            color: '#b91c1c'
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         );
       case 'notes':
@@ -678,29 +831,169 @@ export const MainContent: React.FC<MainContentProps> = ({ activeView, workspaces
         }}>
           {activeView}
         </h1>
-        <button style={{
-          padding: '0.5rem 1rem',
-          background: '#2563eb',
-          color: 'white',
-          borderRadius: '0.375rem',
-          border: 'none',
-          cursor: 'pointer',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          transition: 'background 0.2s'
-        }}
-        onMouseEnter={(e) => e.currentTarget.style.background = '#1d4ed8'}
-        onMouseLeave={(e) => e.currentTarget.style.background = '#2563eb'}
-        >
-          <span>+ New {activeView.slice(0, -1)}</span>
-        </button>
+        {activeView === 'bookmarks' ? (
+          <button style={{
+            padding: '0.5rem 1rem',
+            background: '#2563eb',
+            color: 'white',
+            borderRadius: '0.375rem',
+            border: 'none',
+            cursor: 'pointer',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            transition: 'background 0.2s'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#1d4ed8'}
+          onMouseLeave={(e) => e.currentTarget.style.background = '#2563eb'}
+          onClick={() => setShowAddModal(true)}
+          >
+            <span>+ New bookmark</span>
+          </button>
+        ) : (
+          <div />
+        )}
       </div>
       
       <div style={{ flex: 1, overflow: 'auto' }}>
         {renderContent()}
       </div>
+
+      {/* Add bookmark modal */}
+      {showAddModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          padding: '1rem'
+        }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1rem', width: '420px', maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#111827' }}>Add bookmark</div>
+              <button onClick={() => setShowAddModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#6b7280', fontWeight: 700 }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>URL</label>
+                <input
+                  value={newUrl}
+                  onChange={(e) => setNewUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Title (optional)</label>
+                <input
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="Title"
+                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Collection</label>
+                <select
+                  value={newCollectionId || ''}
+                  onChange={(e) => setNewCollectionId(e.target.value || undefined)}
+                  style={{ width: '100%', padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem', background: 'white' }}
+                >
+                  <option value="">Unsorted</option>
+                  {collections.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <button
+                  onClick={() => setShowAddModal(false)}
+                  style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddSubmit}
+                  style={{ padding: '0.5rem 0.9rem', borderRadius: '0.5rem', border: '1px solid #111827', background: '#111827', color: 'white', cursor: 'pointer', fontWeight: 800 }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit bookmark modal */}
+      {editingItem && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          padding: '1rem'
+        }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1rem', width: '440px', maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#111827' }}>Edit bookmark</div>
+              <button onClick={closeEditModal} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#6b7280', fontWeight: 700 }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Title</label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Notes</label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  rows={4}
+                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem', resize: 'vertical' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Collection</label>
+                <select
+                  value={editCollectionId || ''}
+                  onChange={(e) => setEditCollectionId(e.target.value || undefined)}
+                  style={{ width: '100%', padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem', background: 'white' }}
+                >
+                  <option value="">Unsorted</option>
+                  {collections.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <button
+                  onClick={closeEditModal}
+                  style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  style={{ padding: '0.5rem 0.9rem', borderRadius: '0.5rem', border: '1px solid #111827', background: '#111827', color: 'white', cursor: 'pointer', fontWeight: 800 }}
+                >
+                  Save changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
