@@ -193,15 +193,15 @@ function App() {
   // Full Page View
   return (
     <DashboardLayout 
-      windows={currentWindows}
-      collections={collections}
+          windows={currentWindows}
+          collections={collections}
       items={items}
       workspaces={workspaces}
       onWorkspacesChanged={loadData}
       onAddBookmark={handleAddBookmark}
       onUpdateBookmark={handleUpdateBookmark}
       onDeleteBookmark={handleDeleteBookmark}
-      onCloseTab={handleCloseTab}
+          onCloseTab={handleCloseTab}
       onCloseWindow={handleCloseWindow}
       onRefresh={loadCurrentWindows}
     />

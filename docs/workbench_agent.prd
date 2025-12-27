@@ -24,28 +24,44 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 
 ## Key Features
 
-### 1. Tab Management
-- View and organize open tabs across windows
-- Group tabs by project or context
-- Quick access to tab collections
-- Tab search and filtering
+### 1. Tab Management ✅ (Implemented)
+- ✅ View and organize open tabs across windows (Tab Commander)
+- ✅ Multi-window handling with compact navigator (W1, W2, W3)
+- ✅ Tab search and filtering
+- ✅ Drag & drop tabs between windows
+- ✅ Multi-select tabs and windows
+- ✅ "Open Here" preview tabs (avoids desktop switching)
+- ✅ List/Gallery view switcher
+- ✅ Resizable/collapsible panel
+- ⏳ Group tabs by project or context (pending Projects implementation)
+- ⏳ Quick access to tab collections (partially via Workspaces)
 
-### 2. Bookmark Management
-- Enhanced bookmark organization
-- Categorization and tagging
-- Visual bookmark grid/collection view
-- Link bookmarks to projects and notes
+### 2. Bookmark Management ✅ (Mostly Implemented)
+- ✅ Enhanced bookmark organization
+- ✅ Categorization (Collections) and tagging
+- ✅ Add/Edit/Delete bookmarks
+- ✅ Manual entry (dashboard + side panel)
+- ✅ Save current tab to bookmark
+- ⏳ Visual bookmark grid/collection view (currently list view only)
+- ⏳ Link bookmarks to projects and notes (pending Projects/Notes implementation)
 
-### 3. Note Management
-- Create and organize notes
-- Link notes to projects
-- Associate resources (links, bookmarks) with notes
-- Notes can be created:
+### 3. Workspaces ✅ (Implemented - Beyond Original Spec)
+- ✅ Save all windows, one window, or multiple tabs
+- ✅ Restore all, selected, or single windows
+- ✅ Two-column detail view (windows/tabs)
+- ✅ Workspace list with cards
+- ✅ Full CRUD operations
+
+### 4. Note Management ⏳ (Planned)
+- ⏳ Create and organize notes
+- ⏳ Link notes to projects
+- ⏳ Associate resources (links, bookmarks) with notes
+- ⏳ Notes can be created:
   - Manually
   - While reading a page (with page context)
   - During browsing sessions
 
-### 4. AI Agent Assistant
+### 5. AI Agent Assistant ⏳ (Planned)
 
 #### Core Capabilities
 - **Personal Assistant**: Help organize and manage tabs, bookmarks, and notes
@@ -68,11 +84,11 @@ The AI agent can access:
 - "Find related resources to what I'm reading"
 - "Help me understand this page in context of my [project]"
 
-### 5. Resource Linking
-- Link bookmarks to notes
-- Link notes to projects
-- Create resource collections
-- Visualize relationships between notes, bookmarks, and projects
+### 6. Resource Linking ⏳ (Planned)
+- ⏳ Link bookmarks to notes
+- ⏳ Link notes to projects
+- ✅ Create resource collections (Collections exist)
+- ⏳ Visualize relationships between notes, bookmarks, and projects
 
 ## Technical Architecture
 
@@ -82,8 +98,9 @@ The AI agent can access:
 - **UI**: Minimal, clean interface focused on functionality
 
 ### Data Storage
-- **Primary**: Local IndexedDB (via idb library)
-- **Sync/Backup**: Optional Dropbox API integration
+- **Primary**: ✅ Local IndexedDB (via idb library) - Implemented
+- **Export/Import**: ✅ JSON backup/restore - Implemented
+- **Sync/Backup**: ⏳ Optional Dropbox API integration (Planned)
   - Sync notes, bookmarks, and project data
   - Backup functionality
   - Cross-device access (future)
@@ -102,14 +119,27 @@ The AI agent can access:
 
 ## Data Model
 
-### Projects
+### Current Implementation Status
+
+**✅ Implemented:**
+- **Collections**: `{ id, name, color, isDefault, created_at }` - Organizational folders for bookmarks
+- **Bookmarks (Items)**: `{ id, url, title, favicon, collectionId, tags[], notes, source, created_at }`
+- **Workspaces**: `{ id, name, windows[], created_at, updated_at }` - Snapshots of browser sessions
+- **Snapshots**: Historical tab snapshots
+
+**⏳ Planned:**
+- **Projects**: To be defined (relationship with Collections TBD)
+- **Notes**: To be defined (will link to Projects and Bookmarks)
+
+### Projects ⏳ (To Be Implemented)
 - Project name
 - Description
 - Associated notes
 - Linked resources/bookmarks
 - Created/updated timestamps
+- **Note**: Relationship with Collections needs clarification (see next steps doc)
 
-### Notes
+### Notes ⏳ (To Be Implemented)
 - Title
 - Content
 - Associated project (optional)
@@ -117,29 +147,33 @@ The AI agent can access:
 - Page context (if created from page)
 - Created/updated timestamps
 
-### Bookmarks
-- URL
-- Title
-- Description/notes
-- Categories/tags
-- Associated projects
-- Associated notes
-- Screenshot/preview (optional)
+### Bookmarks ✅ (Implemented as Items)
+- ✅ URL
+- ✅ Title
+- ✅ Description/notes (as `notes` field)
+- ✅ Categories/tags (as `tags[]` array)
+- ✅ Collection assignment (via `collectionId`)
+- ⏳ Associated projects (pending Projects implementation)
+- ⏳ Associated notes (pending Notes implementation)
+- ⏳ Screenshot/preview (optional - future enhancement)
 
-### Tabs/Windows
-- Tab metadata
-- Window grouping
-- Collections/sessions
+### Tabs/Windows ✅ (Managed via Chrome APIs + Workspaces)
+- ✅ Tab metadata (via Chrome APIs)
+- ✅ Window grouping (via Workspaces)
+- ✅ Collections/sessions (via Workspaces)
 
 ## User Interface
 
 ### Main Views
-1. **Dashboard**: Overview of tabs, recent notes, quick actions
-2. **Tabs View**: Current windows and tab management
-3. **Bookmarks View**: Organized bookmark collections
-4. **Notes View**: Note list and editor
-5. **Projects View**: Project organization and resources
-6. **AI Assistant**: Chat interface with context awareness
+1. **Dashboard**: ✅ Full-page dashboard with left sidebar navigation
+2. **Tab Commander** (Bottom Panel): ✅ Live tab management across windows
+3. **Bookmarks View**: ✅ List view with search, add/edit/delete
+4. **Workspaces View**: ✅ List and detail views with restore functionality
+5. **Collections View**: ✅ Placeholder (Collections managed via Bookmarks view)
+6. **Projects View**: ⏳ Placeholder cards (to be implemented)
+7. **Notes View**: ⏳ Placeholder (to be implemented)
+8. **AI Assistant**: ⏳ Not yet implemented
+9. **Side Panel**: ✅ Quick actions (Save tab, Add bookmark, Export/Import)
 
 ### Design Philosophy
 - Clean and minimal
@@ -149,20 +183,29 @@ The AI agent can access:
 
 ## Development Phases
 
-### Phase 1: Core Foundation (Current)
-- Basic tab management
-- Bookmark organization
-- Note creation and storage
-- Local database setup
+### Phase 1: Core Foundation ✅ (Mostly Complete)
+- ✅ Basic tab management (Tab Commander)
+- ✅ Bookmark organization (Collections + Items)
+- ✅ Workspaces (beyond original spec)
+- ✅ Local database setup (IndexedDB)
+- ✅ Export/Import functionality
+- ⏳ Note creation and storage (Next priority)
+- ⏳ Projects implementation (Next priority)
 
-### Phase 2: AI Integration
+### Phase 1.5: Data Model & Linking (Current Focus)
+- ⏳ Define Projects vs Collections relationship
+- ⏳ Implement Projects data model
+- ⏳ Implement Notes data model
+- ⏳ Implement resource linking (bookmarks ↔ notes ↔ projects)
+
+### Phase 2: AI Integration (Planned)
 - AI agent interface
 - Context capture from pages
 - Basic AI queries and responses
 - Project organization with AI help
 
-### Phase 3: Advanced Features
-- Resource linking
+### Phase 3: Advanced Features (Planned)
+- Resource linking visualization
 - Dropbox sync integration
 - Enhanced AI capabilities
 - Cross-context awareness
