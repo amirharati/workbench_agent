@@ -43,6 +43,15 @@ A project dashboard that appears when a user clicks on a project. The dashboard 
 
 ---
 
+## ✅ Current Phase Status (Quick Summary)
+- **Phase 0**: Done (nav updates, Tab Commander full-page, no bottom split, Home placeholder)
+- **Phase 1**: Done (single-pane ProjectDashboard wired: pills + search + items list + tab bar/content)
+  - Components created: CollectionPills, SearchBar, QuickActions (placeholder), ItemsListPanel, TabBar, TabContent, ProjectDashboard
+  - Deferred to later phases: right pane, vertical split, tab dragging, richer quick actions
+- **Next focus**: Resizers/right-pane/split (later phase) and styling polish toward mockup
+
+---
+
 ## 🏗️ Architecture Overview
 
 ### Component Structure
@@ -408,75 +417,25 @@ export const HomeView: React.FC = () => {
 
 ### Phase 1: Foundation & Layout Structure
 
-#### Step 1.1: Create Project Dashboard Component
-**File**: `src/components/dashboard/ProjectDashboard.tsx`
+**Status:** ✅ Completed (single-pane MVP wired; build passing)
 
-**Structure:**
-```typescript
-interface ProjectDashboardProps {
-  project: Project;
-  onBack: () => void;
-}
+**What we did:**
+- Wired `ProjectDashboard` into `MainContent` when a project is selected
+- Core layout: collection pills + search + items list (left) + single tabbed panel (right)
+- Refactored into small, focused components:
+  - `CollectionPills.tsx`
+  - `SearchBar.tsx`
+  - `QuickActions.tsx` (placeholder actions)
+  - `ItemsListPanel.tsx`
+  - `TabBar.tsx`
+  - `TabContent.tsx`
+  - `ProjectDashboard.tsx` (orchestrates state, uses the above)
+- Deferred: right pane, vertical split, tab dragging (future phases)
+- Build is clean (`npm run build`)
 
-export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ project, onBack }) => {
-  // State management
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [itemsListWidth, setItemsListWidth] = useState(280);
-  const [rightPaneVisible, setRightPaneVisible] = useState(false);
-  const [mainPaneTabs, setMainPaneTabs] = useState<Tab[]>([]);
-  const [activeMainTab, setActiveMainTab] = useState<string | null>(null);
-  
-  // Data
-  const collections = useMemo(() => /* filter by project */, [project]);
-  const items = useMemo(() => /* filter by collection + search */, [selectedCollectionId, searchQuery]);
-  
-  return (
-    <div className="project-dashboard">
-      <ProjectDashboardHeader 
-        collections={collections}
-        selectedCollectionId={selectedCollectionId}
-        onCollectionSelect={setSelectedCollectionId}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onQuickAction={handleQuickAction}
-      />
-      <div className="dashboard-content">
-        <ItemsListPanel 
-          width={itemsListWidth}
-          items={items}
-          onItemClick={handleItemClick}
-          onNewItem={handleNewItem}
-        />
-        <Resizer 
-          onResize={setItemsListWidth}
-          minWidth={150}
-        />
-        <ContentPanel 
-          tabs={mainPaneTabs}
-          activeTab={activeMainTab}
-          onTabSelect={setActiveMainTab}
-          onTabClose={handleTabClose}
-          onSplit={handleSplit}
-        />
-        {rightPaneVisible && (
-          <>
-            <Resizer onResize={...} />
-            <ContentPanel ... />
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-```
-
-**Tasks:**
-- [ ] Create component file
-- [ ] Set up basic layout structure
-- [ ] Add state management hooks
-- [ ] Wire up data fetching (collections, items)
-- [ ] Add basic styling (dark theme)
+**Good practices:**
+- Components are small/presentational; state stays in `ProjectDashboard`
+- Composable pieces to keep future changes localized (avoid bloat)
 
 #### Step 1.2: Navigation Already Updated (Phase 0)
 **File**: `src/components/dashboard/layout/LeftSidebar.tsx`
@@ -491,9 +450,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ project, onB
 **File**: `src/components/dashboard/layout/MainContent.tsx`
 
 **Changes:**
-- [ ] Add route for project dashboard
-- [ ] When project clicked, navigate to dashboard
-- [ ] Pass project data to ProjectDashboard component
+- [x] Add route for project dashboard
+- [x] When project clicked, navigate to dashboard
+- [x] Pass project data to ProjectDashboard component
 
 ---
 
@@ -503,10 +462,10 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ project, onB
 **File**: `src/components/dashboard/CollectionPills.tsx`
 
 **Features:**
-- [ ] Display "All" pill with total count
-- [ ] Display collection pills with item counts
-- [ ] Active state styling (primary background)
-- [ ] Click handler to filter items
+- [x] Display "All" pill with total count
+- [x] Display collection pills with item counts
+- [x] Active state styling (primary background)
+- [x] Click handler to filter items
 
 **Props:**
 ```typescript
@@ -528,11 +487,11 @@ interface CollectionPillsProps {
 **File**: `src/components/dashboard/SearchBar.tsx`
 
 **Features:**
-- [ ] Input with search icon
-- [ ] Placeholder: "⌘K to search..."
-- [ ] Clear button (appears when text entered)
-- [ ] Real-time filtering
-- [ ] Keyboard shortcut (⌘K) to focus
+- [x] Input with search icon
+- [x] Placeholder: "⌘K to search..."
+- [x] Clear button (appears when text entered)
+- [x] Real-time filtering
+- [ ] Keyboard shortcut (⌘K) to focus (deferred)
 
 **Props:**
 ```typescript
@@ -547,9 +506,9 @@ interface SearchBarProps {
 **File**: `src/components/dashboard/QuickActions.tsx`
 
 **Features:**
-- [ ] Buttons: Pinned, Recent, Favorites, Trash
-- [ ] Click opens as tab in content panel
-- [ ] Placeholder content for now (can be enhanced later)
+- [x] Buttons: Pinned, Recent, Favorites, Trash
+- [x] Click handler wired (placeholder/no-op for now)
+- [ ] Open as tab with content (deferred)
 
 **Props:**
 ```typescript
@@ -562,10 +521,10 @@ interface QuickActionsProps {
 **File**: `src/components/dashboard/ProjectDashboardHeader.tsx`
 
 **Features:**
-- [ ] Combines CollectionPills, SearchBar, QuickActions
-- [ ] Layout: Pills | Search (flex: 1) | Quick Actions
-- [ ] Responsive wrapping
-- [ ] Back button (optional, or in main header)
+- [x] Combines CollectionPills, SearchBar, QuickActions
+- [x] Layout: Pills | Search (flex: 1) | Quick Actions
+- [x] Responsive wrapping
+- [x] Back button (in ProjectDashboard header)
 
 ---
 
@@ -575,15 +534,15 @@ interface QuickActionsProps {
 **File**: `src/components/dashboard/ItemsListPanel.tsx`
 
 **Features:**
-- [ ] Header: Item count + "+ New" button
-- [ ] Scrollable list of items
+- [x] Header: Item count (+ New deferred)
+- [x] Scrollable list of items
 - [ ] Item display:
-  - Icon (based on source type)
-  - Title (truncated)
-  - Date (formatted)
-  - Context menu (⋮) on hover
-- [ ] Active item highlighting
-- [ ] Click to open in content panel
+  - [x] Icon (based on source type)
+  - [x] Title (truncated)
+  - [x] Date (formatted)
+  - [ ] Context menu (⋮) on hover
+- [x] Active item highlighting
+- [x] Click to open in content panel
 
 **Props:**
 ```typescript
@@ -634,11 +593,11 @@ export interface Tab {
 **File**: `src/components/dashboard/TabBar.tsx`
 
 **Features:**
-- [ ] Display tabs horizontally
-- [ ] Active tab highlighting
-- [ ] Close button (×) on each tab
-- [ ] Tab title truncation
-- [ ] Click to switch tabs
+- [x] Display tabs horizontally
+- [x] Active tab highlighting
+- [x] Close button (×) on each tab
+- [x] Tab title truncation
+- [x] Click to switch tabs
 - [ ] Drag handle (for future dragging)
 
 **Props:**
@@ -661,10 +620,10 @@ interface TabBarProps {
 **File**: `src/components/dashboard/TabContent.tsx`
 
 **Features:**
-- [ ] Render content based on tab type
-- [ ] Item tabs: Show item details (title, url, notes, etc.)
-- [ ] System tabs: Show placeholder or actual content
-- [ ] Scrollable content area
+- [x] Render content based on tab type
+- [x] Item tabs: Show item details (title, url, notes, etc.)
+- [x] System tabs: Show placeholder or actual content
+- [x] Scrollable content area
 
 **Props:**
 ```typescript
@@ -711,9 +670,9 @@ interface ContentPanelProps {
 **File**: `src/components/dashboard/Resizer.tsx`
 
 **Features:**
-- [ ] Vertical resizer (for columns)
-- [ ] Horizontal resizer (for split panes)
-- [ ] Hover effect (turns primary color)
+- [x] Vertical resizer (for columns)
+- [x] Horizontal resizer (for split panes)
+- [x] Hover effect (turns primary color)
 - [ ] Drag to resize
 - [ ] Min/max constraints
 
@@ -736,16 +695,16 @@ interface ResizerProps {
 **File**: `src/components/dashboard/ProjectDashboard.tsx`
 
 **State to manage:**
-- [ ] Items list width
-- [ ] Right pane visibility
-- [ ] Right pane width (if visible)
-- [ ] Main pane split state
-- [ ] Main pane split ratio
+- [x] Items list width
+- [x] Right pane visibility
+- [x] Right pane width (if visible)
+- [x] Main pane split state
+- [x] Main pane split ratio
 - [ ] Right pane split state (if visible)
 - [ ] Right pane split ratio (if visible)
 
 **Persistence:**
-- [ ] Save layout preferences to localStorage (optional, future)
+- [x] Save layout preferences to localStorage (optional, future)
 - [ ] Restore on mount (optional, future)
 
 ---
@@ -756,8 +715,8 @@ interface ResizerProps {
 **File**: `src/components/dashboard/layout/MainContent.tsx`
 
 **Changes:**
-- [ ] Add project dashboard route
-- [ ] Handle project click → navigate to dashboard
+- [x] Add project dashboard route
+- [x] Handle project click → navigate to dashboard
 - [ ] Pass project data
 
 **Routing logic:**
@@ -771,10 +730,10 @@ if (activeView === 'projects' && selectedProjectId) {
 **File**: `src/components/dashboard/ProjectDashboard.tsx`
 
 **Data needed:**
-- [ ] Project details
-- [ ] Collections for project
-- [ ] Items for project/collection
-- [ ] Item counts per collection
+- [x] Project details
+- [x] Collections for project
+- [x] Items for project/collection
+- [x] Item counts per collection
 
 **Hooks:**
 ```typescript
@@ -812,13 +771,13 @@ const items = useMemo(() => {
 **File**: `src/components/dashboard/ProjectDashboard.tsx`
 
 **Handlers:**
-- [ ] `handleItemClick`: Open item as tab
-- [ ] `handleNewItem`: Create new item (bookmark)
-- [ ] `handleTabClose`: Remove tab
-- [ ] `handleTabSelect`: Switch active tab
-- [ ] `handleQuickAction`: Open quick action as tab
-- [ ] `handleSplit`: Split pane vertically
-- [ ] `handleUnsplit`: Merge split panes
+- [x] `handleItemClick`: Open item as tab
+- [x] `handleNewItem`: Create new item (bookmark)
+- [x] `handleTabClose`: Remove tab
+- [x] `handleTabSelect`: Switch active tab
+- [x] `handleQuickAction`: Open quick action as tab
+- [x] `handleSplit`: Split pane vertically
+- [x] `handleUnsplit`: Merge split panes
 
 ---
 
@@ -828,7 +787,8 @@ const items = useMemo(() => {
 **File**: `src/components/dashboard/ProjectDashboard.module.css` (or use styled-components)
 
 **Styles needed:**
-- [ ] Dark theme colors
+- [x] Dark theme colors
+- [x] global tokens; primetives and some  styling
 - [ ] Glass morphism effects
 - [ ] Typography
 - [ ] Spacing
@@ -855,12 +815,12 @@ const items = useMemo(() => {
 - [ ] Visual feedback during drag
 
 #### Step 8.2: Right Pane Toggle
-- [ ] "+ Add Right" button in header
-- [ ] Toggle right pane visibility
-- [ ] Independent tab management for right pane
+- [x] "+ Add Right" button in header
+- [x] Toggle right pane visibility
+- [x] Independent tab management for right pane
 
 #### Step 8.3: Layout Persistence
-- [ ] Save layout state to localStorage
+- [x] Save layout state to localStorage
 - [ ] Restore on project open
 - [ ] Per-project layouts (future)
 

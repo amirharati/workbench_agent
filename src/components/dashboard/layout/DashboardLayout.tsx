@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
@@ -45,21 +45,30 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeView, setActiveView] = useState<DashboardView>('projects');
 
+  useEffect(() => {
+    // Ensure the theme dataset is set at least once (fallback to existing or default dark)
+    const current = document.documentElement.dataset.theme;
+    if (!current) {
+      document.documentElement.dataset.theme = 'dark';
+    }
+  }, []);
+
   return (
     <div style={{ 
       display: 'flex', 
       height: '100vh', 
       width: '100vw', 
       overflow: 'hidden', 
-      background: '#f9fafb', 
+      background: 'var(--bg)', 
+      color: 'var(--text)',
       fontFamily: 'system-ui, sans-serif' 
     }}>
       {/* Left Sidebar */}
       <div style={{ 
         width: isSidebarCollapsed ? '64px' : '256px',
         flexShrink: 0,
-        borderRight: '1px solid #e5e7eb',
-        background: 'white',
+        borderRight: '1px solid var(--border)',
+        background: 'var(--bg-panel)',
         transition: 'width 0.3s ease-in-out'
       }}>
         <LeftSidebar 
@@ -74,11 +83,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       <div style={{ 
         flex: 1, 
         overflow: 'hidden',
-        position: 'relative'
+        position: 'relative',
+        background: 'var(--bg)',
       }}>
 
         {/* Main Content Area (full height) */}
-        <div style={{ height: '100%', overflow: 'auto', padding: '1.5rem' }}>
+        <div style={{ height: '100%', overflow: 'auto', padding: '1.5rem' }} className="scrollbar">
           <MainContent
             activeView={activeView}
             projects={projects}

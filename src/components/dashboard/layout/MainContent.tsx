@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Workspace, Item, Collection, Project, addProject, deleteProject, addCollection } from '../../../lib/db';
+import { Workspace, Item, Collection, Project, addProject, deleteProject } from '../../../lib/db';
 import { DashboardView } from './DashboardLayout';
 import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
 import { TabCommanderView } from '../TabCommanderView';
+import { ProjectDashboard } from '../ProjectDashboard';
 
 interface MainContentProps {
   activeView: DashboardView;
@@ -356,161 +357,14 @@ export const MainContent: React.FC<MainContentProps> = ({
           );
         }
 
-        // Project detail view
-        const cols = collectionsForProject(activeProject.id);
-        const its = itemsForProject(activeProject.id);
-
-        const handleAddCollectionToProject = async () => {
-          const name = window.prompt('Collection name?');
-          if (!name || !name.trim()) return;
-          await addCollection(name.trim(), undefined, activeProject.id);
-          if (onRefresh) await onRefresh();
-        };
-
+        // New Project Dashboard (Phase 1)
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <button
-                  onClick={() => setSelectedProjectId(null)}
-                  style={{
-                    border: '1px solid #e5e7eb',
-                    background: 'white',
-                    borderRadius: '0.5rem',
-                    padding: '0.35rem 0.65rem',
-                    marginRight: '0.5rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  ← Back
-                </button>
-                <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#111827' }}>
-                  {activeProject.name}
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {!activeProject.isDefault && (
-                  <button
-                    onClick={() => handleDeleteProject(activeProject.id)}
-                    style={{
-                      border: '1px solid #fca5a5',
-                      background: '#fef2f2',
-                      color: '#b91c1c',
-                      borderRadius: '0.5rem',
-                      padding: '0.35rem 0.75rem',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Delete Project
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: 'white',
-                border: '1px solid #e5e7eb',
-                borderRadius: '0.75rem',
-                padding: '1rem',
-                display: 'flex',
-                gap: '1rem',
-                flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ minWidth: '160px' }}>
-                <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>Collections</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{cols.length}</div>
-              </div>
-              <div style={{ minWidth: '160px' }}>
-                <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>Bookmarks</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{its.length}</div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: 'white',
-                border: '1px solid #e5e7eb',
-                borderRadius: '0.75rem',
-                padding: '1rem',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <div style={{ fontWeight: 700 }}>Collections in this project</div>
-                <button
-                  onClick={handleAddCollectionToProject}
-                  style={{
-                    border: '1px solid #e5e7eb',
-                    background: 'white',
-                    borderRadius: '0.5rem',
-                    padding: '0.35rem 0.65rem',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                  }}
-                >
-                  + Add Collection
-                </button>
-              </div>
-              {cols.length === 0 ? (
-                <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>No collections yet.</div>
-              ) : (
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {cols.map((c) => (
-                    <span
-                      key={c.id}
-                      style={{
-                        padding: '0.35rem 0.55rem',
-                        background: '#eff6ff',
-                        color: '#1d4ed8',
-                        borderRadius: '9999px',
-                        fontSize: '0.85rem',
-                        border: '1px solid #dbeafe',
-                      }}
-                    >
-                      {c.name}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div
-              style={{
-                background: 'white',
-                border: '1px solid #e5e7eb',
-                borderRadius: '0.75rem',
-                padding: '1rem',
-              }}
-            >
-              <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Bookmarks in this project</div>
-              {its.length === 0 ? (
-                <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>No bookmarks yet.</div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.75rem' }}>
-                  {its.map((it) => (
-                    <div
-                      key={it.id}
-                      style={{
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '0.65rem',
-                        padding: '0.75rem',
-                        background: 'white',
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, fontSize: '0.95rem', marginBottom: '0.25rem', color: '#111827' }}>
-                        {it.title}
-                      </div>
-                      <div style={{ color: '#6b7280', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {getDomain(it.url)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <ProjectDashboard
+            project={activeProject}
+            collections={collections}
+            items={items}
+            onBack={() => setSelectedProjectId(null)}
+          />
         );
       case 'bookmarks':
         return (

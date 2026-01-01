@@ -12,6 +12,7 @@ import {
   Terminal
 } from 'lucide-react';
 import { DashboardView } from './DashboardLayout';
+import { ThemeToggle } from '../../ThemeToggle';
 
 interface LeftSidebarProps {
   isCollapsed: boolean;
@@ -40,7 +41,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     <div style={{ 
       display: 'flex', 
       height: '100%', 
-      flexDirection: 'column' 
+      flexDirection: 'column',
+      color: 'var(--text)'
     }}>
       {/* Header */}
       <div style={{ 
@@ -48,13 +50,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         alignItems: 'center', 
         justifyContent: 'space-between', 
         padding: '1rem', 
-        borderBottom: '1px solid #f3f4f6' 
+        borderBottom: '1px solid var(--border)' 
       }}>
         {!isCollapsed && (
           <span style={{ 
             fontWeight: 'bold', 
             fontSize: '1.125rem', 
-            color: '#2563eb' 
+            color: 'var(--text)' 
           }}>
             Workbench Agent
           </span>
@@ -66,7 +68,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             background: 'transparent',
             border: 'none',
             cursor: 'pointer',
-            color: '#6b7280'
+            color: 'var(--text-muted)'
           }}
         >
           {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
@@ -98,8 +100,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
                   padding: '0.5rem 0.75rem',
                   borderRadius: '0.375rem',
-                  background: activeView === item.id ? '#eff6ff' : 'transparent',
-                  color: activeView === item.id ? '#2563eb' : '#4b5563',
+                  background: activeView === item.id ? 'var(--accent-weak)' : 'transparent',
+                  color: activeView === item.id ? 'var(--text)' : 'var(--text-muted)',
                   border: 'none',
                   cursor: 'pointer',
                   fontSize: '0.875rem',
@@ -108,7 +110,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 }}
                 onMouseEnter={(e) => {
                   if (activeView !== item.id) {
-                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.background = 'var(--bg-glass)';
                   }
                 }}
                 onMouseLeave={(e) => {
@@ -131,7 +133,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       {/* Footer / Settings */}
       <div style={{ 
         padding: '1rem', 
-        borderTop: '1px solid #f3f4f6' 
+        borderTop: '1px solid var(--border)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem'
       }}>
         <button 
           style={{
@@ -140,7 +145,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             alignItems: 'center',
             justifyContent: isCollapsed ? 'center' : 'flex-start',
             padding: '0.5rem 0.75rem',
-            color: '#4b5563',
+            color: 'var(--text-muted)',
             border: 'none',
             background: 'transparent',
             borderRadius: '0.375rem',
@@ -148,12 +153,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             fontSize: '0.875rem',
             transition: 'background 0.2s'
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-glass)'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
         >
           <Settings size={20} />
           {!isCollapsed && <span style={{ marginLeft: '0.75rem' }}>Settings</span>}
         </button>
+        {!isCollapsed && <ThemeToggle />}
       </div>
     </div>
   );

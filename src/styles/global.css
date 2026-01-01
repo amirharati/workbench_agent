@@ -1,0 +1,55 @@
+:root {
+  --bg: #0d1117;
+  --bg-panel: #131823;
+  --bg-glass: rgba(255, 255, 255, 0.03);
+  --text: #e8eaed;
+  --text-muted: #9aa0a6;
+  --border: rgba(255, 255, 255, 0.12);
+  --accent: #6366f1;
+  --accent-weak: rgba(99, 102, 241, 0.15);
+  --shadow-panel: 0 12px 28px rgba(0, 0, 0, 0.22);
+  --shadow-soft: 0 4px 14px rgba(0, 0, 0, 0.18);
+  --input-bg: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme='light'] {
+  --bg: #f5f7fb;
+  --bg-panel: #ffffff;
+  --bg-glass: rgba(0, 0, 0, 0.03);
+  --text: #1f2937;
+  --text-muted: #4b5563;
+  --border: rgba(0, 0, 0, 0.08);
+  --accent: #4f46e5;
+  --accent-weak: rgba(79, 70, 229, 0.12);
+  --shadow-panel: 0 10px 22px rgba(0, 0, 0, 0.12);
+  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --input-bg: rgba(0, 0, 0, 0.03);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+}
+
