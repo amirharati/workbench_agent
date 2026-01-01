@@ -6,7 +6,7 @@ interface BookmarkDetailModalProps {
   item: Item;
   collections: Collection[];
   onClose: () => void;
-  onSave: (id: string, updates: { collectionId?: string; notes?: string }) => void;
+  onSave: (id: string, updates: { collectionIds?: string[]; notes?: string }) => void;
   onDelete: (id: string) => void;
 }
 
@@ -17,7 +17,7 @@ export const BookmarkDetailModal: React.FC<BookmarkDetailModalProps> = ({
   onSave,
   onDelete,
 }) => {
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | undefined>(item.collectionId);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | undefined>(item.collectionIds?.[0]);
   const [notes, setNotes] = useState(item.notes || '');
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -28,7 +28,7 @@ export const BookmarkDetailModal: React.FC<BookmarkDetailModalProps> = ({
   };
 
   const handleSave = () => {
-    onSave(item.id, { collectionId: selectedCollectionId, notes });
+    onSave(item.id, { collectionIds: selectedCollectionId ? [selectedCollectionId] : [], notes });
     onClose();
   };
 

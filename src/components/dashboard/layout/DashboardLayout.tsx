@@ -3,12 +3,13 @@ import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { BottomPanel } from './BottomPanel';
 import { WindowGroup } from '../../../App';
-import { Workspace, Collection, Item } from '../../../lib/db';
+import { Workspace, Collection, Item, Project } from '../../../lib/db';
 
 export type DashboardView = 'projects' | 'bookmarks' | 'notes' | 'collections' | 'workspaces';
 
 interface DashboardLayoutProps {
   windows: WindowGroup[];
+  projects: Project[];
   collections: Collection[];
   items: Item[];
   workspaces: Workspace[];
@@ -23,6 +24,7 @@ interface DashboardLayoutProps {
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ 
   windows,
+  projects,
   collections,
   items,
   workspaces,
@@ -109,12 +111,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         }}>
           <MainContent 
             activeView={activeView} 
+            projects={projects}
             workspaces={workspaces} 
             items={items}
             collections={collections}
             onAddBookmark={onAddBookmark}
             onUpdateBookmark={onUpdateBookmark}
             onDeleteBookmark={onDeleteBookmark}
+            onRefresh={onRefresh}
           />
         </div>
 

@@ -4,6 +4,7 @@ import {
   addItem, 
   exportDB, 
   importDB, 
+  getAllProjects,
   getAllCollections, 
   getAllWorkspaces,
   getAllItems,
@@ -11,7 +12,8 @@ import {
   deleteItem,
   Collection,
   Workspace,
-  Item
+  Item,
+  Project
 } from './lib/db';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
@@ -23,6 +25,7 @@ export interface WindowGroup {
 
 function App() {
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [isSidePanel, setIsSidePanel] = useState(false);
@@ -68,6 +71,8 @@ function App() {
 
   // Load data
   const loadData = async () => {
+    const allProjects = await getAllProjects();
+    setProjects(allProjects);
     const allCollections = await getAllCollections();
     setCollections(allCollections);
     const allWorkspaces = await getAllWorkspaces();
@@ -90,13 +95,14 @@ function App() {
     const tabs = await chrome.tabs.query({ currentWindow: true, active: true });
     const tab = tabs[0];
     if (tab && tab.url && tab.url.startsWith('http')) {
+      const collectionIds = collectionId ? [collectionId] : [];
       await addItem({
         url: tab.url,
         title: tab.title || 'Untitled',
         favicon: tab.favIconUrl,
         tags: [],
         source: 'tab',
-        collectionId,
+        collectionIds,
       });
       showStatus('Tab saved!');
       await loadData();
@@ -111,13 +117,14 @@ function App() {
       return;
     }
     const cleanTitle = title && title.trim().length > 0 ? title.trim() : url;
+    const collectionIds = collectionId ? [collectionId] : [];
     await addItem({
       url,
       title: cleanTitle,
       favicon: undefined,
       tags: [],
       source: 'manual',
-      collectionId,
+      collectionIds,
     });
     showStatus('Bookmark added');
     await loadData();
@@ -193,17 +200,18 @@ function App() {
   // Full Page View
   return (
     <DashboardLayout 
-          windows={currentWindows}
-          collections={collections}
+      windows={currentWindows}
+      projects={projects}
+      collections={collections}
       items={items}
       workspaces={workspaces}
       onWorkspacesChanged={loadData}
       onAddBookmark={handleAddBookmark}
       onUpdateBookmark={handleUpdateBookmark}
       onDeleteBookmark={handleDeleteBookmark}
-          onCloseTab={handleCloseTab}
+      onCloseTab={handleCloseTab}
       onCloseWindow={handleCloseWindow}
-      onRefresh={loadCurrentWindows}
+      onRefresh={loadData}
     />
   );
 }

@@ -20,10 +20,15 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
   const [showAddForm, setShowAddForm] = useState(false);
 
   // Group items by collection
-  const unsortedItems = items.filter((item) => !item.collectionId);
+  const unsortedCollectionIds = new Set(collections.filter((c) => c.isDefault).map((c) => c.id));
+  const unsortedItems = items.filter((item) => {
+    const ids = item.collectionIds || [];
+    if (ids.length === 0) return true;
+    return ids.some((id) => unsortedCollectionIds.has(id));
+  });
   const itemsByCollection = collections.map((col) => ({
     ...col,
-    items: items.filter((item) => item.collectionId === col.id),
+    items: items.filter((item) => (item.collectionIds || []).includes(col.id)),
   }));
 
   const handleAddCollection = async () => {

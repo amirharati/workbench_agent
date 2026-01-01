@@ -1,25 +1,29 @@
 import React, { useMemo, useState } from 'react';
-import { Workspace, Item, Collection } from '../../../lib/db';
+import { Workspace, Item, Collection, Project, addProject, deleteProject, addCollection } from '../../../lib/db';
 import { DashboardView } from './DashboardLayout';
 
 interface MainContentProps {
   activeView: DashboardView;
+  projects: Project[];
   items: Item[];
   collections: Collection[];
   workspaces: Workspace[];
   onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<void>;
   onUpdateBookmark?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
   onDeleteBookmark?: (id: string) => Promise<void>;
+  onRefresh?: () => Promise<void>;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
   activeView, 
+  projects,
   items, 
   collections, 
   workspaces,
   onAddBookmark,
   onUpdateBookmark,
-  onDeleteBookmark
+  onDeleteBookmark,
+  onRefresh,
 }) => {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [selectedWindowIds, setSelectedWindowIds] = useState<Set<string>>(new Set());
@@ -32,6 +36,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [editTitle, setEditTitle] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editCollectionId, setEditCollectionId] = useState<string | undefined>(undefined);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const selectedWorkspace = useMemo(
     () => workspaces.find((w) => w.id === selectedWorkspaceId) || null,
     [workspaces, selectedWorkspaceId]
@@ -146,7 +151,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     setEditingItem(item);
     setEditTitle(item.title || '');
     setEditNotes(item.notes || '');
-    setEditCollectionId(item.collectionId);
+    setEditCollectionId(item.collectionIds?.[0]);
   };
 
   const closeEditModal = () => {
@@ -161,7 +166,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     await onUpdateBookmark(editingItem.id, { 
       title: editTitle || editingItem.title, 
       notes: editNotes,
-      collectionId: editCollectionId
+      collectionIds: editCollectionId ? [editCollectionId] : []
     });
     closeEditModal();
   };
@@ -179,71 +184,308 @@ export const MainContent: React.FC<MainContentProps> = ({
   const renderContent = () => {
     switch (activeView) {
       case 'projects':
-        return (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '1.5rem'
-          }}>
-            {[1, 2, 3].map((i) => (
-              <div 
-                key={i} 
-                style={{
-                  background: 'white',
-                  padding: '1.5rem',
-                  borderRadius: '0.5rem',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                  border: '1px solid #e5e7eb',
-                  cursor: 'pointer',
-                  transition: 'box-shadow 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)'}
-              >
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'space-between', 
-                  marginBottom: '0.5rem' 
-                }}>
-                  <h3 style={{ 
-                    fontWeight: 600, 
-                    fontSize: '1.125rem', 
-                    margin: 0 
-                  }}>
-                    Project {i}
-                  </h3>
-                  <span style={{ 
-                    fontSize: '0.75rem', 
-                    background: '#dbeafe', 
-                    color: '#1e40af', 
-                    padding: '0.25rem 0.5rem', 
-                    borderRadius: '9999px' 
-                  }}>
-                    Active
-                  </span>
+        const activeProject = selectedProjectId
+          ? projects.find((p) => p.id === selectedProjectId) || null
+          : null;
+
+        const collectionsForProject = (pid: string | null) => {
+          if (!pid) return [];
+          return collections.filter((c) => (c.projectIds || []).includes(pid));
+        };
+
+        const itemsForProject = (pid: string | null) => {
+          if (!pid) return [];
+          const colIds = new Set(collectionsForProject(pid).map((c) => c.id));
+          return items.filter((it) => (it.collectionIds || []).some((cid) => colIds.has(cid)));
+        };
+
+        const handleCreateProject = async () => {
+          const name = window.prompt('Project name?');
+          if (!name || !name.trim()) return;
+          await addProject(name.trim());
+          if (onRefresh) await onRefresh();
+        };
+
+        const handleDeleteProject = async (id: string) => {
+          if (!window.confirm('Delete this project? This does not delete bookmarks.')) return;
+          const ok = await deleteProject(id);
+          if (!ok) {
+            alert('Cannot delete default project.');
+            return;
+          }
+          if (selectedProjectId === id) setSelectedProjectId(null);
+          if (onRefresh) await onRefresh();
+        };
+
+        const ProjectCard: React.FC<{ project: Project }> = ({ project }) => {
+          const cols = collectionsForProject(project.id);
+          const its = itemsForProject(project.id);
+          return (
+            <div
+              key={project.id}
+              style={{
+                background: 'white',
+                padding: '1.25rem',
+                borderRadius: '0.75rem',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                cursor: 'pointer',
+                transition: 'box-shadow 0.2s, transform 0.1s',
+              }}
+              onClick={() => setSelectedProjectId(project.id)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.08)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
+                e.currentTarget.style.transform = 'translateY(0px)';
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111827' }}>{project.name}</div>
+                  {project.description && (
+                    <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.25rem' }}>{project.description}</div>
+                  )}
                 </div>
-                <p style={{ 
-                  color: '#6b7280', 
-                  fontSize: '0.875rem', 
-                  marginBottom: '1rem',
-                  margin: '0 0 1rem 0'
-                }}>
-                  Description of project {i} goes here.
-                </p>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.5rem', 
-                  fontSize: '0.875rem', 
-                  color: '#9ca3af' 
-                }}>
-                  <span>12 bookmarks</span>
-                  <span>•</span>
-                  <span>4 notes</span>
-                </div>
+                {!project.isDefault && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteProject(project.id);
+                    }}
+                    style={{
+                      border: 'none',
+                      background: '#fee2e2',
+                      color: '#b91c1c',
+                      borderRadius: '9999px',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
-            ))}
+              <div style={{ display: 'flex', gap: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+                <span>{cols.length} collections</span>
+                <span>•</span>
+                <span>{its.length} bookmarks</span>
+              </div>
+            </div>
+          );
+        };
+
+        if (!activeProject) {
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#111827' }}>Projects</div>
+                  <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>Choose a project to view its collections and bookmarks.</div>
+                </div>
+                <button
+                  onClick={handleCreateProject}
+                  style={{
+                    background: '#111827',
+                    color: 'white',
+                    border: '1px solid #111827',
+                    borderRadius: '0.5rem',
+                    padding: '0.5rem 0.9rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  + New Project
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                  gap: '1rem',
+                }}
+              >
+                {projects.length === 0 && (
+                  <div
+                    style={{
+                      background: 'white',
+                      border: '1px dashed #e5e7eb',
+                      borderRadius: '0.75rem',
+                      padding: '1rem',
+                      textAlign: 'center',
+                      color: '#6b7280',
+                    }}
+                  >
+                    No projects yet. Create one to get started.
+                  </div>
+                )}
+                {projects.map((p) => (
+                  <ProjectCard key={p.id} project={p} />
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        // Project detail view
+        const cols = collectionsForProject(activeProject.id);
+        const its = itemsForProject(activeProject.id);
+
+        const handleAddCollectionToProject = async () => {
+          const name = window.prompt('Collection name?');
+          if (!name || !name.trim()) return;
+          await addCollection(name.trim(), undefined, activeProject.id);
+          if (onRefresh) await onRefresh();
+        };
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <button
+                  onClick={() => setSelectedProjectId(null)}
+                  style={{
+                    border: '1px solid #e5e7eb',
+                    background: 'white',
+                    borderRadius: '0.5rem',
+                    padding: '0.35rem 0.65rem',
+                    marginRight: '0.5rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ← Back
+                </button>
+                <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#111827' }}>
+                  {activeProject.name}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {!activeProject.isDefault && (
+                  <button
+                    onClick={() => handleDeleteProject(activeProject.id)}
+                    style={{
+                      border: '1px solid #fca5a5',
+                      background: '#fef2f2',
+                      color: '#b91c1c',
+                      borderRadius: '0.5rem',
+                      padding: '0.35rem 0.75rem',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Delete Project
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: 'white',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                display: 'flex',
+                gap: '1rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ minWidth: '160px' }}>
+                <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>Collections</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{cols.length}</div>
+              </div>
+              <div style={{ minWidth: '160px' }}>
+                <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>Bookmarks</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{its.length}</div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: 'white',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.75rem',
+                padding: '1rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <div style={{ fontWeight: 700 }}>Collections in this project</div>
+                <button
+                  onClick={handleAddCollectionToProject}
+                  style={{
+                    border: '1px solid #e5e7eb',
+                    background: 'white',
+                    borderRadius: '0.5rem',
+                    padding: '0.35rem 0.65rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  + Add Collection
+                </button>
+              </div>
+              {cols.length === 0 ? (
+                <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>No collections yet.</div>
+              ) : (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {cols.map((c) => (
+                    <span
+                      key={c.id}
+                      style={{
+                        padding: '0.35rem 0.55rem',
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        borderRadius: '9999px',
+                        fontSize: '0.85rem',
+                        border: '1px solid #dbeafe',
+                      }}
+                    >
+                      {c.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                background: 'white',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.75rem',
+                padding: '1rem',
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Bookmarks in this project</div>
+              {its.length === 0 ? (
+                <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>No bookmarks yet.</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.75rem' }}>
+                  {its.map((it) => (
+                    <div
+                      key={it.id}
+                      style={{
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '0.65rem',
+                        padding: '0.75rem',
+                        background: 'white',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: '0.95rem', marginBottom: '0.25rem', color: '#111827' }}>
+                        {it.title}
+                      </div>
+                      <div style={{ color: '#6b7280', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {getDomain(it.url)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         );
       case 'bookmarks':

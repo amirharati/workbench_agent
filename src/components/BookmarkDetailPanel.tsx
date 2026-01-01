@@ -6,7 +6,7 @@ interface BookmarkDetailPanelProps {
   item: Item;
   collections: Collection[];
   onClose: () => void;
-  onSave: (id: string, updates: { collectionId?: string; notes?: string }) => void;
+  onSave: (id: string, updates: { collectionIds?: string[]; notes?: string }) => void;
   onDelete: (id: string) => void;
 }
 
@@ -17,13 +17,13 @@ export const BookmarkDetailPanel: React.FC<BookmarkDetailPanelProps> = ({
   onSave,
   onDelete,
 }) => {
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | undefined>(item.collectionId);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | undefined>(item.collectionIds?.[0]);
   const [notes, setNotes] = useState(item.notes || '');
   const [hasChanges, setHasChanges] = useState(false);
 
   // Reset when item changes
   useEffect(() => {
-    setSelectedCollectionId(item.collectionId);
+    setSelectedCollectionId(item.collectionIds?.[0]);
     setNotes(item.notes || '');
     setHasChanges(false);
   }, [item.id]);
@@ -35,7 +35,7 @@ export const BookmarkDetailPanel: React.FC<BookmarkDetailPanelProps> = ({
   };
 
   const handleSave = () => {
-    onSave(item.id, { collectionId: selectedCollectionId, notes });
+    onSave(item.id, { collectionIds: selectedCollectionId ? [selectedCollectionId] : [], notes });
     setHasChanges(false);
   };
 
