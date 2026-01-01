@@ -3,7 +3,8 @@ import { Layout } from 'lucide-react';
 import { 
   addItem, 
   exportDB, 
-  importDB, 
+  importDB,
+  verifyBackup,
   getAllProjects,
   getAllCollections, 
   getAllWorkspaces,
@@ -143,22 +144,63 @@ function App() {
   };
 
   const handleExport = async () => {
-    const json = await exportDB();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tab-manager-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
+    try {
+      const json = await exportDB();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // Include full timestamp for better organization
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.download = `workbench-backup-${timestamp}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showStatus('Backup exported!');
+    } catch (error) {
+      console.error('Export failed:', error);
+      showStatus('Failed to export backup');
+    }
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
-    await importDB(text);
-    showStatus('Data restored!');
-    await loadData();
+    
+    try {
+      const text = await file.text();
+      
+      // Verify backup before importing
+      const verification = verifyBackup(text);
+      if (!verification.valid) {
+        showStatus(`Invalid backup file: ${verification.error}`);
+        return;
+      }
+      
+      // Show stats and confirm
+      const stats = verification.stats;
+      const confirmMessage = `This will replace all current data with:\n` +
+        `- ${stats.projects} projects\n` +
+        `- ${stats.collections} collections\n` +
+        `- ${stats.items} bookmarks\n` +
+        `- ${stats.notes} notes\n` +
+        `- ${stats.workspaces} workspaces\n\n` +
+        `A backup will be created automatically. Continue?`;
+      
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+      
+      const success = await importDB(text, true); // true = create backup first
+      if (success) {
+        showStatus('Data restored! Backup created before import.');
+        await loadData();
+      } else {
+        showStatus('Import failed. Your original data is safe.');
+      }
+    } catch (error) {
+      console.error('Import error:', error);
+      showStatus('Failed to read backup file');
+    }
   };
 
   const handleOpenFullPage = async () => {

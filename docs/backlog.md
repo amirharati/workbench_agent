@@ -11,6 +11,28 @@
 
 ## 🔴 High Priority
 
+### ✅ Data Safety & Backup System
+**Status**: Completed  
+**Impact**: Prevents data loss during imports/migrations  
+**Effort**: Medium
+
+- [x] Add automatic backup before import operations
+- [x] Add backup verification function
+- [x] Improve export filename with full timestamp
+- [x] Add user confirmation with stats before import
+- [x] Create backup utility module
+- [x] Use transactions for atomic imports
+- [x] Attempt automatic backup before database migrations (best effort)
+- [x] Add migration warnings in console
+
+**Files updated**:
+- `src/lib/db.ts` - Added `verifyBackup`, improved `importDB`, added migration backup attempt
+- `src/App.tsx` - Updated `handleExport` and `handleImport` with safety checks
+- `src/lib/backup.ts` - New backup utility module
+
+**Note**: Automatic migration backup is best-effort (uses IndexedDB.databases() API when available). 
+**Always manually backup before major code updates** using the Backup button for maximum safety.
+
 ### Error Handling
 **Status**: Not Started  
 **Impact**: Users lose work silently, poor UX  
