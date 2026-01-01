@@ -274,10 +274,11 @@ export const getDB = () => {
       return openDB<TabManagerDB>(DB_NAME, DB_VERSION, {
         async upgrade(db, oldVersion, _newVersion, transaction) {
           const now = nowTs();
-          
+          const newVersion = _newVersion ?? DB_VERSION;
+
           // Log migration start with warning
-          if (oldVersion < _newVersion) {
-            console.warn(`🔄 MIGRATION: Upgrading database from v${oldVersion} to v${_newVersion}`);
+          if (oldVersion < newVersion) {
+            console.warn(`🔄 MIGRATION: Upgrading database from v${oldVersion} to v${newVersion}`);
             console.warn(`⚠️  If you haven't backed up, export your data now using the Backup button!`);
           }
 
@@ -443,13 +444,14 @@ export const getDB = () => {
             if (ws && 'projectId' in ws) continue;
             await workspacesStore.put({ ...ws, projectId: undefined });
           }
-          
-          // Log migration completion
-          if (oldVersion < _newVersion) {
-            console.log(`✅ Migration to v${_newVersion} completed`);
-          }
-        },
-      });
+        }
+
+        // Log migration completion
+        if (oldVersion < newVersion) {
+          console.log(`✅ Migration to v${newVersion} completed`);
+        }
+      },
+    });
     })();
   }
   return dbPromise;

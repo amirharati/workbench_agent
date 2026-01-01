@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Workspace, Item, Collection, Project, addProject, deleteProject, addCollection } from '../../../lib/db';
 import { DashboardView } from './DashboardLayout';
+import type { WindowGroup } from '../../../App';
+import { HomeView } from '../HomeView';
+import { TabCommanderView } from '../TabCommanderView';
 
 interface MainContentProps {
   activeView: DashboardView;
@@ -8,6 +11,10 @@ interface MainContentProps {
   items: Item[];
   collections: Collection[];
   workspaces: Workspace[];
+  windows: WindowGroup[];
+  onWorkspacesChanged?: () => Promise<void>;
+  onCloseTab?: (tabId: number) => Promise<void>;
+  onCloseWindow?: (windowId: number) => Promise<void>;
   onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<void>;
   onUpdateBookmark?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
   onDeleteBookmark?: (id: string) => Promise<void>;
@@ -20,6 +27,10 @@ export const MainContent: React.FC<MainContentProps> = ({
   items, 
   collections, 
   workspaces,
+  windows,
+  onWorkspacesChanged,
+  onCloseTab,
+  onCloseWindow,
   onAddBookmark,
   onUpdateBookmark,
   onDeleteBookmark,
@@ -183,6 +194,19 @@ export const MainContent: React.FC<MainContentProps> = ({
 
   const renderContent = () => {
     switch (activeView) {
+      case 'home':
+        return <HomeView />;
+      case 'tab-commander':
+        return (
+          <TabCommanderView
+            windows={windows}
+            workspaces={workspaces}
+            onWorkspacesChanged={onWorkspacesChanged}
+            onCloseTab={onCloseTab}
+            onCloseWindow={onCloseWindow}
+            onRefresh={onRefresh}
+          />
+        );
       case 'projects':
         const activeProject = selectedProjectId
           ? projects.find((p) => p.id === selectedProjectId) || null

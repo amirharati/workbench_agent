@@ -1,5 +1,6 @@
 import React from 'react';
 import { 
+  Home,
   Layout, 
   BookMarked, 
   Layers,
@@ -7,7 +8,8 @@ import {
   Settings, 
   ChevronLeft, 
   ChevronRight,
-  FolderOpen
+  FolderOpen,
+  Terminal
 } from 'lucide-react';
 import { DashboardView } from './DashboardLayout';
 
@@ -25,7 +27,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onSelectView
 }) => {
   const navItems: { icon: any; label: string; id: DashboardView }[] = [
+    { icon: Home, label: 'Home', id: 'home' },
     { icon: Layout, label: 'Projects', id: 'projects' },
+    { icon: Terminal, label: 'Tab Commander', id: 'tab-commander' },
     { icon: BookMarked, label: 'Bookmarks', id: 'bookmarks' },
     { icon: Layers, label: 'Workspaces', id: 'workspaces' },
     { icon: FileText, label: 'Notes', id: 'notes' },
