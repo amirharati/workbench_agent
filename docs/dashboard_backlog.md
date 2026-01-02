@@ -222,15 +222,18 @@ This document tracks the next set of functional features to implement. We're def
 **Goal**: Full-featured search interface.
 
 **Acceptance Criteria**:
-- [ ] Opens as system tab
-- [ ] Search input at top
-- [ ] Real-time search across:
+- [x] Opens as system tab
+- [x] Search input at top
+- [x] Real-time search across:
   - Item titles
   - URLs
   - Notes
-- [ ] Results list (similar to ItemsListPanel)
-- [ ] Click result opens item in chosen space
-- [ ] Keyboard shortcuts: Enter to open first result, Arrow keys to navigate
+  - Tags
+- [x] Results list (similar to ItemsListPanel)
+- [x] Click result opens item in tab
+- [x] Collection filter pills
+- [x] Results count display
+- [ ] Keyboard shortcuts: Enter to open first result, Arrow keys to navigate (optional, future)
 - [ ] Search history (optional, future)
 
 **Implementation Notes**:
@@ -351,13 +354,15 @@ This document tracks the next set of functional features to implement. We're def
 **Goal**: Make URLs in item details open in new browser tab.
 
 **Acceptance Criteria**:
-- [ ] URL field in item detail is clickable/link
-- [ ] Click opens URL in new browser tab (via `chrome.tabs.create`)
-- [ ] Visual indication that URL is clickable (underline, icon, button)
-- [ ] Works for both viewing and editing modes
+- [x] URL field in item detail is clickable/link
+- [x] Click opens URL in new browser tab (via `chrome.tabs.create`)
+- [x] Visual indication that URL is clickable (underline, icon, button)
+- [x] Works in viewing mode (edit mode uses form)
 
 **Implementation Notes**:
-- Simple: wrap URL in `<a>` tag or button with `onClick` handler
+- ✅ Implemented: URLs are clickable with external link icon
+- ✅ Shows domain in header, full URL in content section
+- ✅ Hover effects for better UX
 - Use `chrome.tabs.create({ url: item.url })`
 
 ---
@@ -366,17 +371,17 @@ This document tracks the next set of functional features to implement. We're def
 **Goal**: Display all relevant item information in detail view.
 
 **Acceptance Criteria**:
-- [ ] Item detail shows:
-  - Title (editable)
-  - URL (clickable, editable)
-  - Notes (editable, textarea)
-  - Collections (list with badges, editable)
+- [x] Item detail shows:
+  - Title (editable via edit mode)
+  - URL (clickable, editable via edit mode)
+  - Notes (editable via edit mode, displayed in dedicated section)
   - Created date
   - Updated date
   - Source type (bookmark, note, tab, etc.)
-- [ ] All fields are visible and properly formatted
-- [ ] Edit mode allows changing all fields
-- [ ] Save button updates item
+- [x] All fields are visible and properly formatted
+- [x] Metadata displayed in organized section with icons
+- [x] Notes and URL shown in dedicated sections when available
+- [x] Edit mode allows changing all fields (via EditItemTab)
 
 **Implementation Notes**:
 - Enhance current `TabContent` component

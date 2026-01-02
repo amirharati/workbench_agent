@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import type { Item, Collection } from '../../lib/db';
-import { getDomain } from '../../lib/utils';
+import { getDomain, formatDateTime, isValidHttpUrl } from '../../lib/utils';
 import type { TabBarTab } from './TabBar';
 import { CollectionsSpace } from './CollectionsSpace';
 import { AddItemTab } from './AddItemTab';
 import { EditItemTab } from './EditItemTab';
+import { SearchTab } from './SearchTab';
+import { PinnedTab } from './PinnedTab';
+import { FavoritesTab } from './FavoritesTab';
+import { TrashTab } from './TrashTab';
+import { RecentTab } from './RecentTab';
 import { ItemContextMenu } from './ItemContextMenu';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, ExternalLink, Calendar, FileText } from 'lucide-react';
 
 interface TabContentProps {
   tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; type?: 'item' | 'collection' | 'system' }) | null;
@@ -22,6 +27,7 @@ interface TabContentProps {
   onCreateItem?: (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<string>;
   onUpdateItem?: (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<void>;
   onDeleteItem?: (item: Item) => void;
+  onItemClick?: (item: Item) => void;
   defaultCollectionId?: string | 'all';
 }
 
@@ -39,6 +45,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   onCreateItem,
   onUpdateItem,
   onDeleteItem,
+  onItemClick,
   defaultCollectionId,
 }) => {
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -55,6 +62,37 @@ export const TabContent: React.FC<TabContentProps> = ({
       setIsEditingItem(false);
     }
   }, [currentItemId]);
+
+  // Search tab
+  if (tab?.id === 'util-search') {
+    return (
+      <SearchTab
+        items={items}
+        collections={collections}
+        onItemClick={onItemClick}
+      />
+    );
+  }
+
+  // Recent tab
+  if (tab?.id === 'util-recent') {
+    return <RecentTab items={items} onItemClick={onItemClick} />;
+  }
+
+  // Pinned tab
+  if (tab?.id === 'util-pinned') {
+    return <PinnedTab />;
+  }
+
+  // Favorites tab
+  if (tab?.id === 'util-favorites') {
+    return <FavoritesTab />;
+  }
+
+  // Trash tab
+  if (tab?.id === 'util-trash') {
+    return <TrashTab />;
+  }
 
   // Add Item tab
   if (tab?.id === 'util-add' && onCreateItem) {
@@ -302,8 +340,36 @@ export const TabContent: React.FC<TabContentProps> = ({
           <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>
             {effectiveItem.title || 'Untitled'}
           </h2>
-          <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            {getDomain(effectiveItem.url || '') || effectiveItem.source}
+          <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {effectiveItem.url && isValidHttpUrl(effectiveItem.url) ? (
+              <a
+                href={effectiveItem.url}
+                onClick={(e) => {
+                  e.preventDefault();
+                  chrome.tabs.create({ url: effectiveItem.url });
+                }}
+                style={{
+                  color: 'var(--accent)',
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.textDecoration = 'underline';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.textDecoration = 'none';
+                }}
+                title={`Open ${effectiveItem.url} in new tab`}
+              >
+                <ExternalLink size={12} />
+                {getDomain(effectiveItem.url)}
+              </a>
+            ) : (
+              <span>{effectiveItem.source || 'Note'}</span>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
@@ -366,10 +432,80 @@ export const TabContent: React.FC<TabContentProps> = ({
         </div>
       </div>
 
-      {/* Content */}
-      <div style={{ marginTop: '1rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
-        {effectiveItem.notes || effectiveItem.url || 'No details available.'}
+      {/* Metadata */}
+      <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-glass)', borderRadius: 8, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Calendar size={14} />
+            <span>Created: {formatDateTime(effectiveItem.created_at)}</span>
+          </div>
+          {effectiveItem.updated_at !== effectiveItem.created_at && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <Calendar size={14} />
+              <span>Updated: {formatDateTime(effectiveItem.updated_at)}</span>
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <FileText size={14} />
+            <span>Source: {effectiveItem.source || 'manual'}</span>
+          </div>
+        </div>
       </div>
+
+      {/* Notes/Content */}
+      {effectiveItem.notes && (
+        <div style={{ marginTop: '1rem' }}>
+          <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>Notes</h3>
+          <div style={{ lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)', padding: '0.75rem', background: 'var(--bg-glass)', borderRadius: 8 }}>
+            {effectiveItem.notes}
+          </div>
+        </div>
+      )}
+
+      {/* URL (if no notes, show URL as content) */}
+      {!effectiveItem.notes && effectiveItem.url && isValidHttpUrl(effectiveItem.url) && (
+        <div style={{ marginTop: '1rem' }}>
+          <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>URL</h3>
+          <a
+            href={effectiveItem.url}
+            onClick={(e) => {
+              e.preventDefault();
+              chrome.tabs.create({ url: effectiveItem.url });
+            }}
+            style={{
+              color: 'var(--accent)',
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.75rem',
+              background: 'var(--bg-glass)',
+              borderRadius: 8,
+              cursor: 'pointer',
+              wordBreak: 'break-all',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.textDecoration = 'underline';
+              e.currentTarget.style.background = 'var(--accent-weak)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.textDecoration = 'none';
+              e.currentTarget.style.background = 'var(--bg-glass)';
+            }}
+            title={`Open ${effectiveItem.url} in new tab`}
+          >
+            <ExternalLink size={16} />
+            {effectiveItem.url}
+          </a>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!effectiveItem.notes && !effectiveItem.url && (
+        <div style={{ marginTop: '1rem', padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          No details available.
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (onUpdateItem || onDeleteItem) && (

@@ -112,11 +112,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     return counts;
   }, [projectItems]);
 
-  const recentItems = useMemo(() => {
-    return [...projectItems]
-      .sort((a, b) => (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at))
-      .slice(0, 10);
-  }, [projectItems]);
+  // Recent items are now handled in RecentTab component
 
   const ensureNotInOtherSpaces = (tabId: string, dest: 'primary' | 'secondary' | 'right' | 'rightSecondary') => {
     if (dest !== 'primary') {
@@ -485,33 +481,19 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     }
   };
 
-  const handleQuickAction = (id: string) => {
-    const tabId = `qa-${id}`;
-    const title = id.charAt(0).toUpperCase() + id.slice(1);
+  const handleQuickAction = (id: 'pinned' | 'recent' | 'favorites' | 'trash') => {
+    const tabId = `util-${id}`;
+    const title =
+      id === 'pinned' ? 'Pinned' : id === 'recent' ? 'Recent' : id === 'favorites' ? 'Favorites' : 'Trash';
     const existing =
       primaryTabs.find((t) => t.id === tabId) ||
       secondaryTabs.find((t) => t.id === tabId) ||
       rightPrimaryTabs.find((t) => t.id === tabId) ||
       rightSecondaryTabs.find((t) => t.id === tabId);
     if (!existing) {
-      let content = `Placeholder for ${title}`;
-      if (id === 'recent') {
-        content =
-          recentItems
-            .map(
-              (it) =>
-                `- ${it.title || 'Untitled'} (${new Date(it.created_at).toLocaleDateString()})`,
-            )
-            .join('\n') || 'No recent items.';
-      } else if (id === 'pinned') {
-        content = 'Pinned items will show here. (Coming soon)';
-      } else if (id === 'favorites') {
-        content = 'Favorites will show here. (Coming soon)';
-      } else if (id === 'trash') {
-        content = 'Recently removed items will show here. (Coming soon)';
-      }
+      // Set type to 'system' for all quick action tabs
       ensureNotInOtherSpaces(tabId, 'primary');
-      setPrimaryTabs((prev) => [...prev, { id: tabId, itemId: '', title, content }]);
+      setPrimaryTabs((prev) => [...prev, { id: tabId, itemId: '', title, type: 'system' }]);
       setActivePrimaryTabId(tabId);
     } else {
       if (primaryTabs.find((t) => t.id === existing.id)) {
@@ -1136,6 +1118,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onCreateItem={handleCreateItem}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
+                      onItemClick={handleItemClick}
                       defaultCollectionId={selectedCollectionId}
                       projectId={project.id}
                     />
@@ -1175,6 +1158,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onCreateItem={handleCreateItem}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
+                      onItemClick={handleItemClick}
                       defaultCollectionId={selectedCollectionId}
                       projectId={project.id}
                     />
@@ -1303,6 +1287,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onCreateItem={handleCreateItem}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
+                      onItemClick={handleItemClick}
                       defaultCollectionId={selectedCollectionId}
                       projectId={project.id}
                     />

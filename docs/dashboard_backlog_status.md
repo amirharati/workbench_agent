@@ -1,17 +1,19 @@
 # Dashboard Backlog - Current Status
 
-> **Last Updated**: After item management implementation (B1, B2, B3 completed)
+> **Last Updated**: After quick access placeholders and usability improvements
 
 ## 📊 Summary
 
-**Overall Progress**: ~35% of backlog items completed
+**Overall Progress**: ~50% of backlog items completed
+
+**Core MVP Features**: ~85% complete
 
 ### By Epic:
 - **Epic A (Collections)**: 60% done (A1 ✅, A2 partial ✅, A3 ⏸️)
 - **Epic B (Items)**: 60% done (B1 ✅, B2 ✅, B3 ✅, B4 ⏸️)
-- **Epic C (System Tabs)**: 40% done (C1 partial ✅, C5 mostly ✅, C2-C4 placeholders)
-- **Epic D (Quick Access)**: 0% done (all deferred)
-- **Epic E (Item Details)**: 10% done (basic display exists, editing not implemented)
+- **Epic C (System Tabs)**: 60% done (C1 partial ✅, C2 ✅, C4 ✅, C5 mostly ✅, C3 placeholder)
+- **Epic D (Quick Access)**: 25% done (Recent ✅, others have realistic placeholders)
+- **Epic E (Item Details)**: 70% done (E1 ✅, E2 ✅, E3 basic)
 
 ---
 
@@ -54,8 +56,10 @@
   - Missing: sharing management, filter/search
 
 - **Recent Items** ✅
-  - Quick action shows real recent items
-  - Sorted by `updated_at`
+  - Full tab with last 20 most recently updated items
+  - Click items to open in tabs
+  - Shows title, domain, and updated date
+  - Sorted by `updated_at` (most recent first)
 
 ### Infrastructure
 - **Tab Management** ✅
@@ -125,15 +129,42 @@
 ### Epic B
 - **B4: Share Item** - UI to manage item's collection memberships (items can already belong to multiple collections, but UI for managing this is missing)
 
-### Epic D: Quick Access
-- **D1: Pinned Items** - Pin/unpin functionality
-- **D2: Favorites** - Favorite/unfavorite functionality
-- **D3: Trash** - Soft delete with restore
+### Epic D: Quick Access (Realistic Placeholders)
+- **Recent Items** ✅
+  - Shows last 20 most recently updated items
+  - Click items to open in tabs
+  - Sorted by most recent first
+  
+- **D1: Pinned Items** (Realistic Placeholder)
+  - Polished placeholder tab with icon and description
+  - Shows planned features (pin/unpin, visual indicators, etc.)
+  - Ready for implementation when design is finalized
+  
+- **D2: Favorites** (Realistic Placeholder)
+  - Polished placeholder tab with heart icon
+  - Shows planned features (favorite/unfavorite, heart indicators, etc.)
+  - Ready for implementation when design is finalized
+  
+- **D3: Trash** (Realistic Placeholder)
+  - Polished placeholder tab with trash icon
+  - Shows planned features (soft delete, restore, auto-cleanup, etc.)
+  - Ready for implementation when design is finalized
 
 ### Epic E: Item Details
-- **E1: URL Clickable** - Make URLs open in browser
-- **E2: Full Item Info** - Show all fields, edit mode
-- **E3: Notes Editor** - Textarea for notes editing
+- **E1: URL Clickable** ✅
+  - URLs are clickable with external link icon
+  - Opens in new browser tab
+  - Shows domain in header, full URL in content section
+  - Hover effects for better UX
+  
+- **E2: Show Full Item Info** ✅
+  - Displays created/updated dates with calendar icons
+  - Shows source type (bookmark, note, tab, etc.)
+  - Notes displayed in dedicated section
+  - URL shown in dedicated section when available
+  - Metadata organized in glass panel
+  
+- **E3: Notes Editor** - Basic textarea exists in edit mode, could be enhanced
 
 ---
 
@@ -141,15 +172,15 @@
 
 Based on current progress, here's what makes sense to tackle next:
 
-### Priority 1: Quick Wins & Polish (Epic E)
-1. **E1: URL Clickable** ⚡ Quick win - Make URLs in item details clickable
-2. **E2: Show Full Item Info** - Display metadata (created date, updated date, source)
+### Priority 1: Quick Wins & Polish (Epic E) ✅
+1. **E1: URL Clickable** ✅ DONE
+2. **E2: Show Full Item Info** ✅ DONE
 
-### Priority 2: Search (Epic C)
-3. **C2: Search Tab** - Implement real search functionality across items
-   - Search by title, URL, notes
-   - Filter by collection, date range
-   - Highlight matches
+### Priority 2: Search (Epic C) ✅
+3. **C2: Search Tab** ✅ DONE
+   - Real-time search by title, URL, notes, tags
+   - Filter by collection
+   - Results sorted by most recent
 
 ### Priority 3: Sharing (Epic A & B)
 4. **B4: Share Item** - UI to manage item's collection memberships
@@ -157,10 +188,11 @@ Based on current progress, here's what makes sense to tackle next:
    - Visual indicators for items in multiple collections
 5. **A3: Share Collection** - Manage collection sharing across projects
 
-### Priority 4: Quick Access (Epic D) - Requires Data Model Changes
-6. **D1: Pinned Items** - Pin/unpin functionality
-7. **D2: Favorites** - Favorite/unfavorite functionality
-8. **D3: Trash** - Soft delete with restore
+### Priority 4: Quick Access (Epic D) - Realistic Placeholders Created
+6. **Recent Items** ✅ DONE - Shows last 20 most recently updated items
+7. **D1-D3: Pinned/Favorites/Trash** - Realistic placeholders created, ready for implementation when design is finalized
+   - All have polished UI with icons and feature descriptions
+   - Help visualize how these features will work
 
 ### Priority 5: Advanced Features
 9. **E3: Notes Editor** - Enhanced notes editing (markdown support?)
@@ -179,11 +211,9 @@ Based on current progress, here's what makes sense to tackle next:
 - In-place editing provides smooth workflow
 
 ### What Needs Work
-- Search tab is just a placeholder (needs real search implementation)
-- URL clickable in item details (quick win)
-- Item detail view could show more metadata (dates, source, etc.)
-- Sharing features not started
-- Quick access features (pinned, favorites, trash) not started
+- Sharing features not started (may change design, defer for now)
+- Quick access features (pinned, favorites, trash) have realistic placeholders - ready for implementation when design is finalized
+- AI Agent tab is placeholder (defer for now)
 
 ### Technical Debt
 - Placeholder system tabs need real implementations (Search, AI Agent)
