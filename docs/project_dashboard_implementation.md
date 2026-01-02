@@ -55,7 +55,7 @@ A project dashboard that appears when a user clicks on a project. The dashboard 
 - **Phase 4**: ✅ Done (TabBar, TabContent - ContentPanel integrated into ProjectDashboard)
 - **Phase 5**: ✅ Done (Resizer with smooth dragging, layout state management, right pane split)
 - **Phase 6**: ✅ Done (Data flow, item actions, tab management)
-- **Phase 7**: ✅ Partially Done (Theme system, CSS vars, primitives, custom scrollbars - animations pending)
+- **Phase 7**: ⏸️ Deferred (Theme system, CSS vars, primitives, custom scrollbars done - animations/responsive deferred until core functionality is solid)
 - **Phase 8**: ✅ Mostly Done (Right pane toggle, layout persistence, recent items, **tab dragging**, **context menu**)
 
 ### Additional Features Implemented (Beyond Original Plan)
@@ -939,7 +939,22 @@ const items = useMemo(() => {
 4. ✅ Smart item highlighting (completed)
 5. ✅ Open in any space (completed)
 6. ⏳ Advanced quick actions (pinned/favorites/trash - pending)
-7. ⏳ Polish & animations (pending)
+7. ⏸️ Polish & animations (deferred - focus on core functionality first)
+
+---
+
+## 🔜 Next Priorities (Post MVP)
+
+**Status**: Core dashboard structure is solid. Focusing on functional features before styling polish.
+
+### Current Focus Areas
+- **Collections Management**: Create, remove, share collections across projects
+- **Items Management**: Add, edit, delete bookmarks/notes, share across collections
+- **System Tabs**: Standard functions (Search, AI Agent, Add Item, Collections Manager, Favorites/Pinned/Trash)
+- **Item Detail Editor**: Edit title/URL/notes, clickable URLs, full item info display
+- **Quick Actions Behavior**: Where system tabs open, semantics for pinned/favorites/trash
+
+**Note**: Detailed acceptance criteria and implementation notes are tracked in `docs/dashboard_backlog.md` to keep this document focused on architecture and completed phases.
 
 ---
 
