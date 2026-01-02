@@ -94,15 +94,15 @@ This document tracks the next set of functional features to implement. We're def
 **Goal**: Standard way to add new bookmarks or notes.
 
 **Acceptance Criteria**:
-- [ ] System tab: "Add Item" (or "New Item")
-- [ ] Form fields:
+- [x] System tab: "Add Item" (or "New Item")
+- [x] Form fields:
   - Title (required)
   - URL (optional, validates if provided)
   - Notes (optional, textarea)
   - Collections (multi-select, defaults to current filter if applicable)
-- [ ] Save creates item and opens it in a tab
-- [ ] Item appears in list immediately
-- [ ] Validation: URL must be valid http/https if provided
+- [x] Save creates item and opens it in a tab
+- [x] Item appears in list immediately
+- [x] Validation: URL must be valid http/https if provided
 
 **Implementation Notes**:
 - Use existing `addItem` from `db.ts`
@@ -119,20 +119,22 @@ This document tracks the next set of functional features to implement. We're def
 **Goal**: Edit existing item details.
 
 **Acceptance Criteria**:
-- [ ] System tab: "Edit Item" (or edit section in item detail view)
-- [ ] Pre-filled form with current values:
+- [x] System tab: "Edit Item" (or edit section in item detail view)
+- [x] Pre-filled form with current values:
   - Title
   - URL
   - Notes
   - Collections (multi-select)
-- [ ] Save updates item via `updateItem`
-- [ ] Changes reflect immediately in list and tabs
-- [ ] Can edit from context menu or item detail view
+- [x] Save updates item via `updateItem`
+- [x] Changes reflect immediately in list and tabs
+- [x] Can edit from context menu or item detail view
 
 **Implementation Notes**:
+- ✅ Implemented: In-place editing in the same tab (no separate edit tabs)
+- ✅ Edit button in item detail view header
+- ✅ Context menu support
+- ✅ Auto-resets edit mode when switching items
 - Use existing `updateItem` from `db.ts`
-- Consider: inline editing vs modal vs dedicated tab
-- Should we support editing multiple items at once? (future)
 
 ---
 
@@ -140,18 +142,22 @@ This document tracks the next set of functional features to implement. We're def
 **Goal**: Remove items with proper confirmation.
 
 **Acceptance Criteria**:
-- [ ] **Option 1 (Simple)**: Hard delete with confirmation
+- [x] **Option 1 (Simple)**: Hard delete with confirmation
   - Confirmation dialog: "Delete [title]?"
   - Removes item from database
-  - Closes tab if item is open
-- [ ] **Option 2 (Better)**: Soft delete (Trash)
+  - Closes tab if item is open (including edit tab)
+- [ ] **Option 2 (Better)**: Soft delete (Trash) - Deferred for future
   - Sets `item.deletedAt` timestamp
   - Item moves to Trash system tab
   - Can restore or permanently delete from Trash
-- [ ] Delete from context menu or item detail view
-- [ ] UI updates immediately
+- [x] Delete from context menu or item detail view
+- [x] UI updates immediately
 
 **Implementation Notes**:
+- ✅ Implemented: Hard delete with confirmation
+- ✅ Delete button in item detail view header
+- ✅ Context menu support
+- ✅ Closes item tab if open
 - Current model: no `deletedAt` field - need to add if doing soft delete
 - Or start with hard delete, add soft delete later
 - Consider: should deleting an item remove it from all collections or just current?

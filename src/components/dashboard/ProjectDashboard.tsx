@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import type { Project, Collection, Item } from '../../lib/db';
-import { addCollection, deleteCollection, updateItem, updateCollection } from '../../lib/db';
+import { addCollection, deleteCollection, updateItem, updateCollection, addItem, getAllItems, deleteItem } from '../../lib/db';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -546,7 +546,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       rightSecondaryTabs.find((t) => t.id === tabId);
     if (!existing) {
       ensureNotInOtherSpaces(tabId, 'primary');
-      setPrimaryTabs((prev) => [...prev, { id: tabId, itemId: '', title, content }]);
+      setPrimaryTabs((prev) => [...prev, { id: tabId, itemId: '', title, content, type: 'system' }]);
       setActivePrimaryTabId(tabId);
       return;
     }
@@ -609,28 +609,115 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const handleCreateItem = async (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => {
+    try {
+      // Get the project's unsorted collection if no collections selected
+      const projectUnsortedId = `collection_${project.id}_unsorted`;
+      const finalCollectionIds = data.collectionIds.length > 0 ? data.collectionIds : [projectUnsortedId];
+
+      const itemId = await addItem({
+        title: data.title,
+        url: data.url || '',
+        notes: data.notes,
+        collectionIds: finalCollectionIds,
+        tags: [],
+        source: data.url ? 'bookmark' : 'manual',
+      });
+
+      // Refresh data first to get the new item
+      if (onRefresh) await onRefresh();
+
+      // Fetch the newly created item
+      const allItems = await getAllItems();
+      const newItem = allItems.find((i) => i.id === itemId);
+      if (newItem) {
+        // Open the created item in a tab
+        handleItemClick(newItem);
+      }
+
+      return itemId;
+    } catch (error) {
+      console.error('Failed to create item:', error);
+      throw error;
+    }
+  };
+
   const handleNewItem = () => {
-    const tabId = `new-${Date.now()}`;
-    const title = 'New item (draft)';
-    ensureNotInOtherSpaces(tabId, 'primary');
-    setPrimaryTabs((prev) => [...prev, { id: tabId, itemId: '', title, content: 'Draft item (not saved yet).' }]);
-    setActivePrimaryTabId(tabId);
+    openUtilityTab('add');
   };
 
   const handleEditItem = (item: Item) => {
-    // Open item in a tab if not already open, then focus it
-    handleItemClick(item);
-    // TODO: Could open an edit modal here in the future using onUpdateItem
-    // For now, user can edit via the tab content
+    const tabId = `edit-${item.id}`;
+    const title = `Edit: ${item.title}`;
+    
+    // Check if edit tab already exists in any space
+    const existing =
+      primaryTabs.find((t) => t.id === tabId) ||
+      secondaryTabs.find((t) => t.id === tabId) ||
+      rightPrimaryTabs.find((t) => t.id === tabId) ||
+      rightSecondaryTabs.find((t) => t.id === tabId);
+    
+    if (existing) {
+      // Focus existing edit tab
+      if (primaryTabs.find((t) => t.id === tabId)) {
+        setActivePrimaryTabId(tabId);
+      } else if (secondaryTabs.find((t) => t.id === tabId)) {
+        setActiveSecondaryTabId(tabId);
+      } else if (rightPrimaryTabs.find((t) => t.id === tabId)) {
+        setActiveRightPrimaryTabId(tabId);
+        setRightPaneVisible(true);
+      } else if (rightSecondaryTabs.find((t) => t.id === tabId)) {
+        setActiveRightSecondaryTabId(tabId);
+        setRightPaneVisible(true);
+      }
+      return;
+    }
+    
+    // Create new edit tab in primary space
+    ensureNotInOtherSpaces(tabId, 'primary');
+    setPrimaryTabs((prev) => [...prev, { id: tabId, itemId: item.id, title, type: 'system' }]);
+    setActivePrimaryTabId(tabId);
+  };
+
+  const handleUpdateItem = async (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => {
+    try {
+      // Get the project's unsorted collection if no collections selected
+      const projectUnsortedId = `collection_${project.id}_unsorted`;
+      const finalCollectionIds = data.collectionIds.length > 0 ? data.collectionIds : [projectUnsortedId];
+
+      await updateItem(id, {
+        title: data.title,
+        url: data.url || '',
+        notes: data.notes,
+        collectionIds: finalCollectionIds,
+      });
+
+      // Refresh data
+      if (onRefresh) await onRefresh();
+      
+      // The edit happens in-place, so no need to close/edit tabs
+    } catch (error) {
+      console.error('Failed to update item:', error);
+      throw error;
+    }
   };
 
   const handleDeleteItem = async (item: Item) => {
-    if (!window.confirm(`Delete "${item.title || 'Untitled'}"?`)) return;
-    if (onDeleteItem) {
-      await onDeleteItem(item.id);
-      // Close tab if open
+    if (!window.confirm(`Delete "${item.title || 'Untitled'}"? This action cannot be undone.`)) return;
+    try {
+      if (onDeleteItem) {
+        await onDeleteItem(item.id);
+      } else {
+        // Fallback: use deleteItem directly if handler not provided
+        await deleteItem(item.id);
+      }
+      // Close tab if open (both item tab and edit tab)
       handleTabClose(item.id);
+      handleTabClose(`edit-${item.id}`);
       if (onRefresh) await onRefresh();
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+      alert('Failed to delete item. Please try again.');
     }
   };
 
@@ -1046,6 +1133,10 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onRenameCollection={handleRenameCollection}
                       onOpenCollection={handleOpenCollection}
                       onOpenCollectionInTab={handleOpenCollectionInTab}
+                      onCreateItem={handleCreateItem}
+                      onUpdateItem={handleUpdateItem}
+                      onDeleteItem={handleDeleteItem}
+                      defaultCollectionId={selectedCollectionId}
                       projectId={project.id}
                     />
                   </div>
@@ -1081,6 +1172,10 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onRenameCollection={handleRenameCollection}
                       onOpenCollection={handleOpenCollection}
                       onOpenCollectionInTab={handleOpenCollectionInTab}
+                      onCreateItem={handleCreateItem}
+                      onUpdateItem={handleUpdateItem}
+                      onDeleteItem={handleDeleteItem}
+                      defaultCollectionId={selectedCollectionId}
                       projectId={project.id}
                     />
                   </div>
@@ -1138,6 +1233,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         onRenameCollection={handleRenameCollection}
                         onOpenCollection={handleOpenCollection}
                         onOpenCollectionInTab={handleOpenCollectionInTab}
+                        onCreateItem={handleCreateItem}
+                        defaultCollectionId={selectedCollectionId}
                         projectId={project.id}
                       />
                     </div>
@@ -1173,6 +1270,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         onRenameCollection={handleRenameCollection}
                         onOpenCollection={handleOpenCollection}
                         onOpenCollectionInTab={handleOpenCollectionInTab}
+                        onCreateItem={handleCreateItem}
+                        defaultCollectionId={selectedCollectionId}
                         projectId={project.id}
                       />
                     </div>
@@ -1201,6 +1300,10 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onRenameCollection={handleRenameCollection}
                       onOpenCollection={handleOpenCollection}
                       onOpenCollectionInTab={handleOpenCollectionInTab}
+                      onCreateItem={handleCreateItem}
+                      onUpdateItem={handleUpdateItem}
+                      onDeleteItem={handleDeleteItem}
+                      defaultCollectionId={selectedCollectionId}
                       projectId={project.id}
                     />
                   </div>

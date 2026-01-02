@@ -1,14 +1,14 @@
 # Dashboard Backlog - Current Status
 
-> **Last Updated**: After collections management implementation
+> **Last Updated**: After item management implementation (B1, B2, B3 completed)
 
 ## 📊 Summary
 
-**Overall Progress**: ~30% of backlog items completed
+**Overall Progress**: ~35% of backlog items completed
 
 ### By Epic:
 - **Epic A (Collections)**: 60% done (A1 ✅, A2 partial ✅, A3 ⏸️)
-- **Epic B (Items)**: 20% done (B2/B3 partial via context menu, B1/B4 ⏸️)
+- **Epic B (Items)**: 60% done (B1 ✅, B2 ✅, B3 ✅, B4 ⏸️)
 - **Epic C (System Tabs)**: 40% done (C1 partial ✅, C5 mostly ✅, C2-C4 placeholders)
 - **Epic D (Quick Access)**: 0% done (all deferred)
 - **Epic E (Item Details)**: 10% done (basic display exists, editing not implemented)
@@ -75,13 +75,37 @@
 ## 🚧 Partially Done
 
 ### Epic B: Items Management
-- **B2/B3: Edit/Delete Item** (partial)
-  - Context menu exists with edit/delete options
-  - Delete handler exists but may need refinement
-  - Edit handler exists but full edit UI not implemented
-  - Missing: Full edit form/system tab
+- **B1: Create Item** ✅
+  - Full form in system tab with title, URL, notes, collections
+  - Validates URL format
+  - Creates item and opens it in a tab
+  - Defaults to current collection filter
+  - Supports both bookmarks (with URL) and notes (without URL)
+  
+- **B2: Edit Item** ✅
+  - In-place editing in the same tab (no separate edit tabs)
+  - Edit button in item detail view header
+  - Context menu support for editing
+  - Pre-filled form with current values (title, URL, notes, collections)
+  - Updates item via `updateItem`
+  - Changes reflect immediately
+  - Auto-resets edit mode when switching items
+  
+- **B3: Delete Item** ✅ (hard delete)
+  - Confirmation dialog
+  - Removes item from database
+  - Closes item tab if open
+  - UI updates immediately
+  - Can delete from context menu or item detail view
+  - Delete button in item detail view header
+  - Note: Soft delete (Trash) deferred for future
 
 ### Epic C: System Tabs
+- **C4: Add Item Tab** ✅
+  - Full form implementation
+  - Creates items and opens them in tabs
+  - Supports both bookmarks and notes
+
 - **C2: Search Tab** (placeholder only)
   - Opens as system tab
   - Placeholder content
@@ -91,11 +115,6 @@
   - Opens as system tab
   - Placeholder content
 
-- **C4: Add Item Tab** (placeholder only)
-  - Opens as system tab
-  - Placeholder content
-  - Missing: Full form implementation
-
 ---
 
 ## ⏸️ Not Started
@@ -104,8 +123,7 @@
 - **A3: Share Collection** - UI to manage collection sharing across projects
 
 ### Epic B
-- **B1: Create Item** - Full form for adding bookmarks/notes
-- **B4: Share Item** - UI to manage item's collection memberships
+- **B4: Share Item** - UI to manage item's collection memberships (items can already belong to multiple collections, but UI for managing this is missing)
 
 ### Epic D: Quick Access
 - **D1: Pinned Items** - Pin/unpin functionality
@@ -123,25 +141,30 @@
 
 Based on current progress, here's what makes sense to tackle next:
 
-### Priority 1: Complete Item Management (Epic B)
-1. **B1: Create Item** - Full form in system tab
-2. **B2: Edit Item** - Complete the edit functionality (form/system tab)
-3. **B3: Delete Item** - Ensure delete works properly (may already work)
+### Priority 1: Quick Wins & Polish (Epic E)
+1. **E1: URL Clickable** ⚡ Quick win - Make URLs in item details clickable
+2. **E2: Show Full Item Info** - Display metadata (created date, updated date, source)
 
-### Priority 2: System Tabs (Epic C)
-4. **C2: Search Tab** - Implement real search functionality
-5. **C4: Add Item Tab** - Implement the create item form
+### Priority 2: Search (Epic C)
+3. **C2: Search Tab** - Implement real search functionality across items
+   - Search by title, URL, notes
+   - Filter by collection, date range
+   - Highlight matches
 
-### Priority 3: Item Details (Epic E)
-6. **E1: URL Clickable** - Quick win, simple implementation
-7. **E2: Full Item Info** - Show all fields, enable editing
+### Priority 3: Sharing (Epic A & B)
+4. **B4: Share Item** - UI to manage item's collection memberships
+   - Multi-collection selector in edit form
+   - Visual indicators for items in multiple collections
+5. **A3: Share Collection** - Manage collection sharing across projects
 
-### Priority 4: Sharing (Epic A & B)
-8. **A3: Share Collection** - Manage collection sharing
-9. **B4: Share Item** - Manage item's collections
+### Priority 4: Quick Access (Epic D) - Requires Data Model Changes
+6. **D1: Pinned Items** - Pin/unpin functionality
+7. **D2: Favorites** - Favorite/unfavorite functionality
+8. **D3: Trash** - Soft delete with restore
 
-### Priority 5: Quick Access (Epic D)
-10. **D1-D3** - Pinned, Favorites, Trash (requires data model changes)
+### Priority 5: Advanced Features
+9. **E3: Notes Editor** - Enhanced notes editing (markdown support?)
+10. **C3: AI Agent Tab** - AI agent functionality
 
 ---
 
@@ -149,20 +172,23 @@ Based on current progress, here's what makes sense to tackle next:
 
 ### What's Working Well
 - Collections management is solid (create, delete, rename, open in tab)
+- Item management is complete (create, edit in-place, delete)
 - Tab system is robust (dragging, multiple spaces, auto-selection)
 - Collections space tab is very functional
 - Context menus provide good UX
+- In-place editing provides smooth workflow
 
 ### What Needs Work
-- Item creation/editing needs full implementation
-- Search tab is just a placeholder
-- Item detail view is basic (needs editing capabilities)
+- Search tab is just a placeholder (needs real search implementation)
+- URL clickable in item details (quick win)
+- Item detail view could show more metadata (dates, source, etc.)
 - Sharing features not started
+- Quick access features (pinned, favorites, trash) not started
 
 ### Technical Debt
-- Some handlers exist but UI not fully connected (edit item)
-- Placeholder system tabs need real implementations
+- Placeholder system tabs need real implementations (Search, AI Agent)
 - Data model may need updates for pinned/favorites/trash
+- Item detail view could be enhanced with more metadata display
 
 ---
 

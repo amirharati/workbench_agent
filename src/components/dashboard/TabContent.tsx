@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Item, Collection } from '../../lib/db';
 import { getDomain } from '../../lib/utils';
 import type { TabBarTab } from './TabBar';
 import { CollectionsSpace } from './CollectionsSpace';
+import { AddItemTab } from './AddItemTab';
+import { EditItemTab } from './EditItemTab';
+import { ItemContextMenu } from './ItemContextMenu';
+import { Pencil, Trash2 } from 'lucide-react';
 
 interface TabContentProps {
   tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; type?: 'item' | 'collection' | 'system' }) | null;
@@ -15,6 +19,10 @@ interface TabContentProps {
   onOpenCollection?: (collection: Collection) => void;
   onOpenCollectionInTab?: (collection: Collection) => void;
   projectId?: string;
+  onCreateItem?: (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<string>;
+  onUpdateItem?: (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<void>;
+  onDeleteItem?: (item: Item) => void;
+  defaultCollectionId?: string | 'all';
 }
 
 export const TabContent: React.FC<TabContentProps> = ({ 
@@ -28,9 +36,51 @@ export const TabContent: React.FC<TabContentProps> = ({
   onOpenCollection,
   onOpenCollectionInTab,
   projectId,
+  onCreateItem,
+  onUpdateItem,
+  onDeleteItem,
+  defaultCollectionId,
 }) => {
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [isEditingItem, setIsEditingItem] = useState(false);
+  
+  // Get current item for edit mode reset
+  const currentItemId = item?.id || (tab?.itemId ? items.find((i) => i.id === tab.itemId)?.id : null);
+  
+  // Reset edit mode when item changes (must be at top level, not in conditional)
+  useEffect(() => {
+    if (currentItemId) {
+      setIsEditingItem(false);
+    }
+  }, [currentItemId]);
+
+  // Add Item tab
+  if (tab?.id === 'util-add' && onCreateItem) {
+    return (
+      <AddItemTab
+        collections={collections}
+        defaultCollectionId={defaultCollectionId}
+        onSave={onCreateItem}
+      />
+    );
+  }
+
+  // Edit Item tab
+  if (tab?.id?.startsWith('edit-') && onUpdateItem) {
+    // Get item from tab.itemId or from item prop
+    const editItem = item || (tab?.itemId ? items.find((i) => i.id === tab.itemId) : null);
+    if (editItem) {
+      return (
+        <EditItemTab
+          item={editItem}
+          collections={collections}
+          onSave={onUpdateItem}
+        />
+      );
+    }
+  }
 
   // Collections space tab (all collections)
   if (tab?.type === 'system' && (tab.id === 'collections' || tab.id === 'collections-all')) {
@@ -178,8 +228,166 @@ export const TabContent: React.FC<TabContentProps> = ({
     );
   }
 
-  // System tab with content
-  if (tab && !item && tab.type !== 'collection') {
+  // Item tab - check if this is an item tab (has itemId and not a system/collection tab)
+  // An item tab has itemId and is not a system tab (util-*, edit-*) or collection tab
+  const isItemTab = tab?.itemId && 
+    tab.type !== 'collection' && 
+    tab.type !== 'system' && 
+    !tab.id?.startsWith('util-') && 
+    !tab.id?.startsWith('edit-') &&
+    tab.id !== 'collections' &&
+    tab.id !== 'collections-all';
+  
+  if (isItemTab) {
+    // Try to get item from prop, or look it up from items array using tab.itemId
+    const effectiveItem = item || items.find((i) => i.id === tab.itemId) || null;
+  
+    if (!effectiveItem) {
+      return (
+        <div
+          style={{
+            padding: '1.5rem',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            background: 'var(--bg-panel)',
+            borderRadius: 10,
+            border: '1px solid var(--border)',
+          }}
+        >
+          Item not found
+        </div>
+      );
+    }
+
+    // If in edit mode, show edit form
+    if (isEditingItem && onUpdateItem) {
+      return (
+        <EditItemTab
+          item={effectiveItem}
+          collections={collections}
+          onSave={async (id, data) => {
+            await onUpdateItem(id, data);
+            setIsEditingItem(false);
+          }}
+          onCancel={() => setIsEditingItem(false)}
+        />
+      );
+    }
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  return (
+    <div
+      style={{
+        padding: '1.25rem',
+        overflowY: 'auto',
+        height: '100%',
+        background: 'var(--bg-panel)',
+        borderRadius: 10,
+        border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-panel)',
+        position: 'relative',
+      }}
+      onContextMenu={handleContextMenu}
+    >
+      {/* Header with title and action buttons */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>
+            {effectiveItem.title || 'Untitled'}
+          </h2>
+          <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            {getDomain(effectiveItem.url || '') || effectiveItem.source}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
+          {onUpdateItem && (
+            <button
+              onClick={() => setIsEditingItem(true)}
+              style={{
+                padding: '0.5rem',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                color: 'var(--text)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              title="Edit item"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--bg-glass)';
+                e.currentTarget.style.borderColor = 'var(--accent)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = 'var(--border)';
+              }}
+            >
+              <Pencil size={16} />
+            </button>
+          )}
+          {onDeleteItem && (
+            <button
+              onClick={() => onDeleteItem(effectiveItem)}
+              style={{
+                padding: '0.5rem',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                color: '#ef4444',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              title="Delete item"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                e.currentTarget.style.borderColor = '#ef4444';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = 'var(--border)';
+              }}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ marginTop: '1rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
+        {effectiveItem.notes || effectiveItem.url || 'No details available.'}
+      </div>
+
+      {/* Context Menu */}
+      {contextMenu && (onUpdateItem || onDeleteItem) && (
+        <ItemContextMenu
+          item={effectiveItem}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onEdit={onUpdateItem ? () => setIsEditingItem(true) : undefined}
+          onDelete={onDeleteItem}
+        />
+      )}
+    </div>
+    );
+  }
+
+  // System tab with content (only if not an item tab)
+  if (tab && !item && tab.type !== 'collection' && !tab.itemId) {
     return (
       <div
         style={{
@@ -201,29 +409,22 @@ export const TabContent: React.FC<TabContentProps> = ({
     );
   }
 
-  // Item tab
-  const effectiveItem = item!;
+  // Fallback: should not reach here
   return (
     <div
       style={{
-        padding: '1.25rem',
-        overflowY: 'auto',
+        padding: '1.5rem',
+        color: 'var(--text-muted)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         height: '100%',
         background: 'var(--bg-panel)',
         borderRadius: 10,
         border: '1px solid var(--border)',
-        boxShadow: 'var(--shadow-panel)',
       }}
     >
-      <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>
-        {effectiveItem.title || 'Untitled'}
-      </h2>
-      <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-        {getDomain(effectiveItem.url || '') || effectiveItem.source}
-      </div>
-      <div style={{ marginTop: '1rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
-        {effectiveItem.notes || effectiveItem.url || 'No details available.'}
-      </div>
+      Unable to render tab content
     </div>
   );
 };
