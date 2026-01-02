@@ -59,7 +59,6 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   };
 
   const handleItemClick = (e: React.MouseEvent, item: Item) => {
-    // Ctrl/Cmd + Click: cycle through available spaces
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const spaces: Array<'primary' | 'secondary' | 'rightPrimary' | 'rightSecondary'> = [];
@@ -69,7 +68,6 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
       if (availableSpaces.rightSecondary) spaces.push('rightSecondary');
       
       if (spaces.length > 0) {
-        // For now, just open in the first available space (could be enhanced with cycling)
         onItemClick(item, spaces[0]);
       } else {
         onItemClick(item);
@@ -80,7 +78,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   };
 
   return (
-    <Panel className="scrollbar" style={{ padding: '0.5rem', overflowY: 'auto' }}>
+    <Panel className="scrollbar" style={{ padding: '4px', overflowY: 'auto' }}>
       {contextMenu && (
         <ItemContextMenu
           item={contextMenu.item}
@@ -95,37 +93,37 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
           availableSpaces={availableSpaces}
         />
       )}
+      
+      {/* Header - compact */}
       <div
         style={{
-          padding: '0.5rem 0.75rem',
+          padding: '4px 8px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          color: 'var(--text-muted)',
           borderBottom: '1px solid var(--border)',
-          marginBottom: '0.5rem',
-          gap: '0.5rem',
+          marginBottom: '4px',
+          height: 28,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text)', fontWeight: 600 }}>{title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text)', fontWeight: 600 }}>{title}</span>
           {currentCollectionId && currentCollectionId !== 'all' && onOpenCollectionInTab && (
             <button
               onClick={() => onOpenCollectionInTab(currentCollectionId)}
               style={{
-                padding: '0.25rem',
+                padding: '2px',
                 background: 'transparent',
                 border: 'none',
                 cursor: 'pointer',
                 color: 'var(--text-muted)',
                 display: 'flex',
                 alignItems: 'center',
-                borderRadius: 4,
-                transition: 'all 0.15s ease',
+                borderRadius: 3,
               }}
               title="Open collection in tab"
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--bg-glass)';
+                e.currentTarget.style.background = 'var(--bg-hover)';
                 e.currentTarget.style.color = 'var(--text)';
               }}
               onMouseLeave={(e) => {
@@ -133,23 +131,24 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                 e.currentTarget.style.color = 'var(--text-muted)';
               }}
             >
-              <FolderOpen size={14} />
+              <FolderOpen size={12} />
             </button>
           )}
         </div>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{items.length} items</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>{items.length}</span>
         {onNew && (
           <button
             onClick={onNew}
             style={{
               marginLeft: 'auto',
-              padding: '6px 10px',
+              padding: '2px 8px',
               background: 'var(--accent-weak)',
               color: 'var(--text)',
               border: '1px solid var(--border)',
-              borderRadius: 6,
+              borderRadius: 4,
               cursor: 'pointer',
-              fontSize: 12,
+              fontSize: 'var(--text-xs)',
+              height: 20,
             }}
           >
             + New
@@ -157,65 +156,68 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
         )}
       </div>
 
-      {items.map((item) => {
-        const isActive = activeItemId === item.id;
-        return (
-          <div
-            key={item.id}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.effectAllowed = 'move';
-              e.dataTransfer.setData('text/plain', item.id);
-            }}
-            onClick={(e) => handleItemClick(e, item)}
-            onContextMenu={(e) => handleContextMenu(e, item)}
-            style={{
-              padding: '0.6rem 0.75rem',
-              borderRadius: 8,
-              cursor: 'grab',
-              display: 'flex',
-              gap: '0.5rem',
-              alignItems: 'center',
-              background: isActive ? 'var(--accent-weak)' : 'var(--bg-glass)',
-              borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
-              marginBottom: '0.2rem',
-              transition: 'background 0.15s ease, border-color 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-            }}
-            onMouseLeave={(e) => {
-              if (!isActive) e.currentTarget.style.background = 'var(--bg-glass)';
-            }}
-          >
-            <span style={{ fontSize: '0.95rem' }}>{iconForItem(item)}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontWeight: 600,
-                  fontSize: '0.9rem',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {item.title || 'Untitled'}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                {new Date(item.created_at).toLocaleDateString()}
+      {/* Items list - compact */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+        {items.map((item) => {
+          const isActive = activeItemId === item.id;
+          return (
+            <div
+              key={item.id}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', item.id);
+              }}
+              onClick={(e) => handleItemClick(e, item)}
+              onContextMenu={(e) => handleContextMenu(e, item)}
+              style={{
+                padding: '4px 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                display: 'flex',
+                gap: '6px',
+                alignItems: 'center',
+                height: 28,
+                background: isActive ? 'var(--accent-weak)' : 'transparent',
+                borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                transition: 'all 0.1s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)';
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <span style={{ fontSize: '11px', flexShrink: 0 }}>{iconForItem(item)}</span>
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span
+                  style={{
+                    fontWeight: 500,
+                    fontSize: 'var(--text-sm)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    flex: 1,
+                    color: isActive ? 'var(--text)' : 'var(--text)',
+                  }}
+                >
+                  {item.title || 'Untitled'}
+                </span>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>
+                  {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                </span>
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
 
       {items.length === 0 && (
-        <div style={{ color: 'var(--text-muted)', padding: '1rem', textAlign: 'center' }}>
-          No items found
+        <div style={{ color: 'var(--text-faint)', padding: '12px', textAlign: 'center', fontSize: 'var(--text-sm)' }}>
+          No items
         </div>
       )}
     </Panel>
   );
 };
-
-

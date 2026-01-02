@@ -1,4 +1,5 @@
 import React from 'react';
+import { Pin, Clock, Star, Trash2 } from 'lucide-react';
 
 type QuickActionId = 'pinned' | 'recent' | 'favorites' | 'trash';
 
@@ -7,50 +8,55 @@ interface QuickActionsProps {
 }
 
 export const QuickActions: React.FC<QuickActionsProps> = ({ onAction }) => {
-  const actions: { id: QuickActionId; label: string; icon: string }[] = [
-    { id: 'pinned', label: 'Pinned', icon: '📌' },
-    { id: 'recent', label: 'Recent', icon: '🕐' },
-    { id: 'favorites', label: 'Favorites', icon: '⭐' },
-    { id: 'trash', label: 'Trash', icon: '🗑️' },
+  const actions: { id: QuickActionId; label: string; Icon: typeof Pin }[] = [
+    { id: 'pinned', label: 'Pinned', Icon: Pin },
+    { id: 'recent', label: 'Recent', Icon: Clock },
+    { id: 'favorites', label: 'Favorites', Icon: Star },
+    { id: 'trash', label: 'Trash', Icon: Trash2 },
   ];
 
   return (
     <div
       style={{
         display: 'flex',
-        gap: '0.5rem',
+        gap: '2px',
         alignItems: 'center',
-        padding: '0.35rem 0.5rem',
-        background: 'var(--bg-glass)',
-        border: '1px solid var(--border)',
-        borderRadius: 10,
       }}
     >
-      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Quick:</span>
       {actions.map((a) => (
         <button
           key={a.id}
           onClick={() => onAction(a.id)}
           style={{
-            background: 'linear-gradient(135deg, var(--bg-glass), transparent)',
-            border: '1px solid var(--border)',
-            padding: '0.32rem 0.85rem',
-            fontSize: '0.8rem',
+            background: 'transparent',
+            border: '1px solid transparent',
+            padding: '4px 8px',
+            height: 24,
+            fontSize: 'var(--text-xs)',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.4rem',
-            color: 'var(--text)',
-            borderRadius: 8,
+            gap: '4px',
+            color: 'var(--text-muted)',
+            borderRadius: 4,
             cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            transition: 'all 0.1s ease',
           }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--bg-hover)';
+            e.currentTarget.style.color = 'var(--text)';
+            e.currentTarget.style.borderColor = 'var(--border)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--text-muted)';
+            e.currentTarget.style.borderColor = 'transparent';
+          }}
+          title={a.label}
         >
-          <span>{a.icon}</span>
+          <a.Icon size={12} />
           <span>{a.label}</span>
         </button>
       ))}
     </div>
   );
 };
-
-

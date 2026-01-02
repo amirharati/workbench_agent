@@ -34,8 +34,39 @@ export const CollectionPills: React.FC<CollectionPillsProps> = ({
     setContextMenu({ collection, x: e.clientX, y: e.clientY });
   };
 
+  const pillStyle = (isActive: boolean): React.CSSProperties => ({
+    padding: '3px 10px',
+    height: 24,
+    borderRadius: 12,
+    border: '1px solid var(--border)',
+    background: isActive ? 'var(--accent)' : 'var(--bg-glass)',
+    color: isActive ? 'var(--accent-text)' : 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: 'var(--text-xs)',
+    fontWeight: 500,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    transition: 'all 0.1s ease',
+  });
+
+  const actionPillStyle: React.CSSProperties = {
+    padding: '3px 8px',
+    height: 24,
+    borderRadius: 12,
+    border: '1px solid var(--border)',
+    background: 'var(--bg-glass)',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: 'var(--text-xs)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    transition: 'all 0.1s ease',
+  };
+
   return (
-    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
       {contextMenu && (
         <CollectionContextMenu
           collection={contextMenu.collection}
@@ -46,101 +77,92 @@ export const CollectionPills: React.FC<CollectionPillsProps> = ({
           onOpenInTab={onOpenCollectionInTab}
         />
       )}
+      
+      {/* All pill */}
       <button
         onClick={() => onSelect('all')}
-        style={{
-          padding: '0.4rem 0.8rem',
-          borderRadius: 16,
-          border: '1px solid rgba(255,255,255,0.08)',
-          background: selectedId === 'all' ? '#6366f1' : 'rgba(255,255,255,0.05)',
-          color: selectedId === 'all' ? '#fff' : '#d1d5db',
-          cursor: 'pointer',
+        style={pillStyle(selectedId === 'all')}
+        onMouseEnter={(e) => {
+          if (selectedId !== 'all') {
+            e.currentTarget.style.background = 'var(--bg-hover)';
+            e.currentTarget.style.color = 'var(--text)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (selectedId !== 'all') {
+            e.currentTarget.style.background = 'var(--bg-glass)';
+            e.currentTarget.style.color = 'var(--text-muted)';
+          }
         }}
       >
-        All ({totalItems})
+        All <span style={{ opacity: 0.7 }}>({totalItems})</span>
       </button>
+      
+      {/* Collection pills */}
       {collections.map((c) => (
         <button
           key={c.id}
           onClick={() => onSelect(c.id)}
           onContextMenu={(e) => handleContextMenu(e, c)}
-          style={{
-            padding: '0.4rem 0.8rem',
-            borderRadius: 16,
-            border: '1px solid rgba(255,255,255,0.08)',
-            background: selectedId === c.id ? '#6366f1' : 'rgba(255,255,255,0.05)',
-            color: selectedId === c.id ? '#fff' : '#d1d5db',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.3rem',
+          style={pillStyle(selectedId === c.id)}
+          onMouseEnter={(e) => {
+            if (selectedId !== c.id) {
+              e.currentTarget.style.background = 'var(--bg-hover)';
+              e.currentTarget.style.color = 'var(--text)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (selectedId !== c.id) {
+              e.currentTarget.style.background = 'var(--bg-glass)';
+              e.currentTarget.style.color = 'var(--text-muted)';
+            }
           }}
         >
-          <span>{c.name}</span>
-          <span style={{ opacity: 0.7, fontSize: '0.75rem' }}>
-            {getCountForCollection ? getCountForCollection(c.id) : ''}
-          </span>
+          {c.name}
+          {getCountForCollection && (
+            <span style={{ opacity: 0.6 }}>({getCountForCollection(c.id)})</span>
+          )}
         </button>
       ))}
+      
+      {/* Open all collections button */}
       {onOpenAllCollections && (
         <button
           onClick={onOpenAllCollections}
-          style={{
-            padding: '0.4rem 0.6rem',
-            borderRadius: 16,
-            border: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(255,255,255,0.05)',
-            color: '#d1d5db',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.3rem',
-            transition: 'background 0.15s ease',
-          }}
+          style={actionPillStyle}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(99, 102, 241, 0.15)';
-            e.currentTarget.style.color = '#fff';
+            e.currentTarget.style.background = 'var(--accent-weak)';
+            e.currentTarget.style.color = 'var(--text)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-            e.currentTarget.style.color = '#d1d5db';
+            e.currentTarget.style.background = 'var(--bg-glass)';
+            e.currentTarget.style.color = 'var(--text-muted)';
           }}
           title="Open all collections"
         >
-          <FolderTree size={14} />
+          <FolderTree size={12} />
         </button>
       )}
+      
+      {/* Create new collection button */}
       {onCreateCollection && (
         <button
           onClick={onCreateCollection}
-          style={{
-            padding: '0.4rem 0.6rem',
-            borderRadius: 16,
-            border: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(255,255,255,0.05)',
-            color: '#d1d5db',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.3rem',
-            transition: 'background 0.15s ease',
-          }}
+          style={actionPillStyle}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(99, 102, 241, 0.15)';
-            e.currentTarget.style.color = '#fff';
+            e.currentTarget.style.background = 'var(--accent-weak)';
+            e.currentTarget.style.color = 'var(--text)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-            e.currentTarget.style.color = '#d1d5db';
+            e.currentTarget.style.background = 'var(--bg-glass)';
+            e.currentTarget.style.color = 'var(--text-muted)';
           }}
           title="Create new collection"
         >
-          <Plus size={14} />
-          <span style={{ fontSize: '0.85rem' }}>New</span>
+          <Plus size={12} />
+          <span>New</span>
         </button>
       )}
     </div>
   );
 };
-
-

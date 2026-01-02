@@ -5,7 +5,7 @@ import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
-import { Panel, ButtonGhost } from '../../../styles/primitives';
+import { Panel } from '../../../styles/primitives';
 
 interface MainContentProps {
   activeView: DashboardView;
@@ -266,25 +266,25 @@ export const MainContent: React.FC<MainContentProps> = ({
             <Panel
               key={project.id}
               style={{
-                padding: '1.25rem',
+                padding: '10px 12px',
                 cursor: 'pointer',
-                transition: 'box-shadow 0.2s, transform 0.1s',
+                transition: 'all 0.12s ease',
               }}
               onClick={() => setSelectedProjectId(project.id)}
               onMouseEnter={(e) => {
-                e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.08)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.borderColor = 'var(--accent)';
+                e.currentTarget.style.background = 'var(--bg-hover)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
-                e.currentTarget.style.transform = 'translateY(0px)';
+                e.currentTarget.style.borderColor = 'var(--border)';
+                e.currentTarget.style.background = 'var(--bg-panel)';
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)' }}>{project.name}</div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-base)', color: 'var(--text)' }}>{project.name}</div>
                   {project.description && (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>{project.description}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: '2px' }}>{project.description}</div>
                   )}
                 </div>
                 {!project.isDefault && (
@@ -294,12 +294,12 @@ export const MainContent: React.FC<MainContentProps> = ({
                       handleDeleteProject(project.id);
                     }}
                     style={{
-                      border: 'none',
-                      background: 'var(--accent-weak)',
-                      color: 'var(--text)',
-                      borderRadius: '9999px',
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.75rem',
+                      border: '1px solid var(--border)',
+                      background: 'transparent',
+                      color: 'var(--text-muted)',
+                      borderRadius: 4,
+                      padding: '2px 6px',
+                      fontSize: 'var(--text-xs)',
                       cursor: 'pointer',
                     }}
                   >
@@ -307,7 +307,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                   </button>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', gap: '8px', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
                 <span>{cols.length} collections</span>
                 <span>•</span>
                 <span>{its.length} bookmarks</span>
@@ -318,32 +318,34 @@ export const MainContent: React.FC<MainContentProps> = ({
 
         if (!activeProject) {
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ color: 'var(--text)', fontSize: '0.9rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 28 }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
                   Choose a project to view its collections and bookmarks.
                 </div>
-                <ButtonGhost
+                <button
                   onClick={handleCreateProject}
                   style={{
-                    padding: '0.5rem 0.9rem',
+                    padding: '3px 10px',
+                    height: 24,
                     cursor: 'pointer',
-                    fontWeight: 600,
-                    fontSize: '0.9rem',
-                    background: 'var(--bg-glass)',
-                    color: 'var(--text)',
-                    border: '1px solid var(--border)',
+                    fontWeight: 500,
+                    fontSize: 'var(--text-xs)',
+                    background: 'var(--accent)',
+                    color: 'var(--accent-text)',
+                    border: 'none',
+                    borderRadius: 4,
                   }}
                 >
                   + New Project
-                </ButtonGhost>
+                </button>
               </div>
 
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-                  gap: '1rem',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                  gap: '8px',
                 }}
               >
                 {projects.length === 0 && (
@@ -942,37 +944,37 @@ export const MainContent: React.FC<MainContentProps> = ({
     }}>
       {!(activeView === 'projects' && selectedProjectId !== null) && (
         <div style={{ 
-          marginBottom: '1.5rem', 
+          marginBottom: '8px', 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
-          flexShrink: 0
+          flexShrink: 0,
+          height: 28,
         }}>
           <h1 style={{ 
-            fontSize: '1.5rem', 
-            fontWeight: 'bold', 
+            fontSize: 'var(--text-lg)', 
+            fontWeight: 600, 
             color: 'var(--text)',
             margin: 0,
-            textTransform: 'capitalize'
+            textTransform: 'capitalize',
           }}>
             {activeView}
           </h1>
           {activeView === 'bookmarks' ? (
             <button style={{
-              padding: '0.5rem 1rem',
-              background: '#2563eb',
-              color: 'white',
-              borderRadius: '0.375rem',
+              padding: '3px 10px',
+              height: 24,
+              background: 'var(--accent)',
+              color: 'var(--accent-text)',
+              borderRadius: 4,
               border: 'none',
               cursor: 'pointer',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
-              transition: 'background 0.2s'
+              gap: '4px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 500,
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#1d4ed8'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#2563eb'}
             onClick={() => setShowAddModal(true)}
             >
               <span>+ New bookmark</span>

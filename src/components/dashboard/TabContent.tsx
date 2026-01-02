@@ -140,14 +140,14 @@ export const TabContent: React.FC<TabContentProps> = ({
     return (
       <div
         style={{
-          padding: '1.5rem',
+          padding: '12px',
           color: 'var(--text-muted)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           height: '100%',
           background: 'var(--bg-panel)',
-          borderRadius: 10,
+          borderRadius: 6,
           border: '1px solid var(--border)',
         }}
       >
@@ -188,12 +188,12 @@ export const TabContent: React.FC<TabContentProps> = ({
     return (
       <div
         style={{
-          padding: '1.25rem',
+          padding: '12px',
           overflowY: 'auto',
           height: '100%',
           color: 'var(--text)',
           background: 'var(--bg-panel)',
-          borderRadius: 10,
+          borderRadius: 6,
           border: '1px solid var(--border)',
           boxShadow: 'var(--shadow-panel)',
         }}
@@ -284,14 +284,14 @@ export const TabContent: React.FC<TabContentProps> = ({
       return (
         <div
           style={{
-            padding: '1.5rem',
+            padding: '12px',
             color: 'var(--text-muted)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             height: '100%',
             background: 'var(--bg-panel)',
-            borderRadius: 10,
+            borderRadius: 6,
             border: '1px solid var(--border)',
           }}
         >
@@ -323,11 +323,11 @@ export const TabContent: React.FC<TabContentProps> = ({
   return (
     <div
       style={{
-        padding: '1.25rem',
+        padding: '12px',
         overflowY: 'auto',
         height: '100%',
         background: 'var(--bg-panel)',
-        borderRadius: 10,
+        borderRadius: 6,
         border: '1px solid var(--border)',
         boxShadow: 'var(--shadow-panel)',
         position: 'relative',
@@ -527,12 +527,12 @@ export const TabContent: React.FC<TabContentProps> = ({
     return (
       <div
         style={{
-          padding: '1.25rem',
+          padding: '12px',
           overflowY: 'auto',
           height: '100%',
           color: 'var(--text)',
           background: 'var(--bg-panel)',
-          borderRadius: 10,
+          borderRadius: 6,
           border: '1px solid var(--border)',
           boxShadow: 'var(--shadow-panel)',
         }}
@@ -556,7 +556,7 @@ export const TabContent: React.FC<TabContentProps> = ({
         justifyContent: 'center',
         height: '100%',
         background: 'var(--bg-panel)',
-        borderRadius: 10,
+        borderRadius: 6,
         border: '1px solid var(--border)',
       }}
     >

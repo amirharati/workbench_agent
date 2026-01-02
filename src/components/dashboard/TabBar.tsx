@@ -11,7 +11,7 @@ interface TabBarProps {
   onTabSelect: (id: string) => void;
   onTabClose: (id: string) => void;
   onTabMove?: (tabId: string, targetSpace: string) => void;
-  spaceId: string; // Identifier for this tab space (e.g., 'primary', 'secondary', 'rightPrimary', 'rightSecondary')
+  spaceId: string;
   isDragOver?: boolean;
   onDragOver?: (e: React.DragEvent) => void;
   onDragLeave?: () => void;
@@ -39,7 +39,6 @@ export const TabBar: React.FC<TabBarProps> = ({
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData(DRAG_MIME, JSON.stringify({ tabId, spaceId }));
     setDraggedTabId(tabId);
-    // Create a ghost image
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
     e.dataTransfer.setDragImage(target, rect.width / 2, rect.height / 2);
@@ -71,15 +70,11 @@ export const TabBar: React.FC<TabBarProps> = ({
       const sourceTabId = data.tabId;
       const sourceSpaceId = data.spaceId;
 
-      // If dropping in the same space, reorder
       if (sourceSpaceId === spaceId && onTabMove) {
         const sourceIndex = tabs.findIndex((t) => t.id === sourceTabId);
         if (sourceIndex === -1 || sourceIndex === targetIndex) return;
-
-        // Reorder logic would be handled by parent
         onTabMove(sourceTabId, `${spaceId}:${targetIndex}`);
       } else if (sourceSpaceId !== spaceId && onTabMove) {
-        // Move to different space
         onTabMove(sourceTabId, spaceId);
       }
     } catch {
@@ -92,14 +87,15 @@ export const TabBar: React.FC<TabBarProps> = ({
   return (
     <div
       style={{
-        height: 34,
+        height: 28,
         display: 'flex',
         alignItems: 'center',
-        gap: '0.25rem',
-        padding: '0 0.35rem',
+        gap: '2px',
+        padding: '0 4px',
         borderBottom: '1px solid var(--border)',
-        background: isDragOver ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
-        transition: 'background 0.15s ease',
+        background: isDragOver ? 'var(--accent-weak)' : 'transparent',
+        transition: 'background 0.12s ease',
+        fontSize: 'var(--text-sm)',
       }}
       onDragOver={(e) => {
         e.preventDefault();
@@ -131,17 +127,17 @@ export const TabBar: React.FC<TabBarProps> = ({
       {tabs.length === 0 && (
         <div
           style={{
-            color: 'var(--text-muted)',
-            fontSize: '0.8rem',
+            color: 'var(--text-faint)',
+            fontSize: 'var(--text-xs)',
             flex: 1,
             textAlign: 'center',
-            padding: '0.5rem',
-            border: isDragOver ? '2px dashed var(--accent)' : '2px dashed transparent',
-            borderRadius: 6,
-            transition: 'border-color 0.15s ease',
+            padding: '4px',
+            border: isDragOver ? '1px dashed var(--accent)' : '1px dashed transparent',
+            borderRadius: 4,
+            transition: 'border-color 0.12s ease',
           }}
         >
-          {isDragOver ? 'Drop tab here' : 'No tabs'}
+          {isDragOver ? 'Drop here' : 'No tabs'}
         </div>
       )}
       {tabs.map((tab, index) => {
@@ -159,29 +155,42 @@ export const TabBar: React.FC<TabBarProps> = ({
             onDrop={(e) => handleDrop(e, index)}
             onClick={() => onTabSelect(tab.id)}
             style={{
-              padding: '0.25rem 0.55rem',
-              borderRadius: 8,
-              cursor: isDragging ? 'grabbing' : 'grab',
+              padding: '3px 8px',
+              borderRadius: 4,
+              cursor: isDragging ? 'grabbing' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
+              gap: '6px',
+              height: 22,
               background: isActive
-                ? 'var(--bg-glass)'
+                ? 'var(--bg-panel)'
                 : isDropTarget
-                  ? 'rgba(99, 102, 241, 0.2)'
+                  ? 'var(--accent-weak)'
                   : 'transparent',
               color: isActive ? 'var(--text)' : 'var(--text-muted)',
               border: isDropTarget
-                ? '2px solid var(--accent)'
-                : `1px solid ${isActive ? 'var(--border)' : 'rgba(255,255,255,0.06)'}`,
-              boxShadow: isActive ? '0 6px 18px rgba(0,0,0,0.18)' : 'none',
+                ? '1px solid var(--accent)'
+                : isActive
+                  ? '1px solid var(--border)'
+                  : '1px solid transparent',
               opacity: isDragging ? 0.5 : 1,
-              transition: 'opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease',
+              transition: 'all 0.1s ease',
+              fontSize: 'var(--text-xs)',
+            }}
+            onMouseEnter={(e) => {
+              if (!isActive && !isDragging) {
+                e.currentTarget.style.background = 'var(--bg-hover)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive && !isDragging) {
+                e.currentTarget.style.background = 'transparent';
+              }
             }}
           >
             <span
               style={{
-                maxWidth: 200,
+                maxWidth: 140,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -198,10 +207,23 @@ export const TabBar: React.FC<TabBarProps> = ({
               style={{
                 border: 'none',
                 background: 'transparent',
-                color: 'var(--text-muted)',
+                color: 'var(--text-faint)',
                 cursor: 'pointer',
-                fontSize: '0.85rem',
-                padding: '0 0.25rem',
+                fontSize: '12px',
+                padding: '0 2px',
+                lineHeight: 1,
+                borderRadius: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--text)';
+                e.currentTarget.style.background = 'var(--bg-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-faint)';
+                e.currentTarget.style.background = 'transparent';
               }}
               title="Close tab"
             >
@@ -213,5 +235,3 @@ export const TabBar: React.FC<TabBarProps> = ({
     </div>
   );
 };
-
-

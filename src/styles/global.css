@@ -1,55 +1,151 @@
+/* ===== IDE-like Compact Design System ===== */
+
 :root {
+  /* ===== Spacing (Compact IDE scale) ===== */
+  --space-xxs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+
+  /* ===== Typography ===== */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+  
+  --text-xs: 0.7rem;      /* 11.2px */
+  --text-sm: 0.8rem;      /* 12.8px */
+  --text-base: 0.875rem;  /* 14px */
+  --text-lg: 1rem;        /* 16px */
+  --text-xl: 1.125rem;    /* 18px */
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.4;
+
+  /* ===== Border Radius (Tighter for IDE feel) ===== */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* ===== Dark Theme (Default) ===== */
   --bg: #0d1117;
-  --bg-panel: #131823;
+  --bg-panel: #161b22;
   --bg-glass: rgba(255, 255, 255, 0.03);
-  --text: #e8eaed;
-  --text-muted: #9aa0a6;
-  --border: rgba(255, 255, 255, 0.12);
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(99, 102, 241, 0.12);
+  --input-bg: rgba(255, 255, 255, 0.04);
+  
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-faint: #6e7681;
+  
+  --border: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(99, 102, 241, 0.5);
+  --border-active: rgba(99, 102, 241, 0.3);
+  
   --accent: #6366f1;
+  --accent-hover: #818cf8;
   --accent-weak: rgba(99, 102, 241, 0.15);
-  --shadow-panel: 0 12px 28px rgba(0, 0, 0, 0.22);
-  --shadow-soft: 0 4px 14px rgba(0, 0, 0, 0.18);
-  --input-bg: rgba(255, 255, 255, 0.05);
+  --accent-text: #ffffff;
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.18);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.22);
+  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 :root[data-theme='light'] {
-  --bg: #f5f7fb;
-  --bg-panel: #ffffff;
-  --bg-glass: rgba(0, 0, 0, 0.03);
-  --text: #1f2937;
-  --text-muted: #4b5563;
-  --border: rgba(0, 0, 0, 0.08);
-  --accent: #4f46e5;
-  --accent-weak: rgba(79, 70, 229, 0.12);
-  --shadow-panel: 0 10px 22px rgba(0, 0, 0, 0.12);
-  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --bg: #ffffff;
+  --bg-panel: #f6f8fa;
+  --bg-glass: rgba(0, 0, 0, 0.02);
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(79, 70, 229, 0.08);
   --input-bg: rgba(0, 0, 0, 0.03);
+  
+  --text: #1f2328;
+  --text-muted: #57606a;
+  --text-faint: #8b949e;
+  
+  --border: rgba(0, 0, 0, 0.1);
+  --border-focus: rgba(79, 70, 229, 0.5);
+  --border-active: rgba(79, 70, 229, 0.3);
+  
+  --accent: #4f46e5;
+  --accent-hover: #6366f1;
+  --accent-weak: rgba(79, 70, 229, 0.1);
+  --accent-text: #ffffff;
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.1);
+  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* ===== Base Styles ===== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
   background: var(--bg);
   color: var(--text);
-  font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+  min-width: 320px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-}
-
+/* ===== Scrollbar (Compact) ===== */
 .scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 .scrollbar::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
 }
 
+.scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Light theme scrollbar */
+[data-theme='light'] .scrollbar {
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+[data-theme='light'] .scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='light'] .scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* ===== Focus Styles ===== */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ===== Selection ===== */
+::selection {
+  background: var(--accent-weak);
+  color: var(--text);
+}

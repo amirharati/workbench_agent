@@ -42,110 +42,127 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       display: 'flex', 
       height: '100%', 
       flexDirection: 'column',
-      color: 'var(--text)'
+      color: 'var(--text)',
+      fontSize: 'var(--text-sm)',
     }}>
-      {/* Header */}
+      {/* Header - compact */}
       <div style={{ 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'space-between', 
-        padding: '1rem', 
-        borderBottom: '1px solid var(--border)' 
+        padding: '8px 10px',
+        borderBottom: '1px solid var(--border)',
+        height: 36,
       }}>
         {!isCollapsed && (
           <span style={{ 
-            fontWeight: 'bold', 
-            fontSize: '1.125rem', 
-            color: 'var(--text)' 
+            fontWeight: 600, 
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}>
-            Workbench Agent
+            Workbench
           </span>
         )}
         <button 
           onClick={onToggle}
           style={{
-            padding: '0.25rem',
+            padding: '4px',
             background: 'transparent',
             border: 'none',
             cursor: 'pointer',
-            color: 'var(--text-muted)'
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 4,
           }}
         >
-          {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+          {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation - compact items */}
       <nav style={{ 
         flex: 1, 
-        paddingTop: '1rem', 
-        paddingBottom: '1rem' 
+        padding: '6px',
+        overflowY: 'auto',
       }}>
         <ul style={{ 
           listStyle: 'none', 
           margin: 0, 
-          padding: '0 0.5rem',
+          padding: 0,
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.25rem'
+          gap: '2px',
         }}>
-          {navItems.map((item) => (
-            <li key={item.id}>
-              <button 
-                onClick={() => onSelectView(item.id)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: isCollapsed ? 'center' : 'flex-start',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  background: activeView === item.id ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: activeView === item.id ? 600 : 400,
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  if (activeView !== item.id) {
-                    e.currentTarget.style.background = 'var(--bg-glass)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (activeView !== item.id) {
-                    e.currentTarget.style.background = 'transparent';
-                  }
-                }}
-                title={item.label}
-              >
-                <item.icon 
-                  size={20} 
-                  color={activeView === item.id ? '#ffffff' : '#9aa0a6'} 
-                  strokeWidth={activeView === item.id ? 2.5 : 2} 
-                  style={{ flexShrink: 0 }}
-                />
-                {!isCollapsed && (
-                  <span style={{ 
-                    marginLeft: '0.75rem', 
-                    color: activeView === item.id ? '#ffffff' : '#9aa0a6',
-                    fontWeight: activeView === item.id ? 600 : 400,
-                    fontSize: '0.875rem'
-                  }}>{item.label}</span>
-                )}
-              </button>
-            </li>
-          ))}
+          {navItems.map((item) => {
+            const isActive = activeView === item.id;
+            return (
+              <li key={item.id}>
+                <button 
+                  onClick={() => onSelectView(item.id)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    padding: isCollapsed ? '6px' : '5px 8px',
+                    height: 28,
+                    borderRadius: 4,
+                    background: isActive ? 'var(--accent-weak)' : 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: isActive ? 500 : 400,
+                    color: isActive ? 'var(--text)' : 'var(--text-muted)',
+                    transition: 'all 0.12s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'var(--bg-hover)';
+                      e.currentTarget.style.color = 'var(--text)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = 'var(--text-muted)';
+                    }
+                  }}
+                  title={item.label}
+                >
+                  <item.icon 
+                    size={16} 
+                    strokeWidth={isActive ? 2 : 1.5} 
+                    style={{ flexShrink: 0 }}
+                  />
+                  {!isCollapsed && (
+                    <span style={{ 
+                      marginLeft: '8px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {item.label}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </nav>
 
-      {/* Footer / Settings */}
+      {/* Footer - compact */}
       <div style={{ 
-        padding: '1rem', 
+        padding: '6px',
         borderTop: '1px solid var(--border)',
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.5rem'
+        gap: '4px',
       }}>
         <button 
           style={{
@@ -153,20 +170,27 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: isCollapsed ? 'center' : 'flex-start',
-            padding: '0.5rem 0.75rem',
+            padding: isCollapsed ? '6px' : '5px 8px',
+            height: 28,
             color: 'var(--text-muted)',
             border: 'none',
             background: 'transparent',
-            borderRadius: '0.375rem',
+            borderRadius: 4,
             cursor: 'pointer',
-            fontSize: '0.875rem',
-            transition: 'background 0.2s'
+            fontSize: 'var(--text-sm)',
+            transition: 'all 0.12s ease',
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-glass)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--bg-hover)';
+            e.currentTarget.style.color = 'var(--text)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--text-muted)';
+          }}
         >
-          <Settings size={20} />
-          {!isCollapsed && <span style={{ marginLeft: '0.75rem' }}>Settings</span>}
+          <Settings size={16} />
+          {!isCollapsed && <span style={{ marginLeft: '8px' }}>Settings</span>}
         </button>
         {!isCollapsed && <ThemeToggle />}
       </div>

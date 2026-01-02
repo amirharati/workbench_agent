@@ -894,50 +894,94 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', height: '100%' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <ButtonGhost
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', height: '100%' }}>
+      {/* Header - compact */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between', height: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
             onClick={onBack}
-            style={{ background: 'linear-gradient(135deg, var(--bg-glass), transparent)', color: 'var(--text-muted)' }}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+              padding: '3px 8px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontSize: 'var(--text-xs)',
+              height: 22,
+              display: 'flex',
+              alignItems: 'center',
+            }}
             title="Back to projects"
           >
             ← Back
-          </ButtonGhost>
-          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text)' }}>{project.name}</div>
+          </button>
+          <div style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)' }}>{project.name}</div>
         </div>
-        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-          <ButtonGhost
+        <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
+          <button
             onClick={() => openUtilityTab('search')}
-            style={{ padding: '0.25rem 0.4rem' }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              padding: '4px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+            }}
             title="Search"
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
           >
-            <Search size={16} />
-          </ButtonGhost>
-          <ButtonGhost
+            <Search size={14} />
+          </button>
+          <button
             onClick={() => openUtilityTab('agent')}
-            style={{ padding: '0.25rem 0.4rem' }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              padding: '4px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+            }}
             title="AI Agent"
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
           >
-            <Sparkles size={16} />
-          </ButtonGhost>
-          <ButtonGhost
+            <Sparkles size={14} />
+          </button>
+          <button
             onClick={() => openUtilityTab('add')}
-            style={{ padding: '0.25rem 0.4rem' }}
-            title="Add"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              padding: '4px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+            title="Add Item"
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
           >
-            <Plus size={16} />
-          </ButtonGhost>
+            <Plus size={14} />
+          </button>
         </div>
       </div>
 
-      {/* Top bar: Pills + Search */}
+      {/* Top bar: Pills + Search + Quick actions */}
       <div
         style={{
           display: 'flex',
           flexWrap: 'wrap',
-          gap: '0.5rem',
+          gap: '8px',
           alignItems: 'center',
         }}
       >
@@ -952,87 +996,104 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           onOpenCollectionInTab={handleOpenCollectionInTab}
           onOpenAllCollections={handleOpenAllCollections}
         />
-
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="⌘K to search..."
+          placeholder="⌘K Search..."
           inputRef={searchInputRef}
         />
+        <QuickActions onAction={handleQuickAction} />
       </div>
 
-      <QuickActions onAction={handleQuickAction} />
-
-      {/* Controls for layout + utility actions */}
-      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <ButtonGhost
+      {/* Layout controls - compact */}
+      <div style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: 'var(--text-xs)' }}>
+        <button
+          onClick={() => {
+            setMainSplit((v) => {
+              if (v) {
+                mergeSecondaryBack();
+                return false;
+              }
+              return true;
+            });
+          }}
+          style={{
+            background: mainSplit ? 'var(--accent-weak)' : 'transparent',
+            border: '1px solid var(--border)',
+            color: 'var(--text-muted)',
+            padding: '3px 8px',
+            height: 22,
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontSize: 'var(--text-xs)',
+          }}
+          title={mainSplit ? 'Unsplit main' : 'Split main horizontally'}
+        >
+          {mainSplit ? '⊟ Unsplit' : '⊞ Split'}
+        </button>
+        {(activePrimaryTabId || activeSecondaryTabId) && (
+          <button
             onClick={() => {
-              setMainSplit((v) => {
+              const tabId = activePrimaryTabId || activeSecondaryTabId;
+              if (tabId) handleMoveTabToRight(tabId);
+            }}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+              padding: '3px 8px',
+              height: 22,
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontSize: 'var(--text-xs)',
+            }}
+            title="Move active tab to right pane"
+          >
+            → Right
+          </button>
+        )}
+        <button
+          onClick={() => setRightPaneVisible((v) => !v)}
+          style={{
+            background: rightPaneVisible ? 'var(--accent-weak)' : 'transparent',
+            border: '1px solid var(--border)',
+            color: 'var(--text-muted)',
+            padding: '3px 8px',
+            height: 22,
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontSize: 'var(--text-xs)',
+          }}
+          title={rightPaneVisible ? 'Hide right pane' : 'Show right pane'}
+        >
+          {rightPaneVisible ? '◧ Hide' : '◨ Right'}
+        </button>
+        {rightPaneVisible && (
+          <button
+            onClick={() => {
+              setRightSplit((v) => {
                 if (v) {
-                  mergeSecondaryBack();
+                  mergeRightSecondaryBack();
                   return false;
                 }
                 return true;
               });
             }}
             style={{
-              background: mainSplit ? 'rgba(99,102,241,0.18)' : 'var(--bg-glass)',
-              padding: '0.25rem 0.5rem',
+              background: rightSplit ? 'var(--accent-weak)' : 'transparent',
+              border: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+              padding: '3px 8px',
+              height: 22,
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontSize: 'var(--text-xs)',
             }}
-            title={mainSplit ? 'Unsplit main' : 'Split main horizontally'}
+            title={rightSplit ? 'Unsplit right pane' : 'Split right pane'}
           >
-            {mainSplit ? 'Unsplit Main' : 'Split Main'}
-          </ButtonGhost>
-          {(activePrimaryTabId || activeSecondaryTabId) && (
-            <ButtonGhost
-              onClick={() => {
-                const tabId = activePrimaryTabId || activeSecondaryTabId;
-                if (tabId) handleMoveTabToRight(tabId);
-              }}
-              style={{
-                background: 'linear-gradient(135deg, rgba(99,102,241,0.16), rgba(99,102,241,0.08))',
-                padding: '0.25rem 0.5rem',
-              }}
-              title="Move active tab to right pane"
-            >
-              ↗ To Right
-            </ButtonGhost>
-          )}
-          <ButtonGhost
-            onClick={() => setRightPaneVisible((v) => !v)}
-            style={{
-              background: rightPaneVisible
-                ? 'linear-gradient(135deg, rgba(99,102,241,0.18), rgba(99,102,241,0.1))'
-                : 'var(--bg-glass)',
-              color: rightPaneVisible ? '#e0e7ff' : 'var(--text)',
-              padding: '0.25rem 0.5rem',
-            }}
-            title={rightPaneVisible ? 'Hide right pane' : 'Add right pane'}
-          >
-            {rightPaneVisible ? 'Hide Right' : 'Show Right'}
-          </ButtonGhost>
-          {rightPaneVisible && (
-            <ButtonGhost
-              onClick={() => {
-                setRightSplit((v) => {
-                  if (v) {
-                    mergeRightSecondaryBack();
-                    return false;
-                  }
-                  return true;
-                });
-              }}
-              style={{
-                background: rightSplit ? 'rgba(99,102,241,0.18)' : 'var(--bg-glass)',
-                padding: '0.25rem 0.5rem',
-              }}
-              title={rightSplit ? 'Unsplit right pane' : 'Split right pane horizontally'}
-            >
-              {rightSplit ? 'Unsplit Right' : 'Split Right'}
-            </ButtonGhost>
-          )}
-        </div>
+            {rightSplit ? '⊟ Unsplit R' : '⊞ Split R'}
+          </button>
+        )}
       </div>
 
       {/* Main area: list + content */}
@@ -1040,10 +1101,10 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         style={{
           display: 'grid',
           gridTemplateColumns: rightPaneVisible
-            ? `${listWidth}px 6px 1fr 6px ${rightPaneWidth}px`
-            : `${listWidth}px 6px 1fr`,
-          gap: '0.6rem',
-          height: '100%',
+            ? `${listWidth}px 4px 1fr 4px ${rightPaneWidth}px`
+            : `${listWidth}px 4px 1fr`,
+          gap: '4px',
+          flex: 1,
           minHeight: 0,
         }}
       >
@@ -1077,33 +1138,29 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           }}
         />
 
-        <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 0, padding: 0 }}>
           {!mainSplit && (
-            <div style={{ padding: '0.15rem 0.25rem' }}>
-              <TabBar
-                tabs={primaryTabs as TabBarTab[]}
-                activeTabId={activePrimaryTabId}
-                onTabSelect={setActivePrimaryTabId}
-                onTabClose={handleTabClose}
-                onTabMove={handleTabMove}
-                spaceId="primary"
-              />
-            </div>
+            <TabBar
+              tabs={primaryTabs as TabBarTab[]}
+              activeTabId={activePrimaryTabId}
+              onTabSelect={setActivePrimaryTabId}
+              onTabClose={handleTabClose}
+              onTabMove={handleTabMove}
+              spaceId="primary"
+            />
           )}
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {mainSplit ? (
               <>
                 <div style={{ flex: `${mainSplitRatio} 1 0px`, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ padding: '0.15rem 0.25rem' }}>
-                    <TabBar
-                      tabs={primaryTabs as TabBarTab[]}
-                      activeTabId={activePrimaryTabId}
-                      onTabSelect={setActivePrimaryTabId}
-                      onTabClose={handleTabClose}
-                      onTabMove={handleTabMove}
-                      spaceId="primary"
-                    />
-                  </div>
+                  <TabBar
+                    tabs={primaryTabs as TabBarTab[]}
+                    activeTabId={activePrimaryTabId}
+                    onTabSelect={setActivePrimaryTabId}
+                    onTabClose={handleTabClose}
+                    onTabMove={handleTabMove}
+                    spaceId="primary"
+                  />
                   <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
                     <TabContent 
                       tab={activePrimaryTab || null} 

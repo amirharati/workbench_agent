@@ -61,15 +61,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       overflow: 'hidden', 
       background: 'var(--bg)', 
       color: 'var(--text)',
-      fontFamily: 'system-ui, sans-serif' 
+      fontFamily: 'var(--font-sans)',
+      fontSize: 'var(--text-base)',
     }}>
-      {/* Left Sidebar */}
+      {/* Left Sidebar (compact) */}
       <div style={{ 
-        width: isSidebarCollapsed ? '64px' : '256px',
+        width: isSidebarCollapsed ? '48px' : '200px',
         flexShrink: 0,
         borderRight: '1px solid var(--border)',
         background: 'var(--bg-panel)',
-        transition: 'width 0.3s ease-in-out'
+        transition: 'width 0.2s ease',
       }}>
         <LeftSidebar 
           isCollapsed={isSidebarCollapsed} 
@@ -87,8 +88,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         background: 'var(--bg)',
       }}>
 
-        {/* Main Content Area (full height) */}
-        <div style={{ height: '100%', overflow: 'auto', padding: '1.5rem' }} className="scrollbar">
+        {/* Main Content Area (full height, compact padding) */}
+        <div style={{ height: '100%', overflow: 'auto', padding: '8px' }} className="scrollbar">
           <MainContent
             activeView={activeView}
             projects={projects}
