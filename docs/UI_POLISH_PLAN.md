@@ -198,13 +198,36 @@
 
 ## ✅ Success Criteria
 
-- [ ] Dashboard feels "IDE-like" - compact and efficient
-- [ ] More content visible on screen
-- [ ] Visual hierarchy is clear
-- [ ] Consistent spacing throughout
-- [ ] Hover/active states are polished
-- [ ] Typography is readable but compact
-- [ ] Works well in both light and dark themes
+- [x] Dashboard feels "IDE-like" - compact and efficient
+- [x] More content visible on screen
+- [x] Visual hierarchy is clear
+- [x] Consistent spacing throughout
+- [x] Hover/active states are polished
+- [x] Typography is readable but compact
+- [x] Works well in both light and dark themes
+
+---
+
+## 🆕 Additional Improvements (Just Added)
+
+### Collection Overflow Handling
+When there are many collections, instead of showing all pills (which takes space):
+- Show first 4 collections as visible pills
+- Show "+N more" dropdown for the rest
+- Dropdown displays all overflow collections with hover selection
+- Selected collection in overflow is highlighted
+
+### Workspace Selector (Placeholder)
+Added a workspace linking UI to the dashboard:
+- Shows linked workspaces as pills (max 2 visible)
+- Dropdown to link/unlink workspaces to the project
+- Click linked workspace to open it (placeholder action)
+- Allows creating new workspaces (placeholder)
+
+**Files Added/Updated:**
+- `src/components/dashboard/CollectionPills.tsx` - Added overflow dropdown
+- `src/components/dashboard/WorkspaceSelector.tsx` - New component
+- `src/components/dashboard/ProjectDashboard.tsx` - Integrated WorkspaceSelector
 
 ---
 

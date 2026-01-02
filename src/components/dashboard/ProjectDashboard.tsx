@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
-import type { Project, Collection, Item } from '../../lib/db';
-import { addCollection, deleteCollection, updateItem, updateCollection, addItem, getAllItems, deleteItem } from '../../lib/db';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
+import type { Project, Collection, Item, Workspace } from '../../lib/db';
+import { addCollection, deleteCollection, updateItem, updateCollection, addItem, getAllItems, deleteItem, getAllWorkspaces } from '../../lib/db';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -8,7 +8,7 @@ import { ItemsListPanel } from './ItemsListPanel';
 import { TabBar, TabBarTab } from './TabBar';
 import { TabContent } from './TabContent';
 import { Resizer } from './Resizer';
-import { useEffect } from 'react';
+import { WorkspaceSelector } from './WorkspaceSelector';
 import { Panel, ButtonGhost, Input } from '../../styles/primitives';
 import { Search, Sparkles, Plus, X } from 'lucide-react';
 
@@ -70,6 +70,15 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   const [showCreateCollectionModal, setShowCreateCollectionModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionDescription, setNewCollectionDescription] = useState('');
+  
+  // Workspace state (placeholder for now - will be linked to project later)
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [linkedWorkspaceIds, setLinkedWorkspaceIds] = useState<string[]>([]);
+
+  // Load workspaces on mount
+  useEffect(() => {
+    getAllWorkspaces().then(setWorkspaces).catch(console.error);
+  }, []);
 
   const projectCollections = useMemo(() => {
     const projectUnsortedId = `collection_${project.id}_unsorted`;
@@ -1005,7 +1014,21 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         <QuickActions onAction={handleQuickAction} />
       </div>
 
-      {/* Layout controls - compact */}
+      {/* Second row: Workspace selector + Layout controls */}
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        {/* Workspace selector (placeholder functionality) */}
+        <WorkspaceSelector
+          workspaces={workspaces}
+          linkedWorkspaceIds={linkedWorkspaceIds}
+          onLinkWorkspace={(id) => setLinkedWorkspaceIds(prev => [...prev, id])}
+          onUnlinkWorkspace={(id) => setLinkedWorkspaceIds(prev => prev.filter(wid => wid !== id))}
+          onOpenWorkspace={(ws) => {
+            // TODO: Open workspace in Tab Commander or dedicated view
+            console.log('Open workspace:', ws.name);
+          }}
+        />
+
+        {/* Layout controls - compact */}
       <div style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: 'var(--text-xs)' }}>
         <button
           onClick={() => {
@@ -1094,6 +1117,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
             {rightSplit ? '⊟ Unsplit R' : '⊞ Split R'}
           </button>
         )}
+        </div>
       </div>
 
       {/* Main area: list + content */}
