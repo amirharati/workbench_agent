@@ -100,12 +100,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
                   padding: '0.5rem 0.75rem',
                   borderRadius: '0.375rem',
-                  background: activeView === item.id ? 'var(--accent-weak)' : 'transparent',
-                  color: activeView === item.id ? 'var(--text)' : 'var(--text-muted)',
+                  background: activeView === item.id ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                   fontSize: '0.875rem',
-                  fontWeight: activeView === item.id ? 500 : 400,
+                  fontWeight: activeView === item.id ? 600 : 400,
                   transition: 'all 0.2s'
                 }}
                 onMouseEnter={(e) => {
@@ -120,9 +119,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 }}
                 title={item.label}
               >
-                <item.icon size={20} />
+                <item.icon 
+                  size={20} 
+                  color={activeView === item.id ? '#ffffff' : '#9aa0a6'} 
+                  strokeWidth={activeView === item.id ? 2.5 : 2} 
+                  style={{ flexShrink: 0 }}
+                />
                 {!isCollapsed && (
-                  <span style={{ marginLeft: '0.75rem' }}>{item.label}</span>
+                  <span style={{ 
+                    marginLeft: '0.75rem', 
+                    color: activeView === item.id ? '#ffffff' : '#9aa0a6',
+                    fontWeight: activeView === item.id ? 600 : 400,
+                    fontSize: '0.875rem'
+                  }}>{item.label}</span>
                 )}
               </button>
             </li>

@@ -44,11 +44,28 @@ A project dashboard that appears when a user clicks on a project. The dashboard 
 ---
 
 ## ✅ Current Phase Status (Quick Summary)
-- **Phase 0**: Done (nav updates, Tab Commander full-page, no bottom split, Home placeholder)
-- **Phase 1**: Done (single-pane ProjectDashboard wired: pills + search + items list + tab bar/content)
-  - Components created: CollectionPills, SearchBar, QuickActions (placeholder), ItemsListPanel, TabBar, TabContent, ProjectDashboard
-  - Deferred to later phases: right pane, vertical split, tab dragging, richer quick actions
-- **Next focus**: Resizers/right-pane/split (later phase) and styling polish toward mockup
+
+**Last Updated**: After title visibility fixes
+
+### Completed Phases
+- **Phase 0**: ✅ Done (nav updates, Tab Commander full-page, no bottom split, Home placeholder)
+- **Phase 1**: ✅ Done (single-pane ProjectDashboard wired: pills + search + items list + tab bar/content)
+- **Phase 2**: ✅ Done (CollectionPills, SearchBar with ⌘K shortcut, QuickActions, header layout)
+- **Phase 3**: ✅ Done (ItemsListPanel with icons, dates, active highlighting)
+- **Phase 4**: ✅ Done (TabBar, TabContent - ContentPanel integrated into ProjectDashboard)
+- **Phase 5**: ✅ Done (Resizer with smooth dragging, layout state management, right pane split)
+- **Phase 6**: ✅ Done (Data flow, item actions, tab management)
+- **Phase 7**: ✅ Partially Done (Theme system, CSS vars, primitives, custom scrollbars - animations pending)
+- **Phase 8**: ✅ Partially Done (Right pane toggle, layout persistence, recent items - tab dragging pending)
+
+### Additional Features Implemented (Beyond Original Plan)
+- ✅ **Independent tab spaces**: 4 independent tab spaces (main top, main bottom, right top, right bottom) with no duplicate tabs
+- ✅ **Utility buttons in header**: Search, AI Agent, and Add buttons in top-right (similar to mockup)
+- ✅ **Layout controls**: Split/unsplit and right pane controls moved to control strip above grid (not in tab section)
+- ✅ **Title visibility**: Theme-aware titles with conditional hiding in project dashboard
+- ✅ **Smooth resizing**: Incremental delta-based resizing with `touch-action: none` for IDE-like precision
+- ✅ **Keyboard shortcut**: ⌘K/Ctrl+K to focus search (implemented in ProjectDashboard)
+- ✅ **Recent items**: Quick action shows real recent items sorted by `updated_at`
 
 ---
 
@@ -228,8 +245,8 @@ export const THEME = {
 **File**: `src/components/dashboard/layout/DashboardLayout.tsx`
 
 **Changes:**
-- [ ] Add new view types: `'home' | 'tab-commander'`
-- [ ] Update `DashboardView` type:
+- [x] Add new view types: `'home' | 'tab-commander'`
+- [x] Update `DashboardView` type:
 ```typescript
 export type DashboardView = 'home' | 'projects' | 'bookmarks' | 'notes' | 'collections' | 'workspaces' | 'tab-commander';
 ```
@@ -238,10 +255,10 @@ export type DashboardView = 'home' | 'projects' | 'bookmarks' | 'notes' | 'colle
 **File**: `src/components/dashboard/layout/LeftSidebar.tsx`
 
 **Changes:**
-- [ ] Add "Home" nav item (first in list)
-- [ ] Add "Tab Commander" nav item (after Projects)
-- [ ] Keep all existing items (Projects, Bookmarks, Workspaces, Notes, Collections)
-- [ ] Update icons if needed
+- [x] Add "Home" nav item (first in list)
+- [x] Add "Tab Commander" nav item (after Projects)
+- [x] Keep all existing items (Projects, Bookmarks, Workspaces, Notes, Collections)
+- [x] Update icons if needed
 
 **New nav structure:**
 ```typescript
@@ -257,10 +274,10 @@ const navItems = [
 ```
 
 **Tasks:**
-- [ ] Import Home icon from lucide-react
-- [ ] Import Terminal or appropriate icon for Tab Commander
-- [ ] Add new nav items to array
-- [ ] Test navigation still works for all views
+- [x] Import Home icon from lucide-react
+- [x] Import Terminal or appropriate icon for Tab Commander
+- [x] Add new nav items to array
+- [x] Test navigation still works for all views
 
 #### Step 0.3: Create Tab Commander Full Page View
 **File**: `src/components/dashboard/TabCommanderView.tsx` (new)
@@ -293,19 +310,19 @@ export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
 ```
 
 **Tasks:**
-- [ ] Create new file
-- [ ] Copy BottomPanel logic (or refactor to share components)
-- [ ] Make it full-page (no bottom panel constraints)
-- [ ] Keep all existing functionality (search, tabs, workspaces, etc.)
-- [ ] Test all features work
+- [x] Create new file
+- [x] Copy BottomPanel logic (or refactor to share components)
+- [x] Make it full-page (no bottom panel constraints)
+- [x] Keep all existing functionality (search, tabs, workspaces, etc.)
+- [x] Test all features work
 
 #### Step 0.4: Update MainContent to Handle New Views
 **File**: `src/components/dashboard/layout/MainContent.tsx`
 
 **Changes:**
-- [ ] Add case for `'home'` view (placeholder for now)
-- [ ] Add case for `'tab-commander'` view → render `TabCommanderView`
-- [ ] Keep all existing views working (bookmarks, notes, collections, workspaces)
+- [x] Add case for `'home'` view (placeholder for now)
+- [x] Add case for `'tab-commander'` view → render `TabCommanderView`
+- [x] Keep all existing views working (bookmarks, notes, collections, workspaces)
 
 **Routing logic:**
 ```typescript
@@ -328,20 +345,20 @@ switch (activeView) {
 ```
 
 **Tasks:**
-- [ ] Import TabCommanderView
-- [ ] Add routing cases
-- [ ] Create placeholder HomeView component
-- [ ] Test all views still work
+- [x] Import TabCommanderView
+- [x] Add routing cases
+- [x] Create placeholder HomeView component
+- [x] Test all views still work
 
 #### Step 0.5: Remove Bottom Panel from DashboardLayout
 **File**: `src/components/dashboard/layout/DashboardLayout.tsx`
 
 **Changes:**
-- [ ] Remove BottomPanel import
-- [ ] Remove bottom panel state (isBottomPanelCollapsed, bottomPanelHeight, etc.)
-- [ ] Remove bottom panel JSX
-- [ ] Remove resize handle for bottom panel
-- [ ] Make main content area take full height (remove flex column split)
+- [x] Remove BottomPanel import
+- [x] Remove bottom panel state (isBottomPanelCollapsed, bottomPanelHeight, etc.)
+- [x] Remove bottom panel JSX
+- [x] Remove resize handle for bottom panel
+- [x] Make main content area take full height (remove flex column split)
 
 **Before:**
 ```typescript
@@ -360,11 +377,11 @@ switch (activeView) {
 ```
 
 **Tasks:**
-- [ ] Remove BottomPanel component usage
-- [ ] Remove bottom panel state
-- [ ] Remove resize logic for bottom panel
-- [ ] Update layout to single column
-- [ ] Test layout looks correct
+- [x] Remove BottomPanel component usage
+- [x] Remove bottom panel state
+- [x] Remove resize logic for bottom panel
+- [x] Update layout to single column
+- [x] Test layout looks correct
 
 #### Step 0.6: Create Placeholder Home View
 **File**: `src/components/dashboard/HomeView.tsx` (new)
@@ -385,9 +402,9 @@ export const HomeView: React.FC = () => {
 ```
 
 **Tasks:**
-- [ ] Create simple placeholder component
-- [ ] Add to MainContent routing
-- [ ] Test navigation works
+- [x] Create simple placeholder component
+- [x] Add to MainContent routing
+- [x] Test navigation works
 
 #### Step 0.7: Verify Existing Functionality Still Works
 **Testing Checklist:**
@@ -491,7 +508,7 @@ interface CollectionPillsProps {
 - [x] Placeholder: "⌘K to search..."
 - [x] Clear button (appears when text entered)
 - [x] Real-time filtering
-- [ ] Keyboard shortcut (⌘K) to focus (deferred)
+- [x] Keyboard shortcut (⌘K) to focus (implemented in ProjectDashboard)
 
 **Props:**
 ```typescript
@@ -508,7 +525,7 @@ interface SearchBarProps {
 **Features:**
 - [x] Buttons: Pinned, Recent, Favorites, Trash
 - [x] Click handler wired (placeholder/no-op for now)
-- [ ] Open as tab with content (deferred)
+- [x] Open as tab with content (Recent shows real items, others are placeholders)
 
 **Props:**
 ```typescript
@@ -673,8 +690,8 @@ interface ContentPanelProps {
 - [x] Vertical resizer (for columns)
 - [x] Horizontal resizer (for split panes)
 - [x] Hover effect (turns primary color)
-- [ ] Drag to resize
-- [ ] Min/max constraints
+- [x] Drag to resize (smooth incremental deltas, touch-action: none)
+- [x] Min/max constraints (implicit via state management)
 
 **Props:**
 ```typescript
@@ -700,12 +717,12 @@ interface ResizerProps {
 - [x] Right pane width (if visible)
 - [x] Main pane split state
 - [x] Main pane split ratio
-- [ ] Right pane split state (if visible)
-- [ ] Right pane split ratio (if visible)
+- [x] Right pane split state (if visible)
+- [x] Right pane split ratio (if visible)
 
 **Persistence:**
 - [x] Save layout preferences to localStorage (optional, future)
-- [ ] Restore on mount (optional, future)
+- [x] Restore on mount (optional, future)
 
 ---
 
@@ -717,7 +734,7 @@ interface ResizerProps {
 **Changes:**
 - [x] Add project dashboard route
 - [x] Handle project click → navigate to dashboard
-- [ ] Pass project data
+- [x] Pass project data
 
 **Routing logic:**
 ```typescript
@@ -789,11 +806,11 @@ const items = useMemo(() => {
 **Styles needed:**
 - [x] Dark theme colors
 - [x] global tokens; primetives and some  styling
-- [ ] Glass morphism effects
-- [ ] Typography
-- [ ] Spacing
+- [x] Glass morphism effects (partial - bg-glass, backdrop-filter in some components)
+- [x] Typography (font-family, sizes via CSS vars)
+- [x] Spacing (via theme tokens and CSS vars)
 - [ ] Animations (fade-in, etc.)
-- [ ] Custom scrollbars
+- [x] Custom scrollbars (global.css has scrollbar styles)
 
 #### Step 7.2: Responsive Behavior
 - [ ] Handle small screens (collapse sidebar?)
@@ -821,12 +838,12 @@ const items = useMemo(() => {
 
 #### Step 8.3: Layout Persistence
 - [x] Save layout state to localStorage
-- [ ] Restore on project open
+- [x] Restore on project open
 - [ ] Per-project layouts (future)
 
 #### Step 8.4: Quick Actions Implementation
 - [ ] Pinned items (add `pinned` field to Item?)
-- [ ] Recent items (sort by `updated_at`)
+- [x] Recent items (sort by `updated_at` - implemented, shows in quick action tab)
 - [ ] Favorites (add `favorite` field to Item?)
 - [ ] Trash (soft delete?)
 

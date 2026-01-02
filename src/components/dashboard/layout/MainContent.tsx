@@ -5,6 +5,7 @@ import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
+import { Panel, ButtonGhost } from '../../../styles/primitives';
 
 interface MainContentProps {
   activeView: DashboardView;
@@ -246,14 +247,10 @@ export const MainContent: React.FC<MainContentProps> = ({
           const cols = collectionsForProject(project.id);
           const its = itemsForProject(project.id);
           return (
-            <div
+            <Panel
               key={project.id}
               style={{
-                background: 'white',
                 padding: '1.25rem',
-                borderRadius: '0.75rem',
-                border: '1px solid #e5e7eb',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                 cursor: 'pointer',
                 transition: 'box-shadow 0.2s, transform 0.1s',
               }}
@@ -269,9 +266,9 @@ export const MainContent: React.FC<MainContentProps> = ({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111827' }}>{project.name}</div>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)' }}>{project.name}</div>
                   {project.description && (
-                    <div style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '0.25rem' }}>{project.description}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>{project.description}</div>
                   )}
                 </div>
                 {!project.isDefault && (
@@ -282,8 +279,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                     }}
                     style={{
                       border: 'none',
-                      background: '#fee2e2',
-                      color: '#b91c1c',
+                      background: 'var(--accent-weak)',
+                      color: 'var(--text)',
                       borderRadius: '9999px',
                       padding: '0.25rem 0.5rem',
                       fontSize: '0.75rem',
@@ -294,12 +291,12 @@ export const MainContent: React.FC<MainContentProps> = ({
                   </button>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', color: '#6b7280', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 <span>{cols.length} collections</span>
                 <span>•</span>
                 <span>{its.length} bookmarks</span>
               </div>
-            </div>
+            </Panel>
           );
         };
 
@@ -307,25 +304,23 @@ export const MainContent: React.FC<MainContentProps> = ({
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#111827' }}>Projects</div>
-                  <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>Choose a project to view its collections and bookmarks.</div>
+                <div style={{ color: 'var(--text)', fontSize: '0.9rem' }}>
+                  Choose a project to view its collections and bookmarks.
                 </div>
-                <button
+                <ButtonGhost
                   onClick={handleCreateProject}
                   style={{
-                    background: '#111827',
-                    color: 'white',
-                    border: '1px solid #111827',
-                    borderRadius: '0.5rem',
                     padding: '0.5rem 0.9rem',
                     cursor: 'pointer',
                     fontWeight: 600,
                     fontSize: '0.9rem',
+                    background: 'var(--bg-glass)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--border)',
                   }}
                 >
                   + New Project
-                </button>
+                </ButtonGhost>
               </div>
 
               <div
@@ -336,18 +331,9 @@ export const MainContent: React.FC<MainContentProps> = ({
                 }}
               >
                 {projects.length === 0 && (
-                  <div
-                    style={{
-                      background: 'white',
-                      border: '1px dashed #e5e7eb',
-                      borderRadius: '0.75rem',
-                      padding: '1rem',
-                      textAlign: 'center',
-                      color: '#6b7280',
-                    }}
-                  >
+                  <Panel style={{ borderStyle: 'dashed', padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                     No projects yet. Create one to get started.
-                  </div>
+                  </Panel>
                 )}
                 {projects.map((p) => (
                   <ProjectCard key={p.id} project={p} />
@@ -368,10 +354,10 @@ export const MainContent: React.FC<MainContentProps> = ({
         );
       case 'bookmarks':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{
-              background: 'white',
-              border: '1px solid #e5e7eb',
+              background: 'var(--bg-panel)',
+              border: '1px solid var(--border)',
               borderRadius: '0.75rem',
               padding: '0.75rem',
               display: 'flex',
@@ -388,7 +374,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                   flex: '1 1 240px',
                   minWidth: '240px',
                   padding: '0.55rem 0.75rem',
-                  border: '1px solid #d1d5db',
+                  border: '1px solid var(--border)',
                   borderRadius: '0.5rem',
                   fontSize: '0.9rem'
                 }}
@@ -398,9 +384,9 @@ export const MainContent: React.FC<MainContentProps> = ({
                 style={{
                   padding: '0.55rem 0.9rem',
                   borderRadius: '0.5rem',
-                  border: '1px solid #111827',
-                  background: '#111827',
-                  color: 'white',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-glass)',
+                  color: 'var(--text)',
                   fontWeight: 700,
                   cursor: 'pointer'
                 }}
@@ -410,14 +396,14 @@ export const MainContent: React.FC<MainContentProps> = ({
             </div>
 
             <div style={{
-              background: 'white',
-              border: '1px solid #e5e7eb',
+              background: 'var(--bg-panel)',
+              border: '1px solid var(--border)',
               borderRadius: '0.75rem',
               padding: '0.5rem',
               minHeight: '200px'
             }}>
               {filteredItems.length === 0 ? (
-                <div style={{ padding: '1.25rem', textAlign: 'center', color: '#6b7280' }}>
+                <div style={{ padding: '1.25rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                   No bookmarks yet. Add one from here or save the current tab.
                 </div>
               ) : (
@@ -432,11 +418,11 @@ export const MainContent: React.FC<MainContentProps> = ({
                         alignItems: 'center',
                         padding: '0.55rem 0.65rem',
                         borderRadius: '0.6rem',
-                        border: '1px solid #f3f4f6',
+                        border: '1px solid var(--border)',
                         transition: 'border-color 0.2s, box-shadow 0.2s'
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.03)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#f3f4f6'; e.currentTarget.style.boxShadow = 'none'; }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent-weak)'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.08)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none'; }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
                         {item.favicon ? (
@@ -445,43 +431,43 @@ export const MainContent: React.FC<MainContentProps> = ({
                           <div style={{ width: 18, height: 18, borderRadius: 4, background: '#e5e7eb', flexShrink: 0 }} />
                         )}
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 800, color: '#111827', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {item.title || 'Untitled'}
                           </div>
-                          <div style={{ color: '#6b7280', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {getDomain(item.url)}
                           </div>
                         </div>
                       </div>
 
-                      <div style={{ color: '#6b7280', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.url}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.url}>
                         {item.url}
                       </div>
 
                       <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                         {item.tags && item.tags.length > 0 ? (
                           item.tags.map((t) => (
-                            <span key={t} style={{ fontSize: '0.75rem', background: '#f3f4f6', border: '1px solid #e5e7eb', padding: '0.1rem 0.45rem', borderRadius: '9999px', color: '#374151' }}>
+                            <span key={t} style={{ fontSize: '0.75rem', background: 'var(--bg-glass)', border: '1px solid var(--border)', padding: '0.1rem 0.45rem', borderRadius: '9999px', color: 'var(--text)' }}>
                               {t}
                             </span>
                           ))
                         ) : (
-                          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>—</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
                         )}
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{formatDate(item.created_at)}</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{formatDate(item.created_at)}</span>
                         <button
                           onClick={() => openInNewTab(item.url)}
                           style={{
                             padding: '0.35rem 0.55rem',
                             borderRadius: '0.45rem',
-                            border: '1px solid #e5e7eb',
-                            background: 'white',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg-glass)',
                             cursor: 'pointer',
                             fontWeight: 700,
-                            color: '#111827'
+                            color: 'var(--text)'
                           }}
                         >
                           Open
@@ -491,11 +477,11 @@ export const MainContent: React.FC<MainContentProps> = ({
                           style={{
                             padding: '0.35rem 0.55rem',
                             borderRadius: '0.45rem',
-                            border: '1px solid #e5e7eb',
-                            background: 'white',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg-glass)',
                             cursor: 'pointer',
                             fontWeight: 700,
-                            color: '#111827'
+                            color: 'var(--text)'
                           }}
                         >
                           Edit
@@ -506,10 +492,10 @@ export const MainContent: React.FC<MainContentProps> = ({
                             padding: '0.35rem 0.55rem',
                             borderRadius: '0.45rem',
                             border: '1px solid #ef4444',
-                            background: '#fef2f2',
+                            background: '#2b1111',
                             cursor: 'pointer',
                             fontWeight: 700,
-                            color: '#b91c1c'
+                            color: '#fca5a5'
                           }}
                         >
                           Delete
@@ -935,46 +921,48 @@ export const MainContent: React.FC<MainContentProps> = ({
       display: 'flex', 
       flexDirection: 'column' 
     }}>
-      <div style={{ 
-        marginBottom: '1.5rem', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        flexShrink: 0
-      }}>
-        <h1 style={{ 
-          fontSize: '1.5rem', 
-          fontWeight: 'bold', 
-          color: '#111827',
-          margin: 0,
-          textTransform: 'capitalize'
+      {!(activeView === 'projects' && selectedProjectId !== null) && (
+        <div style={{ 
+          marginBottom: '1.5rem', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          flexShrink: 0
         }}>
-          {activeView}
-        </h1>
-        {activeView === 'bookmarks' ? (
-          <button style={{
-            padding: '0.5rem 1rem',
-            background: '#2563eb',
-            color: 'white',
-            borderRadius: '0.375rem',
-            border: 'none',
-            cursor: 'pointer',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            transition: 'background 0.2s'
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = '#1d4ed8'}
-          onMouseLeave={(e) => e.currentTarget.style.background = '#2563eb'}
-          onClick={() => setShowAddModal(true)}
-          >
-            <span>+ New bookmark</span>
-          </button>
-        ) : (
-          <div />
-        )}
-      </div>
+          <h1 style={{ 
+            fontSize: '1.5rem', 
+            fontWeight: 'bold', 
+            color: 'var(--text)',
+            margin: 0,
+            textTransform: 'capitalize'
+          }}>
+            {activeView}
+          </h1>
+          {activeView === 'bookmarks' ? (
+            <button style={{
+              padding: '0.5rem 1rem',
+              background: '#2563eb',
+              color: 'white',
+              borderRadius: '0.375rem',
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              transition: 'background 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#1d4ed8'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#2563eb'}
+            onClick={() => setShowAddModal(true)}
+            >
+              <span>+ New bookmark</span>
+            </button>
+          ) : (
+            <div />
+          )}
+        </div>
+      )}
       
       <div style={{ flex: 1, overflow: 'auto' }}>
         {renderContent()}

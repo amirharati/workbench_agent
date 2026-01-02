@@ -24,12 +24,15 @@ export const Resizer: React.FC<ResizerProps> = ({
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       e.preventDefault();
-      const start = isVertical ? e.clientX : e.clientY;
+      let last = isVertical ? e.clientX : e.clientY;
 
       const onMove = (moveEvent: MouseEvent) => {
         const current = isVertical ? moveEvent.clientX : moveEvent.clientY;
-        const delta = current - start;
-        onResize(delta);
+        const delta = current - last; // incremental delta for smooth dragging
+        if (delta !== 0) {
+          onResize(delta);
+          last = current;
+        }
       };
 
       const onUp = () => {
@@ -54,6 +57,8 @@ export const Resizer: React.FC<ResizerProps> = ({
           ? 'linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent)'
           : 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.1), transparent)',
         transition: 'background 0.2s',
+        userSelect: 'none',
+        touchAction: 'none',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = isVertical

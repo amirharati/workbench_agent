@@ -16,16 +16,16 @@ export const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, onTabSelect, 
   return (
     <div
       style={{
-        height: 42,
+        height: 34,
         display: 'flex',
         alignItems: 'center',
         gap: '0.25rem',
-        padding: '0 0.5rem',
+        padding: '0 0.35rem',
         borderBottom: '1px solid var(--border)',
       }}
     >
       {tabs.length === 0 && (
-        <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Open an item to view details</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No tabs</div>
       )}
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
@@ -34,8 +34,8 @@ export const TabBar: React.FC<TabBarProps> = ({ tabs, activeTabId, onTabSelect, 
             key={tab.id}
             onClick={() => onTabSelect(tab.id)}
             style={{
-              padding: '0.35rem 0.75rem',
-              borderRadius: 9,
+              padding: '0.25rem 0.55rem',
+              borderRadius: 8,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
