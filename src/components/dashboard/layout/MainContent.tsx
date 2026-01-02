@@ -350,6 +350,9 @@ export const MainContent: React.FC<MainContentProps> = ({
             collections={collections}
             items={items}
             onBack={() => setSelectedProjectId(null)}
+            onUpdateItem={onUpdateBookmark}
+            onDeleteItem={onDeleteBookmark}
+            onRefresh={onRefresh}
           />
         );
       case 'bookmarks':

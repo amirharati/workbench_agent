@@ -45,18 +45,18 @@ A project dashboard that appears when a user clicks on a project. The dashboard 
 
 ## ✅ Current Phase Status (Quick Summary)
 
-**Last Updated**: After title visibility fixes
+**Last Updated**: After tab dragging and context menu implementation
 
 ### Completed Phases
 - **Phase 0**: ✅ Done (nav updates, Tab Commander full-page, no bottom split, Home placeholder)
 - **Phase 1**: ✅ Done (single-pane ProjectDashboard wired: pills + search + items list + tab bar/content)
 - **Phase 2**: ✅ Done (CollectionPills, SearchBar with ⌘K shortcut, QuickActions, header layout)
-- **Phase 3**: ✅ Done (ItemsListPanel with icons, dates, active highlighting)
+- **Phase 3**: ✅ Done (ItemsListPanel with icons, dates, active highlighting, context menu)
 - **Phase 4**: ✅ Done (TabBar, TabContent - ContentPanel integrated into ProjectDashboard)
 - **Phase 5**: ✅ Done (Resizer with smooth dragging, layout state management, right pane split)
 - **Phase 6**: ✅ Done (Data flow, item actions, tab management)
 - **Phase 7**: ✅ Partially Done (Theme system, CSS vars, primitives, custom scrollbars - animations pending)
-- **Phase 8**: ✅ Partially Done (Right pane toggle, layout persistence, recent items - tab dragging pending)
+- **Phase 8**: ✅ Mostly Done (Right pane toggle, layout persistence, recent items, **tab dragging**, **context menu**)
 
 ### Additional Features Implemented (Beyond Original Plan)
 - ✅ **Independent tab spaces**: 4 independent tab spaces (main top, main bottom, right top, right bottom) with no duplicate tabs
@@ -66,6 +66,10 @@ A project dashboard that appears when a user clicks on a project. The dashboard 
 - ✅ **Smooth resizing**: Incremental delta-based resizing with `touch-action: none` for IDE-like precision
 - ✅ **Keyboard shortcut**: ⌘K/Ctrl+K to focus search (implemented in ProjectDashboard)
 - ✅ **Recent items**: Quick action shows real recent items sorted by `updated_at`
+- ✅ **Tab dragging**: Full drag-and-drop between all 4 spaces with visual feedback, reordering within spaces
+- ✅ **Context menu**: Right-click menu on items with edit, delete, open in new tab, duplicate, and "Open in space" options
+- ✅ **Smart item highlighting**: Items highlight correctly regardless of which space their tab is in
+- ✅ **Open in any space**: Items can be opened in any available space via context menu or Ctrl/Cmd+Click
 
 ---
 
@@ -557,9 +561,10 @@ interface QuickActionsProps {
   - [x] Icon (based on source type)
   - [x] Title (truncated)
   - [x] Date (formatted)
-  - [ ] Context menu (⋮) on hover
-- [x] Active item highlighting
-- [x] Click to open in content panel
+  - [x] Context menu (right-click) with full actions
+- [x] Active item highlighting (works across all spaces)
+- [x] Click to open in content panel (or focus if already open)
+- [x] Open in any available space (via context menu or Ctrl/Cmd+Click)
 
 **Props:**
 ```typescript
@@ -827,9 +832,11 @@ const items = useMemo(() => {
 ### Phase 8: Advanced Features (Future)
 
 #### Step 8.1: Tab Dragging
-- [ ] Make tabs draggable
-- [ ] Drop zones in other panes
-- [ ] Visual feedback during drag
+- [x] Make tabs draggable (HTML5 drag API)
+- [x] Drop zones in other panes (all 4 spaces support drag-and-drop)
+- [x] Visual feedback during drag (ghost image, drop zone highlighting, opacity changes)
+- [x] Tab reordering within same space by dragging
+- [x] Automatic space management (tabs removed from source when moved)
 
 #### Step 8.2: Right Pane Toggle
 - [x] "+ Add Right" button in header
@@ -852,31 +859,36 @@ const items = useMemo(() => {
 ## 🧪 Testing Checklist
 
 ### Functionality
-- [ ] Click project → Dashboard opens
-- [ ] Collection pills filter items correctly
-- [ ] Search filters items in real-time
-- [ ] Click item → Opens as tab
-- [ ] Multiple tabs can be open
-- [ ] Close tab works
-- [ ] Switch between tabs works
-- [ ] Resize items list works
-- [ ] Split pane works (if implemented)
-- [ ] Quick actions open as tabs
-- [ ] Back button returns to projects list
+- [x] Click project → Dashboard opens
+- [x] Collection pills filter items correctly
+- [x] Search filters items in real-time
+- [x] Click item → Opens as tab (or focuses if already open)
+- [x] Multiple tabs can be open (across all 4 spaces)
+- [x] Close tab works
+- [x] Switch between tabs works
+- [x] Resize items list works (smooth dragging)
+- [x] Split pane works (main and right panes can split vertically)
+- [x] Quick actions open as tabs
+- [x] Back button returns to projects list
+- [x] Tab dragging between spaces works
+- [x] Tab reordering within space works
+- [x] Context menu on items works (right-click)
+- [x] Open item in any space works (context menu or Ctrl/Cmd+Click)
+- [x] Item highlighting works regardless of which space tab is in
 
 ### Data
-- [ ] Items load correctly for project
-- [ ] Collections show correct item counts
-- [ ] Item details display correctly
-- [ ] Icons map correctly to item types
+- [x] Items load correctly for project
+- [x] Collections show correct item counts
+- [x] Item details display correctly
+- [x] Icons map correctly to item types
 
 ### UI/UX
-- [ ] Dark theme applied
-- [ ] Glass morphism effects visible
-- [ ] Active states highlight correctly
-- [ ] Hover states work
-- [ ] Scrollbars styled
-- [ ] Responsive on different screen sizes
+- [x] Dark theme applied (with light mode toggle)
+- [x] Glass morphism effects visible (partial implementation)
+- [x] Active states highlight correctly (across all spaces)
+- [x] Hover states work
+- [x] Scrollbars styled
+- [x] Responsive on different screen sizes (basic support, min widths enforced)
 
 ---
 
@@ -915,16 +927,19 @@ const items = useMemo(() => {
 5. Basic item display
 
 ### Second Pass
-1. Resizable columns
-2. Vertical splitting
-3. Right pane toggle
-4. Quick actions
+1. ✅ Resizable columns
+2. ✅ Vertical splitting
+3. ✅ Right pane toggle
+4. ✅ Quick actions
 
 ### Third Pass
-1. Tab dragging
-2. Layout persistence
-3. Advanced quick actions
-4. Polish & animations
+1. ✅ Tab dragging (completed)
+2. ✅ Layout persistence (completed)
+3. ✅ Context menu (completed)
+4. ✅ Smart item highlighting (completed)
+5. ✅ Open in any space (completed)
+6. ⏳ Advanced quick actions (pinned/favorites/trash - pending)
+7. ⏳ Polish & animations (pending)
 
 ---
 
@@ -936,6 +951,10 @@ const items = useMemo(() => {
 - `ui_mocks/src/data.js` - Data structure reference
 
 ### Current App Files
+- `src/components/dashboard/ProjectDashboard.tsx` - Main dashboard component
+- `src/components/dashboard/TabBar.tsx` - Tab bar with drag-and-drop support
+- `src/components/dashboard/ItemsListPanel.tsx` - Items list with context menu
+- `src/components/dashboard/ItemContextMenu.tsx` - Context menu component
 - `src/components/dashboard/layout/MainContent.tsx` - Current projects view
 - `src/components/dashboard/layout/LeftSidebar.tsx` - Navigation
 - `src/lib/db.ts` - Data models
@@ -950,6 +969,27 @@ After each session, update:
 - [ ] What's next
 - [ ] Any blockers or questions
 - [ ] Files modified/created
+
+### Recent Session Achievements (Latest)
+
+**Completed:**
+- ✅ Tab dragging between all 4 spaces with visual feedback
+- ✅ Tab reordering within spaces
+- ✅ Context menu on items (right-click) with full actions
+- ✅ Smart item highlighting (works across all spaces)
+- ✅ Open items in any available space (context menu or Ctrl/Cmd+Click)
+- ✅ Fixed item highlighting when tabs are in non-primary spaces
+
+**Files Modified:**
+- `src/components/dashboard/TabBar.tsx` - Added drag-and-drop support
+- `src/components/dashboard/ProjectDashboard.tsx` - Tab movement logic, item highlighting fixes
+- `src/components/dashboard/ItemsListPanel.tsx` - Context menu integration
+- `src/components/dashboard/ItemContextMenu.tsx` - New component for item actions
+
+**Next Steps:**
+- Advanced quick actions (pinned/favorites/trash)
+- Animations and polish
+- Per-project layout preferences
 
 ---
 

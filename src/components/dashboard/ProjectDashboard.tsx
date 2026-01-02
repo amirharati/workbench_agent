@@ -23,6 +23,9 @@ interface ProjectDashboardProps {
   collections: Collection[];
   items: Item[];
   onBack: () => void;
+  onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
+  onDeleteItem?: (id: string) => Promise<void>;
+  onRefresh?: () => Promise<void>;
 }
 
 /**
@@ -38,6 +41,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   collections,
   items,
   onBack,
+  onUpdateItem: _onUpdateItem,
+  onDeleteItem,
+  onRefresh,
 }) => {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -157,52 +163,138 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   );
 
   const activePrimaryItem = useMemo(
-    () => (activePrimaryTab ? projectItems.find((i) => i.id === activePrimaryTab.itemId) || null : null),
-    [activePrimaryTab, projectItems],
+    () => (activePrimaryTab ? items.find((i) => i.id === activePrimaryTab.itemId) || null : null),
+    [activePrimaryTab, items],
   );
   const activeSecondaryItem = useMemo(
-    () => (activeSecondaryTab ? projectItems.find((i) => i.id === activeSecondaryTab.itemId) || null : null),
-    [activeSecondaryTab, projectItems],
+    () => (activeSecondaryTab ? items.find((i) => i.id === activeSecondaryTab.itemId) || null : null),
+    [activeSecondaryTab, items],
   );
   const activeRightPrimaryItem = useMemo(
     () =>
-      activeRightPrimaryTab ? projectItems.find((i) => i.id === activeRightPrimaryTab.itemId) || null : null,
-    [activeRightPrimaryTab, projectItems],
+      activeRightPrimaryTab ? items.find((i) => i.id === activeRightPrimaryTab.itemId) || null : null,
+    [activeRightPrimaryTab, items],
   );
   const activeRightSecondaryItem = useMemo(
     () =>
-      activeRightSecondaryTab ? projectItems.find((i) => i.id === activeRightSecondaryTab.itemId) || null : null,
-    [activeRightSecondaryTab, projectItems],
+      activeRightSecondaryTab ? items.find((i) => i.id === activeRightSecondaryTab.itemId) || null : null,
+    [activeRightSecondaryTab, items],
   );
 
-  const handleItemClick = (item: Item) => {
-    const existingPrimary = primaryTabs.find((t) => t.itemId === item.id);
-    if (existingPrimary) {
-      setActivePrimaryTabId(existingPrimary.id);
-      return;
+  // Get the currently active item from any space
+  // Prioritize: primary > secondary > rightPrimary > rightSecondary
+  const activeItem = useMemo(() => {
+    // Try each space in priority order, using the active tab ID directly to find the item
+    if (activePrimaryTabId) {
+      const tab = primaryTabs.find((t) => t.id === activePrimaryTabId);
+      if (tab && tab.itemId) {
+        const item = items.find((i) => i.id === tab.itemId);
+        if (item) return item;
+      }
     }
-    const existingSecondary = secondaryTabs.find((t) => t.itemId === item.id);
-    if (existingSecondary) {
-      setActiveSecondaryTabId(existingSecondary.id);
-      return;
+    if (activeSecondaryTabId) {
+      const tab = secondaryTabs.find((t) => t.id === activeSecondaryTabId);
+      if (tab && tab.itemId) {
+        const item = items.find((i) => i.id === tab.itemId);
+        if (item) return item;
+      }
     }
-    const existingRight = rightPrimaryTabs.find((t) => t.itemId === item.id);
-    if (existingRight) {
-      setActiveRightPrimaryTabId(existingRight.id);
-      setRightPaneVisible(true);
-      return;
+    if (activeRightPrimaryTabId) {
+      const tab = rightPrimaryTabs.find((t) => t.id === activeRightPrimaryTabId);
+      if (tab && tab.itemId) {
+        const item = items.find((i) => i.id === tab.itemId);
+        if (item) return item;
+      }
     }
-    const existingRightSecondary = rightSecondaryTabs.find((t) => t.itemId === item.id);
-    if (existingRightSecondary) {
-      setActiveRightSecondaryTabId(existingRightSecondary.id);
-      setRightPaneVisible(true);
-      setRightSplit(true);
-      return;
+    if (activeRightSecondaryTabId) {
+      const tab = rightSecondaryTabs.find((t) => t.id === activeRightSecondaryTabId);
+      if (tab && tab.itemId) {
+        const item = items.find((i) => i.id === tab.itemId);
+        if (item) return item;
+      }
     }
+    return null;
+  }, [
+    activePrimaryTabId,
+    activeSecondaryTabId,
+    activeRightPrimaryTabId,
+    activeRightSecondaryTabId,
+    primaryTabs,
+    secondaryTabs,
+    rightPrimaryTabs,
+    rightSecondaryTabs,
+    items,
+  ]);
+
+  const handleItemClick = (item: Item, targetSpace?: 'primary' | 'secondary' | 'rightPrimary' | 'rightSecondary') => {
+    // If item is already open, focus it (unless targetSpace is specified)
+    if (!targetSpace) {
+      const existingPrimary = primaryTabs.find((t) => t.itemId === item.id);
+      if (existingPrimary) {
+        // Clear other spaces to ensure this one is highlighted
+        setActiveSecondaryTabId(null);
+        setActiveRightPrimaryTabId(null);
+        setActiveRightSecondaryTabId(null);
+        setActivePrimaryTabId(existingPrimary.id);
+        return;
+      }
+      const existingSecondary = secondaryTabs.find((t) => t.itemId === item.id);
+      if (existingSecondary) {
+        // Clear other spaces to ensure this one is highlighted
+        setActivePrimaryTabId(null);
+        setActiveRightPrimaryTabId(null);
+        setActiveRightSecondaryTabId(null);
+        setActiveSecondaryTabId(existingSecondary.id);
+        return;
+      }
+      const existingRight = rightPrimaryTabs.find((t) => t.itemId === item.id);
+      if (existingRight) {
+        // Clear other spaces to ensure this one is highlighted
+        setActivePrimaryTabId(null);
+        setActiveSecondaryTabId(null);
+        setActiveRightSecondaryTabId(null);
+        setActiveRightPrimaryTabId(existingRight.id);
+        setRightPaneVisible(true);
+        return;
+      }
+      const existingRightSecondary = rightSecondaryTabs.find((t) => t.itemId === item.id);
+      if (existingRightSecondary) {
+        // Clear other spaces to ensure this one is highlighted
+        setActivePrimaryTabId(null);
+        setActiveSecondaryTabId(null);
+        setActiveRightPrimaryTabId(null);
+        setActiveRightSecondaryTabId(existingRightSecondary.id);
+        setRightPaneVisible(true);
+        setRightSplit(true);
+        return;
+      }
+    }
+
+    // Create new tab in specified space (or primary by default)
     const newTab: Tab = { id: item.id, itemId: item.id, title: item.title || 'Untitled' };
-    ensureNotInOtherSpaces(newTab.id, 'primary');
-    setPrimaryTabs((prev) => [...prev, newTab]);
-    setActivePrimaryTabId(newTab.id);
+    const space = targetSpace || 'primary';
+
+    if (space === 'primary') {
+      ensureNotInOtherSpaces(newTab.id, 'primary');
+      setPrimaryTabs((prev) => [...prev, newTab]);
+      setActivePrimaryTabId(newTab.id);
+    } else if (space === 'secondary') {
+      ensureNotInOtherSpaces(newTab.id, 'secondary');
+      setSecondaryTabs((prev) => [...prev, newTab]);
+      setActiveSecondaryTabId(newTab.id);
+      if (!mainSplit) setMainSplit(true);
+    } else if (space === 'rightPrimary') {
+      ensureNotInOtherSpaces(newTab.id, 'right');
+      setRightPrimaryTabs((prev) => [...prev, newTab]);
+      setActiveRightPrimaryTabId(newTab.id);
+      setRightPaneVisible(true);
+    } else if (space === 'rightSecondary') {
+      ensureNotInOtherSpaces(newTab.id, 'rightSecondary');
+      setRightSecondaryTabs((prev) => [...prev, newTab]);
+      setActiveRightSecondaryTabId(newTab.id);
+      setRightPaneVisible(true);
+      if (!rightSplit) setRightSplit(true);
+    }
   };
 
   const handleTabClose = (tabId: string) => {
@@ -256,6 +348,91 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         activeRightSecondaryTabId,
         setActiveRightSecondaryTabId,
       );
+    }
+  };
+
+  const handleTabMove = (tabId: string, target: string) => {
+    // Find the tab in any space
+    const tab =
+      primaryTabs.find((t) => t.id === tabId) ||
+      secondaryTabs.find((t) => t.id === tabId) ||
+      rightPrimaryTabs.find((t) => t.id === tabId) ||
+      rightSecondaryTabs.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    // Handle reordering within same space (format: "spaceId:index")
+    if (target.includes(':')) {
+      const [spaceId, indexStr] = target.split(':');
+      const targetIndex = parseInt(indexStr, 10);
+      if (isNaN(targetIndex)) return;
+
+      if (spaceId === 'primary') {
+        const currentIndex = primaryTabs.findIndex((t) => t.id === tabId);
+        if (currentIndex === -1 || currentIndex === targetIndex) return;
+        setPrimaryTabs((prev) => {
+          const newTabs = [...prev];
+          newTabs.splice(currentIndex, 1);
+          newTabs.splice(targetIndex, 0, tab);
+          return newTabs;
+        });
+      } else if (spaceId === 'secondary') {
+        const currentIndex = secondaryTabs.findIndex((t) => t.id === tabId);
+        if (currentIndex === -1 || currentIndex === targetIndex) return;
+        setSecondaryTabs((prev) => {
+          const newTabs = [...prev];
+          newTabs.splice(currentIndex, 1);
+          newTabs.splice(targetIndex, 0, tab);
+          return newTabs;
+        });
+      } else if (spaceId === 'rightPrimary') {
+        const currentIndex = rightPrimaryTabs.findIndex((t) => t.id === tabId);
+        if (currentIndex === -1 || currentIndex === targetIndex) return;
+        setRightPrimaryTabs((prev) => {
+          const newTabs = [...prev];
+          newTabs.splice(currentIndex, 1);
+          newTabs.splice(targetIndex, 0, tab);
+          return newTabs;
+        });
+      } else if (spaceId === 'rightSecondary') {
+        const currentIndex = rightSecondaryTabs.findIndex((t) => t.id === tabId);
+        if (currentIndex === -1 || currentIndex === targetIndex) return;
+        setRightSecondaryTabs((prev) => {
+          const newTabs = [...prev];
+          newTabs.splice(currentIndex, 1);
+          newTabs.splice(targetIndex, 0, tab);
+          return newTabs;
+        });
+      }
+      return;
+    }
+
+    // Handle moving between spaces
+    // Map target to ensureNotInOtherSpaces format
+    const destMap: Record<string, 'primary' | 'secondary' | 'right' | 'rightSecondary'> = {
+      primary: 'primary',
+      secondary: 'secondary',
+      rightPrimary: 'right',
+      rightSecondary: 'rightSecondary',
+    };
+    const dest = destMap[target] || 'primary';
+    ensureNotInOtherSpaces(tabId, dest);
+
+    if (target === 'primary') {
+      setPrimaryTabs((prev) => (prev.find((t) => t.id === tab.id) ? prev : [...prev, tab]));
+      setActivePrimaryTabId(tab.id);
+    } else if (target === 'secondary') {
+      setSecondaryTabs((prev) => (prev.find((t) => t.id === tab.id) ? prev : [...prev, tab]));
+      setActiveSecondaryTabId(tab.id);
+      if (!mainSplit) setMainSplit(true);
+    } else if (target === 'rightPrimary') {
+      setRightPrimaryTabs((prev) => (prev.find((t) => t.id === tab.id) ? prev : [...prev, tab]));
+      setActiveRightPrimaryTabId(tab.id);
+      setRightPaneVisible(true);
+    } else if (target === 'rightSecondary') {
+      setRightSecondaryTabs((prev) => (prev.find((t) => t.id === tab.id) ? prev : [...prev, tab]));
+      setActiveRightSecondaryTabId(tab.id);
+      setRightPaneVisible(true);
+      if (!rightSplit) setRightSplit(true);
     }
   };
 
@@ -389,6 +566,34 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     ensureNotInOtherSpaces(tabId, 'primary');
     setPrimaryTabs((prev) => [...prev, { id: tabId, itemId: '', title, content: 'Draft item (not saved yet).' }]);
     setActivePrimaryTabId(tabId);
+  };
+
+  const handleEditItem = (item: Item) => {
+    // Open item in a tab if not already open, then focus it
+    handleItemClick(item);
+    // TODO: Could open an edit modal here in the future using onUpdateItem
+    // For now, user can edit via the tab content
+  };
+
+  const handleDeleteItem = async (item: Item) => {
+    if (!window.confirm(`Delete "${item.title || 'Untitled'}"?`)) return;
+    if (onDeleteItem) {
+      await onDeleteItem(item.id);
+      // Close tab if open
+      handleTabClose(item.id);
+      if (onRefresh) await onRefresh();
+    }
+  };
+
+  const handleOpenInNewTab = (item: Item) => {
+    if (item.url) {
+      chrome.tabs.create({ url: item.url });
+    }
+  };
+
+  const handleDuplicateItem = async (item: Item) => {
+    // This would require onAddBookmark or similar - for now just open in new tab
+    handleOpenInNewTab(item);
   };
 
   const mergeSecondaryBack = () => {
@@ -569,9 +774,19 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       >
         <ItemsListPanel
           items={filteredItems}
-          activeItemId={activePrimaryItem?.id || activeSecondaryItem?.id || null}
+          activeItemId={activeItem?.id || null}
           onItemClick={handleItemClick}
           onNew={handleNewItem}
+          onEdit={handleEditItem}
+          onDelete={handleDeleteItem}
+          onOpenInNewTab={handleOpenInNewTab}
+          onDuplicate={handleDuplicateItem}
+          availableSpaces={{
+            primary: true,
+            secondary: mainSplit,
+            rightPrimary: rightPaneVisible,
+            rightSecondary: rightPaneVisible && rightSplit,
+          }}
         />
 
         <Resizer
@@ -589,6 +804,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 activeTabId={activePrimaryTabId}
                 onTabSelect={setActivePrimaryTabId}
                 onTabClose={handleTabClose}
+                onTabMove={handleTabMove}
+                spaceId="primary"
               />
             </div>
           )}
@@ -602,6 +819,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       activeTabId={activePrimaryTabId}
                       onTabSelect={setActivePrimaryTabId}
                       onTabClose={handleTabClose}
+                      onTabMove={handleTabMove}
+                      spaceId="primary"
                     />
                   </div>
                   <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
@@ -624,6 +843,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       activeTabId={activeSecondaryTabId}
                       onTabSelect={setActiveSecondaryTabId}
                       onTabClose={handleTabClose}
+                      onTabMove={handleTabMove}
+                      spaceId="secondary"
                     />
                   </div>
                   <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
@@ -657,6 +878,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         activeTabId={activeRightPrimaryTabId}
                         onTabSelect={setActiveRightPrimaryTabId}
                         onTabClose={handleRightTabClose}
+                        onTabMove={handleTabMove}
+                        spaceId="rightPrimary"
                       />
                     </div>
                     <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
@@ -679,6 +902,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         activeTabId={activeRightSecondaryTabId}
                         onTabSelect={setActiveRightSecondaryTabId}
                         onTabClose={handleRightTabClose}
+                        onTabMove={handleTabMove}
+                        spaceId="rightSecondary"
                       />
                     </div>
                     <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
@@ -694,6 +919,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       activeTabId={activeRightPrimaryTabId}
                       onTabSelect={setActiveRightPrimaryTabId}
                       onTabClose={handleRightTabClose}
+                      onTabMove={handleTabMove}
+                      spaceId="rightPrimary"
                     />
                   </div>
                   <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>

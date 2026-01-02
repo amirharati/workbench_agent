@@ -1,13 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Item } from '../../lib/db';
 import { Panel } from '../../styles/primitives';
+import { ItemContextMenu } from './ItemContextMenu';
 
 interface ItemsListPanelProps {
   items: Item[];
   activeItemId: string | null;
-  onItemClick: (item: Item) => void;
+  onItemClick: (item: Item, targetSpace?: 'primary' | 'secondary' | 'rightPrimary' | 'rightSecondary') => void;
   title?: string;
   onNew?: () => void;
+  onEdit?: (item: Item) => void;
+  onDelete?: (item: Item) => void;
+  onOpenInNewTab?: (item: Item) => void;
+  onDuplicate?: (item: Item) => void;
+  availableSpaces?: {
+    primary?: boolean;
+    secondary?: boolean;
+    rightPrimary?: boolean;
+    rightSecondary?: boolean;
+  };
 }
 
 const iconForItem = (item: Item) => {
@@ -28,9 +39,57 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   onItemClick,
   title = 'Items',
   onNew,
+  onEdit,
+  onDelete,
+  onOpenInNewTab,
+  onDuplicate,
+  availableSpaces = { primary: true },
 }) => {
+  const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
+
+  const handleContextMenu = (e: React.MouseEvent, item: Item) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ item, x: e.clientX, y: e.clientY });
+  };
+
+  const handleItemClick = (e: React.MouseEvent, item: Item) => {
+    // Ctrl/Cmd + Click: cycle through available spaces
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const spaces: Array<'primary' | 'secondary' | 'rightPrimary' | 'rightSecondary'> = [];
+      if (availableSpaces.primary) spaces.push('primary');
+      if (availableSpaces.secondary) spaces.push('secondary');
+      if (availableSpaces.rightPrimary) spaces.push('rightPrimary');
+      if (availableSpaces.rightSecondary) spaces.push('rightSecondary');
+      
+      if (spaces.length > 0) {
+        // For now, just open in the first available space (could be enhanced with cycling)
+        onItemClick(item, spaces[0]);
+      } else {
+        onItemClick(item);
+      }
+    } else {
+      onItemClick(item);
+    }
+  };
+
   return (
     <Panel className="scrollbar" style={{ padding: '0.5rem', overflowY: 'auto' }}>
+      {contextMenu && (
+        <ItemContextMenu
+          item={contextMenu.item}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onOpenInNewTab={onOpenInNewTab}
+          onDuplicate={onDuplicate}
+          onOpenInSpace={(item, space) => onItemClick(item, space)}
+          availableSpaces={availableSpaces}
+        />
+      )}
       <div
         style={{
           padding: '0.5rem 0.75rem',
@@ -69,7 +128,8 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
         return (
           <div
             key={item.id}
-            onClick={() => onItemClick(item)}
+            onClick={(e) => handleItemClick(e, item)}
+            onContextMenu={(e) => handleContextMenu(e, item)}
             style={{
               padding: '0.6rem 0.75rem',
               borderRadius: 8,
