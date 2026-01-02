@@ -216,7 +216,23 @@ export const MainContent: React.FC<MainContentProps> = ({
 
         const collectionsForProject = (pid: string | null) => {
           if (!pid) return [];
-          return collections.filter((c) => (c.projectIds || []).includes(pid));
+          const projectUnsortedId = `collection_${pid}_unsorted`;
+          return collections.filter((c) => {
+            // Must belong to this project
+            const belongsToProject =
+              c.primaryProjectId === pid || (Array.isArray(c.projectIds) && c.projectIds.includes(pid));
+            if (!belongsToProject) return false;
+
+            // Include the current project's unsorted collection
+            if (c.id === projectUnsortedId) return true;
+
+            // Exclude other unsorted/default collections
+            if (c.isDefault && c.id !== projectUnsortedId) return false;
+            if (c.name === 'Unsorted' && c.id !== projectUnsortedId) return false;
+
+            // Include all other collections
+            return true;
+          });
         };
 
         const itemsForProject = (pid: string | null) => {

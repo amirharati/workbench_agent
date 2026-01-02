@@ -584,6 +584,14 @@ export const deleteCollection = async (id: string) => {
   await db.delete('collections', id);
 };
 
+export const updateCollection = async (id: string, updates: Partial<Omit<Collection, 'id' | 'created_at'>>) => {
+  const db = await getDB();
+  const collection = await db.get('collections', id);
+  if (collection) {
+    await db.put('collections', { ...collection, ...updates, updated_at: nowTs() });
+  }
+};
+
 // Backward-compatible helper (single select). Converts to collectionIds[].
 export const updateItemCollection = async (itemId: string, collectionId: string | undefined) => {
   const db = await getDB();

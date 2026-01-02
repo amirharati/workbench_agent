@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Item } from '../../lib/db';
 import { Panel } from '../../styles/primitives';
 import { ItemContextMenu } from './ItemContextMenu';
+import { FolderOpen } from 'lucide-react';
 
 interface ItemsListPanelProps {
   items: Item[];
@@ -19,6 +20,8 @@ interface ItemsListPanelProps {
     rightPrimary?: boolean;
     rightSecondary?: boolean;
   };
+  currentCollectionId?: string | 'all';
+  onOpenCollectionInTab?: (collectionId: string | 'all') => void;
 }
 
 const iconForItem = (item: Item) => {
@@ -44,6 +47,8 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   onOpenInNewTab,
   onDuplicate,
   availableSpaces = { primary: true },
+  currentCollectionId,
+  onOpenCollectionInTab,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
 
@@ -102,7 +107,36 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
           gap: '0.5rem',
         }}
       >
-        <span style={{ fontSize: '0.8rem', color: 'var(--text)', fontWeight: 600 }}>{title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text)', fontWeight: 600 }}>{title}</span>
+          {currentCollectionId && currentCollectionId !== 'all' && onOpenCollectionInTab && (
+            <button
+              onClick={() => onOpenCollectionInTab(currentCollectionId)}
+              style={{
+                padding: '0.25rem',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                borderRadius: 4,
+                transition: 'all 0.15s ease',
+              }}
+              title="Open collection in tab"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--bg-glass)';
+                e.currentTarget.style.color = 'var(--text)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-muted)';
+              }}
+            >
+              <FolderOpen size={14} />
+            </button>
+          )}
+        </div>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{items.length} items</span>
         {onNew && (
           <button
@@ -128,12 +162,17 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
         return (
           <div
             key={item.id}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', item.id);
+            }}
             onClick={(e) => handleItemClick(e, item)}
             onContextMenu={(e) => handleContextMenu(e, item)}
             style={{
               padding: '0.6rem 0.75rem',
               borderRadius: 8,
-              cursor: 'pointer',
+              cursor: 'grab',
               display: 'flex',
               gap: '0.5rem',
               alignItems: 'center',

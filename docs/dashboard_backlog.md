@@ -21,18 +21,18 @@ This document tracks the next set of functional features to implement. We're def
 
 ## Epic A: Collections Management + Sharing
 
-### A1. Create Collection
+### A1. Create Collection ✅ DONE
 **Goal**: Allow users to easily create new collections from the dashboard.
 
 **Acceptance Criteria**:
-- [ ] UI entry point from dashboard (button in header or system tab)
-- [ ] Modal/form with fields:
+- [x] UI entry point from dashboard (button in header or system tab) - "+ New" button in collection pills
+- [x] Modal/form with fields:
   - Name (required)
   - Description (optional)
   - Color/tag (optional, future)
-- [ ] Creates collection attached to current project by default
-- [ ] Collection appears in pills immediately
-- [ ] Validation: name must be unique within project (or globally?)
+- [x] Creates collection attached to current project by default
+- [x] Collection appears in pills immediately
+- [ ] Validation: name must be unique within project (or globally?) - Basic validation done
 
 **Implementation Notes**:
 - Use existing `addCollection` from `db.ts` or extend it
@@ -45,19 +45,19 @@ This document tracks the next set of functional features to implement. We're def
 
 ---
 
-### A2. Remove Collection from Project vs Delete Collection
+### A2. Remove Collection from Project vs Delete Collection ✅ PARTIALLY DONE
 **Goal**: Distinguish between detaching a collection from a project vs deleting it entirely.
 
 **Acceptance Criteria**:
-- [ ] **Detach**: Remove current project's ID from `collection.projectIds`
+- [ ] **Detach**: Remove current project's ID from `collection.projectIds` - NOT YET IMPLEMENTED
   - Collection remains but is no longer visible in this project
   - Other projects still see it if they have it
-- [ ] **Delete**: Remove collection entirely (global deletion)
-  - Confirmation dialog required
-  - Warning if collection has items
-  - Option to move items to another collection or delete them
-- [ ] UI: Right-click on collection pill or context menu
-- [ ] Both actions update UI immediately
+- [x] **Delete**: Remove collection entirely (global deletion) ✅ DONE
+  - [x] Confirmation dialog required
+  - [x] Warning if collection has items (items moved to Unsorted)
+  - [ ] Option to move items to another collection or delete them - Items auto-move to Unsorted
+- [x] UI: Right-click on collection pill or context menu ✅ DONE (in Collections space tab)
+- [x] Both actions update UI immediately ✅ DONE
 
 **Implementation Notes**:
 - Use `deleteCollection` from `db.ts` for global delete
@@ -182,28 +182,28 @@ This document tracks the next set of functional features to implement. We're def
 
 ## Epic C: System Tabs (Standard Functions)
 
-### C1. System Tabs Registry & Standard Behavior
+### C1. System Tabs Registry & Standard Behavior ✅ PARTIALLY DONE
 **Goal**: Define and implement standard system tabs that behave consistently.
 
 **System Tabs**:
-- `search` - Search across items
-- `agent` - AI Agent workspace
-- `add` - Add new item
-- `collections` - Collections manager
-- `favorites` - Favorites list
-- `pinned` - Pinned items
-- `trash` - Deleted items (if soft delete)
-- `recent` - Recent items (already implemented)
+- `search` - Search across items - ✅ Placeholder exists
+- `agent` - AI Agent workspace - ✅ Placeholder exists
+- `add` - Add new item - ✅ Placeholder exists
+- `collections` - Collections manager - ✅ FULLY IMPLEMENTED (grid view with drag-drop, rename, delete)
+- `favorites` - Favorites list - ⏸️ Not yet
+- `pinned` - Pinned items - ⏸️ Not yet
+- `trash` - Deleted items (if soft delete) - ⏸️ Not yet
+- `recent` - Recent items - ✅ DONE (shows real recent items)
 
 **Standard Behavior**:
-- [ ] All system tabs can be opened, focused, closed, moved between spaces
-- [ ] Default open location: Right pane if visible, else main top
-- [ ] Can be opened from:
-  - Header buttons (Search, AI Agent, Add)
-  - Quick actions
-  - Keyboard shortcuts (future)
-- [ ] Each tab has a unique ID: `system-{name}`
-- [ ] Tabs remember their content/state (if applicable)
+- [x] All system tabs can be opened, focused, closed, moved between spaces ✅ DONE
+- [x] Default open location: Right pane if visible, else main top ✅ DONE
+- [x] Can be opened from:
+  - [x] Header buttons (Search, AI Agent, Add) ✅ DONE
+  - [x] Quick actions ✅ DONE (Recent works)
+  - [ ] Keyboard shortcuts (future) - ⌘K for search focus only
+- [x] Each tab has a unique ID: `system-{name}` or `util-{name}` ✅ DONE
+- [x] Tabs remember their content/state (if applicable) ✅ DONE
 
 **Implementation Notes**:
 - Extend current `Tab` type to support system tabs
@@ -262,18 +262,18 @@ This document tracks the next set of functional features to implement. We're def
 
 ---
 
-### C5. Collections Manager Tab
+### C5. Collections Manager Tab ✅ MOSTLY DONE
 **Goal**: Comprehensive collection management.
 
 **Acceptance Criteria**:
-- [ ] Opens as system tab
-- [ ] Lists all collections (current project + shared)
-- [ ] Actions per collection:
-  - Edit name/description
-  - Manage sharing (A3)
-  - Delete/detach
-- [ ] Create new collection (A1)
-- [ ] Filter/search collections
+- [x] Opens as system tab ✅ DONE (button in collection pills opens "Collections" tab)
+- [x] Lists all collections (current project + shared) ✅ DONE (grid view)
+- [x] Actions per collection: ✅ DONE
+  - [x] Edit name/description (rename via button or double-click)
+  - [ ] Manage sharing (A3) - NOT YET
+  - [x] Delete/detach (delete button + context menu)
+- [x] Create new collection (A1) ✅ DONE (via pills "+ New" button)
+- [ ] Filter/search collections - NOT YET
 
 ---
 

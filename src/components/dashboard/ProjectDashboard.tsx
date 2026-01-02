@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import type { Project, Collection, Item } from '../../lib/db';
+import { addCollection, deleteCollection, updateItem, updateCollection } from '../../lib/db';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -8,14 +9,16 @@ import { TabBar, TabBarTab } from './TabBar';
 import { TabContent } from './TabContent';
 import { Resizer } from './Resizer';
 import { useEffect } from 'react';
-import { Panel, ButtonGhost } from '../../styles/primitives';
-import { Search, Sparkles, Plus } from 'lucide-react';
+import { Panel, ButtonGhost, Input } from '../../styles/primitives';
+import { Search, Sparkles, Plus, X } from 'lucide-react';
 
 type Tab = {
   id: string;
   title: string;
   itemId: string;
   content?: string;
+  collectionId?: string; // For collection tabs
+  type?: 'item' | 'collection' | 'system';
 };
 
 interface ProjectDashboardProps {
@@ -64,12 +67,30 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   const [rightSplitRatio, setRightSplitRatio] = useState(60);
   const layoutKey = `pd-layout-${project.id}`;
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [showCreateCollectionModal, setShowCreateCollectionModal] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [newCollectionDescription, setNewCollectionDescription] = useState('');
 
   const projectCollections = useMemo(() => {
+    const projectUnsortedId = `collection_${project.id}_unsorted`;
     return collections.filter(
-      (c) =>
-        c.primaryProjectId === project.id ||
-        (Array.isArray(c.projectIds) && c.projectIds.includes(project.id)),
+      (c) => {
+        // Must belong to this project
+        const belongsToProject =
+          c.primaryProjectId === project.id ||
+          (Array.isArray(c.projectIds) && c.projectIds.includes(project.id));
+        if (!belongsToProject) return false;
+
+        // Include the current project's unsorted collection
+        if (c.id === projectUnsortedId) return true;
+
+        // Exclude other unsorted/default collections
+        if (c.isDefault && c.id !== projectUnsortedId) return false;
+        if (c.name === 'Unsorted' && c.id !== projectUnsortedId) return false;
+
+        // Include all other collections
+        return true;
+      },
     );
   }, [collections, project.id]);
 
@@ -99,20 +120,60 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
 
   const ensureNotInOtherSpaces = (tabId: string, dest: 'primary' | 'secondary' | 'right' | 'rightSecondary') => {
     if (dest !== 'primary') {
-      setPrimaryTabs((prev) => prev.filter((t) => t.id !== tabId));
-      setActivePrimaryTabId((prev) => (prev === tabId ? null : prev));
+      const wasActive = activePrimaryTabId === tabId;
+      setPrimaryTabs((prev) => {
+        const filtered = prev.filter((t) => t.id !== tabId);
+        if (wasActive && filtered.length > 0) {
+          const movedIndex = prev.findIndex((t) => t.id === tabId);
+          const nextIndex = movedIndex < filtered.length ? movedIndex : Math.max(0, movedIndex - 1);
+          setTimeout(() => setActivePrimaryTabId(filtered[nextIndex]?.id || filtered[0]?.id || null), 0);
+        } else if (wasActive) {
+          setTimeout(() => setActivePrimaryTabId(null), 0);
+        }
+        return filtered;
+      });
     }
     if (dest !== 'secondary') {
-      setSecondaryTabs((prev) => prev.filter((t) => t.id !== tabId));
-      setActiveSecondaryTabId((prev) => (prev === tabId ? null : prev));
+      const wasActive = activeSecondaryTabId === tabId;
+      setSecondaryTabs((prev) => {
+        const filtered = prev.filter((t) => t.id !== tabId);
+        if (wasActive && filtered.length > 0) {
+          const movedIndex = prev.findIndex((t) => t.id === tabId);
+          const nextIndex = movedIndex < filtered.length ? movedIndex : Math.max(0, movedIndex - 1);
+          setTimeout(() => setActiveSecondaryTabId(filtered[nextIndex]?.id || filtered[0]?.id || null), 0);
+        } else if (wasActive) {
+          setTimeout(() => setActiveSecondaryTabId(null), 0);
+        }
+        return filtered;
+      });
     }
     if (dest !== 'right') {
-      setRightPrimaryTabs((prev) => prev.filter((t) => t.id !== tabId));
-      setActiveRightPrimaryTabId((prev) => (prev === tabId ? null : prev));
+      const wasActive = activeRightPrimaryTabId === tabId;
+      setRightPrimaryTabs((prev) => {
+        const filtered = prev.filter((t) => t.id !== tabId);
+        if (wasActive && filtered.length > 0) {
+          const movedIndex = prev.findIndex((t) => t.id === tabId);
+          const nextIndex = movedIndex < filtered.length ? movedIndex : Math.max(0, movedIndex - 1);
+          setTimeout(() => setActiveRightPrimaryTabId(filtered[nextIndex]?.id || filtered[0]?.id || null), 0);
+        } else if (wasActive) {
+          setTimeout(() => setActiveRightPrimaryTabId(null), 0);
+        }
+        return filtered;
+      });
     }
     if (dest !== 'rightSecondary') {
-      setRightSecondaryTabs((prev) => prev.filter((t) => t.id !== tabId));
-      setActiveRightSecondaryTabId((prev) => (prev === tabId ? null : prev));
+      const wasActive = activeRightSecondaryTabId === tabId;
+      setRightSecondaryTabs((prev) => {
+        const filtered = prev.filter((t) => t.id !== tabId);
+        if (wasActive && filtered.length > 0) {
+          const movedIndex = prev.findIndex((t) => t.id === tabId);
+          const nextIndex = movedIndex < filtered.length ? movedIndex : Math.max(0, movedIndex - 1);
+          setTimeout(() => setActiveRightSecondaryTabId(filtered[nextIndex]?.id || filtered[0]?.id || null), 0);
+        } else if (wasActive) {
+          setTimeout(() => setActiveRightSecondaryTabId(null), 0);
+        }
+        return filtered;
+      });
     }
   };
 
@@ -231,38 +292,26 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     if (!targetSpace) {
       const existingPrimary = primaryTabs.find((t) => t.itemId === item.id);
       if (existingPrimary) {
-        // Clear other spaces to ensure this one is highlighted
-        setActiveSecondaryTabId(null);
-        setActiveRightPrimaryTabId(null);
-        setActiveRightSecondaryTabId(null);
+        // Just activate this tab, don't clear others (preserves collection tabs in other spaces)
         setActivePrimaryTabId(existingPrimary.id);
         return;
       }
       const existingSecondary = secondaryTabs.find((t) => t.itemId === item.id);
       if (existingSecondary) {
-        // Clear other spaces to ensure this one is highlighted
-        setActivePrimaryTabId(null);
-        setActiveRightPrimaryTabId(null);
-        setActiveRightSecondaryTabId(null);
+        // Just activate this tab, don't clear others (preserves collection tabs in other spaces)
         setActiveSecondaryTabId(existingSecondary.id);
         return;
       }
       const existingRight = rightPrimaryTabs.find((t) => t.itemId === item.id);
       if (existingRight) {
-        // Clear other spaces to ensure this one is highlighted
-        setActivePrimaryTabId(null);
-        setActiveSecondaryTabId(null);
-        setActiveRightSecondaryTabId(null);
+        // Just activate this tab, don't clear others (preserves collection tabs in other spaces)
         setActiveRightPrimaryTabId(existingRight.id);
         setRightPaneVisible(true);
         return;
       }
       const existingRightSecondary = rightSecondaryTabs.find((t) => t.itemId === item.id);
       if (existingRightSecondary) {
-        // Clear other spaces to ensure this one is highlighted
-        setActivePrimaryTabId(null);
-        setActiveSecondaryTabId(null);
-        setActiveRightPrimaryTabId(null);
+        // Just activate this tab, don't clear others (preserves collection tabs in other spaces)
         setActiveRightSecondaryTabId(existingRightSecondary.id);
         setRightPaneVisible(true);
         setRightSplit(true);
@@ -596,6 +645,159 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     handleOpenInNewTab(item);
   };
 
+  const handleCreateCollection = () => {
+    setShowCreateCollectionModal(true);
+    setNewCollectionName('');
+    setNewCollectionDescription('');
+  };
+
+  const handleCreateCollectionSubmit = async () => {
+    if (!newCollectionName.trim()) return;
+    try {
+      await addCollection(newCollectionName.trim(), undefined, project.id);
+      setShowCreateCollectionModal(false);
+      setNewCollectionName('');
+      setNewCollectionDescription('');
+      if (onRefresh) await onRefresh();
+    } catch (error) {
+      console.error('Failed to create collection:', error);
+      alert('Failed to create collection. Please try again.');
+    }
+  };
+
+  const handleDeleteCollection = async (collection: Collection) => {
+    if (!window.confirm(`Delete "${collection.name}"? Items in this collection will be moved to Unsorted.`)) return;
+    try {
+      await deleteCollection(collection.id);
+      // If we deleted the currently selected collection, switch to 'all'
+      if (selectedCollectionId === collection.id) {
+        setSelectedCollectionId('all');
+      }
+      if (onRefresh) await onRefresh();
+    } catch (error) {
+      console.error('Failed to delete collection:', error);
+      alert('Failed to delete collection. Please try again.');
+    }
+  };
+
+  const handleOpenAllCollections = () => {
+    const tabId = 'collections-all';
+    const existing =
+      primaryTabs.find((t) => t.id === tabId) ||
+      secondaryTabs.find((t) => t.id === tabId) ||
+      rightPrimaryTabs.find((t) => t.id === tabId) ||
+      rightSecondaryTabs.find((t) => t.id === tabId);
+    
+    if (!existing) {
+      ensureNotInOtherSpaces(tabId, 'primary');
+      setPrimaryTabs((prev) => [
+        ...prev,
+        { id: tabId, itemId: '', title: 'Collections', type: 'system' },
+      ]);
+      setActivePrimaryTabId(tabId);
+    } else {
+      // Focus existing tab
+      if (primaryTabs.find((t) => t.id === tabId)) {
+        setActivePrimaryTabId(tabId);
+      } else if (secondaryTabs.find((t) => t.id === tabId)) {
+        setActiveSecondaryTabId(tabId);
+      } else if (rightPrimaryTabs.find((t) => t.id === tabId)) {
+        setActiveRightPrimaryTabId(tabId);
+        setRightPaneVisible(true);
+      } else if (rightSecondaryTabs.find((t) => t.id === tabId)) {
+        setActiveRightSecondaryTabId(tabId);
+        setRightPaneVisible(true);
+        setRightSplit(true);
+      }
+    }
+  };
+
+  const handleOpenCollectionInTab = (collection: Collection) => {
+    const tabId = `collection-${collection.id}`;
+    const existing =
+      primaryTabs.find((t) => t.id === tabId) ||
+      secondaryTabs.find((t) => t.id === tabId) ||
+      rightPrimaryTabs.find((t) => t.id === tabId) ||
+      rightSecondaryTabs.find((t) => t.id === tabId);
+    
+    if (!existing) {
+      ensureNotInOtherSpaces(tabId, 'primary');
+      setPrimaryTabs((prev) => [
+        ...prev,
+        { id: tabId, itemId: '', title: collection.name, collectionId: collection.id, type: 'collection' },
+      ]);
+      setActivePrimaryTabId(tabId);
+    } else {
+      // Focus existing tab
+      if (primaryTabs.find((t) => t.id === tabId)) {
+        setActivePrimaryTabId(tabId);
+      } else if (secondaryTabs.find((t) => t.id === tabId)) {
+        setActiveSecondaryTabId(tabId);
+      } else if (rightPrimaryTabs.find((t) => t.id === tabId)) {
+        setActiveRightPrimaryTabId(tabId);
+        setRightPaneVisible(true);
+      } else if (rightSecondaryTabs.find((t) => t.id === tabId)) {
+        setActiveRightSecondaryTabId(tabId);
+        setRightPaneVisible(true);
+        setRightSplit(true);
+      }
+    }
+  };
+
+  const handleMoveItemToCollection = async (itemId: string, targetCollectionId: string, sourceCollectionId?: string) => {
+    try {
+      const item = items.find((i) => i.id === itemId);
+      if (!item) return;
+      
+      const currentCollectionIds = item.collectionIds || [];
+      let newCollectionIds: string[];
+      
+      if (sourceCollectionId) {
+        // MOVE: Remove from source, add to target
+        newCollectionIds = currentCollectionIds.filter((cid) => cid !== sourceCollectionId);
+        if (!newCollectionIds.includes(targetCollectionId)) {
+          newCollectionIds.push(targetCollectionId);
+        }
+      } else {
+        // If no source specified, just add to target (don't remove from others)
+        if (!currentCollectionIds.includes(targetCollectionId)) {
+          newCollectionIds = [...currentCollectionIds, targetCollectionId];
+        } else {
+          return; // Already in target
+        }
+      }
+      
+      // Ensure at least one collection
+      if (newCollectionIds.length === 0) {
+        const projectUnsortedId = `collection_${project.id}_unsorted`;
+        newCollectionIds = [projectUnsortedId];
+      }
+      
+      await updateItem(itemId, {
+        collectionIds: newCollectionIds,
+      });
+      if (onRefresh) await onRefresh();
+    } catch (error) {
+      console.error('Failed to move item to collection:', error);
+      alert('Failed to move item. Please try again.');
+    }
+  };
+
+  const handleRenameCollection = async (collection: Collection, newName: string) => {
+    try {
+      await updateCollection(collection.id, { name: newName });
+      if (onRefresh) await onRefresh();
+    } catch (error) {
+      console.error('Failed to rename collection:', error);
+      alert('Failed to rename collection. Please try again.');
+    }
+  };
+
+  const handleOpenCollection = (collection: Collection) => {
+    // Switch to this collection in the filter
+    setSelectedCollectionId(collection.id);
+  };
+
   const mergeSecondaryBack = () => {
     setPrimaryTabs((prev) => {
       const ids = new Set(prev.map((t) => t.id));
@@ -676,6 +878,10 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           onSelect={setSelectedCollectionId}
           totalItems={projectItems.length}
           getCountForCollection={(cid) => collectionItemCounts[cid] || 0}
+          onCreateCollection={handleCreateCollection}
+          onDeleteCollection={handleDeleteCollection}
+          onOpenCollectionInTab={handleOpenCollectionInTab}
+          onOpenAllCollections={handleOpenAllCollections}
         />
 
         <SearchBar
@@ -781,6 +987,12 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           onDelete={handleDeleteItem}
           onOpenInNewTab={handleOpenInNewTab}
           onDuplicate={handleDuplicateItem}
+          currentCollectionId={selectedCollectionId}
+          onOpenCollectionInTab={(collectionId) => {
+            if (collectionId === 'all') return; // Can't open "all" as a collection tab
+            const collection = collections.find((c) => c.id === collectionId);
+            if (collection) handleOpenCollectionInTab(collection);
+          }}
           availableSpaces={{
             primary: true,
             secondary: mainSplit,
@@ -824,7 +1036,18 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     />
                   </div>
                   <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
-                    <TabContent tab={activePrimaryTab || null} item={activePrimaryItem || null} />
+                    <TabContent 
+                      tab={activePrimaryTab || null} 
+                      item={activePrimaryItem || null}
+                      items={items}
+                      collections={collections}
+                      onMoveItemToCollection={handleMoveItemToCollection}
+                      onDeleteCollection={handleDeleteCollection}
+                      onRenameCollection={handleRenameCollection}
+                      onOpenCollection={handleOpenCollection}
+                      onOpenCollectionInTab={handleOpenCollectionInTab}
+                      projectId={project.id}
+                    />
                   </div>
                 </div>
                 <Resizer
@@ -848,13 +1071,35 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     />
                   </div>
                   <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
-                    <TabContent tab={activeSecondaryTab || null} item={activeSecondaryItem || null} />
+                    <TabContent 
+                      tab={activeSecondaryTab || null} 
+                      item={activeSecondaryItem || null}
+                      items={items}
+                      collections={collections}
+                      onMoveItemToCollection={handleMoveItemToCollection}
+                      onDeleteCollection={handleDeleteCollection}
+                      onRenameCollection={handleRenameCollection}
+                      onOpenCollection={handleOpenCollection}
+                      onOpenCollectionInTab={handleOpenCollectionInTab}
+                      projectId={project.id}
+                    />
                   </div>
                 </div>
               </>
             ) : (
               <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
-                <TabContent tab={activePrimaryTab || null} item={activePrimaryItem || null} />
+                <TabContent 
+                  tab={activePrimaryTab || null} 
+                  item={activePrimaryItem || null}
+                  items={items}
+                  collections={collections}
+                  onMoveItemToCollection={handleMoveItemToCollection}
+                  onDeleteCollection={handleDeleteCollection}
+                  onRenameCollection={handleRenameCollection}
+                  onOpenCollection={handleOpenCollection}
+                  onOpenCollectionInTab={handleOpenCollectionInTab}
+                  projectId={project.id}
+                />
               </div>
             )}
           </div>
@@ -883,7 +1128,18 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       />
                     </div>
                     <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
-                      <TabContent tab={activeRightPrimaryTab || null} item={activeRightPrimaryItem || null} />
+                      <TabContent 
+                        tab={activeRightPrimaryTab || null} 
+                        item={activeRightPrimaryItem || null}
+                        items={items}
+                        collections={collections}
+                        onMoveItemToCollection={handleMoveItemToCollection}
+                        onDeleteCollection={handleDeleteCollection}
+                        onRenameCollection={handleRenameCollection}
+                        onOpenCollection={handleOpenCollection}
+                        onOpenCollectionInTab={handleOpenCollectionInTab}
+                        projectId={project.id}
+                      />
                     </div>
                   </div>
                   <Resizer
@@ -907,7 +1163,18 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       />
                     </div>
                     <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
-                      <TabContent tab={activeRightSecondaryTab || null} item={activeRightSecondaryItem || null} />
+                      <TabContent 
+                        tab={activeRightSecondaryTab || null} 
+                        item={activeRightSecondaryItem || null}
+                        items={items}
+                        collections={collections}
+                        onMoveItemToCollection={handleMoveItemToCollection}
+                        onDeleteCollection={handleDeleteCollection}
+                        onRenameCollection={handleRenameCollection}
+                        onOpenCollection={handleOpenCollection}
+                        onOpenCollectionInTab={handleOpenCollectionInTab}
+                        projectId={project.id}
+                      />
                     </div>
                   </div>
                 </>
@@ -924,7 +1191,18 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     />
                   </div>
                   <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
-                    <TabContent tab={activeRightPrimaryTab || null} item={activeRightPrimaryItem || null} />
+                    <TabContent 
+                      tab={activeRightPrimaryTab || null} 
+                      item={activeRightPrimaryItem || null}
+                      items={items}
+                      collections={collections}
+                      onMoveItemToCollection={handleMoveItemToCollection}
+                      onDeleteCollection={handleDeleteCollection}
+                      onRenameCollection={handleRenameCollection}
+                      onOpenCollection={handleOpenCollection}
+                      onOpenCollectionInTab={handleOpenCollectionInTab}
+                      projectId={project.id}
+                    />
                   </div>
                 </>
               )}
@@ -932,6 +1210,141 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           </>
         )}
       </div>
+
+      {/* Create Collection Modal */}
+      {showCreateCollectionModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '1rem',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowCreateCollectionModal(false);
+            }
+          }}
+        >
+          <Panel
+            style={{
+              width: '100%',
+              maxWidth: 440,
+              padding: '1.5rem',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' }}>
+                Create Collection
+              </h2>
+              <button
+                onClick={() => setShowCreateCollectionModal(false)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  padding: '0.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.85rem',
+                    color: 'var(--text-muted)',
+                    marginBottom: '0.5rem',
+                    fontWeight: 500,
+                  }}
+                >
+                  Name <span style={{ color: 'var(--accent)' }}>*</span>
+                </label>
+                <Input
+                  value={newCollectionName}
+                  onChange={(e) => setNewCollectionName(e.target.value)}
+                  placeholder="Collection name"
+                  style={{ width: '100%' }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newCollectionName.trim()) {
+                      handleCreateCollectionSubmit();
+                    }
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.85rem',
+                    color: 'var(--text-muted)',
+                    marginBottom: '0.5rem',
+                    fontWeight: 500,
+                  }}
+                >
+                  Description (optional)
+                </label>
+                <textarea
+                  value={newCollectionDescription}
+                  onChange={(e) => setNewCollectionDescription(e.target.value)}
+                  placeholder="Brief description..."
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.65rem',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    fontSize: '0.9rem',
+                    background: 'var(--input-bg)',
+                    color: 'var(--text)',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <ButtonGhost
+                  onClick={() => setShowCreateCollectionModal(false)}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    fontWeight: 500,
+                  }}
+                >
+                  Cancel
+                </ButtonGhost>
+                <ButtonGhost
+                  onClick={handleCreateCollectionSubmit}
+                  disabled={!newCollectionName.trim()}
+                  style={{
+                    padding: '0.5rem 0.9rem',
+                    fontWeight: 600,
+                    background: newCollectionName.trim() ? 'var(--accent)' : 'var(--bg-glass)',
+                    color: newCollectionName.trim() ? '#fff' : 'var(--text-muted)',
+                    cursor: newCollectionName.trim() ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  Create
+                </ButtonGhost>
+              </div>
+            </div>
+          </Panel>
+        </div>
+      )}
     </div>
   );
 };
