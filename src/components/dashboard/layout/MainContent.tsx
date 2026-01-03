@@ -6,6 +6,7 @@ import { HomeView } from '../HomeView';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
 import { CollectionsView } from '../CollectionsView';
+import { NotesView } from '../NotesView';
 import { ItemsListPanel } from '../ItemsListPanel';
 import { CollectionPills } from '../CollectionPills';
 import { SearchBar } from '../SearchBar';
@@ -616,84 +617,15 @@ export const MainContent: React.FC<MainContentProps> = ({
         );
       case 'notes':
         return (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 2fr',
-            gap: '1.5rem',
-            height: '100%'
-          }}>
-            {/* Note List */}
-            <div style={{
-              borderRight: '1px solid #e5e7eb',
-              paddingRight: '1.5rem',
-              overflowY: 'auto'
-            }}>
-              {[1, 2, 3, 4].map((i) => (
-                <div 
-                  key={i} 
-                  style={{
-                    padding: '1rem',
-                    marginBottom: '0.5rem',
-                    borderRadius: '0.375rem',
-                    cursor: 'pointer',
-                    border: '1px solid transparent',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'white';
-                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
-                    e.currentTarget.style.borderColor = '#e5e7eb';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.boxShadow = 'none';
-                    e.currentTarget.style.borderColor = 'transparent';
-                  }}
-                >
-                  <h4 style={{ 
-                    fontWeight: 500, 
-                    color: '#111827', 
-                    marginBottom: '0.25rem',
-                    margin: '0 0 0.25rem 0'
-                  }}>
-                    Meeting Notes {i}
-                  </h4>
-                  <p style={{ 
-                    fontSize: '0.75rem', 
-                    color: '#6b7280', 
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    margin: '0 0 0.5rem 0'
-                  }}>
-                    Discussion about the new architecture and how we plan to migrate the database...
-                  </p>
-                  <span style={{ 
-                    fontSize: '0.75rem', 
-                    color: '#9ca3af', 
-                    display: 'block' 
-                  }}>
-                    2 hours ago
-                  </span>
-                </div>
-              ))}
-            </div>
-            {/* Editor Placeholder */}
-            <div style={{
-              background: 'white',
-              borderRadius: '0.5rem',
-              border: '1px solid #e5e7eb',
-              padding: '2rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#9ca3af'
-            }}>
-              Select a note to view
-            </div>
-          </div>
+          <NotesView
+            items={items}
+            collections={collections}
+            projects={projects}
+            onItemClick={(_item) => {
+              // Optionally open in a tab or navigate
+            }}
+            onUpdateItem={onUpdateBookmark}
+          />
         );
       case 'workspaces':
         if (workspaces.length === 0) {
@@ -712,51 +644,44 @@ export const MainContent: React.FC<MainContentProps> = ({
         // Card list page: pick a workspace
         if (!selectedWorkspace) {
           return (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.75rem' }}>
-              {workspaces.map((ws) => (
-                <div
-                  key={ws.id}
-                  style={{
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '0.75rem',
-                    padding: '0.75rem',
-                    background: '#ffffff',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => {
-                    setSelectedWorkspaceId(ws.id);
-                    setSelectedWindowIds(new Set());
-                  }}
-                  title={ws.name}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                    <div style={{ fontWeight: 900, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ws.name}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+              {workspaces.map((ws) => {
+                const totalTabs = ws.windows.reduce((sum, w) => sum + w.tabs.length, 0);
+                return (
+                  <Panel
+                    key={ws.id}
+                    style={{
+                      padding: '10px 12px',
+                      cursor: 'pointer',
+                      transition: 'all 0.12s ease',
+                    }}
+                    onClick={() => {
+                      setSelectedWorkspaceId(ws.id);
+                      setSelectedWindowIds(new Set());
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--accent)';
+                      e.currentTarget.style.background = 'var(--bg-hover)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border)';
+                      e.currentTarget.style.background = 'var(--bg-panel)';
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                      <div style={{ fontWeight: 600, fontSize: 'var(--text-base)', color: 'var(--text)' }}>{ws.name}</div>
                     </div>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 900, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '9999px', padding: '0.125rem 0.5rem', color: '#374151' }}>
-                      {ws.windows.length} windows
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.375rem' }}>
-                    Updated {new Date(ws.updated_at).toLocaleString()}
-                  </div>
-                  <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      style={{
-                        padding: '0.375rem 0.5rem',
-                        borderRadius: '0.5rem',
-                        border: '1px solid #e5e7eb',
-                        background: 'white',
-                        cursor: 'pointer',
-                        fontWeight: 800,
-                        color: '#374151',
-                      }}
-                    >
-                      Open
-                    </button>
-                  </div>
-                </div>
-              ))}
+                    <div style={{ display: 'flex', gap: '8px', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+                      <span>{ws.windows.length} windows</span>
+                      <span>•</span>
+                      <span>{totalTabs} tabs</span>
+                    </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      {new Date(ws.updated_at).toLocaleDateString()}
+                    </div>
+                  </Panel>
+                );
+              })}
             </div>
           );
         }

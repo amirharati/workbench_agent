@@ -101,45 +101,45 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           {navItems.map((item) => {
             const isActive = activeView === item.id;
             return (
-              <li key={item.id}>
-                <button 
-                  onClick={() => onSelectView(item.id)}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+            <li key={item.id}>
+              <button 
+                onClick={() => onSelectView(item.id)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
                     padding: isCollapsed ? '6px' : '5px 8px',
                     height: 28,
                     borderRadius: 4,
                     background: isActive ? 'var(--accent-weak)' : 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
+                  border: 'none',
+                  cursor: 'pointer',
                     fontSize: 'var(--text-sm)',
                     fontWeight: isActive ? 500 : 400,
                     color: isActive ? 'var(--text)' : 'var(--text-muted)',
                     transition: 'all 0.12s ease',
-                  }}
-                  onMouseEnter={(e) => {
+                }}
+                onMouseEnter={(e) => {
                     if (!isActive) {
                       e.currentTarget.style.background = 'var(--bg-hover)';
                       e.currentTarget.style.color = 'var(--text)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
+                  }
+                }}
+                onMouseLeave={(e) => {
                     if (!isActive) {
-                      e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.background = 'transparent';
                       e.currentTarget.style.color = 'var(--text-muted)';
-                    }
-                  }}
-                  title={item.label}
-                >
+                  }
+                }}
+                title={item.label}
+              >
                   <item.icon 
                     size={16} 
                     strokeWidth={isActive ? 2 : 1.5} 
                     style={{ flexShrink: 0 }}
                   />
-                  {!isCollapsed && (
+                {!isCollapsed && (
                     <span style={{ 
                       marginLeft: '8px',
                       whiteSpace: 'nowrap',
@@ -148,9 +148,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     }}>
                       {item.label}
                     </span>
-                  )}
-                </button>
-              </li>
+                )}
+              </button>
+            </li>
             );
           })}
         </ul>

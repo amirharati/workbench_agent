@@ -1,14 +1,22 @@
 # Dashboard Backlog (Functional Priorities)
 
 > **Goal**: Build out core functionality for collections, items, and system tabs before focusing on styling polish.  
-> **Status**: Planning → Implementation  
-> **Related**: See `project_dashboard_implementation.md` for architecture details
+> **Status**: Core MVP ~90% complete, advanced features pending  
+> **Related**: See `project_dashboard_implementation.md` for architecture details, `CURRENT_STATE.md` for overall status
 
 ---
 
 ## 📋 Overview
 
-This document tracks the next set of functional features to implement. We're deferring Phase 7 (styling/responsive/animations) unless it blocks functionality.
+This document tracks the next set of functional features to implement. **Core MVP is largely complete** - most basic CRUD operations and system tabs are working. Remaining items are primarily advanced features (sharing, quick access, AI) and polish.
+
+**Current State** (2026-01-02):
+- ✅ Core CRUD: Collections, Items, Projects - Complete
+- ✅ System Tabs: Search, Add Item, Collections Manager - Complete
+- ✅ Tab System: Multi-space, drag-and-drop - Complete
+- ⏸️ Sharing: Not started (deferred)
+- ⏸️ Quick Access: Placeholders only (pinned/favorites/trash)
+- ⏸️ AI Agent: Placeholder only
 
 ### Priority Order
 1. **Epic A**: Collections Management + Sharing

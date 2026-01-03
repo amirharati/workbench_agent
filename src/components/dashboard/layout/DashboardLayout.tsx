@@ -87,13 +87,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         position: 'relative',
         background: 'var(--bg)',
       }}>
-
+        
         {/* Main Content Area (full height, compact padding) */}
         <div style={{ height: '100%', overflow: 'auto', padding: '8px' }} className="scrollbar">
-          <MainContent
-            activeView={activeView}
+          <MainContent 
+            activeView={activeView} 
             projects={projects}
-            workspaces={workspaces}
+            workspaces={workspaces} 
             items={items}
             collections={collections}
             windows={windows}

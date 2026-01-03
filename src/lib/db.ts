@@ -365,8 +365,8 @@ export const getDB = () => {
       
       // Now open DB (will trigger upgrade if version changed)
       return openDB<TabManagerDB>(DB_NAME, DB_VERSION, {
-        async upgrade(db, oldVersion, _newVersion, transaction) {
-          const now = nowTs();
+      async upgrade(db, oldVersion, _newVersion, transaction) {
+        const now = nowTs();
           const newVersion = _newVersion ?? DB_VERSION;
 
           // Log migration start with warning
@@ -885,7 +885,7 @@ export const verifyBackup = (jsonString: string): { valid: boolean; error?: stri
  * @param createBackupFirst - If true, automatically creates a backup before importing (default: true)
  */
 export const importDB = async (jsonString: string, createBackupFirst: boolean = true) => {
-  const db = await getDB();
+    const db = await getDB();
   
   // CRITICAL: Create backup before importing to prevent data loss
   if (createBackupFirst) {
@@ -906,8 +906,8 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
     }
   }
   
-  try {
-    const data = JSON.parse(jsonString);
+    try {
+        const data = JSON.parse(jsonString);
     
     // Validate backup structure
     if (!data || typeof data !== 'object') {
@@ -918,7 +918,7 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
     const tx = db.transaction(['projects', 'collections', 'items', 'notes', 'workspaces'], 'readwrite');
     
     try {
-      if (data.projects) {
+        if (data.projects) {
         const projectsStore = tx.objectStore('projects');
         await Promise.all(data.projects.map((p: Project) => projectsStore.put(p)));
       }
@@ -931,38 +931,38 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
           }
           return collectionsStore.put(col as Collection);
         }));
-      }
-      if (data.items) {
+        }
+        if (data.items) {
         const itemsStore = tx.objectStore('items');
-        await Promise.all(
-          data.items.map((item: any) => {
-            // Normalize legacy shape
-            if (!Array.isArray(item.collectionIds)) {
-              const fromOld = typeof item.collectionId === 'string' ? [item.collectionId] : [];
-              item.collectionIds = fromOld;
-              delete item.collectionId;
-            }
+            await Promise.all(
+              data.items.map((item: any) => {
+                // Normalize legacy shape
+                if (!Array.isArray(item.collectionIds)) {
+                  const fromOld = typeof item.collectionId === 'string' ? [item.collectionId] : [];
+                  item.collectionIds = fromOld;
+                  delete item.collectionId;
+                }
             return itemsStore.put(item as Item);
-          })
-        );
-      }
-      if (data.notes) {
+              })
+            );
+        }
+        if (data.notes) {
         const notesStore = tx.objectStore('notes');
         await Promise.all(data.notes.map((n: Note) => notesStore.put(n)));
-      }
-      if (data.workspaces) {
+        }
+        if (data.workspaces) {
         const workspacesStore = tx.objectStore('workspaces');
         await Promise.all(data.workspaces.map((ws: Workspace) => workspacesStore.put(ws)));
       }
       
-      await tx.done;
+            await tx.done;
       return true;
     } catch (txError) {
       tx.abort();
       throw txError;
+        }
+    } catch (e) {
+        console.error("Import failed", e);
+        return false;
     }
-  } catch (e) {
-    console.error("Import failed", e);
-    return false;
-  }
 };

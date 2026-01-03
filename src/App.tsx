@@ -3,7 +3,7 @@ import { Layout } from 'lucide-react';
 import { 
   addItem, 
   exportDB, 
-  importDB,
+  importDB, 
   verifyBackup,
   getAllProjects,
   getAllCollections, 
@@ -145,15 +145,15 @@ function App() {
 
   const handleExport = async () => {
     try {
-      const json = await exportDB();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
+    const json = await exportDB();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
       // Include full timestamp for better organization
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       a.download = `workbench-backup-${timestamp}.json`;
-      a.click();
+    a.click();
       URL.revokeObjectURL(url);
       showStatus('Backup exported!');
     } catch (error) {
@@ -167,7 +167,7 @@ function App() {
     if (!file) return;
     
     try {
-      const text = await file.text();
+    const text = await file.text();
       
       // Verify backup before importing
       const verification = verifyBackup(text);
@@ -193,7 +193,7 @@ function App() {
       const success = await importDB(text, true); // true = create backup first
       if (success) {
         showStatus('Data restored! Backup created before import.');
-        await loadData();
+    await loadData();
       } else {
         showStatus('Import failed. Your original data is safe.');
       }
