@@ -3,10 +3,18 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 const DB_NAME = 'personal-tools-db';
 const DB_VERSION = 3;
 
-const DEFAULT_PROJECT_ID = 'project_all';
-const DEFAULT_PROJECT_NAME = 'All';
+// The default project for orphan items (items without a specific project)
+const DEFAULT_PROJECT_ID = 'project_default';
+const DEFAULT_PROJECT_NAME = 'Default';
 const DEFAULT_UNSORTED_COLLECTION_ID = `collection_${DEFAULT_PROJECT_ID}_unsorted`;
 const DEFAULT_UNSORTED_COLLECTION_NAME = 'Unsorted';
+
+// Virtual project ID for "All" aggregate view (shows everything from all projects)
+// This is NOT stored in DB - it's a virtual view in the UI
+export const ALL_PROJECTS_ID = '__all__';
+
+// Legacy project ID (will be migrated to new ID)
+const LEGACY_PROJECT_ID = 'project_all';
 
 export interface Project {
   id: string;
@@ -213,6 +221,85 @@ function getAllFromStore(db: IDBDatabase, storeName: string): Promise<any[]> {
 
 async function ensureDefaultProjectAndCollection(db: IDBPDatabase<TabManagerDB>) {
   const now = nowTs();
+  
+  // --- Runtime migration: handle legacy project_all -> project_default ---
+  const legacyProject = await db.get('projects', LEGACY_PROJECT_ID);
+  if (legacyProject) {
+    console.log('🔄 Runtime migration: project_all -> project_default');
+    
+    // Create new default project (or update if exists)
+    const existingDefault = await db.get('projects', DEFAULT_PROJECT_ID);
+    if (!existingDefault) {
+      await db.put('projects', {
+        id: DEFAULT_PROJECT_ID,
+        name: DEFAULT_PROJECT_NAME,
+        isDefault: true,
+        created_at: legacyProject.created_at || now,
+        updated_at: now,
+      });
+    }
+
+    // Migrate collections from legacy project
+    const allCols = await db.getAll('collections');
+    for (const col of allCols) {
+      let changed = false;
+      let newPrimaryProjectId = col.primaryProjectId;
+      let newProjectIds = [...(col.projectIds || [])];
+
+      if (col.primaryProjectId === LEGACY_PROJECT_ID) {
+        newPrimaryProjectId = DEFAULT_PROJECT_ID;
+        changed = true;
+      }
+      if (newProjectIds.includes(LEGACY_PROJECT_ID)) {
+        newProjectIds = newProjectIds.map(p => p === LEGACY_PROJECT_ID ? DEFAULT_PROJECT_ID : p);
+        changed = true;
+      }
+
+      // Migrate the unsorted collection
+      if (col.id === `collection_${LEGACY_PROJECT_ID}_unsorted`) {
+        await db.delete('collections', col.id);
+        await db.put('collections', {
+          ...col,
+          id: DEFAULT_UNSORTED_COLLECTION_ID,
+          primaryProjectId: DEFAULT_PROJECT_ID,
+          projectIds: [DEFAULT_PROJECT_ID],
+          updated_at: now,
+        });
+        continue;
+      }
+
+      if (changed) {
+        await db.put('collections', {
+          ...col,
+          primaryProjectId: newPrimaryProjectId,
+          projectIds: newProjectIds,
+          updated_at: now,
+        });
+      }
+    }
+
+    // Migrate items referencing legacy unsorted collection
+    const allItems = await db.getAll('items');
+    const legacyUnsortedId = `collection_${LEGACY_PROJECT_ID}_unsorted`;
+    for (const item of allItems) {
+      if (item.collectionIds?.includes(legacyUnsortedId)) {
+        const newCollectionIds = item.collectionIds.map(c => 
+          c === legacyUnsortedId ? DEFAULT_UNSORTED_COLLECTION_ID : c
+        );
+        await db.put('items', {
+          ...item,
+          collectionIds: newCollectionIds,
+          updated_at: now,
+        });
+      }
+    }
+
+    // Delete legacy project
+    await db.delete('projects', LEGACY_PROJECT_ID);
+    console.log('✅ Runtime migration complete: project_all -> project_default');
+  }
+  // --- End runtime migration ---
+
   const existingProject = await db.get('projects', DEFAULT_PROJECT_ID);
   if (!existingProject) {
     await db.put('projects', {
@@ -261,6 +348,12 @@ async function ensureDefaultCollectionForProject(db: IDBPDatabase<TabManagerDB>,
     } satisfies Collection);
   }
   return id;
+}
+
+// Public function to ensure a project's unsorted collection exists
+export async function ensureProjectUnsortedCollection(projectId: string): Promise<string> {
+  const db = await getDB();
+  return ensureDefaultCollectionForProject(db, projectId);
 }
 
 export const getDB = () => {
@@ -361,7 +454,81 @@ export const getDB = () => {
           const itemsStore = transaction.objectStore('items');
           const workspacesStore = transaction.objectStore('workspaces');
 
-          // Ensure default project
+          // --- Migrate legacy "project_all" to "project_default" ---
+          const legacyProject = await projectsStore.get(LEGACY_PROJECT_ID);
+          if (legacyProject) {
+            console.log('🔄 Migrating legacy project_all to project_default...');
+            
+            // Create the new default project
+            await projectsStore.put({
+              id: DEFAULT_PROJECT_ID,
+              name: DEFAULT_PROJECT_NAME,
+              isDefault: true,
+              created_at: legacyProject.created_at || now,
+              updated_at: now,
+            });
+
+            // Migrate all collections from project_all to project_default
+            const allCols: any[] = await collectionsStore.getAll();
+            for (const col of allCols) {
+              let changed = false;
+              let newPrimaryProjectId = col.primaryProjectId;
+              let newProjectIds = col.projectIds || [];
+
+              if (col.primaryProjectId === LEGACY_PROJECT_ID) {
+                newPrimaryProjectId = DEFAULT_PROJECT_ID;
+                changed = true;
+              }
+              if (Array.isArray(col.projectIds) && col.projectIds.includes(LEGACY_PROJECT_ID)) {
+                newProjectIds = col.projectIds.map((p: string) => p === LEGACY_PROJECT_ID ? DEFAULT_PROJECT_ID : p);
+                changed = true;
+              }
+              
+              // Also migrate the unsorted collection ID
+              if (col.id === `collection_${LEGACY_PROJECT_ID}_unsorted`) {
+                await collectionsStore.delete(col.id);
+                await collectionsStore.put({
+                  ...col,
+                  id: DEFAULT_UNSORTED_COLLECTION_ID,
+                  primaryProjectId: DEFAULT_PROJECT_ID,
+                  projectIds: [DEFAULT_PROJECT_ID],
+                  updated_at: now,
+                });
+                continue;
+              }
+
+              if (changed) {
+                await collectionsStore.put({
+                  ...col,
+                  primaryProjectId: newPrimaryProjectId,
+                  projectIds: newProjectIds,
+                  updated_at: now,
+                });
+              }
+            }
+
+            // Migrate items that reference the old unsorted collection
+            const allItems: any[] = await itemsStore.getAll();
+            const legacyUnsortedId = `collection_${LEGACY_PROJECT_ID}_unsorted`;
+            for (const item of allItems) {
+              if (Array.isArray(item.collectionIds) && item.collectionIds.includes(legacyUnsortedId)) {
+                const newCollectionIds = item.collectionIds.map((c: string) => 
+                  c === legacyUnsortedId ? DEFAULT_UNSORTED_COLLECTION_ID : c
+                );
+                await itemsStore.put({
+                  ...item,
+                  collectionIds: newCollectionIds,
+                  updated_at: now,
+                });
+              }
+            }
+
+            // Delete the legacy project
+            await projectsStore.delete(LEGACY_PROJECT_ID);
+            console.log('✅ Legacy project_all migrated to project_default');
+          }
+
+          // Ensure default project exists (if not migrated from legacy)
           const existingDefault = await projectsStore.get(DEFAULT_PROJECT_ID);
           if (!existingDefault) {
             await projectsStore.put({
@@ -453,6 +620,12 @@ export const getDB = () => {
       },
     });
     })();
+    
+    // After DB is opened, run runtime migrations (for cases where DB version didn't change)
+    dbPromise = dbPromise.then(async (db) => {
+      await ensureDefaultProjectAndCollection(db);
+      return db;
+    });
   }
   return dbPromise;
 };

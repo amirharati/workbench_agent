@@ -21,9 +21,11 @@ export const AddItemTab: React.FC<AddItemTabProps> = ({
   const [url, setUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>(() => {
-    if (defaultCollectionId && defaultCollectionId !== 'all') {
+    // If a valid collection ID is provided (not 'all' or undefined), pre-select it
+    if (defaultCollectionId && defaultCollectionId !== 'all' && typeof defaultCollectionId === 'string') {
       return [defaultCollectionId];
     }
+    // Otherwise, don't pre-select (will default to Unsorted in the handler)
     return [];
   });
   const [isSaving, setIsSaving] = useState(false);

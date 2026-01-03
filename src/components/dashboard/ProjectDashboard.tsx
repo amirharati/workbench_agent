@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { Project, Collection, Item, Workspace } from '../../lib/db';
-import { addCollection, deleteCollection, updateItem, updateCollection, addItem, getAllItems, deleteItem, getAllWorkspaces } from '../../lib/db';
+import { addCollection, deleteCollection, updateItem, updateCollection, addItem, getAllItems, deleteItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID } from '../../lib/db';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -25,6 +25,7 @@ interface ProjectDashboardProps {
   project: Project;
   collections: Collection[];
   items: Item[];
+  projects?: Project[]; // For collection creation project selection
   onBack: () => void;
   onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
   onDeleteItem?: (id: string) => Promise<void>;
@@ -43,6 +44,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   project,
   collections,
   items,
+  projects = [],
   onBack,
   onUpdateItem: _onUpdateItem,
   onDeleteItem,
@@ -70,6 +72,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   const [showCreateCollectionModal, setShowCreateCollectionModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionDescription, setNewCollectionDescription] = useState('');
+  const [newCollectionProjectId, setNewCollectionProjectId] = useState<string>(project.id);
   
   // Workspace state (placeholder for now - will be linked to project later)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -80,8 +83,26 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     getAllWorkspaces().then(setWorkspaces).catch(console.error);
   }, []);
 
+  // Check if this is the virtual "All" project which aggregates everything
+  const isAllProject = project.id === ALL_PROJECTS_ID;
+
   const projectCollections = useMemo(() => {
     const projectUnsortedId = `collection_${project.id}_unsorted`;
+    
+    // For "All" project, show ALL collections (aggregates everything)
+    if (isAllProject) {
+      return collections.filter((c) => {
+        // Include the All project's unsorted collection
+        if (c.id === projectUnsortedId) return true;
+        // Exclude other unsorted/default collections (they're internal per-project)
+        if (c.isDefault) return false;
+        if (c.name === 'Unsorted') return false;
+        // Include all other collections from all projects
+        return true;
+      });
+    }
+    
+    // For regular projects, only show their collections
     return collections.filter(
       (c) => {
         // Must belong to this project
@@ -101,15 +122,21 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         return true;
       },
     );
-  }, [collections, project.id]);
+  }, [collections, project.id, isAllProject]);
 
   const projectItems = useMemo(() => {
+    // For "All" project, show ALL items from all projects
+    if (isAllProject) {
+      return items;
+    }
+    
+    // For regular projects, only show items in their collections
     const collectionIdSet = new Set(projectCollections.map((c) => c.id));
     return items.filter((item) => {
       const cids = item.collectionIds || [];
       return cids.some((cid: string) => collectionIdSet.has(cid));
     });
-  }, [items, projectCollections]);
+  }, [items, projectCollections, isAllProject]);
 
   const collectionItemCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -602,8 +629,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
 
   const handleCreateItem = async (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => {
     try {
-      // Get the project's unsorted collection if no collections selected
-      const projectUnsortedId = `collection_${project.id}_unsorted`;
+      // Ensure the project's unsorted collection exists
+      const projectUnsortedId = await ensureProjectUnsortedCollection(project.id);
       const finalCollectionIds = data.collectionIds.length > 0 ? data.collectionIds : [projectUnsortedId];
 
       const itemId = await addItem({
@@ -727,15 +754,17 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     setShowCreateCollectionModal(true);
     setNewCollectionName('');
     setNewCollectionDescription('');
+    setNewCollectionProjectId(project.id); // Default to current project
   };
 
   const handleCreateCollectionSubmit = async () => {
     if (!newCollectionName.trim()) return;
     try {
-      await addCollection(newCollectionName.trim(), undefined, project.id);
+      await addCollection(newCollectionName.trim(), undefined, newCollectionProjectId);
       setShowCreateCollectionModal(false);
       setNewCollectionName('');
       setNewCollectionDescription('');
+      setNewCollectionProjectId(project.id);
       if (onRefresh) await onRefresh();
     } catch (error) {
       console.error('Failed to create collection:', error);
@@ -1200,7 +1229,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
                       onItemClick={handleItemClick}
-                      defaultCollectionId={selectedCollectionId}
+                      defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
                     />
                   </div>
@@ -1240,7 +1269,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
                       onItemClick={handleItemClick}
-                      defaultCollectionId={selectedCollectionId}
+                      defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
                     />
                   </div>
@@ -1258,6 +1287,11 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   onRenameCollection={handleRenameCollection}
                   onOpenCollection={handleOpenCollection}
                   onOpenCollectionInTab={handleOpenCollectionInTab}
+                  onCreateItem={handleCreateItem}
+                  onUpdateItem={handleUpdateItem}
+                  onDeleteItem={handleDeleteItem}
+                  onItemClick={handleItemClick}
+                  defaultCollectionId={selectedCollectionId}
                   projectId={project.id}
                 />
               </div>
@@ -1299,6 +1333,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         onOpenCollection={handleOpenCollection}
                         onOpenCollectionInTab={handleOpenCollectionInTab}
                         onCreateItem={handleCreateItem}
+                        onUpdateItem={handleUpdateItem}
+                        onDeleteItem={handleDeleteItem}
+                        onItemClick={handleItemClick}
                         defaultCollectionId={selectedCollectionId}
                         projectId={project.id}
                       />
@@ -1336,6 +1373,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         onOpenCollection={handleOpenCollection}
                         onOpenCollectionInTab={handleOpenCollectionInTab}
                         onCreateItem={handleCreateItem}
+                        onUpdateItem={handleUpdateItem}
+                        onDeleteItem={handleDeleteItem}
+                        onItemClick={handleItemClick}
                         defaultCollectionId={selectedCollectionId}
                         projectId={project.id}
                       />
@@ -1369,7 +1409,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
                       onItemClick={handleItemClick}
-                      defaultCollectionId={selectedCollectionId}
+                      defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
                     />
                   </div>
@@ -1454,6 +1494,43 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   autoFocus
                 />
               </div>
+
+              {/* Project Selection */}
+              {projects.length > 0 && (
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '0.85rem',
+                      color: 'var(--text-muted)',
+                      marginBottom: '0.5rem',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Project
+                  </label>
+                  <select
+                    value={newCollectionProjectId}
+                    onChange={(e) => setNewCollectionProjectId(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem 0.65rem',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      fontSize: '0.9rem',
+                      background: 'var(--input-bg)',
+                      color: 'var(--text)',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label

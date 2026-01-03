@@ -1,10 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { Workspace, Item, Collection, Project, addProject, deleteProject } from '../../../lib/db';
+import { Workspace, Item, Collection, Project, addProject, deleteProject, ALL_PROJECTS_ID } from '../../../lib/db';
 import { DashboardView } from './DashboardLayout';
 import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
+import { CollectionsView } from '../CollectionsView';
+import { ItemsListPanel } from '../ItemsListPanel';
+import { CollectionPills } from '../CollectionPills';
+import { SearchBar } from '../SearchBar';
+import { TabBar, TabBarTab } from '../TabBar';
+import { TabContent } from '../TabContent';
+import { Resizer } from '../Resizer';
 import { Panel } from '../../../styles/primitives';
 
 interface MainContentProps {
@@ -50,6 +57,10 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [editNotes, setEditNotes] = useState('');
   const [editCollectionId, setEditCollectionId] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
+  const [bookmarkTabs, setBookmarkTabs] = useState<Array<{ id: string; title: string; itemId: string }>>([]);
+  const [activeBookmarkTabId, setActiveBookmarkTabId] = useState<string | null>(null);
+  const [bookmarkListWidth, setBookmarkListWidth] = useState(320);
   const selectedWorkspace = useMemo(
     () => workspaces.find((w) => w.id === selectedWorkspaceId) || null,
     [workspaces, selectedWorkspaceId]
@@ -128,27 +139,55 @@ export const MainContent: React.FC<MainContentProps> = ({
     }
   };
 
-  const getDomain = (url: string) => {
-    try {
-      return new URL(url).hostname.replace(/^www\./, '');
-    } catch {
-      return url;
-    }
-  };
+  // getDomain moved to utils - keeping for backward compatibility if needed
+  // const getDomain = (url: string) => {
+  //   try {
+  //     return new URL(url).hostname.replace(/^www\./, '');
+  //   } catch {
+  //     return url;
+  //   }
+  // };
+
+  // Get all collections for filtering (bookmarks view)
+  const allCollections = useMemo(() => {
+    return collections.filter((c) => !c.isDefault || c.name === 'Unsorted');
+  }, [collections]);
+
+  // Get item counts per collection (bookmarks view)
+  const collectionItemCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    items.forEach((item) => {
+      (item.collectionIds || []).forEach((cid) => {
+        counts[cid] = (counts[cid] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [items]);
 
   const filteredItems = useMemo(() => {
+    let filtered = items;
+
+    // Filter by collection (for bookmarks view)
+    if (selectedCollectionId !== 'all') {
+      filtered = filtered.filter((item) => (item.collectionIds || []).includes(selectedCollectionId));
+    }
+
+    // Filter by search
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((item) => {
-      const haystack = [
-        item.title,
-        item.url,
-        item.notes || '',
-        item.tags.join(' ')
-      ].join(' ').toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [items, searchQuery]);
+    if (q) {
+      filtered = filtered.filter((item) => {
+        const haystack = [
+          item.title,
+          item.url,
+          item.notes || '',
+          item.tags.join(' ')
+        ].join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+
+    return filtered;
+  }, [items, searchQuery, selectedCollectionId]);
 
   const handleAddSubmit = async () => {
     if (!newUrl.trim()) return;
@@ -189,10 +228,11 @@ export const MainContent: React.FC<MainContentProps> = ({
     await onDeleteBookmark(id);
   };
 
-  const formatDate = (ts: number) => {
-    const d = new Date(ts);
-    return d.toLocaleDateString();
-  };
+  // formatDate moved to utils - keeping for backward compatibility if needed
+  // const formatDate = (ts: number) => {
+  //   const d = new Date(ts);
+  //   return d.toLocaleDateString();
+  // };
 
   const renderContent = () => {
     switch (activeView) {
@@ -210,12 +250,33 @@ export const MainContent: React.FC<MainContentProps> = ({
           />
         );
       case 'projects':
+        // Virtual "All" project that aggregates everything
+        const virtualAllProject: Project = {
+          id: ALL_PROJECTS_ID,
+          name: 'All',
+          description: 'All items from all projects',
+          isDefault: false,
+          created_at: 0,
+          updated_at: Date.now(),
+        };
+
+        // Combined list with "All" first, then real projects
+        const allProjectsWithVirtual = [virtualAllProject, ...projects];
+
         const activeProject = selectedProjectId
-          ? projects.find((p) => p.id === selectedProjectId) || null
+          ? (selectedProjectId === ALL_PROJECTS_ID 
+              ? virtualAllProject 
+              : projects.find((p) => p.id === selectedProjectId) || null)
           : null;
 
         const collectionsForProject = (pid: string | null) => {
           if (!pid) return [];
+          
+          // For "All" virtual project, show all non-default collections
+          if (pid === ALL_PROJECTS_ID) {
+            return collections.filter((c) => !c.isDefault && c.name !== 'Unsorted');
+          }
+          
           const projectUnsortedId = `collection_${pid}_unsorted`;
           return collections.filter((c) => {
             // Must belong to this project
@@ -237,6 +298,12 @@ export const MainContent: React.FC<MainContentProps> = ({
 
         const itemsForProject = (pid: string | null) => {
           if (!pid) return [];
+          
+          // For "All" virtual project, show ALL items
+          if (pid === ALL_PROJECTS_ID) {
+            return items;
+          }
+          
           const colIds = new Set(collectionsForProject(pid).map((c) => c.id));
           return items.filter((it) => (it.collectionIds || []).some((cid) => colIds.has(cid)));
         };
@@ -249,6 +316,11 @@ export const MainContent: React.FC<MainContentProps> = ({
         };
 
         const handleDeleteProject = async (id: string) => {
+          // Can't delete the virtual "All" project
+          if (id === ALL_PROJECTS_ID) {
+            alert('Cannot delete the "All" aggregate view.');
+            return;
+          }
           if (!window.confirm('Delete this project? This does not delete bookmarks.')) return;
           const ok = await deleteProject(id);
           if (!ok) {
@@ -260,8 +332,11 @@ export const MainContent: React.FC<MainContentProps> = ({
         };
 
         const ProjectCard: React.FC<{ project: Project }> = ({ project }) => {
+          const isVirtualAll = project.id === ALL_PROJECTS_ID;
           const cols = collectionsForProject(project.id);
           const its = itemsForProject(project.id);
+          const canDelete = !project.isDefault && !isVirtualAll;
+          
           return (
             <Panel
               key={project.id}
@@ -269,25 +344,57 @@ export const MainContent: React.FC<MainContentProps> = ({
                 padding: '10px 12px',
                 cursor: 'pointer',
                 transition: 'all 0.12s ease',
+                // Special styling for "All" virtual project
+                ...(isVirtualAll ? {
+                  background: 'linear-gradient(135deg, var(--accent-subtle) 0%, var(--bg-panel) 100%)',
+                  borderColor: 'var(--accent)',
+                  borderStyle: 'dashed',
+                } : {}),
               }}
               onClick={() => setSelectedProjectId(project.id)}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'var(--accent)';
-                e.currentTarget.style.background = 'var(--bg-hover)';
+                e.currentTarget.style.background = isVirtualAll 
+                  ? 'linear-gradient(135deg, var(--accent-subtle) 0%, var(--bg-hover) 100%)'
+                  : 'var(--bg-hover)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border)';
-                e.currentTarget.style.background = 'var(--bg-panel)';
+                e.currentTarget.style.borderColor = isVirtualAll ? 'var(--accent)' : 'var(--border)';
+                e.currentTarget.style.background = isVirtualAll 
+                  ? 'linear-gradient(135deg, var(--accent-subtle) 0%, var(--bg-panel) 100%)'
+                  : 'var(--bg-panel)';
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-base)', color: 'var(--text)' }}>{project.name}</div>
+                  <div style={{ 
+                    fontWeight: 600, 
+                    fontSize: 'var(--text-base)', 
+                    color: isVirtualAll ? 'var(--accent)' : 'var(--text)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}>
+                    {isVirtualAll && <span style={{ fontSize: '14px' }}>📊</span>}
+                    {project.name}
+                    {isVirtualAll && (
+                      <span style={{ 
+                        fontSize: 'var(--text-xs)', 
+                        background: 'var(--accent)', 
+                        color: 'var(--accent-text)',
+                        padding: '1px 6px',
+                        borderRadius: 8,
+                        fontWeight: 500,
+                      }}>
+                        Aggregate
+                      </span>
+                    )}
+                  </div>
                   {project.description && (
                     <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', marginTop: '2px' }}>{project.description}</div>
                   )}
                 </div>
-                {!project.isDefault && (
+                {canDelete && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -353,7 +460,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                     No projects yet. Create one to get started.
                   </Panel>
                 )}
-                {projects.map((p) => (
+                {allProjectsWithVirtual.map((p) => (
                   <ProjectCard key={p.id} project={p} />
                 ))}
               </div>
@@ -367,6 +474,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             project={activeProject}
             collections={collections}
             items={items}
+            projects={projects}
             onBack={() => setSelectedProjectId(null)}
             onUpdateItem={onUpdateBookmark}
             onDeleteItem={onDeleteBookmark}
@@ -374,158 +482,135 @@ export const MainContent: React.FC<MainContentProps> = ({
           />
         );
       case 'bookmarks':
+        // Handle item click - open in tab
+        const handleBookmarkItemClick = (item: Item) => {
+          // If item is already open, focus it
+          const existingTab = bookmarkTabs.find((t) => t.itemId === item.id);
+          if (existingTab) {
+            setActiveBookmarkTabId(existingTab.id);
+            return;
+          }
+
+          // Create new tab
+          const newTab = {
+            id: item.id,
+            title: item.title || 'Untitled',
+            itemId: item.id,
+          };
+          setBookmarkTabs((prev) => [...prev, newTab]);
+          setActiveBookmarkTabId(newTab.id);
+        };
+
+        const handleBookmarkTabClose = (tabId: string) => {
+          setBookmarkTabs((prev) => prev.filter((t) => t.id !== tabId));
+          if (activeBookmarkTabId === tabId) {
+            const remaining = bookmarkTabs.filter((t) => t.id !== tabId);
+            setActiveBookmarkTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+          }
+        };
+
+        const activeBookmarkTab = bookmarkTabs.find((t) => t.id === activeBookmarkTabId) || null;
+        const activeBookmarkItem = activeBookmarkTab?.itemId ? items.find((i) => i.id === activeBookmarkTab.itemId) || null : null;
+
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{
-              background: 'var(--bg-panel)',
-              border: '1px solid var(--border)',
-              borderRadius: '0.75rem',
-              padding: '0.75rem',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              alignItems: 'center'
-            }}>
-              <input
-                type="text"
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 28 }}>
+              <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
+                Bookmarks
+              </h1>
+            </div>
+
+            {/* Filters: Collection pills + Search */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <CollectionPills
+                collections={allCollections}
+                selectedId={selectedCollectionId}
+                onSelect={setSelectedCollectionId}
+                totalItems={items.length}
+                getCountForCollection={(cid) => collectionItemCounts[cid] || 0}
+                maxVisible={4}
+              />
+              <SearchBar
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search title, url, tags, notes..."
-                style={{
-                  flex: '1 1 240px',
-                  minWidth: '240px',
-                  padding: '0.55rem 0.75rem',
-                  border: '1px solid var(--border)',
-                  borderRadius: '0.5rem',
-                  fontSize: '0.9rem'
-                }}
+                onChange={setSearchQuery}
+                placeholder="⌘K Search bookmarks..."
               />
               <button
                 onClick={() => setShowAddModal(true)}
                 style={{
-                  padding: '0.55rem 0.9rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-glass)',
-                  color: 'var(--text)',
-                  fontWeight: 700,
-                  cursor: 'pointer'
+                  padding: '3px 10px',
+                  height: 24,
+                  background: 'var(--accent)',
+                  color: 'var(--accent-text)',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 500,
                 }}
               >
-                + Add bookmark
+                + New
               </button>
             </div>
 
-            <div style={{
-              background: 'var(--bg-panel)',
-              border: '1px solid var(--border)',
-              borderRadius: '0.75rem',
-              padding: '0.5rem',
-              minHeight: '200px'
-            }}>
-              {filteredItems.length === 0 ? (
-                <div style={{ padding: '1.25rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  No bookmarks yet. Add one from here or save the current tab.
+            {/* Main area: items list + content */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `${bookmarkListWidth}px 4px 1fr`,
+                gap: '4px',
+                flex: 1,
+                minHeight: 0,
+              }}
+            >
+              {/* Items list */}
+              <ItemsListPanel
+                items={filteredItems}
+                activeItemId={activeBookmarkItem?.id || null}
+                onItemClick={handleBookmarkItemClick}
+                title={selectedCollectionId === 'all' ? 'All Bookmarks' : collections.find((c) => c.id === selectedCollectionId)?.name || 'Bookmarks'}
+                onNew={() => setShowAddModal(true)}
+                onEdit={handleEditItem}
+                onDelete={(item) => handleDelete(item.id)}
+                onOpenInNewTab={(item) => {
+                  if (item.url) openInNewTab(item.url);
+                }}
+              />
+
+              <Resizer
+                direction="vertical"
+                onResize={(delta) => {
+                  setBookmarkListWidth((w) => Math.min(Math.max(200, w + delta), 600));
+                }}
+              />
+
+              {/* Tabbed content area */}
+              <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 0, padding: 0 }}>
+                <TabBar
+                  tabs={bookmarkTabs as TabBarTab[]}
+                  activeTabId={activeBookmarkTabId}
+                  onTabSelect={setActiveBookmarkTabId}
+                  onTabClose={handleBookmarkTabClose}
+                  spaceId="bookmarks"
+                />
+                <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                  <TabContent
+                    tab={activeBookmarkTab}
+                    item={activeBookmarkItem || null}
+                    items={items}
+                    collections={collections}
+                    onUpdateItem={onUpdateBookmark}
+                    onDeleteItem={(item) => {
+                      handleDelete(item.id);
+                      // Close tab if open
+                      if (bookmarkTabs.find((t) => t.itemId === item.id)) {
+                        handleBookmarkTabClose(item.id);
+                      }
+                    }}
+                  />
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                  {filteredItems.map((item) => (
-                    <div
-                      key={item.id}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 220px 140px 160px',
-                        gap: '0.5rem',
-                        alignItems: 'center',
-                        padding: '0.55rem 0.65rem',
-                        borderRadius: '0.6rem',
-                        border: '1px solid var(--border)',
-                        transition: 'border-color 0.2s, box-shadow 0.2s'
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent-weak)'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.08)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none'; }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
-                        {item.favicon ? (
-                          <img src={item.favicon} alt="" style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0 }} />
-                        ) : (
-                          <div style={{ width: 18, height: 18, borderRadius: 4, background: '#e5e7eb', flexShrink: 0 }} />
-                        )}
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {item.title || 'Untitled'}
-                          </div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {getDomain(item.url)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.url}>
-                        {item.url}
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                        {item.tags && item.tags.length > 0 ? (
-                          item.tags.map((t) => (
-                            <span key={t} style={{ fontSize: '0.75rem', background: 'var(--bg-glass)', border: '1px solid var(--border)', padding: '0.1rem 0.45rem', borderRadius: '9999px', color: 'var(--text)' }}>
-                              {t}
-                            </span>
-                          ))
-                        ) : (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{formatDate(item.created_at)}</span>
-                        <button
-                          onClick={() => openInNewTab(item.url)}
-                          style={{
-                            padding: '0.35rem 0.55rem',
-                            borderRadius: '0.45rem',
-                            border: '1px solid var(--border)',
-                            background: 'var(--bg-glass)',
-                            cursor: 'pointer',
-                            fontWeight: 700,
-                            color: 'var(--text)'
-                          }}
-                        >
-                          Open
-                        </button>
-                        <button
-                          onClick={() => handleEditItem(item)}
-                          style={{
-                            padding: '0.35rem 0.55rem',
-                            borderRadius: '0.45rem',
-                            border: '1px solid var(--border)',
-                            background: 'var(--bg-glass)',
-                            cursor: 'pointer',
-                            fontWeight: 700,
-                            color: 'var(--text)'
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          style={{
-                            padding: '0.35rem 0.55rem',
-                            borderRadius: '0.45rem',
-                            border: '1px solid #ef4444',
-                            background: '#2b1111',
-                            cursor: 'pointer',
-                            fontWeight: 700,
-                            color: '#fca5a5'
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              </Panel>
             </div>
           </div>
         );
@@ -929,6 +1014,19 @@ export const MainContent: React.FC<MainContentProps> = ({
               </div>
             </div>
           </div>
+        );
+      case 'collections':
+        return (
+          <CollectionsView
+            collections={collections}
+            projects={projects}
+            items={items}
+            onItemClick={undefined}
+            onUpdateItem={onUpdateBookmark}
+            onDeleteItem={(item) => {
+              if (onDeleteBookmark) onDeleteBookmark(item.id);
+            }}
+          />
         );
       default:
         return <div>Select a view</div>;
