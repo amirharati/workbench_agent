@@ -932,7 +932,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', height: '100%', width: '100%', overflow: 'hidden' }}>
       {/* Header - compact */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between', height: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1154,11 +1154,14 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         style={{
           display: 'grid',
           gridTemplateColumns: rightPaneVisible
-            ? `${listWidth}px 4px 1fr 4px ${rightPaneWidth}px`
-            : `${listWidth}px 4px 1fr`,
+            ? `minmax(200px, ${listWidth}px) 4px minmax(0, 1fr) 4px minmax(260px, ${rightPaneWidth}px)`
+            : `minmax(200px, ${listWidth}px) 4px minmax(0, 1fr)`,
           gap: '4px',
           flex: 1,
           minHeight: 0,
+          overflow: 'hidden',
+          width: '100%',
+          minWidth: 0, // Allow grid to shrink below content size
         }}
       >
         <ItemsListPanel
@@ -1187,7 +1190,11 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         <Resizer
           direction="vertical"
           onResize={(delta) => {
-            setListWidth((w) => Math.min(Math.max(200, w + delta), 600));
+            setListWidth((w) => {
+              const newWidth = w + delta;
+              // Constrain to min/max, but also ensure total doesn't exceed container
+              return Math.min(Math.max(200, newWidth), 600);
+            });
           }}
         />
 
@@ -1304,7 +1311,11 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
             <Resizer
               direction="vertical"
               onResize={(delta) => {
-                setRightPaneWidth((w) => Math.min(Math.max(260, w - delta), 700));
+                setRightPaneWidth((w) => {
+                  const newWidth = w - delta; // Note: negative delta because we're resizing from the left
+                  // Constrain to min/max
+                  return Math.min(Math.max(260, newWidth), 700);
+                });
               }}
             />
             <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
