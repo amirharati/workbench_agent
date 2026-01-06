@@ -14,6 +14,7 @@ This document tracks the next set of functional features to implement. **Core MV
 - ✅ Core CRUD: Collections, Items, Projects - Complete
 - ✅ System Tabs: Search, Add Item, Collections Manager - Complete
 - ✅ Tab System: Multi-space, drag-and-drop - Complete
+- 🆕 Items List Layout: Planning (see `ITEMS_LIST_LAYOUT.md`)
 - ⏸️ Sharing: Not started (deferred)
 - ⏸️ Quick Access: Placeholders only (pinned/favorites/trash)
 - ⏸️ AI Agent: Placeholder only
@@ -22,8 +23,9 @@ This document tracks the next set of functional features to implement. **Core MV
 1. **Epic A**: Collections Management + Sharing
 2. **Epic B**: Items (Bookmarks/Notes) Management + Sharing  
 3. **Epic C**: System Tabs (Standard Functions)
-4. **Epic D**: Quick Access Semantics (Pinned/Favorites/Trash)
-5. **Epic E**: Item Detail View Improvements
+4. **Epic F**: Items List Layout Options 🆕 (see `ITEMS_LIST_LAYOUT.md`)
+5. **Epic D**: Quick Access Semantics (Pinned/Favorites/Trash)
+6. **Epic E**: Item Detail View Improvements
 
 ---
 
@@ -356,6 +358,65 @@ This document tracks the next set of functional features to implement. **Core MV
 
 ---
 
+## Epic F: Items List Layout Options 🆕
+
+> **Related**: See `ITEMS_LIST_LAYOUT.md` for detailed implementation plan
+
+### F1. Layout Toggle (Left ↔ Top)
+**Goal**: Allow users to switch between left sidebar and top horizontal layouts for items list.
+
+**Acceptance Criteria**:
+- [ ] Toggle button in ProjectDashboard header
+- [ ] Cycles through: Left → Top List → Top Grid → Left
+- [ ] Layout preference persists per project
+- [ ] Smooth transition between layouts
+- [ ] Resizers work correctly in both layouts
+
+**Implementation Notes**:
+- Add `itemsLayout` state to `ProjectDashboard`
+- Modify grid/flex layout based on mode
+- Update `ItemsListPanel` to support horizontal layout
+- Persist to localStorage per project
+
+### F2. Top Horizontal List View
+**Goal**: Display items in horizontal scrollable list at top.
+
+**Acceptance Criteria**:
+- [ ] Items displayed horizontally at top
+- [ ] Horizontal scrolling for long lists
+- [ ] Resizable height (100-300px)
+- [ ] Same functionality as left sidebar (click, context menu, etc.)
+- [ ] Active item highlighting works
+
+### F3. Top Grid View
+**Goal**: Display items as grid of cards at top.
+
+**Acceptance Criteria**:
+- [ ] Grid layout with item cards
+- [ ] Responsive grid (auto-fill, min 200px cards)
+- [ ] Vertical scrolling for many items
+- [ ] Resizable height (150-400px)
+- [ ] Card shows: icon, title, URL preview, date
+
+### F4. Drag-and-Drop Layout Switching
+**Goal**: Allow dragging items list panel to switch layouts.
+
+**Acceptance Criteria**:
+- [ ] Drag handle on items panel
+- [ ] Visual drop zones (left/top)
+- [ ] Layout changes on drop
+- [ ] Smooth animation
+- [ ] Visual feedback during drag
+
+**Time Estimate**: 
+- F1: ~2 hours
+- F2: ~1.5 hours
+- F3: ~2 hours
+- F4: ~2 hours
+- **Total**: ~7.5 hours
+
+---
+
 ## Epic E: Item Detail View Improvements
 
 ### E1. URL Clickable
@@ -421,6 +482,10 @@ This document tracks the next set of functional features to implement. **Core MV
 2. **B1**: Create Item (system tab)
 3. **C1**: System tabs registry + standard behavior
 4. **C2**: Search tab (basic)
+
+### Sprint 1.5: Layout Flexibility 🆕
+5. **F1**: Layout Toggle (Left ↔ Top)
+6. **F2**: Top Horizontal List View
 
 ### Sprint 2: Management
 5. **A2**: Remove/Delete Collection

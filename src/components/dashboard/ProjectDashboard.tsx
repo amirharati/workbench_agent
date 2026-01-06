@@ -10,7 +10,7 @@ import { TabContent } from './TabContent';
 import { Resizer } from './Resizer';
 import { WorkspaceSelector } from './WorkspaceSelector';
 import { Panel, ButtonGhost, Input } from '../../styles/primitives';
-import { Search, Sparkles, Plus, X } from 'lucide-react';
+import { Search, Sparkles, Plus, X, Sidebar, LayoutList } from 'lucide-react';
 
 type Tab = {
   id: string;
@@ -67,6 +67,13 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   const [mainSplitRatio, setMainSplitRatio] = useState(60); // percent for top
   const [rightSplit, setRightSplit] = useState(false);
   const [rightSplitRatio, setRightSplitRatio] = useState(60);
+  
+  // Items list layout: 'left' | 'top'
+  const [itemsLayout, setItemsLayout] = useState<'left' | 'top'>('left');
+  // View mode: 'list' | 'grid' (applies to both layouts)
+  const [itemsViewMode, setItemsViewMode] = useState<'list' | 'grid'>('list');
+  const [topHeight, setTopHeight] = useState(180);
+  
   const layoutKey = `pd-layout-${project.id}`;
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [showCreateCollectionModal, setShowCreateCollectionModal] = useState(false);
@@ -593,6 +600,13 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       if (typeof parsed.rightPaneWidth === 'number') setRightPaneWidth(parsed.rightPaneWidth);
       if (typeof parsed.mainSplit === 'boolean') setMainSplit(parsed.mainSplit);
       if (typeof parsed.mainSplitRatio === 'number') setMainSplitRatio(parsed.mainSplitRatio);
+      if (parsed.itemsLayout === 'left' || parsed.itemsLayout === 'top') {
+        setItemsLayout(parsed.itemsLayout);
+      }
+      if (parsed.itemsViewMode === 'list' || parsed.itemsViewMode === 'grid') {
+        setItemsViewMode(parsed.itemsViewMode);
+      }
+      if (typeof parsed.topHeight === 'number') setTopHeight(parsed.topHeight);
     } catch {
       // ignore
     }
@@ -608,13 +622,16 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       mainSplitRatio,
       rightSplit,
       rightSplitRatio,
+      itemsLayout,
+      itemsViewMode,
+      topHeight,
     };
     try {
       localStorage.setItem(layoutKey, JSON.stringify(payload));
     } catch {
       // ignore
     }
-  }, [layoutKey, listWidth, rightPaneVisible, rightPaneWidth, mainSplit, mainSplitRatio, rightSplit, rightSplitRatio]);
+  }, [layoutKey, listWidth, rightPaneVisible, rightPaneWidth, mainSplit, mainSplitRatio, rightSplit, rightSplitRatio, itemsLayout, itemsViewMode, topHeight]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1059,6 +1076,28 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
 
         {/* Layout controls - compact */}
       <div style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: 'var(--text-xs)' }}>
+        {/* Items list layout toggle (left/top only) */}
+        <button
+          onClick={() => {
+            setItemsLayout((current) => current === 'left' ? 'top' : 'left');
+          }}
+          style={{
+            background: itemsLayout === 'top' ? 'var(--accent-weak)' : 'transparent',
+            border: '1px solid var(--border)',
+            color: 'var(--text-muted)',
+            padding: '3px 8px',
+            height: 22,
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontSize: 'var(--text-xs)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+          }}
+          title={`Items position: ${itemsLayout === 'left' ? 'Left sidebar' : 'Top panel'} (Click to toggle)`}
+        >
+          {itemsLayout === 'left' ? <Sidebar size={14} /> : <LayoutList size={14} />}
+        </button>
         <button
           onClick={() => {
             setMainSplit((v) => {
@@ -1150,53 +1189,57 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       </div>
 
       {/* Main area: list + content */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: rightPaneVisible
-            ? `minmax(200px, ${listWidth}px) 4px minmax(0, 1fr) 4px minmax(260px, ${rightPaneWidth}px)`
-            : `minmax(200px, ${listWidth}px) 4px minmax(0, 1fr)`,
-          gap: '4px',
-          flex: 1,
-          minHeight: 0,
-          overflow: 'hidden',
-          width: '100%',
-          minWidth: 0, // Allow grid to shrink below content size
-        }}
-      >
-        <ItemsListPanel
-          items={filteredItems}
-          activeItemId={activeItem?.id || null}
-          onItemClick={handleItemClick}
-          onNew={handleNewItem}
-          onEdit={handleEditItem}
-          onDelete={handleDeleteItem}
-          onOpenInNewTab={handleOpenInNewTab}
-          onDuplicate={handleDuplicateItem}
-          currentCollectionId={selectedCollectionId}
-          onOpenCollectionInTab={(collectionId) => {
-            if (collectionId === 'all') return; // Can't open "all" as a collection tab
-            const collection = collections.find((c) => c.id === collectionId);
-            if (collection) handleOpenCollectionInTab(collection);
+      {itemsLayout === 'left' ? (
+        // Left sidebar layout (current)
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: rightPaneVisible
+              ? `minmax(200px, ${listWidth}px) 4px minmax(0, 1fr) 4px minmax(260px, ${rightPaneWidth}px)`
+              : `minmax(200px, ${listWidth}px) 4px minmax(0, 1fr)`,
+            gap: '4px',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+            width: '100%',
+            minWidth: 0,
           }}
-          availableSpaces={{
-            primary: true,
-            secondary: mainSplit,
-            rightPrimary: rightPaneVisible,
-            rightSecondary: rightPaneVisible && rightSplit,
-          }}
-        />
+        >
+          <ItemsListPanel
+            items={filteredItems}
+            activeItemId={activeItem?.id || null}
+            onItemClick={handleItemClick}
+            onNew={handleNewItem}
+            onEdit={handleEditItem}
+            onDelete={handleDeleteItem}
+            onOpenInNewTab={handleOpenInNewTab}
+            onDuplicate={handleDuplicateItem}
+            currentCollectionId={selectedCollectionId}
+            onOpenCollectionInTab={(collectionId) => {
+              if (collectionId === 'all') return;
+              const collection = collections.find((c) => c.id === collectionId);
+              if (collection) handleOpenCollectionInTab(collection);
+            }}
+            availableSpaces={{
+              primary: true,
+              secondary: mainSplit,
+              rightPrimary: rightPaneVisible,
+              rightSecondary: rightPaneVisible && rightSplit,
+            }}
+              layout={itemsViewMode === 'grid' ? 'grid' : 'vertical'}
+              viewMode={itemsViewMode}
+              onViewModeChange={setItemsViewMode}
+            />
 
-        <Resizer
-          direction="vertical"
-          onResize={(delta) => {
-            setListWidth((w) => {
-              const newWidth = w + delta;
-              // Constrain to min/max, but also ensure total doesn't exceed container
-              return Math.min(Math.max(200, newWidth), 600);
-            });
-          }}
-        />
+          <Resizer
+            direction="vertical"
+            onResize={(delta) => {
+              setListWidth((w) => {
+                const newWidth = w + delta;
+                return Math.min(Math.max(200, newWidth), 600);
+              });
+            }}
+          />
 
         <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 0, padding: 0 }}>
           {!mainSplit && (
@@ -1430,6 +1473,313 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           </>
         )}
       </div>
+      ) : (
+        // Top horizontal layout
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+            width: '100%',
+          }}
+        >
+          {/* Items list at top */}
+          <div
+            style={{
+              height: `${topHeight}px`,
+              minHeight: 120,
+              maxHeight: 300,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <ItemsListPanel
+              items={filteredItems}
+              activeItemId={activeItem?.id || null}
+              onItemClick={handleItemClick}
+              onNew={handleNewItem}
+              onEdit={handleEditItem}
+              onDelete={handleDeleteItem}
+              onOpenInNewTab={handleOpenInNewTab}
+              onDuplicate={handleDuplicateItem}
+              currentCollectionId={selectedCollectionId}
+              onOpenCollectionInTab={(collectionId) => {
+                if (collectionId === 'all') return;
+                const collection = collections.find((c) => c.id === collectionId);
+                if (collection) handleOpenCollectionInTab(collection);
+              }}
+              availableSpaces={{
+                primary: true,
+                secondary: mainSplit,
+                rightPrimary: rightPaneVisible,
+                rightSecondary: rightPaneVisible && rightSplit,
+              }}
+              layout={itemsViewMode === 'grid' ? 'grid' : 'vertical'}
+              viewMode={itemsViewMode}
+              onViewModeChange={setItemsViewMode}
+            />
+          </div>
+
+          {/* Horizontal resizer */}
+          <Resizer
+            direction="horizontal"
+            onResize={(delta) => {
+              setTopHeight((h) => {
+                const newHeight = h + delta;
+                return Math.min(Math.max(120, newHeight), 300);
+              });
+            }}
+          />
+
+          {/* Tab content area (full width) */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: rightPaneVisible
+                ? `minmax(0, 1fr) 4px minmax(260px, ${rightPaneWidth}px)`
+                : `minmax(0, 1fr)`,
+              gap: '4px',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
+            <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 0, padding: 0 }}>
+              {!mainSplit && (
+                <TabBar
+                  tabs={primaryTabs as TabBarTab[]}
+                  activeTabId={activePrimaryTabId}
+                  onTabSelect={setActivePrimaryTabId}
+                  onTabClose={handleTabClose}
+                  onTabMove={handleTabMove}
+                  spaceId="primary"
+                />
+              )}
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                {mainSplit ? (
+                  <>
+                    <div style={{ flex: `${mainSplitRatio} 1 0px`, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                      <TabBar
+                        tabs={primaryTabs as TabBarTab[]}
+                        activeTabId={activePrimaryTabId}
+                        onTabSelect={setActivePrimaryTabId}
+                        onTabClose={handleTabClose}
+                        onTabMove={handleTabMove}
+                        spaceId="primary"
+                      />
+                      <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                        <TabContent 
+                          tab={activePrimaryTab || null} 
+                          item={activePrimaryItem || null}
+                          items={items}
+                          collections={collections}
+                          onMoveItemToCollection={handleMoveItemToCollection}
+                          onDeleteCollection={handleDeleteCollection}
+                          onRenameCollection={handleRenameCollection}
+                          onOpenCollection={handleOpenCollection}
+                          onOpenCollectionInTab={handleOpenCollectionInTab}
+                          onCreateItem={handleCreateItem}
+                          onUpdateItem={handleUpdateItem}
+                          onDeleteItem={handleDeleteItem}
+                          onItemClick={handleItemClick}
+                          defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
+                          projectId={project.id}
+                        />
+                      </div>
+                    </div>
+                    <Resizer
+                      direction="horizontal"
+                      onResize={(delta) => {
+                        setMainSplitRatio((r) => {
+                          const deltaPercent = delta / 2.5;
+                          return Math.max(20, Math.min(80, r + deltaPercent));
+                        });
+                      }}
+                    />
+                    <div style={{ flex: `${100 - mainSplitRatio} 1 0px`, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ padding: '0.15rem 0.25rem' }}>
+                        <TabBar
+                          tabs={secondaryTabs as TabBarTab[]}
+                          activeTabId={activeSecondaryTabId}
+                          onTabSelect={setActiveSecondaryTabId}
+                          onTabClose={handleTabClose}
+                          onTabMove={handleTabMove}
+                          spaceId="secondary"
+                        />
+                      </div>
+                      <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                        <TabContent 
+                          tab={activeSecondaryTab || null} 
+                          item={activeSecondaryItem || null}
+                          items={items}
+                          collections={collections}
+                          onMoveItemToCollection={handleMoveItemToCollection}
+                          onDeleteCollection={handleDeleteCollection}
+                          onRenameCollection={handleRenameCollection}
+                          onOpenCollection={handleOpenCollection}
+                          onOpenCollectionInTab={handleOpenCollectionInTab}
+                          onCreateItem={handleCreateItem}
+                          onUpdateItem={handleUpdateItem}
+                          onDeleteItem={handleDeleteItem}
+                          onItemClick={handleItemClick}
+                          defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
+                          projectId={project.id}
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                    <TabContent 
+                      tab={activePrimaryTab || null} 
+                      item={activePrimaryItem || null}
+                      items={items}
+                      collections={collections}
+                      onMoveItemToCollection={handleMoveItemToCollection}
+                      onDeleteCollection={handleDeleteCollection}
+                      onRenameCollection={handleRenameCollection}
+                      onOpenCollection={handleOpenCollection}
+                      onOpenCollectionInTab={handleOpenCollectionInTab}
+                      onCreateItem={handleCreateItem}
+                      onUpdateItem={handleUpdateItem}
+                      onDeleteItem={handleDeleteItem}
+                      onItemClick={handleItemClick}
+                      defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
+                      projectId={project.id}
+                    />
+                  </div>
+                )}
+              </div>
+            </Panel>
+
+            {rightPaneVisible && (
+              <>
+                <Resizer
+                  direction="vertical"
+                  onResize={(delta) => {
+                    setRightPaneWidth((w) => {
+                      const newWidth = w - delta;
+                      return Math.min(Math.max(260, newWidth), 700);
+                    });
+                  }}
+                />
+                <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  {rightSplit ? (
+                    <>
+                      <div style={{ flex: `${rightSplitRatio} 1 0px`, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '0.15rem 0.25rem' }}>
+                          <TabBar
+                            tabs={rightPrimaryTabs as TabBarTab[]}
+                            activeTabId={activeRightPrimaryTabId}
+                            onTabSelect={setActiveRightPrimaryTabId}
+                            onTabClose={handleRightTabClose}
+                            onTabMove={handleTabMove}
+                            spaceId="rightPrimary"
+                          />
+                        </div>
+                        <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                          <TabContent 
+                            tab={activeRightPrimaryTab || null} 
+                            item={activeRightPrimaryItem || null}
+                            items={items}
+                            collections={collections}
+                            onMoveItemToCollection={handleMoveItemToCollection}
+                            onDeleteCollection={handleDeleteCollection}
+                            onRenameCollection={handleRenameCollection}
+                            onOpenCollection={handleOpenCollection}
+                            onOpenCollectionInTab={handleOpenCollectionInTab}
+                            onCreateItem={handleCreateItem}
+                            onUpdateItem={handleUpdateItem}
+                            onDeleteItem={handleDeleteItem}
+                            onItemClick={handleItemClick}
+                            defaultCollectionId={selectedCollectionId}
+                            projectId={project.id}
+                          />
+                        </div>
+                      </div>
+                      <Resizer
+                        direction="horizontal"
+                        onResize={(delta) => {
+                          setRightSplitRatio((r) => {
+                            const deltaPercent = delta / 2.5;
+                            return Math.max(20, Math.min(80, r + deltaPercent));
+                          });
+                        }}
+                      />
+                      <div style={{ flex: `${100 - rightSplitRatio} 1 0px`, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '0.15rem 0.25rem' }}>
+                          <TabBar
+                            tabs={rightSecondaryTabs as TabBarTab[]}
+                            activeTabId={activeRightSecondaryTabId}
+                            onTabSelect={setActiveRightSecondaryTabId}
+                            onTabClose={handleRightTabClose}
+                            onTabMove={handleTabMove}
+                            spaceId="rightSecondary"
+                          />
+                        </div>
+                        <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                          <TabContent 
+                            tab={activeRightSecondaryTab || null} 
+                            item={activeRightSecondaryItem || null}
+                            items={items}
+                            collections={collections}
+                            onMoveItemToCollection={handleMoveItemToCollection}
+                            onDeleteCollection={handleDeleteCollection}
+                            onRenameCollection={handleRenameCollection}
+                            onOpenCollection={handleOpenCollection}
+                            onOpenCollectionInTab={handleOpenCollectionInTab}
+                            onCreateItem={handleCreateItem}
+                            onUpdateItem={handleUpdateItem}
+                            onDeleteItem={handleDeleteItem}
+                            onItemClick={handleItemClick}
+                            defaultCollectionId={selectedCollectionId}
+                            projectId={project.id}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ padding: '0.15rem 0.25rem' }}>
+                        <TabBar
+                          tabs={rightPrimaryTabs as TabBarTab[]}
+                          activeTabId={activeRightPrimaryTabId}
+                          onTabSelect={setActiveRightPrimaryTabId}
+                          onTabClose={handleRightTabClose}
+                          onTabMove={handleTabMove}
+                          spaceId="rightPrimary"
+                        />
+                      </div>
+                      <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                        <TabContent 
+                          tab={activeRightPrimaryTab || null} 
+                          item={activeRightPrimaryItem || null}
+                          items={items}
+                          collections={collections}
+                          onMoveItemToCollection={handleMoveItemToCollection}
+                          onDeleteCollection={handleDeleteCollection}
+                          onRenameCollection={handleRenameCollection}
+                          onOpenCollection={handleOpenCollection}
+                          onOpenCollectionInTab={handleOpenCollectionInTab}
+                          onCreateItem={handleCreateItem}
+                          onUpdateItem={handleUpdateItem}
+                          onDeleteItem={handleDeleteItem}
+                          onItemClick={handleItemClick}
+                          defaultCollectionId={selectedCollectionId}
+                          projectId={project.id}
+                        />
+                      </div>
+                    </>
+                  )}
+                </Panel>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Create Collection Modal */}
       {showCreateCollectionModal && (
