@@ -1,17 +1,17 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Workspace, Item, Collection, Project, addProject, deleteProject, ALL_PROJECTS_ID } from '../../../lib/db';
+import { formatDateTime } from '../../../lib/utils';
 import { DashboardView } from './DashboardLayout';
 import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
 import { CollectionsView } from '../CollectionsView';
-import { NotesView } from '../NotesView';
 import { SearchBar } from '../SearchBar';
 import { Resizer } from '../Resizer';
 import { Panel } from '../../../styles/primitives';
 import { ItemContextMenu } from '../ItemContextMenu';
-import { List, Grid, ExternalLink, Eye } from 'lucide-react';
+import { List, Grid, ExternalLink, Eye, Pencil, Trash2, Calendar } from 'lucide-react';
 
 interface MainContentProps {
   activeView: DashboardView;
@@ -61,6 +61,15 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [bookmarkContextMenu, setBookmarkContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const [bookmarkViewMode, setBookmarkViewMode] = useState<'list' | 'grid'>('grid');
   const [viewingItem, setViewingItem] = useState<Item | null>(null);
+  // Notes view state
+  const [notesListWidth, setNotesListWidth] = useState(240);
+  const [notesDetailWidth, setNotesDetailWidth] = useState(400);
+  const [selectedNotesProjectId, setSelectedNotesProjectId] = useState<string | 'all'>('all');
+  const [notesContextMenu, setNotesContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
+  const [notesViewMode, setNotesViewMode] = useState<'list' | 'grid'>('grid');
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [editNoteContent, setEditNoteContent] = useState('');
   const selectedWorkspace = useMemo(
     () => workspaces.find((w) => w.id === selectedWorkspaceId) || null,
     [workspaces, selectedWorkspaceId]
@@ -100,6 +109,63 @@ export const MainContent: React.FC<MainContentProps> = ({
     
     return filtered.sort((a, b) => b.updated_at - a.updated_at);
   }, [activeView, items, collections, selectedBookmarkProjectId, searchQuery]);
+
+  // Get all items that are notes (items with notes content OR items without URL)
+  const notesItems = useMemo(() => {
+    return items.filter((item) => {
+      const hasNotesContent = item.notes && item.notes.trim().length > 0;
+      const isNoteItem = !item.url || item.url.trim().length === 0;
+      return hasNotesContent || isNoteItem;
+    });
+  }, [items]);
+
+  // Filter notes by selected project (must be at top level for hooks)
+  const filteredNotesItems = useMemo(() => {
+    if (activeView !== 'notes') return [];
+    
+    let filtered = notesItems;
+    
+    // Filter by project
+    if (selectedNotesProjectId && selectedNotesProjectId !== 'all') {
+      const projectCollectionIds = new Set(
+        collections
+          .filter(c => c.primaryProjectId === selectedNotesProjectId || 
+                      (Array.isArray(c.projectIds) && c.projectIds.includes(selectedNotesProjectId)))
+          .map(c => c.id)
+      );
+      filtered = filtered.filter(item => 
+        (item.collectionIds || []).some(cid => projectCollectionIds.has(cid))
+      );
+    }
+    
+    // Filter by search
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter((item) => {
+        const haystack = [
+          item.title,
+          item.notes || '',
+          item.url || '',
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+    
+    return filtered.sort((a, b) => b.updated_at - a.updated_at);
+  }, [activeView, notesItems, collections, selectedNotesProjectId, searchQuery]);
+
+  // Get selected note for notes view
+  const selectedNote = useMemo(() => {
+    if (activeView !== 'notes') return null;
+    return filteredNotesItems.find(item => item.id === selectedNoteId) || null;
+  }, [activeView, filteredNotesItems, selectedNoteId]);
+
+  // Initialize edit content when note is selected
+  useEffect(() => {
+    if (selectedNote && !isEditingNote) {
+      setEditNoteContent(selectedNote.notes || '');
+    }
+  }, [selectedNote, isEditingNote]);
 
   const toggleWindowSelection = (id: string) => {
     setSelectedWindowIds((prev) => {
@@ -1032,16 +1098,731 @@ export const MainContent: React.FC<MainContentProps> = ({
           </div>
         );
       case 'notes':
+        // Get item count for a project (for notes)
+        const getNotesProjectItemCount = (projectId: string) => {
+          const projectCollectionIds = new Set(
+            collections
+              .filter(c => c.primaryProjectId === projectId || 
+                          (Array.isArray(c.projectIds) && c.projectIds.includes(projectId)))
+              .map(c => c.id)
+          );
+          return notesItems.filter(item => 
+            (item.collectionIds || []).some(cid => projectCollectionIds.has(cid))
+          ).length;
+        };
+
+
+        const handleNoteSave = async () => {
+          if (!selectedNote || !onUpdateBookmark) return;
+          await onUpdateBookmark(selectedNote.id, { notes: editNoteContent.trim() || undefined });
+          setIsEditingNote(false);
+        };
+
+        const handleNoteCancel = () => {
+          setIsEditingNote(false);
+          if (selectedNote) {
+            setEditNoteContent(selectedNote.notes || '');
+          }
+        };
+
         return (
-          <NotesView
-            items={items}
-            collections={collections}
-            projects={projects}
-            onItemClick={(_item) => {
-              // Optionally open in a tab or navigate
-            }}
-            onUpdateItem={onUpdateBookmark}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', height: '100%' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 28, flexShrink: 0, marginBottom: '-4px' }}>
+              <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
+                Notes
+              </h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {/* View mode toggle */}
+                <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px' }}>
+                  <button
+                    onClick={() => setNotesViewMode('list')}
+                    style={{
+                      padding: '2px 6px',
+                      height: 20,
+                      background: notesViewMode === 'list' ? 'var(--accent-weak)' : 'transparent',
+                      color: notesViewMode === 'list' ? 'var(--accent)' : 'var(--text-muted)',
+                      border: 'none',
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.1s ease',
+                    }}
+                    title="List view"
+                  >
+                    <List size={14} />
+                  </button>
+                  <button
+                    onClick={() => setNotesViewMode('grid')}
+                    style={{
+                      padding: '2px 6px',
+                      height: 20,
+                      background: notesViewMode === 'grid' ? 'var(--accent-weak)' : 'transparent',
+                      color: notesViewMode === 'grid' ? 'var(--accent)' : 'var(--text-muted)',
+                      border: 'none',
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.1s ease',
+                    }}
+                    title="Grid view"
+                  >
+                    <Grid size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Search bar */}
+            <div style={{ flexShrink: 0 }}>
+              <SearchBar
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="⌘K Search notes..."
+              />
+            </div>
+
+            {/* Main area: project nav + items + detail */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `${notesListWidth}px 4px 1fr 4px ${notesDetailWidth}px`,
+                gap: '4px',
+                flex: 1,
+                minHeight: 0,
+              }}
+            >
+              {/* Left: Project navigation */}
+              <Panel style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                minHeight: 0, 
+                padding: 0,
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  padding: '4px 8px',
+                  borderBottom: '1px solid var(--border)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  flexShrink: 0,
+                }}>
+                  Projects
+                </div>
+                <div className="scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
+                  {/* "All" option */}
+                  <div
+                    onClick={() => setSelectedNotesProjectId('all')}
+                    style={{
+                      padding: '6px 8px',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      background: selectedNotesProjectId === 'all' ? 'var(--accent-weak)' : 'transparent',
+                      borderLeft: selectedNotesProjectId === 'all' ? '2px solid var(--accent)' : '2px solid transparent',
+                      marginBottom: '2px',
+                      fontSize: 'var(--text-sm)',
+                      color: selectedNotesProjectId === 'all' ? 'var(--text)' : 'var(--text-muted)',
+                      fontWeight: selectedNotesProjectId === 'all' ? 500 : 400,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selectedNotesProjectId !== 'all') {
+                        e.currentTarget.style.background = 'var(--bg-hover)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selectedNotesProjectId !== 'all') {
+                        e.currentTarget.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>📊</span>
+                      <span>All</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                        {notesItems.length}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Project list */}
+                  {projects.map((project) => {
+                    const projectNotesCount = getNotesProjectItemCount(project.id);
+                    
+                    return (
+                      <div
+                        key={project.id}
+                        onClick={() => setSelectedNotesProjectId(project.id)}
+                        style={{
+                          padding: '6px 8px',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          background: selectedNotesProjectId === project.id ? 'var(--accent-weak)' : 'transparent',
+                          borderLeft: selectedNotesProjectId === project.id ? '2px solid var(--accent)' : '2px solid transparent',
+                          marginBottom: '2px',
+                          fontSize: 'var(--text-sm)',
+                          color: selectedNotesProjectId === project.id ? 'var(--text)' : 'var(--text-muted)',
+                          fontWeight: selectedNotesProjectId === project.id ? 500 : 400,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (selectedNotesProjectId !== project.id) {
+                            e.currentTarget.style.background = 'var(--bg-hover)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedNotesProjectId !== project.id) {
+                            e.currentTarget.style.background = 'transparent';
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>📁</span>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {project.name}
+                          </span>
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>
+                            {projectNotesCount}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Panel>
+
+              <Resizer
+                direction="vertical"
+                onResize={(delta) => {
+                  setNotesListWidth((w) => Math.min(Math.max(200, w + delta), 400));
+                }}
+              />
+
+              {/* Middle: Notes grid/list */}
+              <Panel style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                minHeight: 0, 
+                padding: 0,
+                overflow: 'hidden'
+              }}>
+                <div className="scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+                  {filteredNotesItems.length === 0 ? (
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      height: '100%',
+                      color: 'var(--text-muted)',
+                      fontSize: 'var(--text-sm)'
+                    }}>
+                      {searchQuery.trim() ? 'No notes found' : 'No notes'}
+                    </div>
+                  ) : notesViewMode === 'list' ? (
+                    // List view
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {filteredNotesItems.map((item) => {
+                        const collection = getItemCollection(item);
+                        const project = collection ? getCollectionProject(collection) : null;
+                        const isSelected = item.id === selectedNoteId;
+                        
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              setSelectedNoteId(item.id);
+                              setIsEditingNote(false);
+                            }}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setNotesContextMenu({ item, x: e.clientX, y: e.clientY });
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              background: isSelected ? 'var(--accent-weak)' : 'var(--bg-glass)',
+                              border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
+                              borderRadius: 6,
+                              cursor: 'pointer',
+                              transition: 'all 0.1s ease',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              overflow: 'hidden',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.background = 'var(--bg-glass)';
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                              }
+                            }}
+                          >
+                            {/* Title and preview */}
+                            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                              <div style={{ 
+                                fontWeight: 600, 
+                                fontSize: 'var(--text-sm)', 
+                                color: 'var(--text)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                marginBottom: '2px',
+                              }}>
+                                {item.title || 'Untitled'}
+                              </div>
+                              {item.notes && (
+                                <div style={{ 
+                                  fontSize: 'var(--text-xs)', 
+                                  color: 'var(--text-muted)',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  {item.notes.substring(0, 80)}...
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Collection and Project tags */}
+                            <div style={{ 
+                              display: 'flex', 
+                              gap: '6px', 
+                              flexWrap: 'nowrap',
+                              flexShrink: 0,
+                              alignItems: 'center',
+                            }}>
+                              {collection && (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 3,
+                                  fontSize: 'var(--text-xs)',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  {collection.name}
+                                </span>
+                              )}
+                              {project && (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 3,
+                                  fontSize: 'var(--text-xs)',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  {project.name}
+                                </span>
+                              )}
+                              {/* Open icon */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedNoteId(item.id);
+                                  setIsEditingNote(false);
+                                }}
+                                style={{
+                                  padding: '4px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'var(--text-muted)',
+                                  transition: 'all 0.1s ease',
+                                  flexShrink: 0,
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'var(--bg-hover)';
+                                  e.currentTarget.style.color = 'var(--accent)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'transparent';
+                                  e.currentTarget.style.color = 'var(--text-muted)';
+                                }}
+                                title="Open detail"
+                              >
+                                <Eye size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    // Grid view
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                      gap: '12px',
+                    }}>
+                      {filteredNotesItems.map((item) => {
+                        const collection = getItemCollection(item);
+                        const project = collection ? getCollectionProject(collection) : null;
+                        const isSelected = item.id === selectedNoteId;
+                        
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              setSelectedNoteId(item.id);
+                              setIsEditingNote(false);
+                            }}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setNotesContextMenu({ item, x: e.clientX, y: e.clientY });
+                            }}
+                            style={{
+                              padding: '12px',
+                              background: isSelected ? 'var(--accent-weak)' : 'var(--bg-glass)',
+                              border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
+                              borderRadius: 8,
+                              cursor: 'pointer',
+                              transition: 'all 0.1s ease',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '8px',
+                              overflow: 'hidden',
+                              minHeight: 0,
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.background = 'var(--bg-glass)';
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                              }
+                            }}
+                          >
+                            {/* Title */}
+                            <div style={{ 
+                              fontWeight: 600, 
+                              fontSize: 'var(--text-base)', 
+                              color: 'var(--text)',
+                              lineHeight: 1.3,
+                              overflow: 'hidden',
+                              wordBreak: 'break-word',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                            }}>
+                              {item.title || 'Untitled'}
+                            </div>
+                            
+                            {/* Notes preview */}
+                            {item.notes && (
+                              <div style={{ 
+                                fontSize: 'var(--text-xs)', 
+                                color: 'var(--text-muted)',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 3,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                lineHeight: 1.4,
+                                wordBreak: 'break-word',
+                              }}>
+                                {item.notes}
+                              </div>
+                            )}
+                            
+                            {/* Collection and Project tags */}
+                            <div style={{ 
+                              display: 'flex', 
+                              gap: '6px', 
+                              flexWrap: 'wrap',
+                              marginTop: 'auto',
+                              paddingTop: '8px',
+                              borderTop: '1px solid var(--border)',
+                              overflow: 'hidden',
+                              alignItems: 'center',
+                            }}>
+                              {collection && (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 3,
+                                  fontSize: 'var(--text-xs)',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: '100%',
+                                }}>
+                                  {collection.name}
+                                </span>
+                              )}
+                              {project && (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 3,
+                                  fontSize: 'var(--text-xs)',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: '100%',
+                                }}>
+                                  {project.name}
+                                </span>
+                              )}
+                              {/* Open icon */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedNoteId(item.id);
+                                  setIsEditingNote(false);
+                                }}
+                                style={{
+                                  padding: '4px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'var(--text-muted)',
+                                  transition: 'all 0.1s ease',
+                                  marginLeft: 'auto',
+                                  flexShrink: 0,
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'var(--bg-hover)';
+                                  e.currentTarget.style.color = 'var(--accent)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'transparent';
+                                  e.currentTarget.style.color = 'var(--text-muted)';
+                                }}
+                                title="Open detail"
+                              >
+                                <Eye size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </Panel>
+
+              <Resizer
+                direction="vertical"
+                onResize={(delta) => {
+                  setNotesDetailWidth((w) => Math.min(Math.max(300, w - delta), 600));
+                }}
+              />
+
+              {/* Right: Note detail panel */}
+              <Panel style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                minHeight: 0, 
+                padding: 0,
+                overflow: 'hidden'
+              }}>
+                {selectedNote ? (
+                  <div className="scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+                  {/* Header */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
+                        {selectedNote.title || 'Untitled'}
+                      </h2>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {!isEditingNote && onUpdateBookmark && (
+                          <button
+                            onClick={() => setIsEditingNote(true)}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: 'var(--text-xs)',
+                              background: 'var(--bg-glass)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 4,
+                              color: 'var(--text)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Pencil size={12} />
+                            Edit
+                          </button>
+                        )}
+                        {onDeleteBookmark && (
+                          <button
+                            onClick={() => {
+                              if (confirm('Delete this note?')) {
+                                onDeleteBookmark(selectedNote.id);
+                                setSelectedNoteId(null);
+                              }
+                            }}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: 'var(--text-xs)',
+                              background: 'transparent',
+                              border: '1px solid var(--border)',
+                              borderRadius: 4,
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Context */}
+                    {(() => {
+                      const itemCollection = getItemCollection(selectedNote);
+                      const itemProject = itemCollection ? getCollectionProject(itemCollection) : null;
+                      
+                      return (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                          {itemCollection && (
+                            <span>📂 {itemCollection.name}</span>
+                          )}
+                          {itemProject && (
+                            <>
+                              <span>•</span>
+                              <span>📁 {itemProject.name}</span>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Metadata */}
+                    <div style={{ display: 'flex', gap: '12px', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Calendar size={12} />
+                        <span>Updated: {formatDateTime(selectedNote.updated_at)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Notes content */}
+                  {isEditingNote ? (
+                    <div>
+                      <textarea
+                        value={editNoteContent}
+                        onChange={(e) => setEditNoteContent(e.target.value)}
+                        style={{
+                          width: '100%',
+                          minHeight: '300px',
+                          padding: '12px',
+                          background: 'var(--input-bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          color: 'var(--text)',
+                          fontSize: 'var(--text-sm)',
+                          fontFamily: 'inherit',
+                          resize: 'vertical',
+                          lineHeight: 1.6,
+                        }}
+                        autoFocus
+                      />
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
+                        <button
+                          onClick={handleNoteCancel}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 'var(--text-xs)',
+                            background: 'transparent',
+                            border: '1px solid var(--border)',
+                            borderRadius: 4,
+                            color: 'var(--text)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleNoteSave}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: 'var(--text-xs)',
+                            background: 'var(--accent)',
+                            border: 'none',
+                            borderRadius: 4,
+                            color: 'var(--accent-text)',
+                            cursor: 'pointer',
+                            fontWeight: 500,
+                          }}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)', fontSize: 'var(--text-sm)' }}>
+                      {selectedNote.notes || 'No content'}
+                    </div>
+                  )}
+                </div>
+                ) : (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                    Select a note to view
+                  </div>
+                )}
+              </Panel>
+            </div>
+            
+            {/* Context menu */}
+            {notesContextMenu && (
+              <ItemContextMenu
+                item={notesContextMenu.item}
+                x={notesContextMenu.x}
+                y={notesContextMenu.y}
+                onClose={() => setNotesContextMenu(null)}
+                onEdit={onUpdateBookmark ? (itemToEdit) => {
+                  setSelectedNoteId(itemToEdit.id);
+                  setIsEditingNote(true);
+                  setEditNoteContent(itemToEdit.notes || '');
+                  setNotesContextMenu(null);
+                } : undefined}
+                onDelete={onDeleteBookmark ? (itemToDelete) => {
+                  onDeleteBookmark(itemToDelete.id);
+                  if (selectedNoteId === itemToDelete.id) {
+                    setSelectedNoteId(null);
+                  }
+                  setNotesContextMenu(null);
+                } : undefined}
+                onOpenInNewTab={(itemToOpen) => {
+                  if (itemToOpen.url) openInNewTab(itemToOpen.url);
+                  setNotesContextMenu(null);
+                }}
+              />
+            )}
+          </div>
         );
       case 'workspaces':
         if (workspaces.length === 0) {
