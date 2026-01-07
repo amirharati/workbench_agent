@@ -7,13 +7,11 @@ import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
 import { CollectionsView } from '../CollectionsView';
 import { NotesView } from '../NotesView';
-import { ItemsListPanel } from '../ItemsListPanel';
-import { CollectionPills } from '../CollectionPills';
 import { SearchBar } from '../SearchBar';
-import { TabBar, TabBarTab } from '../TabBar';
-import { TabContent } from '../TabContent';
 import { Resizer } from '../Resizer';
 import { Panel } from '../../../styles/primitives';
+import { ItemContextMenu } from '../ItemContextMenu';
+import { List, Grid, ExternalLink, Eye } from 'lucide-react';
 
 interface MainContentProps {
   activeView: DashboardView;
@@ -58,14 +56,50 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [editNotes, setEditNotes] = useState('');
   const [editCollectionId, setEditCollectionId] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
-  const [bookmarkTabs, setBookmarkTabs] = useState<Array<{ id: string; title: string; itemId: string }>>([]);
-  const [activeBookmarkTabId, setActiveBookmarkTabId] = useState<string | null>(null);
-  const [bookmarkListWidth, setBookmarkListWidth] = useState(320);
+  const [bookmarkListWidth, setBookmarkListWidth] = useState(240);
+  const [selectedBookmarkProjectId, setSelectedBookmarkProjectId] = useState<string | 'all'>('all');
+  const [bookmarkContextMenu, setBookmarkContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
+  const [bookmarkViewMode, setBookmarkViewMode] = useState<'list' | 'grid'>('grid');
+  const [viewingItem, setViewingItem] = useState<Item | null>(null);
   const selectedWorkspace = useMemo(
     () => workspaces.find((w) => w.id === selectedWorkspaceId) || null,
     [workspaces, selectedWorkspaceId]
   );
+
+  // Filter bookmarks by selected project (must be at top level for hooks)
+  const filteredBookmarkItems = useMemo(() => {
+    if (activeView !== 'bookmarks') return [];
+    
+    let filtered = items;
+    
+    // Filter by project
+    if (selectedBookmarkProjectId && selectedBookmarkProjectId !== 'all') {
+      const projectCollectionIds = new Set(
+        collections
+          .filter(c => c.primaryProjectId === selectedBookmarkProjectId || 
+                      (Array.isArray(c.projectIds) && c.projectIds.includes(selectedBookmarkProjectId)))
+          .map(c => c.id)
+      );
+      filtered = filtered.filter(item => 
+        (item.collectionIds || []).some(cid => projectCollectionIds.has(cid))
+      );
+    }
+    
+    // Filter by search
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter((item) => {
+        const haystack = [
+          item.title,
+          item.url,
+          item.notes,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+    
+    return filtered.sort((a, b) => b.updated_at - a.updated_at);
+  }, [activeView, items, collections, selectedBookmarkProjectId, searchQuery]);
 
   const toggleWindowSelection = (id: string) => {
     setSelectedWindowIds((prev) => {
@@ -149,46 +183,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   //   }
   // };
 
-  // Get all collections for filtering (bookmarks view)
-  const allCollections = useMemo(() => {
-    return collections.filter((c) => !c.isDefault || c.name === 'Unsorted');
-  }, [collections]);
 
-  // Get item counts per collection (bookmarks view)
-  const collectionItemCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    items.forEach((item) => {
-      (item.collectionIds || []).forEach((cid) => {
-        counts[cid] = (counts[cid] || 0) + 1;
-      });
-    });
-    return counts;
-  }, [items]);
-
-  const filteredItems = useMemo(() => {
-    let filtered = items;
-
-    // Filter by collection (for bookmarks view)
-    if (selectedCollectionId !== 'all') {
-      filtered = filtered.filter((item) => (item.collectionIds || []).includes(selectedCollectionId));
-    }
-
-    // Filter by search
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      filtered = filtered.filter((item) => {
-        const haystack = [
-          item.title,
-          item.url,
-          item.notes || '',
-          item.tags.join(' ')
-        ].join(' ').toLowerCase();
-        return haystack.includes(q);
-      });
-    }
-
-    return filtered;
-  }, [items, searchQuery, selectedCollectionId]);
 
   const handleAddSubmit = async () => {
     if (!newUrl.trim()) return;
@@ -224,16 +219,23 @@ export const MainContent: React.FC<MainContentProps> = ({
     closeEditModal();
   };
 
-  const handleDelete = async (id: string) => {
-    if (!onDeleteBookmark) return;
-    await onDeleteBookmark(id);
-  };
 
   // formatDate moved to utils - keeping for backward compatibility if needed
   // const formatDate = (ts: number) => {
   //   const d = new Date(ts);
   //   return d.toLocaleDateString();
   // };
+
+  // Helper functions for bookmarks view (used in modal too)
+  const getItemCollection = (item: Item) => {
+    if (!item.collectionIds || item.collectionIds.length === 0) return null;
+    return collections.find(c => c.id === item.collectionIds[0]) || null;
+  };
+
+  const getCollectionProject = (collection: Collection) => {
+    if (!collection) return null;
+    return projects.find(p => p.id === collection.primaryProjectId) || null;
+  };
 
   const renderContent = () => {
     switch (activeView) {
@@ -483,79 +485,81 @@ export const MainContent: React.FC<MainContentProps> = ({
           />
         );
       case 'bookmarks':
-        // Handle item click - open in tab
-        const handleBookmarkItemClick = (item: Item) => {
-          // If item is already open, focus it
-          const existingTab = bookmarkTabs.find((t) => t.itemId === item.id);
-          if (existingTab) {
-            setActiveBookmarkTabId(existingTab.id);
-            return;
-          }
-
-          // Create new tab
-          const newTab = {
-            id: item.id,
-            title: item.title || 'Untitled',
-            itemId: item.id,
-          };
-          setBookmarkTabs((prev) => [...prev, newTab]);
-          setActiveBookmarkTabId(newTab.id);
+        // Get item count for a project
+        const getProjectItemCount = (projectId: string) => {
+          const projectCollectionIds = new Set(
+            collections
+              .filter(c => c.primaryProjectId === projectId || 
+                          (Array.isArray(c.projectIds) && c.projectIds.includes(projectId)))
+              .map(c => c.id)
+          );
+          return items.filter(item => 
+            (item.collectionIds || []).some(cid => projectCollectionIds.has(cid))
+          ).length;
         };
-
-        const handleBookmarkTabClose = (tabId: string) => {
-          setBookmarkTabs((prev) => prev.filter((t) => t.id !== tabId));
-          if (activeBookmarkTabId === tabId) {
-            const remaining = bookmarkTabs.filter((t) => t.id !== tabId);
-            setActiveBookmarkTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
-          }
-        };
-
-        const activeBookmarkTab = bookmarkTabs.find((t) => t.id === activeBookmarkTabId) || null;
-        const activeBookmarkItem = activeBookmarkTab?.itemId ? items.find((i) => i.id === activeBookmarkTab.itemId) || null : null;
 
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', height: '100%' }}>
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 28 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 28, flexShrink: 0, marginBottom: '-4px' }}>
               <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
                 Bookmarks
               </h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {/* View mode toggle */}
+                <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px' }}>
+                  <button
+                    onClick={() => setBookmarkViewMode('list')}
+                    style={{
+                      padding: '2px 6px',
+                      height: 20,
+                      background: bookmarkViewMode === 'list' ? 'var(--accent-weak)' : 'transparent',
+                      color: bookmarkViewMode === 'list' ? 'var(--accent)' : 'var(--text-muted)',
+                      border: 'none',
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.1s ease',
+                    }}
+                    title="List view"
+                  >
+                    <List size={14} />
+                  </button>
+                  <button
+                    onClick={() => setBookmarkViewMode('grid')}
+                    style={{
+                      padding: '2px 6px',
+                      height: 20,
+                      background: bookmarkViewMode === 'grid' ? 'var(--accent-weak)' : 'transparent',
+                      color: bookmarkViewMode === 'grid' ? 'var(--accent)' : 'var(--text-muted)',
+                      border: 'none',
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.1s ease',
+                    }}
+                    title="Grid view"
+                  >
+                    <Grid size={14} />
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {/* Filters: Collection pills + Search */}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <CollectionPills
-                collections={allCollections}
-                selectedId={selectedCollectionId}
-                onSelect={setSelectedCollectionId}
-                totalItems={items.length}
-                getCountForCollection={(cid) => collectionItemCounts[cid] || 0}
-                maxVisible={4}
-              />
+            {/* Search bar */}
+            <div style={{ flexShrink: 0 }}>
               <SearchBar
                 value={searchQuery}
                 onChange={setSearchQuery}
                 placeholder="⌘K Search bookmarks..."
               />
-              <button
-                onClick={() => setShowAddModal(true)}
-                style={{
-                  padding: '3px 10px',
-                  height: 24,
-                  background: 'var(--accent)',
-                  color: 'var(--accent-text)',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 500,
-                }}
-              >
-                + New
-              </button>
             </div>
 
-            {/* Main area: items list + content */}
+            {/* Main area: project nav + items */}
             <div
               style={{
                 display: 'grid',
@@ -565,55 +569,466 @@ export const MainContent: React.FC<MainContentProps> = ({
                 minHeight: 0,
               }}
             >
-              {/* Items list */}
-              <ItemsListPanel
-                items={filteredItems}
-                activeItemId={activeBookmarkItem?.id || null}
-                onItemClick={handleBookmarkItemClick}
-                title={selectedCollectionId === 'all' ? 'All Bookmarks' : collections.find((c) => c.id === selectedCollectionId)?.name || 'Bookmarks'}
-                onNew={() => setShowAddModal(true)}
-                onEdit={handleEditItem}
-                onDelete={(item) => handleDelete(item.id)}
-                onOpenInNewTab={(item) => {
-                  if (item.url) openInNewTab(item.url);
-                }}
-              />
+              {/* Left: Project navigation */}
+              <Panel style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                minHeight: 0, 
+                padding: 0,
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  padding: '4px 8px',
+                  borderBottom: '1px solid var(--border)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  flexShrink: 0,
+                }}>
+                  Projects
+                </div>
+                <div className="scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
+                  {/* "All" option */}
+                  <div
+                    onClick={() => setSelectedBookmarkProjectId('all')}
+                    style={{
+                      padding: '6px 8px',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      background: selectedBookmarkProjectId === 'all' ? 'var(--accent-weak)' : 'transparent',
+                      borderLeft: selectedBookmarkProjectId === 'all' ? '2px solid var(--accent)' : '2px solid transparent',
+                      marginBottom: '2px',
+                      fontSize: 'var(--text-sm)',
+                      color: selectedBookmarkProjectId === 'all' ? 'var(--text)' : 'var(--text-muted)',
+                      fontWeight: selectedBookmarkProjectId === 'all' ? 500 : 400,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selectedBookmarkProjectId !== 'all') {
+                        e.currentTarget.style.background = 'var(--bg-hover)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selectedBookmarkProjectId !== 'all') {
+                        e.currentTarget.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>📊</span>
+                      <span>All</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                        {items.length}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Project list */}
+                  {projects.map((project) => {
+                    const projectItemCount = getProjectItemCount(project.id);
+                    
+                    return (
+                      <div
+                        key={project.id}
+                        onClick={() => setSelectedBookmarkProjectId(project.id)}
+                        style={{
+                          padding: '6px 8px',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          background: selectedBookmarkProjectId === project.id ? 'var(--accent-weak)' : 'transparent',
+                          borderLeft: selectedBookmarkProjectId === project.id ? '2px solid var(--accent)' : '2px solid transparent',
+                          marginBottom: '2px',
+                          fontSize: 'var(--text-sm)',
+                          color: selectedBookmarkProjectId === project.id ? 'var(--text)' : 'var(--text-muted)',
+                          fontWeight: selectedBookmarkProjectId === project.id ? 500 : 400,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (selectedBookmarkProjectId !== project.id) {
+                            e.currentTarget.style.background = 'var(--bg-hover)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedBookmarkProjectId !== project.id) {
+                            e.currentTarget.style.background = 'transparent';
+                          }
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>📁</span>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {project.name}
+                          </span>
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>
+                            {projectItemCount}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Panel>
 
               <Resizer
                 direction="vertical"
                 onResize={(delta) => {
-                  setBookmarkListWidth((w) => Math.min(Math.max(200, w + delta), 600));
+                  setBookmarkListWidth((w) => Math.min(Math.max(200, w + delta), 400));
                 }}
               />
 
-              {/* Tabbed content area */}
-              <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 0, padding: 0 }}>
-                <TabBar
-                  tabs={bookmarkTabs as TabBarTab[]}
-                  activeTabId={activeBookmarkTabId}
-                  onTabSelect={setActiveBookmarkTabId}
-                  onTabClose={handleBookmarkTabClose}
-                  spaceId="bookmarks"
-                />
-                <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                  <TabContent
-                    tab={activeBookmarkTab}
-                    item={activeBookmarkItem || null}
-                    items={items}
-                    collections={collections}
-                    projects={projects}
-                    onUpdateItem={onUpdateBookmark}
-                    onDeleteItem={(item) => {
-                      handleDelete(item.id);
-                      // Close tab if open
-                      if (bookmarkTabs.find((t) => t.itemId === item.id)) {
-                        handleBookmarkTabClose(item.id);
-                      }
-                    }}
-                  />
+              {/* Right: Items grid */}
+              <Panel style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                minHeight: 0, 
+                padding: 0,
+                overflow: 'hidden'
+              }}>
+                <div className="scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+                  {filteredBookmarkItems.length === 0 ? (
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      height: '100%',
+                      color: 'var(--text-muted)',
+                      fontSize: 'var(--text-sm)'
+                    }}>
+                      {searchQuery.trim() ? 'No bookmarks found' : 'No bookmarks'}
+                    </div>
+                  ) : bookmarkViewMode === 'list' ? (
+                    // List view
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {filteredBookmarkItems.map((item) => {
+                        const collection = getItemCollection(item);
+                        const project = collection ? getCollectionProject(collection) : null;
+                        
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              if (item.url) {
+                                openInNewTab(item.url);
+                              }
+                            }}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setBookmarkContextMenu({ item, x: e.clientX, y: e.clientY });
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              background: 'var(--bg-glass)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 6,
+                              cursor: 'pointer',
+                              transition: 'all 0.1s ease',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              overflow: 'hidden',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--bg-hover)';
+                              e.currentTarget.style.borderColor = 'var(--accent)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'var(--bg-glass)';
+                              e.currentTarget.style.borderColor = 'var(--border)';
+                            }}
+                          >
+                            {/* Title and URL */}
+                            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                              <div style={{ 
+                                fontWeight: 600, 
+                                fontSize: 'var(--text-sm)', 
+                                color: 'var(--text)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                marginBottom: '2px',
+                              }}>
+                                {item.title || 'Untitled'}
+                              </div>
+                              {item.url && (
+                                <div style={{ 
+                                  fontSize: 'var(--text-xs)', 
+                                  color: 'var(--text-muted)',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  {item.url}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Collection and Project tags */}
+                            <div style={{ 
+                              display: 'flex', 
+                              gap: '6px', 
+                              flexWrap: 'nowrap',
+                              flexShrink: 0,
+                              alignItems: 'center',
+                            }}>
+                              {collection && (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 3,
+                                  fontSize: 'var(--text-xs)',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  {collection.name}
+                                </span>
+                              )}
+                              {project && (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 3,
+                                  fontSize: 'var(--text-xs)',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                }}>
+                                  {project.name}
+                                </span>
+                              )}
+                              {/* Open icon */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingItem(item);
+                                }}
+                                style={{
+                                  padding: '4px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'var(--text-muted)',
+                                  transition: 'all 0.1s ease',
+                                  flexShrink: 0,
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'var(--bg-hover)';
+                                  e.currentTarget.style.color = 'var(--accent)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'transparent';
+                                  e.currentTarget.style.color = 'var(--text-muted)';
+                                }}
+                                title="Open detail"
+                              >
+                                <Eye size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    // Grid view
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                      gap: '12px',
+                    }}>
+                      {filteredBookmarkItems.map((item) => {
+                        const collection = getItemCollection(item);
+                        const project = collection ? getCollectionProject(collection) : null;
+                        
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              if (item.url) {
+                                openInNewTab(item.url);
+                              }
+                            }}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setBookmarkContextMenu({ item, x: e.clientX, y: e.clientY });
+                            }}
+                            style={{
+                              padding: '12px',
+                              background: 'var(--bg-glass)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 8,
+                              cursor: 'pointer',
+                              transition: 'all 0.1s ease',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '8px',
+                              overflow: 'hidden',
+                              minHeight: 0,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--bg-hover)';
+                              e.currentTarget.style.borderColor = 'var(--accent)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'var(--bg-glass)';
+                              e.currentTarget.style.borderColor = 'var(--border)';
+                            }}
+                          >
+                            {/* Title */}
+                            <div style={{ 
+                              fontWeight: 600, 
+                              fontSize: 'var(--text-base)', 
+                              color: 'var(--text)',
+                              lineHeight: 1.3,
+                              overflow: 'hidden',
+                              wordBreak: 'break-word',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                            }}>
+                              {item.title || 'Untitled'}
+                            </div>
+                            
+                            {/* URL */}
+                            {item.url && (
+                              <div style={{ 
+                                fontSize: 'var(--text-xs)', 
+                                color: 'var(--text-muted)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                wordBreak: 'break-all',
+                              }}>
+                                {item.url}
+                              </div>
+                            )}
+                            
+                            {/* Notes preview */}
+                            {item.notes && (
+                              <div style={{ 
+                                fontSize: 'var(--text-xs)', 
+                                color: 'var(--text-muted)',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                lineHeight: 1.4,
+                                wordBreak: 'break-word',
+                              }}>
+                                {item.notes}
+                              </div>
+                            )}
+                            
+                            {/* Collection and Project tags */}
+                            <div style={{ 
+                              display: 'flex', 
+                              gap: '6px', 
+                              flexWrap: 'wrap',
+                              marginTop: 'auto',
+                              paddingTop: '8px',
+                              borderTop: '1px solid var(--border)',
+                              overflow: 'hidden',
+                              alignItems: 'center',
+                            }}>
+                              {collection && (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 3,
+                                  fontSize: 'var(--text-xs)',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: '100%',
+                                }}>
+                                  {collection.name}
+                                </span>
+                              )}
+                              {project && (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 3,
+                                  fontSize: 'var(--text-xs)',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: '100%',
+                                }}>
+                                  {project.name}
+                                </span>
+                              )}
+                              {/* Open icon */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingItem(item);
+                                }}
+                                style={{
+                                  padding: '4px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  borderRadius: 4,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'var(--text-muted)',
+                                  transition: 'all 0.1s ease',
+                                  marginLeft: 'auto',
+                                  flexShrink: 0,
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'var(--bg-hover)';
+                                  e.currentTarget.style.color = 'var(--accent)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'transparent';
+                                  e.currentTarget.style.color = 'var(--text-muted)';
+                                }}
+                                title="Open detail"
+                              >
+                                <Eye size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </Panel>
             </div>
+            
+            {/* Context menu */}
+            {bookmarkContextMenu && (
+              <ItemContextMenu
+                item={bookmarkContextMenu.item}
+                x={bookmarkContextMenu.x}
+                y={bookmarkContextMenu.y}
+                onClose={() => setBookmarkContextMenu(null)}
+                onEdit={handleEditItem}
+                onDelete={(item) => {
+                  if (onDeleteBookmark) {
+                    onDeleteBookmark(item.id);
+                  }
+                  setBookmarkContextMenu(null);
+                }}
+                onOpenInNewTab={(item) => {
+                  if (item.url) {
+                    openInNewTab(item.url);
+                  }
+                  setBookmarkContextMenu(null);
+                }}
+              />
+            )}
           </div>
         );
       case 'notes':
@@ -1076,6 +1491,202 @@ export const MainContent: React.FC<MainContentProps> = ({
                   Save
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Item detail view modal */}
+      {viewingItem && !editingItem && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          padding: '1rem'
+        }}
+        onClick={() => setViewingItem(null)}
+        >
+          <div 
+            style={{ 
+              background: 'var(--bg-panel)', 
+              borderRadius: '0.75rem', 
+              padding: '1.5rem', 
+              width: '600px', 
+              maxWidth: '90%', 
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: 'var(--shadow-panel)', 
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="scrollbar"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)' }}>
+                {viewingItem.title || 'Untitled'}
+              </h2>
+              <button 
+                onClick={() => setViewingItem(null)} 
+                style={{ 
+                  border: 'none', 
+                  background: 'transparent', 
+                  cursor: 'pointer', 
+                  color: 'var(--text-muted)', 
+                  fontSize: '1.5rem',
+                  padding: '0',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* URL */}
+            {viewingItem.url && (
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  URL
+                </div>
+                <a
+                  href={viewingItem.url}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (viewingItem.url) {
+                      chrome.tabs.create({ url: viewingItem.url });
+                    }
+                  }}
+                  style={{
+                    color: 'var(--accent)',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: 'var(--text-sm)',
+                    wordBreak: 'break-all',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.textDecoration = 'underline';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.textDecoration = 'none';
+                  }}
+                >
+                  <ExternalLink size={14} />
+                  {viewingItem.url}
+                </a>
+              </div>
+            )}
+            
+            {/* Notes */}
+            {viewingItem.notes && (
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Notes
+                </div>
+                <div style={{ 
+                  padding: '0.75rem', 
+                  background: 'var(--bg-glass)', 
+                  borderRadius: '0.5rem', 
+                  fontSize: 'var(--text-sm)',
+                  lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap',
+                  color: 'var(--text)',
+                }}>
+                  {viewingItem.notes}
+                </div>
+              </div>
+            )}
+            
+            {/* Collection and Project tags */}
+            {(() => {
+              const itemCollection = getItemCollection(viewingItem);
+              const itemProject = itemCollection ? getCollectionProject(itemCollection) : null;
+              
+              if (itemCollection || itemProject) {
+                return (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Organization
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      {itemProject && (
+                        <span style={{
+                          padding: '0.25rem 0.5rem',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 4,
+                          fontSize: 'var(--text-xs)',
+                          color: 'var(--text)',
+                        }}>
+                          📁 {itemProject.name}
+                        </span>
+                      )}
+                      {itemCollection && (
+                        <span style={{
+                          padding: '0.25rem 0.5rem',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 4,
+                          fontSize: 'var(--text-xs)',
+                          color: 'var(--text)',
+                        }}>
+                          📂 {itemCollection.name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            
+            {/* Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+              <button
+                onClick={() => setViewingItem(null)}
+                style={{ 
+                  padding: '0.5rem 0.75rem', 
+                  borderRadius: '0.5rem', 
+                  border: '1px solid var(--border)', 
+                  background: 'var(--bg)', 
+                  cursor: 'pointer', 
+                  fontWeight: 500,
+                  color: 'var(--text)',
+                }}
+              >
+                Close
+              </button>
+              {onUpdateBookmark && (
+                <button
+                  onClick={() => {
+                    setEditingItem(viewingItem);
+                    setEditTitle(viewingItem.title || '');
+                    setEditNotes(viewingItem.notes || '');
+                    setEditCollectionId(viewingItem.collectionIds?.[0]);
+                    setViewingItem(null);
+                  }}
+                  style={{ 
+                    padding: '0.5rem 0.9rem', 
+                    borderRadius: '0.5rem', 
+                    border: '1px solid var(--accent)', 
+                    background: 'var(--accent)', 
+                    color: 'var(--accent-text)', 
+                    cursor: 'pointer', 
+                    fontWeight: 600,
+                  }}
+                >
+                  Edit
+                </button>
+              )}
             </div>
           </div>
         </div>
