@@ -309,6 +309,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                 item={activeItem || null}
                 items={items}
                 collections={collections}
+                projects={projects}
                 onUpdateItem={onUpdateItem}
                 onDeleteItem={onDeleteItem}
               />

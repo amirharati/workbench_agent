@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Item, Collection } from '../../lib/db';
+import type { Item, Collection, Project } from '../../lib/db';
 import { getDomain, formatDateTime, isValidHttpUrl } from '../../lib/utils';
 import type { TabBarTab } from './TabBar';
 import { CollectionsSpace } from './CollectionsSpace';
@@ -18,6 +18,7 @@ interface TabContentProps {
   item?: Item | null;
   items?: Item[];
   collections?: Collection[];
+  projects?: Project[];
   onMoveItemToCollection?: (itemId: string, targetCollectionId: string, sourceCollectionId?: string) => void;
   onDeleteCollection?: (collection: Collection) => void;
   onRenameCollection?: (collection: Collection, newName: string) => void;
@@ -36,6 +37,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   item, 
   items = [], 
   collections = [], 
+  projects = [],
   onMoveItemToCollection,
   onDeleteCollection,
   onRenameCollection,
@@ -52,6 +54,8 @@ export const TabContent: React.FC<TabContentProps> = ({
   const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isEditingItem, setIsEditingItem] = useState(false);
+  // Track filter state per collection tab (collectionId -> 'collection' | 'all')
+  const [collectionFilters, setCollectionFilters] = useState<Map<string, 'collection' | 'all'>>(new Map());
   
   // Get current item for edit mode reset
   const currentItemId = item?.id || (tab?.itemId ? items.find((i) => i.id === tab.itemId)?.id : null);
@@ -158,8 +162,17 @@ export const TabContent: React.FC<TabContentProps> = ({
 
   // Collection tab
   if (tab?.type === 'collection' && tab.collectionId) {
-    const collectionItems = items.filter((i) => (i.collectionIds || []).includes(tab.collectionId!));
-    const otherCollections = collections.filter((c) => c.id !== tab.collectionId);
+    const collectionId = tab.collectionId;
+    const isAllCollection = collectionId === '__all__';
+    // For "All" collection, default to 'all', otherwise default to 'collection'
+    const selectedFilter = collectionFilters.get(collectionId) || (isAllCollection ? 'all' : 'collection');
+    const setSelectedFilter = (filter: 'collection' | 'all') => {
+      setCollectionFilters(prev => new Map(prev).set(collectionId, filter));
+    };
+    
+    const collectionItems = isAllCollection ? [] : items.filter((i) => (i.collectionIds || []).includes(collectionId));
+    const displayedItems = selectedFilter === 'all' ? items : collectionItems;
+    const otherCollections = isAllCollection ? collections : collections.filter((c) => c.id !== collectionId);
 
     const handleDragStart = (e: React.DragEvent, itemId: string) => {
       setDraggedItemId(itemId);
@@ -175,7 +188,19 @@ export const TabContent: React.FC<TabContentProps> = ({
     const handleDrop = (e: React.DragEvent, targetCollectionId: string) => {
       e.preventDefault();
       if (draggedItemId && onMoveItemToCollection) {
-        onMoveItemToCollection(draggedItemId, targetCollectionId);
+        // If we're in a collection tab (not "All"), use it as the source
+        // Otherwise, find the item and use its first collection as source
+        let sourceCollectionId: string | undefined;
+        if (!isAllCollection && collectionId) {
+          sourceCollectionId = collectionId;
+        } else {
+          // Find the item to get its source collection
+          const item = items.find((i) => i.id === draggedItemId);
+          if (item && item.collectionIds && item.collectionIds.length > 0) {
+            sourceCollectionId = item.collectionIds[0];
+          }
+        }
+        onMoveItemToCollection(draggedItemId, targetCollectionId, sourceCollectionId);
       }
       setDraggedItemId(null);
       setDragOverCollectionId(null);
@@ -198,9 +223,47 @@ export const TabContent: React.FC<TabContentProps> = ({
           boxShadow: 'var(--shadow-panel)',
         }}
       >
-        <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2, marginBottom: '1rem' }}>
-          {tab.title || 'Collection'}
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>
+            {tab.title || 'Collection'}
+          </h2>
+          
+          {/* Filter toggle: Collection / All - only show if not "All" collection */}
+          {!isAllCollection && (
+            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px' }}>
+              <button
+                onClick={() => setSelectedFilter('collection')}
+                style={{
+                  padding: '2px 8px',
+                  background: selectedFilter === 'collection' ? 'var(--accent-weak)' : 'transparent',
+                  color: selectedFilter === 'collection' ? 'var(--accent)' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-xs)',
+                  height: 20,
+                }}
+              >
+                Collection ({collectionItems.length})
+              </button>
+              <button
+                onClick={() => setSelectedFilter('all')}
+                style={{
+                  padding: '2px 8px',
+                  background: selectedFilter === 'all' ? 'var(--accent-weak)' : 'transparent',
+                  color: selectedFilter === 'all' ? 'var(--accent)' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-xs)',
+                  height: 20,
+                }}
+              >
+                All ({items.length})
+              </button>
+            </div>
+          )}
+        </div>
         
         {/* Drop zones for other collections */}
         {otherCollections.length > 0 && (
@@ -233,29 +296,52 @@ export const TabContent: React.FC<TabContentProps> = ({
 
         {/* Collection items */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {collectionItems.length === 0 ? (
+          {displayedItems.length === 0 ? (
             <div style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>
-              No items in this collection
+              {selectedFilter === 'all' ? 'No items' : 'No items in this collection'}
             </div>
           ) : (
-            collectionItems.map((i) => (
+            displayedItems.map((i) => (
               <div
                 key={i.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, i.id)}
+                onClick={() => {
+                  if (onItemClick) {
+                    onItemClick(i);
+                  }
+                }}
                 style={{
                   padding: '0.75rem',
                   background: 'var(--bg-glass)',
                   borderRadius: 8,
                   border: '1px solid var(--border)',
-                  cursor: 'grab',
+                  cursor: 'pointer',
                   opacity: draggedItemId === i.id ? 0.5 : 1,
+                  transition: 'all 0.1s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (draggedItemId !== i.id) {
+                    e.currentTarget.style.background = 'var(--bg-hover)';
+                    e.currentTarget.style.borderColor = 'var(--accent)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (draggedItemId !== i.id) {
+                    e.currentTarget.style.background = 'var(--bg-glass)';
+                    e.currentTarget.style.borderColor = 'var(--border)';
+                  }
                 }}
               >
                 <div style={{ fontWeight: 500, color: 'var(--text)' }}>{i.title || 'Untitled'}</div>
                 {i.url && (
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                     {getDomain(i.url)}
+                  </div>
+                )}
+                {i.notes && (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {i.notes}
                   </div>
                 )}
               </div>
@@ -431,6 +517,118 @@ export const TabContent: React.FC<TabContentProps> = ({
           )}
         </div>
       </div>
+
+      {/* Projects and Collections */}
+      {(() => {
+        const itemCollections = collections.filter((c) => (effectiveItem.collectionIds || []).includes(c.id));
+        const projectIds = new Set<string>();
+        itemCollections.forEach((c) => {
+          let collectionHasProjectId = false;
+          // Add primaryProjectId if it exists
+          if (c.primaryProjectId && c.primaryProjectId.trim()) {
+            projectIds.add(c.primaryProjectId);
+            collectionHasProjectId = true;
+          }
+          // Add all projectIds from the array
+          if (Array.isArray(c.projectIds) && c.projectIds.length > 0) {
+            c.projectIds.forEach((pid) => {
+              if (pid && pid.trim()) {
+                projectIds.add(pid);
+                collectionHasProjectId = true;
+              }
+            });
+          }
+          // Fallback: if this specific collection has no project associations but we have a projectId prop, use it
+          // This handles edge cases where collections might not have project associations set
+          if (!collectionHasProjectId && projectId && projectId.trim()) {
+            projectIds.add(projectId);
+          }
+        });
+        // Filter projects to only include those that exist in our projects array
+        const itemProjects = projects.filter((p) => p && p.id && projectIds.has(p.id));
+        
+        // Debug logging (can be removed later)
+        if (itemCollections.length > 0 && itemProjects.length === 0 && projectIds.size > 0) {
+          console.warn('Item collections found but no matching projects:', {
+            itemId: effectiveItem.id,
+            collections: itemCollections.map(c => ({ id: c.id, name: c.name, primaryProjectId: c.primaryProjectId, projectIds: c.projectIds })),
+            projectIds: Array.from(projectIds),
+            availableProjects: projects.map(p => ({ id: p.id, name: p.name })),
+            projectIdProp: projectId
+          });
+        }
+        
+        // Also log when we have collections but no projectIds extracted
+        if (itemCollections.length > 0 && projectIds.size === 0) {
+          console.warn('Item has collections but no project IDs extracted:', {
+            itemId: effectiveItem.id,
+            collections: itemCollections.map(c => ({ 
+              id: c.id, 
+              name: c.name, 
+              primaryProjectId: c.primaryProjectId, 
+              projectIds: c.projectIds,
+              hasPrimaryProjectId: !!c.primaryProjectId,
+              hasProjectIds: Array.isArray(c.projectIds) && c.projectIds.length > 0
+            }))
+          });
+        }
+
+        if (itemProjects.length > 0 || itemCollections.length > 0) {
+          return (
+            <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-glass)', borderRadius: 8 }}>
+              {itemProjects.length > 0 && (
+                <div style={{ marginBottom: itemCollections.length > 0 ? '0.75rem' : 0 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Projects
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {itemProjects.map((p) => (
+                      <span
+                        key={p.id}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 4,
+                          fontSize: '0.85rem',
+                          color: 'var(--text)',
+                        }}
+                      >
+                        {p.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {itemCollections.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Collections
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {itemCollections.map((c) => (
+                      <span
+                        key={c.id}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          background: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 4,
+                          fontSize: '0.85rem',
+                          color: 'var(--text)',
+                        }}
+                      >
+                        {c.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Metadata */}
       <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-glass)', borderRadius: 8, fontSize: '0.85rem', color: 'var(--text-muted)' }}>

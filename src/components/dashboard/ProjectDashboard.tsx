@@ -883,11 +883,19 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           newCollectionIds.push(targetCollectionId);
         }
       } else {
-        // If no source specified, just add to target (don't remove from others)
-        if (!currentCollectionIds.includes(targetCollectionId)) {
-          newCollectionIds = [...currentCollectionIds, targetCollectionId];
+        // If no source specified, try to infer from context
+        // If item is in only one collection, use that as source
+        if (currentCollectionIds.length === 1) {
+          // Move from single source to target
+          newCollectionIds = [targetCollectionId];
         } else {
-          return; // Already in target
+          // Multiple collections - default behavior: just add to target (don't remove from others)
+          // But user wants MOVE behavior, so we'll use the first collection as source
+          const inferredSourceId = currentCollectionIds[0];
+          newCollectionIds = currentCollectionIds.filter((cid) => cid !== inferredSourceId);
+          if (!newCollectionIds.includes(targetCollectionId)) {
+            newCollectionIds.push(targetCollectionId);
+          }
         }
       }
       
@@ -1270,6 +1278,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       item={activePrimaryItem || null}
                       items={items}
                       collections={collections}
+                      projects={projects}
                       onMoveItemToCollection={handleMoveItemToCollection}
                       onDeleteCollection={handleDeleteCollection}
                       onRenameCollection={handleRenameCollection}
@@ -1310,6 +1319,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       item={activeSecondaryItem || null}
                       items={items}
                       collections={collections}
+                      projects={projects}
                       onMoveItemToCollection={handleMoveItemToCollection}
                       onDeleteCollection={handleDeleteCollection}
                       onRenameCollection={handleRenameCollection}
@@ -1331,8 +1341,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   tab={activePrimaryTab || null} 
                   item={activePrimaryItem || null}
                   items={items}
-                  collections={collections}
-                  onMoveItemToCollection={handleMoveItemToCollection}
+                      collections={collections}
+                      projects={projects}
+                      onMoveItemToCollection={handleMoveItemToCollection}
                   onDeleteCollection={handleDeleteCollection}
                   onRenameCollection={handleRenameCollection}
                   onOpenCollection={handleOpenCollection}
@@ -1380,8 +1391,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         tab={activeRightPrimaryTab || null} 
                         item={activeRightPrimaryItem || null}
                         items={items}
-                        collections={collections}
-                        onMoveItemToCollection={handleMoveItemToCollection}
+                      collections={collections}
+                      projects={projects}
+                      onMoveItemToCollection={handleMoveItemToCollection}
                         onDeleteCollection={handleDeleteCollection}
                         onRenameCollection={handleRenameCollection}
                         onOpenCollection={handleOpenCollection}
@@ -1420,8 +1432,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         tab={activeRightSecondaryTab || null} 
                         item={activeRightSecondaryItem || null}
                         items={items}
-                        collections={collections}
-                        onMoveItemToCollection={handleMoveItemToCollection}
+                      collections={collections}
+                      projects={projects}
+                      onMoveItemToCollection={handleMoveItemToCollection}
                         onDeleteCollection={handleDeleteCollection}
                         onRenameCollection={handleRenameCollection}
                         onOpenCollection={handleOpenCollection}
@@ -1454,6 +1467,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       item={activeRightPrimaryItem || null}
                       items={items}
                       collections={collections}
+                      projects={projects}
                       onMoveItemToCollection={handleMoveItemToCollection}
                       onDeleteCollection={handleDeleteCollection}
                       onRenameCollection={handleRenameCollection}
@@ -1571,23 +1585,24 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         spaceId="primary"
                       />
                       <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
-                        <TabContent 
-                          tab={activePrimaryTab || null} 
-                          item={activePrimaryItem || null}
-                          items={items}
-                          collections={collections}
-                          onMoveItemToCollection={handleMoveItemToCollection}
-                          onDeleteCollection={handleDeleteCollection}
-                          onRenameCollection={handleRenameCollection}
-                          onOpenCollection={handleOpenCollection}
-                          onOpenCollectionInTab={handleOpenCollectionInTab}
-                          onCreateItem={handleCreateItem}
-                          onUpdateItem={handleUpdateItem}
-                          onDeleteItem={handleDeleteItem}
-                          onItemClick={handleItemClick}
-                          defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
-                          projectId={project.id}
-                        />
+                <TabContent 
+                  tab={activePrimaryTab || null} 
+                  item={activePrimaryItem || null}
+                  items={items}
+                  collections={collections}
+                  projects={projects}
+                  onMoveItemToCollection={handleMoveItemToCollection}
+                  onDeleteCollection={handleDeleteCollection}
+                  onRenameCollection={handleRenameCollection}
+                  onOpenCollection={handleOpenCollection}
+                  onOpenCollectionInTab={handleOpenCollectionInTab}
+                  onCreateItem={handleCreateItem}
+                  onUpdateItem={handleUpdateItem}
+                  onDeleteItem={handleDeleteItem}
+                  onItemClick={handleItemClick}
+                  defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
+                  projectId={project.id}
+                />
                       </div>
                     </div>
                     <Resizer
@@ -1616,6 +1631,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           item={activeSecondaryItem || null}
                           items={items}
                           collections={collections}
+                          projects={projects}
                           onMoveItemToCollection={handleMoveItemToCollection}
                           onDeleteCollection={handleDeleteCollection}
                           onRenameCollection={handleRenameCollection}
@@ -1638,6 +1654,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       item={activePrimaryItem || null}
                       items={items}
                       collections={collections}
+                      projects={projects}
                       onMoveItemToCollection={handleMoveItemToCollection}
                       onDeleteCollection={handleDeleteCollection}
                       onRenameCollection={handleRenameCollection}
@@ -1685,8 +1702,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             tab={activeRightPrimaryTab || null} 
                             item={activeRightPrimaryItem || null}
                             items={items}
-                            collections={collections}
-                            onMoveItemToCollection={handleMoveItemToCollection}
+                      collections={collections}
+                      projects={projects}
+                      onMoveItemToCollection={handleMoveItemToCollection}
                             onDeleteCollection={handleDeleteCollection}
                             onRenameCollection={handleRenameCollection}
                             onOpenCollection={handleOpenCollection}
@@ -1725,8 +1743,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             tab={activeRightSecondaryTab || null} 
                             item={activeRightSecondaryItem || null}
                             items={items}
-                            collections={collections}
-                            onMoveItemToCollection={handleMoveItemToCollection}
+                      collections={collections}
+                      projects={projects}
+                      onMoveItemToCollection={handleMoveItemToCollection}
                             onDeleteCollection={handleDeleteCollection}
                             onRenameCollection={handleRenameCollection}
                             onOpenCollection={handleOpenCollection}
@@ -1758,8 +1777,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           tab={activeRightPrimaryTab || null} 
                           item={activeRightPrimaryItem || null}
                           items={items}
-                          collections={collections}
-                          onMoveItemToCollection={handleMoveItemToCollection}
+                      collections={collections}
+                      projects={projects}
+                      onMoveItemToCollection={handleMoveItemToCollection}
                           onDeleteCollection={handleDeleteCollection}
                           onRenameCollection={handleRenameCollection}
                           onOpenCollection={handleOpenCollection}

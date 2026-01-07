@@ -19,7 +19,6 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
   items,
   onDeleteCollection,
   onRenameCollection,
-  onOpenCollection,
   onOpenCollectionInTab,
   onMoveItemToCollection,
   projectId,
@@ -151,6 +150,99 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
           gap: '1rem',
         }}
       >
+        {/* "ALL" card - shows all items */}
+        {onOpenCollectionInTab && (
+          <div
+            onClick={() => {
+              // Create a virtual "All" collection
+              const now = Date.now();
+              const allCollection: Collection = {
+                id: '__all__',
+                name: 'All',
+                primaryProjectId: projectId || '',
+                projectIds: projectId ? [projectId] : [],
+                isDefault: false,
+                created_at: now,
+                updated_at: now,
+              };
+              onOpenCollectionInTab(allCollection);
+            }}
+            style={{
+              padding: '1rem',
+              background: 'var(--bg-glass)',
+              border: '2px dashed var(--border)',
+              borderRadius: 12,
+              transition: 'all 0.15s ease',
+              position: 'relative',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.borderColor = 'var(--accent)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--bg-glass)';
+              e.currentTarget.style.borderColor = 'var(--border)';
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+              <div
+                style={{
+                  flex: 1,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text)' }}>
+                  All
+                </div>
+              </div>
+              {onOpenCollectionInTab && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const now = Date.now();
+                    const allCollection: Collection = {
+                      id: '__all__',
+                      name: 'All',
+                      primaryProjectId: projectId || '',
+                      projectIds: projectId ? [projectId] : [],
+                      isDefault: false,
+                      created_at: now,
+                      updated_at: now,
+                    };
+                    onOpenCollectionInTab(allCollection);
+                  }}
+                  style={{
+                    padding: '0.25rem',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    borderRadius: 4,
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Open in tab"
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-glass)';
+                    e.currentTarget.style.color = 'var(--text)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.color = 'var(--text-muted)';
+                  }}
+                >
+                  <ExternalLink size={14} />
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              {items.length} {items.length === 1 ? 'item' : 'items'}
+            </div>
+          </div>
+        )}
+        
         {projectCollections.map((collection) => {
           const itemCount = getItemCount(collection.id);
           const isDragOver = dragOverCollectionId === collection.id;
@@ -159,6 +251,11 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
           return (
             <div
               key={collection.id}
+              onClick={() => {
+                if (!isEditing && onOpenCollectionInTab) {
+                  onOpenCollectionInTab(collection);
+                }
+              }}
               onContextMenu={(e) => handleContextMenu(e, collection)}
               onDragOver={(e) => handleDragOver(e, collection.id)}
               onDrop={(e) => handleDrop(e, collection.id)}
@@ -170,6 +267,7 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
                 borderRadius: 12,
                 transition: 'all 0.15s ease',
                 position: 'relative',
+                cursor: isEditing ? 'default' : 'pointer',
               }}
               onMouseEnter={(e) => {
                 if (!isDragOver && !isEditing) {
@@ -215,19 +313,14 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                     <div
-                      onClick={() => {
-                        if (onOpenCollection && !isEditing) {
-                          onOpenCollection(collection);
-                        }
-                      }}
-                      onDoubleClick={() => {
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
                         if (onRenameCollection && !isEditing) {
                           handleStartRename(collection);
                         }
                       }}
                       style={{
                         flex: 1,
-                        cursor: isEditing ? 'default' : 'pointer',
                       }}
                     >
                       <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text)' }}>

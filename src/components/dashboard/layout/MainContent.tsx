@@ -601,6 +601,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                     item={activeBookmarkItem || null}
                     items={items}
                     collections={collections}
+                    projects={projects}
                     onUpdateItem={onUpdateBookmark}
                     onDeleteItem={(item) => {
                       handleDelete(item.id);

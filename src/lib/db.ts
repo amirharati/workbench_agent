@@ -346,6 +346,19 @@ async function ensureDefaultCollectionForProject(db: IDBPDatabase<TabManagerDB>,
       primaryProjectId: projectId,
       projectIds: [projectId],
     } satisfies Collection);
+  } else {
+    // Update existing collection if it's missing project associations
+    if (!existing.primaryProjectId || existing.primaryProjectId !== projectId || 
+        !Array.isArray(existing.projectIds) || !existing.projectIds.includes(projectId)) {
+      await db.put('collections', {
+        ...existing,
+        primaryProjectId: projectId,
+        projectIds: existing.projectIds && Array.isArray(existing.projectIds) && existing.projectIds.length > 0
+          ? [...new Set([...existing.projectIds, projectId])]
+          : [projectId],
+        updated_at: now,
+      } satisfies Collection);
+    }
   }
   return id;
 }

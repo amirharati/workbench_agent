@@ -122,10 +122,24 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
           borderBottom: '1px solid var(--border)',
           marginBottom: '4px',
           height: 28,
+          minWidth: 0, // Allow shrinking
+          gap: '8px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text)', fontWeight: 600 }}>{title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: '1 1 0' }}>
+          <span 
+            style={{ 
+              fontSize: 'var(--text-xs)', 
+              color: 'var(--text)', 
+              fontWeight: 600,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}
+          >
+            {title}
+          </span>
           {currentCollectionId && currentCollectionId !== 'all' && onOpenCollectionInTab && (
             <button
               onClick={() => onOpenCollectionInTab(currentCollectionId)}
@@ -138,6 +152,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 borderRadius: 3,
+                flexShrink: 0,
               }}
               title="Open collection in tab"
               onMouseEnter={(e) => {
@@ -153,11 +168,11 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
             </button>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>{items.length}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>{items.length}</span>
           {/* View mode toggle (list/grid) */}
           {onViewModeChange && (
-            <div style={{ display: 'flex', gap: '2px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px' }}>
+            <div style={{ display: 'flex', gap: '2px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px', flexShrink: 0 }}>
               <button
                 onClick={() => onViewModeChange('list')}
                 style={{
@@ -172,6 +187,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
+                  flexShrink: 0,
                 }}
                 title="List view"
               >
@@ -191,6 +207,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
+                  flexShrink: 0,
                 }}
                 title="Grid view"
               >
@@ -202,7 +219,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
             <button
               onClick={onNew}
               style={{
-                padding: '2px 8px',
+                padding: '2px 6px',
                 background: 'var(--accent-weak)',
                 color: 'var(--text)',
                 border: '1px solid var(--border)',
@@ -210,6 +227,8 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                 cursor: 'pointer',
                 fontSize: 'var(--text-xs)',
                 height: 20,
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
               }}
             >
               + New
@@ -364,6 +383,8 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                   gap: '6px',
                   alignItems: 'center',
                   height: 28,
+                  minWidth: 0,
+                  overflow: 'hidden',
                   background: isActive ? 'var(--accent-weak)' : 'transparent',
                   borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
                   transition: 'all 0.1s ease',
@@ -376,7 +397,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                 }}
               >
                 <span style={{ fontSize: '11px', flexShrink: 0 }}>{iconForItem(item)}</span>
-                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
                   <span
                     style={{
                       fontWeight: 500,
@@ -385,12 +406,13 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       flex: 1,
+                      minWidth: 0,
                       color: isActive ? 'var(--text)' : 'var(--text)',
                     }}
                   >
                     {item.title || 'Untitled'}
                   </span>
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   </span>
                 </div>
