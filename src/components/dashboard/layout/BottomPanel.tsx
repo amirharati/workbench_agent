@@ -3,13 +3,14 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, LayoutGrid, List, Search, Trash2, X } from 'lucide-react';
 import type { WindowGroup } from '../../../App';
 import { addWorkspace, updateWorkspace } from '../../../lib/db';
-import type { Workspace, WorkspaceWindow } from '../../../lib/db';
+import type { Workspace, WorkspaceWindow, Project } from '../../../lib/db';
 
 interface BottomPanelProps {
   isCollapsed: boolean;
   onToggle: () => void;
   windows: WindowGroup[];
   workspaces: Workspace[];
+  projects?: Project[];
   onWorkspacesChanged?: () => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
@@ -55,6 +56,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onToggle,
   windows,
   workspaces,
+  projects = [],
   onWorkspacesChanged,
   onCloseTab,
   onCloseWindow,
@@ -78,6 +80,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   const DRAG_MIME = 'application/x-workbench-tab';
   const [selectedTabIds, setSelectedTabIds] = useState<number[]>([]);
   const selectedTabIdSet = useMemo(() => new Set(selectedTabIds), [selectedTabIds]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveWorkspaceName, setSaveWorkspaceName] = useState('');
+  const [saveWorkspaceProjectId, setSaveWorkspaceProjectId] = useState<string | undefined>(undefined);
 
   const sortedWindows = useMemo(() => {
     // Windows with an active tab first, then by tab count desc.
@@ -509,31 +514,119 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         .map((id) => allTabs.find((t) => t.id === id))
         .filter((t): t is chrome.tabs.Tab => Boolean(t && t.url && t.url.startsWith('http')))
         .map((t) => ({ url: t.url!, title: t.title || undefined, favIconUrl: t.favIconUrl || undefined }));
-      return [{ id: crypto.randomUUID(), name: 'Selected tabs', tabs }];
+      
+      // Try to get a meaningful name from the first tab
+      let windowName = 'Selected tabs';
+      if (tabs.length > 0 && tabs[0].url) {
+        try {
+          const url = new URL(tabs[0].url);
+          const domain = url.hostname.replace(/^www\./, '');
+          if (domain) {
+            const domainParts = domain.split('.');
+            // Use first part of domain (e.g., "github" from "github.com")
+            if (domainParts.length > 1) {
+              windowName = domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
+            } else {
+              windowName = domain.charAt(0).toUpperCase() + domain.slice(1);
+            }
+          }
+        } catch {
+          // Keep default name
+        }
+      }
+      
+      return [{ id: crypto.randomUUID(), name: windowName, tabs }];
     }
 
     const windowGroups = selectedWindowIds.length > 0 ? selectedWindows : windows;
-    return windowGroups.map((w) => ({
-      id: crypto.randomUUID(),
-      name: windowLabelById.get(w.windowId) || `Window ${w.windowId}`,
-      tabs: w.tabs
-        .filter((t) => t.url && t.url.startsWith('http'))
-        .map((t) => ({ url: t.url!, title: t.title || undefined, favIconUrl: t.favIconUrl || undefined })),
-    }));
+    return windowGroups.map((w) => {
+      // Try to get a meaningful window name from the first tab's domain
+      const firstTab = w.tabs.find((t) => t.url && t.url.startsWith('http'));
+      let windowName = windowLabelById.get(w.windowId) || `Window ${w.windowId}`;
+      
+      if (firstTab) {
+        try {
+          const url = new URL(firstTab.url!);
+          const domain = url.hostname.replace(/^www\./, '');
+          // Use domain as window name if it's more meaningful than "Window N"
+          if (domain) {
+            const domainParts = domain.split('.');
+            // Use first part of domain (e.g., "github" from "github.com")
+            if (domainParts.length > 1) {
+              windowName = domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
+            } else {
+              windowName = domain.charAt(0).toUpperCase() + domain.slice(1);
+            }
+          }
+        } catch {
+          // Keep default name if URL parsing fails
+        }
+      }
+      
+      return {
+        id: crypto.randomUUID(),
+        name: windowName,
+        tabs: w.tabs
+          .filter((t) => t.url && t.url.startsWith('http'))
+          .map((t) => ({ url: t.url!, title: t.title || undefined, favIconUrl: t.favIconUrl || undefined })),
+      };
+    });
+  };
+
+  const generateWorkspaceName = (windowsToSave: WorkspaceWindow[]): string => {
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).replace(',', '').replace(':', 'h');
+
+    // If we have window names, use them (filter out generic names like "Window N")
+    const windowNames = windowsToSave
+      .map((w) => w.name)
+      .filter((name): name is string => {
+        if (!name || !name.trim()) return false;
+        // Filter out generic window names
+        if (/^Window \d+$/.test(name)) return false;
+        if (name === 'Selected tabs') return false;
+        return true;
+      })
+      .slice(0, 2); // Limit to first 2 window names
+
+    if (windowNames.length > 0) {
+      const namesPart = windowNames.join(' + ');
+      return `${namesPart} - ${timestamp}`;
+    }
+
+    // Fallback: use descriptive name with counts
+    if (windowsToSave.length === 1 && windowsToSave[0].tabs.length > 0) {
+      const tabCount = windowsToSave[0].tabs.length;
+      return `${tabCount} tab${tabCount !== 1 ? 's' : ''} - ${timestamp}`;
+    }
+
+    const windowCount = windowsToSave.length;
+    const totalTabs = windowsToSave.reduce((sum, w) => sum + w.tabs.length, 0);
+    return `${windowCount} window${windowCount !== 1 ? 's' : ''}, ${totalTabs} tab${totalTabs !== 1 ? 's' : ''} - ${timestamp}`;
   };
 
   const saveAsNewWorkspace = async () => {
     const windowsToSave = buildWorkspaceWindowsFromSelection();
-    const suggested =
-      selectedTabIds.length > 0
-        ? `Tabs (${windowsToSave[0]?.tabs.length || 0})`
-        : selectedWindowIds.length > 0
-          ? `Workspace (${selectedWindowIds.length} windows)`
-          : `Workspace (${windowsToSave.length} windows)`;
+    const suggested = generateWorkspaceName(windowsToSave);
 
-    const name = window.prompt('New workspace name:', suggested);
-    if (!name || !name.trim()) return;
-    await addWorkspace(name.trim(), windowsToSave);
+    setSaveWorkspaceName(suggested);
+    setSaveWorkspaceProjectId(undefined);
+    setShowSaveModal(true);
+  };
+
+  const handleSaveWorkspaceSubmit = async () => {
+    if (!saveWorkspaceName.trim()) return;
+    const windowsToSave = buildWorkspaceWindowsFromSelection();
+    await addWorkspace(saveWorkspaceName.trim(), windowsToSave, saveWorkspaceProjectId);
+    setShowSaveModal(false);
+    setSaveWorkspaceName('');
+    setSaveWorkspaceProjectId(undefined);
     if (onWorkspacesChanged) await onWorkspacesChanged();
   };
 
@@ -1696,6 +1789,165 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   Show {Math.min(TAB_PAGE_SIZE, hiddenCount)} more ({hiddenCount} hidden)
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Workspace Modal */}
+      {showSaveModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2147483647,
+            padding: '1rem'
+          }}
+          onClick={() => {
+            setShowSaveModal(false);
+            setSaveWorkspaceName('');
+            setSaveWorkspaceProjectId(undefined);
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--bg-panel)',
+              borderRadius: '0.75rem',
+              padding: '1.5rem',
+              width: '440px',
+              maxWidth: '90%',
+              boxShadow: 'var(--shadow-panel)',
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)' }}>
+                Save Workspace
+              </h2>
+              <button
+                onClick={() => {
+                  setShowSaveModal(false);
+                  setSaveWorkspaceName('');
+                  setSaveWorkspaceProjectId(undefined);
+                }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  fontSize: '1.5rem',
+                  padding: 0,
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 500 }}>
+                  Workspace Name
+                </label>
+                <input
+                  value={saveWorkspaceName}
+                  onChange={(e) => setSaveWorkspaceName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveWorkspaceSubmit();
+                    } else if (e.key === 'Escape') {
+                      setShowSaveModal(false);
+                      setSaveWorkspaceName('');
+                      setSaveWorkspaceProjectId(undefined);
+                    }
+                  }}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.65rem',
+                    border: '1px solid var(--border)',
+                    borderRadius: '0.5rem',
+                    fontSize: 'var(--text-sm)',
+                    background: 'var(--input-bg)',
+                    color: 'var(--text)',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 500 }}>
+                  Project (optional)
+                </label>
+                <select
+                  value={saveWorkspaceProjectId || ''}
+                  onChange={(e) => setSaveWorkspaceProjectId(e.target.value || undefined)}
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.65rem',
+                    border: '1px solid var(--border)',
+                    borderRadius: '0.5rem',
+                    fontSize: 'var(--text-sm)',
+                    background: 'var(--input-bg)',
+                    color: 'var(--text)',
+                  }}
+                >
+                  <option value="">Detached (no project)</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button
+                  onClick={() => {
+                    setShowSaveModal(false);
+                    setSaveWorkspaceName('');
+                    setSaveWorkspaceProjectId(undefined);
+                  }}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg)',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    color: 'var(--text)',
+                    fontSize: 'var(--text-sm)',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveWorkspaceSubmit}
+                  disabled={!saveWorkspaceName.trim()}
+                  style={{
+                    padding: '0.5rem 0.9rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--accent)',
+                    background: 'var(--accent)',
+                    color: 'var(--accent-text)',
+                    cursor: saveWorkspaceName.trim() ? 'pointer' : 'not-allowed',
+                    fontWeight: 600,
+                    fontSize: 'var(--text-sm)',
+                    opacity: saveWorkspaceName.trim() ? 1 : 0.5,
+                  }}
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         </div>

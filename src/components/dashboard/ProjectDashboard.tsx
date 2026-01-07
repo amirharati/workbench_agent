@@ -8,17 +8,17 @@ import { ItemsListPanel } from './ItemsListPanel';
 import { TabBar, TabBarTab } from './TabBar';
 import { TabContent } from './TabContent';
 import { Resizer } from './Resizer';
-import { WorkspaceSelector } from './WorkspaceSelector';
 import { Panel, ButtonGhost, Input } from '../../styles/primitives';
 import { Search, Sparkles, Plus, X, Sidebar, LayoutList } from 'lucide-react';
 
 type Tab = {
   id: string;
   title: string;
-  itemId: string;
+  itemId?: string;
   content?: string;
   collectionId?: string; // For collection tabs
-  type?: 'item' | 'collection' | 'system';
+  workspaceId?: string; // For workspace tabs
+  type?: 'item' | 'collection' | 'system' | 'workspace';
 };
 
 interface ProjectDashboardProps {
@@ -81,14 +81,18 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   const [newCollectionDescription, setNewCollectionDescription] = useState('');
   const [newCollectionProjectId, setNewCollectionProjectId] = useState<string>(project.id);
   
-  // Workspace state (placeholder for now - will be linked to project later)
+  // Workspace state
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [linkedWorkspaceIds, setLinkedWorkspaceIds] = useState<string[]>([]);
 
   // Load workspaces on mount
   useEffect(() => {
     getAllWorkspaces().then(setWorkspaces).catch(console.error);
   }, []);
+
+  // Get workspaces linked to this project
+  const projectWorkspaces = useMemo(() => {
+    return workspaces.filter(w => w.projectId === project.id);
+  }, [workspaces, project.id]);
 
   // Check if this is the virtual "All" project which aggregates everything
   const isAllProject = project.id === ALL_PROJECTS_ID;
@@ -681,6 +685,39 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     openUtilityTab('add');
   };
 
+  const handleOpenWorkspace = (workspace: Workspace) => {
+    const tabId = `workspace-${workspace.id}`;
+    const title = workspace.name;
+    
+    // Check if workspace tab already exists in any space
+    const existing =
+      primaryTabs.find((t) => t.id === tabId) ||
+      secondaryTabs.find((t) => t.id === tabId) ||
+      rightPrimaryTabs.find((t) => t.id === tabId) ||
+      rightSecondaryTabs.find((t) => t.id === tabId);
+    
+    if (existing) {
+      // Focus existing workspace tab
+      if (primaryTabs.find((t) => t.id === tabId)) {
+        setActivePrimaryTabId(tabId);
+      } else if (secondaryTabs.find((t) => t.id === tabId)) {
+        setActiveSecondaryTabId(tabId);
+      } else if (rightPrimaryTabs.find((t) => t.id === tabId)) {
+        setActiveRightPrimaryTabId(tabId);
+        setRightPaneVisible(true);
+      } else if (rightSecondaryTabs.find((t) => t.id === tabId)) {
+        setActiveRightSecondaryTabId(tabId);
+        setRightPaneVisible(true);
+      }
+      return;
+    }
+    
+    // Create new workspace tab in primary space
+    ensureNotInOtherSpaces(tabId, 'primary');
+    setPrimaryTabs((prev) => [...prev, { id: tabId, workspaceId: workspace.id, title, type: 'workspace' }]);
+    setActivePrimaryTabId(tabId);
+  };
+
   const handleEditItem = (item: Item) => {
     const tabId = `edit-${item.id}`;
     const title = `Edit: ${item.title}`;
@@ -1068,19 +1105,54 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         <QuickActions onAction={handleQuickAction} />
       </div>
 
-      {/* Second row: Workspace selector + Layout controls */}
+      {/* Second row: Workspaces list + Layout controls */}
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-        {/* Workspace selector (placeholder functionality) */}
-        <WorkspaceSelector
-          workspaces={workspaces}
-          linkedWorkspaceIds={linkedWorkspaceIds}
-          onLinkWorkspace={(id) => setLinkedWorkspaceIds(prev => [...prev, id])}
-          onUnlinkWorkspace={(id) => setLinkedWorkspaceIds(prev => prev.filter(wid => wid !== id))}
-          onOpenWorkspace={(ws) => {
-            // TODO: Open workspace in Tab Commander or dedicated view
-            console.log('Open workspace:', ws.name);
-          }}
-        />
+        {/* Workspaces list */}
+        {projectWorkspaces.length > 0 && (
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', marginRight: '4px' }}>Workspaces:</span>
+            {projectWorkspaces.map((ws) => {
+              const totalTabs = ws.windows.reduce((sum, w) => sum + w.tabs.length, 0);
+              return (
+                <button
+                  key={ws.id}
+                  onClick={() => handleOpenWorkspace(ws)}
+                  style={{
+                    padding: '3px 10px',
+                    height: 24,
+                    borderRadius: 12,
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-glass)',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.1s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--accent-weak)';
+                    e.currentTarget.style.borderColor = 'var(--accent)';
+                    e.currentTarget.style.color = 'var(--text)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-glass)';
+                    e.currentTarget.style.borderColor = 'var(--border)';
+                    e.currentTarget.style.color = 'var(--text-muted)';
+                  }}
+                  title={`${ws.name} (${ws.windows.length} windows, ${totalTabs} tabs)`}
+                >
+                  {ws.name}
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', marginLeft: '2px' }}>
+                    ({totalTabs})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Layout controls - compact */}
       <div style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: 'var(--text-xs)' }}>
@@ -1279,6 +1351,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       items={items}
                       collections={collections}
                       projects={projects}
+                      workspaces={workspaces}
                       onMoveItemToCollection={handleMoveItemToCollection}
                       onDeleteCollection={handleDeleteCollection}
                       onRenameCollection={handleRenameCollection}
@@ -1314,13 +1387,14 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     />
                   </div>
                   <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
-                    <TabContent 
-                      tab={activeSecondaryTab || null} 
-                      item={activeSecondaryItem || null}
-                      items={items}
-                      collections={collections}
-                      projects={projects}
-                      onMoveItemToCollection={handleMoveItemToCollection}
+                      <TabContent 
+                        tab={activeSecondaryTab || null} 
+                        item={activeSecondaryItem || null}
+                        items={items}
+                        collections={collections}
+                        projects={projects}
+                        workspaces={workspaces}
+                        onMoveItemToCollection={handleMoveItemToCollection}
                       onDeleteCollection={handleDeleteCollection}
                       onRenameCollection={handleRenameCollection}
                       onOpenCollection={handleOpenCollection}
@@ -1343,6 +1417,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   items={items}
                       collections={collections}
                       projects={projects}
+                      workspaces={workspaces}
                       onMoveItemToCollection={handleMoveItemToCollection}
                   onDeleteCollection={handleDeleteCollection}
                   onRenameCollection={handleRenameCollection}
@@ -1393,6 +1468,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         items={items}
                       collections={collections}
                       projects={projects}
+                      workspaces={workspaces}
                       onMoveItemToCollection={handleMoveItemToCollection}
                         onDeleteCollection={handleDeleteCollection}
                         onRenameCollection={handleRenameCollection}
@@ -1434,6 +1510,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         items={items}
                       collections={collections}
                       projects={projects}
+                      workspaces={workspaces}
                       onMoveItemToCollection={handleMoveItemToCollection}
                         onDeleteCollection={handleDeleteCollection}
                         onRenameCollection={handleRenameCollection}
@@ -1468,6 +1545,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       items={items}
                       collections={collections}
                       projects={projects}
+                      workspaces={workspaces}
                       onMoveItemToCollection={handleMoveItemToCollection}
                       onDeleteCollection={handleDeleteCollection}
                       onRenameCollection={handleRenameCollection}
@@ -1626,13 +1704,14 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         />
                       </div>
                       <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
-                        <TabContent 
-                          tab={activeSecondaryTab || null} 
-                          item={activeSecondaryItem || null}
-                          items={items}
-                          collections={collections}
-                          projects={projects}
-                          onMoveItemToCollection={handleMoveItemToCollection}
+                      <TabContent 
+                        tab={activeSecondaryTab || null} 
+                        item={activeSecondaryItem || null}
+                        items={items}
+                        collections={collections}
+                        projects={projects}
+                        workspaces={workspaces}
+                        onMoveItemToCollection={handleMoveItemToCollection}
                           onDeleteCollection={handleDeleteCollection}
                           onRenameCollection={handleRenameCollection}
                           onOpenCollection={handleOpenCollection}
@@ -1655,6 +1734,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       items={items}
                       collections={collections}
                       projects={projects}
+                      workspaces={workspaces}
                       onMoveItemToCollection={handleMoveItemToCollection}
                       onDeleteCollection={handleDeleteCollection}
                       onRenameCollection={handleRenameCollection}

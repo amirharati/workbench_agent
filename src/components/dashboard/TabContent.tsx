@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Item, Collection, Project } from '../../lib/db';
+import type { Item, Collection, Project, Workspace } from '../../lib/db';
 import { getDomain, formatDateTime, isValidHttpUrl } from '../../lib/utils';
 import type { TabBarTab } from './TabBar';
 import { CollectionsSpace } from './CollectionsSpace';
@@ -10,15 +10,17 @@ import { PinnedTab } from './PinnedTab';
 import { FavoritesTab } from './FavoritesTab';
 import { TrashTab } from './TrashTab';
 import { RecentTab } from './RecentTab';
+import { WorkspaceTab } from './WorkspaceTab';
 import { ItemContextMenu } from './ItemContextMenu';
 import { Pencil, Trash2, ExternalLink, Calendar, FileText } from 'lucide-react';
 
 interface TabContentProps {
-  tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; type?: 'item' | 'collection' | 'system' }) | null;
+  tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; workspaceId?: string; type?: 'item' | 'collection' | 'system' | 'workspace' }) | null;
   item?: Item | null;
   items?: Item[];
   collections?: Collection[];
   projects?: Project[];
+  workspaces?: Workspace[];
   onMoveItemToCollection?: (itemId: string, targetCollectionId: string, sourceCollectionId?: string) => void;
   onDeleteCollection?: (collection: Collection) => void;
   onRenameCollection?: (collection: Collection, newName: string) => void;
@@ -38,6 +40,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   items = [], 
   collections = [], 
   projects = [],
+  workspaces = [],
   onMoveItemToCollection,
   onDeleteCollection,
   onRenameCollection,
@@ -107,6 +110,31 @@ export const TabContent: React.FC<TabContentProps> = ({
         onSave={onCreateItem}
       />
     );
+  }
+
+  // Workspace tab
+  if (tab?.workspaceId) {
+    const workspace = workspaces.find((w) => w.id === tab.workspaceId);
+    if (!workspace) {
+      return (
+        <div
+          style={{
+            padding: '12px',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            background: 'var(--bg-panel)',
+            borderRadius: 6,
+            border: '1px solid var(--border)',
+          }}
+        >
+          Workspace not found
+        </div>
+      );
+    }
+    return <WorkspaceTab workspace={workspace} />;
   }
 
   // Edit Item tab

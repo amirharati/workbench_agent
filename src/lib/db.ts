@@ -828,16 +828,16 @@ export const getAllWorkspaces = async () => {
   return all.sort((a, b) => b.updated_at - a.updated_at);
 };
 
-export const addWorkspace = async (name: string, windows: WorkspaceWindow[]) => {
+export const addWorkspace = async (name: string, windows: WorkspaceWindow[], projectId?: string) => {
   const db = await getDB();
   const id = crypto.randomUUID();
   const now = Date.now();
-  const ws: Workspace = { id, name, projectId: undefined, created_at: now, updated_at: now, windows };
+  const ws: Workspace = { id, name, projectId, created_at: now, updated_at: now, windows };
   await db.put('workspaces', ws);
   return id;
 };
 
-export const updateWorkspace = async (id: string, updates: Partial<Pick<Workspace, 'name' | 'windows'>>) => {
+export const updateWorkspace = async (id: string, updates: Partial<Pick<Workspace, 'name' | 'windows' | 'projectId'>>) => {
   const db = await getDB();
   const existing = await db.get('workspaces', id);
   if (!existing) return false;

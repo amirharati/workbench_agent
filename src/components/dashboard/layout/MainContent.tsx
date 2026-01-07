@@ -7,6 +7,7 @@ import { HomeView } from '../HomeView';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
 import { CollectionsView } from '../CollectionsView';
+import { WorkspacesView } from '../WorkspacesView';
 import { SearchBar } from '../SearchBar';
 import { Resizer } from '../Resizer';
 import { Panel } from '../../../styles/primitives';
@@ -44,8 +45,6 @@ export const MainContent: React.FC<MainContentProps> = ({
   onDeleteBookmark,
   onRefresh,
 }) => {
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-  const [selectedWindowIds, setSelectedWindowIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUrl, setNewUrl] = useState('');
@@ -70,10 +69,6 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [editNoteContent, setEditNoteContent] = useState('');
-  const selectedWorkspace = useMemo(
-    () => workspaces.find((w) => w.id === selectedWorkspaceId) || null,
-    [workspaces, selectedWorkspaceId]
-  );
 
   // Filter bookmarks by selected project (must be at top level for hooks)
   const filteredBookmarkItems = useMemo(() => {
@@ -167,69 +162,6 @@ export const MainContent: React.FC<MainContentProps> = ({
     }
   }, [selectedNote, isEditingNote]);
 
-  const toggleWindowSelection = (id: string) => {
-    setSelectedWindowIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const selectAllWindows = () => {
-    if (!selectedWorkspace) return;
-    const allIds = selectedWorkspace.windows.map((w) => w.id);
-    setSelectedWindowIds(new Set(allIds));
-  };
-
-  const clearWindowSelection = () => setSelectedWindowIds(new Set());
-
-  const getSelectedWindows = () => {
-    if (!selectedWorkspace) return [];
-    if (selectedWindowIds.size === 0) return selectedWorkspace.windows;
-    return selectedWorkspace.windows.filter((w) => selectedWindowIds.has(w.id));
-  };
-
-  const restoreWindows = async (windowsToRestore: Workspace['windows']) => {
-    for (const w of windowsToRestore) {
-      const urls = (w.tabs || [])
-        .map((t) => t.url)
-        .filter((u): u is string => Boolean(u) && u.startsWith('http'));
-      if (urls.length === 0) continue;
-      try {
-        await chrome.windows.create({ url: urls });
-      } catch (e) {
-        console.error('Restore window failed', e);
-      }
-    }
-  };
-
-  const handleRestoreAll = async () => {
-    if (!selectedWorkspace) return;
-    await restoreWindows(selectedWorkspace.windows);
-  };
-
-  const handleRestoreSelected = async () => {
-    if (!selectedWorkspace) return;
-    await restoreWindows(getSelectedWindows());
-  };
-
-  const handleRestoreSingle = async (windowId: string) => {
-    if (!selectedWorkspace) return;
-    const w = selectedWorkspace.windows.find((x) => x.id === windowId);
-    if (!w) return;
-    await restoreWindows([w]);
-  };
-
-  const handleOpenLinkHere = async (url: string | undefined) => {
-    if (!url || !url.startsWith('http')) return;
-    try {
-      const currentWindow = await chrome.windows.getCurrent();
-      await chrome.tabs.create({ windowId: currentWindow.id, url, active: true });
-    } catch (e) {
-      console.error('Open link failed', e);
-    }
-  };
 
   const openInNewTab = async (url: string) => {
     if (!url.startsWith('http')) return;
@@ -312,6 +244,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           <TabCommanderView
             windows={windows}
             workspaces={workspaces}
+            projects={projects}
             onWorkspacesChanged={onWorkspacesChanged}
             onCloseTab={onCloseTab}
             onCloseWindow={onCloseWindow}
@@ -1825,319 +1758,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           </div>
         );
       case 'workspaces':
-        if (workspaces.length === 0) {
-          return (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-              <div style={{ textAlign: 'center', maxWidth: '520px' }}>
-                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#111827' }}>No workspaces yet</div>
-                <div style={{ marginTop: '0.5rem', color: '#6b7280', fontSize: '0.95rem', lineHeight: 1.5 }}>
-                  Save a snapshot from <b>Tab Commander</b> (bottom panel) and it will show up here.
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        // Card list page: pick a workspace
-        if (!selectedWorkspace) {
-          return (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
-              {workspaces.map((ws) => {
-                const totalTabs = ws.windows.reduce((sum, w) => sum + w.tabs.length, 0);
-                return (
-                  <Panel
-                    key={ws.id}
-                    style={{
-                      padding: '10px 12px',
-                      cursor: 'pointer',
-                      transition: 'all 0.12s ease',
-                    }}
-                    onClick={() => {
-                      setSelectedWorkspaceId(ws.id);
-                      setSelectedWindowIds(new Set());
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--accent)';
-                      e.currentTarget.style.background = 'var(--bg-hover)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--border)';
-                      e.currentTarget.style.background = 'var(--bg-panel)';
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-                      <div style={{ fontWeight: 600, fontSize: 'var(--text-base)', color: 'var(--text)' }}>{ws.name}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-                      <span>{ws.windows.length} windows</span>
-                      <span>•</span>
-                      <span>{totalTabs} tabs</span>
-                    </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      {new Date(ws.updated_at).toLocaleDateString()}
-                    </div>
-                  </Panel>
-                );
-              })}
-            </div>
-          );
-        }
-
-        // Detail page: back + two-column (windows left, tabs right) like Tab Commander
-        const selectedWindows = selectedWindowIds.size === 0
-          ? selectedWorkspace.windows
-          : selectedWorkspace.windows.filter((w) => selectedWindowIds.has(w.id));
-
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', height: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <button
-                onClick={() => {
-                  setSelectedWorkspaceId(null);
-                  setSelectedWindowIds(new Set());
-                }}
-                style={{
-                  padding: '0.375rem 0.75rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid #e5e7eb',
-                  background: 'white',
-                  cursor: 'pointer',
-                  fontWeight: 800,
-                  color: '#374151',
-                }}
-              >
-                ← Back
-              </button>
-              <div>
-                <div style={{ fontWeight: 900, color: '#111827', fontSize: '1.1rem' }}>{selectedWorkspace.name}</div>
-                <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
-                  Updated {new Date(selectedWorkspace.updated_at).toLocaleString()} • {selectedWorkspace.windows.length} windows
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '0.75rem', flex: 1, minHeight: 0 }}>
-              {/* Windows column */}
-              <div
-                style={{
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '0.75rem',
-                  background: 'white',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                }}
-              >
-                <div style={{ padding: '0.75rem', borderBottom: '1px solid #f3f4f6' }}>
-                  <div style={{ fontWeight: 900, color: '#111827' }}>Windows</div>
-                  <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                    <button
-                      onClick={handleRestoreAll}
-                      style={{
-                        padding: '0.35rem 0.6rem',
-                        borderRadius: '0.5rem',
-                        border: '1px solid #2563eb',
-                        background: '#2563eb',
-                        color: 'white',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Restore all
-                    </button>
-                    <button
-                      onClick={handleRestoreSelected}
-                      style={{
-                        padding: '0.35rem 0.6rem',
-                        borderRadius: '0.5rem',
-                        border: '1px solid #e5e7eb',
-                        background: 'white',
-                        color: '#111827',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Restore selected
-                    </button>
-                    <button
-                      onClick={selectAllWindows}
-                      style={{
-                        padding: '0.35rem 0.6rem',
-                        borderRadius: '0.5rem',
-                        border: '1px solid #e5e7eb',
-                        background: 'white',
-                        color: '#111827',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Select all
-                    </button>
-                    <button
-                      onClick={clearWindowSelection}
-                      style={{
-                        padding: '0.35rem 0.6rem',
-                        borderRadius: '0.5rem',
-                        border: '1px solid #e5e7eb',
-                        background: 'white',
-                        color: '#111827',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
-                  {selectedWorkspace.windows.map((w) => {
-                    const isChecked = selectedWindowIds.size === 0 ? true : selectedWindowIds.has(w.id);
-                    return (
-                      <div
-                        key={w.id}
-                        onClick={() => toggleWindowSelection(w.id)}
-                        style={{
-                          padding: '0.6rem',
-                          marginBottom: '0.35rem',
-                          borderRadius: '0.6rem',
-                          border: isChecked ? '1px solid #93c5fd' : '1px solid #e5e7eb',
-                          background: isChecked ? '#eef2ff' : 'white',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => toggleWindowSelection(w.id)}
-                              onClick={(e) => e.stopPropagation()}
-                              style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#2563eb' }}
-                              title="Select window"
-                            />
-                            <div style={{ fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {w.name || 'Window'}
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <span
-                              style={{
-                                fontSize: '0.75rem',
-                                fontWeight: 900,
-                                background: '#f3f4f6',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '9999px',
-                                padding: '0.1rem 0.45rem',
-                                color: '#374151',
-                              }}
-                            >
-                              {w.tabs.length}
-                            </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRestoreSingle(w.id);
-                              }}
-                              style={{
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: '0.5rem',
-                                border: '1px solid #e5e7eb',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 800,
-                                color: '#374151',
-                              }}
-                            >
-                              Restore
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Tabs column */}
-              <div
-                style={{
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '0.75rem',
-                  background: 'white',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                  minHeight: 0,
-                }}
-              >
-                <div style={{ padding: '0.6rem 0.75rem', borderBottom: '1px solid #e5e7eb' }}>
-                  <div style={{ fontWeight: 900, color: '#111827', fontSize: '1rem' }}>Tabs</div>
-                  <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
-                    {selectedWindows.length} window(s) • {selectedWindows.reduce((sum, w) => sum + w.tabs.length, 0)} tabs
-                  </div>
-                </div>
-                <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0.75rem' }}>
-                  {selectedWindows.length === 0 && (
-                    <div style={{ padding: '1rem', color: '#9ca3af', fontSize: '0.875rem' }}>Select a window to view tabs.</div>
-                  )}
-                  {selectedWindows.flatMap((w) =>
-                    w.tabs.map((t, idx) => (
-                      <div
-                        key={`${w.id}-${idx}`}
-                        onClick={() => handleOpenLinkHere(t.url)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          padding: '0.35rem 0.25rem',
-                          borderRadius: '0.5rem',
-                          cursor: 'pointer',
-                          border: '1px solid transparent',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
-                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'transparent')}
-                        title={t.url}
-                      >
-                        {t.favIconUrl ? (
-                          <img src={t.favIconUrl} alt="" style={{ width: 14, height: 14, borderRadius: 2, flexShrink: 0 }} />
-                        ) : (
-                          <div style={{ width: 14, height: 14, borderRadius: 2, background: '#e5e7eb', flexShrink: 0 }} />
-                        )}
-                        <div style={{ minWidth: 0 }}>
-                          <div
-                            style={{
-                              fontSize: '0.8125rem',
-                              fontWeight: 800,
-                              color: '#111827',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {t.title || 'Untitled'}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: '0.75rem',
-                              color: '#6b7280',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {t.url}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      case 'collections':
+        return <WorkspacesView projects={projects} workspaces={workspaces} />;
         return (
           <CollectionsView
             collections={collections}
