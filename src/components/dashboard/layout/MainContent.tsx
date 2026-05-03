@@ -5,6 +5,7 @@ import { formatDateTime } from '../../../lib/utils';
 import { DashboardView } from './DashboardLayout';
 import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
+import { SettingsView } from '../SettingsView';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
 import { CollectionsView } from '../CollectionsView';
@@ -255,8 +256,10 @@ export const MainContent: React.FC<MainContentProps> = ({
   const renderContent = () => {
     switch (activeView) {
       case 'home':
+        return <HomeView />;
+      case 'settings':
         return (
-          <HomeView
+          <SettingsView
             backupFolderReady={backupFolderReady}
             backupFolderName={backupFolderName}
             onChooseBackupFolder={onChooseBackupFolder}

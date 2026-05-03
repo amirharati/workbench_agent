@@ -34,7 +34,7 @@ Chrome MV3 extension
 **Dual UI**
 
 - **Side panel**: save current tab, add bookmark, backup import/export, open full page.
-- **Dashboard**: Home, Projects, Tab Commander, Bookmarks, Workspaces, Notes, Collections.
+- **Dashboard**: Home (placeholder), Projects, Tab Commander, Bookmarks, Workspaces, Notes, Collections, **Settings** (backup & folder UI).
 
 **Stores (conceptual)** — see `src/lib/db.ts` for truth:
 
@@ -75,4 +75,4 @@ Chrome MV3 extension
 
 ---
 
-*Last updated: 2026-05-02 (late)*
+*Last updated: 2026-05-03*

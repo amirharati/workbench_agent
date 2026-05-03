@@ -20,7 +20,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **Design baseline**: Compact IDE-style layout, theme tokens / CSS variables, dark–light toggle usage across dashboard.
 - **Shared libs**: `src/lib/utils.ts`, `src/lib/constants.ts` (domains, dates, UI/DB constants—extend as needed).
 - **Backup architecture (phase 1)**: `BackupSink` + `FileSystemBackupSink`, `BackupCoordinator`, `dataChangeNotifier`, `revisionTracker`, backup envelope metadata, startup conflict detection, pause-and-resolve flow, and safety snapshot (`safety-before-import-...json`) before sync-driven remote import.
-- **Backup UX**: Home view backup status panel, manual backup button (`manual-YYYY-MM-DD_HHMMSS.json`), and conflict resolution actions (Load remote / Keep local overwrite).
+- **Backup UX**: Dashboard **Settings** view (`SettingsView`) — backup status panel, manual backup button (`manual-YYYY-MM-DD_HHMMSS.json`), and conflict resolution actions (Load remote / Keep local overwrite). **Home** is a placeholder until product decides what belongs there.
 
 ---
 
@@ -39,6 +39,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [x] **`BackupSink` abstraction** — interface + `FileSystemBackupSink` (writes serialized JSON).
 - [ ] **`BackupCoordinator`** — debounced live + manual + conflict checks shipped; **scheduled (`chrome.alarms`) + rotation (max N)** still pending.
 - [ ] **Settings / persistence** — persisted folder handle + revision/device metadata shipped; **user-configurable debounce/schedule/retention/provider toggles** still pending.
+- [ ] **Design spike: optional local `.workbench` config directory (separate from backup folder)** — evaluate usefulness/risk for reinstall recovery and local app config; keep backup target independent (e.g. user may still choose Dropbox for backups).
 - [x] **UI** — backup folder picker, backup status, manual backup action, conflict banner/actions shipped.
 - [x] **Mutation hooks** — coordinator wired from DB write paths via `notifyDataChanged`.
 - [ ] **Manifest** — add `alarms` permission; document any new host permissions only when adding HTTP sink later.

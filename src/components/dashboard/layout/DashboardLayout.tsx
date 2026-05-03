@@ -7,6 +7,7 @@ import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 
 export type DashboardView =
   | 'home'
+  | 'settings'
   | 'projects'
   | 'tab-commander'
   | 'bookmarks'

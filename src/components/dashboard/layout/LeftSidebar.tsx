@@ -27,6 +27,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   activeView,
   onSelectView
 }) => {
+  const settingsActive = activeView === 'settings';
   const navItems: { icon: any; label: string; id: DashboardView }[] = [
     { icon: Home, label: 'Home', id: 'home' },
     { icon: Layout, label: 'Projects', id: 'projects' },
@@ -165,7 +166,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         gap: '4px',
       }}>
         <button 
-          onClick={() => onSelectView('home')}
+          onClick={() => onSelectView('settings')}
           style={{
             width: '100%',
             display: 'flex',
@@ -173,22 +174,27 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             justifyContent: isCollapsed ? 'center' : 'flex-start',
             padding: isCollapsed ? '6px' : '5px 8px',
             height: 28,
-            color: 'var(--text-muted)',
+            color: settingsActive ? 'var(--text)' : 'var(--text-muted)',
             border: 'none',
-            background: 'transparent',
+            background: settingsActive ? 'var(--accent-weak)' : 'transparent',
             borderRadius: 4,
             cursor: 'pointer',
             fontSize: 'var(--text-sm)',
+            fontWeight: settingsActive ? 500 : 400,
             transition: 'all 0.12s ease',
           }}
           title="Open settings"
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--bg-hover)';
-            e.currentTarget.style.color = 'var(--text)';
+            if (!settingsActive) {
+              e.currentTarget.style.background = 'var(--bg-hover)';
+              e.currentTarget.style.color = 'var(--text)';
+            }
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--text-muted)';
+            if (!settingsActive) {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-muted)';
+            }
           }}
         >
           <Settings size={16} />

@@ -144,7 +144,9 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 - `src/lib/backupSinks.ts` — sink interface + file-system sink.
 - `src/lib/backupFolder.ts` — folder handle persistence + read/write helpers.
 - `src/lib/metaDb.ts` — meta DB (`handles` + `kv` stores).
-- `src/App.tsx` + `src/components/dashboard/HomeView.tsx` — startup checks, status, conflict UI.
+- `src/App.tsx` — startup conflict checks, backup sink registration, handlers.
+- `src/components/dashboard/SettingsView.tsx` — backup folder UI, status, manual backup, restore file, conflict banner.
+- `src/components/dashboard/HomeView.tsx` — placeholder (no backup UI).
 
 ---
 
@@ -155,4 +157,4 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 
 ---
 
-*Last updated: 2026-05-02 (late)*
+*Last updated: 2026-05-03 — backup UI moved to Settings view*
