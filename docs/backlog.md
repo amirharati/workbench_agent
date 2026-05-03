@@ -19,6 +19,8 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **Workspaces**: Save/restore session snapshots; optional `projectId`; list + detail UI.
 - **Design baseline**: Compact IDE-style layout, theme tokens / CSS variables, dark–light toggle usage across dashboard.
 - **Shared libs**: `src/lib/utils.ts`, `src/lib/constants.ts` (domains, dates, UI/DB constants—extend as needed).
+- **Backup architecture (phase 1)**: `BackupSink` + `FileSystemBackupSink`, `BackupCoordinator`, `dataChangeNotifier`, `revisionTracker`, backup envelope metadata, startup conflict detection, pause-and-resolve flow, and safety snapshot (`safety-before-import-...json`) before sync-driven remote import.
+- **Backup UX**: Home view backup status panel, manual backup button (`manual-YYYY-MM-DD_HHMMSS.json`), and conflict resolution actions (Load remote / Keep local overwrite).
 
 ---
 
@@ -34,17 +36,24 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 **Data integrity — automated file backup** — design: [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md)
 
-- [ ] **`BackupSink` abstraction** — interface + `FileSystemBackupSink` (writes serialized JSON); stub or `NoOpSink` when disabled.
-- [ ] **`BackupCoordinator`** — single owner: debounced **live** push + **`chrome.alarms`** **scheduled** push + rotation (max **N** files); calls only `exportDB()` → sink(s).
-- [ ] **Settings / persistence** — enable live + interval debounce; enable schedule + period + **N**; store prefs (`chrome.storage.local` / small DB key); persist **`FileSystemDirectoryHandle`** for backup folder (re‑prompt if permission revoked).
-- [ ] **UI** — dashboard or settings strip: “Backup folder…” picker, toggles, last success/failure status (non‑blocking).
-- [ ] **Mutation hooks** — wire coordinator `notifyChanged()` (or equivalent) from DB write paths without duplicating export logic across components.
+- [x] **`BackupSink` abstraction** — interface + `FileSystemBackupSink` (writes serialized JSON).
+- [ ] **`BackupCoordinator`** — debounced live + manual + conflict checks shipped; **scheduled (`chrome.alarms`) + rotation (max N)** still pending.
+- [ ] **Settings / persistence** — persisted folder handle + revision/device metadata shipped; **user-configurable debounce/schedule/retention/provider toggles** still pending.
+- [x] **UI** — backup folder picker, backup status, manual backup action, conflict banner/actions shipped.
+- [x] **Mutation hooks** — coordinator wired from DB write paths via `notifyDataChanged`.
 - [ ] **Manifest** — add `alarms` permission; document any new host permissions only when adding HTTP sink later.
+- [ ] **Runtime remote re-check** — currently checks startup/folder-change; add focus/visibility (or timer) re-check while app stays open.
 
 **Notes**
 
 - [ ] **Decide**: first-class `Note` entities (`notes` store + CRUD in UI) *vs* bookmark-notes-only; migrate UI accordingly.
 - [ ] Optional: page context capture when creating a note from the active tab.
+
+**Known data-model / schema debt (deferred)**
+
+- [ ] Reconcile `notes` object-store model vs current UI behavior (many notes still tied to `items.notes`).
+- [ ] Review import/merge semantics for multi-collection and note-link consistency (especially before implementing merge restore mode).
+- [ ] Add tighter validation around legacy backup shape normalization during import.
 
 **Collections & projects**
 
@@ -98,4 +107,4 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ---
 
-*Last updated: 2026-05-02 — backup design doc + backlog tasks*
+*Last updated: 2026-05-02 (late) — backup phase 1 shipped; scheduled rotation + model debt pending*

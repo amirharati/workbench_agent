@@ -29,6 +29,9 @@ import {
   hasWritableBackupFolder,
   getBackupFolderName,
 } from './lib/backupFolder';
+import { backupCoordinator, BackupStatusSnapshot } from './lib/backupCoordinator';
+import { FileSystemBackupSink } from './lib/backupSinks';
+import { revisionTracker } from './lib/revisionTracker';
 
 export interface WindowGroup {
   windowId: number;
@@ -46,6 +49,20 @@ function App() {
   const [showBackupOnboarding, setShowBackupOnboarding] = useState(false);
   const [backupFolderReady, setBackupFolderReady] = useState(false);
   const [backupFolderName, setBackupFolderName] = useState<string | null>(null);
+  const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot>(() =>
+    backupCoordinator.getStatus()
+  );
+
+  const syncFileSystemSink = async () => {
+    const ready = await hasWritableBackupFolder();
+    if (ready) {
+      // Idempotent: re-adding the same sink just replaces it with a fresh
+      // instance, which is what we want after a folder change.
+      backupCoordinator.addSink(new FileSystemBackupSink('latest.json'));
+    } else {
+      backupCoordinator.removeSink('file-system');
+    }
+  };
 
   const refreshBackupFolderStatus = async () => {
     try {
@@ -53,9 +70,47 @@ function App() {
       const name = await getBackupFolderName();
       setBackupFolderReady(ready);
       setBackupFolderName(name);
+      await syncFileSystemSink();
     } catch {
       setBackupFolderReady(false);
       setBackupFolderName(null);
+      backupCoordinator.removeSink('file-system');
+    }
+  };
+
+  /**
+   * Run the startup conflict check and auto-resolve safe cases.
+   * Blocking outcomes are surfaced via backupStatus.conflict (subscribed
+   * earlier) so the UI can render the resolution banner.
+   */
+  const runStartupConflictCheck = async () => {
+    if (!backupCoordinator.hasAnySink()) return;
+    try {
+      const info = await backupCoordinator.checkForConflict();
+      if (info.kind === 'remote-newer-same-device') {
+        // Safe path: same deviceId means it's literally our install (e.g.
+        // another window/profile wrote it). Adopt it; safety snapshot first.
+        const res = await backupCoordinator.loadFromRemote();
+        if (res.ok) {
+          await loadData();
+          showStatus(
+            res.safetyRef
+              ? `Loaded newer remote backup. Local saved as ${res.safetyRef}.`
+              : 'Loaded newer remote backup.'
+          );
+        } else {
+          showStatus(`Could not adopt newer remote backup: ${res.error}`);
+        }
+      } else if (info.kind === 'local-newer-same-device') {
+        // We have unflushed edits; coordinator will write them via debounce
+        // on the next mutation, but we can also nudge a flush right now.
+        await backupCoordinator.flush('startup');
+      }
+      // 'remote-newer-different-device' and 'diverged-different-device'
+      // are blocking; the coordinator already paused itself and the banner
+      // will show via subscribeStatus.
+    } catch (e) {
+      console.error('Startup conflict check failed:', e);
     }
   };
 
@@ -63,9 +118,41 @@ function App() {
     let cancelled = false;
     (async () => {
       try {
+        // Order matters: load tracker BEFORE starting it so the listener
+        // has correct deviceId/revision in memory; then start coordinator;
+        // then subscribe to status; then sync sinks; then conflict check.
+        await revisionTracker.load();
+        if (cancelled) return;
+        revisionTracker.start();
+        backupCoordinator.start();
+      } catch (e) {
+        console.error('Backup system bootstrap failed:', e);
+      }
+    })();
+    const unsub = backupCoordinator.subscribeStatus(setBackupStatus);
+    return () => {
+      cancelled = true;
+      unsub();
+      // Intentionally do NOT call stop(): the coordinator is process-wide
+      // and may have other subscribers (future). React's StrictMode double
+      // invoke is fine — start() is idempotent.
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
         const show = await shouldShowBackupOnboarding();
         if (!cancelled && show) setShowBackupOnboarding(true);
-        if (!cancelled) await refreshBackupFolderStatus();
+        if (cancelled) return;
+        // Wait for revision tracker to be loaded before doing the conflict
+        // check (it reads tracker state synchronously).
+        await revisionTracker.load();
+        if (cancelled) return;
+        await refreshBackupFolderStatus();
+        if (cancelled) return;
+        await runStartupConflictCheck();
       } catch (e) {
         console.error('Backup onboarding check failed:', e);
       }
@@ -254,6 +341,10 @@ function App() {
   };
 
   const handleChooseBackupFolder = async () => {
+    // Forget what we knew about the OLD folder's remote BEFORE the picker
+    // runs, so that importDB (called below if an existing latest.json is
+    // found) can populate lastSeenRemote with the NEW folder's envelope.
+    revisionTracker.clearLastSeenRemote();
     const res = await pickAndPersistBackupFolder();
     if (!res.ok) {
       if (res.error !== 'cancelled') {
@@ -280,6 +371,50 @@ function App() {
     await setBackupFolderOnboarding('done');
     setShowBackupOnboarding(false);
     await refreshBackupFolderStatus();
+    await runStartupConflictCheck();
+  };
+
+  const handleManualBackup = async () => {
+    if (!backupCoordinator.hasAnySink()) {
+      showStatus('Configure a backup folder first.');
+      return;
+    }
+    const summary = await backupCoordinator.manualBackup();
+    if (!summary) {
+      showStatus('Manual backup is paused while a conflict is unresolved.');
+      return;
+    }
+    if (summary.ok) {
+      const ref = summary.outcomes.find((o) => o.result.ok)?.result.ref;
+      showStatus(ref ? `Manual backup written: ${ref}` : 'Manual backup written.');
+    } else {
+      const firstError =
+        summary.outcomes.find((o) => !o.result.ok)?.result.error ?? 'Unknown error';
+      showStatus(`Manual backup failed: ${firstError}`);
+    }
+  };
+
+  const handleResolveConflictLoadRemote = async () => {
+    const res = await backupCoordinator.loadFromRemote();
+    if (res.ok) {
+      await loadData();
+      showStatus(
+        res.safetyRef
+          ? `Loaded remote latest.json. Local saved as ${res.safetyRef}.`
+          : 'Loaded remote latest.json.'
+      );
+    } else {
+      showStatus(`Could not load remote: ${res.error ?? 'Unknown error'}`);
+    }
+  };
+
+  const handleResolveConflictKeepLocal = async () => {
+    const res = await backupCoordinator.forcePushLocal();
+    if (res.ok) {
+      showStatus('Kept local data; latest.json overwritten.');
+    } else {
+      showStatus(`Could not overwrite remote: ${res.error ?? 'Unknown error'}`);
+    }
   };
 
   const handleOpenFullPage = async () => {
@@ -384,8 +519,12 @@ function App() {
       onRefresh={loadData}
       onChooseBackupFolder={handleChooseBackupFolder}
       onRestoreBackupFile={handleImportFile}
+      onManualBackup={handleManualBackup}
+      onResolveConflictLoadRemote={handleResolveConflictLoadRemote}
+      onResolveConflictKeepLocal={handleResolveConflictKeepLocal}
       backupFolderReady={backupFolderReady}
       backupFolderName={backupFolderName}
+      backupStatus={backupStatus}
     />
     </>
   );

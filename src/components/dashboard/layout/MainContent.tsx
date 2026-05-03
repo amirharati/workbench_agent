@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Workspace, Item, Collection, Project, addProject, deleteProject, ALL_PROJECTS_ID } from '../../../lib/db';
+import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 import { formatDateTime } from '../../../lib/utils';
 import { DashboardView } from './DashboardLayout';
 import type { WindowGroup } from '../../../App';
@@ -30,8 +31,12 @@ interface MainContentProps {
   onRefresh?: () => Promise<void>;
   onChooseBackupFolder?: () => Promise<void>;
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
+  onManualBackup?: () => Promise<void>;
+  onResolveConflictLoadRemote?: () => Promise<void>;
+  onResolveConflictKeepLocal?: () => Promise<void>;
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
+  backupStatus?: BackupStatusSnapshot;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -50,8 +55,12 @@ export const MainContent: React.FC<MainContentProps> = ({
   onRefresh,
   onChooseBackupFolder,
   onRestoreBackupFile,
+  onManualBackup,
+  onResolveConflictLoadRemote,
+  onResolveConflictKeepLocal,
   backupFolderReady,
   backupFolderName,
+  backupStatus,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -252,6 +261,10 @@ export const MainContent: React.FC<MainContentProps> = ({
             backupFolderName={backupFolderName}
             onChooseBackupFolder={onChooseBackupFolder}
             onRestoreBackupFile={onRestoreBackupFile}
+            onManualBackup={onManualBackup}
+            onResolveConflictLoadRemote={onResolveConflictLoadRemote}
+            onResolveConflictKeepLocal={onResolveConflictKeepLocal}
+            backupStatus={backupStatus}
           />
         );
       case 'tab-commander':

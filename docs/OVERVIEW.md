@@ -15,7 +15,7 @@ Chrome extension (same React app as **side panel** + **full-page dashboard**) to
 | Principle | Meaning |
 |-----------|---------|
 | Personal tool first | Optimize for your workflow, not a generic launch. |
-| Local-first | IndexedDB is source of truth; JSON export/import for portability. |
+| Local-first | IndexedDB is source of truth; JSON export/import + folder backup for portability. |
 | Client-only AI (future) | API keys and calls from the extension; optional sync later (e.g. Dropbox). |
 | Simple over clever | Ship usable flows; polish and split large files incrementally. |
 
@@ -48,7 +48,7 @@ Chrome MV3 extension
 - Bookmarks: items with `collectionIds[]`, tags, notes-on-bookmark, CRUD, search in project workspace.
 - Projects + collections: hierarchy, default project, virtual “all projects” view.
 - Workspaces: save/restore session snapshots; optional `projectId` on workspace.
-- Data safety: export/import, backup verification, migration hooks (see `db.ts`).
+- Data safety: export/import, backup verification, debounced live backup to `latest.json`, manual named backups, envelope metadata (`revision` + `deviceId`), and startup conflict pause/resolution flow.
 
 ---
 
@@ -60,7 +60,7 @@ Chrome MV3 extension
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | Recent items works; pinned / favorites / trash mostly placeholders (needs fields + UX). |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
-| **Optional sync** | Dropbox / cross-device: not implemented. |
+| **Optional sync** | Initial file-based sync guard is implemented (envelope + conflict pause + resolve actions). Full scheduled rotation, runtime re-check while app stays open, and merge workflows are still pending. |
 
 ---
 
@@ -75,4 +75,4 @@ Chrome MV3 extension
 
 ---
 
-*Last updated: 2026-05-02*
+*Last updated: 2026-05-02 (late)*

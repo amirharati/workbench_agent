@@ -3,6 +3,7 @@ import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
 import { Workspace, Collection, Item, Project } from '../../../lib/db';
+import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 
 export type DashboardView =
   | 'home'
@@ -28,8 +29,12 @@ interface DashboardLayoutProps {
   onRefresh?: () => Promise<void>;
   onChooseBackupFolder?: () => Promise<void>;
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
+  onManualBackup?: () => Promise<void>;
+  onResolveConflictLoadRemote?: () => Promise<void>;
+  onResolveConflictKeepLocal?: () => Promise<void>;
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
+  backupStatus?: BackupStatusSnapshot;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ 
@@ -47,8 +52,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onRefresh,
   onChooseBackupFolder,
   onRestoreBackupFile,
+  onManualBackup,
+  onResolveConflictLoadRemote,
+  onResolveConflictKeepLocal,
   backupFolderReady,
   backupFolderName,
+  backupStatus,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeView, setActiveView] = useState<DashboardView>('projects');
@@ -114,8 +123,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             onRefresh={onRefresh}
             onChooseBackupFolder={onChooseBackupFolder}
             onRestoreBackupFile={onRestoreBackupFile}
+            onManualBackup={onManualBackup}
+            onResolveConflictLoadRemote={onResolveConflictLoadRemote}
+            onResolveConflictKeepLocal={onResolveConflictKeepLocal}
             backupFolderReady={backupFolderReady}
             backupFolderName={backupFolderName}
+            backupStatus={backupStatus}
           />
         </div>
       </div>

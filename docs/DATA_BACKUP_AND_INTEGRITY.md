@@ -1,6 +1,6 @@
 # Data integrity & backup design
 
-Living design for how Workbench protects user data and optionally mirrors it outside IndexedDB. **Implementation status:** not built yet (see [`BACKLOG.md`](BACKLOG.md)).
+Living design for how Workbench protects user data and mirrors it outside IndexedDB. This now includes a shipped file-based backup core (live + manual + sync conflict guard), with scheduled rotation and a few hardening steps still pending (see [`BACKLOG.md`](BACKLOG.md)).
 
 ---
 
@@ -25,15 +25,63 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 
 ---
 
-## This phase: two backup modes
+## Current implementation status
 
-### 1) Live backup (auto‑save on change)
+### Shipped
 
-- After local writes (mutations to projects/collections/items/workspaces/notes), trigger a **debounced** export (e.g. 3–10 s idle configurable).
-- Write **`latest.json`** (name configurable) to the user‑chosen directory via **File System Access API** (directory handle stored after one‑time picker).
+1. **Live backup (debounced auto-save)**
+   - DB write paths emit `notifyDataChanged(...)` from `db.ts`.
+   - `BackupCoordinator` listens and writes debounced live snapshots to `latest.json` (current debounce: ~1.5s).
+   - Writes are coalesced while in-flight to avoid concurrent file writes.
+
+2. **Manual backup**
+   - "Backup now" writes `manual-YYYY-MM-DD_HHMMSS.json`.
+   - Manual backup also refreshes `latest.json`.
+
+3. **Envelope metadata for sync decisions**
+   - `latest.json` now uses a backup envelope:
+     - `format`, `schemaVersion`, `exportedAt`, `revision`, `deviceId`, `writerKind`, `data`.
+   - Existing legacy flat JSON backups are still readable; parser is backward-compatible.
+   - Time uses UTC milliseconds (`Date.now()`). We assume host clocks are reasonably accurate.
+
+4. **Cross-device conflict detection + write pause**
+   - Startup/folder-check reads remote `latest.json` envelope and compares it with local revision/device state.
+   - If remote is newer from another device (or both sides diverged), auto-writes are paused and user must resolve.
+   - Resolution actions in UI:
+     - **Load remote** (safe path): writes `safety-before-import-...json` to the same folder first, then imports remote.
+     - **Keep local**: force-pushes local state to `latest.json`.
+
+5. **Swappable architecture in place**
+   - `BackupCoordinator` + `BackupSink` + `FileSystemBackupSink` implemented.
+   - Meta bookkeeping isolated in a dedicated meta DB (`deviceId`, `localRevision`, `lastSeenRemote`).
+
+### Not shipped yet
+
+1. **Scheduled rotation backups**
+   - `chrome.alarms` integration not implemented yet.
+   - Rotation policy (period + max N retained files) still pending.
+
+2. **Runtime remote polling/re-check**
+   - Conflict check runs at startup and folder change.
+   - Continuous checks while app stays open (focus/visibility or timer-based) are still pending.
+
+3. **User settings for backup policy**
+   - Debounce interval, schedule period, retention count, provider selection are not exposed in settings yet.
+
+4. **Import merge mode**
+   - Replace mode works; merge remains disabled placeholder.
+
+---
+
+## Backup modes (target shape)
+
+### 1) Live backup (auto-save on change)
+
+- Local writes trigger debounced export.
+- Current target file is `latest.json` in the selected folder.
 - Debouncing avoids hammering disk/sync when many edits arrive quickly.
 
-### 2) Scheduled backup (rotation)
+### 2) Scheduled backup (rotation) — pending
 
 - **`chrome.alarms`** (or equivalent) fires on a user‑configurable cadence (default: once per day).
 - Write a timestamped file (e.g. `workbench-backup-YYYYMMDD-HHmmss.json`) **or** rotate fixed slots `backup-01.json` … `backup-N.json`.
@@ -50,7 +98,10 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 
 - User picks a folder once (IDEAL: sync‑enabled folder such as Dropbox). Extension stores **`FileSystemDirectoryHandle`** in IndexedDB where supported.
 - **Dropbox/iCloud** are implementation‑transparent: we write normal files; the OS client syncs them. No Dropbox API in this phase.
-- **Caveats (explicit):** sync delay, conflict copies, offline divergence — user accepts imperfect cross‑machine “latest” unless they run explicit **Import** on the other machine.
+- **Caveats (explicit):**
+  - Sync delay and OS-level conflict copies can occur (Dropbox/iCloud behavior).
+  - No automatic merge across divergent edits.
+  - If remote is newer from another device, writes are paused and user must resolve to avoid silent overwrite.
 
 ---
 
@@ -63,13 +114,13 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 | Piece | Responsibility |
 |-------|----------------|
 | **`BackupCoordinator`** (or similar) | Owns scheduling: debounce hook, alarm registration, calls into configured sink(s). Single entry from app after mutations. |
-| **`BackupSink` interface** | `push(payload: string, meta: { kind: 'live' \| 'scheduled'; revision?: number }) => Promise<Result>` — receives **already serialized** JSON; optional `configure()` / `dispose()`. |
+| **`BackupSink` interface** | Receives already-serialized payload and writes to a destination (`writeLatest`, `writeNamed`). |
 | **`FileSystemBackupSink`** | Implements writes using stored directory handle + naming/rotation policy for this phase. |
 | **Future:** `HttpBackupSink` (POST to user URL), `NoOpBackupSink`, etc. — same coordinator, different sink. |
 
 ### Rules
 
-- **All** automated backup goes: `serialize()` → **one function** wrapping `exportDB()` → coordinator → sink(s).
+- **All** automated backup goes: `exportDB()` → envelope wrap → coordinator → sink(s).
 - **Do not** duplicate export logic inside React components; subscribe coordinator from a narrow place (e.g. after successful `loadData` mutations or thin wrappers in `db.ts` — decide during implementation).
 - Settings shape should allow **`provider: 'file' | 'none' | 'http'`** later without rewriting coordinator semantics.
 
@@ -78,16 +129,22 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 ## Future extensions (out of scope until chosen)
 
 - HTTP / BYO server: same JSON blob, `fetch` with optional auth headers.
-- Pull / restore automation (compare revision, prompt user) — optional v2.
+- More automatic pull/re-check policies while app is open.
 - Per‑user filenames when multi‑user mode exists (`workbench-{profileId}-latest.json`).
 
 ---
 
 ## Related code (today)
 
-- `src/lib/db.ts` — `exportDB`, `importDB`, `verifyBackup`
-- `src/lib/backup.ts` — backup verification helpers
-- `src/App.tsx` — manual export/import handlers
+- `src/lib/db.ts` — core data API + export/import/verification + mutation notifications.
+- `src/lib/dataChangeNotifier.ts` — pub/sub for DB change events.
+- `src/lib/revisionTracker.ts` — device/revision/last-seen-remote bookkeeping.
+- `src/lib/backupEnvelope.ts` — envelope schema + legacy-compatible parser.
+- `src/lib/backupCoordinator.ts` — debounced live/manual orchestration + conflict checks/resolution helpers.
+- `src/lib/backupSinks.ts` — sink interface + file-system sink.
+- `src/lib/backupFolder.ts` — folder handle persistence + read/write helpers.
+- `src/lib/metaDb.ts` — meta DB (`handles` + `kv` stores).
+- `src/App.tsx` + `src/components/dashboard/HomeView.tsx` — startup checks, status, conflict UI.
 
 ---
 
@@ -98,4 +155,4 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 
 ---
 
-*Last updated: 2026-05-02*
+*Last updated: 2026-05-02 (late)*

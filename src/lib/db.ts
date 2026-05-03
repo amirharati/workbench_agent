@@ -1,4 +1,7 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { notifyDataChanged } from './dataChangeNotifier';
+import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
+import { revisionTracker } from './revisionTracker';
 
 const DB_NAME = 'personal-tools-db';
 const DB_VERSION = 3;
@@ -655,6 +658,7 @@ export const addItem = async (item: Omit<Item, 'id' | 'created_at' | 'updated_at
   const now = nowTs();
   const collectionIds = Array.isArray(item.collectionIds) && item.collectionIds.length > 0 ? item.collectionIds : [defaultUnsortedCollectionId];
   await db.put('items', { ...item, id, created_at: now, updated_at: item.updated_at ?? now, collectionIds });
+  notifyDataChanged('item.add');
   return id;
 };
 
@@ -666,6 +670,7 @@ export const getAllItems = async () => {
 export const deleteItem = async (id: string) => {
   const db = await getDB();
   await db.delete('items', id);
+  notifyDataChanged('item.delete');
 };
 
 // --- Project Helpers ---
@@ -689,6 +694,7 @@ export const addProject = async (name: string, description?: string) => {
     updated_at: now,
   });
   await ensureDefaultCollectionForProject(db, id);
+  notifyDataChanged('project.add');
   return id;
 };
 
@@ -698,6 +704,7 @@ export const updateProject = async (id: string, updates: Partial<Omit<Project, '
   if (!existing) return false;
   const now = nowTs();
   await db.put('projects', { ...existing, ...updates, updated_at: now });
+  notifyDataChanged('project.update');
   return true;
 };
 
@@ -728,6 +735,7 @@ export const deleteProject = async (id: string) => {
   }
 
   await db.delete('projects', id);
+  notifyDataChanged('project.delete');
   return true;
 };
 
@@ -754,6 +762,7 @@ export const addCollection = async (name: string, color?: string, projectId?: st
     isDefault: false,
     color: color || '#3b82f6',
   });
+  notifyDataChanged('collection.add');
   return id;
 };
 
@@ -771,6 +780,7 @@ export const deleteCollection = async (id: string) => {
     });
   }
   await db.delete('collections', id);
+  notifyDataChanged('collection.delete');
 };
 
 export const updateCollection = async (id: string, updates: Partial<Omit<Collection, 'id' | 'created_at'>>) => {
@@ -778,6 +788,7 @@ export const updateCollection = async (id: string, updates: Partial<Omit<Collect
   const collection = await db.get('collections', id);
   if (collection) {
     await db.put('collections', { ...collection, ...updates, updated_at: nowTs() });
+    notifyDataChanged('collection.update');
   }
 };
 
@@ -789,6 +800,7 @@ export const updateItemCollection = async (itemId: string, collectionId: string 
   if (item) {
     const next = typeof collectionId === 'string' ? [collectionId] : [defaultUnsortedCollectionId];
     await db.put('items', { ...item, collectionIds: next, updated_at: nowTs() });
+    notifyDataChanged('item.update');
   }
 };
 
@@ -811,6 +823,7 @@ export const updateItem = async (id: string, updates: Partial<Omit<Item, 'id' | 
       next.collectionIds = [defaultUnsortedCollectionId];
     }
     await db.put('items', next);
+    notifyDataChanged('item.update');
   }
 };
 
@@ -821,6 +834,7 @@ export const addSnapshot = async (tabs: Snapshot['tabs']) => {
     tabCount: tabs.length,
     tabs,
   });
+  notifyDataChanged('snapshot.add');
 };
 
 // --- Workspace Helpers ---
@@ -837,6 +851,7 @@ export const addWorkspace = async (name: string, windows: WorkspaceWindow[], pro
   const now = Date.now();
   const ws: Workspace = { id, name, projectId, created_at: now, updated_at: now, windows };
   await db.put('workspaces', ws);
+  notifyDataChanged('workspace.add');
   return id;
 };
 
@@ -846,12 +861,14 @@ export const updateWorkspace = async (id: string, updates: Partial<Pick<Workspac
   if (!existing) return false;
   const now = Date.now();
   await db.put('workspaces', { ...existing, ...updates, updated_at: now });
+  notifyDataChanged('workspace.update');
   return true;
 };
 
 export const deleteWorkspace = async (id: string) => {
   const db = await getDB();
   await db.delete('workspaces', id);
+  notifyDataChanged('workspace.delete');
 };
 
 export const exportDB = async () => {
@@ -866,43 +883,54 @@ export const exportDB = async () => {
 };
 
 /**
- * Verifies a backup file structure and returns validation result
+ * Verifies a backup file structure and returns validation result.
+ * Accepts both the new enveloped format and the legacy flat format.
  */
-export const verifyBackup = (jsonString: string): { valid: boolean; error?: string; stats?: any } => {
+export const verifyBackup = (
+  jsonString: string
+): { valid: boolean; error?: string; stats?: any; envelope?: BackupEnvelopeMeta | null } => {
+  let parsed: { envelope: BackupEnvelopeMeta | null; data: unknown };
   try {
-    const data = JSON.parse(jsonString);
-    
-    if (!data || typeof data !== 'object') {
-      return { valid: false, error: 'Invalid JSON format' };
-    }
-    
-    const stats = {
-      projects: Array.isArray(data.projects) ? data.projects.length : 0,
-      collections: Array.isArray(data.collections) ? data.collections.length : 0,
-      items: Array.isArray(data.items) ? data.items.length : 0,
-      notes: Array.isArray(data.notes) ? data.notes.length : 0,
-      workspaces: Array.isArray(data.workspaces) ? data.workspaces.length : 0,
-    };
-    
-    // Basic validation - backup should have at least some data
-    if (stats.projects === 0 && stats.items === 0 && stats.collections === 0) {
-      return { valid: false, error: 'Backup appears to be empty' };
-    }
-    
-    return { valid: true, stats };
+    parsed = parseBackupText(jsonString);
   } catch (e) {
     return { valid: false, error: `JSON parse error: ${e}` };
   }
+  const data = parsed.data as Record<string, unknown> | null;
+
+  if (!data || typeof data !== 'object') {
+    return { valid: false, error: 'Invalid JSON format' };
+  }
+
+  const stats = {
+    projects: Array.isArray(data.projects) ? (data.projects as unknown[]).length : 0,
+    collections: Array.isArray(data.collections) ? (data.collections as unknown[]).length : 0,
+    items: Array.isArray(data.items) ? (data.items as unknown[]).length : 0,
+    notes: Array.isArray(data.notes) ? (data.notes as unknown[]).length : 0,
+    workspaces: Array.isArray(data.workspaces) ? (data.workspaces as unknown[]).length : 0,
+  };
+
+  if (stats.projects === 0 && stats.items === 0 && stats.collections === 0) {
+    return { valid: false, error: 'Backup appears to be empty', envelope: parsed.envelope };
+  }
+
+  return { valid: true, stats, envelope: parsed.envelope };
 };
 
 /**
- * Imports database from JSON backup string
- * @param jsonString - JSON backup data
- * @param createBackupFirst - If true, automatically creates a backup before importing (default: true)
+ * Imports database from JSON backup string. Accepts both the new enveloped
+ * format and the legacy flat format (parseBackupText handles detection).
+ *
+ * @param jsonString - JSON backup data (envelope OR flat)
+ * @param createBackupFirst - If true, automatically creates a download backup
+ *                            of the current DB before importing (default: true).
+ *                            This is the user-visible "browser download" safety
+ *                            net; the BackupCoordinator additionally writes a
+ *                            `safety-before-import-…json` into the configured
+ *                            backup folder when the import is sync-driven.
  */
 export const importDB = async (jsonString: string, createBackupFirst: boolean = true) => {
     const db = await getDB();
-  
+
   // CRITICAL: Create backup before importing to prevent data loss
   if (createBackupFirst) {
     try {
@@ -921,15 +949,19 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
       // Still proceed, but log the error
     }
   }
-  
+
+    let envelope: BackupEnvelopeMeta | null = null;
+    let data: any;
     try {
-        const data = JSON.parse(jsonString);
-    
+      const parsed = parseBackupText(jsonString);
+      envelope = parsed.envelope;
+      data = parsed.data;
+
     // Validate backup structure
     if (!data || typeof data !== 'object') {
       throw new Error('Invalid backup file format');
     }
-    
+
     // Use transactions for atomicity - all or nothing
     const tx = db.transaction(['projects', 'collections', 'items', 'notes', 'workspaces'], 'readwrite');
     
@@ -972,6 +1004,17 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
       }
       
             await tx.done;
+
+      // Update revision bookkeeping BEFORE notifying so any listener that
+      // queries the tracker sees the post-import state.
+      if (envelope) {
+        // We are now AT the remote's revision; do not increment past it.
+        revisionTracker.setLocalRevision(envelope.revision);
+        revisionTracker.setLastSeenRemote(envelope);
+      }
+      // 'import.replace' is special: the revision tracker explicitly does NOT
+      // bump on this reason (see RevisionTrackerImpl.onDataChange).
+      notifyDataChanged('import.replace');
       return true;
     } catch (txError) {
       tx.abort();

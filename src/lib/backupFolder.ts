@@ -1,34 +1,20 @@
 /**
- * Persisted backup folder (File System Access API) — separate small DB from main app data.
+ * Persisted backup folder — File System Access API integration.
+ *
+ * Stores the user-picked `FileSystemDirectoryHandle` in the shared meta DB
+ * (see `metaDb.ts`) and provides safe read/write helpers used by the
+ * BackupCoordinator and onboarding flow.
+ *
+ * This module is purposely transport-only. It does NOT know about envelopes,
+ * revisions, or conflict resolution; those live in higher layers so the same
+ * file system primitives can later be reused by other sinks/scripts.
  */
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { exportDB } from './db';
+import { getMetaDB } from './metaDb';
 
-const META_DB_NAME = 'workbench-agent-meta';
-const META_DB_VERSION = 1;
 const HANDLE_KEY = 'backup-directory';
 
-interface WorkbenchMetaSchema extends DBSchema {
-  handles: {
-    key: string;
-    value: FileSystemDirectoryHandle;
-  };
-}
-
-let metaDbPromise: Promise<IDBPDatabase<WorkbenchMetaSchema>> | null = null;
-
-function getMetaDB(): Promise<IDBPDatabase<WorkbenchMetaSchema>> {
-  if (!metaDbPromise) {
-    metaDbPromise = openDB<WorkbenchMetaSchema>(META_DB_NAME, META_DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains('handles')) {
-          db.createObjectStore('handles');
-        }
-      },
-    });
-  }
-  return metaDbPromise;
-}
+// --- handle persistence -----------------------------------------------------
 
 export async function getBackupDirectoryHandle(): Promise<FileSystemDirectoryHandle | undefined> {
   try {
@@ -75,33 +61,7 @@ export async function getBackupFolderName(): Promise<string | null> {
   }
 }
 
-async function readJsonWithHandle(
-  handle: FileSystemDirectoryHandle,
-  filename: string
-): Promise<{ ok: boolean; json?: string; error?: string; notFound?: boolean }> {
-  try {
-    const fileHandle = await handle.getFileHandle(filename);
-    const file = await fileHandle.getFile();
-    const text = await file.text();
-    return { ok: true, json: text };
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'NotFoundError') {
-      return { ok: false, notFound: true };
-    }
-    return { ok: false, error: String(e) };
-  }
-}
-
-export async function writeJsonToBackupFolder(
-  filename: string,
-  json: string
-): Promise<{ ok: boolean; error?: string }> {
-  const handle = await getBackupDirectoryHandle();
-  if (!handle) return { ok: false, error: 'No backup folder configured' };
-  const perm = await ensureReadWritePermission(handle);
-  if (!perm.ok) return perm;
-  return writeJsonWithHandle(handle, filename, json);
-}
+// --- low-level read/write ---------------------------------------------------
 
 async function ensureReadWritePermission(
   handle: FileSystemDirectoryHandle
@@ -122,6 +82,23 @@ async function ensureReadWritePermission(
   }
 }
 
+async function readJsonWithHandle(
+  handle: FileSystemDirectoryHandle,
+  filename: string
+): Promise<{ ok: boolean; json?: string; error?: string; notFound?: boolean }> {
+  try {
+    const fileHandle = await handle.getFileHandle(filename);
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    return { ok: true, json: text };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'NotFoundError') {
+      return { ok: false, notFound: true };
+    }
+    return { ok: false, error: String(e) };
+  }
+}
+
 async function writeJsonWithHandle(
   handle: FileSystemDirectoryHandle,
   filename: string,
@@ -138,8 +115,43 @@ async function writeJsonWithHandle(
   }
 }
 
+// --- public read/write ------------------------------------------------------
+
+export async function writeJsonToBackupFolder(
+  filename: string,
+  json: string
+): Promise<{ ok: boolean; error?: string }> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) return { ok: false, error: 'No backup folder configured' };
+  const perm = await ensureReadWritePermission(handle);
+  if (!perm.ok) return perm;
+  return writeJsonWithHandle(handle, filename, json);
+}
+
+/**
+ * Read a JSON file from the configured backup folder.
+ * Returns `notFound: true` if the file does not exist (this is not an error
+ * for the caller — `latest.json` may legitimately be missing).
+ */
+export async function readJsonFromBackupFolder(
+  filename: string
+): Promise<{ ok: boolean; json?: string; error?: string; notFound?: boolean }> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) return { ok: false, error: 'No backup folder configured' };
+  const perm = await ensureReadWritePermission(handle);
+  if (!perm.ok) return { ok: false, error: perm.error };
+  return readJsonWithHandle(handle, filename);
+}
+
+// --- onboarding pickup ------------------------------------------------------
+
 /**
  * Directory picker + persist handle + initial latest.json (canonical export).
+ *
+ * NOTE: This still writes a *flat* (legacy) export when bootstrapping a fresh
+ * folder. The first live/manual write driven by BackupCoordinator will
+ * upgrade it to the enveloped format. This avoids a chicken-and-egg with
+ * revisionTracker which may not be loaded yet at picker time.
  */
 export async function pickAndPersistBackupFolder(): Promise<{
   ok: boolean;
