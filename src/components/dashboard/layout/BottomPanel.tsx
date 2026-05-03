@@ -3,13 +3,15 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, LayoutGrid, List, Search, Trash2, X } from 'lucide-react';
 import type { WindowGroup } from '../../../App';
 import { addWorkspace, updateWorkspace } from '../../../lib/db';
-import type { Workspace, WorkspaceWindow } from '../../../lib/db';
+import type { Project, Workspace, WorkspaceWindow } from '../../../lib/db';
 
 interface BottomPanelProps {
   isCollapsed: boolean;
   onToggle: () => void;
   windows: WindowGroup[];
   workspaces: Workspace[];
+  /** Used when creating a workspace from Tab Commander (project vs detached) */
+  projects?: Project[];
   onWorkspacesChanged?: () => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
@@ -55,6 +57,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onToggle,
   windows,
   workspaces,
+  projects = [],
   onWorkspacesChanged,
   onCloseTab,
   onCloseWindow,
@@ -65,6 +68,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   const [selectedWindowIds, setSelectedWindowIds] = useState<number[]>([]);
   const [lastClickedWindowId, setLastClickedWindowId] = useState<number | null>(null);
   const [saveDropdownOpen, setSaveDropdownOpen] = useState<string | null>(null);
+  const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const [newWorkspaceProjectId, setNewWorkspaceProjectId] = useState('');
   const [windowCollapsed, setWindowCollapsed] = useState<Record<number, boolean>>({});
   const [tabLimit, setTabLimit] = useState<number>(120);
   const TAB_PAGE_SIZE = 120;
@@ -522,7 +528,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     }));
   };
 
-  const saveAsNewWorkspace = async () => {
+  const openNewWorkspaceModal = () => {
     const windowsToSave = buildWorkspaceWindowsFromSelection();
     const suggested =
       selectedTabIds.length > 0
@@ -530,12 +536,33 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         : selectedWindowIds.length > 0
           ? `Workspace (${selectedWindowIds.length} windows)`
           : `Workspace (${windowsToSave.length} windows)`;
+    setNewWorkspaceName(suggested);
+    setNewWorkspaceProjectId('');
+    setNewWorkspaceOpen(true);
+  };
 
-    const name = window.prompt('New workspace name:', suggested);
-    if (!name || !name.trim()) return;
-    await addWorkspace(name.trim(), windowsToSave);
+  const closeNewWorkspaceModal = () => {
+    setNewWorkspaceOpen(false);
+  };
+
+  const submitNewWorkspace = async () => {
+    const name = newWorkspaceName.trim();
+    if (!name) return;
+    const windowsToSave = buildWorkspaceWindowsFromSelection();
+    const projectId = newWorkspaceProjectId.trim() || undefined;
+    await addWorkspace(name, windowsToSave, projectId);
+    closeNewWorkspaceModal();
     if (onWorkspacesChanged) await onWorkspacesChanged();
   };
+
+  useEffect(() => {
+    if (!newWorkspaceOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNewWorkspaceOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [newWorkspaceOpen]);
 
   const updateExistingWorkspace = async (workspaceId: string) => {
     const windowsToSave = buildWorkspaceWindowsFromSelection();
@@ -662,9 +689,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           </div>
 
           <div
-            onClick={async () => {
+            onClick={() => {
               closeDropdowns();
-              await saveAsNewWorkspace();
+              openNewWorkspaceModal();
             }}
             style={{
               padding: '0.625rem 0.75rem',
@@ -751,7 +778,148 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     );
   };
 
+  const newWorkspaceModal =
+    newWorkspaceOpen &&
+    createPortal(
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.45)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2147483647,
+          padding: '1rem',
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) closeNewWorkspaceModal();
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            maxWidth: 400,
+            background: 'white',
+            borderRadius: '0.75rem',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+            overflow: 'hidden',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            style={{
+              padding: '0.75rem 1rem',
+              borderBottom: '1px solid #e5e7eb',
+              background: '#f9fafb',
+              fontWeight: 800,
+              fontSize: '0.9375rem',
+              color: '#111827',
+            }}
+          >
+            New workspace
+          </div>
+          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div>
+              <label
+                style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.35rem' }}
+                htmlFor="workbench-new-ws-name"
+              >
+                Name
+              </label>
+              <input
+                id="workbench-new-ws-name"
+                autoFocus
+                value={newWorkspaceName}
+                onChange={(e) => setNewWorkspaceName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newWorkspaceName.trim()) void submitNewWorkspace();
+                }}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '0.5rem 0.65rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid #e5e7eb',
+                  fontSize: '0.875rem',
+                  color: '#111827',
+                }}
+              />
+            </div>
+            <div>
+              <label
+                style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.35rem' }}
+                htmlFor="workbench-new-ws-project"
+              >
+                Project
+              </label>
+              <select
+                id="workbench-new-ws-project"
+                value={newWorkspaceProjectId}
+                onChange={(e) => setNewWorkspaceProjectId(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '0.5rem 0.65rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid #e5e7eb',
+                  fontSize: '0.875rem',
+                  color: '#111827',
+                  background: 'white',
+                }}
+              >
+                <option value="">Detached (no project)</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <button
+                type="button"
+                onClick={closeNewWorkspaceModal}
+                style={{
+                  padding: '0.45rem 0.85rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid #e5e7eb',
+                  background: 'white',
+                  color: '#374151',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!newWorkspaceName.trim()}
+                onClick={() => void submitNewWorkspace()}
+                style={{
+                  padding: '0.45rem 0.85rem',
+                  borderRadius: '0.5rem',
+                  border: 'none',
+                  background: newWorkspaceName.trim() ? '#2563eb' : '#e5e7eb',
+                  color: newWorkspaceName.trim() ? 'white' : '#9ca3af',
+                  fontSize: '0.8125rem',
+                  fontWeight: 700,
+                  cursor: newWorkspaceName.trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+
   return (
+    <>
     <div
       style={{
         display: 'flex',
@@ -1701,5 +1869,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         </div>
       )}
     </div>
+    {newWorkspaceModal}
+    </>
   );
 };

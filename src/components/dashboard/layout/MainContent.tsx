@@ -275,6 +275,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           <TabCommanderView
             windows={windows}
             workspaces={workspaces}
+            projects={projects}
             onWorkspacesChanged={onWorkspacesChanged}
             onCloseTab={onCloseTab}
             onCloseWindow={onCloseWindow}

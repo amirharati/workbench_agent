@@ -28,10 +28,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onSelectView
 }) => {
   const settingsActive = activeView === 'settings';
+  const tabCommanderActive = activeView === 'tab-commander';
   const navItems: { icon: any; label: string; id: DashboardView }[] = [
     { icon: Home, label: 'Home', id: 'home' },
     { icon: Layout, label: 'Projects', id: 'projects' },
-    { icon: Terminal, label: 'Tab Commander', id: 'tab-commander' },
     { icon: BookMarked, label: 'Bookmarks', id: 'bookmarks' },
     { icon: Layers, label: 'Workspaces', id: 'workspaces' },
     { icon: FileText, label: 'Notes', id: 'notes' },
@@ -157,10 +157,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         </ul>
       </nav>
 
-      {/* Footer - compact */}
+      {/* Footer: app prefs + live browser tools (not library views) — visually split from nav above */}
       <div style={{ 
-        padding: '6px',
+        flexShrink: 0,
+        padding: '8px 6px 6px',
         borderTop: '1px solid var(--border)',
+        background: 'var(--bg)',
         display: 'flex',
         flexDirection: 'column',
         gap: '4px',
@@ -199,6 +201,41 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         >
           <Settings size={16} />
           {!isCollapsed && <span style={{ marginLeft: '8px' }}>Settings</span>}
+        </button>
+        <button 
+          onClick={() => onSelectView('tab-commander')}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isCollapsed ? 'center' : 'flex-start',
+            padding: isCollapsed ? '6px' : '5px 8px',
+            height: 28,
+            color: tabCommanderActive ? 'var(--text)' : 'var(--text-muted)',
+            border: 'none',
+            background: tabCommanderActive ? 'var(--accent-weak)' : 'transparent',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontSize: 'var(--text-sm)',
+            fontWeight: tabCommanderActive ? 500 : 400,
+            transition: 'all 0.12s ease',
+          }}
+          title="Tab Commander — open windows and tabs"
+          onMouseEnter={(e) => {
+            if (!tabCommanderActive) {
+              e.currentTarget.style.background = 'var(--bg-hover)';
+              e.currentTarget.style.color = 'var(--text)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!tabCommanderActive) {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-muted)';
+            }
+          }}
+        >
+          <Terminal size={16} strokeWidth={tabCommanderActive ? 2 : 1.5} style={{ flexShrink: 0 }} />
+          {!isCollapsed && <span style={{ marginLeft: '8px' }}>Tab Commander</span>}
         </button>
         {!isCollapsed && <ThemeToggle />}
       </div>
