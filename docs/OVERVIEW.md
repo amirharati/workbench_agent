@@ -34,7 +34,7 @@ Chrome MV3 extension
 **Dual UI**
 
 - **Side panel**: save current tab, add bookmark, backup import/export, open full page.
-- **Dashboard**: Home (placeholder), Projects, Tab Commander, Bookmarks, Workspaces, Notes, Collections, **Settings** (backup & folder UI).
+- **Dashboard**: Home (placeholder), Projects, Bookmarks, Workspaces, Notes, Collections, with **Tab Commander + Settings** grouped as footer tools.
 
 **Stores (conceptual)** — see `src/lib/db.ts` for truth:
 
@@ -44,10 +44,13 @@ Chrome MV3 extension
 
 ## What’s working (high level)
 
-- Tab Commander: multi-window live tabs, drag/move, list/gallery patterns, macOS Spaces mitigations (“Open Here”, find window).
-- Bookmarks: items with `collectionIds[]`, tags, notes-on-bookmark, CRUD, search in project workspace.
+- Tab Commander: full-page live tab manager with multi-window actions, drag/move, list/gallery patterns, macOS Spaces mitigations (“Open Here”, find window).
+- Bookmarks: items with `collectionIds[]`, tags, notes-on-bookmark, CRUD, search in project workspace, and top-level add dialog with inline project/collection creation.
 - Projects + collections: hierarchy, default project, virtual “all projects” view.
+- Top-level CRUD: create project, create collection, and create bookmark/note from dashboard modals (not only from project workspace).
+- Notes/Bookmarks separation: both use the same `items` store, but UI classification is now exclusive — bookmarks require URL, notes are URL-empty items.
 - Workspaces: save/restore session snapshots; optional `projectId` on workspace.
+- Workspace save flow: Tab Commander save dialog supports selecting a project (or Detached) for new workspace snapshots.
 - Data safety: export/import, backup verification, debounced live backup to `latest.json`, manual named backups, envelope metadata (`revision` + `deviceId`), and startup conflict pause/resolution flow.
 
 ---
@@ -68,11 +71,11 @@ Chrome MV3 extension
 
 | Doc | Use |
 |-----|-----|
-| [`BACKLOG.md`](BACKLOG.md) | Prioritized work items (maintain this). |
+| [`backlog.md`](backlog.md) | Prioritized work items (maintain this). |
 | [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md) | Backup / integrity design (file‑based now; swappable sinks later). |
 | [`workbench_agent.prd`](workbench_agent.prd) | Full PRD; update when roadmap shifts. |
 | `docs/old/` | Archived checkpoints (backlogs, UI plans, status snapshots). |
 
 ---
 
-*Last updated: 2026-05-03*
+*Last updated: 2026-05-03 (evening)*

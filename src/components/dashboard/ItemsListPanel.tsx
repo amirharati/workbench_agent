@@ -28,15 +28,7 @@ interface ItemsListPanelProps {
 }
 
 const iconForItem = (item: Item) => {
-  switch (item.source) {
-    case 'tab':
-    case 'bookmark':
-    case 'twitter':
-      return '🔗';
-    case 'manual':
-    default:
-      return '📝';
-  }
+  return item.url && item.url.trim().length > 0 ? '🔗' : '📝';
 };
 
 export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({

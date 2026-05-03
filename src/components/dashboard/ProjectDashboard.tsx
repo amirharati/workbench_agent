@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { Project, Collection, Item, Workspace } from '../../lib/db';
-import { addCollection, deleteCollection, updateItem, updateCollection, addItem, getAllItems, deleteItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID } from '../../lib/db';
+import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItem, getAllItems, deleteItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID } from '../../lib/db';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -826,6 +826,18 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     }
   };
 
+  const handleCreateProjectFromItemForm = async (data: { name: string; description?: string }) => {
+    const id = await addProject(data.name, data.description);
+    if (onRefresh) await onRefresh();
+    return id;
+  };
+
+  const handleCreateCollectionFromItemForm = async (data: { name: string; projectId: string }) => {
+    const id = await addCollection(data.name, undefined, data.projectId);
+    if (onRefresh) await onRefresh();
+    return id;
+  };
+
   const handleDeleteCollection = async (collection: Collection) => {
     if (!window.confirm(`Delete "${collection.name}"? Items in this collection will be moved to Unsorted.`)) return;
     try {
@@ -1358,6 +1370,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onOpenCollection={handleOpenCollection}
                       onOpenCollectionInTab={handleOpenCollectionInTab}
                       onCreateItem={handleCreateItem}
+                      onCreateProject={handleCreateProjectFromItemForm}
+                      onCreateCollection={handleCreateCollectionFromItemForm}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
                       onItemClick={handleItemClick}
@@ -1400,6 +1414,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onOpenCollection={handleOpenCollection}
                       onOpenCollectionInTab={handleOpenCollectionInTab}
                       onCreateItem={handleCreateItem}
+                      onCreateProject={handleCreateProjectFromItemForm}
+                      onCreateCollection={handleCreateCollectionFromItemForm}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
                       onItemClick={handleItemClick}
@@ -1424,6 +1440,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   onOpenCollection={handleOpenCollection}
                   onOpenCollectionInTab={handleOpenCollectionInTab}
                   onCreateItem={handleCreateItem}
+                  onCreateProject={handleCreateProjectFromItemForm}
+                  onCreateCollection={handleCreateCollectionFromItemForm}
                   onUpdateItem={handleUpdateItem}
                   onDeleteItem={handleDeleteItem}
                   onItemClick={handleItemClick}
@@ -1475,6 +1493,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         onOpenCollection={handleOpenCollection}
                         onOpenCollectionInTab={handleOpenCollectionInTab}
                         onCreateItem={handleCreateItem}
+                        onCreateProject={handleCreateProjectFromItemForm}
+                        onCreateCollection={handleCreateCollectionFromItemForm}
                         onUpdateItem={handleUpdateItem}
                         onDeleteItem={handleDeleteItem}
                         onItemClick={handleItemClick}
@@ -1517,6 +1537,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         onOpenCollection={handleOpenCollection}
                         onOpenCollectionInTab={handleOpenCollectionInTab}
                         onCreateItem={handleCreateItem}
+                        onCreateProject={handleCreateProjectFromItemForm}
+                        onCreateCollection={handleCreateCollectionFromItemForm}
                         onUpdateItem={handleUpdateItem}
                         onDeleteItem={handleDeleteItem}
                         onItemClick={handleItemClick}
@@ -1552,6 +1574,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onOpenCollection={handleOpenCollection}
                       onOpenCollectionInTab={handleOpenCollectionInTab}
                       onCreateItem={handleCreateItem}
+                      onCreateProject={handleCreateProjectFromItemForm}
+                      onCreateCollection={handleCreateCollectionFromItemForm}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
                       onItemClick={handleItemClick}
@@ -1675,6 +1699,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   onOpenCollection={handleOpenCollection}
                   onOpenCollectionInTab={handleOpenCollectionInTab}
                   onCreateItem={handleCreateItem}
+                  onCreateProject={handleCreateProjectFromItemForm}
+                  onCreateCollection={handleCreateCollectionFromItemForm}
                   onUpdateItem={handleUpdateItem}
                   onDeleteItem={handleDeleteItem}
                   onItemClick={handleItemClick}
@@ -1717,6 +1743,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           onOpenCollection={handleOpenCollection}
                           onOpenCollectionInTab={handleOpenCollectionInTab}
                           onCreateItem={handleCreateItem}
+                          onCreateProject={handleCreateProjectFromItemForm}
+                          onCreateCollection={handleCreateCollectionFromItemForm}
                           onUpdateItem={handleUpdateItem}
                           onDeleteItem={handleDeleteItem}
                           onItemClick={handleItemClick}
@@ -1741,6 +1769,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onOpenCollection={handleOpenCollection}
                       onOpenCollectionInTab={handleOpenCollectionInTab}
                       onCreateItem={handleCreateItem}
+                      onCreateProject={handleCreateProjectFromItemForm}
+                      onCreateCollection={handleCreateCollectionFromItemForm}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
                       onItemClick={handleItemClick}
@@ -1790,6 +1820,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             onOpenCollection={handleOpenCollection}
                             onOpenCollectionInTab={handleOpenCollectionInTab}
                             onCreateItem={handleCreateItem}
+                            onCreateProject={handleCreateProjectFromItemForm}
+                            onCreateCollection={handleCreateCollectionFromItemForm}
                             onUpdateItem={handleUpdateItem}
                             onDeleteItem={handleDeleteItem}
                             onItemClick={handleItemClick}
@@ -1831,6 +1863,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             onOpenCollection={handleOpenCollection}
                             onOpenCollectionInTab={handleOpenCollectionInTab}
                             onCreateItem={handleCreateItem}
+                            onCreateProject={handleCreateProjectFromItemForm}
+                            onCreateCollection={handleCreateCollectionFromItemForm}
                             onUpdateItem={handleUpdateItem}
                             onDeleteItem={handleDeleteItem}
                             onItemClick={handleItemClick}
@@ -1865,6 +1899,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           onOpenCollection={handleOpenCollection}
                           onOpenCollectionInTab={handleOpenCollectionInTab}
                           onCreateItem={handleCreateItem}
+                          onCreateProject={handleCreateProjectFromItemForm}
+                          onCreateCollection={handleCreateCollectionFromItemForm}
                           onUpdateItem={handleUpdateItem}
                           onDeleteItem={handleDeleteItem}
                           onItemClick={handleItemClick}

@@ -36,14 +36,15 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 - ⏳ Group tabs by project or context (pending Projects implementation)
 - ⏳ Quick access to tab collections (partially via Workspaces)
 
-### 2. Bookmark Management ✅ (Mostly Implemented)
+### 2. Bookmark Management ✅ (Implemented)
 - ✅ Enhanced bookmark organization
 - ✅ Categorization (Collections) and tagging
 - ✅ Add/Edit/Delete bookmarks
 - ✅ Manual entry (dashboard + side panel)
 - ✅ Save current tab to bookmark
-- ⏳ Visual bookmark grid/collection view (currently list view only)
-- ⏳ Link bookmarks to projects and notes (pending Projects/Notes implementation)
+- ✅ Grid/list view options in dashboard
+- ✅ Bookmarks can be created from dashboard with project/collection selection
+- ✅ Inline creation of project/collection from bookmark/note create dialog
 
 ### 3. Workspaces ✅ (Implemented - Beyond Original Spec)
 - ✅ Save all windows, one window, or multiple tabs
@@ -52,14 +53,12 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 - ✅ Workspace list with cards
 - ✅ Full CRUD operations
 
-### 4. Note Management ⏳ (Planned)
-- ⏳ Create and organize notes
-- ⏳ Link notes to projects
-- ⏳ Associate resources (links, bookmarks) with notes
-- ⏳ Notes can be created:
-  - Manually
-  - While reading a page (with page context)
-  - During browsing sessions
+### 4. Note Management 🟡 (Partially Implemented)
+- ✅ Notes can be created manually in dashboard
+- ✅ Notes are organized through the same project/collection structure as bookmarks
+- ✅ Notes are currently represented as `items` with empty URL (URL optional)
+- ⏳ First-class `notes` store is present in schema but not yet the primary UI model
+- ⏳ Page-context note capture still pending
 
 ### 5. AI Agent Assistant ⏳ (Planned)
 
@@ -122,39 +121,34 @@ The AI agent can access:
 ### Current Implementation Status
 
 **✅ Implemented:**
-- **Collections**: `{ id, name, color, isDefault, created_at }` - Organizational folders for bookmarks
-- **Bookmarks (Items)**: `{ id, url, title, favicon, collectionId, tags[], notes, source, created_at }`
-- **Workspaces**: `{ id, name, windows[], created_at, updated_at }` - Snapshots of browser sessions
+- **Projects**: `{ id, name, description?, isDefault, created_at, updated_at }`
+- **Collections**: `{ id, name, color, isDefault, primaryProjectId, projectIds[], created_at, updated_at }`
+- **Items (Bookmarks/Notes)**: `{ id, url, title, favicon?, collectionIds[], tags[], notes?, source, created_at, updated_at }`
+- **Workspaces**: `{ id, name, projectId?, windows[], created_at, updated_at }` - Snapshots of browser sessions
 - **Snapshots**: Historical tab snapshots
 
-**⏳ Planned:**
-- **Projects**: To be defined (relationship with Collections TBD)
-- **Notes**: To be defined (will link to Projects and Bookmarks)
+**🟡 In transition:**
+- **Notes store**: first-class `notes` object store exists in DB/export/import, but dashboard Notes UI currently uses note-like `items` (empty URL).
 
-### Projects ⏳ (To Be Implemented)
-- Project name
-- Description
-- Associated notes
-- Linked resources/bookmarks
-- Created/updated timestamps
-- **Note**: Relationship with Collections needs clarification (see next steps doc)
+### Projects ✅ (Implemented)
+- Project name/description, default project handling
+- Virtual "All" project aggregate view in UI
+- Project owns collections through `primaryProjectId` / `projectIds[]`
+- Per-project default "Unsorted" collection creation and maintenance
 
-### Notes ⏳ (To Be Implemented)
-- Title
-- Content
-- Associated project (optional)
-- Linked resources/bookmarks
-- Page context (if created from page)
-- Created/updated timestamps
+### Notes 🟡 (Current behavior)
+- Notes are currently modeled as `items` with no URL (and optional notes text)
+- Notes are project/collection-scoped through `collectionIds[]`
+- Dedicated `notes` store exists but is not yet the primary notes UI path
 
 ### Bookmarks ✅ (Implemented as Items)
 - ✅ URL
 - ✅ Title
 - ✅ Description/notes (as `notes` field)
 - ✅ Categories/tags (as `tags[]` array)
-- ✅ Collection assignment (via `collectionId`)
-- ⏳ Associated projects (pending Projects implementation)
-- ⏳ Associated notes (pending Notes implementation)
+- ✅ Collection assignment (via `collectionIds[]`)
+- ✅ Project association via collection membership
+- ✅ Bookmark-vs-note UI separation (`bookmark = URL`, `note = no URL`)
 - ⏳ Screenshot/preview (optional - future enhancement)
 
 ### Tabs/Windows ✅ (Managed via Chrome APIs + Workspaces)
@@ -166,12 +160,12 @@ The AI agent can access:
 
 ### Main Views
 1. **Dashboard**: ✅ Full-page dashboard with left sidebar navigation
-2. **Tab Commander** (Bottom Panel): ✅ Live tab management across windows
-3. **Bookmarks View**: ✅ List view with search, add/edit/delete
+2. **Tab Commander**: ✅ Full-page live tab management (also surfaced as footer tool)
+3. **Bookmarks View**: ✅ List/grid with search, project filtering, add/edit/delete
 4. **Workspaces View**: ✅ List and detail views with restore functionality
-5. **Collections View**: ✅ Placeholder (Collections managed via Bookmarks view)
-6. **Projects View**: ⏳ Placeholder cards (to be implemented)
-7. **Notes View**: ⏳ Placeholder (to be implemented)
+5. **Collections View**: ✅ Dedicated collections + items workspace
+6. **Projects View**: ✅ Implemented project workspace and cards
+7. **Notes View**: ✅ Implemented note-focused view over note-like items
 8. **AI Assistant**: ⏳ Not yet implemented
 9. **Side Panel**: ✅ Quick actions (Save tab, Add bookmark, Export/Import)
 
@@ -189,14 +183,14 @@ The AI agent can access:
 - ✅ Workspaces (beyond original spec)
 - ✅ Local database setup (IndexedDB)
 - ✅ Export/Import functionality
-- ⏳ Note creation and storage (Next priority)
-- ⏳ Projects implementation (Next priority)
+- 🟡 Notes store/UI unification decision (next priority)
+- ✅ Projects implementation
 
 ### Phase 1.5: Data Model & Linking (Current Focus)
-- ⏳ Define Projects vs Collections relationship
-- ⏳ Implement Projects data model
-- ⏳ Implement Notes data model
-- ⏳ Implement resource linking (bookmarks ↔ notes ↔ projects)
+- ✅ Define and implement Projects ↔ Collections core relationship
+- 🟡 Align top-level UI flows with the model (project/collection-aware create flows)
+- ⏳ Decide and implement single long-term Notes model (`items` note-like vs first-class `notes` store)
+- ⏳ Implement richer resource linking UX (bookmarks ↔ notes ↔ projects)
 
 ### Phase 2: AI Integration (Planned)
 - AI agent interface

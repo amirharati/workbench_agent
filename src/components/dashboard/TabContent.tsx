@@ -28,6 +28,8 @@ interface TabContentProps {
   onOpenCollectionInTab?: (collection: Collection) => void;
   projectId?: string;
   onCreateItem?: (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<string>;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   onUpdateItem?: (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<void>;
   onDeleteItem?: (item: Item) => void;
   onItemClick?: (item: Item) => void;
@@ -48,6 +50,8 @@ export const TabContent: React.FC<TabContentProps> = ({
   onOpenCollectionInTab,
   projectId,
   onCreateItem,
+  onCreateProject,
+  onCreateCollection,
   onUpdateItem,
   onDeleteItem,
   onItemClick,
@@ -60,6 +64,17 @@ export const TabContent: React.FC<TabContentProps> = ({
   // Track filter state per collection tab (collectionId -> 'collection' | 'all')
   const [collectionFilters, setCollectionFilters] = useState<Map<string, 'collection' | 'all'>>(new Map());
   
+  const iconForItem = (it: Item) => (it.url && it.url.trim().length > 0 ? '🔗' : '📝');
+
+  const scopedCollections =
+    projectId && projectId !== '__all__'
+      ? collections.filter(
+          (c) =>
+            c.primaryProjectId === projectId ||
+            (Array.isArray(c.projectIds) && c.projectIds.includes(projectId))
+        )
+      : collections;
+
   // Get current item for edit mode reset
   const currentItemId = item?.id || (tab?.itemId ? items.find((i) => i.id === tab.itemId)?.id : null);
   
@@ -105,8 +120,12 @@ export const TabContent: React.FC<TabContentProps> = ({
   if (tab?.id === 'util-add' && onCreateItem) {
     return (
       <AddItemTab
-        collections={collections}
+        collections={scopedCollections}
+        projects={projects}
+        defaultProjectId={projectId && projectId !== '__all__' ? projectId : undefined}
         defaultCollectionId={defaultCollectionId}
+        onCreateProject={onCreateProject}
+        onCreateCollection={onCreateCollection}
         onSave={onCreateItem}
       />
     );
@@ -142,10 +161,18 @@ export const TabContent: React.FC<TabContentProps> = ({
     // Get item from tab.itemId or from item prop
     const editItem = item || (tab?.itemId ? items.find((i) => i.id === tab.itemId) : null);
     if (editItem) {
+      const fallbackProjectId =
+        projectId && projectId !== '__all__'
+          ? projectId
+          : collections.find((c) => (editItem.collectionIds || []).includes(c.id))?.primaryProjectId;
       return (
         <EditItemTab
           item={editItem}
           collections={collections}
+          projects={projects}
+          defaultProjectId={fallbackProjectId}
+          onCreateProject={onCreateProject}
+          onCreateCollection={onCreateCollection}
           onSave={onUpdateItem}
         />
       );
@@ -362,6 +389,9 @@ export const TabContent: React.FC<TabContentProps> = ({
                 }}
               >
                 <div style={{ fontWeight: 500, color: 'var(--text)' }}>{i.title || 'Untitled'}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '0.125rem' }}>
+                  {iconForItem(i)} {iconForItem(i) === '🔗' ? 'Bookmark' : 'Note'}
+                </div>
                 {i.url && (
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                     {getDomain(i.url)}
@@ -420,6 +450,10 @@ export const TabContent: React.FC<TabContentProps> = ({
         <EditItemTab
           item={effectiveItem}
           collections={collections}
+          projects={projects}
+          defaultProjectId={projectId && projectId !== '__all__' ? projectId : undefined}
+          onCreateProject={onCreateProject}
+          onCreateCollection={onCreateCollection}
           onSave={async (id, data) => {
             await onUpdateItem(id, data);
             setIsEditingItem(false);
@@ -452,7 +486,7 @@ export const TabContent: React.FC<TabContentProps> = ({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
         <div style={{ flex: 1 }}>
           <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>
-            {effectiveItem.title || 'Untitled'}
+            {iconForItem(effectiveItem)} {effectiveItem.title || 'Untitled'}
           </h2>
           <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {effectiveItem.url && isValidHttpUrl(effectiveItem.url) ? (
