@@ -26,6 +26,10 @@ interface DashboardLayoutProps {
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
   onRefresh?: () => Promise<void>;
+  onChooseBackupFolder?: () => Promise<void>;
+  onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
+  backupFolderReady?: boolean;
+  backupFolderName?: string | null;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ 
@@ -40,7 +44,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onDeleteBookmark,
   onCloseTab,
   onCloseWindow,
-  onRefresh
+  onRefresh,
+  onChooseBackupFolder,
+  onRestoreBackupFile,
+  backupFolderReady,
+  backupFolderName,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeView, setActiveView] = useState<DashboardView>('projects');
@@ -104,6 +112,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             onUpdateBookmark={onUpdateBookmark}
             onDeleteBookmark={onDeleteBookmark}
             onRefresh={onRefresh}
+            onChooseBackupFolder={onChooseBackupFolder}
+            onRestoreBackupFile={onRestoreBackupFile}
+            backupFolderReady={backupFolderReady}
+            backupFolderName={backupFolderName}
           />
         </div>
       </div>

@@ -165,6 +165,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         gap: '4px',
       }}>
         <button 
+          onClick={() => onSelectView('home')}
           style={{
             width: '100%',
             display: 'flex',
@@ -180,6 +181,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             fontSize: 'var(--text-sm)',
             transition: 'all 0.12s ease',
           }}
+          title="Open settings"
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--bg-hover)';
             e.currentTarget.style.color = 'var(--text)';

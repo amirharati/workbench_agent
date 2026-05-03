@@ -1,284 +1,101 @@
-# Workbench Agent - Development Backlog
+# Workbench Agent — Backlog
 
-> **Note**: This is a personal project focused on functionality over perfection. We're vibecoding and iterating quickly. Code quality will improve organically as we build features.
+Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIEW.md`, `CURRENT_STATE.md`, etc.). **Edit this file** as priorities change; keep `docs/old/` as read-only history.
 
-## Priority Guidelines
-- **High**: Blocks functionality or causes data loss/corruption
-- **Medium**: Improves UX or prevents common issues
-- **Low**: Nice to have, can wait
+**Maintenance:** When something ships, add a **one-line** bullet under **✅ Done** (and remove or check off the matching item below). Trim **Done** only if it grows unwieldy—optional archive line can point to `docs/old/` or a git tag.
 
----
-
-## 🔴 High Priority
-
-### ✅ Data Safety & Backup System
-**Status**: Completed  
-**Impact**: Prevents data loss during imports/migrations  
-**Effort**: Medium
-
-- [x] Add automatic backup before import operations
-- [x] Add backup verification function
-- [x] Improve export filename with full timestamp
-- [x] Add user confirmation with stats before import
-- [x] Create backup utility module
-- [x] Use transactions for atomic imports
-- [x] Attempt automatic backup before database migrations (best effort)
-- [x] Add migration warnings in console
-
-**Files updated**:
-- `src/lib/db.ts` - Added `verifyBackup`, improved `importDB`, added migration backup attempt
-- `src/App.tsx` - Updated `handleExport` and `handleImport` with safety checks
-- `src/lib/backup.ts` - New backup utility module
-
-**Note**: Automatic migration backup is best-effort (uses IndexedDB.databases() API when available). 
-**Always manually backup before major code updates** using the Backup button for maximum safety.
-
-### Error Handling
-**Status**: Not Started  
-**Impact**: Users lose work silently, poor UX  
-**Effort**: Medium
-
-- [ ] Add try/catch blocks to all async operations in `App.tsx`
-- [ ] Add error handling to database operations in `db.ts`
-- [ ] Show user-friendly error messages instead of silent failures
-- [ ] Handle Chrome API failures gracefully (tabs, windows)
-
-**Files to update**:
-- `src/App.tsx` - All handler functions
-- `src/lib/db.ts` - CRUD operations
-- `src/components/dashboard/layout/MainContent.tsx` - Async operations
+**Legend:** 🔴 urgent quality / risk · 🟡 UX or features · 🟢 maintenance · ⏸ deferred / needs design
 
 ---
 
-### Database Transaction Safety
-**Status**: Not Started  
-**Impact**: Data corruption risk  
-**Effort**: Medium
+## ✅ Done (shipped)
 
-- [ ] Wrap `deleteCollection` in a transaction
-- [ ] Wrap `deleteProject` in a transaction
-- [ ] Review other multi-step DB operations for transaction safety
-
-**Files to update**:
-- `src/lib/db.ts` - `deleteCollection`, `deleteProject`, and related operations
-
----
-
-### Input Validation
-**Status**: Not Started  
-**Impact**: Invalid data, crashes  
-**Effort**: Low
-
-- [ ] Add URL validation utility function
-- [ ] Validate collection IDs exist before using
-- [ ] Add basic length limits for text inputs
-- [ ] Sanitize user input before saving
-
-**Files to create**:
-- `src/lib/validation.ts` - Validation utilities
-
-**Files to update**:
-- `src/App.tsx` - `handleAddBookmark`, `handleSaveCurrentTab`
-- `src/components/dashboard/layout/MainContent.tsx` - Form handlers
+- **Chrome app**: MV3 extension; React/Vite UI; side panel + full-page; service worker opens panel + `focus-tab` helper.
+- **IndexedDB v3** (`db.ts`): projects, collections (`primaryProjectId`, `projectIds`), items (`collectionIds[]`, tags, notes-on-bookmark), workspaces, `notes` object store (schema + export/import), snapshots; migrations incl. legacy default project id cleanup.
+- **Backup / import**: JSON export/import, `verifyBackup`, confirmation + counts, backup-before-import, best-effort pre-migration dump + console warnings.
+- **Tab Commander**: Multi-window navigator, bulk selection, drag-move tabs between windows, list/gallery, mitigations for macOS Spaces (e.g. Open Here / find window).
+- **Bookmarks & collections**: Item/collection/project CRUD; Unsorted per project; “All projects” aggregate view; collection pills + filters; in-place edit; context menus.
+- **Project workspace**: Multi-space tabs, drag/reorder, system tabs (Search, Add Item, Collections manager), **Recent** items tab; Search across title/URL/notes/tags.
+- **Workspaces**: Save/restore session snapshots; optional `projectId`; list + detail UI.
+- **Design baseline**: Compact IDE-style layout, theme tokens / CSS variables, dark–light toggle usage across dashboard.
+- **Shared libs**: `src/lib/utils.ts`, `src/lib/constants.ts` (domains, dates, UI/DB constants—extend as needed).
 
 ---
 
-## 🟡 Medium Priority
+## 🔴 Reliability & data
 
-### Loading States
-**Status**: Not Started  
-**Impact**: Better UX, users know when things are happening  
-**Effort**: Low
-
-- [ ] Add loading spinner/state to `loadData()`
-- [ ] Show loading state during bookmark save/update/delete
-- [ ] Add loading state to workspace restore operations
-
-**Files to update**:
-- `src/App.tsx` - Add `isLoading` state
-- `src/components/dashboard/layout/MainContent.tsx` - Show loading indicators
+- [ ] **Error handling**: consistent try/catch on async paths (`App.tsx`, dashboard handlers, Chrome APIs); user-visible errors vs silent `console.error`.
+- [ ] **DB transactions**: multi-step deletes (`deleteCollection`, `deleteProject`, bulk moves) reviewed for atomicity in `db.ts`.
+- [ ] **Input validation**: URLs, IDs, text limits; centralize validation helpers (extend existing `src/lib/utils.ts` patterns as needed).
 
 ---
 
-### Extract Duplicate Code
-**Status**: Not Started  
-**Impact**: Easier maintenance  
-**Effort**: Low
+## 🟡 Product features
 
-- [ ] Create `src/lib/utils.ts` with shared utilities:
-  - `getDomain(url: string)` - Extract domain from URL
-  - `isValidHttpUrl(url: string)` - Validate HTTP(S) URLs
-  - `formatDate(timestamp: number)` - Format dates consistently
-- [ ] Replace duplicate implementations in components
+**Data integrity — automated file backup** — design: [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md)
 
-**Files to create**:
-- `src/lib/utils.ts`
+- [ ] **`BackupSink` abstraction** — interface + `FileSystemBackupSink` (writes serialized JSON); stub or `NoOpSink` when disabled.
+- [ ] **`BackupCoordinator`** — single owner: debounced **live** push + **`chrome.alarms`** **scheduled** push + rotation (max **N** files); calls only `exportDB()` → sink(s).
+- [ ] **Settings / persistence** — enable live + interval debounce; enable schedule + period + **N**; store prefs (`chrome.storage.local` / small DB key); persist **`FileSystemDirectoryHandle`** for backup folder (re‑prompt if permission revoked).
+- [ ] **UI** — dashboard or settings strip: “Backup folder…” picker, toggles, last success/failure status (non‑blocking).
+- [ ] **Mutation hooks** — wire coordinator `notifyChanged()` (or equivalent) from DB write paths without duplicating export logic across components.
+- [ ] **Manifest** — add `alarms` permission; document any new host permissions only when adding HTTP sink later.
 
-**Files to update**:
-- `src/components/dashboard/layout/MainContent.tsx`
-- `src/components/dashboard/layout/BottomPanel.tsx`
+**Notes**
 
----
+- [ ] **Decide**: first-class `Note` entities (`notes` store + CRUD in UI) *vs* bookmark-notes-only; migrate UI accordingly.
+- [ ] Optional: page context capture when creating a note from the active tab.
 
-### Constants File
-**Status**: Not Started  
-**Impact**: Easier to change defaults, less magic numbers  
-**Effort**: Low
+**Collections & projects**
 
-- [ ] Create `src/lib/constants.ts` with:
-  - Status timeout (2000ms)
-  - Side panel width threshold (500px)
-  - Default colors, names
-  - Database name/version
-- [ ] Replace hardcoded values
+- [ ] **Detach collection from project** (remove project from `projectIds` without deleting collection).
+- [ ] **Share collections across projects** UI (`projectIds` management, indicators).
 
-**Files to create**:
-- `src/lib/constants.ts`
+**Items (bookmarks)**
 
-**Files to update**:
-- `src/App.tsx`
-- `src/lib/db.ts`
-- Various components
+- [ ] **Multi-collection / share-item UX** if still desired (dashboard backlog “B4”).
+- [ ] **Pinned / favorites / trash**: add fields (`pinned`, `favorite`, `deletedAt` or equivalent), wire Quick Access tabs.
+
+**AI (when ready)**
+
+- [ ] Minimal slice: settings (API key, model), single “ask about current tab + related bookmarks” flow.
+- [ ] Then: Agent tab, context assembly (page + projects + items), richer prompts.
+
+**Workspaces / tabs**
+
+- [ ] Optional: tighter linking from Tab Commander / workspaces to **projects** (beyond optional `workspace.projectId`).
 
 ---
 
-### Memory Leak Prevention
-**Status**: Review Needed  
-**Impact**: Performance degradation over time  
-**Effort**: Low
+## 🟢 Engineering hygiene
 
-- [ ] Review all `useEffect` hooks for proper cleanup
-- [ ] Verify Chrome API listeners are removed on unmount
-- [ ] Check for event listener cleanup in components
-
-**Files to review**:
-- `src/App.tsx` - Event listeners
-- `src/components/dashboard/layout/BottomPanel.tsx` - Chrome API listeners
+- [ ] **Loading states** for `loadData`, long imports, workspace restore.
+- [ ] **Listener cleanup audit** (`useEffect` + Chrome listeners) on hot paths.
+- [ ] **Split large components** incrementally (`MainContent.tsx`, layout/tab files)—only when touching those areas.
+- [ ] **Types**: tighten migration/`any` in `db.ts`; legacy shape types if useful.
+- [ ] **A11y**: keyboard nav and labels where cheap wins exist.
+- [ ] **Tests** (when worth it): Vitest + RTL; start with `db` helpers and pure utils.
 
 ---
 
-## 🟢 Low Priority
+## ⏸ Deferred / polish
 
-### Component Splitting
-**Status**: Not Started  
-**Impact**: Better maintainability, but not blocking  
-**Effort**: High
-
-- [ ] Split `MainContent.tsx` (1241 lines) into:
-  - `ProjectsView.tsx`
-  - `BookmarksView.tsx`
-  - `WorkspacesView.tsx`
-  - `NotesView.tsx`
-- [ ] Split `BottomPanel.tsx` (1705 lines) into:
-  - `TabList.tsx`
-  - `TabGallery.tsx`
-  - `WindowList.tsx`
-  - `WorkspaceSaveMenu.tsx`
-
-**Note**: Can be done incrementally as we work on UI updates
+- Animations, responsive polish, heavy styling refactors.
+- Relationship graphs (notes ↔ bookmarks ↔ projects).
+- **`HttpBackupSink` / BYO server** — same coordinator + JSON payload; optional auth — after file‑based backup ships (see [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md)).
+- Chrome Web Store / multi-browser—out of scope until explicitly chosen.
 
 ---
 
-### Styling Refactor
-**Status**: Will be addressed during UI update  
-**Impact**: Better maintainability  
-**Effort**: Medium
+## Suggested order (adjust freely)
 
-- [ ] Move inline styles to CSS modules or styling solution
-- [ ] Extract common styles to shared stylesheet
-- [ ] Create reusable style utilities
-
-**Note**: This will naturally happen as we implement UI mockups
+1. **Automated file backup** (coordinator + live + scheduled) — highest leverage for data integrity.  
+2. Error handling + validation (quick trust wins).  
+3. Notes strategy + one implementation path.  
+4. Quick access (pinned / favorites / trash) if daily-use value is high.  
+5. Collection detach/share UI if multi-project workflows matter.  
+6. AI thin slice after notes/context story is clear.
 
 ---
 
-### Type Safety Improvements
-**Status**: Not Started  
-**Impact**: Better developer experience  
-**Effort**: Low
-
-- [ ] Replace `any` types in migration code with proper types
-- [ ] Create `LegacyCollection`, `LegacyItem` types for migrations
-- [ ] Add stricter types where possible
-
-**Files to update**:
-- `src/lib/db.ts` - Migration code
-
----
-
-### Accessibility
-**Status**: Not Started  
-**Impact**: Better UX for all users  
-**Effort**: Medium
-
-- [ ] Add ARIA labels to buttons and interactive elements
-- [ ] Add keyboard navigation support
-- [ ] Ensure proper focus management
-- [ ] Add screen reader support
-
-**Note**: Can be done incrementally
-
----
-
-### Documentation
-**Status**: Not Started  
-**Impact**: Easier onboarding, maintenance  
-**Effort**: Low
-
-- [ ] Add JSDoc comments to public functions
-- [ ] Document complex logic
-- [ ] Add inline comments for non-obvious code
-
-**Note**: Can be done as we work on features
-
----
-
-### Testing
-**Status**: Not Started  
-**Impact**: Confidence in changes, catch regressions  
-**Effort**: High
-
-- [ ] Set up testing framework (Vitest + React Testing Library)
-- [ ] Add unit tests for utility functions
-- [ ] Add tests for database operations
-- [ ] Add component tests for critical flows
-
-**Note**: Low priority for personal project, but good to have
-
----
-
-## 🎨 UI Update Related (Will be addressed during mockup implementation)
-
-These will be fixed naturally as we implement the UI mockups:
-
-- [ ] Inline styles → CSS modules/styled components
-- [ ] Component organization improvements
-- [ ] Consistent spacing and design tokens
-- [ ] Responsive design improvements
-- [ ] Better visual feedback for actions
-
----
-
-## 📝 Notes
-
-- **Don't over-optimize**: Focus on functionality first
-- **Vibecoding is OK**: Code quality will improve organically
-- **Future considerations**: 
-  - Local DB/file system integration (later)
-  - Potential rewrite if productized (acknowledged)
-- **Current focus**: Make it work, make it usable
-
----
-
-## Quick Wins (Do These First)
-
-1. ✅ Create this backlog
-2. ⬜ Add error handling to `handleSaveCurrentTab` and `handleAddBookmark`
-3. ⬜ Create `utils.ts` with `getDomain` and `isValidHttpUrl`
-4. ⬜ Create `constants.ts` with magic numbers
-5. ⬜ Add loading state to `loadData()`
-
----
-
-*Last updated: [Auto-update on changes]*
-
+*Last updated: 2026-05-02 — backup design doc + backlog tasks*

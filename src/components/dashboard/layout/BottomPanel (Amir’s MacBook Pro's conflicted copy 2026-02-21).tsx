@@ -3,13 +3,14 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, LayoutGrid, List, Search, Trash2, X } from 'lucide-react';
 import type { WindowGroup } from '../../../App';
 import { addWorkspace, updateWorkspace } from '../../../lib/db';
-import type { Workspace, WorkspaceWindow } from '../../../lib/db';
+import type { Workspace, WorkspaceWindow, Project } from '../../../lib/db';
 
 interface BottomPanelProps {
   isCollapsed: boolean;
   onToggle: () => void;
   windows: WindowGroup[];
   workspaces: Workspace[];
+  projects?: Project[];
   onWorkspacesChanged?: () => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
@@ -55,6 +56,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onToggle,
   windows,
   workspaces,
+  projects = [],
   onWorkspacesChanged,
   onCloseTab,
   onCloseWindow,
@@ -78,6 +80,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   const DRAG_MIME = 'application/x-workbench-tab';
   const [selectedTabIds, setSelectedTabIds] = useState<number[]>([]);
   const selectedTabIdSet = useMemo(() => new Set(selectedTabIds), [selectedTabIds]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveWorkspaceName, setSaveWorkspaceName] = useState('');
+  const [saveWorkspaceProjectId, setSaveWorkspaceProjectId] = useState<string | undefined>(undefined);
 
   const sortedWindows = useMemo(() => {
     // Windows with an active tab first, then by tab count desc.
@@ -352,15 +357,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       left.textContent = count === 1 ? 'Moving tab' : `Moving ${count} tabs`;
       left.style.fontSize = '12px';
       left.style.fontWeight = '800';
-      left.style.color = '#111827';
+      left.style.color = 'var(--text)';
 
       const pill = document.createElement('div');
       pill.textContent = count.toString();
       pill.style.fontSize = '12px';
       pill.style.fontWeight = '900';
-      pill.style.color = '#1d4ed8';
-      pill.style.background = '#eff6ff';
-      pill.style.border = '1px solid #93c5fd';
+      pill.style.color = 'var(--accent)';
+      pill.style.background = 'var(--accent-subtle)';
+      pill.style.border = '1px solid var(--accent)';
       pill.style.padding = '2px 8px';
       pill.style.borderRadius = '9999px';
 
@@ -379,7 +384,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           row.textContent = t;
           row.style.fontSize = '12px';
           row.style.fontWeight = '700';
-          row.style.color = '#374151';
+          row.style.color = 'var(--text)';
           row.style.whiteSpace = 'nowrap';
           row.style.overflow = 'hidden';
           row.style.textOverflow = 'ellipsis';
@@ -390,7 +395,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           more.textContent = `+${count - labelTitles.length} more`;
           more.style.fontSize = '12px';
           more.style.fontWeight = '800';
-          more.style.color = '#6b7280';
+          more.style.color = 'var(--text-muted)';
           list.appendChild(more);
         }
         dragEl.appendChild(list);
@@ -509,31 +514,119 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         .map((id) => allTabs.find((t) => t.id === id))
         .filter((t): t is chrome.tabs.Tab => Boolean(t && t.url && t.url.startsWith('http')))
         .map((t) => ({ url: t.url!, title: t.title || undefined, favIconUrl: t.favIconUrl || undefined }));
-      return [{ id: crypto.randomUUID(), name: 'Selected tabs', tabs }];
+      
+      // Try to get a meaningful name from the first tab
+      let windowName = 'Selected tabs';
+      if (tabs.length > 0 && tabs[0].url) {
+        try {
+          const url = new URL(tabs[0].url);
+          const domain = url.hostname.replace(/^www\./, '');
+          if (domain) {
+            const domainParts = domain.split('.');
+            // Use first part of domain (e.g., "github" from "github.com")
+            if (domainParts.length > 1) {
+              windowName = domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
+            } else {
+              windowName = domain.charAt(0).toUpperCase() + domain.slice(1);
+            }
+          }
+        } catch {
+          // Keep default name
+        }
+      }
+      
+      return [{ id: crypto.randomUUID(), name: windowName, tabs }];
     }
 
     const windowGroups = selectedWindowIds.length > 0 ? selectedWindows : windows;
-    return windowGroups.map((w) => ({
-      id: crypto.randomUUID(),
-      name: windowLabelById.get(w.windowId) || `Window ${w.windowId}`,
-      tabs: w.tabs
-        .filter((t) => t.url && t.url.startsWith('http'))
-        .map((t) => ({ url: t.url!, title: t.title || undefined, favIconUrl: t.favIconUrl || undefined })),
-    }));
+    return windowGroups.map((w) => {
+      // Try to get a meaningful window name from the first tab's domain
+      const firstTab = w.tabs.find((t) => t.url && t.url.startsWith('http'));
+      let windowName = windowLabelById.get(w.windowId) || `Window ${w.windowId}`;
+      
+      if (firstTab) {
+        try {
+          const url = new URL(firstTab.url!);
+          const domain = url.hostname.replace(/^www\./, '');
+          // Use domain as window name if it's more meaningful than "Window N"
+          if (domain) {
+            const domainParts = domain.split('.');
+            // Use first part of domain (e.g., "github" from "github.com")
+            if (domainParts.length > 1) {
+              windowName = domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
+            } else {
+              windowName = domain.charAt(0).toUpperCase() + domain.slice(1);
+            }
+          }
+        } catch {
+          // Keep default name if URL parsing fails
+        }
+      }
+      
+      return {
+        id: crypto.randomUUID(),
+        name: windowName,
+        tabs: w.tabs
+          .filter((t) => t.url && t.url.startsWith('http'))
+          .map((t) => ({ url: t.url!, title: t.title || undefined, favIconUrl: t.favIconUrl || undefined })),
+      };
+    });
+  };
+
+  const generateWorkspaceName = (windowsToSave: WorkspaceWindow[]): string => {
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).replace(',', '').replace(':', 'h');
+
+    // If we have window names, use them (filter out generic names like "Window N")
+    const windowNames = windowsToSave
+      .map((w) => w.name)
+      .filter((name): name is string => {
+        if (!name || !name.trim()) return false;
+        // Filter out generic window names
+        if (/^Window \d+$/.test(name)) return false;
+        if (name === 'Selected tabs') return false;
+        return true;
+      })
+      .slice(0, 2); // Limit to first 2 window names
+
+    if (windowNames.length > 0) {
+      const namesPart = windowNames.join(' + ');
+      return `${namesPart} - ${timestamp}`;
+    }
+
+    // Fallback: use descriptive name with counts
+    if (windowsToSave.length === 1 && windowsToSave[0].tabs.length > 0) {
+      const tabCount = windowsToSave[0].tabs.length;
+      return `${tabCount} tab${tabCount !== 1 ? 's' : ''} - ${timestamp}`;
+    }
+
+    const windowCount = windowsToSave.length;
+    const totalTabs = windowsToSave.reduce((sum, w) => sum + w.tabs.length, 0);
+    return `${windowCount} window${windowCount !== 1 ? 's' : ''}, ${totalTabs} tab${totalTabs !== 1 ? 's' : ''} - ${timestamp}`;
   };
 
   const saveAsNewWorkspace = async () => {
     const windowsToSave = buildWorkspaceWindowsFromSelection();
-    const suggested =
-      selectedTabIds.length > 0
-        ? `Tabs (${windowsToSave[0]?.tabs.length || 0})`
-        : selectedWindowIds.length > 0
-          ? `Workspace (${selectedWindowIds.length} windows)`
-          : `Workspace (${windowsToSave.length} windows)`;
+    const suggested = generateWorkspaceName(windowsToSave);
 
-    const name = window.prompt('New workspace name:', suggested);
-    if (!name || !name.trim()) return;
-    await addWorkspace(name.trim(), windowsToSave);
+    setSaveWorkspaceName(suggested);
+    setSaveWorkspaceProjectId(undefined);
+    setShowSaveModal(true);
+  };
+
+  const handleSaveWorkspaceSubmit = async () => {
+    if (!saveWorkspaceName.trim()) return;
+    const windowsToSave = buildWorkspaceWindowsFromSelection();
+    await addWorkspace(saveWorkspaceName.trim(), windowsToSave, saveWorkspaceProjectId);
+    setShowSaveModal(false);
+    setSaveWorkspaceName('');
+    setSaveWorkspaceProjectId(undefined);
     if (onWorkspacesChanged) await onWorkspacesChanged();
   };
 
@@ -565,9 +658,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         gap: '0.375rem',
         padding: '0.25rem 0.5rem',
         borderRadius: '9999px',
-        border: active ? '1px solid #93c5fd' : '1px solid #e5e7eb',
-        background: active ? '#eff6ff' : 'white',
-        color: active ? '#1d4ed8' : '#374151',
+        border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+        background: active ? 'var(--accent-subtle)' : 'var(--bg-panel)',
+        color: active ? 'var(--accent)' : 'var(--text)',
         cursor: 'pointer',
         fontSize: '0.75rem',
         fontWeight: 800,
@@ -639,8 +732,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             top: menuPos.top,
             left: menuPos.left,
             width: `${MENU_WIDTH}px`,
-            background: 'white',
-            border: '1px solid #e5e7eb',
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border)',
             borderRadius: '0.75rem',
             boxShadow: '0 18px 44px rgba(0,0,0,0.22)',
             zIndex: 2147483647,
@@ -651,10 +744,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           <div
             style={{
               padding: '0.625rem 0.75rem',
-              borderBottom: '1px solid #e5e7eb',
-              background: '#f9fafb',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--bg)',
               fontWeight: 900,
-              color: '#111827',
+                            color: 'var(--text)',
               fontSize: '0.875rem',
             }}
           >
@@ -671,10 +764,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               cursor: 'pointer',
               fontSize: '0.875rem',
               fontWeight: 900,
-              borderBottom: '1px solid #e5e7eb',
+              borderBottom: '1px solid var(--border)',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-panel)')}
             title="Create a new workspace snapshot"
           >
             + New workspace…
@@ -682,7 +775,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
           <div style={{ maxHeight: `${MENU_MAX_HEIGHT}px`, overflowY: 'auto' }}>
             {workspaces.length === 0 && (
-              <div style={{ padding: '0.75rem', color: '#6b7280', fontSize: '0.875rem' }}>
+              <div style={{ padding: '0.75rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                 No workspaces yet.
               </div>
             )}
@@ -702,14 +795,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   justifyContent: 'space-between',
                   gap: '0.75rem',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-panel)')}
                 title="Update this workspace (overwrite snapshot)"
               >
-                <span style={{ fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontWeight: 800, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {ws.name}
                 </span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 900, color: '#6b7280', flexShrink: 0 }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 900, color: 'var(--text-muted)', flexShrink: 0 }}>
                   Update
                 </span>
               </div>
@@ -735,10 +828,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             gap: '0.375rem',
             padding: '0.25rem 0.5rem',
             borderRadius: '9999px',
-            border: '1px solid #e5e7eb',
-            background: 'white',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-panel)',
             cursor: 'pointer',
-            color: '#374151',
+            color: 'var(--text)',
             fontSize: '0.75rem',
             fontWeight: 900,
             whiteSpace: 'nowrap',
@@ -757,7 +850,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         display: 'flex',
         height: '100%',
         flexDirection: 'column',
-        background: 'white',
+        background: 'var(--bg-panel)',
       }}
       onClick={() => closeDropdowns()}
     >
@@ -767,9 +860,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: '#f9fafb',
+          background: 'var(--bg)',
           padding: '0.375rem 0.5rem',
-          borderBottom: '1px solid #e5e7eb',
+          borderBottom: '1px solid var(--border)',
           cursor: isCollapsed ? 'pointer' : 'default',
           userSelect: 'none',
           flexShrink: 0,
@@ -778,20 +871,20 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         onClick={isCollapsed ? onToggle : undefined}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-          <GripHorizontal size={16} style={{ color: '#9ca3af' }} />
-          <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#111827', whiteSpace: 'nowrap' }}>
+          <GripHorizontal size={16} style={{ color: 'var(--text-muted)' }} />
+          <span style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text)', whiteSpace: 'nowrap' }}>
             Tab Commander
           </span>
-          <span style={{ fontSize: '0.75rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
             {windows.length} windows • {allTabs.length} tabs
           </span>
           {!isCollapsed && selectedWindowIds.length > 0 && (
             <span
               style={{
                 fontSize: '0.75rem',
-                color: '#111827',
-                background: '#eef2ff',
-                border: '1px solid #c7d2fe',
+                color: 'var(--text)',
+                background: 'var(--accent-subtle)',
+                border: '1px solid var(--accent)',
                 borderRadius: '9999px',
                 padding: '0.125rem 0.5rem',
                 fontWeight: 700,
@@ -811,15 +904,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                background: 'white',
-                border: '1px solid #e5e7eb',
+                background: 'var(--bg-panel)',
+                border: '1px solid var(--border)',
                 borderRadius: '0.5rem',
                 padding: '0.1875rem 0.5rem',
                 width: 'min(680px, 100%)',
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <Search size={14} style={{ color: '#9ca3af' }} />
+              <Search size={14} style={{ color: 'var(--text-muted)' }} />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -830,7 +923,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   fontSize: '0.8125rem',
                   width: '100%',
                   background: 'transparent',
-                  color: '#111827',
+                  color: 'var(--text)',
                 }}
               />
               {query && (
@@ -841,7 +934,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     background: 'transparent',
                     cursor: 'pointer',
                     padding: '0.125rem',
-                    color: '#9ca3af',
+                    color: 'var(--text-muted)',
                     display: 'flex',
                     alignItems: 'center',
                   }}
@@ -869,7 +962,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             style={{
               background: 'transparent',
               border: '1px solid transparent',
-              color: '#6b7280',
+              color: 'var(--text-muted)',
               cursor: 'pointer',
               padding: '0.25rem',
               display: 'flex',
@@ -878,8 +971,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             }}
             title={isCollapsed ? 'Expand' : 'Collapse'}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#f3f4f6';
-              e.currentTarget.style.borderColor = '#e5e7eb';
+              e.currentTarget.style.background = 'var(--bg-hover)';
+              e.currentTarget.style.borderColor = 'var(--border)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'transparent';
@@ -899,31 +992,31 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             overflow: 'hidden',
             display: 'grid',
             gridTemplateColumns: '240px 1fr',
-            background: '#f9fafb',
+            background: 'var(--bg)',
           }}
         >
           {/* Windows column */}
           <div
             style={{
-              borderRight: '1px solid #e5e7eb',
+              borderRight: '1px solid var(--border)',
               overflowY: 'auto',
               padding: '0.375rem',
-              background: '#ffffff',
+              background: 'var(--bg-panel)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0.25rem 0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#111827' }}>Windows</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text)' }}>Windows</div>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleSelectAllToggle();
                 }}
                 style={{
-                  border: '1px solid #e5e7eb',
-                  background: 'white',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-panel)',
                   cursor: 'pointer',
-                  color: '#374151',
+                  color: 'var(--text)',
                   padding: '0.25rem 0.5rem',
                   borderRadius: '0.375rem',
                   fontSize: '0.75rem',
@@ -945,13 +1038,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 <div
                   key={w.windowId}
                   style={{
-                    border: isSelected ? '1px solid #93c5fd' : '1px solid #e5e7eb',
-                    background: isSelected ? '#eef2ff' : 'white',
+                    border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    background: isSelected ? 'var(--accent-subtle)' : 'var(--bg-panel)',
                     borderRadius: '0.5rem',
                     padding: '0.375rem 0.5rem',
                     marginBottom: '0.375rem',
                     cursor: 'pointer',
-                    outline: dragOverWindowId === w.windowId ? '2px solid #2563eb' : 'none',
+                    outline: dragOverWindowId === w.windowId ? '2px solid var(--accent)' : 'none',
                     outlineOffset: '1px',
                   }}
                   onClick={(e) => handleWindowClick(w.windowId, e)}
@@ -974,13 +1067,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           width: '14px',
                           height: '14px',
                           cursor: 'pointer',
-                          accentColor: '#2563eb',
+                          accentColor: 'var(--accent)',
                           flexShrink: 0,
                         }}
                         aria-label={`Select ${label}`}
                       />
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', minWidth: 0 }}>
-                        <span style={{ fontWeight: 900, fontSize: '0.75rem', color: '#111827', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontWeight: 900, fontSize: '0.75rem', color: 'var(--text)', whiteSpace: 'nowrap' }}>
                           {label}
                         </span>
                         {w.tabs.some((t) => t.active) && (
@@ -998,9 +1091,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         <span
                           style={{
                             fontSize: '0.75rem',
-                            color: '#6b7280',
-                            background: '#f3f4f6',
-                            border: '1px solid #e5e7eb',
+                            color: 'var(--text-muted)',
+                            background: 'var(--bg-hover)',
+                            border: '1px solid var(--border)',
                             borderRadius: '9999px',
                             padding: '0.0625rem 0.375rem',
                             fontWeight: 800,
@@ -1025,21 +1118,21 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           background: 'transparent',
                           cursor: 'pointer',
                           padding: '0.1875rem',
-                          color: '#9ca3af',
+                          color: 'var(--text-muted)',
                           borderRadius: '0.375rem',
                           display: 'flex',
                           alignItems: 'center',
                         }}
                         title={isCollapsedWindow ? 'Expand actions' : 'Collapse actions'}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#f3f4f6';
-                          e.currentTarget.style.borderColor = '#e5e7eb';
-                          e.currentTarget.style.color = '#374151';
+                          e.currentTarget.style.background = 'var(--bg-hover)';
+                          e.currentTarget.style.borderColor = 'var(--border)';
+                          e.currentTarget.style.color = 'var(--text)';
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = 'transparent';
                           e.currentTarget.style.borderColor = 'transparent';
-                          e.currentTarget.style.color = '#9ca3af';
+                          e.currentTarget.style.color = 'var(--text-muted)';
                         }}
                       >
                         {isCollapsedWindow ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
@@ -1055,9 +1148,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           title="Locate window (flashes it)"
                           style={{
                             padding: '0.125rem 0.375rem',
-                            background: '#f0f9ff',
-                            border: '1px solid #bfdbfe',
-                            color: '#2563eb',
+                            background: 'var(--accent-subtle)',
+                            border: '1px solid var(--accent)',
+                            color: 'var(--accent)',
                             cursor: 'pointer',
                             borderRadius: '0.25rem',
                             display: 'flex',
@@ -1067,10 +1160,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             fontWeight: 600,
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#dbeafe';
+                            e.currentTarget.style.background = 'var(--accent-subtle)';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#f0f9ff';
+                            e.currentTarget.style.background = 'var(--accent-subtle)';
                           }}
                         >
                           <Search size={10} />
@@ -1085,7 +1178,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                               border: '1px solid transparent',
                               background: 'transparent',
                               cursor: 'pointer',
-                              color: '#9ca3af',
+                              color: 'var(--text-muted)',
                               display: 'flex',
                               alignItems: 'center',
                               borderRadius: '0.375rem',
@@ -1096,7 +1189,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                               e.currentTarget.style.borderColor = '#fecaca';
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.color = '#9ca3af';
+                              e.currentTarget.style.color = 'var(--text-muted)';
                               e.currentTarget.style.background = 'transparent';
                               e.currentTarget.style.borderColor = 'transparent';
                             }}
@@ -1112,10 +1205,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           setSelectedWindowIds([w.windowId]);
                         }}
                         style={{
-                          border: '1px solid #e5e7eb',
-                          background: 'white',
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg-panel)',
                           cursor: 'pointer',
-                          color: '#374151',
+                          color: 'var(--text)',
                           padding: '0.25rem 0.5rem',
                           borderRadius: '0.375rem',
                           fontSize: '0.75rem',
@@ -1132,7 +1225,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             })}
 
             {windows.length === 0 && (
-              <div style={{ padding: '1rem', color: '#9ca3af', fontSize: '0.875rem', fontStyle: 'italic' }}>
+              <div style={{ padding: '1rem', color: 'var(--text-muted)', fontSize: '0.875rem', fontStyle: 'italic' }}>
                 No open windows found.
               </div>
             )}
@@ -1143,25 +1236,25 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             <div
               style={{
                 padding: '0.375rem 0.5rem',
-                borderBottom: '1px solid #e5e7eb',
+                borderBottom: '1px solid var(--border)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: '0.5rem',
-                background: '#ffffff',
+                background: 'var(--bg-panel)',
                 flexShrink: 0,
               }}
             >
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontWeight: 900, fontSize: '0.875rem', color: '#111827' }}>
+                  <span style={{ fontWeight: 900, fontSize: '0.875rem', color: 'var(--text)' }}>
                     {selectedWindowIds.length === 0
                       ? 'Tabs'
                       : selectedWindowIds.length === 1
                         ? `${windowLabelById.get(selectedWindowIds[0]) || 'W?'}`
                         : `${selectedWindowIds.length} windows`}
                   </span>
-                  <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                     {filteredTabsForSelection.length} {query ? 'matches' : 'tabs'}
                   </span>
                   {selectedWindowIds.length === 1 && (
@@ -1195,7 +1288,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   )}
                 </div>
                 {query && (
-                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.125rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>
                     Showing matches in selected windows
                   </div>
                 )}
@@ -1247,9 +1340,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem', background: '#f9fafb' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem', background: 'var(--bg)' }}>
               {selectedWindowIds.length === 0 && (
-                <div style={{ padding: '1.25rem', color: '#9ca3af', fontSize: '0.875rem' }}>Select one or more windows.</div>
+                <div style={{ padding: '1.25rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Select one or more windows.</div>
               )}
 
               {selectedWindowIds.length > 0 && tabsView === 'list' &&
@@ -1272,9 +1365,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         alignItems: 'center',
                         gap: '0.5rem',
                         padding: '0.25rem 0.5rem',
-                        background: isActive ? '#eff6ff' : 'white',
+                        background: isActive ? 'var(--accent-subtle)' : 'var(--bg-panel)',
                         border: '1px solid transparent',
-                        borderBottom: '1px solid #e5e7eb',
+                        borderBottom: '1px solid var(--border)',
                         borderRadius: '0.375rem',
                         cursor: 'pointer',
                         marginBottom: '0.125rem',
@@ -1283,12 +1376,12 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                       }}
                       onMouseEnter={(e) => {
                         setHoveredTabKey(rowKey);
-                        e.currentTarget.style.background = isActive ? '#eff6ff' : '#f9fafb';
+                        e.currentTarget.style.background = isActive ? 'var(--accent-subtle)' : 'var(--bg)';
                         e.currentTarget.style.borderColor = '#bfdbfe';
                       }}
                       onMouseLeave={(e) => {
                         setHoveredTabKey(null);
-                        e.currentTarget.style.background = isActive ? '#eff6ff' : 'white';
+                        e.currentTarget.style.background = isActive ? 'var(--accent-subtle)' : 'var(--bg-panel)';
                         e.currentTarget.style.borderColor = 'transparent';
                       }}
                       title={tab.title || ''}
@@ -1305,7 +1398,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             width: '14px',
                             height: '14px',
                             cursor: 'pointer',
-                            accentColor: '#2563eb',
+                            accentColor: 'var(--accent)',
                             flexShrink: 0,
                             opacity: isHovered || isSelectedTab ? 1 : 0,
                             transition: 'opacity 120ms ease-in-out',
@@ -1315,7 +1408,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                       {tab.favIconUrl ? (
                         <img src={tab.favIconUrl} alt="" style={{ width: 14, height: 14, borderRadius: 2, flexShrink: 0 }} />
                       ) : (
-                        <Globe size={14} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                        <Globe size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                       )}
 
                       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1326,8 +1419,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                               padding: '0.0625rem 0.375rem',
                               borderRadius: '9999px',
                               background: '#f3f4f6',
-                              border: '1px solid #e5e7eb',
-                              color: '#374151',
+                              border: '1px solid var(--border)',
+                              color: 'var(--text)',
                               fontWeight: 800,
                               flexShrink: 0,
                             }}
@@ -1376,7 +1469,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           style={{
                             fontSize: '0.8125rem',
                             fontWeight: 800,
-                            color: '#111827',
+                            color: 'var(--text)',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
@@ -1390,7 +1483,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         <span
                           style={{
                             fontSize: '0.75rem',
-                            color: '#6b7280',
+                            color: 'var(--text-muted)',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
@@ -1412,7 +1505,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             border: '1px solid transparent',
                             background: 'transparent',
                             cursor: 'pointer',
-                            color: '#9ca3af',
+                            color: 'var(--text-muted)',
                             display: 'flex',
                             alignItems: 'center',
                             borderRadius: '0.375rem',
@@ -1422,11 +1515,11 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.color = '#2563eb';
-                            e.currentTarget.style.background = '#eff6ff';
+                            e.currentTarget.style.background = 'var(--accent-subtle)';
                             e.currentTarget.style.borderColor = '#bfdbfe';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.color = '#9ca3af';
+                            e.currentTarget.style.color = 'var(--text-muted)';
                             e.currentTarget.style.background = 'transparent';
                             e.currentTarget.style.borderColor = 'transparent';
                           }}
@@ -1442,7 +1535,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                               border: '1px solid transparent',
                               background: 'transparent',
                               cursor: 'pointer',
-                              color: '#9ca3af',
+                              color: 'var(--text-muted)',
                               display: 'flex',
                               alignItems: 'center',
                               borderRadius: '0.375rem',
@@ -1456,7 +1549,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                               e.currentTarget.style.borderColor = '#fecaca';
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.color = '#9ca3af';
+                              e.currentTarget.style.color = 'var(--text-muted)';
                               e.currentTarget.style.background = 'transparent';
                               e.currentTarget.style.borderColor = 'transparent';
                             }}
@@ -1492,8 +1585,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         draggable
                         onDragStart={(e) => handleTabDragStart(e, tab.id, windowId)}
                         style={{
-                          background: isActive ? '#eff6ff' : 'white',
-                          border: isActive ? '1px solid #93c5fd' : '1px solid #e5e7eb',
+                          background: isActive ? 'var(--accent-subtle)' : 'var(--bg-panel)',
+                          border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
                           borderRadius: '0.75rem',
                           padding: '0.5rem',
                           cursor: 'pointer',
@@ -1507,7 +1600,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           if (!isActive) e.currentTarget.style.borderColor = '#bfdbfe';
                         }}
                         onMouseLeave={(e) => {
-                          if (!isActive) e.currentTarget.style.borderColor = '#e5e7eb';
+                          if (!isActive) e.currentTarget.style.borderColor = 'var(--border)';
                         }}
                         title={tab.title || ''}
                       >
@@ -1524,7 +1617,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                   width: '14px',
                                   height: '14px',
                                   cursor: 'pointer',
-                                  accentColor: '#2563eb',
+                                  accentColor: 'var(--accent)',
                                   flexShrink: 0,
                                 }}
                               />
@@ -1532,7 +1625,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             {tab.favIconUrl ? (
                               <img src={tab.favIconUrl} alt="" style={{ width: 16, height: 16, borderRadius: 3, flexShrink: 0 }} />
                             ) : (
-                              <Globe size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                              <Globe size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                             )}
 
                             {isMultiWindow && (
@@ -1542,8 +1635,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                   padding: '0.125rem 0.5rem',
                                   borderRadius: '9999px',
                                   background: '#f3f4f6',
-                                  border: '1px solid #e5e7eb',
-                                  color: '#374151',
+                                  border: '1px solid var(--border)',
+                                  color: 'var(--text)',
                                   fontWeight: 800,
                                   flexShrink: 0,
                                 }}
@@ -1584,18 +1677,18 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                 border: '1px solid transparent',
                                 background: 'transparent',
                                 cursor: 'pointer',
-                                color: '#9ca3af',
+                                color: 'var(--text-muted)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 borderRadius: '0.375rem',
                               }}
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.color = '#2563eb';
-                                e.currentTarget.style.background = '#eff6ff';
+                                e.currentTarget.style.background = 'var(--accent-subtle)';
                                 e.currentTarget.style.borderColor = '#bfdbfe';
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.color = '#9ca3af';
+                                e.currentTarget.style.color = 'var(--text-muted)';
                                 e.currentTarget.style.background = 'transparent';
                                 e.currentTarget.style.borderColor = 'transparent';
                               }}
@@ -1611,7 +1704,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                   border: '1px solid transparent',
                                   background: 'transparent',
                                   cursor: 'pointer',
-                                  color: '#9ca3af',
+                                  color: 'var(--text-muted)',
                                   display: 'flex',
                                   alignItems: 'center',
                                   borderRadius: '0.375rem',
@@ -1622,7 +1715,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                   e.currentTarget.style.borderColor = '#fecaca';
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.color = '#9ca3af';
+                                  e.currentTarget.style.color = 'var(--text-muted)';
                                   e.currentTarget.style.background = 'transparent';
                                   e.currentTarget.style.borderColor = 'transparent';
                                 }}
@@ -1637,7 +1730,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           style={{
                             fontSize: '0.875rem',
                             fontWeight: 800,
-                            color: '#111827',
+                            color: 'var(--text)',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             display: '-webkit-box',
@@ -1650,7 +1743,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           {tab.title || 'Untitled'}
                         </div>
 
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {domain || tab.url}
                         </div>
 
@@ -1685,10 +1778,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     marginTop: '0.5rem',
                     padding: '0.625rem',
                     borderRadius: '0.5rem',
-                    border: '1px dashed #cbd5e1',
-                    background: '#ffffff',
+                    border: '1px dashed var(--border)',
+                    background: 'var(--bg-panel)',
                     cursor: 'pointer',
-                    color: '#334155',
+                    color: 'var(--text)',
                     fontSize: '0.875rem',
                     fontWeight: 700,
                   }}
@@ -1696,6 +1789,165 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   Show {Math.min(TAB_PAGE_SIZE, hiddenCount)} more ({hiddenCount} hidden)
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Workspace Modal */}
+      {showSaveModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2147483647,
+            padding: '1rem'
+          }}
+          onClick={() => {
+            setShowSaveModal(false);
+            setSaveWorkspaceName('');
+            setSaveWorkspaceProjectId(undefined);
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--bg-panel)',
+              borderRadius: '0.75rem',
+              padding: '1.5rem',
+              width: '440px',
+              maxWidth: '90%',
+              boxShadow: 'var(--shadow-panel)',
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)' }}>
+                Save Workspace
+              </h2>
+              <button
+                onClick={() => {
+                  setShowSaveModal(false);
+                  setSaveWorkspaceName('');
+                  setSaveWorkspaceProjectId(undefined);
+                }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  fontSize: '1.5rem',
+                  padding: 0,
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 500 }}>
+                  Workspace Name
+                </label>
+                <input
+                  value={saveWorkspaceName}
+                  onChange={(e) => setSaveWorkspaceName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveWorkspaceSubmit();
+                    } else if (e.key === 'Escape') {
+                      setShowSaveModal(false);
+                      setSaveWorkspaceName('');
+                      setSaveWorkspaceProjectId(undefined);
+                    }
+                  }}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.65rem',
+                    border: '1px solid var(--border)',
+                    borderRadius: '0.5rem',
+                    fontSize: 'var(--text-sm)',
+                    background: 'var(--input-bg)',
+                    color: 'var(--text)',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: 500 }}>
+                  Project (optional)
+                </label>
+                <select
+                  value={saveWorkspaceProjectId || ''}
+                  onChange={(e) => setSaveWorkspaceProjectId(e.target.value || undefined)}
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.65rem',
+                    border: '1px solid var(--border)',
+                    borderRadius: '0.5rem',
+                    fontSize: 'var(--text-sm)',
+                    background: 'var(--input-bg)',
+                    color: 'var(--text)',
+                  }}
+                >
+                  <option value="">Detached (no project)</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button
+                  onClick={() => {
+                    setShowSaveModal(false);
+                    setSaveWorkspaceName('');
+                    setSaveWorkspaceProjectId(undefined);
+                  }}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg)',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    color: 'var(--text)',
+                    fontSize: 'var(--text-sm)',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveWorkspaceSubmit}
+                  disabled={!saveWorkspaceName.trim()}
+                  style={{
+                    padding: '0.5rem 0.9rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--accent)',
+                    background: 'var(--accent)',
+                    color: 'var(--accent-text)',
+                    cursor: saveWorkspaceName.trim() ? 'pointer' : 'not-allowed',
+                    fontWeight: 600,
+                    fontSize: 'var(--text-sm)',
+                    opacity: saveWorkspaceName.trim() ? 1 : 0.5,
+                  }}
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -5,8 +5,11 @@ chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("Tab Manager AI installed.");
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === "install") {
+    chrome.storage.local.set({ backupFolderOnboarding: "pending" }).catch(() => {});
+  }
+  console.log("Tab Manager AI:", details.reason);
 });
 // Listen for focus-tab messages (must be at top level, not inside onInstalled)
 chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {

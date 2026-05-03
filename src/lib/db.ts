@@ -382,10 +382,13 @@ export const getDB = () => {
         const now = nowTs();
           const newVersion = _newVersion ?? DB_VERSION;
 
-          // Log migration start with warning
+          // Log migration start.
+          // Fresh installs (v0) are expected and should not be surfaced as warnings.
           if (oldVersion < newVersion) {
-            console.warn(`🔄 MIGRATION: Upgrading database from v${oldVersion} to v${newVersion}`);
-            console.warn(`⚠️  If you haven't backed up, export your data now using the Backup button!`);
+            console.info(`🔄 MIGRATION: Upgrading database from v${oldVersion} to v${newVersion}`);
+            if (oldVersion > 0) {
+              console.warn(`⚠️  If you haven't backed up, export your data now using the Backup button!`);
+            }
           }
 
         // Projects Store (v3)

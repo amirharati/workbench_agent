@@ -18,6 +18,17 @@ import {
 } from './lib/db';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
+import { BackupOnboardingModal } from './components/BackupOnboardingModal';
+import {
+  shouldShowBackupOnboarding,
+  setBackupFolderOnboarding,
+  requestBackupOnboardingOpen,
+} from './lib/backupOnboarding';
+import {
+  pickAndPersistBackupFolder,
+  hasWritableBackupFolder,
+  getBackupFolderName,
+} from './lib/backupFolder';
 
 export interface WindowGroup {
   windowId: number;
@@ -32,6 +43,37 @@ function App() {
   const [isSidePanel, setIsSidePanel] = useState(false);
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
   const [status, setStatus] = useState('');
+  const [showBackupOnboarding, setShowBackupOnboarding] = useState(false);
+  const [backupFolderReady, setBackupFolderReady] = useState(false);
+  const [backupFolderName, setBackupFolderName] = useState<string | null>(null);
+
+  const refreshBackupFolderStatus = async () => {
+    try {
+      const ready = await hasWritableBackupFolder();
+      const name = await getBackupFolderName();
+      setBackupFolderReady(ready);
+      setBackupFolderName(name);
+    } catch {
+      setBackupFolderReady(false);
+      setBackupFolderName(null);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const show = await shouldShowBackupOnboarding();
+        if (!cancelled && show) setShowBackupOnboarding(true);
+        if (!cancelled) await refreshBackupFolderStatus();
+      } catch (e) {
+        console.error('Backup onboarding check failed:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Detect context
   useEffect(() => {
@@ -165,6 +207,14 @@ function App() {
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    await handleImportFile(file, 'replace');
+  };
+
+  const handleImportFile = async (file: File, mode: 'replace' | 'merge' = 'replace') => {
+    if (mode === 'merge') {
+      showStatus('Merge import is coming soon. Please use Replace for now.');
+      return;
+    }
     
     try {
     const text = await file.text();
@@ -203,9 +253,43 @@ function App() {
     }
   };
 
+  const handleChooseBackupFolder = async () => {
+    const res = await pickAndPersistBackupFolder();
+    if (!res.ok) {
+      if (res.error !== 'cancelled') {
+        showStatus(`Backup setup failed: ${res.error ?? 'Unknown error'}`);
+      }
+      return;
+    }
+    if (res.existingBackupJson) {
+      const verification = verifyBackup(res.existingBackupJson);
+      if (!verification.valid) {
+        showStatus('Folder linked. Existing latest.json is invalid, so current DB was kept unchanged.');
+      } else {
+        const imported = await importDB(res.existingBackupJson, true);
+        if (imported) {
+          await loadData();
+          showStatus('Folder linked. Existing latest.json was loaded and replaced current DB data.');
+        } else {
+          showStatus('Folder linked, but loading existing latest.json failed. Current DB was kept.');
+        }
+      }
+    } else {
+      showStatus('Backup folder saved. No existing latest.json found, so a new one was created from current DB.');
+    }
+    await setBackupFolderOnboarding('done');
+    setShowBackupOnboarding(false);
+    await refreshBackupFolderStatus();
+  };
+
   const handleOpenFullPage = async () => {
     await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
     if (isSidePanel) window.close();
+  };
+
+  const handleOpenFullPageForBackupSetup = async () => {
+    await requestBackupOnboardingOpen();
+    await handleOpenFullPage();
   };
 
   const handleCloseTab = async (tabId: number) => {
@@ -221,26 +305,70 @@ function App() {
   // Side Panel View
   if (isSidePanel) {
     return (
-      <div style={{ fontFamily: 'system-ui, sans-serif', background: '#f9fafb', minHeight: '100vh' }}>
+      <div style={{ fontFamily: 'system-ui, sans-serif', background: '#f9fafb', minHeight: '100vh', position: 'relative' }}>
         <header style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '1rem', background: 'white', borderBottom: '1px solid #e5e7eb' }}>
           <Layout size={20} style={{ color: '#3b82f6' }} />
           <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Tab Manager</h1>
         </header>
-        <SidePanelView
-          collections={collections}
-          onSaveTab={handleSaveCurrentTab}
-          onAddBookmark={handleAddBookmark}
-          onExport={handleExport}
-          onImport={handleImport}
-          onOpenFullPage={handleOpenFullPage}
-          status={status}
-        />
+        {showBackupOnboarding ? (
+          <div
+            style={{
+              margin: '0.75rem',
+              padding: '0.75rem',
+              background: '#ffffff',
+              border: '1px solid #dbeafe',
+              borderRadius: '0.5rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+          >
+            <div style={{ fontSize: '0.85rem', color: '#1f2937', lineHeight: 1.4 }}>
+              Backup setup is required. Open full-page setup to choose a backup folder.
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={handleOpenFullPageForBackupSetup}
+                style={{
+                  padding: '0.4rem 0.6rem',
+                  borderRadius: '0.4rem',
+                  border: 'none',
+                  background: '#2563eb',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                }}
+              >
+                Open full page setup
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {!showBackupOnboarding ? (
+          <SidePanelView
+            collections={collections}
+            onSaveTab={handleSaveCurrentTab}
+            onAddBookmark={handleAddBookmark}
+            onExport={handleExport}
+            onImport={handleImport}
+            onOpenFullPage={handleOpenFullPage}
+            status={status}
+          />
+        ) : null}
       </div>
     );
   }
 
   // Full Page View
   return (
+    <>
+    <BackupOnboardingModal
+      open={showBackupOnboarding}
+      allowSkip={false}
+      onComplete={handleChooseBackupFolder}
+    />
     <DashboardLayout 
       windows={currentWindows}
       projects={projects}
@@ -254,7 +382,12 @@ function App() {
       onCloseTab={handleCloseTab}
       onCloseWindow={handleCloseWindow}
       onRefresh={loadData}
+      onChooseBackupFolder={handleChooseBackupFolder}
+      onRestoreBackupFile={handleImportFile}
+      backupFolderReady={backupFolderReady}
+      backupFolderName={backupFolderName}
     />
+    </>
   );
 }
 

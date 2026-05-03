@@ -28,6 +28,10 @@ interface MainContentProps {
   onUpdateBookmark?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
   onDeleteBookmark?: (id: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
+  onChooseBackupFolder?: () => Promise<void>;
+  onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
+  backupFolderReady?: boolean;
+  backupFolderName?: string | null;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -44,6 +48,10 @@ export const MainContent: React.FC<MainContentProps> = ({
   onUpdateBookmark,
   onDeleteBookmark,
   onRefresh,
+  onChooseBackupFolder,
+  onRestoreBackupFile,
+  backupFolderReady,
+  backupFolderName,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -238,13 +246,19 @@ export const MainContent: React.FC<MainContentProps> = ({
   const renderContent = () => {
     switch (activeView) {
       case 'home':
-        return <HomeView />;
+        return (
+          <HomeView
+            backupFolderReady={backupFolderReady}
+            backupFolderName={backupFolderName}
+            onChooseBackupFolder={onChooseBackupFolder}
+            onRestoreBackupFile={onRestoreBackupFile}
+          />
+        );
       case 'tab-commander':
         return (
           <TabCommanderView
             windows={windows}
             workspaces={workspaces}
-            projects={projects}
             onWorkspacesChanged={onWorkspacesChanged}
             onCloseTab={onCloseTab}
             onCloseWindow={onCloseWindow}

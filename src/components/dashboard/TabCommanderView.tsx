@@ -1,12 +1,11 @@
 import React from 'react';
 import type { WindowGroup } from '../../App';
-import type { Workspace, Project } from '../../lib/db';
+import type { Workspace } from '../../lib/db';
 import { BottomPanel } from './layout/BottomPanel';
 
 interface TabCommanderViewProps {
   windows: WindowGroup[];
   workspaces: Workspace[];
-  projects?: Project[];
   onWorkspacesChanged?: () => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
@@ -20,7 +19,6 @@ interface TabCommanderViewProps {
 export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
   windows,
   workspaces,
-  projects = [],
   onWorkspacesChanged,
   onCloseTab,
   onCloseWindow,
@@ -72,7 +70,6 @@ export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
           }}
           windows={windows}
           workspaces={workspaces}
-          projects={projects}
           onWorkspacesChanged={onWorkspacesChanged}
           onCloseTab={onCloseTab}
           onCloseWindow={onCloseWindow}
