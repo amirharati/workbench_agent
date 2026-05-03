@@ -25,6 +25,14 @@ interface DashboardLayoutProps {
   onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<void>;
   onUpdateBookmark?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
   onDeleteBookmark?: (id: string) => Promise<void>;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
+  onCreateItem?: (data: {
+    title: string;
+    url?: string;
+    notes?: string;
+    collectionIds: string[];
+  }) => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -48,6 +56,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onAddBookmark,
   onUpdateBookmark,
   onDeleteBookmark,
+  onCreateProject,
+  onCreateCollection,
+  onCreateItem,
   onCloseTab,
   onCloseWindow,
   onRefresh,
@@ -121,6 +132,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             onAddBookmark={onAddBookmark}
             onUpdateBookmark={onUpdateBookmark}
             onDeleteBookmark={onDeleteBookmark}
+            onCreateProject={onCreateProject}
+            onCreateCollection={onCreateCollection}
+            onCreateItem={onCreateItem}
             onRefresh={onRefresh}
             onChooseBackupFolder={onChooseBackupFolder}
             onRestoreBackupFile={onRestoreBackupFile}

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Workspace, Item, Collection, Project, addProject, deleteProject, ALL_PROJECTS_ID } from '../../../lib/db';
+import { Workspace, Item, Collection, Project, deleteProject, ALL_PROJECTS_ID } from '../../../lib/db';
 import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 import { formatDateTime } from '../../../lib/utils';
 import { DashboardView } from './DashboardLayout';
@@ -14,7 +14,8 @@ import { SearchBar } from '../SearchBar';
 import { Resizer } from '../Resizer';
 import { Panel } from '../../../styles/primitives';
 import { ItemContextMenu } from '../ItemContextMenu';
-import { List, Grid, ExternalLink, Eye, Pencil, Trash2, Calendar } from 'lucide-react';
+import { List, Grid, ExternalLink, Eye, Pencil, Trash2, Calendar, Plus } from 'lucide-react';
+import { NewProjectModal, NewCollectionModal, NewItemModal } from '../CreateModals';
 
 interface MainContentProps {
   activeView: DashboardView;
@@ -29,6 +30,14 @@ interface MainContentProps {
   onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<void>;
   onUpdateBookmark?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
   onDeleteBookmark?: (id: string) => Promise<void>;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
+  onCreateItem?: (data: {
+    title: string;
+    url?: string;
+    notes?: string;
+    collectionIds: string[];
+  }) => Promise<void>;
   onRefresh?: () => Promise<void>;
   onChooseBackupFolder?: () => Promise<void>;
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
@@ -53,6 +62,9 @@ export const MainContent: React.FC<MainContentProps> = ({
   onAddBookmark,
   onUpdateBookmark,
   onDeleteBookmark,
+  onCreateProject,
+  onCreateCollection,
+  onCreateItem,
   onRefresh,
   onChooseBackupFolder,
   onRestoreBackupFile,
@@ -87,12 +99,25 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [editNoteContent, setEditNoteContent] = useState('');
+  // Create modals (top-level views: Projects, Collections, Bookmarks, Notes)
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [showNewCollection, setShowNewCollection] = useState(false);
+  const [showAddBookmark, setShowAddBookmark] = useState(false);
+  const [showAddNote, setShowAddNote] = useState(false);
+
+  // Keep bookmark/note classification mutually exclusive:
+  // - Bookmark: has a non-empty URL
+  // - Note: no URL
+  const isBookmarkItem = (item: Item) => !!item.url && item.url.trim().length > 0;
+  const isNoteItem = (item: Item) => !item.url || item.url.trim().length === 0;
+
+  const bookmarkItems = useMemo(() => items.filter(isBookmarkItem), [items]);
 
   // Filter bookmarks by selected project (must be at top level for hooks)
   const filteredBookmarkItems = useMemo(() => {
     if (activeView !== 'bookmarks') return [];
     
-    let filtered = items;
+    let filtered = bookmarkItems;
     
     // Filter by project
     if (selectedBookmarkProjectId && selectedBookmarkProjectId !== 'all') {
@@ -121,15 +146,11 @@ export const MainContent: React.FC<MainContentProps> = ({
     }
     
     return filtered.sort((a, b) => b.updated_at - a.updated_at);
-  }, [activeView, items, collections, selectedBookmarkProjectId, searchQuery]);
+  }, [activeView, bookmarkItems, collections, selectedBookmarkProjectId, searchQuery]);
 
-  // Get all items that are notes (items with notes content OR items without URL)
+  // Notes are items without URLs (bookmark notes stay in Bookmarks view).
   const notesItems = useMemo(() => {
-    return items.filter((item) => {
-      const hasNotesContent = item.notes && item.notes.trim().length > 0;
-      const isNoteItem = !item.url || item.url.trim().length === 0;
-      return hasNotesContent || isNoteItem;
-    });
+    return items.filter(isNoteItem);
   }, [items]);
 
   // Filter notes by selected project (must be at top level for hooks)
@@ -341,11 +362,8 @@ export const MainContent: React.FC<MainContentProps> = ({
           return items.filter((it) => (it.collectionIds || []).some((cid) => colIds.has(cid)));
         };
 
-        const handleCreateProject = async () => {
-          const name = window.prompt('Project name?');
-          if (!name || !name.trim()) return;
-          await addProject(name.trim());
-          if (onRefresh) await onRefresh();
+        const handleCreateProject = () => {
+          setShowNewProject(true);
         };
 
         const handleDeleteProject = async (id: string) => {
@@ -523,7 +541,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                           (Array.isArray(c.projectIds) && c.projectIds.includes(projectId)))
               .map(c => c.id)
           );
-          return items.filter(item => 
+          return bookmarkItems.filter(item => 
             (item.collectionIds || []).some(cid => projectCollectionIds.has(cid))
           ).length;
         };
@@ -535,7 +553,28 @@ export const MainContent: React.FC<MainContentProps> = ({
               <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
                 Bookmarks
               </h1>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  onClick={() => setShowAddBookmark(true)}
+                  disabled={!onCreateItem}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 10px',
+                    height: 24,
+                    background: 'var(--accent)',
+                    color: 'var(--accent-text, #fff)',
+                    border: 'none',
+                    borderRadius: 4,
+                    cursor: onCreateItem ? 'pointer' : 'not-allowed',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 600,
+                  }}
+                  title="Add bookmark"
+                >
+                  <Plus size={12} /> Add bookmark
+                </button>
                 {/* View mode toggle */}
                 <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px' }}>
                   <button
@@ -649,7 +688,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                       <span>📊</span>
                       <span>All</span>
                       <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
-                        {items.length}
+                        {bookmarkItems.length}
                       </span>
                     </div>
                   </div>
@@ -1096,7 +1135,28 @@ export const MainContent: React.FC<MainContentProps> = ({
               <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
                 Notes
               </h1>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  onClick={() => setShowAddNote(true)}
+                  disabled={!onCreateItem}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 10px',
+                    height: 24,
+                    background: 'var(--accent)',
+                    color: 'var(--accent-text, #fff)',
+                    border: 'none',
+                    borderRadius: 4,
+                    cursor: onCreateItem ? 'pointer' : 'not-allowed',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 600,
+                  }}
+                  title="New note"
+                >
+                  <Plus size={12} /> New note
+                </button>
                 {/* View mode toggle */}
                 <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px' }}>
                   <button
@@ -1790,6 +1850,7 @@ export const MainContent: React.FC<MainContentProps> = ({
         );
       case 'workspaces':
         return <WorkspacesView projects={projects} workspaces={workspaces} />;
+      case 'collections':
         return (
           <CollectionsView
             collections={collections}
@@ -1800,6 +1861,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onDeleteItem={(item) => {
               if (onDeleteBookmark) onDeleteBookmark(item.id);
             }}
+            onNewCollection={onCreateCollection ? () => setShowNewCollection(true) : undefined}
           />
         );
       default:
@@ -1814,52 +1876,80 @@ export const MainContent: React.FC<MainContentProps> = ({
       display: 'flex', 
       flexDirection: 'column' 
     }}>
-      {!(activeView === 'projects' && selectedProjectId !== null) && (
-        <div style={{ 
-          marginBottom: '8px', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          flexShrink: 0,
-          height: 28,
-        }}>
-          <h1 style={{ 
-            fontSize: 'var(--text-lg)', 
-            fontWeight: 600, 
-            color: 'var(--text)',
-            margin: 0,
-            textTransform: 'capitalize',
+      {/* Wrapper header is only shown for views that don't render their own header. */}
+      {!(activeView === 'projects' && selectedProjectId !== null) &&
+        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings'].includes(activeView) && (
+          <div style={{ 
+            marginBottom: '8px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            flexShrink: 0,
+            height: 28,
           }}>
-            {activeView}
-          </h1>
-          {activeView === 'bookmarks' ? (
-            <button style={{
-              padding: '3px 10px',
-              height: 24,
-              background: 'var(--accent)',
-              color: 'var(--accent-text)',
-              borderRadius: 4,
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 500,
-            }}
-            onClick={() => setShowAddModal(true)}
-            >
-              <span>+ New bookmark</span>
-            </button>
-          ) : (
+            <h1 style={{ 
+              fontSize: 'var(--text-lg)', 
+              fontWeight: 600, 
+              color: 'var(--text)',
+              margin: 0,
+              textTransform: 'capitalize',
+            }}>
+              {activeView}
+            </h1>
             <div />
-          )}
-        </div>
+          </div>
       )}
       
       <div style={{ flex: 1, overflow: 'auto' }}>
         {renderContent()}
       </div>
+
+      {/* Top-level create modals (Projects / Collections / Bookmarks / Notes) */}
+      <NewProjectModal
+        open={showNewProject}
+        onClose={() => setShowNewProject(false)}
+        onCreate={async (data) => {
+          if (onCreateProject) await onCreateProject(data);
+        }}
+      />
+      <NewCollectionModal
+        open={showNewCollection}
+        onClose={() => setShowNewCollection(false)}
+        projects={projects}
+        onCreate={async (data) => {
+          if (onCreateCollection) await onCreateCollection(data);
+        }}
+      />
+      <NewItemModal
+        open={showAddBookmark}
+        onClose={() => setShowAddBookmark(false)}
+        kind="bookmark"
+        projects={projects}
+        collections={collections}
+        defaultProjectId={
+          selectedBookmarkProjectId !== 'all' ? selectedBookmarkProjectId : undefined
+        }
+        onCreateProject={onCreateProject}
+        onCreateCollection={onCreateCollection}
+        onCreate={async (data) => {
+          if (onCreateItem) await onCreateItem(data);
+        }}
+      />
+      <NewItemModal
+        open={showAddNote}
+        onClose={() => setShowAddNote(false)}
+        kind="note"
+        projects={projects}
+        collections={collections}
+        defaultProjectId={
+          selectedNotesProjectId !== 'all' ? selectedNotesProjectId : undefined
+        }
+        onCreateProject={onCreateProject}
+        onCreateCollection={onCreateCollection}
+        onCreate={async (data) => {
+          if (onCreateItem) await onCreateItem(data);
+        }}
+      />
 
       {/* Add bookmark modal */}
       {showAddModal && (

@@ -6,7 +6,7 @@ import { TabBar, TabBarTab } from './TabBar';
 import { TabContent } from './TabContent';
 import { Resizer } from './Resizer';
 import { SearchBar } from './SearchBar';
-import { List, Grid } from 'lucide-react';
+import { List, Grid, Plus } from 'lucide-react';
 
 interface CollectionsViewProps {
   collections: Collection[];
@@ -15,6 +15,8 @@ interface CollectionsViewProps {
   onItemClick?: (item: Item) => void;
   onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
   onDeleteItem?: (item: Item) => void;
+  /** Opens the top-level "New Collection" modal owned by parent. */
+  onNewCollection?: () => void;
 }
 
 type Tab = {
@@ -32,6 +34,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
   onItemClick,
   onUpdateItem,
   onDeleteItem,
+  onNewCollection,
 }) => {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -140,7 +143,29 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
         <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
           Collections
         </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {onNewCollection && (
+            <button
+              onClick={onNewCollection}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 10px',
+                height: 24,
+                background: 'var(--accent)',
+                color: 'var(--accent-text, #fff)',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+              }}
+              title="New collection"
+            >
+              <Plus size={12} /> New collection
+            </button>
+          )}
           {/* View mode toggle */}
           <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px' }}>
             <button

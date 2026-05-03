@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Layout } from 'lucide-react';
 import { 
   addItem, 
+  addProject,
+  addCollection,
   exportDB, 
   importDB, 
   verifyBackup,
@@ -272,6 +274,38 @@ function App() {
     showStatus('Bookmark deleted');
   };
 
+  const handleCreateProject = async (data: { name: string; description?: string }) => {
+    const id = await addProject(data.name, data.description);
+    await loadData();
+    showStatus('Project created');
+    return id;
+  };
+
+  const handleCreateCollection = async (data: { name: string; projectId: string }) => {
+    const id = await addCollection(data.name, undefined, data.projectId);
+    await loadData();
+    showStatus('Collection created');
+    return id;
+  };
+
+  const handleCreateItem = async (data: {
+    title: string;
+    url?: string;
+    notes?: string;
+    collectionIds: string[];
+  }) => {
+    await addItem({
+      url: data.url || '',
+      title: data.title,
+      notes: data.notes,
+      tags: [],
+      source: data.url ? 'manual' : 'manual',
+      collectionIds: data.collectionIds,
+    });
+    await loadData();
+    showStatus(data.url ? 'Bookmark added' : 'Note added');
+  };
+
   const handleExport = async () => {
     try {
     const json = await exportDB();
@@ -514,6 +548,9 @@ function App() {
       onAddBookmark={handleAddBookmark}
       onUpdateBookmark={handleUpdateBookmark}
       onDeleteBookmark={handleDeleteBookmark}
+      onCreateProject={handleCreateProject}
+      onCreateCollection={handleCreateCollection}
+      onCreateItem={handleCreateItem}
       onCloseTab={handleCloseTab}
       onCloseWindow={handleCloseWindow}
       onRefresh={loadData}
