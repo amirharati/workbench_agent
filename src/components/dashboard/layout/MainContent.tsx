@@ -40,6 +40,7 @@ interface MainContentProps {
   }) => Promise<void>;
   onRefresh?: () => Promise<void>;
   onChooseBackupFolder?: () => Promise<void>;
+  onSetAsBrowserHome?: () => Promise<void>;
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
   onManualBackup?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
@@ -67,6 +68,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   onCreateItem,
   onRefresh,
   onChooseBackupFolder,
+  onSetAsBrowserHome,
   onRestoreBackupFile,
   onManualBackup,
   onResolveConflictLoadRemote,
@@ -283,6 +285,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           <SettingsView
             backupFolderReady={backupFolderReady}
             backupFolderName={backupFolderName}
+            onSetAsBrowserHome={onSetAsBrowserHome}
             onChooseBackupFolder={onChooseBackupFolder}
             onRestoreBackupFile={onRestoreBackupFile}
             onManualBackup={onManualBackup}

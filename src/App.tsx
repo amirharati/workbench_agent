@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Layout } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { 
   addItem, 
   addProject,
   addCollection,
-  exportDB, 
   importDB, 
   verifyBackup,
   getAllProjects,
@@ -223,21 +221,30 @@ function App() {
     setTimeout(() => setStatus(''), 2000);
   };
 
+  const toStatusMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message.trim()) return error.message;
+    return fallback;
+  };
+
   const handleSaveCurrentTab = async (collectionId?: string) => {
     const tabs = await chrome.tabs.query({ currentWindow: true, active: true });
     const tab = tabs[0];
     if (tab && tab.url && tab.url.startsWith('http')) {
       const collectionIds = collectionId ? [collectionId] : [];
-      await addItem({
-        url: tab.url,
-        title: tab.title || 'Untitled',
-        favicon: tab.favIconUrl,
-        tags: [],
-        source: 'tab',
-        collectionIds,
-      });
-      showStatus('Tab saved!');
-      await loadData();
+      try {
+        await addItem({
+          url: tab.url,
+          title: tab.title || 'Untitled',
+          favicon: tab.favIconUrl,
+          tags: [],
+          source: 'tab',
+          collectionIds,
+        });
+        showStatus('Tab saved!');
+        await loadData();
+      } catch (error) {
+        showStatus(toStatusMessage(error, 'Could not save tab'));
+      }
     } else {
       showStatus('Cannot save this page');
     }
@@ -250,22 +257,30 @@ function App() {
     }
     const cleanTitle = title && title.trim().length > 0 ? title.trim() : url;
     const collectionIds = collectionId ? [collectionId] : [];
-    await addItem({
-      url,
-      title: cleanTitle,
-      favicon: undefined,
-      tags: [],
-      source: 'manual',
-      collectionIds,
-    });
-    showStatus('Bookmark added');
-    await loadData();
+    try {
+      await addItem({
+        url,
+        title: cleanTitle,
+        favicon: undefined,
+        tags: [],
+        source: 'manual',
+        collectionIds,
+      });
+      showStatus('Bookmark added');
+      await loadData();
+    } catch (error) {
+      showStatus(toStatusMessage(error, 'Could not add bookmark'));
+    }
   };
 
   const handleUpdateBookmark = async (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => {
-    await updateItem(id, updates);
-    await loadData();
-    showStatus('Bookmark updated');
+    try {
+      await updateItem(id, updates);
+      await loadData();
+      showStatus('Bookmark updated');
+    } catch (error) {
+      showStatus(toStatusMessage(error, 'Could not update bookmark'));
+    }
   };
 
   const handleDeleteBookmark = async (id: string) => {
@@ -294,41 +309,21 @@ function App() {
     notes?: string;
     collectionIds: string[];
   }) => {
-    await addItem({
-      url: data.url || '',
-      title: data.title,
-      notes: data.notes,
-      tags: [],
-      source: data.url ? 'manual' : 'manual',
-      collectionIds: data.collectionIds,
-    });
-    await loadData();
-    showStatus(data.url ? 'Bookmark added' : 'Note added');
-  };
-
-  const handleExport = async () => {
     try {
-    const json = await exportDB();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-      // Include full timestamp for better organization
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      a.download = `workbench-backup-${timestamp}.json`;
-    a.click();
-      URL.revokeObjectURL(url);
-      showStatus('Backup exported!');
+      await addItem({
+        url: data.url || '',
+        title: data.title,
+        notes: data.notes,
+        tags: [],
+        source: data.url ? 'manual' : 'manual',
+        collectionIds: data.collectionIds,
+      });
+      await loadData();
+      showStatus(data.url ? 'Bookmark added' : 'Note added');
     } catch (error) {
-      console.error('Export failed:', error);
-      showStatus('Failed to export backup');
+      showStatus(toStatusMessage(error, 'Could not add item'));
+      throw error;
     }
-  };
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await handleImportFile(file, 'replace');
   };
 
   const handleImportFile = async (file: File, mode: 'replace' | 'merge' = 'replace') => {
@@ -452,13 +447,36 @@ function App() {
   };
 
   const handleOpenFullPage = async () => {
-    await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
-    if (isSidePanel) window.close();
+    const dashboardTab = await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
+    // Keep side panel available on normal tabs, but close/disable it on the
+    // full dashboard tab so the page has full focus.
+    if (dashboardTab.id !== undefined) {
+      await chrome.sidePanel.setOptions({
+        tabId: dashboardTab.id,
+        enabled: false,
+      });
+    }
   };
 
   const handleOpenFullPageForBackupSetup = async () => {
     await requestBackupOnboardingOpen();
     await handleOpenFullPage();
+  };
+
+  const handleSetAsBrowserHome = async () => {
+    const dashboardUrl = chrome.runtime.getURL('index.html');
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(dashboardUrl);
+      }
+    } catch {
+      // Clipboard may be unavailable in some contexts; continue with setup tabs.
+    }
+    await chrome.tabs.create({ url: 'chrome://settings/onStartup' });
+    await chrome.tabs.create({ url: 'chrome://settings/appearance' });
+    await chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+    await chrome.tabs.create({ url: dashboardUrl });
+    showStatus('Opened settings and Workbench URL. Set it manually for Home/Startup in Chrome settings.');
   };
 
   const handleCloseTab = async (tabId: number) => {
@@ -474,25 +492,40 @@ function App() {
   // Side Panel View
   if (isSidePanel) {
     return (
-      <div style={{ fontFamily: 'system-ui, sans-serif', background: '#f9fafb', minHeight: '100vh', position: 'relative' }}>
-        <header style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '1rem', background: 'white', borderBottom: '1px solid #e5e7eb' }}>
-          <Layout size={20} style={{ color: '#3b82f6' }} />
-          <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Tab Manager</h1>
-        </header>
+      <div
+        style={{
+          fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+          minHeight: '100vh',
+          position: 'relative',
+          background: 'Canvas',
+          color: 'CanvasText',
+          ['--bg' as string]: 'Canvas',
+          ['--bg-panel' as string]: 'Canvas',
+          ['--bg-glass' as string]: 'ButtonFace',
+          ['--bg-hover' as string]: 'rgba(0, 0, 0, 0.06)',
+          ['--input-bg' as string]: 'Field',
+          ['--text' as string]: 'CanvasText',
+          ['--text-muted' as string]: 'GrayText',
+          ['--border' as string]: 'rgba(0, 0, 0, 0.15)',
+          ['--accent' as string]: 'Highlight',
+          ['--accent-text' as string]: 'HighlightText',
+          ['--accent-weak' as string]: 'rgba(0, 120, 215, 0.15)',
+        }}
+      >
         {showBackupOnboarding ? (
           <div
             style={{
               margin: '0.75rem',
               padding: '0.75rem',
-              background: '#ffffff',
-              border: '1px solid #dbeafe',
-              borderRadius: '0.5rem',
+              background: 'var(--bg-panel)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
               display: 'flex',
               flexDirection: 'column',
               gap: '0.5rem',
             }}
           >
-            <div style={{ fontSize: '0.85rem', color: '#1f2937', lineHeight: 1.4 }}>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', lineHeight: 1.4 }}>
               Backup setup is required. Open full-page setup to choose a backup folder.
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -501,12 +534,12 @@ function App() {
                 onClick={handleOpenFullPageForBackupSetup}
                 style={{
                   padding: '0.4rem 0.6rem',
-                  borderRadius: '0.4rem',
+                  borderRadius: '6px',
                   border: 'none',
-                  background: '#2563eb',
-                  color: 'white',
+                  background: 'var(--accent)',
+                  color: 'var(--accent-text)',
                   cursor: 'pointer',
-                  fontSize: '0.8rem',
+                  fontSize: 'var(--text-sm)',
                   fontWeight: 600,
                 }}
               >
@@ -517,12 +550,24 @@ function App() {
         ) : null}
         {!showBackupOnboarding ? (
           <SidePanelView
+            projects={projects}
             collections={collections}
+            items={items}
             onSaveTab={handleSaveCurrentTab}
-            onAddBookmark={handleAddBookmark}
-            onExport={handleExport}
-            onImport={handleImport}
+            onCreateItem={handleCreateItem}
+            onUpdateItem={async (id, data) => {
+              await handleUpdateBookmark(id, {
+                title: data.title,
+                url: data.url || '',
+                notes: data.notes,
+                collectionIds: data.collectionIds,
+              });
+            }}
+            onDeleteItem={handleDeleteBookmark}
+            onCreateProject={handleCreateProject}
+            onCreateCollection={handleCreateCollection}
             onOpenFullPage={handleOpenFullPage}
+            onSetAsBrowserHome={handleSetAsBrowserHome}
             status={status}
           />
         ) : null}
@@ -555,6 +600,7 @@ function App() {
       onCloseWindow={handleCloseWindow}
       onRefresh={loadData}
       onChooseBackupFolder={handleChooseBackupFolder}
+      onSetAsBrowserHome={handleSetAsBrowserHome}
       onRestoreBackupFile={handleImportFile}
       onManualBackup={handleManualBackup}
       onResolveConflictLoadRemote={handleResolveConflictLoadRemote}

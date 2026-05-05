@@ -37,6 +37,7 @@ interface DashboardLayoutProps {
   onCloseWindow?: (windowId: number) => Promise<void>;
   onRefresh?: () => Promise<void>;
   onChooseBackupFolder?: () => Promise<void>;
+  onSetAsBrowserHome?: () => Promise<void>;
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
   onManualBackup?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
@@ -63,6 +64,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onCloseWindow,
   onRefresh,
   onChooseBackupFolder,
+  onSetAsBrowserHome,
   onRestoreBackupFile,
   onManualBackup,
   onResolveConflictLoadRemote,
@@ -137,6 +139,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             onCreateItem={onCreateItem}
             onRefresh={onRefresh}
             onChooseBackupFolder={onChooseBackupFolder}
+            onSetAsBrowserHome={onSetAsBrowserHome}
             onRestoreBackupFile={onRestoreBackupFile}
             onManualBackup={onManualBackup}
             onResolveConflictLoadRemote={onResolveConflictLoadRemote}

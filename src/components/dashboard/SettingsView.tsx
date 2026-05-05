@@ -4,6 +4,7 @@ import type { BackupStatusSnapshot } from '../../lib/backupCoordinator';
 interface SettingsViewProps {
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
+  onSetAsBrowserHome?: () => Promise<void>;
   onChooseBackupFolder?: () => Promise<void>;
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
   onManualBackup?: () => Promise<void>;
@@ -43,6 +44,7 @@ const shortDevice = (id: string | null | undefined): string => {
 export const SettingsView: React.FC<SettingsViewProps> = ({
   backupFolderReady,
   backupFolderName,
+  onSetAsBrowserHome,
   onChooseBackupFolder,
   onRestoreBackupFile,
   onManualBackup,
@@ -104,6 +106,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <p style={{ marginTop: '0.5rem', color: '#6b7280' }}>
         Backup is required for safe usage. Configure your folder below, then you can restore from a backup file any time.
       </p>
+
+      <div
+        style={{
+          border: '1px solid #d1d5db',
+          borderRadius: 10,
+          padding: '1rem',
+          background: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.6rem',
+        }}
+      >
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Home Page Setup</div>
+        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>
+          Use Workbench as your browser home/startup page. This opens Chrome settings and copies the Workbench URL.
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={() => onSetAsBrowserHome?.()}
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: 8,
+              border: 'none',
+              background: '#2563eb',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+            }}
+          >
+            Set Workbench as Home
+          </button>
+        </div>
+      </div>
 
       <div
         style={{

@@ -137,6 +137,46 @@ const ensureIncludes = (arr: string[], value: string) => (arr.includes(value) ? 
 
 const nowTs = () => Date.now();
 
+const isHttpUrl = (url: string) => /^https?:\/\//i.test(url.trim());
+
+const normalizeBookmarkUrl = (url: string): string => {
+  const raw = url.trim();
+  if (!raw) return raw;
+  try {
+    const u = new URL(raw);
+    u.hash = '';
+    const normalizedPath = u.pathname.replace(/\/+$/, '');
+    u.pathname = normalizedPath || '/';
+    return u.toString().replace(/\/$/, '');
+  } catch {
+    return raw;
+  }
+};
+
+const hasSharedCollection = (a: string[], b: string[]) => {
+  const set = new Set(a);
+  return b.some((id) => set.has(id));
+};
+
+const assertNoBookmarkDuplicateInCollections = async (
+  db: IDBPDatabase<TabManagerDB>,
+  url: string,
+  collectionIds: string[],
+  excludeItemId?: string
+) => {
+  if (!isHttpUrl(url)) return;
+  const normalized = normalizeBookmarkUrl(url);
+  const all = await db.getAll('items');
+  const duplicate = all.find((it) => {
+    if (excludeItemId && it.id === excludeItemId) return false;
+    if (!isHttpUrl(it.url)) return false;
+    return normalizeBookmarkUrl(it.url) === normalized && hasSharedCollection(it.collectionIds || [], collectionIds);
+  });
+  if (duplicate) {
+    throw new Error('This bookmark already exists in the selected collection. Use another collection or update the existing one.');
+  }
+};
+
 /**
  * Attempts to export database before migration using IndexedDB databases() API
  * Falls back gracefully if API not available
@@ -657,6 +697,7 @@ export const addItem = async (item: Omit<Item, 'id' | 'created_at' | 'updated_at
   const id = crypto.randomUUID();
   const now = nowTs();
   const collectionIds = Array.isArray(item.collectionIds) && item.collectionIds.length > 0 ? item.collectionIds : [defaultUnsortedCollectionId];
+  await assertNoBookmarkDuplicateInCollections(db, item.url || '', collectionIds);
   await db.put('items', { ...item, id, created_at: now, updated_at: item.updated_at ?? now, collectionIds });
   notifyDataChanged('item.add');
   return id;
@@ -799,6 +840,7 @@ export const updateItemCollection = async (itemId: string, collectionId: string 
   const item = await db.get('items', itemId);
   if (item) {
     const next = typeof collectionId === 'string' ? [collectionId] : [defaultUnsortedCollectionId];
+    await assertNoBookmarkDuplicateInCollections(db, item.url || '', next, item.id);
     await db.put('items', { ...item, collectionIds: next, updated_at: nowTs() });
     notifyDataChanged('item.update');
   }
@@ -822,6 +864,7 @@ export const updateItem = async (id: string, updates: Partial<Omit<Item, 'id' | 
     if (!Array.isArray(next.collectionIds) || next.collectionIds.length === 0) {
       next.collectionIds = [defaultUnsortedCollectionId];
     }
+    await assertNoBookmarkDuplicateInCollections(db, next.url || '', next.collectionIds, id);
     await db.put('items', next);
     notifyDataChanged('item.update');
   }
