@@ -26,15 +26,16 @@ Chrome extension (same React app as **side panel** + **full-page dashboard**) to
 ```
 Chrome MV3 extension
 ├── UI: React + TypeScript + Vite (`src/`)
-├── Background: `public/service-worker.js` (side panel on click, tab-focus helpers)
+├── Background: `public/service-worker.js` (side panel per-tab on action click, tab-focus helpers)
 ├── Storage: IndexedDB `personal-tools-db` **v3** (`src/lib/db.ts`)
-└── Entry: `index.html` — narrow width ≈ side panel; wide ≈ dashboard
+├── Entry: `index.html` — narrow width ≈ side panel; wide ≈ dashboard
+└── New tab: `chrome_url_overrides.newtab` → same `index.html` (see limitation below)
 ```
 
 **Dual UI**
 
-- **Side panel**: save current tab, add bookmark, backup import/export, open full page.
-- **Dashboard**: Home (placeholder), Projects, Bookmarks, Workspaces, Notes, Collections, with **Tab Commander + Settings** grouped as footer tools.
+- **Side panel**: bookmark-centric save flow (URL/title prefill from active tab; optional notes; project/collection pickers with inline create); “already saved” list with edit / remove copy / add new copy; duplicate prevention for same URL in the same collection; **Open Dashboard** and **Set Workbench as Home** (opens Chrome settings + copies extension dashboard URL). No backup UI in the panel (full dashboard only).
+- **Dashboard**: single left nav — Home (placeholder), Projects, Bookmarks, Workspaces, Notes, Collections, **Tab Commander**, **Settings** (no separate footer strip).
 
 **Stores (conceptual)** — see `src/lib/db.ts` for truth:
 
@@ -51,7 +52,14 @@ Chrome MV3 extension
 - Notes/Bookmarks separation: both use the same `items` store, but UI classification is now exclusive — bookmarks require URL, notes are URL-empty items.
 - Workspaces: save/restore session snapshots; optional `projectId` on workspace.
 - Workspace save flow: Tab Commander save dialog supports selecting a project (or Detached) for new workspace snapshots.
+- Side panel: tab-specific enablement (extension icon opens panel only for that tab); opening full-page dashboard disables the side panel on the **dashboard tab only**.
 - Data safety: export/import, backup verification, debounced live backup to `latest.json`, manual named backups, envelope metadata (`revision` + `deviceId`), and startup conflict pause/resolution flow.
+
+---
+
+## Chrome / New Tab limitation (accepted)
+
+When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), Chrome may show a persistent **extension footer / chrome UI** on that page. Workarounds such as a minimal “bouncer” page were tried and **removed** (no UX benefit, extra complexity). Hiding that bar is not reliably achievable inside MV3 for extension-hosted pages. If a Toby-style chrome-free full-screen experience is required later, the realistic path is a **hosted web dashboard** (normal `https://` tab) talking to the extension via messaging—not another HTML filename in the extension package.
 
 ---
 
@@ -78,4 +86,4 @@ Chrome MV3 extension
 
 ---
 
-*Last updated: 2026-05-03 (evening)*
+*Last updated: 2026-05-05*

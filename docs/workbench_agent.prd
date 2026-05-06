@@ -111,10 +111,12 @@ The AI agent can access:
 - **Endpoints**: Standard AI API endpoints (OpenAI, Anthropic, etc.)
 
 ### Chrome Extension
-- **Manifest**: Chrome Extension Manifest V3
-- **Service Worker**: Background processing
-- **Content Scripts**: Page reading and context capture
-- **Storage**: Chrome Storage API + IndexedDB
+- **Manifest**: Chrome Extension Manifest V3 (`public/manifest.json`)
+- **Service Worker**: `service-worker.js` — side panel enable/open per tab on toolbar click; `focus-tab` message helper for dashboard tab activation
+- **New Tab**: `chrome_url_overrides.newtab` → extension `index.html` so new tabs open Workbench directly
+- **Known limitation**: Chrome may show a persistent browser/extension footer on overridden new-tab pages; **not** reliably removable for extension-hosted UI. A hosted web dashboard would be the escape hatch if a chrome-free full viewport is required later.
+- **Content Scripts**: Not currently declared in manifest; future page-context capture would add them when implemented.
+- **Storage**: Chrome `storage` where needed + IndexedDB for app data
 
 ## Data Model
 
@@ -160,14 +162,14 @@ The AI agent can access:
 
 ### Main Views
 1. **Dashboard**: ✅ Full-page dashboard with left sidebar navigation
-2. **Tab Commander**: ✅ Full-page live tab management (also surfaced as footer tool)
+2. **Tab Commander**: ✅ Full-page live tab management (sidebar item alongside Settings)
 3. **Bookmarks View**: ✅ List/grid with search, project filtering, add/edit/delete
 4. **Workspaces View**: ✅ List and detail views with restore functionality
 5. **Collections View**: ✅ Dedicated collections + items workspace
 6. **Projects View**: ✅ Implemented project workspace and cards
 7. **Notes View**: ✅ Implemented note-focused view over note-like items
 8. **AI Assistant**: ⏳ Not yet implemented
-9. **Side Panel**: ✅ Quick actions (Save tab, Add bookmark, Export/Import)
+9. **Side Panel**: ✅ Bookmark-centric workflow — URL/title prefill from active tab (updates on tab change); notes field; project/collection selection with inline create; list of saved copies for current URL (edit, remove, add new copy); duplicate URL blocked within same collection; Open Dashboard; Set Workbench as Home (manual Chrome startup/home setup). Backup onboarding/import flows remain dashboard-first when required.
 
 ### Design Philosophy
 - Clean and minimal
@@ -240,6 +242,7 @@ The AI agent can access:
 
 ## Notes
 
+- **Extension naming**: Manifest/marketing name may read “Tab Manager AI” while docs refer to “Workbench Agent”; align naming when preparing store listing.
 - This is a personal tool; priorities may shift based on actual usage
 - Focus on building something useful first, optimize later
 - Keep it simple and maintainable
