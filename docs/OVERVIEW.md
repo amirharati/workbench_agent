@@ -6,7 +6,35 @@ Living summary of goals, architecture, and status. **Detailed history** lives in
 
 ## Vision
 
-Chrome extension (same React app as **side panel** + **full-page dashboard**) to organize **tabs**, **bookmarks**, **workspace snapshots**, and eventually **notes** and an **AI assistant**—local-first, no required server.
+Chrome extension (same React app as **side panel** + **full-page dashboard**) to organize **tabs**, **bookmarks**, **workspace snapshots**, and **notes**, with an **AI layer**—local-first for data; **optional cloud AI** via user-supplied API keys (no required server).
+
+### Expanded direction (brainstorm reconciled here)
+
+Today the app delivers **projects ↔ collections ↔ items**, **Tab Commander**, **workspaces**, **IndexedDB backup + file sync guards**, and a **bookmark-centric side panel**. Longer-term direction (polish UI after capabilities land):
+
+| Theme | Direction |
+|-------|-----------|
+| **Bookmarks & sources** | Scale beyond one-off adds: **manual bulk import** (e.g. Netscape/HTML export, structured files) first; optional later **guided capture from a tab** (“harvest links on this page”) and per-site helpers—not a prerequisite for AI. |
+| **Search / RAG** | **Hybrid is the default**: retrieval and storage local; embeddings can be API or **browser-side** later (tradeoffs on quality/size). Turns the corpus into a **personal searchable library** grounded in bookmarks. |
+| **Agentic research** | Separate from always-on search: **user-triggered**, budgeted flows (simple chat + optional tools)—not silent crawling. Cost and scope stay explicit in settings. |
+| **Workspaces + tabs + AI** | Summaries, naming, clustering open tabs/workspaces onto projects—additive metadata and assists, building on existing workspace model. |
+| **Planning & study paths** | Ordered views / “playlists” over items plus AI-drafted outlines; human edits—comes after robust bookmark corpus + basic chat. |
+| **Per-page memory** | Notes and AI overlays **keyed to URL** (and later **same-site / hierarchy**) so revisits reload context—builds on items + normalized URL patterns already in use. |
+
+Nothing above requires abandoning **local-first** or **CLIENT AI** assumptions in the backlog: hosted models are optional and key-backed.
+
+---
+
+## Near-term roadmap (agreed sequencing)
+
+Order is deliberate: **infra before features**, **bookmark volume before retrieval**.
+
+1. **AI infrastructure** — Wire **cloud LLM APIs** first (provider + model + API key in settings; client module; errors/timeouts). Minimal UX (e.g. Settings section + slim **chat or “test prompt” surface**). *No embeddings/RAG required for this milestone.*
+2. **Bookmarks at scale (manual-first)** — **Bulk / manual import** and dedupe against existing `normalizeBookmarkUrl` rules; improve organization UX as library grows.
+3. **AI on bookmarks** — Use infra to **ground** answers in selected bookmarks / library excerpts (titles, notes, optional fetched snippets later); citations visible to the user.
+4. **Later (order TBD)** — Embeddings + vector RAG; optional in-browser embeddings; site capture importers; deeper agentic tools; workspace/study-path features; per-page content script or richer URL-keyed panels.
+
+Details and checkboxes live in [`backlog.md`](backlog.md).
 
 ---
 
@@ -67,7 +95,7 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 | Area | Status |
 |------|--------|
-| **AI Agent** | UI placeholder only; no context pipeline or API wiring yet. |
+| **AI Agent** | Roadmap: cloud API **infra** first (see Near-term roadmap), then bookmark-grounded features; full RAG/embeddings later. |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | Recent items works; pinned / favorites / trash mostly placeholders (needs fields + UX). |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
@@ -86,4 +114,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-05-05*
+*Last updated: 2026-05-05 — vision + phased AI/bookmark roadmap*

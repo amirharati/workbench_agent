@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Workspace, Item, Collection, Project, deleteProject, ALL_PROJECTS_ID } from '../../../lib/db';
 import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
+import type { AISettings } from '../../../lib/ai/types';
 import { formatDateTime } from '../../../lib/utils';
 import { DashboardView } from './DashboardLayout';
 import type { WindowGroup } from '../../../App';
@@ -48,6 +49,12 @@ interface MainContentProps {
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
   backupStatus?: BackupStatusSnapshot;
+  aiSettings?: AISettings;
+  onSaveAISettings?: (settings: AISettings) => Promise<void>;
+  onTestAI?: (
+    settings: AISettings,
+    prompt: string
+  ) => Promise<{ text: string; model: string }>;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -76,6 +83,9 @@ export const MainContent: React.FC<MainContentProps> = ({
   backupFolderReady,
   backupFolderName,
   backupStatus,
+  aiSettings,
+  onSaveAISettings,
+  onTestAI,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -292,6 +302,9 @@ export const MainContent: React.FC<MainContentProps> = ({
             onResolveConflictLoadRemote={onResolveConflictLoadRemote}
             onResolveConflictKeepLocal={onResolveConflictKeepLocal}
             backupStatus={backupStatus}
+            aiSettings={aiSettings}
+            onSaveAISettings={onSaveAISettings}
+            onTestAI={onTestAI}
           />
         );
       case 'tab-commander':

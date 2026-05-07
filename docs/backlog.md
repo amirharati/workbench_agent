@@ -8,6 +8,15 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ---
 
+## Near-term roadmap (agreed with [`OVERVIEW.md`](OVERVIEW.md))
+
+1. **🟡 AI infra (cloud first)** — Settings for provider/API key/model; secure persistence (`chrome.storage.local` pattern); thin HTTP client for chat/completions (OpenAI-compatible baseline); minimal UI smoke surface; no embeddings/RAG milestone requirement yet.
+2. **🟡 Bookmarks manual-at-scale** — Bulk import paths (prioritize bookmark export interchange e.g. **Netscape HTML**); preview + dedupe mapping to collections/projects; single-item UX stays as-is.
+3. **🟡 AI + bookmarks** — Ground prompts over user’s bookmark set (titles, notes, snippets); cite source items; lightweight assists (summaries, tags) before heavier RAG.
+4. **⏸ Order TBD** — Local or API embeddings; vector index; guided tab capture agents; workspaces+AI; study-path entities; content scripts per-page.
+
+---
+
 ## ✅ Done (shipped)
 
 - **Chrome app**: MV3 extension; React/Vite UI; side panel + full-page; service worker opens panel + `focus-tab` helper.
@@ -70,13 +79,17 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 **Items (bookmarks)**
 
+- [ ] **Bulk import (manual-first)** — Netscape/HTML bookmark file + preview table; map to project/collection; honor `normalizeBookmarkUrl` / duplicate rules.
 - [ ] **Multi-collection / share-item UX** if still desired (dashboard backlog “B4”).
 - [ ] **Pinned / favorites / trash**: add fields (`pinned`, `favorite`, `deletedAt` or equivalent), wire Quick Access tabs.
 
-**AI (when ready)**
+**AI (phased — see Near-term roadmap)**
 
-- [ ] Minimal slice: settings (API key, model), single “ask about current tab + related bookmarks” flow.
-- [ ] Then: Agent tab, context assembly (page + projects + items), richer prompts.
+- [ ] **Phase A — Infra**: provider + model + API key UI; store key in `chrome.storage.local` (not plain backup JSON unless explicitly designed); `fetch` client with timeout + error surfacing; optional “test message” or minimal chat shell.
+- [ ] **Phase B — Bookmarks**: assemble context from selected items or scoped search results; response shows **which bookmarks** were used; no requirement for embeddings yet.
+- [ ] **Phase C — RAG / embeddings** (later): chunk store, vector or API embeddings, hybrid retrieval; optional **in-browser** embedding path (Transformers.js-class) as alternative to API.
+- [ ] **Phase D — Agentic** (later, gated): chat + tools with session budgets; web search/fetch behind explicit toggles (align with user’s cost concerns).
+- [ ] **Security spike (later):** evaluate optional `chrome.identity` / Google OAuth-assisted unlock flow for AI credentials (likely requires backend/key-broker; keep local-first default unless clear value).
 
 **Workspaces / tabs**
 
@@ -107,13 +120,16 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ## Suggested order (adjust freely)
 
-1. **Automated file backup** (coordinator + live + scheduled) — highest leverage for data integrity.  
-2. Error handling + validation (quick trust wins).  
-3. Notes strategy + one implementation path.  
-4. Quick access (pinned / favorites / trash) if daily-use value is high.  
-5. Collection detach/share UI if multi-project workflows matter.  
-6. AI thin slice after notes/context story is clear.
+**Active product thread:** Near-term roadmap above (AI infra → manual bulk bookmarks → AI on bookmarks).
+
+**Parallel / hygiene (pick as needed):**
+
+1. Automated file backup — **scheduled `chrome.alarms` + rotation** when integrity work cycles back.
+2. Error handling + validation (trust on import + AI paths).
+3. Notes strategy + one implementation path (feeds AI context later).
+4. Quick access (pinned / favorites / trash) if daily-use value is high.
+5. Collection detach/share UI if multi-project workflows matter.
 
 ---
 
-*Last updated: 2026-05-05 — side panel + new-tab docs synced; NTP bouncer removed; Chrome NTP footer documented as limitation*
+*Last updated: 2026-05-05 — near-term roadmap: cloud AI infra → bulk bookmark import → bookmark-grounded AI; RAG/agentic deferred with ordering TBD*

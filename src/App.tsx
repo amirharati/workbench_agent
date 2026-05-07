@@ -32,6 +32,9 @@ import {
 import { backupCoordinator, BackupStatusSnapshot } from './lib/backupCoordinator';
 import { FileSystemBackupSink } from './lib/backupSinks';
 import { revisionTracker } from './lib/revisionTracker';
+import { loadAISettings, saveAISettings } from './lib/ai/settings';
+import type { AISettings } from './lib/ai/types';
+import { runAITestPrompt } from './lib/ai/client';
 
 export interface WindowGroup {
   windowId: number;
@@ -52,6 +55,7 @@ function App() {
   const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot>(() =>
     backupCoordinator.getStatus()
   );
+  const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
 
   const syncFileSystemSink = async () => {
     const ready = await hasWritableBackupFolder();
@@ -213,6 +217,21 @@ function App() {
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const loaded = await loadAISettings();
+        if (!cancelled) setAiSettings(loaded);
+      } catch (error) {
+        console.error('Failed to load AI settings:', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Handlers
@@ -479,6 +498,20 @@ function App() {
     showStatus('Opened settings and Workbench URL. Set it manually for Home/Startup in Chrome settings.');
   };
 
+  const handleSaveAISettings = async (settings: AISettings) => {
+    const saved = await saveAISettings(settings);
+    setAiSettings(saved);
+    showStatus('AI settings saved.');
+  };
+
+  const handleTestAI = async (
+    settings: AISettings,
+    prompt: string
+  ): Promise<{ text: string; model: string }> => {
+    const response = await runAITestPrompt(settings, prompt);
+    return { text: response.text, model: response.model };
+  };
+
   const handleCloseTab = async (tabId: number) => {
     await chrome.tabs.remove(tabId);
     await loadCurrentWindows();
@@ -608,6 +641,9 @@ function App() {
       backupFolderReady={backupFolderReady}
       backupFolderName={backupFolderName}
       backupStatus={backupStatus}
+      aiSettings={aiSettings ?? undefined}
+      onSaveAISettings={handleSaveAISettings}
+      onTestAI={handleTestAI}
     />
     </>
   );

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { BackupStatusSnapshot } from '../../lib/backupCoordinator';
+import type { AISettings } from '../../lib/ai/types';
 
 interface SettingsViewProps {
   backupFolderReady?: boolean;
@@ -11,6 +12,12 @@ interface SettingsViewProps {
   onResolveConflictLoadRemote?: () => Promise<void>;
   onResolveConflictKeepLocal?: () => Promise<void>;
   backupStatus?: BackupStatusSnapshot;
+  aiSettings?: AISettings;
+  onSaveAISettings?: (settings: AISettings) => Promise<void>;
+  onTestAI?: (
+    settings: AISettings,
+    prompt: string
+  ) => Promise<{ text: string; model: string }>;
 }
 
 const formatRelative = (ts: number | null | undefined): string => {
@@ -51,10 +58,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onResolveConflictLoadRemote,
   onResolveConflictKeepLocal,
   backupStatus,
+  aiSettings,
+  onSaveAISettings,
+  onTestAI,
 }) => {
   const [restoreMode, setRestoreMode] = React.useState<'replace' | 'merge'>('replace');
   const [, forceTick] = React.useState(0);
   const [resolving, setResolving] = React.useState<null | 'remote' | 'local'>(null);
+  const [aiForm, setAiForm] = React.useState<AISettings | null>(aiSettings ?? null);
+  const [isSavingAI, setIsSavingAI] = React.useState(false);
+  const [isTestingAI, setIsTestingAI] = React.useState(false);
+  const [showApiKey, setShowApiKey] = React.useState(false);
+  const [aiTestPrompt, setAiTestPrompt] = React.useState(
+    'Reply with exactly: Workbench AI ready.'
+  );
+  const [aiTestOutput, setAiTestOutput] = React.useState('');
+  const [aiTestModel, setAiTestModel] = React.useState('');
+  const [aiError, setAiError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (aiSettings) setAiForm(aiSettings);
+  }, [aiSettings]);
 
   // Re-render every 30s so the relative timestamps stay current without a
   // websocket / fancy state machine.
@@ -79,6 +103,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const conflict = backupStatus?.conflict ?? null;
   const conflictBlocking = !!conflict?.blocking;
   const manualDisabled = !backupFolderReady || inFlight || conflictBlocking;
+  const aiDisabled = !aiForm || isSavingAI || isTestingAI;
 
   const handleLoadRemote = async () => {
     if (!onResolveConflictLoadRemote) return;
@@ -97,6 +122,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       await onResolveConflictKeepLocal();
     } finally {
       setResolving(null);
+    }
+  };
+
+  const updateAiField = <K extends keyof AISettings>(field: K, value: AISettings[K]) => {
+    setAiForm((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  const handleSaveAI = async () => {
+    if (!aiForm || !onSaveAISettings) return;
+    setIsSavingAI(true);
+    setAiError(null);
+    try {
+      await onSaveAISettings(aiForm);
+      setAiTestOutput('AI settings saved.');
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'Could not save AI settings.');
+    } finally {
+      setIsSavingAI(false);
+    }
+  };
+
+  const handleTestAI = async () => {
+    if (!aiForm || !onTestAI) return;
+    setIsTestingAI(true);
+    setAiError(null);
+    setAiTestOutput('');
+    setAiTestModel('');
+    try {
+      const result = await onTestAI(aiForm, aiTestPrompt);
+      setAiTestOutput(result.text);
+      setAiTestModel(result.model);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'AI test failed.');
+    } finally {
+      setIsTestingAI(false);
     }
   };
 
@@ -140,6 +200,216 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             Set Workbench as Home
           </button>
         </div>
+      </div>
+
+      <div
+        style={{
+          border: '1px solid #d1d5db',
+          borderRadius: 10,
+          padding: '1rem',
+          background: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem',
+        }}
+      >
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>AI Settings</div>
+        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>
+          Configure one default AI provider/model for now. This keeps v1 simple and can fan out by task later.
+        </div>
+        {aiForm ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(220px, 1fr))', gap: '0.65rem' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+              Provider
+              <select
+                value={aiForm.provider}
+                onChange={(e) => updateAiField('provider', e.target.value as AISettings['provider'])}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff' }}
+              >
+                <option value="openrouter">OpenRouter (OpenAI-compatible)</option>
+              </select>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+              Model ID
+              <input
+                value={aiForm.model}
+                onChange={(e) => updateAiField('model', e.target.value)}
+                placeholder="openai/gpt-4o-mini"
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151', gridColumn: '1 / span 2' }}>
+              Base URL
+              <input
+                value={aiForm.baseUrl}
+                onChange={(e) => updateAiField('baseUrl', e.target.value)}
+                placeholder="https://openrouter.ai/api/v1"
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151', gridColumn: '1 / span 2' }}>
+              API Key
+              <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
+                <input
+                  value={aiForm.apiKey}
+                  onChange={(e) => updateAiField('apiKey', e.target.value)}
+                  placeholder="sk-or-..."
+                  type={showApiKey ? 'text' : 'password'}
+                  autoComplete="off"
+                  style={{
+                    padding: '0.45rem 0.55rem',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    flex: 1,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey((v) => !v)}
+                  style={{
+                    padding: '0.42rem 0.6rem',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    background: '#fff',
+                    color: '#374151',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={showApiKey ? 'Hide API key' : 'Show API key'}
+                  aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                >
+                  {showApiKey ? 'Hide' : 'Show'} key
+                </button>
+              </div>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+              Timeout (ms)
+              <input
+                value={String(aiForm.timeoutMs)}
+                onChange={(e) => updateAiField('timeoutMs', Number(e.target.value) || 0)}
+                type="number"
+                min={3000}
+                max={120000}
+                step={1000}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+              Temperature
+              <input
+                value={String(aiForm.temperature)}
+                onChange={(e) => updateAiField('temperature', Number(e.target.value) || 0)}
+                type="number"
+                min={0}
+                max={2}
+                step={0.1}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+              Max output tokens
+              <input
+                value={String(aiForm.maxOutputTokens)}
+                onChange={(e) => updateAiField('maxOutputTokens', Number(e.target.value) || 0)}
+                type="number"
+                min={64}
+                max={8192}
+                step={32}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151', gridColumn: '1 / span 2' }}>
+              Test prompt
+              <textarea
+                value={aiTestPrompt}
+                onChange={(e) => setAiTestPrompt(e.target.value)}
+                rows={3}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db', resize: 'vertical' }}
+              />
+            </label>
+          </div>
+        ) : (
+          <div style={{ fontSize: '0.82rem', color: '#6b7280' }}>Loading AI settings...</div>
+        )}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            disabled={aiDisabled}
+            onClick={handleSaveAI}
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: 8,
+              border: 'none',
+              background: aiDisabled ? '#93c5fd' : '#2563eb',
+              color: '#fff',
+              cursor: aiDisabled ? 'not-allowed' : 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+            }}
+          >
+            {isSavingAI ? 'Saving...' : 'Save AI settings'}
+          </button>
+          <button
+            type="button"
+            disabled={aiDisabled}
+            onClick={handleTestAI}
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: 8,
+              border: '1px solid #16a34a',
+              background: aiDisabled ? '#86efac' : '#16a34a',
+              color: '#fff',
+              cursor: aiDisabled ? 'not-allowed' : 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+            }}
+          >
+            {isTestingAI ? 'Running test...' : 'Run test prompt'}
+          </button>
+        </div>
+        {aiError && (
+          <div style={{ fontSize: '0.82rem', color: '#b91c1c' }}>
+            <strong>AI error:</strong> {aiError}
+          </div>
+        )}
+        <div
+          style={{
+            fontSize: '0.82rem',
+            color: '#4b5563',
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            padding: '0.65rem',
+            lineHeight: 1.45,
+          }}
+        >
+          <strong>Security note:</strong> API key is stored in this extension&apos;s local browser storage
+          (`chrome.storage.local`) for convenience. Other websites cannot read it directly, but anyone with
+          deep local/profile access to your machine may still extract it. Use provider-side spend limits and
+          a dedicated key.
+        </div>
+        {aiTestOutput && (
+          <div
+            style={{
+              fontSize: '0.82rem',
+              color: '#374151',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 8,
+              padding: '0.65rem',
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {aiTestModel ? (
+              <div style={{ marginBottom: '0.35rem' }}>
+                <strong>Provider model:</strong> <code>{aiTestModel}</code>
+              </div>
+            ) : null}
+            <strong>AI response:</strong> {aiTestOutput}
+          </div>
+        )}
       </div>
 
       <div

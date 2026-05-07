@@ -8,6 +8,12 @@ Workbench Agent is a Chrome extension that serves as a personal productivity too
 
 A minimal, personal tool that helps organize digital work by intelligently managing tabs, bookmarks, and notes while providing an AI assistant that understands context across browsing sessions, projects, and resources.
 
+### Strategic direction (reconciled)
+
+- **Data stays local** (IndexedDB + existing backup story); **AI is optional** and uses **user-provided API keys** (cloud LLM first). No required server.
+- **Longer arc** (see [`OVERVIEW.md`](OVERVIEW.md)): bulk/manual bookmark import → optional site capture → embeddings/RAG (API or later in-browser) → **gated** agentic research → workspaces/study paths → per-page / same-site relational notes.
+- **Near-term execution order** (aligned with [`backlog.md`](backlog.md)): **(1)** AI API infrastructure + minimal UI, **(2)** manual bulk bookmark import at scale, **(3)** AI grounded on bookmarks with citations, **(4)** further steps TBD.
+
 ## Target Audience
 
 **Primary**: Personal use by the creator
@@ -45,6 +51,7 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 - ✅ Grid/list view options in dashboard
 - ✅ Bookmarks can be created from dashboard with project/collection selection
 - ✅ Inline creation of project/collection from bookmark/note create dialog
+- Next: bulk **manual import** from standard bookmark export formats; later optional tab-based capture helpers.
 
 ### 3. Workspaces ✅ (Implemented - Beyond Original Spec)
 - ✅ Save all windows, one window, or multiple tabs
@@ -194,11 +201,12 @@ The AI agent can access:
 - ⏳ Decide and implement single long-term Notes model (`items` note-like vs first-class `notes` store)
 - ⏳ Implement richer resource linking UX (bookmarks ↔ notes ↔ projects)
 
-### Phase 2: AI Integration (Planned)
-- AI agent interface
-- Context capture from pages
-- Basic AI queries and responses
-- Project organization with AI help
+### Phase 2: AI Integration (In progress — phased)
+
+- **2a — Infra (first)**: Settings for provider/model/API key; secure storage; HTTP client; minimal chat or test surface; error handling.
+- **2b — Bookmarks at scale**: Manual bulk import (e.g. Netscape HTML); dedupe; organization UX.
+- **2c — Bookmark-grounded AI**: Prompts over library excerpts; visible citations; light assists (summary, tags) before full RAG.
+- **2d — Later**: Embeddings + retrieval; optional in-browser embeddings; content scripts for page context; agentic tool loops with budgets.
 
 ### Phase 3: Advanced Features (Planned)
 - Resource linking visualization

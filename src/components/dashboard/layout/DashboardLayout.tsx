@@ -4,6 +4,7 @@ import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
 import { Workspace, Collection, Item, Project } from '../../../lib/db';
 import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
+import type { AISettings } from '../../../lib/ai/types';
 
 export type DashboardView =
   | 'home'
@@ -45,6 +46,12 @@ interface DashboardLayoutProps {
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
   backupStatus?: BackupStatusSnapshot;
+  aiSettings?: AISettings;
+  onSaveAISettings?: (settings: AISettings) => Promise<void>;
+  onTestAI?: (
+    settings: AISettings,
+    prompt: string
+  ) => Promise<{ text: string; model: string }>;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ 
@@ -72,6 +79,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   backupFolderReady,
   backupFolderName,
   backupStatus,
+  aiSettings,
+  onSaveAISettings,
+  onTestAI,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeView, setActiveView] = useState<DashboardView>('projects');
@@ -147,6 +157,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             backupFolderReady={backupFolderReady}
             backupFolderName={backupFolderName}
             backupStatus={backupStatus}
+            aiSettings={aiSettings}
+            onSaveAISettings={onSaveAISettings}
+            onTestAI={onTestAI}
           />
         </div>
       </div>
