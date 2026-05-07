@@ -10,13 +10,19 @@ const DEFAULT_AI_SETTINGS: AISettings = {
   timeoutMs: 25_000,
   temperature: 0.2,
   maxOutputTokens: 700,
+  strictModelMatch: false,
+  routingMode: 'single',
+  taskModels: {},
 };
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
 const sanitizeSettings = (value: Partial<AISettings> | null | undefined): AISettings => {
-  const provider = value?.provider === 'openrouter' ? 'openrouter' : DEFAULT_AI_SETTINGS.provider;
+  const provider =
+    value?.provider === 'chrome-native' || value?.provider === 'openrouter'
+      ? value.provider
+      : DEFAULT_AI_SETTINGS.provider;
   const baseUrl = typeof value?.baseUrl === 'string' && value.baseUrl.trim()
     ? value.baseUrl.trim()
     : DEFAULT_AI_SETTINGS.baseUrl;
@@ -36,6 +42,18 @@ const sanitizeSettings = (value: Partial<AISettings> | null | undefined): AISett
   const maxOutputTokens = Number.isFinite(maxOutputTokensCandidate)
     ? clamp(Math.round(maxOutputTokensCandidate as number), 64, 8_192)
     : DEFAULT_AI_SETTINGS.maxOutputTokens;
+  const strictModelMatch = Boolean(value?.strictModelMatch);
+  const routingMode = value?.routingMode === 'by-task' ? 'by-task' : 'single';
+  const taskModels: AISettings['taskModels'] = {};
+  const inputTaskModels = value?.taskModels;
+  if (inputTaskModels && typeof inputTaskModels === 'object') {
+    for (const key of ['general', 'summarize', 'tag'] as const) {
+      const modelValue = inputTaskModels[key];
+      if (typeof modelValue === 'string' && modelValue.trim()) {
+        taskModels[key] = modelValue.trim();
+      }
+    }
+  }
 
   return {
     provider,
@@ -45,6 +63,9 @@ const sanitizeSettings = (value: Partial<AISettings> | null | undefined): AISett
     timeoutMs,
     temperature,
     maxOutputTokens,
+    strictModelMatch,
+    routingMode,
+    taskModels,
   };
 };
 

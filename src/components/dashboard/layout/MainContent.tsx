@@ -2,11 +2,13 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Workspace, Item, Collection, Project, deleteProject, ALL_PROJECTS_ID } from '../../../lib/db';
 import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 import type { AISettings } from '../../../lib/ai/types';
+import { buildBookmarkGroundingPrompt, type BookmarkAISource } from '../../../lib/ai/bookmarkContext';
 import { formatDateTime } from '../../../lib/utils';
 import { DashboardView } from './DashboardLayout';
 import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
 import { SettingsView } from '../SettingsView';
+import { ImportStudioView } from '../ImportStudioView';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
 import { CollectionsView } from '../CollectionsView';
@@ -54,7 +56,7 @@ interface MainContentProps {
   onTestAI?: (
     settings: AISettings,
     prompt: string
-  ) => Promise<{ text: string; model: string }>;
+  ) => Promise<{ text: string; model: string; requestedModel?: string; modelMismatch?: boolean }>;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -116,6 +118,12 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [showNewCollection, setShowNewCollection] = useState(false);
   const [showAddBookmark, setShowAddBookmark] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
+  const [showImportStudio, setShowImportStudio] = useState(false);
+  const [bookmarkAiPrompt, setBookmarkAiPrompt] = useState('');
+  const [bookmarkAiRunning, setBookmarkAiRunning] = useState(false);
+  const [bookmarkAiResult, setBookmarkAiResult] = useState('');
+  const [bookmarkAiError, setBookmarkAiError] = useState('');
+  const [bookmarkAiSources, setBookmarkAiSources] = useState<BookmarkAISource[]>([]);
 
   // Keep bookmark/note classification mutually exclusive:
   // - Bookmark: has a non-empty URL
@@ -284,6 +292,36 @@ export const MainContent: React.FC<MainContentProps> = ({
   const getCollectionProject = (collection: Collection) => {
     if (!collection) return null;
     return projects.find(p => p.id === collection.primaryProjectId) || null;
+  };
+
+  const runBookmarkAIAssist = async () => {
+    if (!onTestAI || !aiSettings) {
+      setBookmarkAiError('Configure AI provider/settings first.');
+      return;
+    }
+    const query = bookmarkAiPrompt.trim();
+    if (!query) {
+      setBookmarkAiError('Enter a question first.');
+      return;
+    }
+    if (filteredBookmarkItems.length === 0) {
+      setBookmarkAiError('No bookmarks in the current scope.');
+      return;
+    }
+
+    const { prompt, sources } = buildBookmarkGroundingPrompt(query, filteredBookmarkItems, 20);
+    setBookmarkAiRunning(true);
+    setBookmarkAiError('');
+    setBookmarkAiResult('');
+    setBookmarkAiSources(sources);
+    try {
+      const result = await onTestAI(aiSettings, prompt);
+      setBookmarkAiResult(result.text.trim());
+    } catch (error) {
+      setBookmarkAiError(error instanceof Error ? error.message : 'Bookmark AI request failed.');
+    } finally {
+      setBookmarkAiRunning(false);
+    }
   };
 
   const renderContent = () => {
@@ -549,6 +587,16 @@ export const MainContent: React.FC<MainContentProps> = ({
           />
         );
       case 'bookmarks':
+        if (showImportStudio) {
+          return (
+            <ImportStudioView
+              projects={projects}
+              collections={collections}
+              onBack={() => setShowImportStudio(false)}
+            />
+          );
+        }
+
         // Get item count for a project
         const getProjectItemCount = (projectId: string) => {
           const projectCollectionIds = new Set(
@@ -570,6 +618,26 @@ export const MainContent: React.FC<MainContentProps> = ({
                 Bookmarks
               </h1>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  onClick={() => setShowImportStudio(true)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 10px',
+                    height: 24,
+                    background: 'var(--bg)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 600,
+                  }}
+                  title="Open import studio"
+                >
+                  Import
+                </button>
                 <button
                   onClick={() => setShowAddBookmark(true)}
                   disabled={!onCreateItem}
@@ -643,6 +711,80 @@ export const MainContent: React.FC<MainContentProps> = ({
                 placeholder="⌘K Search bookmarks..."
               />
             </div>
+
+            <Panel
+              style={{
+                flexShrink: 0,
+                padding: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  value={bookmarkAiPrompt}
+                  onChange={(e) => setBookmarkAiPrompt(e.target.value)}
+                  placeholder="Ask AI from current bookmark scope..."
+                  style={{
+                    flex: 1,
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    padding: '6px 8px',
+                    background: 'var(--input-bg, var(--bg))',
+                    color: 'var(--text)',
+                    fontSize: 'var(--text-sm)',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={runBookmarkAIAssist}
+                  disabled={bookmarkAiRunning}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    border: '1px solid var(--accent)',
+                    background: bookmarkAiRunning ? 'var(--accent-weak)' : 'var(--accent)',
+                    color: 'var(--accent-text, #fff)',
+                    cursor: bookmarkAiRunning ? 'progress' : 'pointer',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 600,
+                  }}
+                >
+                  {bookmarkAiRunning ? 'Asking…' : 'Ask AI'}
+                </button>
+              </div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                Uses up to 20 bookmarks from current filters and asks the model to cite sources like [B1].
+              </div>
+              {bookmarkAiError ? (
+                <div style={{ fontSize: 'var(--text-xs)', color: '#dc2626' }}>{bookmarkAiError}</div>
+              ) : null}
+              {bookmarkAiResult ? (
+                <div
+                  style={{
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    padding: '8px',
+                    background: 'var(--bg-glass)',
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--text)',
+                    whiteSpace: 'pre-wrap',
+                    lineHeight: 1.45,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                  }}
+                >
+                  <div>{bookmarkAiResult}</div>
+                  {bookmarkAiSources.length > 0 ? (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                      Sources used: {bookmarkAiSources.map((source) => `[${source.ref}] ${source.title}`).join(' · ')}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </Panel>
 
             {/* Main area: project nav + items */}
             <div

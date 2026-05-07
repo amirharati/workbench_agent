@@ -17,7 +17,7 @@ interface SettingsViewProps {
   onTestAI?: (
     settings: AISettings,
     prompt: string
-  ) => Promise<{ text: string; model: string }>;
+  ) => Promise<{ text: string; model: string; requestedModel?: string; modelMismatch?: boolean }>;
 }
 
 const formatRelative = (ts: number | null | undefined): string => {
@@ -74,6 +74,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
   const [aiTestOutput, setAiTestOutput] = React.useState('');
   const [aiTestModel, setAiTestModel] = React.useState('');
+  const [aiRequestedModel, setAiRequestedModel] = React.useState('');
+  const [aiModelMismatch, setAiModelMismatch] = React.useState(false);
   const [aiError, setAiError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -149,10 +151,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setAiError(null);
     setAiTestOutput('');
     setAiTestModel('');
+    setAiRequestedModel('');
+    setAiModelMismatch(false);
     try {
       const result = await onTestAI(aiForm, aiTestPrompt);
       setAiTestOutput(result.text);
       setAiTestModel(result.model);
+      setAiRequestedModel(result.requestedModel ?? '');
+      setAiModelMismatch(Boolean(result.modelMismatch));
     } catch (error) {
       setAiError(error instanceof Error ? error.message : 'AI test failed.');
     } finally {
@@ -227,6 +233,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff' }}
               >
                 <option value="openrouter">OpenRouter (OpenAI-compatible)</option>
+                <option value="chrome-native">Chrome native (on-device)</option>
               </select>
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
@@ -235,6 +242,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 value={aiForm.model}
                 onChange={(e) => updateAiField('model', e.target.value)}
                 placeholder="openai/gpt-4o-mini"
+                disabled={aiForm.provider === 'chrome-native'}
                 style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
               />
             </label>
@@ -244,6 +252,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 value={aiForm.baseUrl}
                 onChange={(e) => updateAiField('baseUrl', e.target.value)}
                 placeholder="https://openrouter.ai/api/v1"
+                disabled={aiForm.provider === 'chrome-native'}
                 style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
               />
             </label>
@@ -256,6 +265,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   placeholder="sk-or-..."
                   type={showApiKey ? 'text' : 'password'}
                   autoComplete="off"
+                  disabled={aiForm.provider === 'chrome-native'}
                   style={{
                     padding: '0.45rem 0.55rem',
                     borderRadius: 8,
@@ -284,6 +294,71 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </button>
               </div>
             </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+              Model routing
+              <select
+                value={aiForm.routingMode}
+                onChange={(e) =>
+                  updateAiField('routingMode', e.target.value as AISettings['routingMode'])
+                }
+                disabled={aiForm.provider === 'chrome-native'}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff' }}
+              >
+                <option value="single">Single model for all tasks</option>
+                <option value="by-task">Route by task type</option>
+              </select>
+            </label>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                fontSize: '0.82rem',
+                color: '#374151',
+                marginTop: '1.35rem',
+                opacity: aiForm.provider === 'chrome-native' ? 0.6 : 1,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={aiForm.strictModelMatch}
+                onChange={(e) => updateAiField('strictModelMatch', e.target.checked)}
+                disabled={aiForm.provider === 'chrome-native'}
+              />
+              Fail if provider returns a different model id
+            </label>
+            {aiForm.routingMode === 'by-task' && aiForm.provider !== 'chrome-native' ? (
+              <>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+                  Task model: summarize
+                  <input
+                    value={aiForm.taskModels?.summarize ?? ''}
+                    onChange={(e) =>
+                      updateAiField('taskModels', {
+                        ...(aiForm.taskModels ?? {}),
+                        summarize: e.target.value,
+                      })
+                    }
+                    placeholder="optional override model id"
+                    style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+                  />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+                  Task model: tag
+                  <input
+                    value={aiForm.taskModels?.tag ?? ''}
+                    onChange={(e) =>
+                      updateAiField('taskModels', {
+                        ...(aiForm.taskModels ?? {}),
+                        tag: e.target.value,
+                      })
+                    }
+                    placeholder="optional override model id"
+                    style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+                  />
+                </label>
+              </>
+            ) : null}
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
               Timeout (ms)
               <input
@@ -390,6 +465,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           deep local/profile access to your machine may still extract it. Use provider-side spend limits and
           a dedicated key.
         </div>
+        {aiModelMismatch && !aiForm?.strictModelMatch && (
+          <div style={{ fontSize: '0.82rem', color: '#92400e' }}>
+            <strong>Model mismatch:</strong> requested <code>{aiRequestedModel || '-'}</code>, provider returned{' '}
+            <code>{aiTestModel || '-'}</code>. Enable strict matching to fail these responses.
+          </div>
+        )}
         {aiTestOutput && (
           <div
             style={{
@@ -405,6 +486,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {aiTestModel ? (
               <div style={{ marginBottom: '0.35rem' }}>
                 <strong>Provider model:</strong> <code>{aiTestModel}</code>
+              </div>
+            ) : null}
+            {aiRequestedModel ? (
+              <div style={{ marginBottom: '0.35rem' }}>
+                <strong>Requested model:</strong> <code>{aiRequestedModel}</code>
               </div>
             ) : null}
             <strong>AI response:</strong> {aiTestOutput}

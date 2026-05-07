@@ -1,4 +1,4 @@
-export type AIProvider = 'openrouter';
+export type AIProvider = 'openrouter' | 'chrome-native';
 
 export type AITaskType = 'general' | 'summarize' | 'tag';
 
@@ -14,6 +14,9 @@ export interface AISettings {
   timeoutMs: number;
   temperature: number;
   maxOutputTokens: number;
+  strictModelMatch: boolean;
+  routingMode: 'single' | 'by-task';
+  taskModels?: Partial<Record<AITaskType, string>>;
 }
 
 export interface AIMessage {
@@ -35,6 +38,8 @@ export interface AIUsage {
 export interface AICompletionResponse {
   text: string;
   model: string;
+  requestedModel?: string;
+  modelMismatch?: boolean;
   usage?: AIUsage;
 }
 

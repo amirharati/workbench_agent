@@ -507,9 +507,14 @@ function App() {
   const handleTestAI = async (
     settings: AISettings,
     prompt: string
-  ): Promise<{ text: string; model: string }> => {
+  ): Promise<{ text: string; model: string; requestedModel?: string; modelMismatch?: boolean }> => {
     const response = await runAITestPrompt(settings, prompt);
-    return { text: response.text, model: response.model };
+    return {
+      text: response.text,
+      model: response.model,
+      requestedModel: response.requestedModel,
+      modelMismatch: response.modelMismatch,
+    };
   };
 
   const handleCloseTab = async (tabId: number) => {

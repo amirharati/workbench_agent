@@ -51,7 +51,8 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 - ✅ Grid/list view options in dashboard
 - ✅ Bookmarks can be created from dashboard with project/collection selection
 - ✅ Inline creation of project/collection from bookmark/note create dialog
-- Next: bulk **manual import** from standard bookmark export formats; later optional tab-based capture helpers.
+- ✅ **Import Studio** (Bookmarks → Import): working **file** ingest (Netscape HTML, CSV, JSON) and **Chrome `bookmarks` API** with shared **preview** (no DB write yet). CSV supports exports like **Raindrop** (`title`, `url`, `note`, `tags`, `folder`/`collection`, **`cover`**, etc.). AI-assistant tab remains **mock** only.
+- Next: **Commit import** to IndexedDB (project/collection target, dedupe), persist **cover image URL** and **import provenance** (e.g. `metadata`); then more formats / AI-assisted unknown formats.
 
 ### 3. Workspaces ✅ (Implemented - Beyond Original Spec)
 - ✅ Save all windows, one window, or multiple tabs
@@ -67,7 +68,7 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 - ⏳ First-class `notes` store is present in schema but not yet the primary UI model
 - ⏳ Page-context note capture still pending
 
-### 5. AI Agent Assistant ⏳ (Planned)
+### 5. AI Agent Assistant 🟡 (Infra Started)
 
 #### Core Capabilities
 - **Personal Assistant**: Help organize and manage tabs, bookmarks, and notes
@@ -89,6 +90,16 @@ The AI agent can access:
 - "What did I note about [topic]?"
 - "Find related resources to what I'm reading"
 - "Help me understand this page in context of my [project]"
+
+#### Current Infra Baseline (shipped)
+- ✅ Pluggable AI client module under `src/lib/ai` with provider adapter boundary
+- ✅ OpenRouter-compatible chat/completions adapter (OpenAI-style request shape)
+- ✅ Optional Chrome native/on-device provider path (graceful fallback when unsupported)
+- ✅ Settings UI for provider, model id, base URL, API key, timeout, temperature, and output token cap
+- ✅ Strict model-id match option + task-based routing scaffold (`single` or `by-task`)
+- ✅ Test prompt surface in Settings with visible provider-returned model id
+- ✅ API key persisted in `chrome.storage.local` (not backup JSON), plus in-app storage/security note
+- ✅ Bookmarks view “Ask AI” starter over current filtered scope with source refs (`[B1]`, `[B2]`, ...)
 
 ### 6. Resource Linking ⏳ (Planned)
 - ⏳ Link bookmarks to notes
@@ -114,8 +125,8 @@ The AI agent can access:
 ### AI Integration
 - **Architecture**: Direct API calls from client-side
 - **Processing**: Client-side processing of AI responses
-- **API Key**: Stored locally (personal use, security not a primary concern)
-- **Endpoints**: Standard AI API endpoints (OpenAI, Anthropic, etc.)
+- **API Key**: Stored in extension `chrome.storage.local` for no-friction usage (not included in DB backup JSON)
+- **Endpoint baseline**: OpenRouter (`/chat/completions` OpenAI-compatible shape); adapter boundary allows additional providers later
 
 ### Chrome Extension
 - **Manifest**: Chrome Extension Manifest V3 (`public/manifest.json`)
@@ -175,7 +186,7 @@ The AI agent can access:
 5. **Collections View**: ✅ Dedicated collections + items workspace
 6. **Projects View**: ✅ Implemented project workspace and cards
 7. **Notes View**: ✅ Implemented note-focused view over note-like items
-8. **AI Assistant**: ⏳ Not yet implemented
+8. **AI Assistant**: 🟡 Infra/settings + test prompt + first bookmark-grounded ask flow implemented; richer citation/selection UX still pending
 9. **Side Panel**: ✅ Bookmark-centric workflow — URL/title prefill from active tab (updates on tab change); notes field; project/collection selection with inline create; list of saved copies for current URL (edit, remove, add new copy); duplicate URL blocked within same collection; Open Dashboard; Set Workbench as Home (manual Chrome startup/home setup). Backup onboarding/import flows remain dashboard-first when required.
 
 ### Design Philosophy
@@ -203,9 +214,9 @@ The AI agent can access:
 
 ### Phase 2: AI Integration (In progress — phased)
 
-- **2a — Infra (first)**: Settings for provider/model/API key; secure storage; HTTP client; minimal chat or test surface; error handling.
-- **2b — Bookmarks at scale**: Manual bulk import (e.g. Netscape HTML); dedupe; organization UX.
-- **2c — Bookmark-grounded AI**: Prompts over library excerpts; visible citations; light assists (summary, tags) before full RAG.
+- **2a — Infra (first)**: ✅ Initial slice shipped (Settings + persisted config + HTTP client + test prompt + model visibility). Remaining: stricter routing/validation and additional provider adapters as needed.
+- **2b — Bookmarks at scale**: Import Studio **preview** shipped (HTML/CSV/JSON + Chrome API). **Remaining:** DB commit, dedupe policy, optional folder→collection mapping, metadata for cover/import source.
+- **2c — Bookmark-grounded AI**: 🟡 Starter shipped (filtered-scope ask + source refs). Next: selected-item scope, richer source linking chips, and lightweight assist actions (summary/tags).
 - **2d — Later**: Embeddings + retrieval; optional in-browser embeddings; content scripts for page context; agentic tool loops with budgets.
 
 ### Phase 3: Advanced Features (Planned)

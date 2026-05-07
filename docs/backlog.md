@@ -37,6 +37,10 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **Collections route fix**: `collections` view is now reachable from sidebar (was previously bypassed by switch fallthrough/return ordering).
 - **Side panel polish**: Themed like dashboard (CSS variables / primitives); bookmark-only flow with notes under URL; active-tab prefill + refresh on tab switch; “already saved” with edit / remove / add new copy; after save, latest version selected; duplicate bookmark blocked for same URL in same collection; tab-specific side panel open; Open Dashboard disables panel only on dashboard tab; Set Workbench as Home helper (settings tabs + clipboard URL).
 - **New tab**: `manifest` uses `chrome_url_overrides.newtab` → `index.html`. **NTP bouncer** experiment (`newtab.html` / `dashboard.html` split) **removed** — simpler build, no extra tab churn; Chrome footer on extension NTP remains a known limitation.
+- **AI infra foundation (phase 2a start)**: Added pluggable AI client layer (`src/lib/ai/*`) with OpenRouter adapter, persisted Settings controls (provider/model/base URL/API key + timeout/temperature/tokens), test prompt runner, provider-returned model visibility, and key storage/security note + show/hide toggle.
+- **AI infra hardening slice**: strict model-match option, task-based routing scaffold (`single` vs `by-task` with overrides), and optional Chrome native/on-device provider path (graceful fallback when unavailable).
+- **Phase B starter (AI + bookmarks)**: Bookmarks view now supports "Ask AI" over current filtered bookmark scope with grounded prompt assembly and visible source refs (`[B1]`, `[B2]`, ...).
+- **Import Studio (preview phase)**: Bookmarks → **Import** opens **Import Studio** (`ImportStudioView.tsx`). **Working:** Netscape/HTML + **CSV + JSON** file parse, **`chrome.bookmarks.getTree`** load, unified preview table (first 300 rows shown), stats (valid URLs, duplicates hint), optional project/collection **planning** dropdowns (not applied to DB yet). CSV maps Raindrop-like columns incl. **`folder` / `collection`**, **`cover`** (→ image preview column), **`source`/provider aliases**. **Still mock:** AI assistant tab only. **Next session:** commit to DB (`addItem`/batch), persist **cover** + **import provenance** (e.g. `metadata`), dedupe aligned with `normalizeBookmarkUrl`.
 
 ---
 
@@ -79,14 +83,16 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 **Items (bookmarks)**
 
-- [ ] **Bulk import (manual-first)** — Netscape/HTML bookmark file + preview table; map to project/collection; honor `normalizeBookmarkUrl` / duplicate rules.
+- [ ] **Bulk import (manual-first)** — Parse + preview + Chrome API shipped in Import Studio. **Next:** Commit action → IndexedDB (`addItem` or batch txn), chosen project/collection, skip/merge duplicates per `normalizeBookmarkUrl`, persist **image/cover URL** + **import source** metadata (Raindrop CSV `folder` may be empty export-side; fallback = user-selected collection).
 - [ ] **Multi-collection / share-item UX** if still desired (dashboard backlog “B4”).
 - [ ] **Pinned / favorites / trash**: add fields (`pinned`, `favorite`, `deletedAt` or equivalent), wire Quick Access tabs.
 
 **AI (phased — see Near-term roadmap)**
 
-- [ ] **Phase A — Infra**: provider + model + API key UI; store key in `chrome.storage.local` (not plain backup JSON unless explicitly designed); `fetch` client with timeout + error surfacing; optional “test message” or minimal chat shell.
-- [ ] **Phase B — Bookmarks**: assemble context from selected items or scoped search results; response shows **which bookmarks** were used; no requirement for embeddings yet.
+- [x] **Phase A — Infra foundation**: provider + model + API key UI; key persisted in `chrome.storage.local` (not backup JSON); OpenAI-compatible `fetch` client with timeout/error handling; settings test prompt surface.
+- [x] **Phase A — Next hardening**: strict model-id mismatch handling, task-based routing scaffold (`taskType`), and provider expansion beyond OpenRouter adapter (Chrome native added).
+- [ ] **Phase A — Follow-up polish**: compatibility checks/UX hints for Chrome native model availability/warmup and lightweight request telemetry.
+- [ ] **Phase B — Bookmarks**: current scope-grounded ask flow shipped; next add explicit bookmark selection UX, better source chips/links, and context-size controls per request.
 - [ ] **Phase C — RAG / embeddings** (later): chunk store, vector or API embeddings, hybrid retrieval; optional **in-browser** embedding path (Transformers.js-class) as alternative to API.
 - [ ] **Phase D — Agentic** (later, gated): chat + tools with session budgets; web search/fetch behind explicit toggles (align with user’s cost concerns).
 - [ ] **Security spike (later):** evaluate optional `chrome.identity` / Google OAuth-assisted unlock flow for AI credentials (likely requires backend/key-broker; keep local-first default unless clear value).
@@ -105,6 +111,12 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [ ] **Types**: tighten migration/`any` in `db.ts`; legacy shape types if useful.
 - [ ] **A11y**: keyboard nav and labels where cheap wins exist.
 - [ ] **Tests** (when worth it): Vitest + RTL; start with `db` helpers and pure utils.
+
+**Docs consistency checklist (lightweight, per shipped slice)**
+
+- [ ] If roadmap/status changed, update `docs/OVERVIEW.md` (“What’s working”, “Gaps”, and last-updated line).
+- [ ] If product narrative or phase status changed, update `docs/workbench_agent.prd`.
+- [ ] Add/remove matching item in backlog sections (`✅ Done` and relevant active section) to avoid drift.
 
 ---
 
@@ -132,4 +144,4 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ---
 
-*Last updated: 2026-05-05 — near-term roadmap: cloud AI infra → bulk bookmark import → bookmark-grounded AI; RAG/agentic deferred with ordering TBD*
+*Last updated: 2026-05-06 (session wrap-up) — Import Studio file + Chrome API ingestion + Raindrop-ish CSV mapping live (preview-only); AI assistant tab remains mock; DB commit + `metadata` for cover/import source next.*

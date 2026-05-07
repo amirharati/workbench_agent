@@ -51,7 +51,7 @@ interface DashboardLayoutProps {
   onTestAI?: (
     settings: AISettings,
     prompt: string
-  ) => Promise<{ text: string; model: string }>;
+  ) => Promise<{ text: string; model: string; requestedModel?: string; modelMismatch?: boolean }>;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ 

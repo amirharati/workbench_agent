@@ -82,6 +82,9 @@ Chrome MV3 extension
 - Workspace save flow: Tab Commander save dialog supports selecting a project (or Detached) for new workspace snapshots.
 - Side panel: tab-specific enablement (extension icon opens panel only for that tab); opening full-page dashboard disables the side panel on the **dashboard tab only**.
 - Data safety: export/import, backup verification, debounced live backup to `latest.json`, manual named backups, envelope metadata (`revision` + `deviceId`), and startup conflict pause/resolution flow.
+- AI infra baseline: pluggable client layer (`src/lib/ai`) with OpenRouter-compatible chat adapter plus optional Chrome native/on-device provider path, persisted AI Settings (provider/model/base URL/API key), timeout + error handling, strict model-match toggle, and Settings test prompt with provider-returned model display.
+- Bookmark-grounded AI starter: Bookmarks view supports “Ask AI” over current filtered bookmark scope, with grounded context assembly and visible source refs (`[B1]`, `[B2]`, ...).
+- Import Studio (preview): Bookmarks → Import — **file** (Netscape HTML, CSV, JSON), **Chrome bookmarks API** (`getTree`), preview table + stats; Raindrop-style CSV columns (`folder`/`collection`, **`cover`** image URL, `source` aliases). **No DB commit yet.** AI tab still mock only.
 
 ---
 
@@ -95,11 +98,12 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 | Area | Status |
 |------|--------|
-| **AI Agent** | Roadmap: cloud API **infra** first (see Near-term roadmap), then bookmark-grounded features; full RAG/embeddings later. |
+| **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | Recent items works; pinned / favorites / trash mostly placeholders (needs fields + UX). |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
 | **Optional sync** | Initial file-based sync guard is implemented (envelope + conflict pause + resolve actions). Full scheduled rotation, runtime re-check while app stays open, and merge workflows are still pending. |
+| **Bulk bookmark import** | Ingestion + preview done in Import Studio; **commit to DB** (with cover + import metadata) is the next slice. |
 
 ---
 
@@ -114,4 +118,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-05-05 — vision + phased AI/bookmark roadmap*
+*Last updated: 2026-05-06 (session wrap-up) — Import Studio preview (file + Chrome API + Raindrop-ish CSV) documented; DB import commit still open.*

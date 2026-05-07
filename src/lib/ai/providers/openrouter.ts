@@ -45,12 +45,13 @@ const toErrorCode = (status: number): AIClientError['code'] => {
 
 export const runOpenRouterCompletion = async (
   settings: AISettings,
-  request: AICompletionRequest
+  request: AICompletionRequest,
+  effectiveModel: string
 ): Promise<AICompletionResponse> => {
   if (!settings.apiKey.trim()) {
     throw new AIClientError('invalid-config', 'Missing API key. Add one in Settings > AI.');
   }
-  if (!settings.model.trim()) {
+  if (!effectiveModel.trim()) {
     throw new AIClientError('invalid-config', 'Missing model id. Add one in Settings > AI.');
   }
   if (!request.messages.length) {
@@ -70,7 +71,7 @@ export const runOpenRouterCompletion = async (
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: settings.model,
+        model: effectiveModel,
         messages: request.messages,
         temperature: settings.temperature,
         max_tokens: settings.maxOutputTokens,
@@ -92,9 +93,21 @@ export const runOpenRouterCompletion = async (
       throw new AIClientError('provider', 'Provider returned an empty response.');
     }
 
+    const resolvedModel = payload.model || effectiveModel;
+    const modelMismatch =
+      Boolean(payload.model) && payload.model!.trim().toLowerCase() !== effectiveModel.trim().toLowerCase();
+    if (settings.strictModelMatch && modelMismatch) {
+      throw new AIClientError(
+        'provider',
+        `Provider returned model "${resolvedModel}" but "${effectiveModel}" was requested.`
+      );
+    }
+
     return {
       text: content,
-      model: payload.model || settings.model,
+      model: resolvedModel,
+      requestedModel: effectiveModel,
+      modelMismatch,
       usage: {
         inputTokens: payload.usage?.prompt_tokens,
         outputTokens: payload.usage?.completion_tokens,
