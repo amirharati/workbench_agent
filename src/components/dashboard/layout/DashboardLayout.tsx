@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
-import { Workspace, Collection, Item, Project } from '../../../lib/db';
+import { Workspace, Collection, Item, Project, UpdateItemOptions } from '../../../lib/db';
 import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 import type { AISettings } from '../../../lib/ai/types';
 import { X } from 'lucide-react';
+import { DeleteConfirmDialog, type DeleteConfirmResult } from '../../DeleteConfirmDialog';
 
 export type DashboardView =
   | 'home'
@@ -35,8 +36,12 @@ interface DashboardLayoutProps {
   workspaces: Workspace[];
   onWorkspacesChanged?: () => Promise<void>;
   onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<void>;
-  onUpdateBookmark?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
-  onDeleteBookmark?: (id: string) => Promise<void>;
+  onUpdateBookmark?: (
+    id: string,
+    updates: Partial<Omit<Item, 'id' | 'created_at'>>,
+    options?: UpdateItemOptions
+  ) => Promise<void>;
+  onDeleteBookmark?: (id: string, collectionId?: string) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   onDeleteProject?: (projectId: string) => Promise<boolean | void>;
@@ -121,6 +126,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [editItemTitle, setEditItemTitle] = useState('');
   const [editItemUrl, setEditItemUrl] = useState('');
   const [editItemNotes, setEditItemNotes] = useState('');
+  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
+  const [itemTabDeletePending, setItemTabDeletePending] = useState<{
+    item: Item;
+    placementId?: string;
+  } | null>(null);
   
   // Right panel AI state
   const [rightPrompt, setRightPrompt] = useState('');
@@ -134,6 +144,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       document.documentElement.dataset.theme = 'dark';
     }
   }, []);
+
+  // Reset placement selection when active tab changes
+  useEffect(() => {
+    setSelectedPlacementId(null);
+  }, [activeItemTabId]);
 
   const handleSelectView = (view: DashboardView) => {
     setActiveView(view);
@@ -212,7 +227,25 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     });
   };
 
+  const completeItemTabDelete = async (result: DeleteConfirmResult) => {
+    const pending = itemTabDeletePending;
+    setItemTabDeletePending(null);
+    if (result.action === 'cancel' || !pending || !onDeleteBookmark) return;
+    if (result.action === 'remove-from-collection' && pending.placementId) {
+      await onDeleteBookmark(pending.item.id, pending.placementId);
+    } else if (result.action === 'delete-everywhere') {
+      await onDeleteBookmark(pending.item.id);
+      handleCloseItemTab(pending.item.id);
+    }
+    if (onRefresh) await onRefresh();
+  };
+
   const activeTabItem = activeItemTabId ? items.find((i) => i.id === activeItemTabId) : null;
+
+  useEffect(() => {
+    setSelectedPlacementId(null);
+    setIsEditingItem(false);
+  }, [activeTabItem?.id]);
 
   const runRightAssist = async () => {
     const prompt = rightPrompt.trim();
@@ -1053,7 +1086,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                     const startEditing = () => {
                       setEditItemTitle(activeTabItem.title || '');
                       setEditItemUrl(activeTabItem.url || '');
-                      setEditItemNotes(activeTabItem.notes || '');
+                      const placements = activeTabItem.placements || {};
+                      const itemCollections = collections.filter((c) =>
+                        (activeTabItem.collectionIds || []).includes(c.id)
+                      );
+                      const effectiveId = selectedPlacementId || itemCollections[0]?.id;
+                      const placementNotes = effectiveId ? placements[effectiveId]?.notes : undefined;
+                      setEditItemNotes(placementNotes ?? activeTabItem.notes ?? '');
                       setIsEditingItem(true);
                     };
                     const cancelEditing = () => {
@@ -1061,12 +1100,20 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                     };
                     const saveEditing = async () => {
                       if (onUpdateBookmark) {
-                        await onUpdateBookmark(activeTabItem.id, {
-                          title: editItemTitle,
-                          url: editItemUrl || undefined,
-                          notes: editItemNotes || undefined,
-                          updated_at: Date.now(),
-                        });
+                        const itemCollections = collections.filter((c) =>
+                          (activeTabItem.collectionIds || []).includes(c.id)
+                        );
+                        const effectiveId = selectedPlacementId || itemCollections[0]?.id;
+                        await onUpdateBookmark(
+                          activeTabItem.id,
+                          {
+                            title: editItemTitle,
+                            url: editItemUrl || undefined,
+                            notes: editItemNotes || undefined,
+                            updated_at: Date.now(),
+                          },
+                          effectiveId ? { notesPlacementCollectionId: effectiveId } : undefined
+                        );
                         // Update the tab title
                         setOpenItemTabs(prev => prev.map(t => 
                           t.id === activeTabItem.id ? { ...t, title: editItemTitle || 'Untitled' } : t
@@ -1144,10 +1191,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                                 </button>
                                 <button
                                   onClick={() => {
-                                    if (onDeleteBookmark && activeTabItem) {
-                                      onDeleteBookmark(activeTabItem.id);
-                                      handleCloseItemTab(activeTabItem.id);
-                                    }
+                                    if (!activeTabItem || !onDeleteBookmark) return;
+                                    const itemCollections = collections.filter((c) =>
+                                      (activeTabItem.collectionIds || []).includes(c.id)
+                                    );
+                                    const placementId =
+                                      selectedPlacementId || itemCollections[0]?.id;
+                                    setItemTabDeletePending({
+                                      item: activeTabItem,
+                                      placementId: placementId || undefined,
+                                    });
                                   }}
                                   style={{
                                     padding: '6px 12px',
@@ -1243,52 +1296,155 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                           </div>
                         )}
                         
-                        {/* Notes */}
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                          <label style={{ 
-                            display: 'block', 
-                            fontSize: 'var(--text-xs)', 
-                            fontWeight: 500, 
-                            color: 'var(--text-muted)', 
-                            marginBottom: 4,
-                            textTransform: 'uppercase',
-                          }}>
-                            Notes
-                          </label>
-                          {isEditingItem ? (
-                            <textarea
-                              value={editItemNotes}
-                              onChange={(e) => setEditItemNotes(e.target.value)}
-                              placeholder="Add notes..."
-                              style={{
-                                flex: 1,
-                                minHeight: 200,
-                                padding: '12px',
-                                borderRadius: 6,
-                                border: '1px solid var(--border)',
-                                background: 'var(--bg-input)',
-                                color: 'var(--text)',
-                                fontSize: 'var(--text-sm)',
-                                resize: 'vertical',
-                                fontFamily: 'inherit',
-                              }}
-                            />
-                          ) : (
-                            <div style={{ 
-                              flex: 1,
-                              padding: 12, 
-                              background: 'var(--bg-panel)', 
-                              borderRadius: 6,
-                              fontSize: 'var(--text-sm)',
-                              whiteSpace: 'pre-wrap',
-                              overflowY: 'auto',
-                              color: activeTabItem.notes ? 'var(--text)' : 'var(--text-faint)',
-                              minHeight: 100,
-                            }}>
-                              {activeTabItem.notes || 'No notes yet. Click Edit to add some.'}
+                        {/* Saved In - always show which collections this item belongs to */}
+                        {(() => {
+                          const itemCollections = collections.filter((c) => (activeTabItem.collectionIds || []).includes(c.id));
+                          if (itemCollections.length === 0) return null;
+                          
+                          return (
+                            <div style={{ marginBottom: 12 }}>
+                              <label style={{ 
+                                display: 'block', 
+                                fontSize: 'var(--text-xs)', 
+                                fontWeight: 500, 
+                                color: 'var(--text-muted)', 
+                                marginBottom: 4,
+                                textTransform: 'uppercase',
+                              }}>
+                                Saved In
+                              </label>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {itemCollections.map((c) => {
+                                  const project = projects.find(p => p.id === c.primaryProjectId);
+                                  return (
+                                    <span
+                                      key={c.id}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        padding: '3px 8px',
+                                        background: 'var(--bg-glass)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: 4,
+                                        fontSize: 'var(--text-xs)',
+                                        color: 'var(--text)',
+                                      }}
+                                    >
+                                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
+                                      {project?.name || 'Unassigned'} / {c.name}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          )}
-                        </div>
+                          );
+                        })()}
+                        
+                        {/* Notes - with collection tabs for per-collection notes */}
+                        {(() => {
+                          const itemCollections = collections.filter((c) => (activeTabItem.collectionIds || []).includes(c.id));
+                          const placements = activeTabItem.placements || {};
+                          const hasMultipleCollections = itemCollections.length > 1;
+                          
+                          const placementData = itemCollections.map((c) => {
+                            const project = projects.find(p => p.id === c.primaryProjectId);
+                            const placement = placements[c.id];
+                            return { collection: c, project, placement };
+                          });
+                          
+                          const effectiveSelectedId = selectedPlacementId || placementData[0]?.collection.id;
+                          const selectedPlacement = placementData.find(p => p.collection.id === effectiveSelectedId);
+                          const displayNotes = selectedPlacement?.placement?.notes || activeTabItem.notes;
+                          
+                          return (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                              <label style={{ 
+                                display: 'block', 
+                                fontSize: 'var(--text-xs)', 
+                                fontWeight: 500, 
+                                color: 'var(--text-muted)', 
+                                marginBottom: 4,
+                                textTransform: 'uppercase',
+                              }}>
+                                Notes
+                              </label>
+                              
+                              {/* Tab bar - show if multiple collections (even when editing) */}
+                              {hasMultipleCollections && (
+                                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', gap: 0, overflowX: 'auto', flexShrink: 0 }}>
+                                  {placementData.map(({ collection: c, project }) => {
+                                    const isSelected = c.id === effectiveSelectedId;
+                                    return (
+                                      <button
+                                        key={c.id}
+                                        onClick={() => {
+                                          setSelectedPlacementId(c.id);
+                                          if (isEditingItem && activeTabItem) {
+                                            const pn = activeTabItem.placements?.[c.id]?.notes;
+                                            setEditItemNotes(pn ?? activeTabItem.notes ?? '');
+                                          }
+                                        }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 4,
+                                          padding: '6px 10px',
+                                          background: isSelected ? 'var(--bg-glass)' : 'transparent',
+                                          border: 'none',
+                                          borderBottom: isSelected ? '2px solid var(--accent)' : '2px solid transparent',
+                                          marginBottom: -1,
+                                          fontSize: 'var(--text-xs)',
+                                          color: isSelected ? 'var(--text)' : 'var(--text-muted)',
+                                          cursor: 'pointer',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
+                                        <span>{project?.name || 'Unassigned'} / {c.name}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {/* Notes content or editor */}
+                              {isEditingItem ? (
+                                <textarea
+                                  value={editItemNotes}
+                                  onChange={(e) => setEditItemNotes(e.target.value)}
+                                  placeholder="Add notes..."
+                                  style={{
+                                    flex: 1,
+                                    minHeight: 150,
+                                    padding: '12px',
+                                    borderRadius: hasMultipleCollections ? '0 0 6px 6px' : 6,
+                                    border: '1px solid var(--border)',
+                                    background: 'var(--bg-input)',
+                                    color: 'var(--text)',
+                                    fontSize: 'var(--text-sm)',
+                                    resize: 'vertical',
+                                    fontFamily: 'inherit',
+                                  }}
+                                />
+                              ) : (
+                                <div style={{ 
+                                  flex: 1,
+                                  padding: 12, 
+                                  background: 'var(--bg-panel)', 
+                                  borderRadius: hasMultipleCollections ? '0 0 6px 6px' : 6,
+                                  fontSize: 'var(--text-sm)',
+                                  whiteSpace: 'pre-wrap',
+                                  overflowY: 'auto',
+                                  color: displayNotes ? 'var(--text)' : 'var(--text-faint)',
+                                  minHeight: 100,
+                                }}>
+                                  {displayNotes || 'No notes yet. Click Edit to add some.'}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                         
                         {/* Metadata footer */}
                         <div style={{ 
@@ -1391,6 +1547,19 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           </div>
         </div>
       </div>
+
+        {itemTabDeletePending && onDeleteBookmark && (
+          <DeleteConfirmDialog
+            item={itemTabDeletePending.item}
+            collectionId={itemTabDeletePending.placementId}
+            collectionName={
+              itemTabDeletePending.placementId
+                ? collections.find((c) => c.id === itemTabDeletePending.placementId)?.name
+                : undefined
+            }
+            onResult={completeItemTabDelete}
+          />
+        )}
     </div>
   );
 };

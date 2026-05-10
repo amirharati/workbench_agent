@@ -30,8 +30,13 @@ interface TabContentProps {
   onCreateItem?: (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<string>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
-  onUpdateItem?: (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<void>;
-  onDeleteItem?: (item: Item) => void;
+  onUpdateItem?: (
+    id: string,
+    data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }
+  ) => Promise<void>;
+  onDeleteItem?: (item: Item, deleteCollectionContextId?: string) => void;
+  /** When deleting, prefer "remove from this collection" context (e.g. collections browser or project scope). */
+  deleteCollectionContextId?: string;
   onItemClick?: (item: Item) => void;
   defaultCollectionId?: string | 'all';
 }
@@ -54,6 +59,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   onCreateCollection,
   onUpdateItem,
   onDeleteItem,
+  deleteCollectionContextId,
   onItemClick,
   defaultCollectionId,
 }) => {
@@ -63,6 +69,8 @@ export const TabContent: React.FC<TabContentProps> = ({
   const [isEditingItem, setIsEditingItem] = useState(false);
   // Track filter state per collection tab (collectionId -> 'collection' | 'all')
   const [collectionFilters, setCollectionFilters] = useState<Map<string, 'collection' | 'all'>>(new Map());
+  // Track selected placement tab for viewing per-collection notes
+  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
   
   const iconForItem = (it: Item) => (it.url && it.url.trim().length > 0 ? '🔗' : '📝');
 
@@ -78,10 +86,11 @@ export const TabContent: React.FC<TabContentProps> = ({
   // Get current item for edit mode reset
   const currentItemId = item?.id || (tab?.itemId ? items.find((i) => i.id === tab.itemId)?.id : null);
   
-  // Reset edit mode when item changes (must be at top level, not in conditional)
+  // Reset edit mode and placement selection when item changes
   useEffect(() => {
     if (currentItemId) {
       setIsEditingItem(false);
+      setSelectedPlacementId(null);
     }
   }, [currentItemId]);
 
@@ -551,7 +560,7 @@ export const TabContent: React.FC<TabContentProps> = ({
           )}
           {onDeleteItem && (
             <button
-              onClick={() => onDeleteItem(effectiveItem)}
+              onClick={() => onDeleteItem(effectiveItem, deleteCollectionContextId)}
               style={{
                 padding: '0.5rem',
                 background: 'transparent',
@@ -580,116 +589,121 @@ export const TabContent: React.FC<TabContentProps> = ({
         </div>
       </div>
 
-      {/* Projects and Collections */}
+      {/* Saved In - always show which collections this item belongs to */}
       {(() => {
         const itemCollections = collections.filter((c) => (effectiveItem.collectionIds || []).includes(c.id));
-        const projectIds = new Set<string>();
-        itemCollections.forEach((c) => {
-          let collectionHasProjectId = false;
-          // Add primaryProjectId if it exists
-          if (c.primaryProjectId && c.primaryProjectId.trim()) {
-            projectIds.add(c.primaryProjectId);
-            collectionHasProjectId = true;
-          }
-          // Add all projectIds from the array
-          if (Array.isArray(c.projectIds) && c.projectIds.length > 0) {
-            c.projectIds.forEach((pid) => {
-              if (pid && pid.trim()) {
-                projectIds.add(pid);
-                collectionHasProjectId = true;
-              }
-            });
-          }
-          // Fallback: if this specific collection has no project associations but we have a projectId prop, use it
-          // This handles edge cases where collections might not have project associations set
-          if (!collectionHasProjectId && projectId && projectId.trim()) {
-            projectIds.add(projectId);
-          }
-        });
-        // Filter projects to only include those that exist in our projects array
-        const itemProjects = projects.filter((p) => p && p.id && projectIds.has(p.id));
+        if (itemCollections.length === 0) return null;
         
-        // Debug logging (can be removed later)
-        if (itemCollections.length > 0 && itemProjects.length === 0 && projectIds.size > 0) {
-          console.warn('Item collections found but no matching projects:', {
-            itemId: effectiveItem.id,
-            collections: itemCollections.map(c => ({ id: c.id, name: c.name, primaryProjectId: c.primaryProjectId, projectIds: c.projectIds })),
-            projectIds: Array.from(projectIds),
-            availableProjects: projects.map(p => ({ id: p.id, name: p.name })),
-            projectIdProp: projectId
-          });
-        }
-        
-        // Also log when we have collections but no projectIds extracted
-        if (itemCollections.length > 0 && projectIds.size === 0) {
-          console.warn('Item has collections but no project IDs extracted:', {
-            itemId: effectiveItem.id,
-            collections: itemCollections.map(c => ({ 
-              id: c.id, 
-              name: c.name, 
-              primaryProjectId: c.primaryProjectId, 
-              projectIds: c.projectIds,
-              hasPrimaryProjectId: !!c.primaryProjectId,
-              hasProjectIds: Array.isArray(c.projectIds) && c.projectIds.length > 0
-            }))
-          });
-        }
-
-        if (itemProjects.length > 0 || itemCollections.length > 0) {
-          return (
-            <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-glass)', borderRadius: 8 }}>
-              {itemProjects.length > 0 && (
-                <div style={{ marginBottom: itemCollections.length > 0 ? '0.75rem' : 0 }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Projects
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    {itemProjects.map((p) => (
-                      <span
-                        key={p.id}
-                        style={{
-                          padding: '0.25rem 0.5rem',
-                          background: 'var(--bg)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 4,
-                          fontSize: '0.85rem',
-                          color: 'var(--text)',
-                        }}
-                      >
-                        {p.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {itemCollections.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Collections
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    {itemCollections.map((c) => (
-                      <span
-                        key={c.id}
-                        style={{
-                          padding: '0.25rem 0.5rem',
-                          background: 'var(--bg)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 4,
-                          fontSize: '0.85rem',
-                          color: 'var(--text)',
-                        }}
-                      >
-                        {c.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+        return (
+          <div style={{ marginTop: '1rem' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Saved In</h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {itemCollections.map((c) => {
+                const project = projects.find(p => p.id === c.primaryProjectId);
+                return (
+                  <span
+                    key={c.id}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      padding: '0.25rem 0.5rem',
+                      background: 'var(--bg-glass)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 4,
+                      fontSize: '0.8rem',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
+                    {project?.name || 'Unassigned'} / {c.name}
+                  </span>
+                );
+              })}
             </div>
-          );
-        }
-        return null;
+          </div>
+        );
+      })()}
+      
+      {/* Notes - with collection tabs for per-collection notes */}
+      {(() => {
+        const itemCollections = collections.filter((c) => (effectiveItem.collectionIds || []).includes(c.id));
+        const placements = effectiveItem.placements || {};
+        const hasMultipleCollections = itemCollections.length > 1;
+
+        const placementData = itemCollections.map((c) => {
+          const project = projects.find(p => p.id === c.primaryProjectId);
+          const placement = placements[c.id];
+          return { collection: c, project, placement };
+        });
+
+        const effectiveSelectedId = selectedPlacementId || placementData[0]?.collection.id;
+        const selectedPlacement = placementData.find(p => p.collection.id === effectiveSelectedId);
+        const displayNotes = selectedPlacement?.placement?.notes || effectiveItem.notes;
+
+        return (
+          <div style={{ marginTop: '1rem' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Notes</h3>
+            
+            {/* Tab bar - show if multiple collections */}
+            {hasMultipleCollections && (
+              <div style={{ 
+                display: 'flex', 
+                borderBottom: '1px solid var(--border)',
+                gap: 0,
+                overflowX: 'auto',
+              }}>
+                {placementData.map(({ collection: c, project }) => {
+                  const isSelected = c.id === effectiveSelectedId;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setSelectedPlacementId(c.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.5rem 0.75rem',
+                        background: isSelected ? 'var(--bg-glass)' : 'transparent',
+                        border: 'none',
+                        borderBottom: isSelected ? '2px solid var(--accent)' : '2px solid transparent',
+                        marginBottom: '-1px',
+                        fontSize: '0.8rem',
+                        color: isSelected ? 'var(--text)' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span style={{ 
+                        width: 8, 
+                        height: 8, 
+                        borderRadius: '50%', 
+                        background: c.color || 'var(--accent)',
+                        flexShrink: 0,
+                      }} />
+                      <span>{project?.name || 'Unassigned'} / {c.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            
+            {/* Notes content */}
+            <div style={{
+              padding: '0.75rem',
+              background: 'var(--bg-glass)',
+              borderRadius: hasMultipleCollections ? '0 0 8px 8px' : 8,
+              minHeight: 60,
+              lineHeight: 1.6,
+              whiteSpace: 'pre-wrap',
+              fontSize: '0.85rem',
+              color: displayNotes ? 'var(--text)' : 'var(--text-muted)',
+            }}>
+              {displayNotes || 'No notes'}
+            </div>
+          </div>
+        );
       })()}
 
       {/* Metadata */}
@@ -711,16 +725,6 @@ export const TabContent: React.FC<TabContentProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Notes/Content */}
-      {effectiveItem.notes && (
-        <div style={{ marginTop: '1rem' }}>
-          <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>Notes</h3>
-          <div style={{ lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)', padding: '0.75rem', background: 'var(--bg-glass)', borderRadius: 8 }}>
-            {effectiveItem.notes}
-          </div>
-        </div>
-      )}
 
       {/* URL (if no notes, show URL as content) */}
       {!effectiveItem.notes && effectiveItem.url && isValidHttpUrl(effectiveItem.url) && (
@@ -775,7 +779,7 @@ export const TabContent: React.FC<TabContentProps> = ({
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           onEdit={onUpdateItem ? () => setIsEditingItem(true) : undefined}
-          onDelete={onDeleteItem}
+          onDelete={onDeleteItem ? (it) => onDeleteItem(it, deleteCollectionContextId) : undefined}
         />
       )}
     </div>

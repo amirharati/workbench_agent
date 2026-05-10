@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
-  addItem, 
+  addItemWithMerge, 
   addProject,
   addCollection,
   deleteProject,
@@ -13,10 +13,12 @@ import {
   getAllItems,
   updateItem,
   deleteItem,
+  removeItemFromCollection,
   Collection,
   Workspace,
   Item,
-  Project
+  Project,
+  UpdateItemOptions
 } from './lib/db';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
@@ -31,6 +33,7 @@ import {
   hasWritableBackupFolder,
   getBackupFolderName,
 } from './lib/backupFolder';
+import { DATA_CHANGED_BROADCAST_CHANNEL } from './lib/dataChangeNotifier';
 import { backupCoordinator, BackupStatusSnapshot } from './lib/backupCoordinator';
 import { FileSystemBackupSink } from './lib/backupSinks';
 import { revisionTracker } from './lib/revisionTracker';
@@ -217,6 +220,32 @@ function App() {
     setItems(allItems.sort((a, b) => b.created_at - a.created_at));
   };
 
+  const loadDataRef = useRef(loadData);
+  loadDataRef.current = loadData;
+
+  /** Side panel and new tab are different documents — same IndexedDB, separate React state. */
+  useEffect(() => {
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(DATA_CHANGED_BROADCAST_CHANNEL);
+      bc.onmessage = () => {
+        void loadDataRef.current();
+      };
+    } catch {
+      bc = null;
+    }
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void loadDataRef.current();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      bc?.close();
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -253,7 +282,7 @@ function App() {
     if (tab && tab.url && tab.url.startsWith('http')) {
       const collectionIds = collectionId ? [collectionId] : [];
       try {
-        await addItem({
+        const result = await addItemWithMerge({
           url: tab.url,
           title: tab.title || 'Untitled',
           favicon: tab.favIconUrl,
@@ -261,7 +290,15 @@ function App() {
           source: 'tab',
           collectionIds,
         });
-        showStatus('Tab saved!');
+        
+        if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
+          showStatus('Already saved in this collection');
+        } else if (result.merged && result.addedToCollections.length > 0) {
+          showStatus('Added to collection (link already saved elsewhere)');
+        } else {
+          showStatus('Tab saved!');
+        }
+        
         await loadData();
       } catch (error) {
         showStatus(toStatusMessage(error, 'Could not save tab'));
@@ -279,7 +316,7 @@ function App() {
     const cleanTitle = title && title.trim().length > 0 ? title.trim() : url;
     const collectionIds = collectionId ? [collectionId] : [];
     try {
-      await addItem({
+      const result = await addItemWithMerge({
         url,
         title: cleanTitle,
         favicon: undefined,
@@ -287,16 +324,29 @@ function App() {
         source: 'manual',
         collectionIds,
       });
-      showStatus('Bookmark added');
+      
+      // Provide clear feedback based on what happened
+      if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
+        showStatus('Already saved in this collection');
+      } else if (result.merged && result.addedToCollections.length > 0) {
+        showStatus('Added to collection (link already saved elsewhere)');
+      } else {
+        showStatus('Bookmark added');
+      }
+      
       await loadData();
     } catch (error) {
       showStatus(toStatusMessage(error, 'Could not add bookmark'));
     }
   };
 
-  const handleUpdateBookmark = async (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => {
+  const handleUpdateBookmark = async (
+    id: string,
+    updates: Partial<Omit<Item, 'id' | 'created_at'>>,
+    options?: UpdateItemOptions
+  ) => {
     try {
-      await updateItem(id, updates);
+      await updateItem(id, updates, options);
       await loadData();
       showStatus('Bookmark updated');
     } catch (error) {
@@ -304,10 +354,27 @@ function App() {
     }
   };
 
-  const handleDeleteBookmark = async (id: string) => {
-    await deleteItem(id);
+  const handleDeleteBookmark = async (id: string, collectionId?: string) => {
+    if (collectionId) {
+      // Try to remove from just this collection
+      const result = await removeItemFromCollection(id, collectionId);
+      if (result.itemDeleted) {
+        showStatus('Bookmark deleted');
+      } else if (result.removed) {
+        showStatus(`Removed from collection (still in ${result.remainingPlacements} other${result.remainingPlacements > 1 ? 's' : ''})`);
+      }
+    } else {
+      // Delete from everywhere
+      const result = await deleteItem(id);
+      if (result.deleted) {
+        if (result.placementCount > 1) {
+          showStatus(`Bookmark deleted from ${result.placementCount} collections`);
+        } else {
+          showStatus('Bookmark deleted');
+        }
+      }
+    }
     await loadData();
-    showStatus('Bookmark deleted');
   };
 
   const handleCreateProject = async (data: { name: string; description?: string }) => {
@@ -394,16 +461,29 @@ function App() {
     collectionIds: string[];
   }) => {
     try {
-      await addItem({
+      const result = await addItemWithMerge({
         url: data.url || '',
         title: data.title,
-        notes: data.notes,
         tags: [],
         source: data.url ? 'manual' : 'manual',
         collectionIds: data.collectionIds,
+        ...(data.notes !== undefined ? { notes: data.notes } : {}),
       });
       await loadData();
-      showStatus(data.url ? 'Bookmark added' : 'Note added');
+      
+      if (data.url) {
+        if (result.updatedPlacementNotes && result.addedToCollections.length === 0) {
+          showStatus('Notes saved for this copy');
+        } else if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
+          showStatus('Already saved in this collection');
+        } else if (result.merged && result.addedToCollections.length > 0) {
+          showStatus('Added to collection (link already saved elsewhere)');
+        } else {
+          showStatus('Bookmark added');
+        }
+      } else {
+        showStatus('Note added');
+      }
     } catch (error) {
       showStatus(toStatusMessage(error, 'Could not add item'));
       throw error;
@@ -659,12 +739,18 @@ function App() {
             onSaveTab={handleSaveCurrentTab}
             onCreateItem={handleCreateItem}
             onUpdateItem={async (id, data) => {
-              await handleUpdateBookmark(id, {
-                title: data.title,
-                url: data.url || '',
-                notes: data.notes,
-                collectionIds: data.collectionIds,
-              });
+              await handleUpdateBookmark(
+                id,
+                {
+                  title: data.title,
+                  url: data.url || '',
+                  notes: data.notes,
+                  collectionIds: data.collectionIds,
+                },
+                data.notesPlacementCollectionId
+                  ? { notesPlacementCollectionId: data.notesPlacementCollectionId }
+                  : undefined
+              );
             }}
             onDeleteItem={handleDeleteBookmark}
             onCreateProject={handleCreateProject}

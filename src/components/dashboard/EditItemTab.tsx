@@ -11,7 +11,16 @@ interface EditItemTabProps {
   defaultProjectId?: string;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
-  onSave: (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<void>;
+  onSave: (
+    id: string,
+    data: {
+      title: string;
+      url?: string;
+      notes?: string;
+      collectionIds: string[];
+      notesPlacementCollectionId?: string;
+    }
+  ) => Promise<void>;
   onCancel?: () => void;
 }
 
@@ -37,11 +46,16 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
     return projects.find((p) => p.isDefault)?.id || projects[0]?.id || '';
   }, [defaultProjectId, item.collectionIds, collections, projects]);
 
+  const placementNotesForCollection = (collectionId: string) => {
+    if (!collectionId) return item.notes || '';
+    return item.placements?.[collectionId]?.notes ?? item.notes ?? '';
+  };
+
   const [title, setTitle] = useState(item.title);
   const [url, setUrl] = useState(item.url || '');
-  const [notes, setNotes] = useState(item.notes || '');
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [selectedCollectionId, setSelectedCollectionId] = useState(item.collectionIds?.[0] || '');
+  const [notes, setNotes] = useState(placementNotesForCollection(item.collectionIds?.[0] || ''));
   const [newProjectName, setNewProjectName] = useState('');
   const [newCollectionName, setNewCollectionName] = useState('');
   const [creatingProject, setCreatingProject] = useState(false);
@@ -62,10 +76,17 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
   useEffect(() => {
     setTitle(item.title);
     setUrl(item.url || '');
-    setNotes(item.notes || '');
+    const cid = item.collectionIds?.[0] || '';
     setSelectedProjectId(initialProjectId);
-    setSelectedCollectionId(item.collectionIds?.[0] || '');
-  }, [item.id, item.title, item.url, item.notes, item.collectionIds, initialProjectId]);
+    setSelectedCollectionId(cid);
+    setNotes(placementNotesForCollection(cid));
+  }, [item.id, item.title, item.url, item.notes, item.collectionIds, item.placements, initialProjectId]);
+
+  // When user switches collection in the form, show notes for that placement only.
+  useEffect(() => {
+    setNotes(placementNotesForCollection(selectedCollectionId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- placementNotesForCollection reads latest item
+  }, [selectedCollectionId, item.id, item.placements, item.notes]);
 
   useEffect(() => {
     if (!selectedProjectId) return;
@@ -119,11 +140,23 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
     }
     setIsSaving(true);
     try {
+      let preservedCollectionIds =
+        item.collectionIds && item.collectionIds.length > 0 ? [...item.collectionIds] : [];
+      if (selectedCollectionId && !preservedCollectionIds.includes(selectedCollectionId)) {
+        preservedCollectionIds = [...preservedCollectionIds, selectedCollectionId];
+      }
+      if (preservedCollectionIds.length === 0 && selectedCollectionId) {
+        preservedCollectionIds = [selectedCollectionId];
+      }
+
+      const notesPlacementId = selectedCollectionId || item.collectionIds?.[0];
+
       await onSave(item.id, {
         title: title.trim(),
         url: url.trim() || undefined,
         notes: notes.trim() || undefined,
-        collectionIds: selectedCollectionId ? [selectedCollectionId] : [],
+        collectionIds: preservedCollectionIds,
+        notesPlacementCollectionId: notesPlacementId || undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update item');

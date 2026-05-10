@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Save, RefreshCw } from 'lucide-react';
-import { Collection, Item, Project } from '../lib/db';
+import { Collection, Item, Project, normalizeBookmarkUrl } from '../lib/db';
 import { Panel, Input, ButtonGhost, ButtonPrimary, Divider } from '../styles/primitives';
 import { isValidHttpUrl } from '../lib/utils';
 
@@ -10,8 +10,8 @@ interface SidePanelViewProps {
   items: Item[];
   onSaveTab: (collectionId?: string) => Promise<void>;
   onCreateItem: (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<void>;
-  onUpdateItem: (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<void>;
-  onDeleteItem: (id: string) => Promise<void>;
+  onUpdateItem: (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }) => Promise<void>;
+  onDeleteItem: (id: string, collectionId?: string) => Promise<void>;
   onCreateProject: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection: (data: { name: string; projectId: string }) => Promise<string | void>;
   onOpenFullPage: () => void;
@@ -47,6 +47,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedExistingItemId, setSelectedExistingItemId] = useState<string | null>(null);
+  const [selectedPlacementCollectionId, setSelectedPlacementCollectionId] = useState<string | null>(null);
   const [forceNewCopyMode, setForceNewCopyMode] = useState(false);
   const prefillInFlightRef = useRef(false);
   const lastPrefilledRef = useRef<{ url: string; title: string }>({ url: '', title: '' });
@@ -73,74 +74,143 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       (c) => c.primaryProjectId === pid || (Array.isArray(c.projectIds) && c.projectIds.includes(pid))
     );
   const isUnsorted = (c: Collection) => c.isDefault || /^unsorted$/i.test(c.name);
-  const normalizeUrl = (value: string): string => {
-    try {
-      const u = new URL(value.trim());
-      u.hash = '';
-      const normalizedPath = u.pathname.replace(/\/+$/, '');
-      u.pathname = normalizedPath || '/';
-      return u.toString().replace(/\/$/, '');
-    } catch {
-      return value.trim();
-    }
-  };
 
   const defaultProjectId = useMemo(() => {
     const def = projects.find((p) => p.isDefault)?.id;
     return def || projects[0]?.id || '';
   }, [projects]);
 
+  // Auto-set project to default only on initial mount, not when user clears it
   useEffect(() => {
-    if (!projectId && defaultProjectId) setProjectId(defaultProjectId);
-  }, [projectId, defaultProjectId]);
+    if (!projectId && defaultProjectId && !forceNewCopyMode) {
+      setProjectId(defaultProjectId);
+    }
+  }, [projectId, defaultProjectId, forceNewCopyMode]);
 
   const scopedCollections = useMemo(() => collectionsForProject(projectId), [collections, projectId]);
   const matchingItems = useMemo(() => {
-    const target = normalizeUrl(url);
-    if (!target || !isValidHttpUrl(target)) return [];
+    const trimmed = url.trim();
+    if (!trimmed || !isValidHttpUrl(trimmed)) return [];
+    const target = normalizeBookmarkUrl(trimmed);
     return items
-      .filter((item) => item.url && normalizeUrl(item.url) === target)
+      .filter((item) => item.url && normalizeBookmarkUrl(item.url) === target)
       .slice(0, 5);
   }, [items, url]);
+
+  // Expand matching items into placement rows - one per (item, collection) pair
+  type PlacementRow = {
+    item: Item;
+    collectionId: string;
+    collection: Collection | undefined;
+    project: Project | undefined;
+  };
+  const matchingPlacements = useMemo((): PlacementRow[] => {
+    const rows: PlacementRow[] = [];
+    for (const item of matchingItems) {
+      const collectionIds = item.collectionIds || [];
+      for (const cid of collectionIds) {
+        const collection = collections.find(c => c.id === cid);
+        const project = collection ? projects.find(p => p.id === collection.primaryProjectId) : undefined;
+        rows.push({ item, collectionId: cid, collection, project });
+      }
+    }
+    return rows;
+  }, [matchingItems, collections, projects]);
+
   const selectedExistingItem = useMemo(
     () => matchingItems.find((item) => item.id === selectedExistingItemId) || null,
     [matchingItems, selectedExistingItemId]
   );
   const hasExistingForUrl = matchingItems.length > 0;
 
-  const collectionNameMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const col of collections) map.set(col.id, col.name);
-    return map;
-  }, [collections]);
-
+  // Auto-set collection when project changes, but not in new copy mode (user must pick explicitly)
   useEffect(() => {
     if (!projectId) return;
+    if (forceNewCopyMode) return; // Don't auto-fill in new copy mode
     if (scopedCollections.some((c) => c.id === collectionId)) return;
     const unsorted = scopedCollections.find(isUnsorted);
     setCollectionId(unsorted?.id || scopedCollections[0]?.id || '');
-  }, [projectId, scopedCollections, collectionId]);
+  }, [projectId, scopedCollections, collectionId, forceNewCopyMode]);
 
-  useEffect(() => {
-    if (selectedExistingItemId && !matchingItems.some((item) => item.id === selectedExistingItemId)) {
-      setSelectedExistingItemId(null);
+  const selectExistingItemForEdit = useCallback((item: Item, placementCollectionId?: string) => {
+    setForceNewCopyMode(false);
+    setSelectedExistingItemId(item.id);
+    setTitle(item.title || '');
+    setUrl(item.url || '');
+
+    const targetCollectionId = placementCollectionId || item.collectionIds?.[0];
+    setSelectedPlacementCollectionId(targetCollectionId || null);
+
+    const placementNotes = targetCollectionId ? item.placements?.[targetCollectionId]?.notes : undefined;
+    setNotes(placementNotes || item.notes || '');
+
+    if (targetCollectionId) {
+      setCollectionId(targetCollectionId);
+      const col = collections.find((c) => c.id === targetCollectionId);
+      if (col) {
+        setProjectId((prev) => {
+          const stays =
+            !!prev &&
+            (col.primaryProjectId === prev ||
+              (Array.isArray(col.projectIds) && col.projectIds.includes(prev)));
+          return stays ? prev : col.primaryProjectId;
+        });
+      }
     }
-  }, [matchingItems, selectedExistingItemId]);
+    setError(null);
+  }, [collections]);
 
+  // In new copy mode: if user selects a collection that already has a placement,
+  // switch to edit mode for that existing copy instead of creating a duplicate
+  useEffect(() => {
+    if (!forceNewCopyMode) return;
+    if (!collectionId) return;
+
+    const existingPlacement = matchingPlacements.find((p) => p.collectionId === collectionId);
+    if (existingPlacement) {
+      // This collection already has the bookmark — switch to editing it
+      selectExistingItemForEdit(existingPlacement.item, existingPlacement.collectionId);
+    }
+  }, [forceNewCopyMode, collectionId, matchingPlacements, selectExistingItemForEdit]);
+
+  // Keep highlighted card + form in sync with Project / Collection dropdowns (normal mode)
   useEffect(() => {
     if (forceNewCopyMode) return;
-    if (matchingItems.length === 0) return;
-    if (selectedExistingItemId && matchingItems.some((item) => item.id === selectedExistingItemId)) return;
-    // Default behavior for existing URLs: always preselect one version for update flow.
-    selectExistingItemForEdit(matchingItems[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchingItems, selectedExistingItemId, forceNewCopyMode]);
 
-  useEffect(() => {
-    if (matchingItems.length === 0 && forceNewCopyMode) {
-      setForceNewCopyMode(false);
+    if (matchingPlacements.length === 0) {
+      if (selectedExistingItemId !== null || selectedPlacementCollectionId !== null) {
+        setSelectedExistingItemId(null);
+        setSelectedPlacementCollectionId(null);
+      }
+      return;
     }
-  }, [matchingItems, forceNewCopyMode]);
+
+    if (!collectionId) return;
+
+    const placementForCollection = matchingPlacements.find((p) => p.collectionId === collectionId);
+
+    if (placementForCollection) {
+      if (
+        selectedExistingItemId !== placementForCollection.item.id ||
+        selectedPlacementCollectionId !== placementForCollection.collectionId
+      ) {
+        selectExistingItemForEdit(placementForCollection.item, placementForCollection.collectionId);
+      }
+      return;
+    }
+
+    if (selectedExistingItemId !== null || selectedPlacementCollectionId !== null) {
+      setSelectedExistingItemId(null);
+      setSelectedPlacementCollectionId(null);
+    }
+  }, [
+    matchingPlacements,
+    collectionId,
+    forceNewCopyMode,
+    selectedExistingItemId,
+    selectedPlacementCollectionId,
+    selectExistingItemForEdit,
+  ]);
 
   const resetForm = () => {
     setTitle('');
@@ -148,6 +218,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     setNotes('');
     setError(null);
     setSelectedExistingItemId(null);
+    setSelectedPlacementCollectionId(null);
     setForceNewCopyMode(false);
   };
 
@@ -191,6 +262,10 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     const trimmedUrl = url.trim();
     const trimmedNotes = notes.trim();
 
+    if (!projectId) {
+      setError('Pick a project first');
+      return;
+    }
     if (!collectionId) {
       setError('Pick a collection');
       return;
@@ -206,16 +281,34 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
 
     setSubmitting(true);
     try {
-      const payload = {
-        title: trimmedTitle || trimmedUrl,
-        url: trimmedUrl,
-        notes: trimmedNotes || undefined,
-        collectionIds: [collectionId],
-      };
-      if (selectedExistingItemId) {
-        await onUpdateItem(selectedExistingItemId, payload);
+      // "Add a new copy" must always go through merge/create so notes attach to the
+      // dropdown collection — never the update path (stale selection would drop notes).
+      if (selectedExistingItemId && !forceNewCopyMode) {
+        // Update: preserve existing collectionIds, just update title/notes
+        const existingItem =
+          items.find((i) => i.id === selectedExistingItemId) ??
+          matchingItems.find((i) => i.id === selectedExistingItemId);
+        const existingCollectionIds = existingItem?.collectionIds || [];
+        // Add current collection if not already present
+        const updatedCollectionIds = existingCollectionIds.includes(collectionId)
+          ? existingCollectionIds
+          : [...existingCollectionIds, collectionId];
+        
+        await onUpdateItem(selectedExistingItemId, {
+          title: trimmedTitle || trimmedUrl,
+          url: trimmedUrl,
+          notes: trimmedNotes || undefined,
+          collectionIds: updatedCollectionIds,
+          notesPlacementCollectionId: collectionId,
+        });
       } else {
-        await onCreateItem(payload);
+        // Create: use just the selected collection
+        await onCreateItem({
+          title: trimmedTitle || trimmedUrl,
+          url: trimmedUrl,
+          collectionIds: [collectionId],
+          ...(trimmedNotes.length > 0 ? { notes: trimmedNotes } : {}),
+        });
         // After a successful save, always return to selected-existing flow.
         setForceNewCopyMode(false);
         resetForm();
@@ -226,21 +319,6 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const selectExistingItemForEdit = (item: Item) => {
-    setForceNewCopyMode(false);
-    setSelectedExistingItemId(item.id);
-    setTitle(item.title || '');
-    setUrl(item.url || '');
-    setNotes(item.notes || '');
-    const nextCollectionId = item.collectionIds?.[0];
-    if (nextCollectionId) {
-      setCollectionId(nextCollectionId);
-      const col = collections.find((c) => c.id === nextCollectionId);
-      if (col?.primaryProjectId) setProjectId(col.primaryProjectId);
-    }
-    setError(null);
   };
 
   const prefillFromActiveTab = async () => {
@@ -255,12 +333,13 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       const tabChanged =
         !!tabUrl &&
         isValidHttpUrl(tabUrl) &&
-        normalizeUrl(tabUrl) !== normalizeUrl(activeTabUrlRef.current);
+        normalizeBookmarkUrl(tabUrl) !== normalizeBookmarkUrl(activeTabUrlRef.current);
 
       if (tabChanged) {
         activeTabUrlRef.current = tabUrl;
         setForceNewCopyMode(false);
         setSelectedExistingItemId(null);
+        setSelectedPlacementCollectionId(null);
         setNotes('');
         if (tabTitle) {
           setTitle(tabTitle);
@@ -439,13 +518,14 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
-              style={themedSelectStyle}
+              style={{
+                ...themedSelectStyle,
+                ...(forceNewCopyMode && !projectId ? { borderColor: 'var(--accent)', background: 'var(--accent-weak)' } : {}),
+              }}
             >
-              {projects.length === 0 && (
-                <option value="" style={themedOptionStyle}>
-                  No projects
-                </option>
-              )}
+              <option value="" style={themedOptionStyle}>
+                {projects.length === 0 ? 'No projects' : '— Select project —'}
+              </option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id} style={themedOptionStyle}>
                   {p.name}
@@ -497,13 +577,15 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             <select
               value={collectionId}
               onChange={(e) => setCollectionId(e.target.value)}
-              style={themedSelectStyle}
+              style={{
+                ...themedSelectStyle,
+                ...(forceNewCopyMode && !collectionId ? { borderColor: 'var(--accent)', background: 'var(--accent-weak)' } : {}),
+              }}
+              disabled={!projectId}
             >
-              {scopedCollections.length === 0 && (
-                <option value="" style={themedOptionStyle}>
-                  No collections
-                </option>
-              )}
+              <option value="" style={themedOptionStyle}>
+                {!projectId ? 'Pick a project first' : scopedCollections.length === 0 ? 'No collections' : '— Select collection —'}
+              </option>
               {scopedCollections.map((c) => (
                 <option key={c.id} value={c.id} style={themedOptionStyle}>
                   {c.name}
@@ -543,7 +625,40 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           </div>
         </div>
 
-        {matchingItems.length > 0 && (
+        {forceNewCopyMode && matchingPlacements.length > 0 && (
+          <Panel
+            style={{
+              padding: '0.5rem',
+              background: 'var(--accent-weak)',
+              border: '1px solid var(--accent)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.35rem',
+            }}
+          >
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--accent)', fontWeight: 600 }}>
+              Creating new copy
+            </div>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1.3 }}>
+              Select a project and collection, add notes, then save.
+            </div>
+            <ButtonGhost
+              type="button"
+              onClick={() => {
+                setForceNewCopyMode(false);
+                // Re-select the first existing placement
+                if (matchingPlacements[0]) {
+                  selectExistingItemForEdit(matchingPlacements[0].item, matchingPlacements[0].collectionId);
+                }
+              }}
+              style={{ padding: '0.25rem 0.4rem', fontSize: 'var(--text-xs)' }}
+            >
+              Cancel — edit existing copy instead
+            </ButtonGhost>
+          </Panel>
+        )}
+
+        {matchingPlacements.length > 0 && !forceNewCopyMode && (
           <Panel
             style={{
               padding: '0.5rem',
@@ -555,55 +670,100 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             }}
           >
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>
-              Already saved ({matchingItems.length})
+              Already saved ({matchingPlacements.length} {matchingPlacements.length === 1 ? 'copy' : 'copies'})
             </div>
-            {matchingItems.map((item) => {
-              const notePreview = item.notes?.trim();
-              const collectionNames = (item.collectionIds || [])
-                .map((id) => collectionNameMap.get(id))
-                .filter(Boolean)
-                .join(', ');
+            {matchingPlacements.length > 2 ? (
+              <div style={{ fontSize: '10px', color: 'var(--text-faint)', lineHeight: 1.3 }}>
+                Scroll the list below to see every copy.
+              </div>
+            ) : null}
+            <div
+              style={{
+                maxHeight: 'min(220px, 42vh)',
+                minHeight: 72,
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem',
+                padding: '6px',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                background: 'var(--bg)',
+                scrollbarWidth: 'auto',
+                scrollbarGutter: 'stable',
+              }}
+            >
+            {matchingPlacements.map((row) => {
+              const { item, collectionId: rowCollectionId, collection, project } = row;
+              const placementNotes = item.placements?.[rowCollectionId]?.notes;
+              const notePreview = placementNotes?.trim();
+              // Check both item ID and collection ID for selection
+              const isSelected = selectedExistingItemId === item.id && selectedPlacementCollectionId === rowCollectionId;
+              
               return (
                 <div
-                  key={item.id}
+                  key={`${item.id}-${rowCollectionId}`}
+                  onClick={() => selectExistingItemForEdit(item, rowCollectionId)}
                   style={{
                     padding: '0.4rem 0.45rem',
                     borderRadius: 6,
-                    border:
-                      selectedExistingItemId === item.id
-                        ? '1px solid var(--accent)'
-                        : '1px solid var(--border)',
-                    background:
-                      selectedExistingItemId === item.id
-                        ? 'var(--accent-weak)'
-                        : 'var(--bg-panel)',
+                    borderLeft: `3px solid ${collection?.color || 'var(--accent)'}`,
+                    border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    background: isSelected ? 'var(--accent-weak)' : 'var(--bg-panel)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '0.2rem',
+                    cursor: 'pointer',
+                    transition: 'background 0.1s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = 'var(--bg-panel)';
                   }}
                 >
-                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', fontWeight: 600 }}>
-                    {item.title || '(Untitled)'}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', fontWeight: 600, flex: 1 }}>
+                      {item.title || '(Untitled)'}
+                    </div>
                   </div>
-                  {selectedExistingItemId === item.id ? (
+                  {/* Collection badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 3,
+                      padding: '1px 6px',
+                      background: 'var(--bg)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 3,
+                      fontSize: '10px',
+                      color: 'var(--text-muted)',
+                    }}>
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: collection?.color || 'var(--accent)' }} />
+                      {project?.name || 'Unassigned'} / {collection?.name || 'Unknown'}
+                    </span>
+                  </div>
+                  {isSelected ? (
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--accent)', fontWeight: 600 }}>
                       Editing this version
                     </div>
                   ) : null}
                   {notePreview ? (
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                      Note: {notePreview.slice(0, 120)}
-                      {notePreview.length > 120 ? '…' : ''}
+                      Note: {notePreview.slice(0, 80)}
+                      {notePreview.length > 80 ? '…' : ''}
                     </div>
                   ) : null}
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                    Collections: {collectionNames || 'Unsorted'}
-                  </div>
                   <div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button
                         type="button"
-                        onClick={() => selectExistingItemForEdit(item)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          selectExistingItemForEdit(item, rowCollectionId);
+                        }}
                         style={{
                           border: '1px solid var(--border)',
                           background: 'var(--bg-glass)',
@@ -614,15 +774,20 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                           cursor: 'pointer',
                         }}
                       >
-                        Edit this version
+                        Edit
                       </button>
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (!window.confirm('Delete this saved bookmark version?')) return;
-                          await onDeleteItem(item.id);
-                          if (selectedExistingItemId === item.id) {
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!window.confirm('Remove this bookmark from this collection?')) return;
+                          await onDeleteItem(item.id, rowCollectionId);
+                          if (
+                            selectedExistingItemId === item.id &&
+                            selectedPlacementCollectionId === rowCollectionId
+                          ) {
                             setSelectedExistingItemId(null);
+                            setSelectedPlacementCollectionId(null);
                           }
                         }}
                         style={{
@@ -635,20 +800,25 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                           cursor: 'pointer',
                         }}
                       >
-                        Remove copy
+                        Remove
                       </button>
                     </div>
                   </div>
                 </div>
               );
             })}
+            </div>
             <ButtonGhost
               type="button"
-              onClick={async () => {
+              onClick={() => {
                 setForceNewCopyMode(true);
                 setSelectedExistingItemId(null);
+                setSelectedPlacementCollectionId(null);
                 setNotes('');
-                await prefillFromActiveTab();
+                // Clear project/collection so user must pick where to save the new copy
+                setProjectId('');
+                setCollectionId('');
+                setError(null);
               }}
               style={{ padding: '0.35rem 0.5rem', fontSize: 'var(--text-xs)' }}
             >
@@ -677,7 +847,13 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           disabled={submitting}
           style={{ width: '100%', padding: '0.5rem', fontWeight: 600, fontSize: 'var(--text-sm)' }}
         >
-          {submitting ? 'Saving…' : selectedExistingItem ? 'Update selected bookmark' : 'Add bookmark'}
+          {submitting
+            ? 'Saving…'
+            : forceNewCopyMode
+              ? 'Save new copy'
+              : selectedExistingItem
+                ? 'Update selected bookmark'
+                : 'Add bookmark'}
         </ButtonPrimary>
       </Panel>
 

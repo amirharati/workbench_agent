@@ -43,6 +43,9 @@ export function subscribeToDataChanges(listener: Listener): () => void {
   };
 }
 
+/** Same name in every extension page (side panel, new tab, etc.) for cross-document refresh. */
+export const DATA_CHANGED_BROADCAST_CHANNEL = 'workbench-agent-data-changed';
+
 export function notifyDataChanged(reason: DataChangeReason = 'unknown'): void {
   const event: DataChangeEvent = { reason, at: Date.now() };
   // Best-effort: never let a buggy listener break a DB write.
@@ -51,6 +54,16 @@ export function notifyDataChanged(reason: DataChangeReason = 'unknown'): void {
       listener(event);
     } catch (e) {
       console.error('Data change listener threw:', e);
+    }
+  }
+  // Other extension documents (side panel vs tab) have separate JS heaps — notify them.
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const ch = new BroadcastChannel(DATA_CHANGED_BROADCAST_CHANNEL);
+      ch.postMessage({ reason, at: event.at });
+      ch.close();
+    } catch {
+      // ignore
     }
   }
 }

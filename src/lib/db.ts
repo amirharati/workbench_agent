@@ -4,7 +4,7 @@ import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
 import { revisionTracker } from './revisionTracker';
 
 const DB_NAME = 'personal-tools-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 // The default project for orphan items (items without a specific project)
 const DEFAULT_PROJECT_ID = 'project_default';
@@ -39,19 +39,39 @@ export interface Collection {
   color?: string;
 }
 
+/**
+ * Per-collection placement metadata for an item.
+ * Allows the same URL to have different notes/tags in different collections.
+ */
+export interface ItemPlacement {
+  collectionId: string;
+  notes?: string;
+  tags?: string[];
+  addedAt: number;
+  source: string;
+}
+
 export interface Item {
   id: string;
-  url: string;
+  url: string;              // Normalized canonical URL
+  urlRaw?: string;          // Original URL before normalization (for display)
   title: string;
   favicon?: string;
-  collectionIds: string[]; // Must be non-empty
-  tags: string[];
-  notes?: string; // User notes for this bookmark
+  collectionIds: string[];  // Quick-access array (derived from placements)
+  tags: string[];           // Global tags (legacy, prefer per-placement)
+  notes?: string;           // Global notes (legacy, prefer per-placement)
+  placements?: Record<string, ItemPlacement>;  // Per-collection metadata
   created_at: number;
   updated_at: number;
-  source: 'tab' | 'twitter' | 'manual' | 'bookmark';
+  source: 'tab' | 'twitter' | 'manual' | 'bookmark' | string;
   metadata?: Record<string, any>;
 }
+
+/** Optional flags for {@link updateItem} (per-placement notes, etc.). */
+export type UpdateItemOptions = {
+  /** When `updates.notes` is set, store it only on this placement; clears legacy `item.notes`. */
+  notesPlacementCollectionId?: string;
+};
 
 export interface Snapshot {
   id?: number;
@@ -139,18 +159,54 @@ const nowTs = () => Date.now();
 
 const isHttpUrl = (url: string) => /^https?:\/\//i.test(url.trim());
 
-const normalizeBookmarkUrl = (url: string): string => {
+// Tracking params to strip during normalization
+const TRACKING_PARAMS = [
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+  'ref', 'fbclid', 'gclid', 'mc_cid', 'mc_eid', 'msclkid', 'zanpid',
+  '_ga', '_gl', 'yclid', 'dclid'
+];
+
+/**
+ * Normalize a URL for deduplication:
+ * - Strip hash
+ * - Remove trailing slashes
+ * - Remove tracking params
+ * - Sort query params
+ */
+export const normalizeBookmarkUrl = (url: string): string => {
   const raw = url.trim();
   if (!raw) return raw;
   try {
     const u = new URL(raw);
+    // Remove hash
     u.hash = '';
+    // Normalize trailing slashes
     const normalizedPath = u.pathname.replace(/\/+$/, '');
     u.pathname = normalizedPath || '/';
+    // Remove tracking params
+    TRACKING_PARAMS.forEach(p => u.searchParams.delete(p));
+    // Sort remaining params for consistency
+    u.searchParams.sort();
+    // Remove trailing slash from final URL
     return u.toString().replace(/\/$/, '');
   } catch {
     return raw;
   }
+};
+
+/**
+ * Find an existing item by normalized URL.
+ */
+const findItemByNormalizedUrl = async (
+  db: IDBPDatabase<TabManagerDB>,
+  normalizedUrl: string
+): Promise<Item | undefined> => {
+  if (!normalizedUrl || !isHttpUrl(normalizedUrl)) return undefined;
+  const all = await db.getAll('items');
+  return all.find((it) => {
+    if (!isHttpUrl(it.url)) return false;
+    return normalizeBookmarkUrl(it.url) === normalizedUrl;
+  });
 };
 
 const hasSharedCollection = (a: string[], b: string[]) => {
@@ -672,6 +728,130 @@ export const getDB = () => {
           }
         }
 
+        // ---- Data migration to v4: placements + deduplication ----
+        if (oldVersion < 4) {
+          console.log('🔄 Migration v4: Adding placements and deduplicating items...');
+          const itemsStore = transaction.objectStore('items');
+          const allItems: any[] = await itemsStore.getAll();
+          
+          // Group items by normalized URL
+          const byNormalizedUrl = new Map<string, any[]>();
+          for (const item of allItems) {
+            if (!item.url || !isHttpUrl(item.url)) {
+              // Non-URL items (notes): just add placements field
+              const placements: Record<string, ItemPlacement> = {};
+              for (const cid of (item.collectionIds || [])) {
+                placements[cid] = {
+                  collectionId: cid,
+                  notes: item.notes,
+                  tags: item.tags,
+                  addedAt: item.created_at || now,
+                  source: item.source || 'manual'
+                };
+              }
+              await itemsStore.put({
+                ...item,
+                placements,
+                updated_at: now
+              });
+              continue;
+            }
+            
+            const normalized = normalizeBookmarkUrl(item.url);
+            if (!byNormalizedUrl.has(normalized)) {
+              byNormalizedUrl.set(normalized, []);
+            }
+            byNormalizedUrl.get(normalized)!.push(item);
+          }
+          
+          // Process duplicates
+          let mergedCount = 0;
+          for (const [normalizedUrl, items] of byNormalizedUrl) {
+            if (items.length === 1) {
+              // No duplicates, just add placements
+              const item = items[0];
+              const placements: Record<string, ItemPlacement> = {};
+              for (const cid of (item.collectionIds || [])) {
+                placements[cid] = {
+                  collectionId: cid,
+                  notes: item.notes,
+                  tags: item.tags,
+                  addedAt: item.created_at || now,
+                  source: item.source || 'manual'
+                };
+              }
+              const urlRaw = item.url !== normalizedUrl ? item.url : undefined;
+              await itemsStore.put({
+                ...item,
+                url: normalizedUrl,
+                urlRaw,
+                placements,
+                updated_at: now
+              });
+            } else {
+              // Merge duplicates: keep oldest, union placements
+              items.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+              const keeper = items[0];
+              const placements: Record<string, ItemPlacement> = {};
+              
+              // Collect placements from all duplicates
+              for (const item of items) {
+                for (const cid of (item.collectionIds || [])) {
+                  if (!placements[cid]) {
+                    placements[cid] = {
+                      collectionId: cid,
+                      notes: item.notes,
+                      tags: item.tags,
+                      addedAt: item.created_at || now,
+                      source: item.source || 'manual'
+                    };
+                  }
+                }
+              }
+              
+              // Best title (longest non-URL title)
+              let bestTitle = keeper.title;
+              for (const item of items) {
+                if (item.title && item.title !== item.url && item.title.length > bestTitle.length) {
+                  bestTitle = item.title;
+                }
+              }
+              
+              // Best favicon
+              let bestFavicon = keeper.favicon;
+              for (const item of items) {
+                if (item.favicon && !bestFavicon) {
+                  bestFavicon = item.favicon;
+                  break;
+                }
+              }
+              
+              const collectionIds = Object.keys(placements);
+              const urlRaw = keeper.url !== normalizedUrl ? keeper.url : undefined;
+              
+              // Update keeper with merged data
+              await itemsStore.put({
+                ...keeper,
+                url: normalizedUrl,
+                urlRaw,
+                title: bestTitle,
+                favicon: bestFavicon,
+                collectionIds,
+                placements,
+                updated_at: now
+              });
+              
+              // Delete duplicates
+              for (let i = 1; i < items.length; i++) {
+                await itemsStore.delete(items[i].id);
+                mergedCount++;
+              }
+            }
+          }
+          
+          console.log(`✅ Migration v4 complete: ${mergedCount} duplicate items merged`);
+        }
+
         // Log migration completion
         if (oldVersion < newVersion) {
           console.log(`✅ Migration to v${newVersion} completed`);
@@ -691,16 +871,165 @@ export const getDB = () => {
 
 // --- CRUD Helpers ---
 
-export const addItem = async (item: Omit<Item, 'id' | 'created_at' | 'updated_at'> & Partial<Pick<Item, 'updated_at'>>) => {
+export interface AddItemResult {
+  itemId: string;
+  merged: boolean;
+  addedToCollections: string[];  // Collection IDs where a new placement was added
+  alreadyInCollections: string[]; // Collection IDs where URL was already present
+  /** True when incoming notes were applied to an existing placement (same URL + collection). */
+  updatedPlacementNotes?: boolean;
+}
+
+/**
+ * Add a bookmark with find-or-merge behavior.
+ * If an item with the same normalized URL exists, adds a new placement.
+ * Otherwise creates a new item.
+ */
+export const addItem = async (
+  item: Omit<Item, 'id' | 'created_at' | 'updated_at'> & Partial<Pick<Item, 'updated_at'>>
+): Promise<string> => {
+  const result = await addItemWithMerge(item);
+  return result.itemId;
+};
+
+/**
+ * Add a bookmark with detailed merge info.
+ */
+export const addItemWithMerge = async (
+  item: Omit<Item, 'id' | 'created_at' | 'updated_at'> & Partial<Pick<Item, 'updated_at'>>
+): Promise<AddItemResult> => {
   const db = await getDB();
   const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(db);
-  const id = crypto.randomUUID();
   const now = nowTs();
-  const collectionIds = Array.isArray(item.collectionIds) && item.collectionIds.length > 0 ? item.collectionIds : [defaultUnsortedCollectionId];
-  await assertNoBookmarkDuplicateInCollections(db, item.url || '', collectionIds);
-  await db.put('items', { ...item, id, created_at: now, updated_at: item.updated_at ?? now, collectionIds });
+  const collectionIds = Array.isArray(item.collectionIds) && item.collectionIds.length > 0 
+    ? item.collectionIds 
+    : [defaultUnsortedCollectionId];
+  
+  // For non-URL items (notes), create directly
+  if (!item.url || !isHttpUrl(item.url)) {
+    const id = crypto.randomUUID();
+    const placements: Record<string, ItemPlacement> = {};
+    for (const cid of collectionIds) {
+      placements[cid] = {
+        collectionId: cid,
+        notes: item.notes,
+        tags: item.tags,
+        addedAt: now,
+        source: item.source || 'manual'
+      };
+    }
+    await db.put('items', { 
+      ...item, 
+      id, 
+      created_at: now, 
+      updated_at: item.updated_at ?? now, 
+      collectionIds,
+      placements
+    });
+    notifyDataChanged('item.add');
+    return { itemId: id, merged: false, addedToCollections: collectionIds, alreadyInCollections: [] };
+  }
+  
+  // Normalize URL and check for existing
+  const normalizedUrl = normalizeBookmarkUrl(item.url);
+  const existing = await findItemByNormalizedUrl(db, normalizedUrl);
+  
+  if (existing) {
+    // Merge: add new placement(s) to existing item
+    const placements = existing.placements || {};
+    const addedToCollections: string[] = [];
+    const alreadyInCollections: string[] = [];
+    let updatedPlacementNotes = false;
+
+    for (const cid of collectionIds) {
+      if (!placements[cid]) {
+        placements[cid] = {
+          collectionId: cid,
+          notes: item.notes,
+          tags: item.tags,
+          addedAt: now,
+          source: item.source || 'manual'
+        };
+        addedToCollections.push(cid);
+      } else {
+        alreadyInCollections.push(cid);
+        // Apply notes whenever the caller passed a `notes` field (incl. undefined to clear).
+        // `notes !== undefined` misses `{ notes: undefined }` from trimmed empty strings.
+        if (Object.prototype.hasOwnProperty.call(item, 'notes')) {
+          updatedPlacementNotes = true;
+          const prev = placements[cid];
+          placements[cid] = {
+            collectionId: cid,
+            addedAt: prev?.addedAt ?? now,
+            source: prev?.source ?? item.source ?? 'manual',
+            tags: item.tags !== undefined ? item.tags : prev?.tags,
+            notes: item.notes || undefined,
+          };
+        }
+      }
+    }
+    
+    // Update collectionIds from placements
+    const newCollectionIds = Object.keys(placements);
+    
+    // Update title/favicon if incoming is better
+    let title = existing.title;
+    if (item.title && item.title !== item.url && (!existing.title || existing.title === existing.url)) {
+      title = item.title;
+    }
+    
+    let favicon = existing.favicon;
+    if (item.favicon && !existing.favicon) {
+      favicon = item.favicon;
+    }
+    
+    await db.put('items', {
+      ...existing,
+      title,
+      favicon,
+      collectionIds: newCollectionIds,
+      placements,
+      updated_at: now
+    });
+    
+    notifyDataChanged('item.update');
+    return {
+      itemId: existing.id,
+      merged: true,
+      addedToCollections,
+      alreadyInCollections,
+      updatedPlacementNotes: updatedPlacementNotes || undefined,
+    };
+  }
+  
+  // Create new item
+  const id = crypto.randomUUID();
+  const placements: Record<string, ItemPlacement> = {};
+  for (const cid of collectionIds) {
+    placements[cid] = {
+      collectionId: cid,
+      notes: item.notes,
+      tags: item.tags,
+      addedAt: now,
+      source: item.source || 'manual'
+    };
+  }
+  
+  const urlRaw = item.url !== normalizedUrl ? item.url : undefined;
+  
+  await db.put('items', { 
+    ...item, 
+    id, 
+    url: normalizedUrl,
+    urlRaw,
+    created_at: now, 
+    updated_at: item.updated_at ?? now, 
+    collectionIds,
+    placements
+  });
+  
   notifyDataChanged('item.add');
-  return id;
+  return { itemId: id, merged: false, addedToCollections: collectionIds, alreadyInCollections: [] };
 };
 
 export const getAllItems = async () => {
@@ -708,10 +1037,85 @@ export const getAllItems = async () => {
   return db.getAll('items');
 };
 
-export const deleteItem = async (id: string) => {
+export const getItem = async (id: string): Promise<Item | undefined> => {
   const db = await getDB();
+  return db.get('items', id);
+};
+
+/**
+ * Get placement count for an item.
+ */
+export const getItemPlacementCount = async (id: string): Promise<number> => {
+  const db = await getDB();
+  const item = await db.get('items', id);
+  if (!item) return 0;
+  return item.placements ? Object.keys(item.placements).length : item.collectionIds.length;
+};
+
+/**
+ * Remove an item from a specific collection.
+ * If it was the last placement, deletes the item entirely.
+ */
+export const removeItemFromCollection = async (
+  itemId: string, 
+  collectionId: string
+): Promise<{ removed: boolean; itemDeleted: boolean; remainingPlacements: number }> => {
+  const db = await getDB();
+  const item = await db.get('items', itemId);
+  
+  if (!item) {
+    return { removed: false, itemDeleted: false, remainingPlacements: 0 };
+  }
+  
+  // Remove from placements
+  const placements = { ...(item.placements || {}) };
+  delete placements[collectionId];
+  
+  // Update collectionIds
+  const newCollectionIds = Object.keys(placements);
+  
+  if (newCollectionIds.length === 0) {
+    // No placements left — delete entirely
+    await db.delete('items', itemId);
+    notifyDataChanged('item.delete');
+    return { removed: true, itemDeleted: true, remainingPlacements: 0 };
+  }
+  
+  // Update item with remaining placements
+  await db.put('items', {
+    ...item,
+    collectionIds: newCollectionIds,
+    placements,
+    updated_at: nowTs()
+  });
+  
+  notifyDataChanged('item.update');
+  return { removed: true, itemDeleted: false, remainingPlacements: newCollectionIds.length };
+};
+
+/**
+ * Delete an item entirely from all collections.
+ * Returns placement count for confirmation dialog.
+ */
+export const deleteItem = async (id: string): Promise<{ deleted: boolean; placementCount: number }> => {
+  const db = await getDB();
+  const item = await db.get('items', id);
+  
+  if (!item) {
+    return { deleted: false, placementCount: 0 };
+  }
+  
+  const placementCount = item.placements ? Object.keys(item.placements).length : item.collectionIds.length;
   await db.delete('items', id);
   notifyDataChanged('item.delete');
+  return { deleted: true, placementCount };
+};
+
+/**
+ * Legacy deleteItem that just returns void for backward compatibility.
+ */
+export const deleteItemSimple = async (id: string): Promise<void> => {
+  await deleteItem(id);
 };
 
 // --- Project Helpers ---
@@ -855,19 +1259,68 @@ export const getItemsByCollection = async (collectionId: string | undefined) => 
   return db.getAllFromIndex('items', 'by-collection', collectionId);
 };
 
-export const updateItem = async (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => {
+export const updateItem = async (
+  id: string,
+  updates: Partial<Omit<Item, 'id' | 'created_at'>>,
+  options?: UpdateItemOptions
+) => {
   const db = await getDB();
   const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(db);
   const item = await db.get('items', id);
-  if (item) {
-    const next = { ...item, ...updates, updated_at: nowTs() } as Item;
-    if (!Array.isArray(next.collectionIds) || next.collectionIds.length === 0) {
-      next.collectionIds = [defaultUnsortedCollectionId];
-    }
-    await assertNoBookmarkDuplicateInCollections(db, next.url || '', next.collectionIds, id);
-    await db.put('items', next);
-    notifyDataChanged('item.update');
+  if (!item) return;
+
+  const now = nowTs();
+  const hasNotesUpdate = Object.prototype.hasOwnProperty.call(updates, 'notes');
+  const notesValue = hasNotesUpdate ? updates.notes : undefined;
+  const restUpdates = { ...updates } as Partial<Item>;
+  if (hasNotesUpdate) delete restUpdates.notes;
+
+  let next: Item = { ...item, ...restUpdates, updated_at: now } as Item;
+
+  if (!Array.isArray(next.collectionIds) || next.collectionIds.length === 0) {
+    next.collectionIds = [defaultUnsortedCollectionId];
   }
+
+  if (hasNotesUpdate) {
+    const multi =
+      (item.collectionIds?.length ?? 0) > 1 ||
+      Object.keys(item.placements || {}).length > 1;
+
+    let placementId = options?.notesPlacementCollectionId;
+    if (!placementId && !multi) {
+      placementId = item.collectionIds?.[0] || Object.keys(item.placements || {})[0];
+    }
+    if (!placementId && multi && updates.collectionIds?.length === 1) {
+      const only = updates.collectionIds[0];
+      if ((item.collectionIds || []).includes(only)) placementId = only;
+    }
+
+    if (placementId && ((next.collectionIds || []).includes(placementId) || (item.collectionIds || []).includes(placementId))) {
+      if (!(next.collectionIds || []).includes(placementId)) {
+        next.collectionIds = [...new Set([...(next.collectionIds || []), placementId])];
+      }
+      const placements = { ...(next.placements || {}) };
+      const prev = placements[placementId];
+      placements[placementId] = {
+        collectionId: placementId,
+        addedAt: prev?.addedAt ?? now,
+        source: prev?.source ?? 'manual',
+        tags: prev?.tags,
+        notes: notesValue || undefined,
+      };
+      next.placements = placements;
+      next.notes = undefined;
+    } else if (hasNotesUpdate && !multi && !placementId) {
+      next.notes = notesValue || undefined;
+    } else if (hasNotesUpdate && multi && !placementId) {
+      // Do not write shared notes across placements
+      next.notes = undefined;
+    }
+  }
+
+  await assertNoBookmarkDuplicateInCollections(db, next.url || '', next.collectionIds, id);
+  await db.put('items', next);
+  notifyDataChanged('item.update');
 };
 
 export const addSnapshot = async (tabs: Snapshot['tabs']) => {
@@ -882,6 +1335,25 @@ export const addSnapshot = async (tabs: Snapshot['tabs']) => {
 
 // --- Workspace Helpers ---
 
+/**
+ * Deduplicate tabs in workspace windows by normalized URL.
+ * First occurrence wins (preserves user ordering).
+ */
+export const deduplicateWorkspaceTabs = (windows: WorkspaceWindow[]): WorkspaceWindow[] => {
+  const seenUrls = new Set<string>();
+  
+  return windows.map(win => ({
+    ...win,
+    tabs: win.tabs.filter(tab => {
+      if (!tab.url) return true;  // Keep non-URL tabs
+      const normalized = normalizeBookmarkUrl(tab.url);
+      if (seenUrls.has(normalized)) return false;
+      seenUrls.add(normalized);
+      return true;
+    })
+  })).filter(win => win.tabs.length > 0);  // Remove empty windows
+};
+
 export const getAllWorkspaces = async () => {
   const db = await getDB();
   const all = await db.getAll('workspaces');
@@ -892,7 +1364,9 @@ export const addWorkspace = async (name: string, windows: WorkspaceWindow[], pro
   const db = await getDB();
   const id = crypto.randomUUID();
   const now = Date.now();
-  const ws: Workspace = { id, name, projectId, created_at: now, updated_at: now, windows };
+  // Deduplicate tabs before saving
+  const dedupedWindows = deduplicateWorkspaceTabs(windows);
+  const ws: Workspace = { id, name, projectId, created_at: now, updated_at: now, windows: dedupedWindows };
   await db.put('workspaces', ws);
   notifyDataChanged('workspace.add');
   return id;
@@ -903,7 +1377,14 @@ export const updateWorkspace = async (id: string, updates: Partial<Pick<Workspac
   const existing = await db.get('workspaces', id);
   if (!existing) return false;
   const now = Date.now();
-  await db.put('workspaces', { ...existing, ...updates, updated_at: now });
+  
+  // Deduplicate windows if provided
+  const processedUpdates = { ...updates };
+  if (processedUpdates.windows) {
+    processedUpdates.windows = deduplicateWorkspaceTabs(processedUpdates.windows);
+  }
+  
+  await db.put('workspaces', { ...existing, ...processedUpdates, updated_at: now });
   notifyDataChanged('workspace.update');
   return true;
 };
@@ -912,6 +1393,77 @@ export const deleteWorkspace = async (id: string) => {
   const db = await getDB();
   await db.delete('workspaces', id);
   notifyDataChanged('workspace.delete');
+};
+
+// --- Bulk Import Helpers ---
+
+export interface ImportCandidate {
+  url: string;
+  title: string;
+  notes?: string;
+  tags?: string[];
+  source?: string;
+  favicon?: string;
+}
+
+export interface BulkImportResult {
+  created: number;
+  merged: number;
+  skipped: number;
+}
+
+/**
+ * Import multiple bookmarks with deduplication.
+ * Groups by normalized URL, picks best candidate, merges into existing.
+ */
+export const bulkImportBookmarks = async (
+  candidates: ImportCandidate[],
+  collectionId: string
+): Promise<BulkImportResult> => {
+  const db = await getDB();
+  const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(db);
+  const targetCollection = collectionId || defaultUnsortedCollectionId;
+  
+  let created = 0;
+  let merged = 0;
+  let skipped = 0;
+  
+  // Group by normalized URL to handle duplicates within import
+  const byUrl = new Map<string, ImportCandidate[]>();
+  for (const c of candidates) {
+    if (!c.url || !isHttpUrl(c.url)) {
+      skipped++;
+      continue;
+    }
+    const normalized = normalizeBookmarkUrl(c.url);
+    if (!byUrl.has(normalized)) byUrl.set(normalized, []);
+    byUrl.get(normalized)!.push(c);
+  }
+  
+  // Process each unique URL
+  for (const [normalizedUrl, dupes] of byUrl) {
+    // Pick best candidate: prefer one with notes, then longest title
+    const best = dupes.sort((a, b) => {
+      if (a.notes && !b.notes) return -1;
+      if (b.notes && !a.notes) return 1;
+      return (b.title?.length || 0) - (a.title?.length || 0);
+    })[0];
+    
+    const result = await addItemWithMerge({
+      url: normalizedUrl,
+      title: best.title || normalizedUrl,
+      notes: best.notes,
+      tags: best.tags || [],
+      collectionIds: [targetCollection],
+      source: (best.source || 'import') as any,
+      favicon: best.favicon
+    });
+    
+    if (result.merged) merged++;
+    else created++;
+  }
+  
+  return { created, merged, skipped };
 };
 
 export const exportDB = async () => {

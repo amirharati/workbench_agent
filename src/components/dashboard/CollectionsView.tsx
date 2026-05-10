@@ -13,8 +13,11 @@ interface CollectionsViewProps {
   projects: Project[];
   items: Item[];
   onItemClick?: (item: Item) => void;
-  onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
-  onDeleteItem?: (item: Item) => void;
+  onUpdateItem?: (
+    id: string,
+    data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }
+  ) => Promise<void>;
+  onDeleteItem?: (item: Item, fromCollectionId?: string) => void;
   /** Opens the top-level "New Collection" modal owned by parent. */
   onNewCollection?: () => void;
 }
@@ -345,6 +348,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                 projects={projects}
                 onUpdateItem={onUpdateItem}
                 onDeleteItem={onDeleteItem}
+                deleteCollectionContextId={selectedCollectionId === 'all' ? undefined : selectedCollectionId}
               />
             </div>
           </Panel>

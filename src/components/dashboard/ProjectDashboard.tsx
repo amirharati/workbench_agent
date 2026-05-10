@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { Project, Collection, Item, Workspace } from '../../lib/db';
-import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItem, getAllItems, deleteItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID } from '../../lib/db';
+import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItemWithMerge, getAllItems, deleteItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID, type UpdateItemOptions } from '../../lib/db';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -10,6 +10,7 @@ import { TabContent } from './TabContent';
 import { Resizer } from './Resizer';
 import { Panel, ButtonGhost, Input } from '../../styles/primitives';
 import { Search, Sparkles, Plus, X, Sidebar, LayoutList } from 'lucide-react';
+import { DeleteConfirmDialog, type DeleteConfirmResult } from '../DeleteConfirmDialog';
 
 type Tab = {
   id: string;
@@ -27,8 +28,11 @@ interface ProjectDashboardProps {
   items: Item[];
   projects?: Project[]; // For collection creation project selection
   onBack: () => void;
-  onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
-  onDeleteItem?: (id: string) => Promise<void>;
+  onUpdateItem?: (
+    id: string,
+    data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }
+  ) => Promise<void>;
+  onDeleteItem?: (id: string, collectionId?: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
 }
 
@@ -84,7 +88,13 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   // Workspace state
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
 
-  // Load workspaces on mount
+  const [deleteDialogItem, setDeleteDialogItem] = useState<{
+    item: Item;
+    collectionId?: string;
+  } | null>(null);
+
+  const tabDeleteCollectionContextId =
+    selectedCollectionId !== 'all' ? selectedCollectionId : undefined;
   useEffect(() => {
     getAllWorkspaces().then(setWorkspaces).catch(console.error);
   }, []);
@@ -654,7 +664,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       const projectUnsortedId = await ensureProjectUnsortedCollection(project.id);
       const finalCollectionIds = data.collectionIds.length > 0 ? data.collectionIds : [projectUnsortedId];
 
-      const itemId = await addItem({
+      const result = await addItemWithMerge({
         title: data.title,
         url: data.url || '',
         notes: data.notes,
@@ -666,15 +676,15 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       // Refresh data first to get the new item
       if (onRefresh) await onRefresh();
 
-      // Fetch the newly created item
+      // Fetch the item (new or existing if merged)
       const allItems = await getAllItems();
-      const newItem = allItems.find((i) => i.id === itemId);
+      const newItem = allItems.find((i) => i.id === result.itemId);
       if (newItem) {
-        // Open the created item in a tab
+        // Open the item in a tab
         handleItemClick(newItem);
       }
 
-      return itemId;
+      return result.itemId;
     } catch (error) {
       console.error('Failed to create item:', error);
       throw error;
@@ -751,18 +761,29 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     setActivePrimaryTabId(tabId);
   };
 
-  const handleUpdateItem = async (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => {
+  const handleUpdateItem = async (
+    id: string,
+    data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }
+  ) => {
     try {
       // Get the project's unsorted collection if no collections selected
       const projectUnsortedId = `collection_${project.id}_unsorted`;
       const finalCollectionIds = data.collectionIds.length > 0 ? data.collectionIds : [projectUnsortedId];
 
-      await updateItem(id, {
-        title: data.title,
-        url: data.url || '',
-        notes: data.notes,
-        collectionIds: finalCollectionIds,
-      });
+      const opts: UpdateItemOptions | undefined = data.notesPlacementCollectionId
+        ? { notesPlacementCollectionId: data.notesPlacementCollectionId }
+        : undefined;
+
+      await updateItem(
+        id,
+        {
+          title: data.title,
+          url: data.url || '',
+          notes: data.notes,
+          collectionIds: finalCollectionIds,
+        },
+        opts
+      );
 
       // Refresh data
       if (onRefresh) await onRefresh();
@@ -774,18 +795,30 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     }
   };
 
-  const handleDeleteItem = async (item: Item) => {
-    if (!window.confirm(`Delete "${item.title || 'Untitled'}"? This action cannot be undone.`)) return;
+  const handleDeleteItem = (item: Item, contextFromTab?: string) => {
+    const collectionId =
+      contextFromTab && (item.collectionIds || []).includes(contextFromTab)
+        ? contextFromTab
+        : selectedCollectionId !== 'all' && (item.collectionIds || []).includes(selectedCollectionId)
+          ? selectedCollectionId
+          : undefined;
+    setDeleteDialogItem({ item, collectionId });
+  };
+
+  const runDeleteFromDialog = async (result: DeleteConfirmResult) => {
+    const pending = deleteDialogItem;
+    setDeleteDialogItem(null);
+    if (result.action === 'cancel' || !pending) return;
+    const { item, collectionId } = pending;
     try {
-      if (onDeleteItem) {
-        await onDeleteItem(item.id);
-      } else {
-        // Fallback: use deleteItem directly if handler not provided
-        await deleteItem(item.id);
+      if (result.action === 'remove-from-collection' && collectionId) {
+        if (onDeleteItem) await onDeleteItem(item.id, collectionId);
+      } else if (result.action === 'delete-everywhere') {
+        if (onDeleteItem) await onDeleteItem(item.id);
+        else await deleteItem(item.id);
+        handleTabClose(item.id);
+        handleTabClose(`edit-${item.id}`);
       }
-      // Close tab if open (both item tab and edit tab)
-      handleTabClose(item.id);
-      handleTabClose(`edit-${item.id}`);
       if (onRefresh) await onRefresh();
     } catch (error) {
       console.error('Failed to delete item:', error);
@@ -1374,6 +1407,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onCreateCollection={handleCreateCollectionFromItemForm}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                       onItemClick={handleItemClick}
                       defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
@@ -1418,6 +1452,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onCreateCollection={handleCreateCollectionFromItemForm}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                       onItemClick={handleItemClick}
                       defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
@@ -1444,6 +1479,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   onCreateCollection={handleCreateCollectionFromItemForm}
                   onUpdateItem={handleUpdateItem}
                   onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                   onItemClick={handleItemClick}
                   defaultCollectionId={selectedCollectionId}
                   projectId={project.id}
@@ -1497,6 +1533,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         onCreateCollection={handleCreateCollectionFromItemForm}
                         onUpdateItem={handleUpdateItem}
                         onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                         onItemClick={handleItemClick}
                         defaultCollectionId={selectedCollectionId}
                         projectId={project.id}
@@ -1541,6 +1578,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         onCreateCollection={handleCreateCollectionFromItemForm}
                         onUpdateItem={handleUpdateItem}
                         onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                         onItemClick={handleItemClick}
                         defaultCollectionId={selectedCollectionId}
                         projectId={project.id}
@@ -1578,6 +1616,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onCreateCollection={handleCreateCollectionFromItemForm}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                       onItemClick={handleItemClick}
                       defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
@@ -1703,6 +1742,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   onCreateCollection={handleCreateCollectionFromItemForm}
                   onUpdateItem={handleUpdateItem}
                   onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                   onItemClick={handleItemClick}
                   defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                   projectId={project.id}
@@ -1747,6 +1787,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           onCreateCollection={handleCreateCollectionFromItemForm}
                           onUpdateItem={handleUpdateItem}
                           onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                           onItemClick={handleItemClick}
                           defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                           projectId={project.id}
@@ -1773,6 +1814,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       onCreateCollection={handleCreateCollectionFromItemForm}
                       onUpdateItem={handleUpdateItem}
                       onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                       onItemClick={handleItemClick}
                       defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
@@ -1824,6 +1866,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             onCreateCollection={handleCreateCollectionFromItemForm}
                             onUpdateItem={handleUpdateItem}
                             onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                             onItemClick={handleItemClick}
                             defaultCollectionId={selectedCollectionId}
                             projectId={project.id}
@@ -1867,6 +1910,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             onCreateCollection={handleCreateCollectionFromItemForm}
                             onUpdateItem={handleUpdateItem}
                             onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                             onItemClick={handleItemClick}
                             defaultCollectionId={selectedCollectionId}
                             projectId={project.id}
@@ -1903,6 +1947,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           onCreateCollection={handleCreateCollectionFromItemForm}
                           onUpdateItem={handleUpdateItem}
                           onDeleteItem={handleDeleteItem}
+                      deleteCollectionContextId={tabDeleteCollectionContextId}
                           onItemClick={handleItemClick}
                           defaultCollectionId={selectedCollectionId}
                           projectId={project.id}
@@ -2087,6 +2132,18 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
             </div>
           </Panel>
         </div>
+      )}
+      {deleteDialogItem && (
+        <DeleteConfirmDialog
+          item={deleteDialogItem.item}
+          collectionId={deleteDialogItem.collectionId}
+          collectionName={
+            deleteDialogItem.collectionId
+              ? collections.find((c) => c.id === deleteDialogItem.collectionId)?.name
+              : undefined
+          }
+          onResult={runDeleteFromDialog}
+        />
       )}
     </div>
   );
