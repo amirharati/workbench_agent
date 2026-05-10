@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, LayoutGrid, List, Search, Trash2, X } from 'lucide-react';
 import type { WindowGroup } from '../../../App';
-import { addWorkspace, updateWorkspace } from '../../../lib/db';
+import { addWorkspace, normalizeBookmarkUrl, updateWorkspace } from '../../../lib/db';
 import type { Project, Workspace, WorkspaceWindow } from '../../../lib/db';
 
 interface BottomPanelProps {
@@ -566,7 +566,43 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
   const updateExistingWorkspace = async (workspaceId: string) => {
     const windowsToSave = buildWorkspaceWindowsFromSelection();
-    await updateWorkspace(workspaceId, { windows: windowsToSave });
+    const existingWorkspace = workspaces.find((ws) => ws.id === workspaceId);
+    if (!existingWorkspace) return;
+
+    const existingWindows = existingWorkspace.windows || [];
+    const existingUrlSet = new Set<string>();
+    for (const win of existingWindows) {
+      for (const tab of win.tabs) {
+        if (!tab.url) continue;
+        existingUrlSet.add(normalizeBookmarkUrl(tab.url));
+      }
+    }
+
+    // Append only links that are not already in the workspace.
+    const tabsToAppend: WorkspaceWindow['tabs'] = [];
+    for (const win of windowsToSave) {
+      for (const tab of win.tabs) {
+        if (!tab.url) continue;
+        const normalized = normalizeBookmarkUrl(tab.url);
+        if (existingUrlSet.has(normalized)) continue;
+        existingUrlSet.add(normalized);
+        tabsToAppend.push(tab);
+      }
+    }
+
+    if (tabsToAppend.length === 0) {
+      if (onWorkspacesChanged) await onWorkspacesChanged();
+      return;
+    }
+
+    const mergedWindows =
+      existingWindows.length > 0
+        ? existingWindows.map((win, idx) =>
+            idx === 0 ? { ...win, tabs: [...win.tabs, ...tabsToAppend] } : win
+          )
+        : [{ id: crypto.randomUUID(), name: 'Window 1', tabs: tabsToAppend }];
+
+    await updateWorkspace(workspaceId, { windows: mergedWindows });
     if (onWorkspacesChanged) await onWorkspacesChanged();
   };
 
@@ -733,13 +769,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title="Update this workspace (overwrite snapshot)"
+                title="Append unique links to this workspace"
               >
                 <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {ws.name}
                 </span>
                 <span style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--text-muted)', flexShrink: 0 }}>
-                  Update
+                  Append
                 </span>
               </div>
             ))}
