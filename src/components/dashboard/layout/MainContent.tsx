@@ -22,6 +22,8 @@ import { NewProjectModal, NewCollectionModal, NewItemModal } from '../CreateModa
 
 interface MainContentProps {
   activeView: DashboardView;
+  scopeProjectId?: string | 'all';
+  scopeCollectionId?: string | 'all';
   projects: Project[];
   items: Item[];
   collections: Collection[];
@@ -57,10 +59,16 @@ interface MainContentProps {
     settings: AISettings,
     prompt: string
   ) => Promise<{ text: string; model: string; requestedModel?: string; modelMismatch?: boolean }>;
+  listMode?: boolean;
+  onOpenItem?: (item: Item) => void;
+  onOpenWorkspace?: (workspace: Workspace) => void;
+  onOpenListTab?: (type: 'bookmark-list' | 'note-list', itemIds: string[], title: string) => void;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
   activeView, 
+  scopeProjectId = 'all',
+  scopeCollectionId = 'all',
   projects,
   items, 
   collections, 
@@ -88,6 +96,10 @@ export const MainContent: React.FC<MainContentProps> = ({
   aiSettings,
   onSaveAISettings,
   onTestAI,
+  listMode = false,
+  onOpenItem,
+  onOpenWorkspace,
+  onOpenListTab,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -100,6 +112,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [editCollectionId, setEditCollectionId] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [bookmarkListWidth, setBookmarkListWidth] = useState(240);
+  const [bookmarkDetailWidth, setBookmarkDetailWidth] = useState(380);
   const [selectedBookmarkProjectId, setSelectedBookmarkProjectId] = useState<string | 'all'>('all');
   const [bookmarkContextMenu, setBookmarkContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const [bookmarkViewMode, setBookmarkViewMode] = useState<'list' | 'grid'>('grid');
@@ -138,9 +151,13 @@ export const MainContent: React.FC<MainContentProps> = ({
     if (activeView !== 'bookmarks') return [];
     
     let filtered = bookmarkItems;
+
+    if (scopeCollectionId && scopeCollectionId !== 'all') {
+      filtered = filtered.filter((item) => (item.collectionIds || []).includes(scopeCollectionId));
+    }
     
     // Filter by project
-    if (selectedBookmarkProjectId && selectedBookmarkProjectId !== 'all') {
+    if (scopeCollectionId === 'all' && selectedBookmarkProjectId && selectedBookmarkProjectId !== 'all') {
       const projectCollectionIds = new Set(
         collections
           .filter(c => c.primaryProjectId === selectedBookmarkProjectId || 
@@ -166,7 +183,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     }
     
     return filtered.sort((a, b) => b.updated_at - a.updated_at);
-  }, [activeView, bookmarkItems, collections, selectedBookmarkProjectId, searchQuery]);
+  }, [activeView, bookmarkItems, collections, selectedBookmarkProjectId, searchQuery, scopeCollectionId]);
 
   // Notes are items without URLs (bookmark notes stay in Bookmarks view).
   const notesItems = useMemo(() => {
@@ -178,9 +195,13 @@ export const MainContent: React.FC<MainContentProps> = ({
     if (activeView !== 'notes') return [];
     
     let filtered = notesItems;
+
+    if (scopeCollectionId && scopeCollectionId !== 'all') {
+      filtered = filtered.filter((item) => (item.collectionIds || []).includes(scopeCollectionId));
+    }
     
     // Filter by project
-    if (selectedNotesProjectId && selectedNotesProjectId !== 'all') {
+    if (scopeCollectionId === 'all' && selectedNotesProjectId && selectedNotesProjectId !== 'all') {
       const projectCollectionIds = new Set(
         collections
           .filter(c => c.primaryProjectId === selectedNotesProjectId || 
@@ -206,7 +227,34 @@ export const MainContent: React.FC<MainContentProps> = ({
     }
     
     return filtered.sort((a, b) => b.updated_at - a.updated_at);
-  }, [activeView, notesItems, collections, selectedNotesProjectId, searchQuery]);
+  }, [activeView, notesItems, collections, selectedNotesProjectId, searchQuery, scopeCollectionId]);
+
+  // Filter workspaces by project scope
+  const filteredWorkspaces = useMemo(() => {
+    if (activeView !== 'workspaces') return [];
+    
+    let filtered = workspaces;
+    
+    // Filter by project - when "all", show everything including detached
+    // When specific project, show only that project's workspaces
+    if (scopeProjectId && scopeProjectId !== 'all') {
+      filtered = filtered.filter(ws => ws.projectId === scopeProjectId);
+    }
+    
+    // Filter by search
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter((ws) => {
+        const haystack = [
+          ws.name,
+          ...ws.windows.flatMap(w => w.tabs.map(t => t.title || t.url)),
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+    
+    return filtered.sort((a, b) => b.updated_at - a.updated_at);
+  }, [activeView, workspaces, scopeProjectId, searchQuery]);
 
   // Get selected note for notes view
   const selectedNote = useMemo(() => {
@@ -220,6 +268,39 @@ export const MainContent: React.FC<MainContentProps> = ({
       setEditNoteContent(selectedNote.notes || '');
     }
   }, [selectedNote, isEditingNote]);
+
+  useEffect(() => {
+    if (!scopeProjectId || scopeProjectId === 'all') {
+      setSelectedBookmarkProjectId('all');
+      setSelectedNotesProjectId('all');
+      return;
+    }
+    setSelectedBookmarkProjectId(scopeProjectId);
+    setSelectedNotesProjectId(scopeProjectId);
+  }, [scopeProjectId]);
+
+  // Keep bookmark detail selection valid as filters/scope change.
+  useEffect(() => {
+    if (activeView !== 'bookmarks') return;
+    if (!viewingItem) return;
+    const stillVisible = filteredBookmarkItems.some((item) => item.id === viewingItem.id);
+    if (!stillVisible) setViewingItem(null);
+  }, [activeView, filteredBookmarkItems, viewingItem]);
+
+  // Keep notes selection stable and auto-pick a first note when possible.
+  useEffect(() => {
+    if (activeView !== 'notes') return;
+    if (filteredNotesItems.length === 0) {
+      if (selectedNoteId !== null) setSelectedNoteId(null);
+      return;
+    }
+    const hasSelected = selectedNoteId
+      ? filteredNotesItems.some((item) => item.id === selectedNoteId)
+      : false;
+    if (!hasSelected) {
+      setSelectedNoteId(filteredNotesItems[0]?.id ?? null);
+    }
+  }, [activeView, filteredNotesItems, selectedNoteId]);
 
 
   const openInNewTab = async (url: string) => {
@@ -790,7 +871,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: `${bookmarkListWidth}px 4px 1fr`,
+                gridTemplateColumns: `${bookmarkListWidth}px 4px 1fr 4px ${bookmarkDetailWidth}px`,
                 gap: '4px',
                 flex: 1,
                 minHeight: 0,
@@ -929,14 +1010,13 @@ export const MainContent: React.FC<MainContentProps> = ({
                       {filteredBookmarkItems.map((item) => {
                         const collection = getItemCollection(item);
                         const project = collection ? getCollectionProject(collection) : null;
+                        const isSelected = viewingItem?.id === item.id;
                         
                         return (
                           <div
                             key={item.id}
                             onClick={() => {
-                              if (item.url) {
-                                openInNewTab(item.url);
-                              }
+                              setViewingItem(item);
                             }}
                             onContextMenu={(e) => {
                               e.preventDefault();
@@ -944,8 +1024,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                             }}
                             style={{
                               padding: '8px 12px',
-                              background: 'var(--bg-glass)',
-                              border: '1px solid var(--border)',
+                              background: isSelected ? 'var(--accent-weak)' : 'var(--bg-glass)',
+                              border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
                               borderRadius: 6,
                               cursor: 'pointer',
                               transition: 'all 0.1s ease',
@@ -955,12 +1035,16 @@ export const MainContent: React.FC<MainContentProps> = ({
                               overflow: 'hidden',
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'var(--bg-hover)';
-                              e.currentTarget.style.borderColor = 'var(--accent)';
+                              if (!isSelected) {
+                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                              }
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'var(--bg-glass)';
-                              e.currentTarget.style.borderColor = 'var(--border)';
+                              if (!isSelected) {
+                                e.currentTarget.style.background = 'var(--bg-glass)';
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                              }
                             }}
                           >
                             {/* Title and URL */}
@@ -1023,11 +1107,13 @@ export const MainContent: React.FC<MainContentProps> = ({
                                   {project.name}
                                 </span>
                               )}
-                              {/* Open icon */}
+                              {/* Open URL icon */}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setViewingItem(item);
+                                  if (item.url) {
+                                    openInNewTab(item.url);
+                                  }
                                 }}
                                 style={{
                                   padding: '4px',
@@ -1050,9 +1136,9 @@ export const MainContent: React.FC<MainContentProps> = ({
                                   e.currentTarget.style.background = 'transparent';
                                   e.currentTarget.style.color = 'var(--text-muted)';
                                 }}
-                                title="Open detail"
+                                title="Open URL in new tab"
                               >
-                                <Eye size={14} />
+                                <ExternalLink size={14} />
                               </button>
                             </div>
                           </div>
@@ -1069,14 +1155,13 @@ export const MainContent: React.FC<MainContentProps> = ({
                       {filteredBookmarkItems.map((item) => {
                         const collection = getItemCollection(item);
                         const project = collection ? getCollectionProject(collection) : null;
+                        const isSelected = viewingItem?.id === item.id;
                         
                         return (
                           <div
                             key={item.id}
                             onClick={() => {
-                              if (item.url) {
-                                openInNewTab(item.url);
-                              }
+                              setViewingItem(item);
                             }}
                             onContextMenu={(e) => {
                               e.preventDefault();
@@ -1084,8 +1169,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                             }}
                             style={{
                               padding: '12px',
-                              background: 'var(--bg-glass)',
-                              border: '1px solid var(--border)',
+                              background: isSelected ? 'var(--accent-weak)' : 'var(--bg-glass)',
+                              border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
                               borderRadius: 8,
                               cursor: 'pointer',
                               transition: 'all 0.1s ease',
@@ -1096,12 +1181,16 @@ export const MainContent: React.FC<MainContentProps> = ({
                               minHeight: 0,
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'var(--bg-hover)';
-                              e.currentTarget.style.borderColor = 'var(--accent)';
+                              if (!isSelected) {
+                                e.currentTarget.style.background = 'var(--bg-hover)';
+                                e.currentTarget.style.borderColor = 'var(--accent)';
+                              }
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'var(--bg-glass)';
-                              e.currentTarget.style.borderColor = 'var(--border)';
+                              if (!isSelected) {
+                                e.currentTarget.style.background = 'var(--bg-glass)';
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                              }
                             }}
                           >
                             {/* Title */}
@@ -1192,11 +1281,13 @@ export const MainContent: React.FC<MainContentProps> = ({
                                   {project.name}
                                 </span>
                               )}
-                              {/* Open icon */}
+                              {/* Open URL icon */}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setViewingItem(item);
+                                  if (item.url) {
+                                    openInNewTab(item.url);
+                                  }
                                 }}
                                 style={{
                                   padding: '4px',
@@ -1220,9 +1311,9 @@ export const MainContent: React.FC<MainContentProps> = ({
                                   e.currentTarget.style.background = 'transparent';
                                   e.currentTarget.style.color = 'var(--text-muted)';
                                 }}
-                                title="Open detail"
+                                title="Open URL in new tab"
                               >
-                                <Eye size={14} />
+                                <ExternalLink size={14} />
                               </button>
                             </div>
                           </div>
@@ -1231,6 +1322,140 @@ export const MainContent: React.FC<MainContentProps> = ({
                     </div>
                   )}
                 </div>
+              </Panel>
+
+              <Resizer
+                direction="vertical"
+                onResize={(delta) => {
+                  setBookmarkDetailWidth((w) => Math.min(Math.max(300, w - delta), 620));
+                }}
+              />
+
+              {/* Right: Bookmark detail panel */}
+              <Panel
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: 0,
+                  padding: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                {viewingItem ? (
+                  <div className="scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+                    <div style={{ marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                        <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
+                          {viewingItem.title || 'Untitled'}
+                        </h2>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {onUpdateBookmark && (
+                            <button
+                              onClick={() => {
+                                setEditingItem(viewingItem);
+                                setEditTitle(viewingItem.title || '');
+                                setEditNotes(viewingItem.notes || '');
+                                setEditCollectionId(viewingItem.collectionIds?.[0]);
+                                setViewingItem(null);
+                              }}
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: 'var(--text-xs)',
+                                background: 'var(--bg-glass)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 4,
+                                color: 'var(--text)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <Pencil size={12} />
+                              Edit
+                            </button>
+                          )}
+                          {onDeleteBookmark && (
+                            <button
+                              onClick={() => {
+                                if (confirm('Delete this bookmark?')) {
+                                  onDeleteBookmark(viewingItem.id);
+                                  setViewingItem(null);
+                                }
+                              }}
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: 'var(--text-xs)',
+                                background: 'transparent',
+                                border: '1px solid var(--border)',
+                                borderRadius: 4,
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {viewingItem.url && (
+                        <a
+                          href={viewingItem.url}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (viewingItem.url) openInNewTab(viewingItem.url);
+                          }}
+                          style={{
+                            color: 'var(--accent)',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: 'var(--text-xs)',
+                            wordBreak: 'break-all',
+                            marginBottom: '10px',
+                          }}
+                        >
+                          <ExternalLink size={13} />
+                          {viewingItem.url}
+                        </a>
+                      )}
+
+                      {(() => {
+                        const itemCollection = getItemCollection(viewingItem);
+                        const itemProject = itemCollection ? getCollectionProject(itemCollection) : null;
+                        if (!itemCollection && !itemProject) return null;
+                        return (
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                            {itemCollection && <span>📂 {itemCollection.name}</span>}
+                            {itemProject && <span>📁 {itemProject.name}</span>}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div
+                      style={{
+                        borderTop: '1px solid var(--border)',
+                        paddingTop: '12px',
+                        fontSize: 'var(--text-sm)',
+                        color: 'var(--text)',
+                        lineHeight: 1.55,
+                        whiteSpace: 'pre-wrap',
+                      }}
+                    >
+                      {viewingItem.notes || 'No notes'}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                    Select a bookmark to view details
+                  </div>
+                )}
               </Panel>
             </div>
             
@@ -2027,6 +2252,291 @@ export const MainContent: React.FC<MainContentProps> = ({
     }
   };
 
+  // LIST MODE: Simplified list view for split layout
+  if (listMode && (activeView === 'bookmarks' || activeView === 'notes' || activeView === 'workspaces')) {
+    const listItems = activeView === 'bookmarks' 
+      ? filteredBookmarkItems 
+      : activeView === 'notes' 
+        ? filteredNotesItems 
+        : [];
+    
+    // For workspaces, render a different list
+    if (activeView === 'workspaces') {
+      
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Header */}
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
+                Workspaces
+              </span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                {filteredWorkspaces.length}
+              </span>
+            </div>
+            <SearchBar 
+              value={searchQuery} 
+              onChange={setSearchQuery} 
+              placeholder="Search workspaces..."
+            />
+          </div>
+
+          {/* Workspace list */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: 8 }} className="scrollbar">
+            {filteredWorkspaces.length === 0 ? (
+              <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>
+                No workspaces found
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {filteredWorkspaces.map((ws) => {
+                  const tabCount = ws.windows.reduce((sum, w) => sum + w.tabs.length, 0);
+                  return (
+                    <button
+                      key={ws.id}
+                      onClick={() => onOpenWorkspace?.(ws)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: 6,
+                        border: 'none',
+                        background: 'transparent',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 2,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--bg-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <span style={{ 
+                        fontSize: 'var(--text-sm)', 
+                        fontWeight: 500, 
+                        color: 'var(--text)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {ws.name}
+                      </span>
+                      <span style={{ 
+                        fontSize: 'var(--text-xs)', 
+                        color: 'var(--text-faint)',
+                      }}>
+                        {tabCount} tab{tabCount !== 1 ? 's' : ''} · {ws.windows.length} window{ws.windows.length !== 1 ? 's' : ''}
+                        {!ws.projectId && <span style={{ marginLeft: 6, color: 'var(--warning, #f59e0b)' }}>detached</span>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    
+    // Generate tab title based on scope
+    const getListTabTitle = () => {
+      if (scopeCollectionId !== 'all') {
+        const collection = collections.find(c => c.id === scopeCollectionId);
+        return collection?.name || 'Collection';
+      }
+      if (scopeProjectId !== 'all') {
+        const project = projects.find(p => p.id === scopeProjectId);
+        return project?.name || 'Project';
+      }
+      return 'All';
+    };
+    
+    const handleOpenAsTab = () => {
+      if (!onOpenListTab || listItems.length === 0) return;
+      const type = activeView === 'bookmarks' ? 'bookmark-list' : 'note-list';
+      const title = `${getListTabTitle()} ${activeView === 'bookmarks' ? 'Bookmarks' : 'Notes'}`;
+      onOpenListTab(type, listItems.map(i => i.id), title);
+    };
+    
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {/* Header with search and actions */}
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
+                {activeView === 'bookmarks' ? 'Bookmarks' : 'Notes'}
+              </span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                {listItems.length}
+              </span>
+            </div>
+            {listItems.length > 0 && (
+              <button
+                onClick={handleOpenAsTab}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  fontSize: 'var(--text-xs)',
+                  cursor: 'pointer',
+                }}
+                title="Open all as a single tab"
+              >
+                Open as tab
+              </button>
+            )}
+          </div>
+          <SearchBar 
+            value={searchQuery} 
+            onChange={setSearchQuery} 
+            placeholder={`Search ${activeView}...`}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button
+              onClick={() => activeView === 'bookmarks' ? setShowAddBookmark(true) : setShowAddNote(true)}
+              style={{
+                flex: 1,
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: 'none',
+                background: 'var(--accent)',
+                color: '#fff',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+              }}
+            >
+              <Plus size={14} />
+              Add
+            </button>
+            {activeView === 'bookmarks' && (
+              <button
+                onClick={() => setShowImportStudio(true)}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  fontSize: 'var(--text-xs)',
+                  cursor: 'pointer',
+                }}
+              >
+                Import
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Item list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 8 }} className="scrollbar">
+          {listItems.length === 0 ? (
+            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>
+              No {activeView} found
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {listItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => onOpenItem?.(item)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: 'transparent',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 2,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <span style={{ 
+                    fontSize: 'var(--text-sm)', 
+                    fontWeight: 500, 
+                    color: 'var(--text)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {item.title || 'Untitled'}
+                  </span>
+                  {item.url && (
+                    <span style={{ 
+                      fontSize: 'var(--text-xs)', 
+                      color: 'var(--text-faint)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {item.url}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Modals for list mode */}
+        <NewItemModal
+          open={showAddBookmark}
+          onClose={() => setShowAddBookmark(false)}
+          kind="bookmark"
+          projects={projects}
+          collections={collections}
+          defaultProjectId={scopeProjectId !== 'all' ? scopeProjectId : undefined}
+          onCreateProject={onCreateProject}
+          onCreateCollection={onCreateCollection}
+          onCreate={async (data) => {
+            if (onCreateItem) await onCreateItem(data);
+          }}
+        />
+        <NewItemModal
+          open={showAddNote}
+          onClose={() => setShowAddNote(false)}
+          kind="note"
+          projects={projects}
+          collections={collections}
+          defaultProjectId={scopeProjectId !== 'all' ? scopeProjectId : undefined}
+          onCreateProject={onCreateProject}
+          onCreateCollection={onCreateCollection}
+          onCreate={async (data) => {
+            if (onCreateItem) await onCreateItem(data);
+          }}
+        />
+        {showImportStudio && (
+          <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', zIndex: 100 }}>
+            <ImportStudioView
+              projects={projects}
+              collections={collections}
+              onBack={() => setShowImportStudio(false)}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ 
       height: '100%', 
@@ -2178,7 +2688,7 @@ export const MainContent: React.FC<MainContentProps> = ({
       )}
 
       {/* Item detail view modal */}
-      {viewingItem && !editingItem && (
+      {viewingItem && !editingItem && activeView !== 'bookmarks' && (
         <div style={{
           position: 'fixed',
           inset: 0,

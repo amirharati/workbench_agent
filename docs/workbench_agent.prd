@@ -179,10 +179,10 @@ The AI agent can access:
 ## User Interface
 
 ### Main Views
-1. **Dashboard**: ✅ Full-page dashboard with left sidebar navigation
-2. **Tab Commander**: ✅ Full-page live tab management (sidebar item alongside Settings)
-3. **Bookmarks View**: ✅ List/grid with search, project filtering, add/edit/delete
-4. **Workspaces View**: ✅ List and detail views with restore functionality
+1. **Dashboard**: ✅ IDE-style shell — left sidebar (**project dropdown**, collections-in-scope, Content/Tools); middle **list pane + item tabs** for bookmarks/notes/workspaces (tabs persist across scope); **full-page** Tab Commander & Settings; right assistant panel. See [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md).
+2. **Tab Commander**: ✅ Full-page live tab management; themed consistently with dashboard tokens (`BottomPanel`).
+3. **Bookmarks View**: ✅ Scoped list + tabbed detail; search/import in list header; in-tab edit; bookmark-grounded AI from filtered scope.
+4. **Workspaces View**: ✅ Scoped list; workspace opens as **one tab** with link list and bulk actions (open/bookmark/remove).
 5. **Collections View**: ✅ Dedicated collections + items workspace
 6. **Projects View**: ✅ Implemented project workspace and cards
 7. **Notes View**: ✅ Implemented note-focused view over note-like items
@@ -208,7 +208,7 @@ The AI agent can access:
 
 ### Phase 1.5: Data Model & Linking (Current Focus)
 - ✅ Define and implement Projects ↔ Collections core relationship
-- 🟡 Align top-level UI flows with the model (project/collection-aware create flows)
+- 🟡 Align top-level UI flows with the model (project/collection-aware create flows) — **partially addressed** by IDE iteration 1 scope UX
 - ⏳ Decide and implement single long-term Notes model (`items` note-like vs first-class `notes` store)
 - ⏳ Implement richer resource linking UX (bookmarks ↔ notes ↔ projects)
 

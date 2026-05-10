@@ -63,7 +63,7 @@ Chrome MV3 extension
 **Dual UI**
 
 - **Side panel**: bookmark-centric save flow (URL/title prefill from active tab; optional notes; project/collection pickers with inline create); “already saved” list with edit / remove copy / add new copy; duplicate prevention for same URL in the same collection; **Open Dashboard** and **Set Workbench as Home** (opens Chrome settings + copies extension dashboard URL). No backup UI in the panel (full dashboard only).
-- **Dashboard**: single left nav — Home (placeholder), Projects, Bookmarks, Workspaces, Notes, Collections, **Tab Commander**, **Settings** (no separate footer strip).
+- **Dashboard**: IDE-style **three-region shell** — left navigation (**project dropdown**, collections for selected project, **Content** vs **Tools**); middle area is either **list pane + item tabs** (Bookmarks, Notes, Workspaces — tabs persist when scope changes) or **full-page** tool views (**Tab Commander**, Settings); persistent **right assistant** panel. Detail in [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md).
 
 **Stores (conceptual)** — see `src/lib/db.ts` for truth:
 
@@ -80,7 +80,7 @@ Chrome MV3 extension
 - Notes/Bookmarks separation: both use the same `items` store, but UI classification is now exclusive — bookmarks require URL, notes are URL-empty items.
 - Workspaces: save/restore session snapshots; optional `projectId` on workspace.
 - Workspace save flow: Tab Commander save dialog supports selecting a project (or Detached) for new workspace snapshots.
-- Side panel: tab-specific enablement (extension icon opens panel only for that tab); opening full-page dashboard disables the side panel on the **dashboard tab only**.
+- **Dashboard shell (IDE iteration 1)**: Left nav uses a **project scope dropdown** and collections for the selected project; Bookmarks, Notes, and Workspaces use a **split middle** (scoped list + tabbed detail for open items/workspaces); Tab Commander is **full-page** with styling aligned to shared theme tokens; bookmark/note tabs support **in-place editing**.
 - Data safety: export/import, backup verification, debounced live backup to `latest.json`, manual named backups, envelope metadata (`revision` + `deviceId`), and startup conflict pause/resolution flow.
 - AI infra baseline: pluggable client layer (`src/lib/ai`) with OpenRouter-compatible chat adapter plus optional Chrome native/on-device provider path, persisted AI Settings (provider/model/base URL/API key), timeout + error handling, strict model-match toggle, and Settings test prompt with provider-returned model display.
 - Bookmark-grounded AI starter: Bookmarks view supports “Ask AI” over current filtered bookmark scope, with grounded context assembly and visible source refs (`[B1]`, `[B2]`, ...).
@@ -118,4 +118,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-05-06 (session wrap-up) — Import Studio preview (file + Chrome API + Raindrop-ish CSV) documented; DB import commit still open.*
+*Last updated: 2026-05-09 — IDE dashboard iteration 1 (split workspace + item tabs + Tab Commander theme alignment); see [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md) and [`backlog.md`](backlog.md).*

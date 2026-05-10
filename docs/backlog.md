@@ -41,6 +41,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **AI infra hardening slice**: strict model-match option, task-based routing scaffold (`single` vs `by-task` with overrides), and optional Chrome native/on-device provider path (graceful fallback when unavailable).
 - **Phase B starter (AI + bookmarks)**: Bookmarks view now supports "Ask AI" over current filtered bookmark scope with grounded prompt assembly and visible source refs (`[B1]`, `[B2]`, ...).
 - **Import Studio (preview phase)**: Bookmarks → **Import** opens **Import Studio** (`ImportStudioView.tsx`). **Working:** Netscape/HTML + **CSV + JSON** file parse, **`chrome.bookmarks.getTree`** load, unified preview table (first 300 rows shown), stats (valid URLs, duplicates hint), optional project/collection **planning** dropdowns (not applied to DB yet). CSV maps Raindrop-like columns incl. **`folder` / `collection`**, **`cover`** (→ image preview column), **`source`/provider aliases**. **Still mock:** AI assistant tab only. **Next session:** commit to DB (`addItem`/batch), persist **cover** + **import provenance** (e.g. `metadata`), dedupe aligned with `normalizeBookmarkUrl`.
+- **Dashboard shell — IDE iteration 1**: Three-region layout with **project dropdown** + collections-in-scope + Content/Tools nav; middle area uses **list pane + item-tab detail** for Bookmarks/Notes/Workspaces (open **item** tabs persist across scope changes); **full-page** Tab Commander and Settings; workspace tabs as single link-list with selection/bookmark/remove; aggregate “open list as tab”; bookmark/note **edit-in-tab**; Tab Commander (`BottomPanel`) **theme-aligned** via CSS variables + `global.css` tokens (`--error`, `--bg-input`). Supersedes earlier “module tabs + bookmarks split” milestones. Spec: [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md).
 
 ---
 
@@ -80,6 +81,15 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 - [ ] **Detach collection from project** (remove project from `projectIds` without deleting collection).
 - [ ] **Share collections across projects** UI (`projectIds` management, indicators).
+
+**UI architecture — IDE shell refresh** — design: [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md)
+
+- [x] **Iteration 1 — shipped** — project dropdown + collections; Content/Tools sections; middle **split** (list + item tabs) for bookmarks/notes/workspaces; item tabs persist across scope; full-page Tab Commander + Settings; workspace link-list tab UX + aggregate list tabs + edit-in-tab; Tab Commander themed with shared tokens.
+- [ ] **Phase 2 polish** — unify shared split primitives/resizers; optional persisted divider width.
+- [ ] **Phase 2 scope model** — explicit virtual aggregate scope chips (`All Collections`, etc.) beyond current dropdown behavior; clear scope state presentation.
+- [ ] **Phase 3 right pane contract** — consistent AI/inspector side panel behavior (pin/collapse/context).
+- [ ] **Phase 3 tab/scope interaction polish** — out-of-scope tab affordances + reveal/switch actions.
+- [ ] **Phase 4 decomposition** — split `MainContent.tsx` and remaining dashboard mega-components into domain containers.
 
 **Items (bookmarks)**
 
@@ -144,4 +154,4 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ---
 
-*Last updated: 2026-05-06 (session wrap-up) — Import Studio file + Chrome API ingestion + Raindrop-ish CSV mapping live (preview-only); AI assistant tab remains mock; DB commit + `metadata` for cover/import source next.*
+*Last updated: 2026-05-09 — IDE shell **iteration 1** documented as shipped (`UI_IDE_REDESIGN.md`, backlog); Tab Commander theme alignment; backlog deduped for shell milestones.*

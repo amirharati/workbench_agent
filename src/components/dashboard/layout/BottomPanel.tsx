@@ -589,15 +589,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '0.375rem',
-        padding: '0.25rem 0.5rem',
-        borderRadius: '9999px',
-        border: active ? '1px solid #93c5fd' : '1px solid #e5e7eb',
-        background: active ? '#eff6ff' : 'white',
-        color: active ? '#1d4ed8' : '#374151',
+        gap: 6,
+        padding: '4px 8px',
+        borderRadius: 9999,
+        border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+        background: active ? 'var(--accent-weak)' : 'transparent',
+        color: active ? 'var(--accent)' : 'var(--text)',
         cursor: 'pointer',
-        fontSize: '0.75rem',
-        fontWeight: 800,
+        fontSize: 'var(--text-xs)',
+        fontWeight: 500,
         userSelect: 'none',
         whiteSpace: 'nowrap',
       }}
@@ -666,10 +666,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             top: menuPos.top,
             left: menuPos.left,
             width: `${MENU_WIDTH}px`,
-            background: 'white',
-            border: '1px solid #e5e7eb',
-            borderRadius: '0.75rem',
-            boxShadow: '0 18px 44px rgba(0,0,0,0.22)',
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            boxShadow: '0 12px 32px rgba(0,0,0,0.15)',
             zIndex: 2147483647,
             overflow: 'hidden',
           }}
@@ -677,12 +677,12 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         >
           <div
             style={{
-              padding: '0.625rem 0.75rem',
-              borderBottom: '1px solid #e5e7eb',
-              background: '#f9fafb',
-              fontWeight: 900,
-              color: '#111827',
-              fontSize: '0.875rem',
+              padding: '10px 12px',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--bg)',
+              fontWeight: 600,
+              color: 'var(--text)',
+              fontSize: 'var(--text-sm)',
             }}
           >
             Save to workspace
@@ -694,22 +694,23 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               openNewWorkspaceModal();
             }}
             style={{
-              padding: '0.625rem 0.75rem',
+              padding: '10px 12px',
               cursor: 'pointer',
-              fontSize: '0.875rem',
-              fontWeight: 900,
-              borderBottom: '1px solid #e5e7eb',
+              fontSize: 'var(--text-sm)',
+              fontWeight: 500,
+              borderBottom: '1px solid var(--border)',
+              color: 'var(--accent)',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             title="Create a new workspace snapshot"
           >
             + New workspace…
           </div>
 
-          <div style={{ maxHeight: `${MENU_MAX_HEIGHT}px`, overflowY: 'auto' }}>
+          <div className="scrollbar" style={{ maxHeight: `${MENU_MAX_HEIGHT}px`, overflowY: 'auto' }}>
             {workspaces.length === 0 && (
-              <div style={{ padding: '0.75rem', color: '#6b7280', fontSize: '0.875rem' }}>
+              <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
                 No workspaces yet.
               </div>
             )}
@@ -721,22 +722,23 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   await updateExistingWorkspace(ws.id);
                 }}
                 style={{
-                  padding: '0.625rem 0.75rem',
+                  padding: '10px 12px',
                   cursor: 'pointer',
-                  fontSize: '0.875rem',
+                  fontSize: 'var(--text-sm)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  gap: '0.75rem',
+                  gap: 12,
+                  color: 'var(--text)',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 title="Update this workspace (overwrite snapshot)"
               >
-                <span style={{ fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {ws.name}
                 </span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 900, color: '#6b7280', flexShrink: 0 }}>
+                <span style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--text-muted)', flexShrink: 0 }}>
                   Update
                 </span>
               </div>
@@ -759,15 +761,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '0.375rem',
-            padding: '0.25rem 0.5rem',
-            borderRadius: '9999px',
-            border: '1px solid #e5e7eb',
-            background: 'white',
+            gap: 6,
+            padding: '4px 8px',
+            borderRadius: 9999,
+            border: '1px solid var(--border)',
+            background: 'transparent',
             cursor: 'pointer',
-            color: '#374151',
-            fontSize: '0.75rem',
-            fontWeight: 900,
+            color: 'var(--text)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 500,
             whiteSpace: 'nowrap',
           }}
         >
@@ -785,12 +787,12 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0,0,0,0.45)',
+          background: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 2147483647,
-          padding: '1rem',
+          padding: 16,
         }}
         onClick={(e) => {
           if (e.target === e.currentTarget) closeNewWorkspaceModal();
@@ -800,30 +802,30 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           style={{
             width: '100%',
             maxWidth: 400,
-            background: 'white',
-            borderRadius: '0.75rem',
-            border: '1px solid #e5e7eb',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+            background: 'var(--bg-panel)',
+            borderRadius: 8,
+            border: '1px solid var(--border)',
+            boxShadow: '0 16px 40px rgba(0,0,0,0.2)',
             overflow: 'hidden',
           }}
           onClick={(e) => e.stopPropagation()}
         >
           <div
             style={{
-              padding: '0.75rem 1rem',
-              borderBottom: '1px solid #e5e7eb',
-              background: '#f9fafb',
-              fontWeight: 800,
-              fontSize: '0.9375rem',
-              color: '#111827',
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--bg)',
+              fontWeight: 600,
+              fontSize: 'var(--text-base)',
+              color: 'var(--text)',
             }}
           >
             New workspace
           </div>
-          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
               <label
-                style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.35rem' }}
+                style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--text-muted)', marginBottom: 6 }}
                 htmlFor="workbench-new-ws-name"
               >
                 Name
@@ -839,17 +841,18 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
-                  padding: '0.5rem 0.65rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid #e5e7eb',
-                  fontSize: '0.875rem',
-                  color: '#111827',
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--text)',
+                  background: 'var(--bg-input)',
                 }}
               />
             </div>
             <div>
               <label
-                style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', marginBottom: '0.35rem' }}
+                style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--text-muted)', marginBottom: 6 }}
                 htmlFor="workbench-new-ws-project"
               >
                 Project
@@ -861,12 +864,12 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
-                  padding: '0.5rem 0.65rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid #e5e7eb',
-                  fontSize: '0.875rem',
-                  color: '#111827',
-                  background: 'white',
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--text)',
+                  background: 'var(--bg-input)',
                 }}
               >
                 <option value="">Detached (no project)</option>
@@ -877,18 +880,18 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 ))}
               </select>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
               <button
                 type="button"
                 onClick={closeNewWorkspaceModal}
                 style={{
-                  padding: '0.45rem 0.85rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid #e5e7eb',
-                  background: 'white',
-                  color: '#374151',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
+                  padding: '8px 14px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text)',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 500,
                   cursor: 'pointer',
                 }}
               >
@@ -899,13 +902,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 disabled={!newWorkspaceName.trim()}
                 onClick={() => void submitNewWorkspace()}
                 style={{
-                  padding: '0.45rem 0.85rem',
-                  borderRadius: '0.5rem',
+                  padding: '8px 14px',
+                  borderRadius: 6,
                   border: 'none',
-                  background: newWorkspaceName.trim() ? '#2563eb' : '#e5e7eb',
-                  color: newWorkspaceName.trim() ? 'white' : '#9ca3af',
-                  fontSize: '0.8125rem',
-                  fontWeight: 700,
+                  background: newWorkspaceName.trim() ? 'var(--accent)' : 'var(--border)',
+                  color: newWorkspaceName.trim() ? 'white' : 'var(--text-faint)',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 500,
                   cursor: newWorkspaceName.trim() ? 'pointer' : 'not-allowed',
                 }}
               >
@@ -925,7 +928,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         display: 'flex',
         height: '100%',
         flexDirection: 'column',
-        background: 'white',
+        background: 'var(--bg)',
+        color: 'var(--text)',
+        fontFamily: 'var(--font-sans)',
       }}
       onClick={() => closeDropdowns()}
     >
@@ -935,9 +940,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: '#f9fafb',
-          padding: '0.375rem 0.5rem',
-          borderBottom: '1px solid #e5e7eb',
+          background: 'var(--bg-panel)',
+          padding: '10px 12px',
+          borderBottom: '1px solid var(--border)',
           cursor: isCollapsed ? 'pointer' : 'default',
           userSelect: 'none',
           flexShrink: 0,
@@ -946,23 +951,23 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         onClick={isCollapsed ? onToggle : undefined}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-          <GripHorizontal size={16} style={{ color: '#9ca3af' }} />
-          <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#111827', whiteSpace: 'nowrap' }}>
+          <GripHorizontal size={16} style={{ color: 'var(--text-faint)' }} />
+          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text)', whiteSpace: 'nowrap' }}>
             Tab Commander
           </span>
-          <span style={{ fontSize: '0.75rem', color: '#6b7280', whiteSpace: 'nowrap' }}>
-            {windows.length} windows • {allTabs.length} tabs
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', whiteSpace: 'nowrap' }}>
+            {windows.length} windows · {allTabs.length} tabs
           </span>
           {!isCollapsed && selectedWindowIds.length > 0 && (
             <span
               style={{
-                fontSize: '0.75rem',
-                color: '#111827',
-                background: '#eef2ff',
-                border: '1px solid #c7d2fe',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text)',
+                background: 'var(--accent-weak)',
+                border: '1px solid var(--accent)',
                 borderRadius: '9999px',
-                padding: '0.125rem 0.5rem',
-                fontWeight: 700,
+                padding: '2px 8px',
+                fontWeight: 600,
                 whiteSpace: 'nowrap',
               }}
               title="Selected windows"
@@ -979,15 +984,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                background: 'white',
-                border: '1px solid #e5e7eb',
-                borderRadius: '0.5rem',
-                padding: '0.1875rem 0.5rem',
+                background: 'var(--bg-input)',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                padding: '6px 10px',
                 width: 'min(680px, 100%)',
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <Search size={14} style={{ color: '#9ca3af' }} />
+              <Search size={14} style={{ color: 'var(--text-faint)' }} />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -995,10 +1000,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 style={{
                   border: 'none',
                   outline: 'none',
-                  fontSize: '0.8125rem',
+                  fontSize: 'var(--text-sm)',
                   width: '100%',
                   background: 'transparent',
-                  color: '#111827',
+                  color: 'var(--text)',
                 }}
               />
               {query && (
@@ -1008,8 +1013,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     border: 'none',
                     background: 'transparent',
                     cursor: 'pointer',
-                    padding: '0.125rem',
-                    color: '#9ca3af',
+                    padding: '2px',
+                    color: 'var(--text-faint)',
                     display: 'flex',
                     alignItems: 'center',
                   }}
@@ -1037,17 +1042,17 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             style={{
               background: 'transparent',
               border: '1px solid transparent',
-              color: '#6b7280',
+              color: 'var(--text-muted)',
               cursor: 'pointer',
-              padding: '0.25rem',
+              padding: '4px',
               display: 'flex',
               alignItems: 'center',
-              borderRadius: '0.375rem',
+              borderRadius: 6,
             }}
             title={isCollapsed ? 'Expand' : 'Collapse'}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#f3f4f6';
-              e.currentTarget.style.borderColor = '#e5e7eb';
+              e.currentTarget.style.background = 'var(--bg-hover)';
+              e.currentTarget.style.borderColor = 'var(--border)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'transparent';
@@ -1067,35 +1072,36 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             overflow: 'hidden',
             display: 'grid',
             gridTemplateColumns: '240px 1fr',
-            background: '#f9fafb',
+            background: 'var(--bg)',
           }}
         >
           {/* Windows column */}
           <div
             style={{
-              borderRight: '1px solid #e5e7eb',
+              borderRight: '1px solid var(--border)',
               overflowY: 'auto',
-              padding: '0.375rem',
-              background: '#ffffff',
+              padding: 8,
+              background: 'var(--bg-panel)',
             }}
+            className="scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.25rem 0.25rem 0.5rem' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#111827' }}>Windows</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 4px 8px' }}>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', textTransform: 'uppercase' }}>Windows</div>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleSelectAllToggle();
                 }}
                 style={{
-                  border: '1px solid #e5e7eb',
-                  background: 'white',
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
                   cursor: 'pointer',
-                  color: '#374151',
-                  padding: '0.25rem 0.5rem',
-                  borderRadius: '0.375rem',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
+                  color: 'var(--text)',
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 500,
                 }}
                 title="Select all / clear"
               >
@@ -1113,13 +1119,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 <div
                   key={w.windowId}
                   style={{
-                    border: isSelected ? '1px solid #93c5fd' : '1px solid #e5e7eb',
-                    background: isSelected ? '#eef2ff' : 'white',
-                    borderRadius: '0.5rem',
-                    padding: '0.375rem 0.5rem',
-                    marginBottom: '0.375rem',
+                    border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    background: isSelected ? 'var(--accent-weak)' : 'var(--bg-panel)',
+                    borderRadius: 6,
+                    padding: '6px 8px',
+                    marginBottom: 6,
                     cursor: 'pointer',
-                    outline: dragOverWindowId === w.windowId ? '2px solid #2563eb' : 'none',
+                    outline: dragOverWindowId === w.windowId ? '2px solid var(--accent)' : 'none',
                     outlineOffset: '1px',
                   }}
                   onClick={(e) => handleWindowClick(w.windowId, e)}
@@ -1130,33 +1136,32 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   }}
                   onDrop={(e) => void handleWindowDrop(e, w.windowId)}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     {/* Left: checkbox + label */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleWindowSelection(w.windowId)}
                         onClick={(e) => e.stopPropagation()}
                         style={{
-                          width: '14px',
-                          height: '14px',
+                          width: 14,
+                          height: 14,
                           cursor: 'pointer',
-                          accentColor: '#2563eb',
                           flexShrink: 0,
                         }}
                         aria-label={`Select ${label}`}
                       />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', minWidth: 0 }}>
-                        <span style={{ fontWeight: 900, fontSize: '0.75rem', color: '#111827', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                        <span style={{ fontWeight: 700, fontSize: 'var(--text-xs)', color: 'var(--text)', whiteSpace: 'nowrap' }}>
                           {label}
                         </span>
                         {w.tabs.some((t) => t.active) && (
                           <span
                             style={{
-                              width: '6px',
-                              height: '6px',
-                              borderRadius: '9999px',
+                              width: 6,
+                              height: 6,
+                              borderRadius: 9999,
                               background: '#22c55e',
                               flexShrink: 0,
                             }}
@@ -1165,13 +1170,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         )}
                         <span
                           style={{
-                            fontSize: '0.75rem',
-                            color: '#6b7280',
-                            background: '#f3f4f6',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '9999px',
-                            padding: '0.0625rem 0.375rem',
-                            fontWeight: 800,
+                            fontSize: 'var(--text-xs)',
+                            color: 'var(--text-muted)',
+                            background: 'var(--bg)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 9999,
+                            padding: '1px 6px',
+                            fontWeight: 600,
                             flexShrink: 0,
                           }}
                           title={query ? `${matchCount} match` : `${w.tabs.length} tabs`}
@@ -1182,7 +1187,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     </div>
 
                     {/* Right: row controls */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1192,22 +1197,22 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           border: '1px solid transparent',
                           background: 'transparent',
                           cursor: 'pointer',
-                          padding: '0.1875rem',
-                          color: '#9ca3af',
-                          borderRadius: '0.375rem',
+                          padding: 3,
+                          color: 'var(--text-faint)',
+                          borderRadius: 4,
                           display: 'flex',
                           alignItems: 'center',
                         }}
                         title={isCollapsedWindow ? 'Expand actions' : 'Collapse actions'}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#f3f4f6';
-                          e.currentTarget.style.borderColor = '#e5e7eb';
-                          e.currentTarget.style.color = '#374151';
+                          e.currentTarget.style.background = 'var(--bg-hover)';
+                          e.currentTarget.style.borderColor = 'var(--border)';
+                          e.currentTarget.style.color = 'var(--text)';
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = 'transparent';
                           e.currentTarget.style.borderColor = 'transparent';
-                          e.currentTarget.style.color = '#9ca3af';
+                          e.currentTarget.style.color = 'var(--text-faint)';
                         }}
                       >
                         {isCollapsedWindow ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
@@ -1216,29 +1221,31 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   </div>
 
                   {!isCollapsedWindow && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.375rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <button
                           onClick={(e) => handleFindWindow(e, w.windowId)}
                           title="Locate window (flashes it)"
                           style={{
-                            padding: '0.125rem 0.375rem',
-                            background: '#f0f9ff',
-                            border: '1px solid #bfdbfe',
-                            color: '#2563eb',
+                            padding: '2px 6px',
+                            background: 'var(--accent-weak)',
+                            border: '1px solid var(--accent)',
+                            color: 'var(--accent)',
                             cursor: 'pointer',
-                            borderRadius: '0.25rem',
+                            borderRadius: 4,
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '0.25rem',
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
+                            gap: 4,
+                            fontSize: 'var(--text-xs)',
+                            fontWeight: 500,
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#dbeafe';
+                            e.currentTarget.style.background = 'var(--accent)';
+                            e.currentTarget.style.color = 'white';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#f0f9ff';
+                            e.currentTarget.style.background = 'var(--accent-weak)';
+                            e.currentTarget.style.color = 'var(--accent)';
                           }}
                         >
                           <Search size={10} />
@@ -1249,22 +1256,22 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             onClick={(e) => handleCloseWindow(e, w.windowId)}
                             title="Close window"
                             style={{
-                              padding: '0.25rem',
+                              padding: 4,
                               border: '1px solid transparent',
                               background: 'transparent',
                               cursor: 'pointer',
-                              color: '#9ca3af',
+                              color: 'var(--text-faint)',
                               display: 'flex',
                               alignItems: 'center',
-                              borderRadius: '0.375rem',
+                              borderRadius: 4,
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.color = '#ef4444';
-                              e.currentTarget.style.background = '#fef2f2';
-                              e.currentTarget.style.borderColor = '#fecaca';
+                              e.currentTarget.style.color = 'var(--error)';
+                              e.currentTarget.style.background = 'var(--error-weak)';
+                              e.currentTarget.style.borderColor = 'var(--error)';
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.color = '#9ca3af';
+                              e.currentTarget.style.color = 'var(--text-faint)';
                               e.currentTarget.style.background = 'transparent';
                               e.currentTarget.style.borderColor = 'transparent';
                             }}
@@ -1280,14 +1287,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           setSelectedWindowIds([w.windowId]);
                         }}
                         style={{
-                          border: '1px solid #e5e7eb',
-                          background: 'white',
+                          border: '1px solid var(--border)',
+                          background: 'transparent',
                           cursor: 'pointer',
-                          color: '#374151',
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: '0.375rem',
-                          fontSize: '0.75rem',
-                          fontWeight: 800,
+                          color: 'var(--text)',
+                          padding: '4px 8px',
+                          borderRadius: 4,
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 600,
                         }}
                         title="Focus selection"
                       >
@@ -1300,7 +1307,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             })}
 
             {windows.length === 0 && (
-              <div style={{ padding: '1rem', color: '#9ca3af', fontSize: '0.875rem', fontStyle: 'italic' }}>
+              <div style={{ padding: 16, color: 'var(--text-faint)', fontSize: 'var(--text-sm)', fontStyle: 'italic' }}>
                 No open windows found.
               </div>
             )}
@@ -1310,26 +1317,26 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
             <div
               style={{
-                padding: '0.375rem 0.5rem',
-                borderBottom: '1px solid #e5e7eb',
+                padding: '8px 12px',
+                borderBottom: '1px solid var(--border)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: '0.5rem',
-                background: '#ffffff',
+                gap: 8,
+                background: 'var(--bg-panel)',
                 flexShrink: 0,
               }}
             >
               <div style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontWeight: 900, fontSize: '0.875rem', color: '#111827' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
                     {selectedWindowIds.length === 0
                       ? 'Tabs'
                       : selectedWindowIds.length === 1
                         ? `${windowLabelById.get(selectedWindowIds[0]) || 'W?'}`
                         : `${selectedWindowIds.length} windows`}
                   </span>
-                  <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
                     {filteredTabsForSelection.length} {query ? 'matches' : 'tabs'}
                   </span>
                   {selectedWindowIds.length === 1 && (
@@ -1337,24 +1344,26 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                       onClick={(e) => handleFindWindow(e, selectedWindowIds[0])}
                       title="Locate this window (flashes it)"
                       style={{
-                        padding: '0.125rem 0.375rem',
-                        background: '#f0f9ff',
-                        border: '1px solid #bfdbfe',
-                        color: '#2563eb',
+                        padding: '2px 6px',
+                        background: 'var(--accent-weak)',
+                        border: '1px solid var(--accent)',
+                        color: 'var(--accent)',
                         cursor: 'pointer',
-                        borderRadius: '0.25rem',
+                        borderRadius: 4,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.25rem',
-                        fontSize: '0.7rem',
-                        fontWeight: 600,
-                        marginLeft: '0.5rem',
+                        gap: 4,
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 500,
+                        marginLeft: 8,
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = '#dbeafe';
+                        e.currentTarget.style.background = 'var(--accent)';
+                        e.currentTarget.style.color = 'white';
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = '#f0f9ff';
+                        e.currentTarget.style.background = 'var(--accent-weak)';
+                        e.currentTarget.style.color = 'var(--accent)';
                       }}
                     >
                       <Search size={10} />
@@ -1363,14 +1372,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   )}
                 </div>
                 {query && (
-                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.125rem' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', marginTop: 2 }}>
                     Showing matches in selected windows
                   </div>
                 )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <TogglePillButton
                     active={tabsView === 'list'}
                     label="List"
@@ -1391,15 +1400,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '0.375rem',
-                      padding: '0.25rem 0.5rem',
-                      borderRadius: '9999px',
-                      border: '1px solid #fecaca',
-                      background: '#fef2f2',
-                      color: '#991b1b',
+                      gap: 6,
+                      padding: '4px 8px',
+                      borderRadius: 9999,
+                      border: '1px solid var(--error)',
+                      background: 'var(--error-weak)',
+                      color: 'var(--error)',
                       cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      fontWeight: 900,
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 600,
                       userSelect: 'none',
                       whiteSpace: 'nowrap',
                     }}
@@ -1415,9 +1424,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem', background: '#f9fafb' }}>
+            <div className="scrollbar" style={{ flex: 1, overflowY: 'auto', padding: 8, background: 'var(--bg)' }}>
               {selectedWindowIds.length === 0 && (
-                <div style={{ padding: '1.25rem', color: '#9ca3af', fontSize: '0.875rem' }}>Select one or more windows.</div>
+                <div style={{ padding: 20, color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>Select one or more windows.</div>
               )}
 
               {selectedWindowIds.length > 0 && tabsView === 'list' &&
@@ -1438,25 +1447,25 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.25rem 0.5rem',
-                        background: isActive ? '#eff6ff' : 'white',
+                        gap: 8,
+                        padding: '6px 8px',
+                        background: isActive ? 'var(--accent-weak)' : 'var(--bg-panel)',
                         border: '1px solid transparent',
-                        borderBottom: '1px solid #e5e7eb',
-                        borderRadius: '0.375rem',
+                        borderBottom: '1px solid var(--border)',
+                        borderRadius: 6,
                         cursor: 'pointer',
-                        marginBottom: '0.125rem',
+                        marginBottom: 2,
                         position: 'relative',
-                        minHeight: '30px',
+                        minHeight: 30,
                       }}
                       onMouseEnter={(e) => {
                         setHoveredTabKey(rowKey);
-                        e.currentTarget.style.background = isActive ? '#eff6ff' : '#f9fafb';
-                        e.currentTarget.style.borderColor = '#bfdbfe';
+                        e.currentTarget.style.background = isActive ? 'var(--accent-weak)' : 'var(--bg-hover)';
+                        e.currentTarget.style.borderColor = 'var(--accent)';
                       }}
                       onMouseLeave={(e) => {
                         setHoveredTabKey(null);
-                        e.currentTarget.style.background = isActive ? '#eff6ff' : 'white';
+                        e.currentTarget.style.background = isActive ? 'var(--accent-weak)' : 'var(--bg-panel)';
                         e.currentTarget.style.borderColor = 'transparent';
                       }}
                       title={tab.title || ''}
@@ -1470,10 +1479,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           onClick={(e) => e.stopPropagation()}
                           title="Select tab"
                           style={{
-                            width: '14px',
-                            height: '14px',
+                            width: 14,
+                            height: 14,
                             cursor: 'pointer',
-                            accentColor: '#2563eb',
                             flexShrink: 0,
                             opacity: isHovered || isSelectedTab ? 1 : 0,
                             transition: 'opacity 120ms ease-in-out',
@@ -1483,20 +1491,20 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                       {tab.favIconUrl ? (
                         <img src={tab.favIconUrl} alt="" style={{ width: 14, height: 14, borderRadius: 2, flexShrink: 0 }} />
                       ) : (
-                        <Globe size={14} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                        <Globe size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
                       )}
 
                       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         {isMultiWindow && (
                           <span
                             style={{
-                              fontSize: '0.6875rem',
-                              padding: '0.0625rem 0.375rem',
-                              borderRadius: '9999px',
-                              background: '#f3f4f6',
-                              border: '1px solid #e5e7eb',
-                              color: '#374151',
-                              fontWeight: 800,
+                              fontSize: 'var(--text-xs)',
+                              padding: '1px 6px',
+                              borderRadius: 9999,
+                              background: 'var(--bg)',
+                              border: '1px solid var(--border)',
+                              color: 'var(--text)',
+                              fontWeight: 600,
                               flexShrink: 0,
                             }}
                             title={label}
@@ -1508,9 +1516,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         {isActive && (
                           <span
                             style={{
-                              width: '6px',
-                              height: '6px',
-                              borderRadius: '9999px',
+                              width: 6,
+                              height: 6,
+                              borderRadius: 9999,
                               background: '#22c55e',
                               flexShrink: 0,
                             }}
@@ -1523,14 +1531,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.25rem',
-                              fontSize: '0.6875rem',
-                              padding: '0.0625rem 0.375rem',
-                              borderRadius: '9999px',
+                              gap: 4,
+                              fontSize: 'var(--text-xs)',
+                              padding: '1px 6px',
+                              borderRadius: 9999,
                               background: '#fef3c7',
                               border: '1px solid #fcd34d',
                               color: '#92400e',
-                              fontWeight: 900,
+                              fontWeight: 600,
                               flexShrink: 0,
                             }}
                             title="Preview copy (opened from dashboard)"
@@ -1542,9 +1550,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
                         <span
                           style={{
-                            fontSize: '0.8125rem',
-                            fontWeight: 800,
-                            color: '#111827',
+                            fontSize: 'var(--text-sm)',
+                            fontWeight: 500,
+                            color: 'var(--text)',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
@@ -1557,12 +1565,12 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
                         <span
                           style={{
-                            fontSize: '0.75rem',
-                            color: '#6b7280',
+                            fontSize: 'var(--text-xs)',
+                            color: 'var(--text-muted)',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            maxWidth: '220px',
+                            maxWidth: 220,
                             flexShrink: 1,
                           }}
                           title={tab.url || ''}
@@ -1571,30 +1579,30 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         </span>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                         <button
                           onClick={(e) => handleOpenHere(e, tab.url)}
                           title="Open here (new tab in this window)"
                           style={{
-                            padding: '0.1875rem',
+                            padding: 3,
                             border: '1px solid transparent',
                             background: 'transparent',
                             cursor: 'pointer',
-                            color: '#9ca3af',
+                            color: 'var(--text-faint)',
                             display: 'flex',
                             alignItems: 'center',
-                            borderRadius: '0.375rem',
+                            borderRadius: 4,
                             opacity: isHovered || isActive ? 1 : 0,
                             pointerEvents: isHovered || isActive ? 'auto' : 'none',
                             transition: 'opacity 120ms ease-in-out',
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.color = '#2563eb';
-                            e.currentTarget.style.background = '#eff6ff';
-                            e.currentTarget.style.borderColor = '#bfdbfe';
+                            e.currentTarget.style.color = 'var(--accent)';
+                            e.currentTarget.style.background = 'var(--accent-weak)';
+                            e.currentTarget.style.borderColor = 'var(--accent)';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.color = '#9ca3af';
+                            e.currentTarget.style.color = 'var(--text-faint)';
                             e.currentTarget.style.background = 'transparent';
                             e.currentTarget.style.borderColor = 'transparent';
                           }}
@@ -1606,25 +1614,25 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             onClick={(e) => handleCloseTab(e, tab.id!)}
                             title="Close tab"
                             style={{
-                              padding: '0.1875rem',
+                              padding: 3,
                               border: '1px solid transparent',
                               background: 'transparent',
                               cursor: 'pointer',
-                              color: '#9ca3af',
+                              color: 'var(--text-faint)',
                               display: 'flex',
                               alignItems: 'center',
-                              borderRadius: '0.375rem',
+                              borderRadius: 4,
                               opacity: isHovered || isActive ? 1 : 0,
                               pointerEvents: isHovered || isActive ? 'auto' : 'none',
                               transition: 'opacity 120ms ease-in-out',
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.color = '#ef4444';
-                              e.currentTarget.style.background = '#fef2f2';
-                              e.currentTarget.style.borderColor = '#fecaca';
+                              e.currentTarget.style.color = 'var(--error)';
+                              e.currentTarget.style.background = 'var(--error-weak)';
+                              e.currentTarget.style.borderColor = 'var(--error)';
                             }}
                             onMouseLeave={(e) => {
-                              e.currentTarget.style.color = '#9ca3af';
+                              e.currentTarget.style.color = 'var(--text-faint)';
                               e.currentTarget.style.background = 'transparent';
                               e.currentTarget.style.borderColor = 'transparent';
                             }}
@@ -1642,7 +1650,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                    gap: '0.5rem',
+                    gap: 8,
                     alignItems: 'start',
                   }}
                 >
@@ -1660,27 +1668,27 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         draggable
                         onDragStart={(e) => handleTabDragStart(e, tab.id, windowId)}
                         style={{
-                          background: isActive ? '#eff6ff' : 'white',
-                          border: isActive ? '1px solid #93c5fd' : '1px solid #e5e7eb',
-                          borderRadius: '0.75rem',
-                          padding: '0.5rem',
+                          background: isActive ? 'var(--accent-weak)' : 'var(--bg-panel)',
+                          border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
+                          borderRadius: 8,
+                          padding: 8,
                           cursor: 'pointer',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '0.375rem',
-                          outline: isSelectedTab ? '2px solid #2563eb' : 'none',
-                          outlineOffset: '1px',
+                          gap: 6,
+                          outline: isSelectedTab ? '2px solid var(--accent)' : 'none',
+                          outlineOffset: 1,
                         }}
                         onMouseEnter={(e) => {
-                          if (!isActive) e.currentTarget.style.borderColor = '#bfdbfe';
+                          if (!isActive) e.currentTarget.style.borderColor = 'var(--accent)';
                         }}
                         onMouseLeave={(e) => {
-                          if (!isActive) e.currentTarget.style.borderColor = '#e5e7eb';
+                          if (!isActive) e.currentTarget.style.borderColor = 'var(--border)';
                         }}
                         title={tab.title || ''}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                             {typeof tab.id === 'number' && (
                               <input
                                 type="checkbox"
@@ -1689,10 +1697,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                 onClick={(e) => e.stopPropagation()}
                                 title="Select tab"
                                 style={{
-                                  width: '14px',
-                                  height: '14px',
+                                  width: 14,
+                                  height: 14,
                                   cursor: 'pointer',
-                                  accentColor: '#2563eb',
                                   flexShrink: 0,
                                 }}
                               />
@@ -1700,19 +1707,19 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             {tab.favIconUrl ? (
                               <img src={tab.favIconUrl} alt="" style={{ width: 16, height: 16, borderRadius: 3, flexShrink: 0 }} />
                             ) : (
-                              <Globe size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                              <Globe size={16} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
                             )}
 
                             {isMultiWindow && (
                               <span
                                 style={{
-                                  fontSize: '0.6875rem',
-                                  padding: '0.125rem 0.5rem',
-                                  borderRadius: '9999px',
-                                  background: '#f3f4f6',
-                                  border: '1px solid #e5e7eb',
-                                  color: '#374151',
-                                  fontWeight: 800,
+                                  fontSize: 'var(--text-xs)',
+                                  padding: '2px 8px',
+                                  borderRadius: 9999,
+                                  background: 'var(--bg)',
+                                  border: '1px solid var(--border)',
+                                  color: 'var(--text)',
+                                  fontWeight: 600,
                                   flexShrink: 0,
                                 }}
                                 title={label}
@@ -1725,14 +1732,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                 style={{
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '0.25rem',
-                                  fontSize: '0.6875rem',
-                                  padding: '0.0625rem 0.375rem',
-                                  borderRadius: '9999px',
+                                  gap: 4,
+                                  fontSize: 'var(--text-xs)',
+                                  padding: '1px 6px',
+                                  borderRadius: 9999,
                                   background: '#fef3c7',
                                   border: '1px solid #fcd34d',
                                   color: '#92400e',
-                                  fontWeight: 900,
+                                  fontWeight: 600,
                                   flexShrink: 0,
                                 }}
                                 title="Preview copy (opened from dashboard)"
@@ -1743,27 +1750,27 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             )}
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                             <button
                               onClick={(e) => handleOpenHere(e, tab.url)}
                               title="Open here (new tab in this window)"
                               style={{
-                                padding: '0.1875rem',
+                                padding: 3,
                                 border: '1px solid transparent',
                                 background: 'transparent',
                                 cursor: 'pointer',
-                                color: '#9ca3af',
+                                color: 'var(--text-faint)',
                                 display: 'flex',
                                 alignItems: 'center',
-                                borderRadius: '0.375rem',
+                                borderRadius: 4,
                               }}
                               onMouseEnter={(e) => {
-                                e.currentTarget.style.color = '#2563eb';
-                                e.currentTarget.style.background = '#eff6ff';
-                                e.currentTarget.style.borderColor = '#bfdbfe';
+                                e.currentTarget.style.color = 'var(--accent)';
+                                e.currentTarget.style.background = 'var(--accent-weak)';
+                                e.currentTarget.style.borderColor = 'var(--accent)';
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.color = '#9ca3af';
+                                e.currentTarget.style.color = 'var(--text-faint)';
                                 e.currentTarget.style.background = 'transparent';
                                 e.currentTarget.style.borderColor = 'transparent';
                               }}
@@ -1775,22 +1782,22 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                 onClick={(e) => handleCloseTab(e, tab.id!)}
                                 title="Close tab"
                                 style={{
-                                  padding: '0.1875rem',
+                                  padding: 3,
                                   border: '1px solid transparent',
                                   background: 'transparent',
                                   cursor: 'pointer',
-                                  color: '#9ca3af',
+                                  color: 'var(--text-faint)',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  borderRadius: '0.375rem',
+                                  borderRadius: 4,
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.currentTarget.style.color = '#ef4444';
-                                  e.currentTarget.style.background = '#fef2f2';
-                                  e.currentTarget.style.borderColor = '#fecaca';
+                                  e.currentTarget.style.color = 'var(--error)';
+                                  e.currentTarget.style.background = 'var(--error-weak)';
+                                  e.currentTarget.style.borderColor = 'var(--error)';
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.currentTarget.style.color = '#9ca3af';
+                                  e.currentTarget.style.color = 'var(--text-faint)';
                                   e.currentTarget.style.background = 'transparent';
                                   e.currentTarget.style.borderColor = 'transparent';
                                 }}
@@ -1803,34 +1810,34 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
                         <div
                           style={{
-                            fontSize: '0.875rem',
-                            fontWeight: 800,
-                            color: '#111827',
+                            fontSize: 'var(--text-sm)',
+                            fontWeight: 500,
+                            color: 'var(--text)',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             display: '-webkit-box',
                             WebkitLineClamp: 2,
                             WebkitBoxOrient: 'vertical',
-                            lineHeight: 1.2,
+                            lineHeight: 1.3,
                             minHeight: '2.4em',
                           }}
                         >
                           {tab.title || 'Untitled'}
                         </div>
 
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {domain || tab.url}
                         </div>
 
                         {isActive && (
                           <span
                             style={{
-                              fontSize: '0.6875rem',
-                              padding: '0.125rem 0.5rem',
-                              borderRadius: '9999px',
+                              fontSize: 'var(--text-xs)',
+                              padding: '2px 8px',
+                              borderRadius: 9999,
                               background: '#dcfce7',
                               color: '#166534',
-                              fontWeight: 800,
+                              fontWeight: 600,
                               width: 'fit-content',
                             }}
                           >
@@ -1850,15 +1857,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   }}
                   style={{
                     width: '100%',
-                    marginTop: '0.5rem',
-                    padding: '0.625rem',
-                    borderRadius: '0.5rem',
-                    border: '1px dashed #cbd5e1',
-                    background: '#ffffff',
+                    marginTop: 8,
+                    padding: 10,
+                    borderRadius: 6,
+                    border: '1px dashed var(--border)',
+                    background: 'var(--bg-panel)',
                     cursor: 'pointer',
-                    color: '#334155',
-                    fontSize: '0.875rem',
-                    fontWeight: 700,
+                    color: 'var(--text)',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 500,
                   }}
                 >
                   Show {Math.min(TAB_PAGE_SIZE, hiddenCount)} more ({hiddenCount} hidden)
