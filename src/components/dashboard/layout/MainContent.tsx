@@ -68,6 +68,7 @@ interface MainContentProps {
   onOpenItem?: (item: Item) => void;
   onOpenWorkspace?: (workspace: Workspace) => void;
   onOpenListTab?: (type: 'bookmark-list' | 'note-list', itemIds: string[], title: string) => void;
+  onAddToCommonListTab?: (type: 'bookmark-list' | 'note-list', itemIds: string[], sectionTitle: string) => void;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -105,6 +106,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   onOpenItem,
   onOpenWorkspace,
   onOpenListTab,
+  onAddToCommonListTab,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -2493,20 +2495,28 @@ export const MainContent: React.FC<MainContentProps> = ({
     const getListTabTitle = () => {
       if (scopeCollectionId !== 'all') {
         const collection = collections.find(c => c.id === scopeCollectionId);
-        return collection?.name || 'Collection';
+        const project = collection ? projects.find((p) => p.id === collection.primaryProjectId) : null;
+        return `${project?.name || 'Unassigned'} / ${collection?.name || 'Collection'}`;
       }
       if (scopeProjectId !== 'all') {
         const project = projects.find(p => p.id === scopeProjectId);
-        return project?.name || 'Project';
+        return `${project?.name || 'Project'} / All`;
       }
-      return 'All';
+      return 'All / All';
     };
     
     const handleOpenAsTab = () => {
       if (!onOpenListTab || listItems.length === 0) return;
       const type = activeView === 'bookmarks' ? 'bookmark-list' : 'note-list';
-      const title = `${getListTabTitle()} ${activeView === 'bookmarks' ? 'Bookmarks' : 'Notes'}`;
+      const title = `${getListTabTitle()} — ${activeView === 'bookmarks' ? 'Bookmarks' : 'Notes'}`;
       onOpenListTab(type, listItems.map(i => i.id), title);
+    };
+
+    const handleAddToCommonTab = () => {
+      if (!onAddToCommonListTab || listItems.length === 0) return;
+      const type = activeView === 'bookmarks' ? 'bookmark-list' : 'note-list';
+      const sectionTitle = `${getListTabTitle()} — ${activeView === 'bookmarks' ? 'Bookmarks' : 'Notes'}`;
+      onAddToCommonListTab(type, listItems.map((i) => i.id), sectionTitle);
     };
     
     return (
@@ -2523,21 +2533,38 @@ export const MainContent: React.FC<MainContentProps> = ({
               </span>
             </div>
             {listItems.length > 0 && (
-              <button
-                onClick={handleOpenAsTab}
-                style={{
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  color: 'var(--text-muted)',
-                  fontSize: 'var(--text-xs)',
-                  cursor: 'pointer',
-                }}
-                title="Open all as a single tab"
-              >
-                Open as tab
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={handleOpenAsTab}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 4,
+                    border: '1px solid var(--border)',
+                    background: 'transparent',
+                    color: 'var(--text-muted)',
+                    fontSize: 'var(--text-xs)',
+                    cursor: 'pointer',
+                  }}
+                  title="Open this scope as its own tab"
+                >
+                  Open as tab
+                </button>
+                <button
+                  onClick={handleAddToCommonTab}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 4,
+                    border: '1px solid var(--border)',
+                    background: 'transparent',
+                    color: 'var(--text-muted)',
+                    fontSize: 'var(--text-xs)',
+                    cursor: 'pointer',
+                  }}
+                  title="Add this scope into common tab"
+                >
+                  Add to common
+                </button>
+              </div>
             )}
           </div>
           <SearchBar 

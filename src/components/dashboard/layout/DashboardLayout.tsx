@@ -5,7 +5,7 @@ import { WindowGroup } from '../../../App';
 import { Workspace, Collection, Item, Project, UpdateItemOptions } from '../../../lib/db';
 import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 import type { AISettings } from '../../../lib/ai/types';
-import { X } from 'lucide-react';
+import { LayoutGrid, List, X } from 'lucide-react';
 import { DeleteConfirmDialog, type DeleteConfirmResult } from '../../DeleteConfirmDialog';
 
 export type DashboardView =
@@ -20,10 +20,16 @@ export type DashboardView =
 
 export interface ItemTab {
   id: string;
-  type: 'bookmark' | 'note' | 'workspace' | 'bookmark-list' | 'note-list';
+  type: 'bookmark' | 'note' | 'workspace' | 'bookmark-list' | 'note-list' | 'common-list';
   title: string;
   // For list tabs, store the item IDs
   itemIds?: string[];
+  sections?: {
+    id: string;
+    type: 'bookmark-list' | 'note-list';
+    title: string;
+    itemIds: string[];
+  }[];
 }
 
 const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander']);
@@ -131,6 +137,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     item: Item;
     placementId?: string;
   } | null>(null);
+  const [listTabViewById, setListTabViewById] = useState<Record<string, 'list' | 'grid'>>({});
   
   // Right panel AI state
   const [rightPrompt, setRightPrompt] = useState('');
@@ -201,8 +208,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   };
 
   const handleOpenListTab = (type: 'bookmark-list' | 'note-list', itemIds: string[], title: string) => {
-    // Create a unique ID based on content
-    const tabId = `${type}-${itemIds.slice(0, 5).join('-')}-${itemIds.length}`;
+    // Include title so same items from different scope can be distinct tabs.
+    const titleKey = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const tabId = `${type}-${titleKey}-${itemIds.slice(0, 5).join('-')}-${itemIds.length}`;
     const exists = openItemTabs.find((t) => t.id === tabId);
     if (!exists) {
       setOpenItemTabs((prev) => [...prev, { id: tabId, type, title, itemIds }]);
@@ -210,8 +218,45 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     setActiveItemTabId(tabId);
   };
 
+  const handleAddToCommonListTab = (type: 'bookmark-list' | 'note-list', itemIds: string[], title: string) => {
+    const tabId = 'common-list';
+    const sectionId = `${type}:${title.toLowerCase()}`;
+    setOpenItemTabs((prev) => {
+      const existingIdx = prev.findIndex((t) => t.id === tabId);
+      if (existingIdx === -1) {
+        return [
+          ...prev,
+          {
+            id: tabId,
+            type: 'common-list',
+            title: 'Common tab',
+            sections: [{ id: sectionId, type, title, itemIds: Array.from(new Set(itemIds)) }],
+          },
+        ];
+      }
+
+      const existingTab = prev[existingIdx];
+      const existingSections = existingTab.sections || [];
+      const sectionIdx = existingSections.findIndex((s) => s.id === sectionId);
+      const nextSections =
+        sectionIdx === -1
+          ? [...existingSections, { id: sectionId, type, title, itemIds: Array.from(new Set(itemIds)) }]
+          : existingSections.map((s, idx) =>
+              idx === sectionIdx
+                ? { ...s, itemIds: Array.from(new Set([...s.itemIds, ...itemIds])) }
+                : s
+            );
+
+      const next = [...prev];
+      next[existingIdx] = { ...existingTab, sections: nextSections };
+      return next;
+    });
+    setActiveItemTabId(tabId);
+  };
+
   const activeTabWorkspace = activeItemTabId ? workspaces.find((ws) => ws.id === activeItemTabId) : null;
   const activeListTab = activeItemTabId ? openItemTabs.find((t) => t.id === activeItemTabId && (t.type === 'bookmark-list' || t.type === 'note-list')) : null;
+  const activeCommonTab = activeItemTabId ? openItemTabs.find((t) => t.id === activeItemTabId && t.type === 'common-list') : null;
   const activeListItems = activeListTab?.itemIds ? items.filter(i => activeListTab.itemIds!.includes(i.id)) : [];
 
   const handleCloseItemTab = (tabId: string) => {
@@ -225,6 +270,34 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       }
       return next;
     });
+  };
+
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+
+  const handleTabDragStart = (e: React.DragEvent, tabId: string) => {
+    setDraggedTabId(tabId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tabId);
+  };
+
+  const handleTabDragOver = (e: React.DragEvent, targetTabId: string) => {
+    e.preventDefault();
+    if (!draggedTabId || draggedTabId === targetTabId) return;
+    
+    setOpenItemTabs((prev) => {
+      const dragIndex = prev.findIndex((t) => t.id === draggedTabId);
+      const targetIndex = prev.findIndex((t) => t.id === targetTabId);
+      if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) return prev;
+      
+      const next = [...prev];
+      const [draggedTab] = next.splice(dragIndex, 1);
+      next.splice(targetIndex, 0, draggedTab);
+      return next;
+    });
+  };
+
+  const handleTabDragEnd = () => {
+    setDraggedTabId(null);
   };
 
   const completeItemTabDelete = async (result: DeleteConfirmResult) => {
@@ -409,6 +482,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   onOpenItem={handleOpenItemTab}
                   onOpenWorkspace={handleOpenWorkspaceTab}
                   onOpenListTab={handleOpenListTab}
+                  onAddToCommonListTab={handleAddToCommonListTab}
                 />
               </div>
 
@@ -440,9 +514,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   )}
                   {openItemTabs.map((tab) => {
                     const isActive = activeItemTabId === tab.id;
+                    const isDragging = draggedTabId === tab.id;
                     return (
-                      <button
+                      <div
                         key={tab.id}
+                        draggable
+                        onDragStart={(e) => handleTabDragStart(e, tab.id)}
+                        onDragOver={(e) => handleTabDragOver(e, tab.id)}
+                        onDragEnd={handleTabDragEnd}
                         onClick={() => setActiveItemTabId(tab.id)}
                         style={{
                           display: 'inline-flex',
@@ -456,13 +535,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                           background: isActive ? 'var(--bg)' : 'transparent',
                           color: isActive ? 'var(--text)' : 'var(--text-muted)',
                           fontSize: 'var(--text-sm)',
-                          cursor: 'pointer',
+                          cursor: 'grab',
                           whiteSpace: 'nowrap',
                           maxWidth: 180,
+                          opacity: isDragging ? 0.5 : 1,
+                          transition: 'opacity 0.15s',
                         }}
-                        title={tab.title}
+                        title={`${tab.title} (drag to reorder)`}
                       >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
                           {tab.title || 'Untitled'}
                         </span>
                         <span
@@ -478,12 +559,22 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                             height: 16,
                             borderRadius: 3,
                             color: 'var(--text-faint)',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.color = '#ef4444';
+                            e.currentTarget.style.background = 'var(--bg-glass)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.color = 'var(--text-faint)';
+                            e.currentTarget.style.background = 'transparent';
                           }}
                           title="Close tab"
                         >
                           <X size={12} />
                         </span>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -973,14 +1064,215 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                         ))}
                       </div>
                     );
-                  })() : activeListTab && activeListItems.length > 0 ? (
+                  })() : activeCommonTab && (activeCommonTab.sections || []).length > 0 ? (
+                    <div style={{ width: '100%' }}>
+                      <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 4 }}>
+                        {activeCommonTab.title}
+                      </h2>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                          {(activeCommonTab.sections || []).length} section{(activeCommonTab.sections || []).length !== 1 ? 's' : ''}
+                        </div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--border)', borderRadius: 6, padding: 2 }}>
+                          <button
+                            onClick={() => setListTabViewById((prev) => ({ ...prev, [activeCommonTab.id]: 'list' }))}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 26,
+                              height: 24,
+                              border: 'none',
+                              borderRadius: 4,
+                              background: (listTabViewById[activeCommonTab.id] ?? 'list') === 'list' ? 'var(--accent-weak)' : 'transparent',
+                              color: (listTabViewById[activeCommonTab.id] ?? 'list') === 'list' ? 'var(--accent)' : 'var(--text-muted)',
+                              cursor: 'pointer',
+                            }}
+                            title="List view"
+                          >
+                            <List size={14} />
+                          </button>
+                          <button
+                            onClick={() => setListTabViewById((prev) => ({ ...prev, [activeCommonTab.id]: 'grid' }))}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 26,
+                              height: 24,
+                              border: 'none',
+                              borderRadius: 4,
+                              background: (listTabViewById[activeCommonTab.id] ?? 'list') === 'grid' ? 'var(--accent-weak)' : 'transparent',
+                              color: (listTabViewById[activeCommonTab.id] ?? 'list') === 'grid' ? 'var(--accent)' : 'var(--text-muted)',
+                              cursor: 'pointer',
+                            }}
+                            title="Card view"
+                          >
+                            <LayoutGrid size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {(activeCommonTab.sections || []).map((section) => {
+                          const sectionItems = section.itemIds
+                            .map((id) => items.find((i) => i.id === id))
+                            .filter((i): i is Item => Boolean(i));
+                          if (sectionItems.length === 0) return null;
+                          return (
+                            <div key={section.id} style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-panel)' }}>
+                              <div
+                                style={{
+                                  padding: '10px 12px',
+                                  borderBottom: '1px solid var(--border)',
+                                  fontSize: 'var(--text-sm)',
+                                  fontWeight: 600,
+                                  color: 'var(--text)',
+                                }}
+                              >
+                                {section.title}
+                              </div>
+                              <div
+                                style={
+                                  (listTabViewById[activeCommonTab.id] ?? 'list') === 'grid'
+                                    ? {
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                        gap: 8,
+                                        padding: 8,
+                                        alignItems: 'start',
+                                      }
+                                    : { display: 'flex', flexDirection: 'column', gap: 4, padding: 8 }
+                                }
+                              >
+                                {sectionItems.map((item) => (
+                                  <div
+                                    key={`${section.id}-${item.id}`}
+                                    style={{
+                                      padding: '8px 10px',
+                                      borderRadius: 6,
+                                      background: 'var(--bg)',
+                                      border: '1px solid var(--border)',
+                                      display: 'flex',
+                                      alignItems: 'flex-start',
+                                      gap: 10,
+                                    }}
+                                  >
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 2 }}>
+                                        {item.title || 'Untitled'}
+                                      </div>
+                                      {item.url && (
+                                        <a
+                                          href={item.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          style={{
+                                            fontSize: 'var(--text-xs)',
+                                            color: 'var(--accent)',
+                                            display: 'block',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          {item.url}
+                                        </a>
+                                      )}
+                                      {item.notes && (
+                                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4, whiteSpace: 'pre-wrap' }}>
+                                          {item.notes.length > 100 ? `${item.notes.slice(0, 100)}...` : item.notes}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                                      {item.url && (
+                                        <button
+                                          onClick={() => window.open(item.url, '_blank')}
+                                          style={{
+                                            padding: '4px 8px',
+                                            borderRadius: 4,
+                                            border: '1px solid var(--border)',
+                                            background: 'transparent',
+                                            color: 'var(--text-muted)',
+                                            fontSize: 'var(--text-xs)',
+                                            cursor: 'pointer',
+                                          }}
+                                        >
+                                          Open
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={() => handleOpenItemTab(item)}
+                                        style={{
+                                          padding: '4px 8px',
+                                          borderRadius: 4,
+                                          border: '1px solid var(--border)',
+                                          background: 'transparent',
+                                          color: 'var(--text-muted)',
+                                          fontSize: 'var(--text-xs)',
+                                          cursor: 'pointer',
+                                        }}
+                                      >
+                                        View
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : activeListTab && activeListItems.length > 0 ? (
                     // Bookmark-list or Note-list tab content
-                    <div style={{ maxWidth: 700 }}>
+                    <div style={{ width: '100%' }}>
                       <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 4 }}>
                         {activeListTab.title}
                       </h2>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', marginBottom: 16 }}>
-                        {activeListItems.length} {activeListTab.type === 'bookmark-list' ? 'bookmark' : 'note'}{activeListItems.length !== 1 ? 's' : ''}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                          {activeListItems.length} {activeListTab.type === 'bookmark-list' ? 'bookmark' : 'note'}{activeListItems.length !== 1 ? 's' : ''}
+                        </div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--border)', borderRadius: 6, padding: 2 }}>
+                          <button
+                            onClick={() => setListTabViewById((prev) => ({ ...prev, [activeListTab.id]: 'list' }))}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 26,
+                              height: 24,
+                              border: 'none',
+                              borderRadius: 4,
+                              background: (listTabViewById[activeListTab.id] ?? 'list') === 'list' ? 'var(--accent-weak)' : 'transparent',
+                              color: (listTabViewById[activeListTab.id] ?? 'list') === 'list' ? 'var(--accent)' : 'var(--text-muted)',
+                              cursor: 'pointer',
+                            }}
+                            title="List view"
+                          >
+                            <List size={14} />
+                          </button>
+                          <button
+                            onClick={() => setListTabViewById((prev) => ({ ...prev, [activeListTab.id]: 'grid' }))}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 26,
+                              height: 24,
+                              border: 'none',
+                              borderRadius: 4,
+                              background: (listTabViewById[activeListTab.id] ?? 'list') === 'grid' ? 'var(--accent-weak)' : 'transparent',
+                              color: (listTabViewById[activeListTab.id] ?? 'list') === 'grid' ? 'var(--accent)' : 'var(--text-muted)',
+                              cursor: 'pointer',
+                            }}
+                            title="Card view"
+                          >
+                            <LayoutGrid size={14} />
+                          </button>
+                        </div>
                       </div>
                       
                       {activeListTab.type === 'bookmark-list' && (
@@ -1005,7 +1297,18 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                         </button>
                       )}
                       
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div
+                        style={
+                          (listTabViewById[activeListTab.id] ?? 'list') === 'grid'
+                            ? {
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                gap: 8,
+                                alignItems: 'start',
+                              }
+                            : { display: 'flex', flexDirection: 'column', gap: 4 }
+                        }
+                      >
                         {activeListItems.map(item => (
                           <div
                             key={item.id}
@@ -1016,6 +1319,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                               display: 'flex',
                               alignItems: 'flex-start',
                               gap: 10,
+                              border: '1px solid var(--border)',
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
