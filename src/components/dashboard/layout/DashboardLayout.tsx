@@ -39,6 +39,8 @@ interface DashboardLayoutProps {
   onDeleteBookmark?: (id: string) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
+  onDeleteProject?: (projectId: string) => Promise<boolean | void>;
+  onDeleteCollection?: (collectionId: string) => Promise<boolean | void>;
   onCreateItem?: (data: {
     title: string;
     url?: string;
@@ -77,6 +79,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onDeleteBookmark,
   onCreateProject,
   onCreateCollection,
+  onDeleteProject,
+  onDeleteCollection,
   onCreateItem,
   onCloseTab,
   onCloseWindow,
@@ -143,6 +147,25 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const handleSelectCollectionScope = (collectionId: string, projectId?: string) => {
     setScopeCollectionId(collectionId);
     if (projectId) setScopeProjectId(projectId);
+  };
+
+  const handleDeleteProjectFromSidebar = async (projectId: string) => {
+    if (!onDeleteProject) return false;
+    const deleted = await onDeleteProject(projectId);
+    if (deleted !== false && scopeProjectId === projectId) {
+      setScopeProjectId('all');
+      setScopeCollectionId('all');
+    }
+    return deleted;
+  };
+
+  const handleDeleteCollectionFromSidebar = async (collectionId: string) => {
+    if (!onDeleteCollection) return false;
+    const deleted = await onDeleteCollection(collectionId);
+    if (deleted !== false && scopeCollectionId === collectionId) {
+      setScopeCollectionId('all');
+    }
+    return deleted;
   };
 
   const handleOpenItemTab = (item: Item) => {
@@ -256,6 +279,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           scopeCollectionId={scopeCollectionId}
           onSelectProjectScope={handleSelectProjectScope}
           onSelectCollectionScope={handleSelectCollectionScope}
+          onCreateProject={onCreateProject}
+          onDeleteProject={handleDeleteProjectFromSidebar}
+          onCreateCollection={onCreateCollection}
+          onDeleteCollection={handleDeleteCollectionFromSidebar}
         />
       </div>
 

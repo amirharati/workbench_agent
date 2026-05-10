@@ -3,6 +3,8 @@ import {
   addItem, 
   addProject,
   addCollection,
+  deleteProject,
+  deleteCollection,
   importDB, 
   verifyBackup,
   getAllProjects,
@@ -309,17 +311,80 @@ function App() {
   };
 
   const handleCreateProject = async (data: { name: string; description?: string }) => {
-    const id = await addProject(data.name, data.description);
+    const name = data.name.trim();
+    if (!name) {
+      showStatus('Project name is required');
+      return;
+    }
+    const duplicate = projects.some((p) => p.name.trim().toLowerCase() === name.toLowerCase());
+    if (duplicate) {
+      showStatus('A project with this name already exists');
+      return;
+    }
+    const id = await addProject(name, data.description);
     await loadData();
     showStatus('Project created');
     return id;
   };
 
   const handleCreateCollection = async (data: { name: string; projectId: string }) => {
-    const id = await addCollection(data.name, undefined, data.projectId);
+    const name = data.name.trim();
+    if (!name) {
+      showStatus('Collection name is required');
+      return;
+    }
+    const duplicate = collections.some((c) => {
+      const inProject =
+        c.primaryProjectId === data.projectId ||
+        (Array.isArray(c.projectIds) && c.projectIds.includes(data.projectId));
+      return inProject && c.name.trim().toLowerCase() === name.toLowerCase();
+    });
+    if (duplicate) {
+      showStatus('A collection with this name already exists in this project');
+      return;
+    }
+    const id = await addCollection(name, undefined, data.projectId);
     await loadData();
     showStatus('Collection created');
     return id;
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      const target = projects.find((p) => p.id === projectId);
+      if (target?.isDefault) {
+        showStatus('Default project cannot be removed');
+        return false;
+      }
+      const deleted = await deleteProject(projectId);
+      if (deleted === false) {
+        showStatus('Could not delete project');
+        return false;
+      }
+      await loadData();
+      showStatus('Project deleted');
+      return true;
+    } catch (error) {
+      showStatus(toStatusMessage(error, 'Could not delete project'));
+      return false;
+    }
+  };
+
+  const handleDeleteCollection = async (collectionId: string) => {
+    try {
+      const target = collections.find((c) => c.id === collectionId);
+      if (target?.isDefault) {
+        showStatus('Unsorted default collections cannot be removed');
+        return false;
+      }
+      await deleteCollection(collectionId);
+      await loadData();
+      showStatus('Collection deleted');
+      return true;
+    } catch (error) {
+      showStatus(toStatusMessage(error, 'Could not delete collection'));
+      return false;
+    }
   };
 
   const handleCreateItem = async (data: {
@@ -633,6 +698,8 @@ function App() {
       onDeleteBookmark={handleDeleteBookmark}
       onCreateProject={handleCreateProject}
       onCreateCollection={handleCreateCollection}
+      onDeleteProject={handleDeleteProject}
+      onDeleteCollection={handleDeleteCollection}
       onCreateItem={handleCreateItem}
       onCloseTab={handleCloseTab}
       onCloseWindow={handleCloseWindow}
