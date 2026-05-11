@@ -55,19 +55,19 @@ Details and checkboxes live in [`backlog.md`](backlog.md).
 Chrome MV3 extension
 ├── UI: React + TypeScript + Vite (`src/`)
 ├── Background: `public/service-worker.js` (side panel per-tab on action click, tab-focus helpers)
-├── Storage: IndexedDB `personal-tools-db` **v3** (`src/lib/db.ts`)
+├── Storage: IndexedDB `personal-tools-db` **v4** (`src/lib/db.ts`; placements + canonical URL dedup; see [`DATA_MODEL_DEDUP.md`](DATA_MODEL_DEDUP.md))
 ├── Entry: `index.html` — narrow width ≈ side panel; wide ≈ dashboard
 └── New tab: `chrome_url_overrides.newtab` → same `index.html` (see limitation below)
 ```
 
 **Dual UI**
 
-- **Side panel**: bookmark-centric save flow (URL/title prefill from active tab; optional notes; project/collection pickers with inline create); “already saved” list with edit / remove copy / add new copy; duplicate prevention for same URL in the same collection; **Open Dashboard** and **Set Workbench as Home** (opens Chrome settings + copies extension dashboard URL). No backup UI in the panel (full dashboard only).
-- **Dashboard**: IDE-style **three-region shell** — left navigation (**project dropdown**, collections for selected project, **Content** vs **Tools**); middle area is either **list pane + item tabs** (Bookmarks, Notes, Workspaces — tabs persist when scope changes) or **full-page** tool views (**Tab Commander**, Settings); persistent **right assistant** panel. Detail in [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md).
+- **Side panel**: bookmark-centric save flow (URL/title prefill from active tab; optional notes; project/collection pickers with inline create); “already saved” list with edit / remove copy / **add new copy** (placement-aware notes); duplicate prevention for same URL in the same collection; **Open Dashboard** and **Set Workbench as Home** (opens Chrome settings + copies extension dashboard URL). No backup UI in the panel (full dashboard only). Mutations sync with the dashboard via **`BroadcastChannel`** and focus/visibility refresh patterns.
+- **Dashboard**: IDE-style **three-region shell** — left navigation (**project dropdown**, collections for selected project, **Content** vs **Tools**); middle area is either **list pane + item tabs** (Bookmarks, Notes, Workspaces — tabs persist when scope changes; **drag-and-drop reorder** in the tab strip; aggregate **Open as tab** / **Common tab** with list or grid) or **full-page** tool views (**Tab Commander**, Settings); persistent **right assistant** panel. Detail in [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md).
 
 **Stores (conceptual)** — see `src/lib/db.ts` for truth:
 
-- `projects`, `collections`, `items` (bookmarks), `notes` (schema exists), `workspaces`, `snapshots`.
+- `projects`, `collections`, `items` (bookmarks; **v4** merges by normalized URL + **`placements`** for per-collection fields), `notes` (schema exists), `workspaces`, `snapshots`.
 
 ---
 
@@ -80,7 +80,10 @@ Chrome MV3 extension
 - Notes/Bookmarks separation: both use the same `items` store, but UI classification is now exclusive — bookmarks require URL, notes are URL-empty items.
 - Workspaces: save/restore session snapshots; optional `projectId` on workspace.
 - Workspace save flow: Tab Commander save dialog supports selecting a project (or Detached) for new workspace snapshots.
-- **Dashboard shell (IDE iteration 1)**: Left nav uses a **project scope dropdown** and collections for the selected project; Bookmarks, Notes, and Workspaces use a **split middle** (scoped list + tabbed detail for open items/workspaces); Tab Commander is **full-page** with styling aligned to shared theme tokens; bookmark/note tabs support **in-place editing**.
+- **Dashboard shell (IDE iteration 1)**: Left nav uses a **project scope dropdown** and collections for the selected project; Bookmarks, Notes, and Workspaces use a **split middle** (scoped list + tabbed detail for open items/workspaces; **drag-and-drop** tab reorder); Tab Commander is **full-page** with styling aligned to shared theme tokens; bookmark/note tabs support **in-place editing**; deletes use **placement-aware** confirmation (remove from collection vs delete everywhere) where applicable.
+- **Aggregate browsing**: “Open as tab” for filtered bookmark/note lists uses **scoped titles** (project/collection context), optional **list or grid** layout, and an optional **Common tab** that stacks multiple scopes as labeled sections.
+- **Workspaces**: Saving into an **existing** workspace **appends** new links with **URL deduplication** (`normalizeBookmarkUrl`), rather than replacing the snapshot.
+- **Data model (v4)**: Items merge on **normalized URL**; **`placements`** hold per-collection metadata (notes/tags); removing from one collection vs deleting the item is explicit in UI—see [`DATA_MODEL_DEDUP.md`](DATA_MODEL_DEDUP.md).
 - Data safety: export/import, backup verification, debounced live backup to `latest.json`, manual named backups, envelope metadata (`revision` + `deviceId`), and startup conflict pause/resolution flow.
 - AI infra baseline: pluggable client layer (`src/lib/ai`) with OpenRouter-compatible chat adapter plus optional Chrome native/on-device provider path, persisted AI Settings (provider/model/base URL/API key), timeout + error handling, strict model-match toggle, and Settings test prompt with provider-returned model display.
 - Bookmark-grounded AI starter: Bookmarks view supports “Ask AI” over current filtered bookmark scope, with grounded context assembly and visible source refs (`[B1]`, `[B2]`, ...).
@@ -118,4 +121,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-05-09 — IDE dashboard iteration 1 (split workspace + item tabs + Tab Commander theme alignment); see [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md) and [`backlog.md`](backlog.md).*
+*Last updated: 2026-05-10 — IndexedDB **v4** placements/dedup; dashboard aggregate/common tabs + DnD tab strip; workspace append; placement-aware delete and side-panel copy flows; see [`backlog.md`](backlog.md).*

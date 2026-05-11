@@ -60,6 +60,7 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 - ✅ Two-column detail view (windows/tabs)
 - ✅ Workspace list with cards
 - ✅ Full CRUD operations
+- ✅ When updating an existing snapshot from Tab Commander, **append** new links with **URL deduplication** (normalized URL), rather than replacing the workspace contents outright
 
 ### 4. Note Management 🟡 (Partially Implemented)
 - ✅ Notes can be created manually in dashboard
@@ -179,7 +180,7 @@ The AI agent can access:
 ## User Interface
 
 ### Main Views
-1. **Dashboard**: ✅ IDE-style shell — left sidebar (**project dropdown**, collections-in-scope, Content/Tools); middle **list pane + item tabs** for bookmarks/notes/workspaces (tabs persist across scope); **full-page** Tab Commander & Settings; right assistant panel. See [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md).
+1. **Dashboard**: ✅ IDE-style shell — left sidebar (**project dropdown**, collections-in-scope, Content/Tools); middle **list pane + item tabs** for bookmarks/notes/workspaces (tabs persist across scope; **drag-and-drop** reorder; aggregate **Open as tab** with scoped titles + **list/grid**; optional **Common tab** stacking sections by project/collection); **full-page** Tab Commander & Settings; right assistant panel. Deletes support **remove from collection** vs **delete everywhere** where placement context exists. See [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md).
 2. **Tab Commander**: ✅ Full-page live tab management; themed consistently with dashboard tokens (`BottomPanel`).
 3. **Bookmarks View**: ✅ Scoped list + tabbed detail; search/import in list header; in-tab edit; bookmark-grounded AI from filtered scope.
 4. **Workspaces View**: ✅ Scoped list; workspace opens as **one tab** with link list and bulk actions (open/bookmark/remove).
@@ -187,7 +188,7 @@ The AI agent can access:
 6. **Projects View**: ✅ Implemented project workspace and cards
 7. **Notes View**: ✅ Implemented note-focused view over note-like items
 8. **AI Assistant**: 🟡 Infra/settings + test prompt + first bookmark-grounded ask flow implemented; richer citation/selection UX still pending
-9. **Side Panel**: ✅ Bookmark-centric workflow — URL/title prefill from active tab (updates on tab change); notes field; project/collection selection with inline create; list of saved copies for current URL (edit, remove, add new copy); duplicate URL blocked within same collection; Open Dashboard; Set Workbench as Home (manual Chrome startup/home setup). Backup onboarding/import flows remain dashboard-first when required.
+9. **Side Panel**: ✅ Bookmark-centric workflow — URL/title prefill from active tab (updates on tab change); notes field; project/collection selection with inline create; list of saved copies for current URL (edit, placement-aware remove, **add new copy** with explicit project/collection choice); switching to a collection that already contains the URL surfaces that copy’s notes; duplicate URL blocked within same collection; Open Dashboard; Set Workbench as Home (manual Chrome startup/home setup). **BroadcastChannel** / visibility patterns refresh lists when the dashboard mutates data. Backup onboarding/import flows remain dashboard-first when required.
 
 ### Design Philosophy
 - Clean and minimal
@@ -201,14 +202,15 @@ The AI agent can access:
 - ✅ Basic tab management (Tab Commander)
 - ✅ Bookmark organization (Collections + Items)
 - ✅ Workspaces (beyond original spec)
-- ✅ Local database setup (IndexedDB)
+- ✅ Local database setup (IndexedDB **v4** — placements + URL dedup)
 - ✅ Export/Import functionality
 - 🟡 Notes store/UI unification decision (next priority)
 - ✅ Projects implementation
 
 ### Phase 1.5: Data Model & Linking (Current Focus)
 - ✅ Define and implement Projects ↔ Collections core relationship
-- 🟡 Align top-level UI flows with the model (project/collection-aware create flows) — **partially addressed** by IDE iteration 1 scope UX
+- ✅ **Items v4**: canonical URL dedup + **placements** (per-collection notes/tags); merge on save; granular remove-from-collection vs delete-item — see [`DATA_MODEL_DEDUP.md`](DATA_MODEL_DEDUP.md)
+- 🟡 Align top-level UI flows with the model (project/collection-aware create flows) — **partially addressed** by IDE iteration 1 scope UX + side-panel copy flows
 - ⏳ Decide and implement single long-term Notes model (`items` note-like vs first-class `notes` store)
 - ⏳ Implement richer resource linking UX (bookmarks ↔ notes ↔ projects)
 
@@ -267,3 +269,6 @@ The AI agent can access:
 - Keep it simple and maintainable
 - Security is not a primary concern for personal use, but basic best practices should be followed
 
+---
+
+*Last updated: 2026-05-10 — Synced with shipped placements UX, dashboard tab strip DnD, aggregate/common tabs, workspace append.*

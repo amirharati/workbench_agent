@@ -11,8 +11,8 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 ## Near-term roadmap (agreed with [`OVERVIEW.md`](OVERVIEW.md))
 
 1. **🟡 AI infra (cloud first)** — Settings for provider/API key/model; secure persistence (`chrome.storage.local` pattern); thin HTTP client for chat/completions (OpenAI-compatible baseline); minimal UI smoke surface; no embeddings/RAG milestone requirement yet.
-2. **🟡 Bookmarks manual-at-scale** — Bulk import paths (prioritize bookmark export interchange e.g. **Netscape HTML**); preview + dedupe mapping to collections/projects; single-item UX stays as-is.
-3. **🟡 AI + bookmarks** — Ground prompts over user’s bookmark set (titles, notes, snippets); cite source items; lightweight assists (summaries, tags) before heavier RAG.
+2. **🟡 Bookmarks manual-at-scale** — **Import commit + batch path shipped** (see Done). Next: **scale/backup posture** for huge libraries, **import polish** (cover/provenance/folder→collection), then **AI-assisted organization** (cluster → collections/projects) and **enrichment** (especially X-shaped links).
+3. **🟡 AI + bookmarks** — Ground prompts over user’s bookmark set (titles, notes, snippets); cite source items; lightweight assists (summaries, tags) before heavier RAG; **auto-categorization** as an early high-leverage slice (see Items / AI backlog).
 4. **⏸ Order TBD** — Local or API embeddings; vector index; guided tab capture agents; workspaces+AI; study-path entities; content scripts per-page.
 
 ---
@@ -20,7 +20,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 ## ✅ Done (shipped)
 
 - **Chrome app**: MV3 extension; React/Vite UI; side panel + full-page; service worker opens panel + `focus-tab` helper.
-- **IndexedDB v3** (`db.ts`): projects, collections (`primaryProjectId`, `projectIds`), items (`collectionIds[]`, tags, notes-on-bookmark), workspaces, `notes` object store (schema + export/import), snapshots; migrations incl. legacy default project id cleanup.
+- **IndexedDB v3→v4** (`db.ts`): projects, collections (`primaryProjectId`, `projectIds`), items (`collectionIds[]`, tags, placement-aware notes), workspaces, `notes` object store (schema + export/import), snapshots; migrations incl. legacy default project id cleanup and **v4 placements / canonical URL dedup** (`placements`, `addItemWithMerge`, `removeItemFromCollection`) per [`DATA_MODEL_DEDUP.md`](DATA_MODEL_DEDUP.md).
 - **Backup / import**: JSON export/import, `verifyBackup`, confirmation + counts, backup-before-import, best-effort pre-migration dump + console warnings.
 - **Tab Commander**: Multi-window navigator, bulk selection, drag-move tabs between windows, list/gallery, mitigations for macOS Spaces (e.g. Open Here / find window).
 - **Bookmarks & collections**: Item/collection/project CRUD; Unsorted per project; “All projects” aggregate view; collection pills + filters; in-place edit; context menus.
@@ -40,8 +40,14 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **AI infra foundation (phase 2a start)**: Added pluggable AI client layer (`src/lib/ai/*`) with OpenRouter adapter, persisted Settings controls (provider/model/base URL/API key + timeout/temperature/tokens), test prompt runner, provider-returned model visibility, and key storage/security note + show/hide toggle.
 - **AI infra hardening slice**: strict model-match option, task-based routing scaffold (`single` vs `by-task` with overrides), and optional Chrome native/on-device provider path (graceful fallback when unavailable).
 - **Phase B starter (AI + bookmarks)**: Bookmarks view now supports "Ask AI" over current filtered bookmark scope with grounded prompt assembly and visible source refs (`[B1]`, `[B2]`, ...).
-- **Import Studio (preview phase)**: Bookmarks → **Import** opens **Import Studio** (`ImportStudioView.tsx`). **Working:** Netscape/HTML + **CSV + JSON** file parse, **`chrome.bookmarks.getTree`** load, unified preview table (first 300 rows shown), stats (valid URLs, duplicates hint), optional project/collection **planning** dropdowns (not applied to DB yet). CSV maps Raindrop-like columns incl. **`folder` / `collection`**, **`cover`** (→ image preview column), **`source`/provider aliases**. **Still mock:** AI assistant tab only. **Next session:** commit to DB (`addItem`/batch), persist **cover** + **import provenance** (e.g. `metadata`), dedupe aligned with `normalizeBookmarkUrl`.
+- **Import Studio (commit + adapters)**: Bookmarks → **Import** — **file** ingest (Netscape HTML, CSV, JSON incl. loose/JS-assignment wrappers, `.js`/`.txt`), **content-based auto-detect** (JSON vs CSV vs HTML), **X bookmarks export** adapter (`tweet_url`, tweet text → title `screen_name: …`, **description** column + notes for DB), **Chrome `bookmarks.getTree`**, unified preview (first 300 rows) + stats, optional project/collection target, **`Commit to DB`** via **`bulkImportBookmarks`**: single IndexedDB transaction + in-memory normalized-URL index (large drops ~8k+). **Still mock:** Import Studio AI tab. **Follow-ups:** persist cover/favicon + structured import provenance on `metadata`; folder→collection mapping; commit progress UI.
 - **Dashboard shell — IDE iteration 1**: Three-region layout with **project dropdown** + collections-in-scope + Content/Tools nav; middle area uses **list pane + item-tab detail** for Bookmarks/Notes/Workspaces (open **item** tabs persist across scope changes); **full-page** Tab Commander and Settings; workspace tabs as single link-list with selection/bookmark/remove; aggregate “open list as tab”; bookmark/note **edit-in-tab**; Tab Commander (`BottomPanel`) **theme-aligned** via CSS variables + `global.css` tokens (`--error`, `--bg-input`). Supersedes earlier “module tabs + bookmarks split” milestones. Spec: [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md).
+- **Delete UX (placements)**: `DeleteConfirmDialog` paths for **remove from this collection** vs **delete everywhere** on dashboard, project/collections views, item tabs, and tab content where context applies.
+- **Side panel — copies & notes**: “Add a new copy” clears project/collection until chosen; auto-switch to edit existing copy when selecting a collection that already holds the URL; notes merge/update wired to placement-aware DB helpers; visible scrollbar on saved-cards list; URL normalization matches `normalizeBookmarkUrl`.
+- **Cross-surface refresh**: `BroadcastChannel` + focus/visibility hooks keep sidebar/dashboard lists in sync after mutations (pattern used across app surfaces).
+- **Workspace save — append**: Choosing an **existing** workspace **appends** unique tab URLs (deduped via `normalizeBookmarkUrl`), not full replace.
+- **Aggregate & common tabs**: “Open as tab” uses **distinct tab titles** (project/collection context); **list vs grid** toggle for bookmark-list / note-list tabs; **Common tab** merges multiple scopes into one tab with **sections** per project/collection (list/grid supported).
+- **Item tab strip — reorder**: Open bookmark/note/workspace/list tabs reorder by **drag-and-drop** (HTML5 DnD), not icon buttons.
 
 ---
 
@@ -50,6 +56,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [ ] **Error handling**: consistent try/catch on async paths (`App.tsx`, dashboard handlers, Chrome APIs); user-visible errors vs silent `console.error`.
 - [ ] **DB transactions**: multi-step deletes (`deleteCollection`, `deleteProject`, bulk moves) reviewed for atomicity in `db.ts`.
 - [ ] **Input validation**: URLs, IDs, text limits; centralize validation helpers (extend existing `src/lib/utils.ts` patterns as needed).
+- [ ] **Very large bookmark libraries (scale spike)** — With current **full JSON backup/export** + in-memory item maps on bulk paths: assess limits (memory, UI list perf, backup time/size) for **5k–50k+** bookmarks; decide if we need **chunked export**, **paged reads**, **lazy list virtualization**, or **separate blob store** for heavy fields—vs keeping “good enough” for personal-scale only. Ties to backup coordinator and `db.ts` read patterns.
 
 ---
 
@@ -85,6 +92,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 **UI architecture — IDE shell refresh** — design: [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md)
 
 - [x] **Iteration 1 — shipped** — project dropdown + collections; Content/Tools sections; middle **split** (list + item tabs) for bookmarks/notes/workspaces; item tabs persist across scope; full-page Tab Commander + Settings; workspace link-list tab UX + aggregate list tabs + edit-in-tab; Tab Commander themed with shared tokens.
+- [x] **Tab strip polish (mini)** — drag-and-drop reorder for open **item** tabs; aggregate list titles scoped by project/collection; list/grid for aggregate + common tab.
 - [ ] **Phase 2 polish** — unify shared split primitives/resizers; optional persisted divider width.
 - [ ] **Phase 2 scope model** — explicit virtual aggregate scope chips (`All Collections`, etc.) beyond current dropdown behavior; clear scope state presentation.
 - [ ] **Phase 3 right pane contract** — consistent AI/inspector side panel behavior (pin/collapse/context).
@@ -154,4 +162,4 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ---
 
-*Last updated: 2026-05-09 — IDE shell **iteration 1** documented as shipped (`UI_IDE_REDESIGN.md`, backlog); Tab Commander theme alignment; backlog deduped for shell milestones.*
+*Last updated: 2026-05-10 — Documented **v4 placements/dedup**, placement-aware delete + side-panel copy flows, workspace append, aggregate/common tab UX, and **drag-and-drop** item-tab reorder.*

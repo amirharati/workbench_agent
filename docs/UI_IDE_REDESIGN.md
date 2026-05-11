@@ -71,7 +71,7 @@ Middle area is the main execution canvas.
 
 **Iteration 1 (implemented):**
 
-- **Content modules** (Bookmarks, Notes, Workspaces): a **split layout** — left-middle **scoped list** (search, import, counts, “open as tab” where applicable); right-middle **item tabs only** (individual bookmark/note, workspace link-list tab, or filtered aggregate list tab). Tabs represent **items or workspace sessions**, not top-level modules.
+- **Content modules** (Bookmarks, Notes, Workspaces): a **split layout** — left-middle **scoped list** (search, import, counts, “open as tab” / **add to common tab** where applicable); right-middle **item tabs only** (individual bookmark/note, workspace link-list tab, filtered aggregate list tab, or **common** multi-section tab). Tabs represent **items or workspace sessions**, not top-level modules; users **drag tabs** to reorder them.
 - **Tool modules** (Tab Commander, Settings): **full-page** center region inside the same outer shell (no list/detail split).
 - Changing **scope** (project/collection) updates the list pane; **open item tabs persist** unless closed by the user.
 
@@ -95,8 +95,9 @@ Right panel should be pinnable/collapsible and not block core workflows.
 ### 5.1 Navigation vs item tabs (iteration 1)
 
 - **Left nav** selects the active module (Bookmarks, Notes, Workspaces, Tab Commander, Settings) and **scope** (project dropdown, collections when a project is selected).
-- **Center-right tabs** are **item/workspace/list tabs** only: duplicate titles activate the existing tab where applicable.
+- **Center-right tabs** are **item/workspace/list tabs** only: duplicate titles activate the existing tab where applicable (aggregate tabs encode scope in the tab id/title).
 - Closing an active item tab should focus a sensible neighbor (nearest remaining tab).
+- **Reorder**: users may **drag and drop** tabs along the strip to change order (native HTML5 drag-and-drop).
 
 ### 5.2 Scope vs open tabs
 
@@ -140,7 +141,7 @@ Based on `ui-design-brain` guidance:
 
 Component-level expectations:
 
-- Tabs: stable active state, compact labels, clear close affordance.
+- Tabs: stable active state, compact labels, clear close affordance, **drag-and-drop reorder** for open item tabs.
 - Navigation: grouped sections with concise labels.
 - Lists: fast scan, clear selection state, non-jumpy row controls.
 - Splits: draggable dividers, persisted widths/heights.
@@ -153,6 +154,9 @@ Component-level expectations:
 - Left nav: **project dropdown** (All Projects or one project), **collections** for selected project, **Content** (Bookmarks, Notes, Workspaces) vs **Tools** (Tab Commander, Settings).
 - Middle: **list + item-tab detail** for content modules; **full-page** for Tab Commander and Settings.
 - Workspaces in Content: single tab shows workspace links with multi-select, open/bookmark/remove flows; detached workspaces visible without duplication when scoped to All Projects.
+- **Aggregate lists**: “Open as tab” opens bookmark-list or note-list tabs with **scoped titles**; optional **list vs grid** layout toggle.
+- **Common tab**: user can merge multiple “open as tab” scopes into one tab with **sections** per project/collection (each section is its own heading + links); supports the same list/grid toggle.
+- **Item tab strip**: tabs reorder via **drag-and-drop** along the strip.
 
 ### Phase 2 — next
 
@@ -192,8 +196,9 @@ These can be addressed incrementally after shell and navigation contracts are st
 
 **Middle workspace**
 
-- **Bookmarks / Notes / Workspaces:** `MainContent` **list mode** in the left-middle pane (search, add, import for bookmarks, “Open as tab” for filtered lists). Row actions open **item tabs** or workspace tab in the right-middle pane.
-- **Item tabs:** bookmark, note, workspace (link list with checkboxes and bulk actions), bookmark-list / note-list aggregate tabs; individual bookmark/note tabs support **edit** (title, URL, notes) and metadata display.
+- **Bookmarks / Notes / Workspaces:** `MainContent` **list mode** in the left-middle pane (search, add, import for bookmarks, “Open as tab” / **Add to common** for filtered lists). Row actions open **item tabs** or workspace tab in the right-middle pane.
+- **Item tabs:** bookmark, note, workspace (link list with checkboxes and bulk actions), bookmark-list / note-list aggregate tabs (optional **list vs grid**), **common-list** tab (multiple sections by scope); individual bookmark/note tabs support **edit** (title, URL, notes) with **placement-aware** notes when an item exists in multiple collections.
+- **Tab strip:** drag-and-drop reordering along the strip.
 
 **Tab Commander**
 
@@ -205,4 +210,4 @@ These can be addressed incrementally after shell and navigation contracts are st
 
 ---
 
-*Last updated: 2026-05-09 — iteration 1 closure; Tab Commander theme alignment; doc synced with shipped UI.*
+*Last updated: 2026-05-10 — Documented aggregate/common list UX, list/grid toggles, DnD tab reorder, placement-aware notes in tabs.*

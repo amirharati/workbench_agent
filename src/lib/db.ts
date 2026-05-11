@@ -1400,6 +1400,7 @@ export const deleteWorkspace = async (id: string) => {
 export interface ImportCandidate {
   url: string;
   title: string;
+  description?: string;
   notes?: string;
   tags?: string[];
   source?: string;
@@ -1440,27 +1441,116 @@ export const bulkImportBookmarks = async (
     byUrl.get(normalized)!.push(c);
   }
   
-  // Process each unique URL
-  for (const [normalizedUrl, dupes] of byUrl) {
-    // Pick best candidate: prefer one with notes, then longest title
-    const best = dupes.sort((a, b) => {
-      if (a.notes && !b.notes) return -1;
-      if (b.notes && !a.notes) return 1;
-      return (b.title?.length || 0) - (a.title?.length || 0);
-    })[0];
-    
-    const result = await addItemWithMerge({
-      url: normalizedUrl,
-      title: best.title || normalizedUrl,
-      notes: best.notes,
-      tags: best.tags || [],
-      collectionIds: [targetCollection],
-      source: (best.source || 'import') as any,
-      favicon: best.favicon
+  // Batch path for large imports:
+  // - one snapshot read of existing items
+  // - one readwrite transaction for all writes
+  // This avoids N*getAll scans from addItemWithMerge/findItemByNormalizedUrl.
+  const pickBestCandidate = (dupes: ImportCandidate[]): ImportCandidate => {
+    return dupes.reduce((best, current) => {
+      const bestHasNotes = !!(best.notes || best.description);
+      const currentHasNotes = !!(current.notes || current.description);
+      if (currentHasNotes && !bestHasNotes) return current;
+      if (bestHasNotes && !currentHasNotes) return best;
+      const bestTitleLen = best.title?.length || 0;
+      const currentTitleLen = current.title?.length || 0;
+      return currentTitleLen > bestTitleLen ? current : best;
     });
-    
-    if (result.merged) merged++;
-    else created++;
+  };
+
+  const now = nowTs();
+  const existingItems = await db.getAll('items');
+  const existingByNormalizedUrl = new Map<string, Item>();
+  for (const item of existingItems) {
+    if (!item.url || !isHttpUrl(item.url)) continue;
+    existingByNormalizedUrl.set(normalizeBookmarkUrl(item.url), item);
+  }
+
+  const tx = db.transaction(['items'], 'readwrite');
+  const itemsStore = tx.objectStore('items');
+
+  for (const [normalizedUrl, dupes] of byUrl) {
+    const best = pickBestCandidate(dupes);
+    const existing = existingByNormalizedUrl.get(normalizedUrl);
+    const incomingNotes = best.notes || best.description;
+
+    if (existing) {
+      merged += 1;
+
+      const placements = { ...(existing.placements || {}) };
+      const existingPlacement = placements[targetCollection];
+      if (!existingPlacement) {
+        placements[targetCollection] = {
+          collectionId: targetCollection,
+          notes: incomingNotes || undefined,
+          tags: best.tags || [],
+          addedAt: now,
+          source: best.source || 'import',
+        };
+      } else if (incomingNotes) {
+        // Only enrich notes when non-empty; do not clear existing notes in batch import.
+        placements[targetCollection] = {
+          ...existingPlacement,
+          notes: incomingNotes,
+          tags: best.tags && best.tags.length > 0 ? best.tags : existingPlacement.tags,
+        };
+      }
+
+      const mergedCollectionIds = Object.keys(placements);
+      const hasBetterTitle =
+        !!best.title &&
+        best.title !== normalizedUrl &&
+        (!existing.title || existing.title === existing.url);
+      const hasBetterFavicon = !!best.favicon && !existing.favicon;
+
+      const updatedItem: Item = {
+        ...existing,
+        title: hasBetterTitle ? best.title : existing.title,
+        favicon: hasBetterFavicon ? best.favicon : existing.favicon,
+        collectionIds: mergedCollectionIds,
+        placements,
+        updated_at: now,
+      };
+
+      await itemsStore.put(updatedItem);
+      existingByNormalizedUrl.set(normalizedUrl, updatedItem);
+      continue;
+    }
+
+    created += 1;
+    const id = crypto.randomUUID();
+    const source = (best.source || 'import') as Item['source'];
+    const placements: Record<string, ItemPlacement> = {
+      [targetCollection]: {
+        collectionId: targetCollection,
+        notes: incomingNotes || undefined,
+        tags: best.tags || [],
+        addedAt: now,
+        source,
+      },
+    };
+
+    const newItem: Item = {
+      id,
+      url: normalizedUrl,
+      urlRaw: best.url !== normalizedUrl ? best.url : undefined,
+      title: best.title || normalizedUrl,
+      favicon: best.favicon,
+      collectionIds: [targetCollection],
+      tags: best.tags || [],
+      notes: incomingNotes || undefined,
+      placements,
+      created_at: now,
+      updated_at: now,
+      source,
+    };
+
+    await itemsStore.put(newItem);
+    existingByNormalizedUrl.set(normalizedUrl, newItem);
+  }
+
+  await tx.done;
+  if (created > 0 || merged > 0) {
+    notifyDataChanged('item.update');
   }
   
   return { created, merged, skipped };

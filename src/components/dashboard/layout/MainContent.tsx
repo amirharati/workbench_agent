@@ -764,6 +764,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               projects={projects}
               collections={collections}
               onBack={() => setShowImportStudio(false)}
+              onImported={onRefresh}
             />
           );
         }
@@ -2705,6 +2706,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               projects={projects}
               collections={collections}
               onBack={() => setShowImportStudio(false)}
+              onImported={onRefresh}
             />
           </div>
         )}

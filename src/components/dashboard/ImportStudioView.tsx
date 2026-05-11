@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Collection, Project } from '../../lib/db';
+import { bulkImportBookmarks, ensureProjectUnsortedCollection, type Collection, type Project } from '../../lib/db';
 
 type ImportTab = 'file' | 'chrome' | 'ai';
 
@@ -7,18 +7,22 @@ interface ImportStudioViewProps {
   projects: Project[];
   collections: Collection[];
   onBack: () => void;
+  onImported?: () => Promise<void> | void;
 }
 
 interface ImportCandidate {
   source: 'file-html' | 'file-csv' | 'file-json' | 'chrome-api';
   title: string;
   url: string;
+  description?: string;
   notes?: string;
   tags?: string[];
   folderPath?: string;
   imageUrl?: string;
   importSource?: string;
 }
+
+type AutoDetectedFormat = 'json' | 'csv' | 'html' | 'unknown';
 
 const sectionStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
@@ -34,12 +38,16 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   projects,
   collections,
   onBack,
+  onImported,
 }) => {
   const [tab, setTab] = React.useState<ImportTab>('file');
   const [rows, setRows] = React.useState<ImportCandidate[]>([]);
   const [sourceLabel, setSourceLabel] = React.useState('');
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [committing, setCommitting] = React.useState(false);
+  const [commitMessage, setCommitMessage] = React.useState('');
+  const [commitError, setCommitError] = React.useState('');
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [selectedProjectId, setSelectedProjectId] = React.useState('');
   const [selectedCollectionId, setSelectedCollectionId] = React.useState('');
@@ -116,7 +124,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       const row = parseCsvLine(lines[i]);
       const url = pickField(row, keyMap, ['url', 'href', 'link']);
       const title = pickField(row, keyMap, ['title', 'name']) || url;
-      const notes = pickField(row, keyMap, ['notes', 'description', 'comment']);
+      const description = pickField(row, keyMap, ['description', 'summary', 'excerpt', 'text']);
+      const notes = pickField(row, keyMap, ['notes', 'comment']);
       const tagsRaw = pickField(row, keyMap, ['tags', 'tag']);
       const folderPath = pickField(row, keyMap, [
         'folder',
@@ -142,7 +151,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         source: 'file-csv',
         title: title || 'Untitled',
         url,
-        notes: notes || undefined,
+        description: description || undefined,
+        notes: notes || description || undefined,
         tags: tags.length ? tags : undefined,
         folderPath: folderPath || undefined,
         imageUrl: imageUrl || undefined,
@@ -153,40 +163,192 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   };
 
   const parseJson = (text: string): ImportCandidate[] => {
-    const parsed = JSON.parse(text) as unknown;
-    const items = Array.isArray(parsed)
-      ? parsed
-      : parsed && typeof parsed === 'object'
-      ? ((parsed as Record<string, unknown>).bookmarks ||
-          (parsed as Record<string, unknown>).items ||
-          (parsed as Record<string, unknown>).links ||
-          []) as unknown
-      : [];
-    if (!Array.isArray(items)) return [];
+    const parseLooseJson = (raw: string): unknown => {
+      const trimmed = raw.trim();
+      if (!trimmed) return [];
+
+      try {
+        return JSON.parse(trimmed) as unknown;
+      } catch {
+        // Support JS assignment wrappers like: window.foo = [...];
+        const eqIndex = trimmed.indexOf('=');
+        if (eqIndex >= 0) {
+          try {
+            const rhs = trimmed.slice(eqIndex + 1).trim().replace(/;+\s*$/, '');
+            return JSON.parse(rhs) as unknown;
+          } catch {
+            // continue to block extraction below
+          }
+        }
+
+        // Support pasted/saved blobs with extra wrappers/noise around JSON.
+        const firstArrayStart = trimmed.indexOf('[');
+        const firstObjectStart = trimmed.indexOf('{');
+        const starts = [firstArrayStart, firstObjectStart].filter((n) => n >= 0);
+        if (starts.length > 0) {
+          const start = Math.min(...starts);
+          for (let end = trimmed.length; end > start + 1; end -= 1) {
+            const chunk = trimmed.slice(start, end).trim().replace(/;+\s*$/, '');
+            if (!(chunk.startsWith('[') || chunk.startsWith('{'))) continue;
+            try {
+              return JSON.parse(chunk) as unknown;
+            } catch {
+              // keep shrinking until parse succeeds or exhausted
+            }
+          }
+        }
+
+        throw new Error('Could not parse JSON data.');
+      }
+    };
+
+    const parsed = parseLooseJson(text);
+
+    const toRecord = (value: unknown): Record<string, unknown> | null => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+      return value as Record<string, unknown>;
+    };
+
+    const firstString = (row: Record<string, unknown>, keys: string[]): string => {
+      for (const key of keys) {
+        const value = row[key];
+        if (typeof value === 'string' && value.trim()) return value.trim();
+      }
+      return '';
+    };
+
+    const truncate = (value: string, maxLength = 120): string => {
+      if (value.length <= maxLength) return value;
+      return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+    };
+
+    const firstUrlInText = (value: string): string => {
+      const match = value.match(/https?:\/\/\S+/i);
+      return match ? match[0].trim() : '';
+    };
+
+    const inferXBookmarkImage = (row: Record<string, unknown>): string => {
+      const extendedMedia = row.extended_media;
+      if (!Array.isArray(extendedMedia)) return '';
+      for (const mediaEntry of extendedMedia) {
+        const media = toRecord(mediaEntry);
+        if (!media) continue;
+        const imageUrl = firstString(media, ['media_url_https', 'media_url', 'url', 'expanded_url']);
+        if (imageUrl) return imageUrl;
+      }
+      return '';
+    };
+
+    const isXBookmarkRow = (row: Record<string, unknown>): boolean => {
+      const hasTweetUrl = !!firstString(row, ['tweet_url']);
+      const hasTweetText = !!firstString(row, ['full_text', 'note_tweet_text']);
+      const hasAuthor = !!firstString(row, ['screen_name', 'name']);
+      return hasTweetUrl && (hasTweetText || hasAuthor);
+    };
+
+    const firstWords = (value: string, maxWords = 10): string => {
+      const words = value
+        .split(/\s+/)
+        .map((w) => w.trim())
+        .filter(Boolean);
+      if (words.length <= maxWords) return words.join(' ');
+      return `${words.slice(0, maxWords).join(' ')}…`;
+    };
+
+    const inferXBookmarkDescription = (row: Record<string, unknown>): string => {
+      return firstString(row, ['note_tweet_text', 'full_text', 'description', 'text']);
+    };
+
+    const inferXBookmarkTitle = (row: Record<string, unknown>, fallbackUrl: string): string => {
+      const description = inferXBookmarkDescription(row).split(/\r?\n/).map((line) => line.trim()).filter(Boolean).join(' ');
+      const author = firstString(row, ['screen_name', 'name']);
+      if (description) {
+        const preview = firstWords(description, 10);
+        return author ? `${author}: ${preview}` : preview;
+      }
+      if (author) return `${author}: ${truncate(fallbackUrl, 80)}`;
+      return fallbackUrl;
+    };
+
+    const collectObjectCandidates = (root: unknown): Record<string, unknown>[] => {
+      const out: Record<string, unknown>[] = [];
+      const queue: unknown[] = [root];
+      let inspected = 0;
+      const MAX_NODES = 20000;
+
+      while (queue.length > 0 && inspected < MAX_NODES) {
+        const current = queue.shift();
+        inspected += 1;
+        if (!current) continue;
+
+        if (Array.isArray(current)) {
+          current.forEach((entry) => queue.push(entry));
+          continue;
+        }
+
+        if (typeof current !== 'object') continue;
+        const row = current as Record<string, unknown>;
+        const hasLinkLikeField = !!firstString(row, ['url', 'href', 'link', 'tweet_url', 'expanded_url', 'permalink']);
+        const hasTextLinkHint = !!firstUrlInText(firstString(row, ['full_text', 'note_tweet_text', 'text']));
+        if (hasLinkLikeField || hasTextLinkHint) out.push(row);
+
+        Object.values(row).forEach((value) => {
+          if (value && (Array.isArray(value) || typeof value === 'object')) {
+            queue.push(value);
+          }
+        });
+      }
+
+      return out;
+    };
+
+    // Always scan the full parsed document because some exporters include decoy
+    // wrapper arrays (`items`, etc.) while bookmark rows live elsewhere.
+    const candidateEntries = collectObjectCandidates(parsed);
+    if (candidateEntries.length === 0) return [];
 
     const out: ImportCandidate[] = [];
-    for (const entry of items) {
-      if (!entry || typeof entry !== 'object') continue;
-      const row = entry as Record<string, unknown>;
-      const url = String(row.url ?? row.href ?? row.link ?? '').trim();
+    for (const entry of candidateEntries) {
+      const row = toRecord(entry);
+      if (!row) continue;
+
+      const baseUrl = firstString(row, ['url', 'href', 'link', 'tweet_url', 'expanded_url', 'permalink']);
+      const textUrl = firstUrlInText(firstString(row, ['full_text', 'note_tweet_text', 'text']));
+      const url = baseUrl || textUrl;
       if (!url) continue;
-      const title = String(row.title ?? row.name ?? url).trim();
-      const notes = String(row.notes ?? row.description ?? '').trim();
+
+      const looksLikeXBookmark = isXBookmarkRow(row);
+      const description = looksLikeXBookmark
+        ? inferXBookmarkDescription(row)
+        : firstString(row, ['description', 'summary', 'excerpt', 'full_text', 'note_tweet_text', 'text']);
+      const title =
+        firstString(row, ['title']) ||
+        (looksLikeXBookmark ? inferXBookmarkTitle(row, url) : firstString(row, ['name']) || url);
+      const notes = firstString(row, ['notes', 'comment']) || description;
       const rawTags = row.tags;
       const tags = Array.isArray(rawTags)
         ? rawTags.map((t) => String(t).trim()).filter(Boolean)
         : typeof rawTags === 'string'
         ? rawTags.split(/[;,]/).map((t) => t.trim()).filter(Boolean)
         : [];
+      const imageUrl =
+        firstString(row, ['imageUrl', 'image', 'cover', 'thumbnail']) ||
+        firstString(row, ['profile_image_url_https']) ||
+        inferXBookmarkImage(row);
+      const importSource =
+        firstString(row, ['importSource', 'source', 'provider']) ||
+        (looksLikeXBookmark ? 'x-bookmarks-export-v1' : '');
+
       out.push({
         source: 'file-json',
         title: title || 'Untitled',
         url,
+        description: description || undefined,
         notes: notes || undefined,
         tags: tags.length ? tags : undefined,
-        folderPath: String(row.folderPath ?? row.folder ?? row.collection ?? '').trim() || undefined,
-        imageUrl: String(row.imageUrl ?? row.image ?? row.cover ?? row.thumbnail ?? '').trim() || undefined,
-        importSource: String(row.importSource ?? row.source ?? row.provider ?? '').trim() || undefined,
+        folderPath: firstString(row, ['folderPath', 'folder', 'collection']) || (looksLikeXBookmark ? 'X / Bookmarks' : undefined),
+        imageUrl: imageUrl || undefined,
+        importSource: importSource || undefined,
       });
     }
     return out;
@@ -221,6 +383,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         source: 'file-html',
         title: a.textContent?.trim() || url,
         url,
+        description: undefined,
         folderPath: getFolderPath(a as HTMLAnchorElement) || undefined,
       });
     });
@@ -231,6 +394,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     setRows(nextRows);
     setSourceLabel(label);
     setError('');
+    setCommitError('');
+    setCommitMessage('');
   };
 
   const handleChooseFile = () => {
@@ -244,15 +409,68 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       setLoading(true);
       const text = await file.text();
       const lowerName = file.name.toLowerCase();
-      let parsedRows: ImportCandidate[] = [];
-      if (lowerName.endsWith('.csv')) {
-        parsedRows = parseCsv(text);
-      } else if (lowerName.endsWith('.json')) {
-        parsedRows = parseJson(text);
-      } else {
-        parsedRows = parseNetscapeHtml(text);
+      const trimmed = text.trim();
+      const firstLine = trimmed.split(/\r?\n/, 1)[0]?.toLowerCase() || '';
+      const isLikelyJsonContent =
+        trimmed.startsWith('{') ||
+        trimmed.startsWith('[') ||
+        /(?:window|module\.exports|export\s+default)\b/i.test(trimmed) ||
+        (trimmed.includes('=') && (trimmed.includes('[') || trimmed.includes('{')));
+      const isLikelyHtmlContent =
+        /<!doctype html/i.test(trimmed) ||
+        /<a\s+[^>]*href=/i.test(trimmed) ||
+        /<dl>|<dt>|<h3/i.test(trimmed);
+      const isLikelyCsvContent =
+        firstLine.includes(',') && /(url|href|link|title|name|description|notes|comment|folder|collection)/i.test(firstLine);
+
+      const runJson = (): ImportCandidate[] => {
+        try {
+          return parseJson(text);
+        } catch {
+          return [];
+        }
+      };
+
+      const runCsv = (): ImportCandidate[] => parseCsv(text);
+      const runHtml = (): ImportCandidate[] => parseNetscapeHtml(text);
+
+      const attempts: Array<{ format: AutoDetectedFormat; parse: () => ImportCandidate[] }> = [];
+
+      if (isLikelyJsonContent || lowerName.endsWith('.json') || lowerName.endsWith('.js') || lowerName.endsWith('.txt')) {
+        attempts.push({ format: 'json', parse: runJson });
       }
-      setImportedRows(parsedRows, `File: ${file.name}`);
+      if (isLikelyCsvContent || lowerName.endsWith('.csv')) {
+        attempts.push({ format: 'csv', parse: runCsv });
+      }
+      if (isLikelyHtmlContent || lowerName.endsWith('.html') || lowerName.endsWith('.htm')) {
+        attempts.push({ format: 'html', parse: runHtml });
+      }
+
+      // Always include all parsers as fallback to make detection extension-agnostic.
+      ([
+        { format: 'json' as const, parse: runJson },
+        { format: 'csv' as const, parse: runCsv },
+        { format: 'html' as const, parse: runHtml },
+      ]).forEach((candidate) => {
+        if (!attempts.some((a) => a.format === candidate.format)) attempts.push(candidate);
+      });
+
+      let parsedRows: ImportCandidate[] = [];
+      let detectedFormat: AutoDetectedFormat = 'unknown';
+      for (const attempt of attempts) {
+        const rowsCandidate = attempt.parse();
+        if (rowsCandidate.length > 0) {
+          parsedRows = rowsCandidate;
+          detectedFormat = attempt.format;
+          break;
+        }
+      }
+
+      const hasXAdapterRows = parsedRows.some((row) => row.importSource === 'x-bookmarks-export-v1');
+      const adapterLabel = hasXAdapterRows ? 'X adapter' : 'generic adapter';
+      const detectedLabel = detectedFormat === 'unknown' ? 'auto-detect: no match' : `auto-detect: ${detectedFormat} (${adapterLabel})`;
+
+      setImportedRows(parsedRows, `File: ${file.name} • ${detectedLabel}`);
       if (parsedRows.length === 0) {
         setError('No bookmark rows were detected in that file.');
       }
@@ -291,6 +509,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
               source: 'chrome-api',
               title: node.title || node.url,
               url: node.url,
+              description: undefined,
               folderPath: path.join(' / ') || undefined,
             });
             return;
@@ -342,6 +561,55 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     );
   }, [collections, selectedProjectId]);
 
+  const handleCommitToDb = async () => {
+    if (rows.length === 0) {
+      setCommitError('Nothing to import yet. Load a file or Chrome bookmarks first.');
+      return;
+    }
+
+    try {
+      setCommitting(true);
+      setCommitError('');
+      setCommitMessage('');
+
+      const targetCollectionId =
+        selectedCollectionId ||
+        (selectedProjectId ? await ensureProjectUnsortedCollection(selectedProjectId) : '');
+
+      const result = await bulkImportBookmarks(
+        rows.map((row) => ({
+          url: row.url,
+          title: row.title || row.url,
+          description: row.description,
+          notes: row.notes || row.description,
+          tags: row.tags,
+          source: row.importSource || row.source || 'import',
+          favicon: undefined,
+        })),
+        targetCollectionId
+      );
+
+      const targetLabel =
+        selectedCollectionId
+          ? filteredCollections.find((c) => c.id === selectedCollectionId)?.name || 'selected collection'
+          : selectedProjectId
+          ? `${projects.find((p) => p.id === selectedProjectId)?.name || 'selected project'} / Unsorted`
+          : 'Default / Unsorted';
+
+      setCommitMessage(
+        `Imported to ${targetLabel}: created ${result.created}, merged ${result.merged}, skipped ${result.skipped}.`
+      );
+
+      if (onImported) {
+        await onImported();
+      }
+    } catch (e) {
+      setCommitError(e instanceof Error ? e.message : 'Import commit failed.');
+    } finally {
+      setCommitting(false);
+    }
+  };
+
   const renderPreviewTable = () => (
     <div style={sectionStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
@@ -361,7 +629,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
           <thead>
             <tr style={{ background: 'var(--bg)' }}>
-              {['Title', 'URL', 'Folder', 'Image', 'Source'].map((h) => (
+              {['Title', 'URL', 'Description', 'Folder', 'Image', 'Source'].map((h) => (
                 <th
                   key={h}
                   style={{
@@ -384,6 +652,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
               <tr key={`${row.url}-${index}`}>
                 <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{row.title || 'Untitled'}</td>
                 <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', wordBreak: 'break-all' }}>{row.url}</td>
+                <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{row.description || row.notes || '-'}</td>
                 <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{row.folderPath || '-'}</td>
                 <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', wordBreak: 'break-all' }}>
                   {row.imageUrl || '-'}
@@ -401,9 +670,31 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           Showing first 300 rows. Full row count is still used for stats.
         </div>
       ) : null}
-      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-        Save-to-DB is intentionally disabled for this phase; this screen validates ingestion/preview only.
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          Commit uses URL dedupe/merge and writes to selected collection (or project Unsorted/default Unsorted).
+        </div>
+        <button
+          type="button"
+          onClick={handleCommitToDb}
+          disabled={committing || rows.length === 0}
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid var(--accent)',
+            background: 'var(--accent)',
+            color: 'var(--accent-text, #fff)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            cursor: committing || rows.length === 0 ? 'not-allowed' : 'pointer',
+            opacity: committing || rows.length === 0 ? 0.6 : 1,
+          }}
+        >
+          {committing ? 'Committing…' : 'Commit to DB'}
+        </button>
       </div>
+      {commitError ? <div style={{ fontSize: 'var(--text-xs)', color: '#dc2626' }}>{commitError}</div> : null}
+      {commitMessage ? <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{commitMessage}</div> : null}
     </div>
   );
 
@@ -417,7 +708,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           Start with known formats, then normalize into one import preview model.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
-          {['Netscape HTML', 'CSV (url/title/notes)', 'JSON array'].map((format) => (
+          {['Netscape HTML', 'CSV (url/title/notes)', 'JSON array', 'X bookmarks JSON (tweet export shape)'].map((format) => (
             <div
               key={format}
               style={{
@@ -436,7 +727,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".html,.htm,.csv,.json,text/html,text/csv,application/json"
+          accept=".html,.htm,.csv,.json,.js,.txt,text/html,text/csv,application/json,text/plain,application/javascript"
           onChange={handleFilePicked}
           style={{ display: 'none' }}
         />
@@ -459,7 +750,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
             {loading ? 'Parsing…' : 'Choose file'}
           </button>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-            Supports Netscape HTML, CSV, and JSON.
+            Auto-detects JSON/CSV/HTML by content (not just extension), including X bookmarks exports.
           </span>
         </div>
       </div>
