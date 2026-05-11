@@ -34,7 +34,7 @@ Order is deliberate: **infra before features**, **bookmark volume before retriev
 3. **AI on bookmarks** — Use infra to **ground** answers in selected bookmarks / library excerpts (titles, notes, optional fetched snippets later); citations visible to the user.
 4. **Later (order TBD)** — Embeddings + vector RAG; optional in-browser embeddings; site capture importers; deeper agentic tools; workspace/study-path features; per-page content script or richer URL-keyed panels.
 
-Details and checkboxes live in [`backlog.md`](backlog.md).
+Details and checkboxes live in [`BACKLOG.md`](BACKLOG.md).
 
 ---
 
@@ -87,7 +87,7 @@ Chrome MV3 extension
 - Data safety: export/import, backup verification, debounced live backup to `latest.json`, manual named backups, envelope metadata (`revision` + `deviceId`), and startup conflict pause/resolution flow.
 - AI infra baseline: pluggable client layer (`src/lib/ai`) with OpenRouter-compatible chat adapter plus optional Chrome native/on-device provider path, persisted AI Settings (provider/model/base URL/API key), timeout + error handling, strict model-match toggle, and Settings test prompt with provider-returned model display.
 - Bookmark-grounded AI starter: Bookmarks view supports “Ask AI” over current filtered bookmark scope, with grounded context assembly and visible source refs (`[B1]`, `[B2]`, ...).
-- Import Studio (preview): Bookmarks → Import — **file** (Netscape HTML, CSV, JSON), **Chrome bookmarks API** (`getTree`), preview table + stats; Raindrop-style CSV columns (`folder`/`collection`, **`cover`** image URL, `source` aliases). **No DB commit yet.** AI tab still mock only.
+- Import Studio: Bookmarks → Import — **file** (Netscape HTML, CSV, JSON; content-based **auto-detect**; `.js`/`.txt` JSON-like payloads), **X bookmarks export** adapter, **Chrome bookmarks API** (`getTree`), preview + stats, optional project/collection target, **`Commit to DB`** with dedupe/merge (`bulkImportBookmarks`, batch IndexedDB transaction). Import Studio **AI tab** still mock only. **Follow-ups:** cover/provenance on `metadata`, folder→collection mapping, very-large-library scale (see [`BACKLOG.md`](BACKLOG.md)).
 
 ---
 
@@ -106,7 +106,7 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | **Quick access** | Recent items works; pinned / favorites / trash mostly placeholders (needs fields + UX). |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
 | **Optional sync** | Initial file-based sync guard is implemented (envelope + conflict pause + resolve actions). Full scheduled rotation, runtime re-check while app stays open, and merge workflows are still pending. |
-| **Bulk bookmark import** | Ingestion + preview done in Import Studio; **commit to DB** (with cover + import metadata) is the next slice. |
+| **Bulk bookmark import** | **Commit path shipped** (batch merge/dedupe). **Next:** import polish (cover, provenance, folder→collection), scale/backup posture for huge libraries, enrichment + AI categorization (see [`BACKLOG.md`](BACKLOG.md)). |
 
 ---
 
@@ -114,11 +114,11 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 | Doc | Use |
 |-----|-----|
-| [`backlog.md`](backlog.md) | Prioritized work items (maintain this). |
+| [`BACKLOG.md`](BACKLOG.md) | Prioritized work items (maintain this). |
 | [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md) | Backup / integrity design (file‑based now; swappable sinks later). |
 | [`workbench_agent.prd`](workbench_agent.prd) | Full PRD; update when roadmap shifts. |
 | `docs/old/` | Archived checkpoints (backlogs, UI plans, status snapshots). |
 
 ---
 
-*Last updated: 2026-05-10 — IndexedDB **v4** placements/dedup; dashboard aggregate/common tabs + DnD tab strip; workspace append; placement-aware delete and side-panel copy flows; see [`backlog.md`](backlog.md).*
+*Last updated: 2026-05-10 — Import Studio **commit + X adapter + batch import**; IndexedDB **v4** placements/dedup; dashboard aggregate/common tabs + DnD tab strip; workspace append; placement-aware delete and side-panel copy flows; see [`BACKLOG.md`](BACKLOG.md).*

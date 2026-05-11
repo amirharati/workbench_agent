@@ -101,7 +101,9 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 **Items (bookmarks)**
 
-- [ ] **Bulk import (manual-first)** — Parse + preview + Chrome API shipped in Import Studio. **Next:** Commit action → IndexedDB (`addItem` or batch txn), chosen project/collection, skip/merge duplicates per `normalizeBookmarkUrl`, persist **image/cover URL** + **import source** metadata (Raindrop CSV `folder` may be empty export-side; fallback = user-selected collection).
+- [x] **Bulk import (manual-first) — core path** — Import Studio: preview + **Commit to DB**, dedupe/merge via `normalizeBookmarkUrl`, target collection or project **Unsorted**; batch **`bulkImportBookmarks`** (single `readwrite` transaction + URL index) for large imports.
+- [ ] **Bulk import polish** — Persist **cover / image URL** and **import provenance** on `Item.metadata` (not only placement notes); optional **CSV folder path → multiple collections**; commit **progress** + cancel for huge files; surface invalid/skipped rows in UI.
+- [ ] **Bookmark enrichment (X-first + generic links)** — Background or explicit action: for **X/Twitter-shaped** bookmarks (and to a lesser degree normal URLs), optionally **fetch** / resolve **threads, quotes, outbound links** to a configurable depth; fill **missing summary**, **keywords**, structured fields for **AI context**—with clear **CORS/host permission**, **rate limits**, **auth walls**, and **fallback when fetch fails** (complex; likely staged: metadata-only → optional fetch).
 - [ ] **Multi-collection / share-item UX** if still desired (dashboard backlog “B4”).
 - [ ] **Pinned / favorites / trash**: add fields (`pinned`, `favorite`, `deletedAt` or equivalent), wire Quick Access tabs.
 
@@ -111,6 +113,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [x] **Phase A — Next hardening**: strict model-id mismatch handling, task-based routing scaffold (`taskType`), and provider expansion beyond OpenRouter adapter (Chrome native added).
 - [ ] **Phase A — Follow-up polish**: compatibility checks/UX hints for Chrome native model availability/warmup and lightweight request telemetry.
 - [ ] **Phase B — Bookmarks**: current scope-grounded ask flow shipped; next add explicit bookmark selection UX, better source chips/links, and context-size controls per request.
+- [ ] **Phase B — Auto-categorization (early AI product task)** — Given large import drops: AI-assisted **clustering** of bookmarks → propose **new collections / project groupings** (or map into existing), with **review/apply** UI and batch limits; prerequisite: stable item text (title + description/notes from imports + optional enrichment above). Good **first** user-visible AI workflow before heavier RAG.
 - [ ] **Phase C — RAG / embeddings** (later): chunk store, vector or API embeddings, hybrid retrieval; optional **in-browser** embedding path (Transformers.js-class) as alternative to API.
 - [ ] **Phase D — Agentic** (later, gated): chat + tools with session budgets; web search/fetch behind explicit toggles (align with user’s cost concerns).
 - [ ] **Security spike (later):** evaluate optional `chrome.identity` / Google OAuth-assisted unlock flow for AI credentials (likely requires backend/key-broker; keep local-first default unless clear value).
@@ -123,7 +126,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ## 🟢 Engineering hygiene
 
-- [ ] **Loading states** for `loadData`, long imports, workspace restore.
+- [ ] **Loading states** for `loadData`, long imports (commit progress / chunked UI), workspace restore.
 - [ ] **Listener cleanup audit** (`useEffect` + Chrome listeners) on hot paths.
 - [ ] **Split large components** incrementally (`MainContent.tsx`, layout/tab files)—only when touching those areas.
 - [ ] **Types**: tighten migration/`any` in `db.ts`; legacy shape types if useful.
@@ -132,9 +135,9 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 **Docs consistency checklist (lightweight, per shipped slice)**
 
-- [ ] If roadmap/status changed, update `docs/OVERVIEW.md` (“What’s working”, “Gaps”, and last-updated line).
-- [ ] If product narrative or phase status changed, update `docs/workbench_agent.prd`.
-- [ ] Add/remove matching item in backlog sections (`✅ Done` and relevant active section) to avoid drift.
+- [x] If roadmap/status changed, update `docs/OVERVIEW.md` (“What’s working”, “Gaps”, and last-updated line).
+- [x] If product narrative or phase status changed, update `docs/workbench_agent.prd`.
+- [x] Add/remove matching item in backlog sections (`✅ Done` and relevant active section) to avoid drift.
 
 ---
 
@@ -150,7 +153,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ## Suggested order (adjust freely)
 
-**Active product thread:** Near-term roadmap above (AI infra → manual bulk bookmarks → AI on bookmarks).
+**Active product thread:** Near-term roadmap above (AI infra → **bulk import polish + scale assessment** → **auto-categorization** / enrichment → broader AI on bookmarks).
 
 **Parallel / hygiene (pick as needed):**
 
@@ -162,4 +165,4 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ---
 
-*Last updated: 2026-05-10 — Documented **v4 placements/dedup**, placement-aware delete + side-panel copy flows, workspace append, aggregate/common tab UX, and **drag-and-drop** item-tab reorder.*
+*Last updated: 2026-05-10 — Import Studio: **X adapter**, content **auto-detect**, **Commit to DB**, **`bulkImportBookmarks`** batch perf; backlog adds **scale/backup** spike, **bookmark enrichment** (X + fetch), and **AI auto-categorization**.*

@@ -12,7 +12,7 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 
 - **Data stays local** (IndexedDB + existing backup story); **AI is optional** and uses **user-provided API keys** (cloud LLM first). No required server.
 - **Longer arc** (see [`OVERVIEW.md`](OVERVIEW.md)): bulk/manual bookmark import → optional site capture → embeddings/RAG (API or later in-browser) → **gated** agentic research → workspaces/study paths → per-page / same-site relational notes.
-- **Near-term execution order** (aligned with [`backlog.md`](backlog.md)): **(1)** AI API infrastructure + minimal UI, **(2)** manual bulk bookmark import at scale, **(3)** AI grounded on bookmarks with citations, **(4)** further steps TBD.
+- **Near-term execution order** (aligned with [`BACKLOG.md`](BACKLOG.md)): **(1)** AI API infrastructure + minimal UI, **(2)** manual bulk bookmark import at scale (preview + **commit** + perf), **(3)** AI grounded on bookmarks with citations + **auto-categorization / enrichment** as next product slices, **(4)** further steps TBD.
 
 ## Target Audience
 
@@ -51,8 +51,8 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 - ✅ Grid/list view options in dashboard
 - ✅ Bookmarks can be created from dashboard with project/collection selection
 - ✅ Inline creation of project/collection from bookmark/note create dialog
-- ✅ **Import Studio** (Bookmarks → Import): working **file** ingest (Netscape HTML, CSV, JSON) and **Chrome `bookmarks` API** with shared **preview** (no DB write yet). CSV supports exports like **Raindrop** (`title`, `url`, `note`, `tags`, `folder`/`collection`, **`cover`**, etc.). AI-assistant tab remains **mock** only.
-- Next: **Commit import** to IndexedDB (project/collection target, dedupe), persist **cover image URL** and **import provenance** (e.g. `metadata`); then more formats / AI-assisted unknown formats.
+- ✅ **Import Studio** (Bookmarks → Import): **file** ingest (Netscape HTML, CSV, JSON; content-based format detection; JSON-in-`.js`/`.txt`), **X bookmarks export** shape, **Chrome `bookmarks` API**, unified **preview**, optional destination, **`Commit to DB`** with dedupe/merge via **`bulkImportBookmarks`** (batch IndexedDB transaction for large imports). CSV supports **Raindrop**-like columns (`title`, `url`, `note`, `tags`, `folder`/`collection`, **`cover`**, etc.). **Description** carried on import candidates (stored via notes/placement for now). AI-assistant tab remains **mock** only.
+- Next: persist **cover** + structured **import provenance** on `Item.metadata`; folder→collection mapping; **scale/backup** review for very large libraries; **enrichment** (fetch/X threads) and **AI auto-categorization** (see [`BACKLOG.md`](BACKLOG.md)).
 
 ### 3. Workspaces ✅ (Implemented - Beyond Original Spec)
 - ✅ Save all windows, one window, or multiple tabs
@@ -217,7 +217,7 @@ The AI agent can access:
 ### Phase 2: AI Integration (In progress — phased)
 
 - **2a — Infra (first)**: ✅ Initial slice shipped (Settings + persisted config + HTTP client + test prompt + model visibility). Remaining: stricter routing/validation and additional provider adapters as needed.
-- **2b — Bookmarks at scale**: Import Studio **preview** shipped (HTML/CSV/JSON + Chrome API). **Remaining:** DB commit, dedupe policy, optional folder→collection mapping, metadata for cover/import source.
+- **2b — Bookmarks at scale**: Import Studio **preview + commit** shipped (HTML/CSV/JSON + Chrome API + **X export adapter**, content auto-detect, **batch** `bulkImportBookmarks`). **Remaining:** cover + import **metadata**, folder→collection mapping, **very-large-library** scale/backup strategy, **enrichment** (X threads / fetch), **AI clustering** into collections/projects (see [`BACKLOG.md`](BACKLOG.md)).
 - **2c — Bookmark-grounded AI**: 🟡 Starter shipped (filtered-scope ask + source refs). Next: selected-item scope, richer source linking chips, and lightweight assist actions (summary/tags).
 - **2d — Later**: Embeddings + retrieval; optional in-browser embeddings; content scripts for page context; agentic tool loops with budgets.
 
