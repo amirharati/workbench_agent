@@ -1,0 +1,80 @@
+{
+  "url": "https://app.raindrop.io/my/63242998",
+  "host": "app.raindrop.io",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 2585,
+      "ms": 1391,
+      "files": {
+        "preview": "bodies/098-app.raindrop.io/local.preview.txt",
+        "detail": "bodies/098-app.raindrop.io/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "<!doctype html><html><head><meta http-equiv=\"Content-type\" content=\"text/html; charset=utf-8\"/><meta name=\"viewport\" content=\"width=device-width,height=device-height,initial-scale=1,maximum-scale=1,user-scalable=0\"/><meta name=\"color-scheme\" content=\"dark light\"/><meta name=\"darkreader-lock\"/><title>Raindrop.io</title><meta name=\"google\" value=\"notranslate\"/><meta name=\"description\" content=\"All-i"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 389,
+      "ms": 4638,
+      "title": "Raindrop.io — All in One Bookmark Manager",
+      "files": {
+        "markdown": "bodies/098-app.raindrop.io/tab.md"
+      },
+      "parsed": {
+        "title": "Raindrop.io — All in One Bookmark Manager",
+        "snippetLen": 107,
+        "snippet": "[](https://raindrop.io/)\n\nEmail or username\n\nPassword[Reset password](https://app.raindrop.io/account/lost)",
+        "summary": "[](https://raindrop.io/)\n\nEmail or username\n\nPassword[Reset password](https://app.raindrop.io/account/lost)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 388,
+      "ms": 871,
+      "files": {
+        "markdown": "bodies/098-app.raindrop.io/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 107,
+        "snippet": "[](https://raindrop.io/)\n\nEmail or username\n\nPassword[Reset password](https://app.raindrop.io/account/lost)",
+        "summary": "[](https://raindrop.io/)\n\nEmail or username\n\nPassword[Reset password](https://app.raindrop.io/account/lost)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 486,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

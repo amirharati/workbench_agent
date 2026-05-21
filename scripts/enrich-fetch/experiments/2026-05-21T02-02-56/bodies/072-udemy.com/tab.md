@@ -1,0 +1,1 @@
+By clicking ”OK”, you agree to the storing of cookies on your device to enhance site navigation, analyze site usage, and improve marketing.[View Privacy Policy](https://www.udemy.com/terms/privacy/)

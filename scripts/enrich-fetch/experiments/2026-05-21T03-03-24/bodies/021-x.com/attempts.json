@@ -1,0 +1,86 @@
+{
+  "url": "https://x.com/matthijspoot/status/1708888627223158822",
+  "host": "x.com",
+  "sourceKind": "x",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 95,
+      "ms": 837,
+      "title": "@matthijspoot: @pyquantnews And the code (in python) is on GitHub 👌\n\nhttps://t.co/42BqpbJpuP",
+      "files": {
+        "markdown": "bodies/021-x.com/local.md"
+      },
+      "parsed": {
+        "title": "@matthijspoot: @pyquantnews And the code (in python) is on GitHub 👌\n\nhttps://t.co/42BqpbJpuP",
+        "snippetLen": 93,
+        "snippet": "# @matthijspoot\n@pyquantnews And the code (in python) is on GitHub 👌\nhttps://t.co/42BqpbJpuP",
+        "summary": "# @matthijspoot\n@pyquantnews And the code (in python) is on GitHub 👌\nhttps://t.co/42BqpbJpuP",
+        "quotedAuthor": "pyquantnews"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 246,
+      "ms": 5166,
+      "title": "Matthijs on X: \"@pyquantnews And the code (in python) is on GitHub 👌\n\nhttps://t.co/42BqpbJpuP\" / X",
+      "files": {
+        "markdown": "bodies/021-x.com/tab.md"
+      },
+      "parsed": {
+        "title": "Matthijs on X: \"@pyquantnews And the code (in python) is on GitHub 👌\n\nhttps://t.co/42BqpbJpuP\" / X",
+        "snippetLen": 245,
+        "snippet": "Did someone say … cookies?\nX and its partners use cookies to provide you with a better, safer and faster service and to support our business. Some cookies are necessary to use our services, improve our services, and make sure they work properly.",
+        "summary": "Did someone say … cookies?\nX and its partners use cookies to provide you with a better, safer and faster service and to support our business. Some cookies are necessary to use our services, improve our services, and make sure they work properly."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 625,
+      "ms": 4912,
+      "files": {
+        "markdown": "bodies/021-x.com/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 617,
+        "snippet": "## Post\n## Conversation\n[Matthijs](https://x.com/matthijspoot)\n[@matthijspoot](https://x.com/matthijspoot)\nAnd the code (in python) is on GitHub ![Image 1: 👌](https://abs.twimg.com/emoji/v2/svg/1f44c.svg)\n[![Image 2](https://pbs.twimg.com/card_img/2055856861354557440/LuXLgnKB?format=jpg&name=small) GitHub - zazhang/ep-chan-book-algo-trading: Recreate EP Chan algo trading book strategies](https://t.co/42BqpbJpuP)\n[From github.com](https://t.co/42BqpbJpuP)\n[4:56 PM · Oct 2, 2023](https://x.com/matthijspoot/status/1708888627223158822)\n[15.1K Views](https://x.com/matthijspoot/status/1708888627223158822/analytics)",
+        "summary": "## Post\n## Conversation\n[Matthijs](https://x.com/matthijspoot)\n[@matthijspoot](https://x.com/matthijspoot)\nAnd the code (in python) is on GitHub ![Image 1: 👌](https://abs.twimg.com/emoji/v2/svg/1f44c.svg)\n[![Image 2](https://pbs.twimg.com/card_img/2055856861354557440/LuXLgnKB?format=jpg&name=small) GitHub - zazhang/ep-chan-book-algo-trading: Recreate EP Chan algo trading book strategies](https://t.co/42BqpbJpuP)\n[From github.com](https://t.co/42BqpbJpuP)\n[4:56 PM · Oct 2, 2023](https://x.com/matthijspoot/status/1708888627223158822)\n[15.1K Views](https://x.com/matthijspoot/status/1708888627223158822/analytics)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 481,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

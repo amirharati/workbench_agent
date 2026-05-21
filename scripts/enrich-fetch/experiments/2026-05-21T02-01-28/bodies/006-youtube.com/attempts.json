@@ -1,0 +1,82 @@
+{
+  "url": "https://www.youtube.com/watch?v=7VzXHUTqE7E",
+  "host": "youtube.com",
+  "sourceKind": "video",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 1382104,
+      "ms": 2016,
+      "files": {
+        "preview": "bodies/006-youtube.com/local.preview.txt",
+        "detail": "bodies/006-youtube.com/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "<!DOCTYPE html><html style=\"font-size: 10px;font-family: Roboto, Arial, sans-serif;\" lang=\"en\" darker-dark-theme darker-dark-theme-deprecate system-icons color-version=\"v2_0\" typography typography-spacing><head><script data-id=\"_gd\" nonce=\"--nr6gFeRSazBJWIg_QOUg\">window.WIZ_global_data = {\"AfY8Hf\":false,\"FL1an\":true,\"HiPsbb\":0,\"MUE6Ne\":\"youtube_web\",\"MuJWjd\":true,\"UUFaWc\":\"%.@.null,1000,2]\",\"cfb2h"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 9594,
+      "ms": 8561,
+      "title": "Liquid Cooling vs. Air Cooling Benchmark In-Depth (NH-D15, NZXT X62, & More)",
+      "files": {
+        "markdown": "bodies/006-youtube.com/tab.md"
+      },
+      "parsed": {
+        "title": "Liquid Cooling vs. Air Cooling Benchmark In-Depth (NH-D15, NZXT X62, & More)",
+        "snippetLen": 2078,
+        "snippet": "Liquid Cooling vs. Air Cooling Benchmark In-Depth (NH-D15, NZXT X62, & More)\n\nWe're answering the question of whether \"liquid cooling or air cooling is better,\" ft. the Noctua NH-D15, Deepcool Assassin III, NZXT Kraken X62 / X72 (280mm, 360mm), and more. Sponsor: Buy Thermal Grizzly Conductonaut on Amazon ([https://geni.us/1D8Eeq](https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbUowTzBsSXlSYWhKNElwOUVTU3JEX1E2R2JNUXxBQ3Jtc0ttRnRhMU1uOFF0MFI4bUxmQlJqSHZuVU9SMVh1SXNydnZHOEhGVVFmdjZIcXl5bThUaWQ4eWdVWTJwSmZmSEtCeWJ4WjY1Y1RCejVUQ0IwdTI0QjJvNmxDM1hVcS1VNlhvb2NqNTd5aURWRHpSeEVUWQ&q=https%3A%2F%2Fgeni.us%2F1D8Eeq&v=7VzXHUTqE7E)) or Hydronaut paste ([https://geni.us/Fsray](https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqa0JuSnhkODZFM3dPTFJOQldKNTNpVGQ4QWlxQXxBQ3Jtc0trR1RCMWlacDZJTUNyMlRXd1R3c0pDOFRIVjluQnctek1raWVFSkVpT05YTE5vYVladjVsc3pBX1k4bmxRdy1VV3FJQ1p1cWRNWmlZMnZ2SjVaSmVqWVA1LTVGcTJUWkF1T2pTZnBDQXVTenRKQVRXbw&q=https%3A%2F%2Fgeni.us%2FFsray&v=7VzXHUTqE7E)) Watch our deep-dive on CPU cooler testing methodology and learn why it's so hard to do right:    [• Why Most Cooler Tests Are Flawed: CPU Cool...](https://www.youtube.com/watch?v=fmTOJP4KOyk)   Methodology article available here: [https://www.gamersnexus.net/guides/35...](https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbmtTa1NlSGNGQVY2VzZCcWVDM29NZ0NybVB3QXxBQ3Jtc0trOW5NN0plWVppWnRVUTF4cUk1SVBab0pmTUdNTGEzX3lQTXhram5QTGxUMi1kYXZ2ZGl5ZTlZUXp4aHM4dDB6WHJXbHgxc0JYZ2Y5Z2lFY2FtaUtMb094YjFFZ0oyZDVTMVFtTzV2WTNrOF84ZFlKcw&q=https%3A%2F%2Fwww.gamersnexus.net%2Fguides%2F3561-cpu-cooler-testing-methodology-most-tests-are-flawed&v=7VzXHUTqE7E) In this video, testing focuses on big air coolers versus big liquid coolers. We're testing for time-to-max temperature, noise-normalized thermals at 35dBA (and 40dBA), max fan speed thermals, and talking about compatibility, ease-of-installation, reliability and uptime, and liquid cooler failure rate and lifespan. Find the Noctua NH-D15 we used on Amazon: [https://geni.us/4VUjCZ](",
+        "summary": "Liquid Cooling vs. Air Cooling Benchmark In-Depth (NH-D15, NZXT X62, & More)\n\nWe're answering the question of whether \"liquid cooling or air cooling is better,\" ft. the Noctua NH-D15, Deepcool Assassin III, NZXT Kraken X62 / X72 (280mm, 360mm), and more. Sponsor: Buy Thermal Grizzly Conductonaut on Amazon ([https://geni.us/1D8Eeq](https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbUowTzBsSXlSYWhKNElwOUVTU3JEX1E2R2JNUXxBQ3Jtc0ttRnRhMU1uOFF0MFI4bUxmQlJqSHZuVU9SMVh1SXNydnZHOEhGVVFmdjZIcXl5bThUaWQ4eWdVWTJwSmZmSEtCeWJ4WjY1Y1RCejVUQ0IwdTI0QjJvNmxDM1hVcS1VNlhvb2NqNTd5aURWRHpSeEVUWQ&q=https%3A%2F%2Fgeni.us%2F1D8Eeq&v=7VzXHUTqE7E)) or Hydronaut paste ([https://geni.us/Fsray](https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqa0JuSnhkODZFM3dPTFJOQldKNTNpVGQ4QWlxQXxBQ3Jtc0trR1RCMWlacDZJTUNyMlRXd1R3c0pDOFRIVjluQnctek1raWVFSkVpT05YTE5vYVladjVsc3pBX1k4bmxRdy1VV3FJQ1p1cWRNWmlZMnZ2SjVaSmVqWVA1LTVGcTJUWkF1T2pTZnBDQXVTenRKQVRXbw&q=https%3A%2F%2Fgeni.us%2FFsray&v=7VzXHUTqE7E)) Watch our deep-dive on CPU cooler testing methodology and learn why it's so hard to do right:    [• Why Most Cooler Tests Are Flawed: CPU Cool...](https://www.youtube.com/watch?v=fmTOJP4KOyk)   Methodology article available here: [https://www.gamersnexus.net/guides/35...](https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqbmtTa1NlSGNGQVY2VzZCcWVDM29NZ0NybVB3QXxBQ3Jtc0trOW5NN0plWVppWnRVUTF4cUk1SVBab0pmTUdNTGEzX3lQTXhram5QTGxUMi1kYXZ2ZGl5ZTlZUXp4aHM4dDB6WHJXbHgxc0JYZ2Y5Z2lFY2FtaUtMb094YjFFZ0oyZDVTMVFtTzV2WTNrOF84ZFlKcw&q=https%3A%2F%2Fwww.gamersnexus.net%2Fguides%2F3561-cpu-cooler-testing-methodology-most-tests-are-flawed&v=7VzXHUTqE7E) In this video, testing focuses on big air coolers versus big liquid coolers. We're testing for time-to-max temperature, noise-normalized thermals at 35dBA (and 40dBA), max fan speed thermals, and talking about compatibility, ease-of-installation, reliability and uptime, and liquid cooler failure rate and"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 47211,
+      "ms": 8630,
+      "title": "Liquid Cooling vs. Air Cooling Benchmark In-Depth (NH-D15, NZXT X62, & More) - YouTube",
+      "files": {
+        "markdown": "bodies/006-youtube.com/jina.md"
+      },
+      "parsed": {
+        "title": "Liquid Cooling vs. Air Cooling Benchmark In-Depth (NH-D15, NZXT X62, & More) - YouTube",
+        "snippetLen": 717,
+        "snippet": "Liquid Cooling vs. Air Cooling Benchmark In-Depth (NH-D15, NZXT X62, & More) - YouTube\n\nBack [![Image 1](https://www.youtube.com/watch?v=7VzXHUTqE7E)](https://www.youtube.com/ \"YouTube Home\") Skip navigation Search Search with your voice [](https://www.youtube.com/watch?v=7VzXHUTqE7E) [Sign in](https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fwww.youtube.com%252Fwatch%253Fv%253D7VzXHUTqE7E&hl=en&ec=65620) [![Image 2](https://www.youtube.com/watch?v=7VzXHUTqE7E)](https://www.youtube.com/ \"YouTube Home\") [](https://www.youtube.com/watch?v=7VzXHUTqE7E)",
+        "summary": "Liquid Cooling vs. Air Cooling Benchmark In-Depth (NH-D15, NZXT X62, & More) - YouTube\n\nBack [![Image 1](https://www.youtube.com/watch?v=7VzXHUTqE7E)](https://www.youtube.com/ \"YouTube Home\") Skip navigation Search Search with your voice [](https://www.youtube.com/watch?v=7VzXHUTqE7E) [Sign in](https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26hl%3Den%26next%3Dhttps%253A%252F%252Fwww.youtube.com%252Fwatch%253Fv%253D7VzXHUTqE7E&hl=en&ec=65620) [![Image 2](https://www.youtube.com/watch?v=7VzXHUTqE7E)](https://www.youtube.com/ \"YouTube Home\") [](https://www.youtube.com/watch?v=7VzXHUTqE7E)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 486,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

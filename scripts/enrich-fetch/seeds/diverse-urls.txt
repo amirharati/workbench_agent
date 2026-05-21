@@ -1,0 +1,24 @@
+# Diverse seed URLs (no backup required). Replace with pick-urls from latest.json when available.
+# X / social
+https://x.com/pyquantnews/status/1832086911856386223
+# Docs / static
+https://www.example.com
+https://react.dev/learn
+https://docs.python.org/3/tutorial/index.html
+https://martinfowler.com/bliki/TechnicalDebt.html
+# Code / Q&A
+https://github.com/mozilla/readability
+https://stackoverflow.com/questions/231767/what-does-the-yield-keyword-do
+# Reference / academic
+https://en.wikipedia.org/wiki/Quantitative_finance
+https://arxiv.org/abs/1706.03762
+# News / forums (often JS or auth)
+https://news.ycombinator.com/item?id=38410164
+https://www.reddit.com/r/python/comments/1bpd2w7/what_are_you_working_on/
+# Video
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+# Blogs (may vary)
+https://blog.python.org/
+# Paywall-prone (expect auth/noise)
+https://www.bloomberg.com/opinion/articles/2024-01-02/gifted-kids-become-successful-adults
+https://medium.com/@nick.p.in/explainable-ai-for-data-scientists-ecaedd8482e3

@@ -1,0 +1,77 @@
+{
+  "url": "https://www.opengrants.io",
+  "host": "opengrants.io",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 1714,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 80,
+      "ms": 4671,
+      "title": "403 - Forbidden",
+      "files": {
+        "markdown": "bodies/110-opengrants.io/tab.md"
+      },
+      "parsed": {
+        "title": "403 - Forbidden",
+        "snippetLen": 80,
+        "snippet": "bg\\_error\\_lines\n\ncircle\\_dots\n\nAccess to this page is forbidden.\n\nclouds\\_shape",
+        "summary": "bg\\_error\\_lines\n\ncircle\\_dots\n\nAccess to this page is forbidden.\n\nclouds\\_shape"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2386,
+      "ms": 6259,
+      "files": {
+        "markdown": "bodies/110-opengrants.io/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 712,
+        "snippet": "OpenGrants: The Easy Way To Win Grants[Sedale Turbovsky](https://opengrants.io/author/sturbovsky/ \"Posts by Sedale Turbovsky\")2026-05-04T17:58:26+00:00\n\nOpsHub Consulting Banner — OpenGrants\n\nOpsHub · Consulting & Professional Services\n\n## The Human Interface\n\nfor AI.\n\nYour guide through the machine-driven era. Stewardship, strategy, and human potential — so the most profound intelligence reduces your cognitive load, not adds to it.\n\n*   AI strategy & operating model\n*   Workflow & process redesign\n*   Stewardship retainers\n\n## Loved by 12,000+ Grant Seekers & Experts\n\n## Start Your Grant Search Today\n\nOpenGrants offers a single subscription plan. Sign up in seconds and cancel anytime.\n\n**Our Partners**",
+        "summary": "OpenGrants: The Easy Way To Win Grants[Sedale Turbovsky](https://opengrants.io/author/sturbovsky/ \"Posts by Sedale Turbovsky\")2026-05-04T17:58:26+00:00\n\nOpsHub Consulting Banner — OpenGrants\n\nOpsHub · Consulting & Professional Services\n\n## The Human Interface\n\nfor AI.\n\nYour guide through the machine-driven era. Stewardship, strategy, and human potential — so the most profound intelligence reduces your cognitive load, not adds to it.\n\n*   AI strategy & operating model\n*   Workflow & process redesign\n*   Stewardship retainers\n\n## Loved by 12,000+ Grant Seekers & Experts\n\n## Start Your Grant Search Today\n\nOpenGrants offers a single subscription plan. Sign up in seconds and cancel anytime.\n\n**Our Partners**"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 486,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

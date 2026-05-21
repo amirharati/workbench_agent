@@ -1,0 +1,3 @@
+The RTX 4090 when it comes to gaming is a crazy fast graphics card. Making 4K high refresh rate gaming a reality. However, there’s a big caveat with this graphics card, and that is its high-power draw. Out of the box the card can be seen pushing past 400W under a gaming workload. For a device which will be used for gaming I think that’s kind of absurd. That is wh …
+
+...περισσότερα

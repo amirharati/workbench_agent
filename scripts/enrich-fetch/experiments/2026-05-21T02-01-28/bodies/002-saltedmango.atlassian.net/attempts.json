@@ -1,0 +1,79 @@
+{
+  "url": "https://saltedmango.atlassian.net/wiki/spaces/LIV/pages/397574145/DemoBot",
+  "host": "saltedmango.atlassian.net",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 4302,
+      "ms": 3142,
+      "files": {
+        "preview": "bodies/002-saltedmango.atlassian.net/local.preview.txt",
+        "detail": "bodies/002-saltedmango.atlassian.net/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "<!DOCTYPE html><html lang=\"en\"><head><link rel=\"stylesheet\" href=\"https://id-frontend.prod-east.frontend.public.atl-paas.net/assets/index.19f82625.css\" crossorigin=\"anonymous\"><meta charset=\"utf-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"description\" content=\"Log in to Jira, Confluence, and all other Atlas"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 26733,
+      "ms": 6162,
+      "error": "Readability found no article in rendered page",
+      "files": {
+        "preview": "bodies/002-saltedmango.atlassian.net/tab.preview.txt",
+        "error": "bodies/002-saltedmango.atlassian.net/tab.error.txt",
+        "detail": "bodies/002-saltedmango.atlassian.net/tab.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "Readability found no article in rendered page"
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 1529,
+      "ms": 6338,
+      "title": "Log in to continue - Log in with Atlassian account",
+      "files": {
+        "markdown": "bodies/002-saltedmango.atlassian.net/jina.md"
+      },
+      "parsed": {
+        "title": "Log in to continue - Log in with Atlassian account",
+        "snippetLen": 728,
+        "snippet": "Email* \n\nPassword \n\nShow password\n\n- [x] Remember me \n\nContinue\n\n\nOr\n\n\nSingle sign-on\n\n\nMore options\n\n*   •\n*   [Create an account](https://saltedmango.atlassian.net/signup?continue=https%3A%2F%2Fid.atlassian.com%2Fjoin%2Fuser-access%3Fresource%3Dari%253Acloud%253Aconfluence%253A%253Asite%252F46a52edf-3146-428a-9a15-b9fd24cdccf2%26continue%3Dhttps%253A%252F%252Fsaltedmango.atlassian.net%252Fwiki%252Fspaces%252FLIV%252Fpages%252F397574145%252FDemoBot&application=confluence&orgId=de41ef15-e9fb-4f34-86c6-edba7a54df15)\n\nOne account for Confluence, Jira, Trello and [more](https://support.atlassian.com/atlassian-account/docs/what-is-an-atlassian-account/).\n\n*   •\n*   [User Notice](https://www.atlassian.com/legal/user-notice)",
+        "summary": "Email* \n\nPassword \n\nShow password\n\n- [x] Remember me \n\nContinue\n\n\nOr\n\n\nSingle sign-on\n\n\nMore options\n\n*   •\n*   [Create an account](https://saltedmango.atlassian.net/signup?continue=https%3A%2F%2Fid.atlassian.com%2Fjoin%2Fuser-access%3Fresource%3Dari%253Acloud%253Aconfluence%253A%253Asite%252F46a52edf-3146-428a-9a15-b9fd24cdccf2%26continue%3Dhttps%253A%252F%252Fsaltedmango.atlassian.net%252Fwiki%252Fspaces%252FLIV%252Fpages%252F397574145%252FDemoBot&application=confluence&orgId=de41ef15-e9fb-4f34-86c6-edba7a54df15)\n\nOne account for Confluence, Jira, Trello and [more](https://support.atlassian.com/atlassian-account/docs/what-is-an-atlassian-account/).\n\n*   •\n*   [User Notice](https://www.atlassian.com/legal/user-notice)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 541,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

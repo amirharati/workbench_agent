@@ -2,9 +2,10 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { notifyDataChanged } from './dataChangeNotifier';
 import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
 import { revisionTracker } from './revisionTracker';
+import type { ItemEnrichment } from './enrichment/types';
 
 const DB_NAME = 'personal-tools-db';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 // The default project for orphan items (items without a specific project)
 const DEFAULT_PROJECT_ID = 'project_default';
@@ -146,6 +147,11 @@ interface TabManagerDB extends DBSchema {
     key: string;
     value: Workspace;
     indexes: { 'by-updated': number; 'by-name': string; 'by-project': string };
+  };
+  item_enrichment: {
+    key: string;
+    value: ItemEnrichment;
+    indexes: { 'by-status': string; 'by-updated': number };
   };
 }
 
@@ -485,8 +491,12 @@ export const getDB = () => {
           // Fresh installs (v0) are expected and should not be surfaced as warnings.
           if (oldVersion < newVersion) {
             console.info(`🔄 MIGRATION: Upgrading database from v${oldVersion} to v${newVersion}`);
-            if (oldVersion > 0) {
+            if (oldVersion > 0 && newVersion - oldVersion > 1) {
               console.warn(`⚠️  If you haven't backed up, export your data now using the Backup button!`);
+            } else if (oldVersion > 0) {
+              console.info(
+                `ℹ️  Minor DB upgrade (v${oldVersion}→v${newVersion}). Your data is kept; optional: manual backup in Settings.`
+              );
             }
           }
 
@@ -560,6 +570,17 @@ export const getDB = () => {
           if (!store.indexNames.contains('by-updated')) store.createIndex('by-updated', 'updated_at');
           if (!store.indexNames.contains('by-name')) store.createIndex('by-name', 'name');
           if (!store.indexNames.contains('by-project')) store.createIndex('by-project', 'projectId');
+        }
+
+        // Item enrichment (v5)
+        if (!db.objectStoreNames.contains('item_enrichment')) {
+          const store = db.createObjectStore('item_enrichment', { keyPath: 'itemId' });
+          store.createIndex('by-status', 'status');
+          store.createIndex('by-updated', 'updated_at');
+        } else {
+          const store = transaction.objectStore('item_enrichment');
+          if (!store.indexNames.contains('by-status')) store.createIndex('by-status', 'status');
+          if (!store.indexNames.contains('by-updated')) store.createIndex('by-updated', 'updated_at');
         }
 
         // ---- Data migration to v3 ----
@@ -1106,6 +1127,12 @@ export const deleteItem = async (id: string): Promise<{ deleted: boolean; placem
   }
   
   const placementCount = item.placements ? Object.keys(item.placements).length : item.collectionIds.length;
+  try {
+    const { deleteEnrichmentForItem } = await import('./enrichment/fetchService');
+    await deleteEnrichmentForItem(id);
+  } catch (e) {
+    console.warn('Enrichment cleanup on delete failed:', e);
+  }
   await db.delete('items', id);
   notifyDataChanged('item.delete');
   return { deleted: true, placementCount };
@@ -1564,7 +1591,17 @@ export const exportDB = async () => {
     const notes = await db.getAll('notes');
     const snapshots = await db.getAll('snapshots');
     const workspaces = await db.getAll('workspaces');
-    return JSON.stringify({ projects, collections, items, notes, snapshots, workspaces }, null, 2);
+    let item_enrichment: ItemEnrichment[] = [];
+    try {
+      item_enrichment = await db.getAll('item_enrichment');
+    } catch {
+      /* store may not exist on very old handles */
+    }
+    return JSON.stringify(
+      { projects, collections, items, notes, snapshots, workspaces, item_enrichment },
+      null,
+      2
+    );
 };
 
 /**
@@ -1592,6 +1629,9 @@ export const verifyBackup = (
     items: Array.isArray(data.items) ? (data.items as unknown[]).length : 0,
     notes: Array.isArray(data.notes) ? (data.notes as unknown[]).length : 0,
     workspaces: Array.isArray(data.workspaces) ? (data.workspaces as unknown[]).length : 0,
+    item_enrichment: Array.isArray(data.item_enrichment)
+      ? (data.item_enrichment as unknown[]).length
+      : 0,
   };
 
   if (stats.projects === 0 && stats.items === 0 && stats.collections === 0) {
@@ -1648,7 +1688,10 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
     }
 
     // Use transactions for atomicity - all or nothing
-    const tx = db.transaction(['projects', 'collections', 'items', 'notes', 'workspaces'], 'readwrite');
+    const tx = db.transaction(
+      ['projects', 'collections', 'items', 'notes', 'workspaces', 'item_enrichment'],
+      'readwrite'
+    );
     
     try {
         if (data.projects) {
@@ -1687,6 +1730,12 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
         const workspacesStore = tx.objectStore('workspaces');
         await Promise.all(data.workspaces.map((ws: Workspace) => workspacesStore.put(ws)));
       }
+        if (data.item_enrichment && db.objectStoreNames.contains('item_enrichment')) {
+          const enrichStore = tx.objectStore('item_enrichment');
+          await Promise.all(
+            (data.item_enrichment as ItemEnrichment[]).map((row) => enrichStore.put(row))
+          );
+        }
       
             await tx.done;
 

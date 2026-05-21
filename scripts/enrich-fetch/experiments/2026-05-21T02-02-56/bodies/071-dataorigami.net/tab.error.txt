@@ -1,0 +1,3 @@
+page.goto: net::ERR_NAME_NOT_RESOLVED at https://dataorigami.net/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers
+Call log:
+[2m  - navigating to "https://dataorigami.net/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers", waiting until "domcontentloaded"[22m

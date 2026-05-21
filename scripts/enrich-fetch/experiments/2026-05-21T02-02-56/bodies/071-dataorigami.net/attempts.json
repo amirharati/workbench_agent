@@ -1,0 +1,71 @@
+{
+  "url": "https://dataorigami.net/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers",
+  "host": "dataorigami.net",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "network",
+      "bytes": 0,
+      "ms": 1143,
+      "error": "TypeError: fetch failed",
+      "files": {
+        "error": "bodies/071-dataorigami.net/local.error.txt",
+        "detail": "bodies/071-dataorigami.net/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "network",
+        "detail": "TypeError: fetch failed"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": false,
+      "usable": false,
+      "reason": "network",
+      "bytes": 0,
+      "ms": 220,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://dataorigami.net/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers\nCall log:\n\u001b[2m  - navigating to \"https://dataorigami.net/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers\", waiting until \"domcontentloaded\"\u001b[22m\n",
+      "files": {
+        "error": "bodies/071-dataorigami.net/tab.error.txt",
+        "detail": "bodies/071-dataorigami.net/tab.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "network",
+        "detail": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://dataorigami.net/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers\nCall log:\n\u001b[2m  - navigating to \"https://dataorigami.net/Probabilistic-Programming-and-Bayesian-Methods-for-Hackers\", waiting until \"domcontentloaded\"\u001b[22m\n"
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 584,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 167,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

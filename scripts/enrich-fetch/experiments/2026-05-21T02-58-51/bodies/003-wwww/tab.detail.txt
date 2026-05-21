@@ -1,0 +1,3 @@
+page.goto: net::ERR_NAME_NOT_RESOLVED at http://wwww/
+Call log:
+  - navigating to "http://wwww/", waiting until "domcontentloaded"

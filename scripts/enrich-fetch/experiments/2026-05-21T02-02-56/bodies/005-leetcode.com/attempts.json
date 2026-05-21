@@ -1,0 +1,80 @@
+{
+  "url": "https://leetcode.com/explore",
+  "host": "leetcode.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 700,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2079,
+      "ms": 6419,
+      "title": "Explore - LeetCode",
+      "files": {
+        "markdown": "bodies/005-leetcode.com/tab.md"
+      },
+      "parsed": {
+        "title": "Explore - LeetCode",
+        "snippetLen": 2079,
+        "snippet": "Welcome to\n\nLeetCode Explore\n\nLeetCode's Interview Crash Course\n\nData Structures and Algorithms\n\n13\n\nChapters\n\n149\n\nItems\n\n0%\n\nLeetCode’s Interview Crash Course\n\nSystem Design for Interviews and Beyond\n\n16\n\nChapters\n\n81\n\nItems\n\n0%\n\nThe LeetCode Beginner's Guide\n\n4\n\nChapters\n\n17\n\nItems\n\n0%\n\nEasy Collection\n\nTop Interview Questions\n\n9\n\nChapters\n\n48\n\nItems\n\n0%\n\nDetailed Explanation of\n\nDynamic Programming\n\n6\n\nChapters\n\n55\n\nItems\n\n0%\n\nIntroduction to Data Structure\n\nArrays 101\n\n6\n\nChapters\n\n31\n\nItems\n\n0%\n\nPremium\n\nGet Well Prepared for\n\nGoogle Interview\n\n9\n\nChapters\n\n85\n\nItems\n\nLocked\n\nDetailed Explanation of\n\nSQL Language\n\n4\n\nChapters\n\n36\n\nItems\n\n0%\n\nDetailed Explanation of\n\nGraph\n\n6\n\nChapters\n\n58\n\nItems\n\n0%\n\nDetailed Explanation of\n\nHeap\n\n4\n\nChapters\n\n28\n\nItems\n\n0%\n\nIntroduction to Algorithms\n\nRecursion I\n\n5\n\nChapters\n\n21\n\nItems\n\n0%\n\nBasic Concepts in ML\n\nMachine Learning 101\n\n3\n\nChapters\n\n9\n\nItems\n\n0%\n\nLeetCode's Interview Crash Course\n\nCheatsheets\n\n1\n\nChapter\n\n3\n\nItems\n\n0%\n\nLeetCode's Interview Crash Course\n\nData Structures and Algorithms\n\n13\n\nChapters\n\n149\n\nItems\n\n0%\n\nLeetCode’s Interview Crash Course\n\nSystem Design for Interviews and Beyond\n\n16\n\nChapters\n\n81\n\nItems\n\n0%\n\nPremium\n\nGet Well Prepared for\n\nGoogle Interview\n\n9\n\nChapters\n\n85\n\nItems\n\nLocked\n\nPremium\n\nGet Well Prepared for\n\nFacebook\n\n9\n\nChapters\n\n79\n\nItems\n\nLocked\n\nPremium\n\nTop Questions from\n\nMicrosoft\n\n8\n\nChapters\n\n58\n\nItems\n\nLocked\n\nPremium\n\nTop Questions from\n\nAmazon\n\n8\n\nChapters\n\n68\n\nItems\n\nLocked\n\nPremium\n\nCrack the\n\nApple Interview\n\n8\n\nChapters\n\n62\n\nItems\n\nLocked\n\nThe LeetCode Beginner's Guide\n\n4\n\nChapters\n\n17\n\nItems\n\n0%\n\nDetailed Explanation of\n\nDynamic Programming\n\n6\n\nChapters\n\n55\n\nItems\n\n0%\n\nIntroduction to Data Structure\n\nArrays 101\n\n6\n\nChapters\n\n31\n\nItems\n\n0%\n\nDetailed Explanation of\n\nSQL Language\n\n4\n\nChapters\n\n36\n\nItems\n\n0%\n\nDetailed Explanation of\n\nGraph\n\n6\n\nChapters\n\n58\n\nItems\n\n0%\n\nDetailed Explanation of\n\nHeap\n\n4\n\nChapters\n\n28\n\nItems\n\n0%\n\nDetailed Explanation of\n\nBit Manipulation\n\n3\n\nChapters\n\n21\n\nItems\n\n0%\n\nDetailed Explanation of\n\nSorting\n\n4\n\nChapters\n\n20\n\nItems\n\n0%",
+        "summary": "Welcome to\n\nLeetCode Explore\n\nLeetCode's Interview Crash Course\n\nData Structures and Algorithms\n\n13\n\nChapters\n\n149\n\nItems\n\n0%\n\nLeetCode’s Interview Crash Course\n\nSystem Design for Interviews and Beyond\n\n16\n\nChapters\n\n81\n\nItems\n\n0%\n\nThe LeetCode Beginner's Guide\n\n4\n\nChapters\n\n17\n\nItems\n\n0%\n\nEasy Collection\n\nTop Interview Questions\n\n9\n\nChapters\n\n48\n\nItems\n\n0%\n\nDetailed Explanation of\n\nDynamic Programming\n\n6\n\nChapters\n\n55\n\nItems\n\n0%\n\nIntroduction to Data Structure\n\nArrays 101\n\n6\n\nChapters\n\n31\n\nItems\n\n0%\n\nPremium\n\nGet Well Prepared for\n\nGoogle Interview\n\n9\n\nChapters\n\n85\n\nItems\n\nLocked\n\nDetailed Explanation of\n\nSQL Language\n\n4\n\nChapters\n\n36\n\nItems\n\n0%\n\nDetailed Explanation of\n\nGraph\n\n6\n\nChapters\n\n58\n\nItems\n\n0%\n\nDetailed Explanation of\n\nHeap\n\n4\n\nChapters\n\n28\n\nItems\n\n0%\n\nIntroduction to Algorithms\n\nRecursion I\n\n5\n\nChapters\n\n21\n\nItems\n\n0%\n\nBasic Concepts in ML\n\nMachine Learning 101\n\n3\n\nChapters\n\n9\n\nItems\n\n0%\n\nLeetCode's Interview Crash Course\n\nCheatsheets\n\n1\n\nChapter\n\n3\n\nItems\n\n0%\n\nLeetCode's Interview Crash Course\n\nData Structures and Algorithms\n\n13\n\nChapters\n\n149\n\nItems\n\n0%\n\nLeetCode’s Interview Crash Course\n\nSystem Design for Interviews and Beyond\n\n16\n\nChapters\n\n81\n\nItems\n\n0%\n\nPremium\n\nGet Well Prepared for\n\nGoogle Interview\n\n9\n\nChapters\n\n85\n\nItems\n\nLocked\n\nPremium\n\nGet Well Prepared for\n\nFacebook\n\n9\n\nChapters\n\n79\n\nItems\n\nLocked\n\nPremium\n\nTop Questions from\n\nMicrosoft\n\n8\n\nChapters\n\n58\n\nItems\n\nLocked\n\nPremium\n\nTop Questions from\n\nAmazon\n\n8\n\nChapters\n\n68\n\nItems\n\nLocked\n\nPremium\n\nCrack the\n\nApple Interview\n\n8\n\nChapters\n\n62\n\nItems\n\nLocked\n\nThe LeetCode Beginner's Guide\n\n4\n\nChapters\n\n17\n\nItems\n\n0%\n\nDetailed Explanation of\n\nDynamic Programming\n\n6\n\nChapters\n\n55\n\nItems\n\n0%\n\nIntroduction to Data Structure\n\nArrays 101\n\n6\n\nChapters\n\n31\n\nItems\n\n0%\n\nDetailed Explanation of\n\nSQL Language\n\n4\n\nChapters\n\n36\n\nItems\n\n0%\n\nDetailed Explanation of\n\nGraph\n\n6\n\nChapters\n\n58\n\nItems\n\n0%\n\nDetailed Explanation of\n\nHeap\n\n4\n\nChapters\n\n28\n\nItems\n\n0%\n\nDetailed Explanation of\n\nBit Manipulation\n\n3\n\nChapte"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": false,
+      "reason": "auth_required",
+      "blockedBy": "matched block pattern /performing security verification/i",
+      "bytes": 194,
+      "ms": 8512,
+      "files": {
+        "markdown": "bodies/005-leetcode.com/jina.md",
+        "detail": "bodies/005-leetcode.com/jina.detail.txt"
+      },
+      "parsed": {
+        "snippetLen": 194,
+        "snippet": "## leetcode.com\n\n## Performing security verification\n\nThis website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot.",
+        "summary": "## leetcode.com\n\n## Performing security verification\n\nThis website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot."
+      },
+      "diagnosis": {
+        "reason": "auth_required",
+        "blockedBy": "matched block pattern /performing security verification/i",
+        "detail": "## leetcode.com\n\n## Performing security verification\n\nThis website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot."
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 492,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

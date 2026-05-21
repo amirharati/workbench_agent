@@ -6,19 +6,26 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "fetch-test": "node scripts/enrich-fetch/fetch-test.mjs",
+    "fetch-experiment": "node scripts/enrich-fetch/run-experiment.mjs"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "idb": "^8.0.0",
     "lucide-react": "^0.300.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.32",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^4.2.1",
+    "jsdom": "^29.1.1",
+    "playwright": "^1.60.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.8"
   }

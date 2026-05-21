@@ -1,6 +1,7 @@
 import React from 'react';
 import type { BackupStatusSnapshot } from '../../lib/backupCoordinator';
 import type { AISettings } from '../../lib/ai/types';
+import { EnrichmentPanel } from './EnrichmentPanel';
 
 interface SettingsViewProps {
   backupFolderReady?: boolean;
@@ -496,6 +497,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <strong>AI response:</strong> {aiTestOutput}
           </div>
         )}
+      </div>
+
+      <div
+        style={{
+          border: '1px solid #d1d5db',
+          borderRadius: 10,
+          padding: '1rem',
+          background: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem',
+        }}
+      >
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Fetch enrichment</div>
+        <p style={{ margin: 0, fontSize: '0.85rem', color: '#4b5563', lineHeight: 1.5 }}>
+          Opens a full-page picker: all bookmark URLs, checkboxes, then run fetch (r.jina.ai). Configure backup
+          folder below for <code>enrichment-cache/</code> on disk.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <EnrichmentPanel />
+          {!backupFolderReady && (
+            <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
+              Configure backup folder below for disk cache.
+            </span>
+          )}
+        </div>
       </div>
 
       <div

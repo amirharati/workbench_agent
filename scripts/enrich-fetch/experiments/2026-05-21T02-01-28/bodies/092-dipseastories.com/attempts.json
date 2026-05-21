@@ -1,0 +1,79 @@
+{
+  "url": "https://www.dipseastories.com/blog/sex-and-cannabis",
+  "host": "dipseastories.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 1002,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 140,
+      "ms": 9460,
+      "title": "Hmm... that page doesn’t exist.",
+      "files": {
+        "markdown": "bodies/092-dipseastories.com/tab.md"
+      },
+      "parsed": {
+        "title": "Hmm... that page doesn’t exist.",
+        "snippetLen": 140,
+        "snippet": "We want you lost in fantasy, not lost in space. Return to the homepage to continue browsing.\n\n[Back To Home](https://www.dipseastories.com/)",
+        "summary": "We want you lost in fantasy, not lost in space. Return to the homepage to continue browsing.\n\n[Back To Home](https://www.dipseastories.com/)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 601,
+      "ms": 4215,
+      "title": "Hmm... that page doesn’t exist.",
+      "files": {
+        "markdown": "bodies/092-dipseastories.com/jina.md"
+      },
+      "parsed": {
+        "title": "Hmm... that page doesn’t exist.",
+        "snippetLen": 140,
+        "snippet": "We want you lost in fantasy, not lost in space. Return to the homepage to continue browsing.\n\n[Back To Home](https://www.dipseastories.com/)",
+        "summary": "We want you lost in fantasy, not lost in space. Return to the homepage to continue browsing.\n\n[Back To Home](https://www.dipseastories.com/)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 1505,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

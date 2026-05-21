@@ -1,0 +1,87 @@
+{
+  "url": "https://www.tabextend.com/pricing",
+  "host": "tabextend.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 723,
+      "ms": 957,
+      "title": "Pricing & Plans | tabExtend",
+      "files": {
+        "markdown": "bodies/123-tabextend.com/local.md"
+      },
+      "parsed": {
+        "title": "Pricing & Plans | tabExtend",
+        "snippetLen": 723,
+        "snippet": "## Manage tabs\n\nSave, Close and open groups of tabs, drag and drop or right click any page to save.\n\n## Notes / To-dos\n\nQuickly write notes, add colors and turn in to to-do items.\n\n## Reminders\n\nSetup and get reminded about sites, notes and to-do's.\n\n## Search\n\nEasily find what you are looking for with the search modal.\n\n## Bookmarks and top sites\n\nGenerate groups populated with your bookmarks and most visited sites.\n\n## Themes\n\nDark-mode, light-mode and auto-dark/light-mode.\n\n## Share\n\nShare workspaces/categories privately or publicly with others.\n\n## Site popover\n\nIn-site popover with options for saving and accessing tabs + creating notes.\n\n## Mobile apps\n\niOS and Android apps to access and save notes and sites.",
+        "summary": "## Manage tabs\n\nSave, Close and open groups of tabs, drag and drop or right click any page to save.\n\n## Notes / To-dos\n\nQuickly write notes, add colors and turn in to to-do items.\n\n## Reminders\n\nSetup and get reminded about sites, notes and to-do's.\n\n## Search\n\nEasily find what you are looking for with the search modal.\n\n## Bookmarks and top sites\n\nGenerate groups populated with your bookmarks and most visited sites.\n\n## Themes\n\nDark-mode, light-mode and auto-dark/light-mode.\n\n## Share\n\nShare workspaces/categories privately or publicly with others.\n\n## Site popover\n\nIn-site popover with options for saving and accessing tabs + creating notes.\n\n## Mobile apps\n\niOS and Android apps to access and save notes and sites."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 723,
+      "ms": 7185,
+      "title": "Pricing & Plans | tabExtend",
+      "files": {
+        "markdown": "bodies/123-tabextend.com/tab.md"
+      },
+      "parsed": {
+        "title": "Pricing & Plans | tabExtend",
+        "snippetLen": 723,
+        "snippet": "## Manage tabs\n\nSave, Close and open groups of tabs, drag and drop or right click any page to save.\n\n## Notes / To-dos\n\nQuickly write notes, add colors and turn in to to-do items.\n\n## Reminders\n\nSetup and get reminded about sites, notes and to-do's.\n\n## Search\n\nEasily find what you are looking for with the search modal.\n\n## Bookmarks and top sites\n\nGenerate groups populated with your bookmarks and most visited sites.\n\n## Themes\n\nDark-mode, light-mode and auto-dark/light-mode.\n\n## Share\n\nShare workspaces/categories privately or publicly with others.\n\n## Site popover\n\nIn-site popover with options for saving and accessing tabs + creating notes.\n\n## Mobile apps\n\niOS and Android apps to access and save notes and sites.",
+        "summary": "## Manage tabs\n\nSave, Close and open groups of tabs, drag and drop or right click any page to save.\n\n## Notes / To-dos\n\nQuickly write notes, add colors and turn in to to-do items.\n\n## Reminders\n\nSetup and get reminded about sites, notes and to-do's.\n\n## Search\n\nEasily find what you are looking for with the search modal.\n\n## Bookmarks and top sites\n\nGenerate groups populated with your bookmarks and most visited sites.\n\n## Themes\n\nDark-mode, light-mode and auto-dark/light-mode.\n\n## Share\n\nShare workspaces/categories privately or publicly with others.\n\n## Site popover\n\nIn-site popover with options for saving and accessing tabs + creating notes.\n\n## Mobile apps\n\niOS and Android apps to access and save notes and sites."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 3706,
+      "ms": 4495,
+      "title": "Pricing & Plans | tabExtend",
+      "files": {
+        "markdown": "bodies/123-tabextend.com/jina.md"
+      },
+      "parsed": {
+        "title": "Pricing & Plans | tabExtend",
+        "snippetLen": 3601,
+        "snippet": "[![Image 1: tabExtend logo](https://www.tabextend.com/tabExtendWebLogo@2x.png)](https://www.tabextend.com/)\n\n[Guide](https://www.tabextend.com/guide/getting-started)[Pricing](https://www.tabextend.com/pricing)[Updates](https://www.tabextend.com/updates)\n\nLogin\n\n# Pricing\n\nAlways 30 days money back guarantee, no questions asked.\n\n## Trial\n\n# Free\n\nAll basic features\n\nUp to 30 saves\n\nUnlimited time\n\nNo account needed\n\n[Get started](https://www.tabextend.com/guide/getting-started)\n\n## Pro plan\n\n# $8/mo\n\nUnlimited items saved\n\nMultiple workspaces\n\nDaily backups\n\nReminders\n\n[Upgrade now](https://www.tabextend.com/auth/signup?next=/purchase/pro)\n\nTeam plan\n\n$21/mo\n\n3 seats\n\n(+$7 per seat)\n\nAll Pro features\n\nTeam management area\n\nPriority support\n\n[Upgrade now](https://www.tabextend.com/auth/signup?next=/purchase/team)\n\nGet your team on the[same page](https://www.tabextend.com/guide/share-workspaces)with our brand new plan\n\nBILLING: MONTHLY\n\nYEARLY\n\nSave 25%\n\n## Features included\n\n# Manage tabs\n\nSave, Close and open groups of tabs, drag and drop or right click any page to save.\n\n# Notes / To-dos\n\nQuickly write notes, add colors and turn in to to-do items.\n\n# Reminders\n\nSetup and get reminded about sites, notes and to-do's.\n\n# Search\n\nEasily find what you are looking for with the search modal.\n\n# Bookmarks and top sites\n\nGenerate groups populated with your bookmarks and most visited sites.\n\n# Themes\n\nDark-mode, light-mode and auto-dark/light-mode.\n\n# Share\n\nShare workspaces/categories privately or publicly with others.\n\n# Site popover\n\nIn-site popover with options for saving and accessing tabs + creating notes.\n\n# Mobile apps\n\niOS and Android apps to access and save notes and sites.\n\n## Frequently Asked Questions\n\n### What forms of payment do you accept?\n\nWe are powered by Stripe, which accepts all major debit and credit card payments (Visa, American Express, Mastercard), as well as other local payment solutions.\n\n### Will I be charged any sales-tax?\n\ntabExtend covers the local sales tax on our end, so you won't need to pay any additional sales tax. Team plans exclude VAT.\n\n### Do you have a affiliate program?\n\nYes, earn a 25% commission on the revenue from everyone you refer to tabExtend through our affiliate program. Join us today and learn more at [tabextend.getrewardful.com](https://tabextend.getrewardful.com/)\n\n### Who stores my credit card number?\n\nAll payments and security measures are managed by Stripe. We never have access to or handle your credit card details. Stripe is PCI-certified, and card numbers are encrypted using AES-256. Learn more at [stripe.com](https://stripe.com/)\n\n### What is your refund policy?\n\nShould you wish to cancel your plan for any reason, we offer a full refund within 30 days.\n\n### Do you offer discounts to students or teachers?\n\nYes, if you are a student or a teacher and you want a discount please contact us and we will set you up.\n\n> ## “Productivity is never an accident. It is always the result of a commitment to excellence, intelligent planning, and focused effort.”\n> \n> \n> — Paul J. Meyer\n\n[![Image 2: Logo](https://www.tabextend.com/tabExtend_logo_footer.png)](https://www.tabextend.com/)\n\n[About](https://www.tabextend.com/)[Guide](https://www.tabextend.com/guide/getting-started)[Pricing](https://www.tabextend.com/pricing)[Updates](https://www.tabextend.com/updates)[Blog](https://www.tabextend.com/blog)[Affiliates](https://tabextend.getrewardful.com/)[Contact](mailto:info@tabextend.com)\n\n\n[](https://www.youtube.com/channel/UCo4OUtyAHm6j2kONKz5O1WA)[](https://fb.me/tabextend)[](https://twitter.com/tabextend)",
+        "summary": "[![Image 1: tabExtend logo](https://www.tabextend.com/tabExtendWebLogo@2x.png)](https://www.tabextend.com/)\n\n[Guide](https://www.tabextend.com/guide/getting-started)[Pricing](https://www.tabextend.com/pricing)[Updates](https://www.tabextend.com/updates)\n\nLogin\n\n# Pricing\n\nAlways 30 days money back guarantee, no questions asked.\n\n## Trial\n\n# Free\n\nAll basic features\n\nUp to 30 saves\n\nUnlimited time\n\nNo account needed\n\n[Get started](https://www.tabextend.com/guide/getting-started)\n\n## Pro plan\n\n# $8/mo\n\nUnlimited items saved\n\nMultiple workspaces\n\nDaily backups\n\nReminders\n\n[Upgrade now](https://www.tabextend.com/auth/signup?next=/purchase/pro)\n\nTeam plan\n\n$21/mo\n\n3 seats\n\n(+$7 per seat)\n\nAll Pro features\n\nTeam management area\n\nPriority support\n\n[Upgrade now](https://www.tabextend.com/auth/signup?next=/purchase/team)\n\nGet your team on the[same page](https://www.tabextend.com/guide/share-workspaces)with our brand new plan\n\nBILLING: MONTHLY\n\nYEARLY\n\nSave 25%\n\n## Features included\n\n# Manage tabs\n\nSave, Close and open groups of tabs, drag and drop or right click any page to save.\n\n# Notes / To-dos\n\nQuickly write notes, add colors and turn in to to-do items.\n\n# Reminders\n\nSetup and get reminded about sites, notes and to-do's.\n\n# Search\n\nEasily find what you are looking for with the search modal.\n\n# Bookmarks and top sites\n\nGenerate groups populated with your bookmarks and most visited sites.\n\n# Themes\n\nDark-mode, light-mode and auto-dark/light-mode.\n\n# Share\n\nShare workspaces/categories privately or publicly with others.\n\n# Site popover\n\nIn-site popover with options for saving and accessing tabs + creating notes.\n\n# Mobile apps\n\niOS and Android apps to access and save notes and sites.\n\n## Frequently Asked Questions\n\n### What forms of payment do you accept?\n\nWe are powered by Stripe, which accepts all major debit and credit card payments (Visa, American Express, Mastercard), as well as other local payment solutions.\n\n### Will I be charged any sales-tax?\n\ntabExtend covers the l"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 493,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

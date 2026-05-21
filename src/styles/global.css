@@ -193,6 +193,84 @@ body {
   background: rgba(0, 0, 0, 0.42);
 }
 
+/* ===== Enrichment review modal (theme-safe) ===== */
+.enrichment-review {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.enrichment-review h1,
+.enrichment-review h2,
+.enrichment-review h3,
+.enrichment-review strong {
+  color: var(--text);
+}
+
+.enrichment-review input,
+.enrichment-review button,
+.enrichment-review a {
+  color: inherit;
+}
+
+.enrichment-review .er-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.enrichment-review .er-muted {
+  color: var(--text-muted);
+}
+
+.enrichment-review .er-faint {
+  color: var(--text-faint);
+}
+
+.enrichment-review .er-fetch {
+  color: #f85149;
+}
+
+.enrichment-review .er-ok {
+  color: #3fb950;
+}
+
+.enrichment-review .er-warn {
+  color: #d29922;
+}
+
+.enrichment-review .er-group-header {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.enrichment-review .er-table-header {
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.enrichment-review .er-row:hover {
+  background: var(--bg-hover);
+}
+
+.enrichment-review .er-btn {
+  color: var(--text);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+
+.enrichment-review .er-btn-active {
+  background: var(--accent-weak);
+  color: var(--text);
+}
+
+.enrichment-review .er-compare-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
 /* ===== Focus Styles ===== */
 :focus-visible {
   outline: 2px solid var(--accent);

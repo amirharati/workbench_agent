@@ -1,0 +1,79 @@
+{
+  "url": "https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed",
+  "host": "store.gorecell.ca",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 1017,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 135,
+      "ms": 7155,
+      "title": "404 Not Found",
+      "files": {
+        "markdown": "bodies/068-store.gorecell.ca/tab.md"
+      },
+      "parsed": {
+        "title": "404 Not Found",
+        "snippetLen": 135,
+        "snippet": "### Net Orders Checkout\n\nItem\n\nPrice\n\nQty\n\nTotal\n\nSubtotal\n\n$0.00  \n\nShipping\n\nTotal\n\n* * *\n\n### Shipping Address\n\n### Shipping Methods",
+        "summary": "### Net Orders Checkout\n\nItem\n\nPrice\n\nQty\n\nTotal\n\nSubtotal\n\n$0.00  \n\nShipping\n\nTotal\n\n* * *\n\n### Shipping Address\n\n### Shipping Methods"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 5860,
+      "ms": 5906,
+      "title": "404 Not Found",
+      "files": {
+        "markdown": "bodies/068-store.gorecell.ca/jina.md"
+      },
+      "parsed": {
+        "title": "404 Not Found",
+        "snippetLen": 5438,
+        "snippet": "English \n*   [English](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n*   [French](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\nEnglish \n*   [English](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n*   [French](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\n[Skip to content](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#MainContent)\n\nQuestions? -- 888-464-6798- 514-400-0024 -- Mon-Fri 10am-6pm EST - Support@Gorecell.com\n\n*   [Twitter](https://twitter.com/gorecell)\n*   [Facebook](https://www.facebook.com/Gorecellca/)\n\n*   [Devices](https://store.gorecell.ca/collections/device)\n*   [Accessories](https://store.gorecell.ca/collections/accessories)\n*   [About](https://store.gorecell.ca/pages/about)\n*   [FAQs](https://store.gorecell.ca/pages/faq)\n*   [Contact Us](https://store.gorecell.ca/pages/contact-us)\n\n[Customer support 888-464-6798](tel:888-464-6798)\n\n*   All sales\n*   [Shipping & Delivery](https://store.gorecell.ca/pages/warranty)\n\n*   [Twitter](https://twitter.com/gorecell)\n*   [Facebook](https://www.facebook.com/Gorecellca/)\n\n[![Image 1: GoRecell.ca](https://store.gorecell.ca/cdn/shop/files/Group_23.png?v=1724410374&width=500)](https://store.gorecell.ca/)\n\nSearch \n\n[Customer support 888-464-6798](tel:888-464-6798)\n\nSearch \n\n\n0\n\n[0 0 items Subtotal$0.00](https://store.gorecell.ca/cart)\n\n*   [Devices](https://store.gorecell.ca/collections/device)\n*   [Accessories](https://store.gorecell.ca/collections/accessories)\n*   [About](https://store.gorecell.ca/pages/about)\n*   [FAQs](https://store.gorecell.ca/pages/faq)\n*   [Contact Us](https://store.gorecell.ca/pages/contact-us)\n\n*   All sales\n*   [Shipping & Delivery](https://store.gorecell.ca/pages/warranty)\n\n*       \n*       \n*       \n\n404\n\n# Page not found\n\n[Continue shopping](https://store.gorecell.ca/collections/all)\n\n\n\nBe the first to know about new collections and exclusive offers.\n\n Email  \n\nSubscribe\n\n## [Contact Info](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\n*   [support@gorecell.com](mailto:support@gorecell.com \"mailto:support@gorecell.com\") \n*   [888 464-6798](tel:888 464-6798 \"tel:888 464-6798\") | [514 400-0024](tel:888 464-6798 \"tel:888 464-6798\") \n\n## [Company](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\n*   [About Us](https://store.gorecell.ca/pages/about)\n*   [FAQs](https://store.gorecell.ca/pages/faq)\n*   [Contact Us](https://store.gorecell.ca/pages/contact-us)\n*   [Policy](https://store.gorecell.ca/pages/warranty)\n\n## [Find It Fast](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\n*   [Apple](https://store.gorecell.ca/collections/apple)\n*   [Samsung](https://store.gorecell.ca/collections/samsung)\n*   [Google](https://store.gorecell.ca/collections/google)\n\n## [Make Money with Us](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\n*   [Sell](https://gorecell.ca/step-flow/)\n*   [Wholesale](https://store.gorecell.ca/pages/wholesale)\n\n*   [Terms of Use](https://store.gorecell.ca/policies/terms-of-service)\n*   [Returns and Refunds](https://store.gorecell.ca/pages/warranty)\n*   [Legal](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\n*   [Twitter](https://twitter.com/gorecell)\n*   [Facebook](https://www.facebook.com/Gorecellca/)\n\nPayment methods\n\n© 2026, [GoRecell.ca](https://store.gorecell.ca/)[Powered by Shopify](https://www.shopify.com/?utm_campaign=poweredby&utm_medium=shopify&utm_source=onlinestore)\n\n*   Choosing a selection results in a full page refresh.\n\n## Your cart\n\n## Your cart is empty\n\n[Continue shopping](https://store.gorecell.ca/collections/all)\n\n* * *\n\nHave an account?\n\n\nLoading...\n\n* * *\n\n## Recommendations\n\nNote\n\nNote\n\nOrder special instructions \n\nApply\n\nShipping\n\nShipping calculator\n\n Country/region  \n\n Province  \n\nPostal/ZIP code \n\nCalculate\n\n Errors  Available shipping carriers \n\n## Subtotal\n\n$0.00\n\nTaxes and shipping calculated at checkout \n\n[View cart](https://store.gorecell.ca/cart)Check out\n\nDays\n\nHours\n\nMinutes\n\nSeconds\n\n### Net Orders Checkout\n\n| Item |  | Price | Qty | Total |\n| --- | --- | --- | --- | --- |\n|  |  | Subtotal | $0.00 |\n|  |  | Shipping |  |\n|  |  | Total |  |\n\n* * *\n\n### Shipping Address\n\n### Shipping Methods\n\nThere are no products in comparison list.\n\nPlease select at least 2 products to compare.\n\nEnglish \n*   [English](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n*   [French](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\nEnglish \n*   [English](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n*   [French](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)",
+        "summary": "English \n*   [English](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n*   [French](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\nEnglish \n*   [English](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n*   [French](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#)\n\n[Skip to content](https://store.gorecell.ca/collections/apple/products/apple-iphone-13-128gb-a2631-midnight-unlocked-brand-new-sealed#MainContent)\n\nQuestions? -- 888-464-6798- 514-400-0024 -- Mon-Fri 10am-6pm EST - Support@Gorecell.com\n\n*   [Twitter](https://twitter.com/gorecell)\n*   [Facebook](https://www.facebook.com/Gorecellca/)\n\n*   [Devices](https://store.gorecell.ca/collections/device)\n*   [Accessories](https://store.gorecell.ca/collections/accessories)\n*   [About](https://store.gorecell.ca/pages/about)\n*   [FAQs](https://store.gorecell.ca/pages/faq)\n*   [Contact Us](https://store.gorecell.ca/pages/contact-us)\n\n[Customer support 888-464-6798](tel:888-464-6798)\n\n*   All sales\n*   [Shipping & Delivery](https://store.gorecell.ca/pages/warranty)\n\n*   [Twitter](https://twitter.com/gorecell)\n*   [Facebook](https://www.facebook.com/Gorecellca/)\n\n[![Image 1: GoRecell.ca](https://store.gorecell.ca/cdn/shop/files/Group_23.png?v=1724410374&width=500)](https://store.gorecell.ca/)\n\nSearch \n\n[Customer support 888-464-6798](tel:888-464-6798)\n\nSearch \n\n\n0\n\n[0 0 items Subtotal$0.00](https://store.gorecell.ca/cart)\n\n*   [Devices](https://store.gorecell.ca/collections/device)\n*   [Accessories](https://store.gorecell.ca/collections/accessories)\n*   [About](https://store.gorecell.ca/pages/about)\n*   [FAQs](https://store.gorecell.ca/pages/faq)\n*   [Contact Us](https://store.gorecell.ca/pages/contact-us)\n\n*   All sales\n*   [Shipping & Delivery](ht"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 493,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "url": "https://www.techpowerup.com/review/evga-geforce-rtx-3090-ftw3-ultra/31.html",
+  "host": "techpowerup.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 151,
+      "ms": 1280,
+      "title": "EVGA GeForce RTX 3090 FTW3 Ultra Review - The Quietest RTX 3090",
+      "files": {
+        "markdown": "bodies/051-techpowerup.com/local.md"
+      },
+      "parsed": {
+        "title": "EVGA GeForce RTX 3090 FTW3 Ultra Review - The Quietest RTX 3090",
+        "snippetLen": 151,
+        "snippet": "## Automated bot check in progress\n\nThis should only take a few seconds. If you have issues, please do contact us, we want to learn about any problems.",
+        "summary": "## Automated bot check in progress\n\nThis should only take a few seconds. If you have issues, please do contact us, we want to learn about any problems."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 145,
+      "ms": 3965,
+      "title": "EVGA GeForce RTX 3090 FTW3 Ultra Review - The Quietest RTX 3090",
+      "files": {
+        "markdown": "bodies/051-techpowerup.com/tab.md"
+      },
+      "parsed": {
+        "title": "EVGA GeForce RTX 3090 FTW3 Ultra Review - The Quietest RTX 3090",
+        "snippetLen": 145,
+        "snippet": "## Request failed (HTTP 400)\n\nThis should only take a few seconds. If you have issues, please do contact us, we want to learn about any problems.",
+        "summary": "## Request failed (HTTP 400)\n\nThis should only take a few seconds. If you have issues, please do contact us, we want to learn about any problems."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 151,
+      "ms": 5925,
+      "files": {
+        "markdown": "bodies/051-techpowerup.com/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 151,
+        "snippet": "## Automated bot check in progress\n\nThis should only take a few seconds. If you have issues, please do contact us, we want to learn about any problems.",
+        "summary": "## Automated bot check in progress\n\nThis should only take a few seconds. If you have issues, please do contact us, we want to learn about any problems."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 492,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "url": "https://t.co/BLuowaPpQU",
+  "host": "t.co",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 351,
+      "ms": 635,
+      "files": {
+        "preview": "bodies/009-t.co/local.preview.txt",
+        "detail": "bodies/009-t.co/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "<head><noscript><META http-equiv=\"refresh\" content=\"0;URL=https://twitter.com/johnrushx/status/1832046964306841932/video/1\"></noscript><title>https://twitter.com/johnrushx/status/1832046964306841932/video/1</title></head><script>window.opener = null; location.replace(\"https:\\/\\/twitter.com\\/johnrushx\\/status\\/1832046964306841932\\/video\\/1\")</script>"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": false,
+      "reason": "weak_title",
+      "bytes": 246,
+      "ms": 6388,
+      "title": "X",
+      "files": {
+        "markdown": "bodies/009-t.co/tab.md",
+        "detail": "bodies/009-t.co/tab.detail.txt"
+      },
+      "parsed": {
+        "title": "X",
+        "snippetLen": 246,
+        "snippet": "Did someone say … cookies?\n\nX and its partners use cookies to provide you with a better, safer and faster service and to support our business. Some cookies are necessary to use our services, improve our services, and make sure they work properly.",
+        "summary": "Did someone say … cookies?\n\nX and its partners use cookies to provide you with a better, safer and faster service and to support our business. Some cookies are necessary to use our services, improve our services, and make sure they work properly."
+      },
+      "diagnosis": {
+        "reason": "weak_title",
+        "detail": "X"
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": false,
+      "reason": "auth_required",
+      "blockedBy": "matched block pattern /people on x are the first to know/i",
+      "bytes": 1664,
+      "ms": 6533,
+      "files": {
+        "markdown": "bodies/009-t.co/jina.md",
+        "detail": "bodies/009-t.co/jina.detail.txt"
+      },
+      "parsed": {
+        "snippetLen": 1242,
+        "snippet": "Don’t miss what’s happening\n\nPeople on X are the first to know.\n\n\n[Sign up](https://x.com/i/flow/signup)\n\n## [](https://x.com/)\n\n## Post\n\n## Conversation\n\n[John Rush](https://x.com/johnrushx)\n\n[@johnrushx](https://x.com/johnrushx)\n\nLazy SEO guide for startup founders:\n\n\n[1:23 PM · Sep 6, 2024](https://x.com/johnrushx/status/1832046964306841932)\n\n[205.2K Views](https://x.com/johnrushx/status/1832046964306841932/analytics)\n\n## New to X?\n\nSign up now to get your own personalized timeline!\n\n[Create account](https://x.com/i/flow/signup)\n\n\n## Trending now\n\n## What’s happening\n\nTrending in United States\n\n#Survivor50\n\nTrending with [Aubry](https://x.com/search?q=Aubry&src=trend_click&vertical=trends), [Jonathan](https://x.com/search?q=Jonathan&src=trend_click&vertical=trends)\n\nTrending in United States\n\nNolan Smith\n\nSports · Trending\n\nSvanson\n\nSports · Trending\n\nJamal Crawford\n\n[Show more](https://x.com/explore/tabs/for-you)\n\n[Terms of Service](https://x.com/tos)\n\n|\n\n\n|\n\n\n|\n\n[Accessibility](https://help.x.com/resources/accessibility)\n\n|\n\n[Ads info](https://business.x.com/en/help/troubleshooting/how-twitter-ads-work.html?ref=web-twc-ao-gbl-adsinfo&utm_source=twc&utm_medium=web&utm_campaign=ao&utm_content=adsinfo)\n\n|\n\n© 2026 X Corp.",
+        "summary": "Don’t miss what’s happening\n\nPeople on X are the first to know.\n\n\n[Sign up](https://x.com/i/flow/signup)\n\n## [](https://x.com/)\n\n## Post\n\n## Conversation\n\n[John Rush](https://x.com/johnrushx)\n\n[@johnrushx](https://x.com/johnrushx)\n\nLazy SEO guide for startup founders:\n\n\n[1:23 PM · Sep 6, 2024](https://x.com/johnrushx/status/1832046964306841932)\n\n[205.2K Views](https://x.com/johnrushx/status/1832046964306841932/analytics)\n\n## New to X?\n\nSign up now to get your own personalized timeline!\n\n[Create account](https://x.com/i/flow/signup)\n\n\n## Trending now\n\n## What’s happening\n\nTrending in United States\n\n#Survivor50\n\nTrending with [Aubry](https://x.com/search?q=Aubry&src=trend_click&vertical=trends), [Jonathan](https://x.com/search?q=Jonathan&src=trend_click&vertical=trends)\n\nTrending in United States\n\nNolan Smith\n\nSports · Trending\n\nSvanson\n\nSports · Trending\n\nJamal Crawford\n\n[Show more](https://x.com/explore/tabs/for-you)\n\n[Terms of Service](https://x.com/tos)\n\n|\n\n\n|\n\n\n|\n\n[Accessibility](https://help.x.com/resources/accessibility)\n\n|\n\n[Ads info](https://business.x.com/en/help/troubleshooting/how-twitter-ads-work.html?ref=web-twc-ao-gbl-adsinfo&utm_source=twc&utm_medium=web&utm_campaign=ao&utm_content=adsinfo)\n\n|\n\n© 2026 X Corp."
+      },
+      "diagnosis": {
+        "reason": "auth_required",
+        "blockedBy": "matched block pattern /people on x are the first to know/i",
+        "detail": "Don’t miss what’s happening\n\nPeople on X are the first to know.\n\n[Log in](https://x.com/login)\n\n[Sign up](https://x.com/i/flow/signup)\n\n## [](https://x.com/)\n\n## Post\n\n## Conversation\n\n[John Rush](https://x.com/johnrushx)\n\n[@johnrushx](https://x.com/johnrushx)\n\nLazy SEO guide for startup founders:\n\n"
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 497,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

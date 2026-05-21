@@ -1,0 +1,86 @@
+{
+  "url": "https://www.brython.info",
+  "host": "brython.info",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": false,
+      "reason": "too_short",
+      "bytes": 46,
+      "ms": 1160,
+      "title": "Brython",
+      "files": {
+        "markdown": "bodies/042-brython.info/local.md",
+        "detail": "bodies/042-brython.info/local.detail.txt"
+      },
+      "parsed": {
+        "title": "Brython",
+        "snippetLen": 46,
+        "snippet": "[brython](https://www.brython.info/index.html)",
+        "summary": "[brython](https://www.brython.info/index.html)"
+      },
+      "diagnosis": {
+        "reason": "too_short",
+        "detail": "[brython](https://www.brython.info/index.html)"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 1250,
+      "ms": 4522,
+      "title": "Brython",
+      "files": {
+        "markdown": "bodies/042-brython.info/tab.md"
+      },
+      "parsed": {
+        "title": "Brython",
+        "snippetLen": 1250,
+        "snippet": "## A Python 3 implementation for client-side web programming\n\nWithout a doubt, you've seen a clock like this in demos of HTML5\n\nHowever, right click and view the source of this page...\n\nIt is not Javascript code! Instead, you will find Python code in a script of type \"text/python\".\n\nBrython is designed to replace Javascript as the scripting language for the Web. As such, it is a Python 3 implementation (you can take it for a test drive through a web [console](https://www.brython.info/console.html)), adapted to the HTML5 environment, that is to say with an interface to the DOM objects and events.\n\n[Speed of execution](https://www.brython.info/speed_results.html) is similar to CPython for most operations.\n\nThe [gallery](https://www.brython.info/gallery/gallery_en.html) highlights a few of the possibilities, from creating simple document elements to drag and drop and 3D navigation. A [wiki](https://github.com/brython-dev/brython/wiki/Brython%20in%20the%20wild) lists some applications using Brython.\n\nYou can also take a look at [presentations](https://github.com/brython-dev/brython/wiki/Brython-videos-and-talks) made in various conferences.\n\n_sorry, Brython can't make the demo work on your browser ;  \ncheck if Javascript is turned on_",
+        "summary": "## A Python 3 implementation for client-side web programming\n\nWithout a doubt, you've seen a clock like this in demos of HTML5\n\nHowever, right click and view the source of this page...\n\nIt is not Javascript code! Instead, you will find Python code in a script of type \"text/python\".\n\nBrython is designed to replace Javascript as the scripting language for the Web. As such, it is a Python 3 implementation (you can take it for a test drive through a web [console](https://www.brython.info/console.html)), adapted to the HTML5 environment, that is to say with an interface to the DOM objects and events.\n\n[Speed of execution](https://www.brython.info/speed_results.html) is similar to CPython for most operations.\n\nThe [gallery](https://www.brython.info/gallery/gallery_en.html) highlights a few of the possibilities, from creating simple document elements to drag and drop and 3D navigation. A [wiki](https://github.com/brython-dev/brython/wiki/Brython%20in%20the%20wild) lists some applications using Brython.\n\nYou can also take a look at [presentations](https://github.com/brython-dev/brython/wiki/Brython-videos-and-talks) made in various conferences.\n\n_sorry, Brython can't make the demo work on your browser ;  \ncheck if Javascript is turned on_"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 1248,
+      "ms": 3842,
+      "files": {
+        "markdown": "bodies/042-brython.info/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 1248,
+        "snippet": "## A Python 3 implementation for client-side web programming\n\nWithout a doubt, you've seen a clock like this in demos of HTML5 \nHowever, right click and view the source of this page...\n\nIt is not Javascript code! Instead, you will find Python code in a script of type \"text/python\".\n\nBrython is designed to replace Javascript as the scripting language for the Web. As such, it is a Python 3 implementation (you can take it for a test drive through a web [console](https://www.brython.info/console.html)), adapted to the HTML5 environment, that is to say with an interface to the DOM objects and events.\n\n[Speed of execution](https://www.brython.info/speed_results.html) is similar to CPython for most operations.\n\nThe [gallery](https://www.brython.info/gallery/gallery_en.html) highlights a few of the possibilities, from creating simple document elements to drag and drop and 3D navigation. A [wiki](https://github.com/brython-dev/brython/wiki/Brython%20in%20the%20wild) lists some applications using Brython.\n\nYou can also take a look at [presentations](https://github.com/brython-dev/brython/wiki/Brython-videos-and-talks) made in various conferences._sorry, Brython can't make the demo work on your browser ; \n\ncheck if Javascript is turned on_",
+        "summary": "## A Python 3 implementation for client-side web programming\n\nWithout a doubt, you've seen a clock like this in demos of HTML5 \nHowever, right click and view the source of this page...\n\nIt is not Javascript code! Instead, you will find Python code in a script of type \"text/python\".\n\nBrython is designed to replace Javascript as the scripting language for the Web. As such, it is a Python 3 implementation (you can take it for a test drive through a web [console](https://www.brython.info/console.html)), adapted to the HTML5 environment, that is to say with an interface to the DOM objects and events.\n\n[Speed of execution](https://www.brython.info/speed_results.html) is similar to CPython for most operations.\n\nThe [gallery](https://www.brython.info/gallery/gallery_en.html) highlights a few of the possibilities, from creating simple document elements to drag and drop and 3D navigation. A [wiki](https://github.com/brython-dev/brython/wiki/Brython%20in%20the%20wild) lists some applications using Brython.\n\nYou can also take a look at [presentations](https://github.com/brython-dev/brython/wiki/Brython-videos-and-talks) made in various conferences._sorry, Brython can't make the demo work on your browser ; \n\ncheck if Javascript is turned on_"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 496,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "url": "https://ubiquitouslearning.github.io/mllm_website",
+  "host": "ubiquitouslearning.github.io",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 208,
+      "ms": 1277,
+      "title": "mllm:Run LLM on Your Device",
+      "files": {
+        "markdown": "bodies/096-ubiquitouslearning.github.io/local.md"
+      },
+      "parsed": {
+        "title": "mllm:Run LLM on Your Device",
+        "snippetLen": 208,
+        "snippet": "## \n\nFocusing on **Edge Scenario**\n\nTarget at LLM\n\nWith optimization including Quantization, Memory Reuse, and Parallelization, we are able to achieve affordable inference latency of LLMs on the edge devices.",
+        "summary": "## \n\nFocusing on **Edge Scenario**\n\nTarget at LLM\n\nWith optimization including Quantization, Memory Reuse, and Parallelization, we are able to achieve affordable inference latency of LLMs on the edge devices."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 208,
+      "ms": 4551,
+      "title": "mllm:Run LLM on Your Device",
+      "files": {
+        "markdown": "bodies/096-ubiquitouslearning.github.io/tab.md"
+      },
+      "parsed": {
+        "title": "mllm:Run LLM on Your Device",
+        "snippetLen": 208,
+        "snippet": "## \n\nFocusing on **Edge Scenario**\n\nTarget at LLM\n\nWith optimization including Quantization, Memory Reuse, and Parallelization, we are able to achieve affordable inference latency of LLMs on the edge devices.",
+        "summary": "## \n\nFocusing on **Edge Scenario**\n\nTarget at LLM\n\nWith optimization including Quantization, Memory Reuse, and Parallelization, we are able to achieve affordable inference latency of LLMs on the edge devices."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2710,
+      "ms": 1839,
+      "title": "mllm:Run LLM on Your Device",
+      "files": {
+        "markdown": "bodies/096-ubiquitouslearning.github.io/jina.md"
+      },
+      "parsed": {
+        "title": "mllm:Run LLM on Your Device",
+        "snippetLen": 2323,
+        "snippet": "[mllm](https://ubiquitouslearning.github.io/#home)\n\n*   [Features](https://ubiquitouslearning.github.io/mllm_website#features)\n*   [Solution](https://ubiquitouslearning.github.io/mllm_website#solution)\n*   [](https://github.com/UbiquitousLearning/mllm \"MLLM on GitHub\")\n\n[Get Started](https://ubiquitouslearning.github.io/introduction/getstarted/)\n\n# Chat LLMs🤖\n\nwith\n\nJust On Your Device!\n\nmllm is a fast multimodal LLM inference engine for mobile and edge devices.\n\n[Get started](https://ubiquitouslearning.github.io/introduction/getstarted/)[Learn more](https://github.com/UbiquitousLearning/mllm)\n\n###### Lightweight\n\nDesign For Edge/Mobile Scenario\n\n###### Multimodal\n\nSupported For Multimodal including Vision / Text ...\n\n###### In Your Packet\n\nEasily Integrated in Apps via JNI/Libs\n\n## Focusing on **Edge Scenario**\n\nTarget at LLM\n\nWith optimization including Quantization, Memory Reuse, and Parallelization, we are able to achieve affordable inference latency of LLMs on the edge devices.\n\n\n##### Quantization\n\nSpeed up the inference with FP16/8Bit/6Bit Quantization.\n\n[Read more](https://ubiquitouslearning.github.io/introduction/introduction/)\n\n\n##### Accelerator Support\n\nChasing the state-of-the-art speed with AI Accelerator like Qualcomm Hexagon.\n\n[Read more](https://ubiquitouslearning.github.io/introduction/introduction/)\n\n\n##### Multimodal Support\n\nSupport multimodal input like text, image, audio, and video.\n\n[Read more](https://ubiquitouslearning.github.io/introduction/introduction/)\n\n\n##### More features\n\nVisit Our Project Repo!\n\n[Read more](https://ubiquitouslearning.github.io/introduction/introduction/)\n\n# Get Started now\n\nEmbrace your private local LLM Assistant!\n\n[Get Started](https://ubiquitouslearning.github.io/introduction/getstarted/)[More about](https://ubiquitouslearning.github.io/mllm_website#)\n\n*   [Home](https://ubiquitouslearning.github.io/mllm_website#)\n*   [About](https://ubiquitouslearning.github.io/mllm_website#)\n*   [Docs](https://ubiquitouslearning.github.io/introduction/getstarted/)\n\n*   [Github](https://github.com/UbiquitousLearning/mllm)\n\nRun Large Models, Just On Your Devices!mllm @UbiquitousLearning,BUPT Need help? We Use [Github Issues](https://github.com/UbiquitousLearning/mllm/issues) to communicate!\n\n[Star Us!](https://github.com/UbiquitousLearning/mllm)",
+        "summary": "[mllm](https://ubiquitouslearning.github.io/#home)\n\n*   [Features](https://ubiquitouslearning.github.io/mllm_website#features)\n*   [Solution](https://ubiquitouslearning.github.io/mllm_website#solution)\n*   [](https://github.com/UbiquitousLearning/mllm \"MLLM on GitHub\")\n\n[Get Started](https://ubiquitouslearning.github.io/introduction/getstarted/)\n\n# Chat LLMs🤖\n\nwith\n\nJust On Your Device!\n\nmllm is a fast multimodal LLM inference engine for mobile and edge devices.\n\n[Get started](https://ubiquitouslearning.github.io/introduction/getstarted/)[Learn more](https://github.com/UbiquitousLearning/mllm)\n\n###### Lightweight\n\nDesign For Edge/Mobile Scenario\n\n###### Multimodal\n\nSupported For Multimodal including Vision / Text ...\n\n###### In Your Packet\n\nEasily Integrated in Apps via JNI/Libs\n\n## Focusing on **Edge Scenario**\n\nTarget at LLM\n\nWith optimization including Quantization, Memory Reuse, and Parallelization, we are able to achieve affordable inference latency of LLMs on the edge devices.\n\n\n##### Quantization\n\nSpeed up the inference with FP16/8Bit/6Bit Quantization.\n\n[Read more](https://ubiquitouslearning.github.io/introduction/introduction/)\n\n\n##### Accelerator Support\n\nChasing the state-of-the-art speed with AI Accelerator like Qualcomm Hexagon.\n\n[Read more](https://ubiquitouslearning.github.io/introduction/introduction/)\n\n\n##### Multimodal Support\n\nSupport multimodal input like text, image, audio, and video.\n\n[Read more](https://ubiquitouslearning.github.io/introduction/introduction/)\n\n\n##### More features\n\nVisit Our Project Repo!\n\n[Read more](https://ubiquitouslearning.github.io/introduction/introduction/)\n\n# Get Started now\n\nEmbrace your private local LLM Assistant!\n\n[Get Started](https://ubiquitouslearning.github.io/introduction/getstarted/)[More about](https://ubiquitouslearning.github.io/mllm_website#)\n\n*   [Home](https://ubiquitouslearning.github.io/mllm_website#)\n*   [About](https://ubiquitouslearning.github.io/mllm_website#)\n*   [Docs](https://ubiquitouslearni"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 490,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

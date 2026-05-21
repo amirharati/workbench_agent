@@ -1,0 +1,71 @@
+{
+  "url": "http://wwww",
+  "host": "wwww",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "network",
+      "bytes": 0,
+      "ms": 144,
+      "error": "TypeError: fetch failed",
+      "files": {
+        "error": "bodies/051-wwww/local.error.txt",
+        "detail": "bodies/051-wwww/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "network",
+        "detail": "TypeError: fetch failed"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": false,
+      "usable": false,
+      "reason": "network",
+      "bytes": 0,
+      "ms": 315,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at http://wwww/\nCall log:\n\u001b[2m  - navigating to \"http://wwww/\", waiting until \"domcontentloaded\"\u001b[22m\n",
+      "files": {
+        "error": "bodies/051-wwww/tab.error.txt",
+        "detail": "bodies/051-wwww/tab.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "network",
+        "detail": "page.goto: net::ERR_NAME_NOT_RESOLVED at http://wwww/\nCall log:\n\u001b[2m  - navigating to \"http://wwww/\", waiting until \"domcontentloaded\"\u001b[22m\n"
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 336,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 164,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

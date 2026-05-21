@@ -1,0 +1,86 @@
+{
+  "url": "https://www.memoryexpress.com/Store/Location/ONETO",
+  "host": "memoryexpress.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "network",
+      "bytes": 0,
+      "ms": 985,
+      "error": "TypeError: fetch failed",
+      "files": {
+        "error": "bodies/094-memoryexpress.com/local.error.txt",
+        "detail": "bodies/094-memoryexpress.com/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "network",
+        "detail": "TypeError: fetch failed"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": false,
+      "reason": "auth_required",
+      "blockedBy": "matched block pattern /performing security verification/i",
+      "bytes": 203,
+      "ms": 4192,
+      "title": "Just a moment...",
+      "files": {
+        "markdown": "bodies/094-memoryexpress.com/tab.md",
+        "detail": "bodies/094-memoryexpress.com/tab.detail.txt"
+      },
+      "parsed": {
+        "title": "Just a moment...",
+        "snippetLen": 203,
+        "snippet": "## www.memoryexpress.com\n\n## Performing security verification\n\nThis website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot.",
+        "summary": "## www.memoryexpress.com\n\n## Performing security verification\n\nThis website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot."
+      },
+      "diagnosis": {
+        "reason": "auth_required",
+        "blockedBy": "matched block pattern /performing security verification/i",
+        "detail": "## www.memoryexpress.com\n\n## Performing security verification\n\nThis website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot."
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 38813,
+      "ms": 902,
+      "title": "Store Location for Memory Express Etobicoke, Ontario - Memory Express Inc.",
+      "files": {
+        "markdown": "bodies/094-memoryexpress.com/jina.md"
+      },
+      "parsed": {
+        "title": "Store Location for Memory Express Etobicoke, Ontario - Memory Express Inc.",
+        "snippetLen": 12001,
+        "snippet": "**Site** Navigation \n\n[](https://www.memoryexpress.com/Store/Location/ONETO#Close)\n\n Welcome \n\n*   [Home](https://www.memoryexpress.com/) \n\n Account \n\n*   [Log-In](https://www.memoryexpress.com/User/Login) \n*   [Sign-Up](https://www.memoryexpress.com/User/Register) \n\n Catalog Root \n\n*   [Computer Hardware](https://www.memoryexpress.com/Catalog/Section/ComputerHardware)[](https://www.memoryexpress.com/Catalog/Section/ComputerHardware) \n*   [Computer Systems](https://www.memoryexpress.com/Catalog/Section/ComputerSystems)[](https://www.memoryexpress.com/Catalog/Section/ComputerSystems) \n*   [Software & Gaming](https://www.memoryexpress.com/Catalog/Section/SoftwareAndGaming)[](https://www.memoryexpress.com/Catalog/Section/SoftwareAndGaming) \n*   [Networking](https://www.memoryexpress.com/Catalog/Section/Networking)[](https://www.memoryexpress.com/Catalog/Section/Networking) \n*   [Audio / Video](https://www.memoryexpress.com/Catalog/Section/TVsAndHomeTheater)[](https://www.memoryexpress.com/Catalog/Section/TVsAndHomeTheater) \n*   [Gadgets & Furniture](https://www.memoryexpress.com/Catalog/Section/GadgetsandFurniture)[](https://www.memoryexpress.com/Catalog/Section/GadgetsandFurniture) \n*   [More »](https://www.memoryexpress.com/Catalog/Section/More)[](https://www.memoryexpress.com/Catalog/Section/More) \n\n Tools & Resources \n\n*   [System Configurator](https://www.memoryexpress.com/Tool/Configurator) \n*   [Last Call](https://www.memoryexpress.com/Homepage/LastCall) \n*   [Clearance Centre](https://www.memoryexpress.com/Clearance) \n*   [Rebate Centre](https://www.memoryexpress.com/Rebate) \n*   [New Arrivals](https://www.memoryexpress.com/Catalog/NewArrivals) \n*   [Useful Links](https://www.memoryexpress.com/ToolsResources/Links.cm.aspx) \n\n Information \n\n*   [About memoryexpress](https://www.memoryexpress.com/Information/About.cm.aspx) \n*   [Store Locations](https://www.memoryexpress.com/Stores)[](https://www.memoryexpress.com/Navigation/Group/Locations) \n*   [Contact Us](https://www.memoryexpress.com/Store/Contact) \n*   [Tech Zone](https://www.memoryexpress.com/TechZone/Index.cm.aspx) \n*   [CorporateSales](https://www.memoryexpress.com/Information/Corporate.cm.aspx) \n*   [Careers](https://www.memoryexpress.com/Information/Careers.cm.aspx) \n*   [FAQ](https://www.memoryexpress.com/Information/FAQ.cm.aspx) \n\n Policies & Procedures \n\n*   [Returns & Exchanges](https://www.memoryexpress.com/Policies/Returns.cm.aspx) \n*   [Security & Privacy](https://www.memoryexpress.com/Policies/Security.cm.aspx) \n*   [Site Terms of Use](https://www.memoryexpress.com/Policies/Terms.cm.aspx) \n*   [Price Protection](https://www.memoryexpress.com/Policies/PriceProtection.cm.aspx) \n*   [Warranties](https://www.memoryexpress.com/Policies/Warranties.cm.aspx) \n\nFalse False**Note:** some features on this page require cookies to function correctly, please visit [this page](https://www.google.com/support/websearch/bin/answer.py?hl=en&answer=35851) for details on how to enable them. \n\n[![Image 1: Logo](https://www.memoryexpress.com/Images/SVG/MX-Logo-NoText-Rectangular.svg)](https://www.memoryexpress.com/)\n\nWelcome **Guest**\n\n*   [Log-In](https://www.memoryexpress.com/User/Login)\n*   -\n*   [Sign-Up](https://www.memoryexpress.com/User/Register)\n\n*   [System Configurator](https://www.memoryexpress.com/Tool/Configurator)\n*   [New Arrivals](https://www.memoryexpress.com/Catalog/NewArrivals)\n\n[0](https://www.memoryexpress.com/Checkout/Cart)[0 items in your cart Checkout](https://www.memoryexpress.com/Checkout/Cart)\n\n4\n\n Announcements: \n\n4\n\n[![Image 2: Memory Express Logo](https://www.memoryexpress.com/Images/Theme/MX-Logo.png)](https://www.memoryexpress.com/ \"Memory Express: Homepage\")\n\n[Store Locations](https://www.memoryexpress.com/Stores \"Store Locations\")[Contact Us](https://www.memoryexpress.com/Store/Contact \"Contact Us\")[Tech Zone](https://www.memoryexpress.com/TechZone/Index.cm.aspx \"Tech Zone\")[Corporate Sales](https://www.memoryexpress.com/Information/Corporate.cm.aspx \"Corporate Sales\")\n\n\n Top Results \n\n Click Search for All Results \n\n Search \n\n*   [](https://www.memoryexpress.com/)\n\n*   [Computer Hardware](https://www.memoryexpress.com/Catalog/Section/ComputerHardware)\n\n    *   [Computer Parts](https://www.memoryexpress.com/Navigation/Group/ComputerParts)\n        *   [» Adapter Cards](https://www.memoryexpress.com/Category/AdapterCards) (21) \n        *   [» Computer Cases](https://www.memoryexpress.com/Category/ComputerCases) (336) \n        *   [» Controller Cards](https://www.memoryexpress.com/Category/ControllerCards) (13) \n        *   [» Cooling](https://www.memoryexpress.com/Category/Cooling) (689) \n        *   [» Floppy Drives](https://www.memoryexpress.com/Category/FloppyDrives) (1) \n        *   [» Graphics Cards](https://www.memoryexpress.com/Category/VideoCards) (273) \n        *   [» Memory](https://www.memoryexpress.com/Category/Memory) (223) \n        *   [» Modems](https://www.memoryexpress.com/Category/Modems) (0) \n        *   [» Motherboards](https://www.memoryexpress.com/Category/Motherboards) (321) \n        *   [» Network Adapters](https://www.memoryexpress.com/Category/NetworkAdapters) (110) \n        *   [» Optical Disc Drives](https://www.memoryexpress.com/Category/CDDVDDrives) (10) \n        *   [» Power Supplies](https://www.memoryexpress.com/Category/PowerSupplies) (160) \n        *   [» Processors](https://www.memoryexpress.com/Category/Processors) (122) \n        *   [» Sound Cards](https://www.memoryexpress.com/Category/SoundCards) (13) \n        *   [» SSD / Hard Drives](https://www.memoryexpress.com/Category/HardDrives) (237) \n        *   [» Video Capture Cards](https://www.memoryexpress.com/Category/VideoCaptureCards) (23) \n\n    *   [Computer Peripherals](https://www.memoryexpress.com/Navigation/Group/ComputerPeripherals)\n        *   [» Barcode Scanners](https://www.memoryexpress.com/Category/BarcodeScanners) (3) \n        *   [» Bluetooth Adapters](https://www.memoryexpress.com/Category/BluetoothAdapters) (10) \n        *   [» Card Readers](https://www.memoryexpress.com/Category/CardReaders) (12) \n        *   [» Drive Caddies & Docks](https://www.memoryexpress.com/Category/HDDCaddy) (11) \n        *   [» External Drive Enclosures](https://www.memoryexpress.com/Category/ExternalEnclosures) (73) \n        *   [» External GPU Enclosures](https://www.memoryexpress.com/Category/GPUExternalEnclosure) (1) \n        *   [» Gaming Devices](https://www.memoryexpress.com/Category/GamingDevices) (116) \n        *   [» Headsets & Microphones](https://www.memoryexpress.com/Category/HeadsetsMicrophones) (201) \n        *   [» Keyboards](https://www.memoryexpress.com/Category/Keyboards) (238) \n        *   [» KVM Switches](https://www.memoryexpress.com/Category/KVMSwitches) (28) \n        *   [» Mice](https://www.memoryexpress.com/Category/Mice) (216) \n        *   [» Pen Tablets](https://www.memoryexpress.com/Category/Tablets) (19) \n        *   [» Printers](https://www.memoryexpress.com/Category/Printers) (161) \n        *   [» Scanners](https://www.memoryexpress.com/Category/Scanners) (8) \n        *   [» Speakers](https://www.memoryexpress.com/Category/ComputerSpeakers) (70) \n        *   [» UPS (Battery Backups)](https://www.memoryexpress.com/Category/UPSBatteryBackups) (47) \n        *   [» USB & Firewire Hubs](https://www.memoryexpress.com/Category/USBFireWireHubs) (75) \n        *   [» Web Cams](https://www.memoryexpress.com/Category/WebCams) (33) \n\n    *   [Display Devices](https://www.memoryexpress.com/Category/DisplayDevices)\n        *   [» LCD Monitors](https://www.memoryexpress.com/Category/LCDMonitors) (390) \n        *   [» Projectors](https://www.memoryexpress.com/Category/Projectors) (88) \n        *   [» VR Headsets & HMDs](https://www.memoryexpress.com/Category/VRHeadsets) (1) \n\n[Storage Media](https://www.memoryexpress.com/Category/StorageMedia)\n        *   [» Blu-Ray Media](https://www.memoryexpress.com/Category/MediaBluRayHDDVD) (2) \n        *   [» CD Media](https://www.memoryexpress.com/Category/MediaCD) (0) \n        *   [» DVD Media](https://www.memoryexpress.com/Category/MediaDVD) (0) \n        *   [» Memory Cards](https://www.memoryexpress.com/Category/MemoryCards) (60) \n        *   [» Tape Media](https://www.memoryexpress.com/Category/Media_Tape) (0) \n        *   [» USB Drives](https://www.memoryexpress.com/Category/USBDrives) (59) \n\nRelated Products:\n    *   [Computer Accessories](https://www.memoryexpress.com/Navigation/Group/ComputerAccessories)\n        *   [» Batteries & Chargers](https://www.memoryexpress.com/Category/BatteriesChargers) (24) \n        *   [» Case Bezels, Panels & Mods](https://www.memoryexpress.com/Category/Accessories_CaseMods) (19) \n        *   [» CD/DVD Cases & Wallets](https://www.memoryexpress.com/Category/DiskCasesWallets) (2) \n        *   [» Cleaning & Maintenance](https://www.memoryexpress.com/Category/Cleaning) (21) \n        *   [» Drive Adapters & Brackets](https://www.memoryexpress.com/Category/DriveBaysBezels) (30) \n        *   [» Energy Drinks](https://www.memoryexpress.com/Category/EnergyDrinks) (0) \n        *   [» GPU Brackets & Adapters](https://www.memoryexpress.com/Category/GPUBrackets) (28) \n        *   [» Ink Cartridges & Toner](https://www.memoryexpress.com/Category/PrinterInkCartridges) (146) \n        *   [» LED Lighting](https://www.memoryexpress.com/Category/CaseModsLEDLighting) (34) \n        *   [» Mounts & Stands](https://www.memoryexpress.com/Category/MonitorMountsStands) (57) \n        *   [» Mouse Pads](https://www.memoryexpress.com/Category/MousePads) (89) \n        *   [» Remote Controls](https://www.memoryexpress.com/Category/RemoteControls) (1) \n        *   [» Surge Protectors & Power Bars](https://www.memoryexpress.com/Category/SurgeProtectors) (21) \n        *   [» Tech Tools & Testing](https://www.memoryexpress.com/Category/Tools) (43) \n        *   [» Projector Bulbs](https://www.memoryexpress.com/Category/Projector_Bulbs) (2) \n        *   [» Projector Cables](https://www.memoryexpress.com/Category/CablesProjector) (0) \n        *   [» Projector Mounts](https://www.memoryexpress.com/Category/Projector_Mounts) (3) \n        *   [» Projector Screens](https://www.memoryexpress.com/Category/Projector_Screens) (0) \n        *   [» Other...](https://www.memoryexpress.com/Category/OtherComputerAccessories) (36) \n\n    *   [Notebook Components](https://www.memoryexpress.com/Category/NotebookComponents)\n        *   [» Notebook Adapter Cards](https://www.memoryexpress.com/Category/NotebookAdapterCards) (0) \n        *   [» Notebook Batteries](https://www.memoryexpress.com/Category/NotebookBatteries) (24) \n        *   [» Notebook Hard Drives](https://www.memoryexpress.com/Category/NotebookHardDrives) (0) \n        *   [» Notebook Memory](https://www.memoryexpress.com/Category/NotebookMemory) (38) \n\n[Cables & Adapters](https://www.memoryexpress.com/Category/CablesAdapters)\n        *   [» Audio Cables](https://www.memoryexpress.com/Category/Cables_ComputerAudio) (46) \n        *   [» Cable Management](https://www.memoryexpress.com/Category/CableManagement) (24) \n        *   [» Computer Cables](https://www.memoryexpress.com/Category/ComputerCables) (322) \n        *   [» Home Theater Cables](https://www.memoryexpress.com/Category/HomeTheaterCables) (238) \n        *   [» Monitor Cables](https://www.memoryexpress.com/Category/MonitorCablesAdapters) (160) \n        *   [» Network Cables](https://www.memoryexpress.com/Category/CablesNetwork) (331) \n        *   [» Printer Cables](https://www.memoryexpress.com/Category/Cables_Printer) (9) \n        *   [» Projector Cables](https://www.memoryexpress.com/Category/CablesProjector) (0) \n        *   [» Video Cables](https://www.memoryexpress.com/Category/CablesVideo) (185) \n\n[](https://www.memoryexpress.com/Store/Location/ONETO#Close)\n\n*   [Computer Systems](https://www.memoryexpress.com/Catalog/Section/ComputerSystems)\n\n    *   [Desktop Computers](https://www.memoryexpress.com/Category/DesktopComputers)\n        *   [» Bu…",
+        "summary": "**Site** Navigation \n\n[](https://www.memoryexpress.com/Store/Location/ONETO#Close)\n\n Welcome \n\n*   [Home](https://www.memoryexpress.com/) \n\n Account \n\n*   [Log-In](https://www.memoryexpress.com/User/Login) \n*   [Sign-Up](https://www.memoryexpress.com/User/Register) \n\n Catalog Root \n\n*   [Computer Hardware](https://www.memoryexpress.com/Catalog/Section/ComputerHardware)[](https://www.memoryexpress.com/Catalog/Section/ComputerHardware) \n*   [Computer Systems](https://www.memoryexpress.com/Catalog/Section/ComputerSystems)[](https://www.memoryexpress.com/Catalog/Section/ComputerSystems) \n*   [Software & Gaming](https://www.memoryexpress.com/Catalog/Section/SoftwareAndGaming)[](https://www.memoryexpress.com/Catalog/Section/SoftwareAndGaming) \n*   [Networking](https://www.memoryexpress.com/Catalog/Section/Networking)[](https://www.memoryexpress.com/Catalog/Section/Networking) \n*   [Audio / Video](https://www.memoryexpress.com/Catalog/Section/TVsAndHomeTheater)[](https://www.memoryexpress.com/Catalog/Section/TVsAndHomeTheater) \n*   [Gadgets & Furniture](https://www.memoryexpress.com/Catalog/Section/GadgetsandFurniture)[](https://www.memoryexpress.com/Catalog/Section/GadgetsandFurniture) \n*   [More »](https://www.memoryexpress.com/Catalog/Section/More)[](https://www.memoryexpress.com/Catalog/Section/More) \n\n Tools & Resources \n\n*   [System Configurator](https://www.memoryexpress.com/Tool/Configurator) \n*   [Last Call](https://www.memoryexpress.com/Homepage/LastCall) \n*   [Clearance Centre](https://www.memoryexpress.com/Clearance) \n*   [Rebate Centre](https://www.memoryexpress.com/Rebate) \n*   [New Arrivals](https://www.memoryexpress.com/Catalog/NewArrivals) \n*   [Useful Links](https://www.memoryexpress.com/ToolsResources/Links.cm.aspx) \n\n Information \n\n*   [About memoryexpress](https://www.memoryexpress.com/Information/About.cm.aspx) \n*   [Store Locations](https://www.memoryexpress.com/Stores)[](https://www.memoryexpress.com/Navigation/Group/Locations) \n*   [Contact Us](htt"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 1097,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

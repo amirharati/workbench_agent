@@ -1,0 +1,88 @@
+{
+  "url": "https://splurge.ai",
+  "host": "splurge.ai",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": false,
+      "reason": "too_short",
+      "bytes": 65,
+      "ms": 1570,
+      "title": "Splurge.ai",
+      "files": {
+        "markdown": "bodies/070-splurge.ai/local.md",
+        "detail": "bodies/070-splurge.ai/local.detail.txt"
+      },
+      "parsed": {
+        "title": "Splurge.ai",
+        "snippetLen": 65,
+        "snippet": "## Sign up for updates on our launch and progress\n\n  \n\nYour email",
+        "summary": "## Sign up for updates on our launch and progress\n\n  \n\nYour email"
+      },
+      "diagnosis": {
+        "reason": "too_short",
+        "detail": "## Sign up for updates on our launch and progress\n\n  \n\nYour email"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": false,
+      "reason": "too_short",
+      "bytes": 65,
+      "ms": 4634,
+      "title": "Splurge.ai",
+      "files": {
+        "markdown": "bodies/070-splurge.ai/tab.md",
+        "detail": "bodies/070-splurge.ai/tab.detail.txt"
+      },
+      "parsed": {
+        "title": "Splurge.ai",
+        "snippetLen": 65,
+        "snippet": "## Sign up for updates on our launch and progress\n\n  \n\nYour email",
+        "summary": "## Sign up for updates on our launch and progress\n\n  \n\nYour email"
+      },
+      "diagnosis": {
+        "reason": "too_short",
+        "detail": "## Sign up for updates on our launch and progress\n\n  \n\nYour email"
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": false,
+      "reason": "too_short",
+      "bytes": 61,
+      "ms": 1069,
+      "files": {
+        "markdown": "bodies/070-splurge.ai/jina.md",
+        "detail": "bodies/070-splurge.ai/jina.detail.txt"
+      },
+      "parsed": {
+        "snippetLen": 61,
+        "snippet": "## Sign up for updates on our launch and progress\n\nYour email",
+        "summary": "## Sign up for updates on our launch and progress\n\nYour email"
+      },
+      "diagnosis": {
+        "reason": "too_short",
+        "detail": "## Sign up for updates on our launch and progress\n\nYour email"
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 482,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

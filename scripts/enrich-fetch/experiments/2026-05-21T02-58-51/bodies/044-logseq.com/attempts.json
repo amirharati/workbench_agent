@@ -1,0 +1,80 @@
+{
+  "url": "https://logseq.com",
+  "host": "logseq.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 2266,
+      "ms": 700,
+      "files": {
+        "preview": "bodies/044-logseq.com/local.preview.txt",
+        "detail": "bodies/044-logseq.com/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "<!doctype html><html lang=\"en\"><head><script type=\"module\" src=\"https://logseq.com/index.5cad6fbd.js\"></script><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=1.0\"><meta http-equiv=\"X-UA-Compatible\" content=\"ie=edge\"><title>Logseq: A privacy-first, open-source knowledge base</title><link href=\"https://asset.logseq.com/sta"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2167,
+      "ms": 4235,
+      "title": "A privacy-first, open-source knowledge base",
+      "files": {
+        "markdown": "bodies/044-logseq.com/tab.md"
+      },
+      "parsed": {
+        "title": "A privacy-first, open-source knowledge base",
+        "snippetLen": 2006,
+        "snippet": "Connect your notes, **increase understanding.**\n\nImage\n\n**Jessica**\n\n👥 Person\n\n👤 Jessica Albert\n\nImage\n\n**Intertwingled**\n\n📖 Book\n\n👤 Peter Morville\n\n## Today, everyone is a\n\n## knowledge worker.\n\n### Logseq is the open toolbox for\n\n#### workflows that deal with lots of information:\n\n*   🧑‍🎓**Students**\n    \n*   🎓**Academics**\n    \n*   🖋**Writers**\n    \n*   📆**Project Managers**\n    \n*   💻**Developers**\n    \n\n## **Review notes**\n\n## Capture, structure, and review all of your class notes with ease using the Linked References, [Queries](https://docs.logseq.com/#/page/queries), and [Search](https://docs.logseq.com/#/page/search) features.\n\n## **Memorize facts**\n\n## Remember facts and insights using the [Flashcards](https://docs.logseq.com/#/page/flashcards) feature.\n\n## **Outline essays**\n\n## Organize your thoughts and ideas, and quickly turn them into outlines using [Block References](https://docs.logseq.com/#/page/term%2Fblock%20reference).\n\n## Braindump everything into.**New ideas will pop up with time.**\n\n## New ideas will pop up with time.\n\n### Using Logseq helps you organize your thoughts and ideas\n\n#### so that you can come up with new outputs more easily.\n\n\n## A helpful community\n\n**1945**users online currently\n\nFeature requests, bugs, discussions\n\n\n## Overwhelmed and constantly **afraid of losing your thoughts?**\n\n## Everyday you’re bombarded with information.Your non-connected notes lead to missing context when **you need it. That gets future-you into trouble.**\n\n## Logseq helps you turn this daily mess into structured information.\n\n## **Gain clarity** in your everyday life:\n\nCommunicate better. Stay on top of your  \nrelationships, conversations, and meetings.\n\n\n“I mostly use it for work: keeping daily notes & meeting notes. It's the best solution I've found to managing my tasks (and I only use a fraction of the features there).”\n\n**User Feedback**byoskr\n\nVia\n\nDiscord[](https://discord.com/channels/725182569297215569/725188616695054356/1045646531090448436)",
+        "summary": "Connect your notes, **increase understanding.**\n\nImage\n\n**Jessica**\n\n👥 Person\n\n👤 Jessica Albert\n\nImage\n\n**Intertwingled**\n\n📖 Book\n\n👤 Peter Morville\n\n## Today, everyone is a\n\n## knowledge worker.\n\n### Logseq is the open toolbox for\n\n#### workflows that deal with lots of information:\n\n*   🧑‍🎓**Students**\n    \n*   🎓**Academics**\n    \n*   🖋**Writers**\n    \n*   📆**Project Managers**\n    \n*   💻**Developers**\n    \n\n## **Review notes**\n\n## Capture, structure, and review all of your class notes with ease using the Linked References, [Queries](https://docs.logseq.com/#/page/queries), and [Search](https://docs.logseq.com/#/page/search) features.\n\n## **Memorize facts**\n\n## Remember facts and insights using the [Flashcards](https://docs.logseq.com/#/page/flashcards) feature.\n\n## **Outline essays**\n\n## Organize your thoughts and ideas, and quickly turn them into outlines using [Block References](https://docs.logseq.com/#/page/term%2Fblock%20reference).\n\n## Braindump everything into.**New ideas will pop up with time.**\n\n## New ideas will pop up with time.\n\n### Using Logseq helps you organize your thoughts and ideas\n\n#### so that you can come up with new outputs more easily.\n\n\n## A helpful community\n\n**1945**users online currently\n\nFeature requests, bugs, discussions\n\n\n## Overwhelmed and constantly **afraid of losing your thoughts?**\n\n## Everyday you’re bombarded with information.Your non-connected notes lead to missing context when **you need it. That gets future-you into trouble.**\n\n## Logseq helps you turn this daily mess into structured information.\n\n## **Gain clarity** in your everyday life:\n\nCommunicate better. Stay on top of your  \nrelationships, conversations, and meetings.\n\n\n“I mostly use it for work: keeping daily notes & meeting notes. It's the best solution I've found to managing my tasks (and I only use a fraction of the features there).”\n\n**User Feedback**byoskr\n\nVia\n\nDiscord[](https://discord.com/channels/725182569297215569/725188616695054356/10456465310904"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2196,
+      "ms": 823,
+      "files": {
+        "markdown": "bodies/044-logseq.com/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 2008,
+        "snippet": "Connect your notes, **increase understanding.**\n\nImage\n\n**Jessica**\n\n👥 Person\n\n👤 Jessica Albert\n\nImage\n\n**Intertwingled**\n\n📖 Book\n\n👤 Peter Morville\n\n## Today, everyone is a\n\n## knowledge worker.\n\n### Logseq is the open toolbox for\n\n#### workflows that deal with lots of information:\n\n*   🧑‍🎓**Students**\n\n*   🎓**Academics**\n\n*   🖋**Writers**\n\n*   📆**Project Managers**\n\n*   💻**Developers**\n\n## **Review notes**\n\n## Capture, structure, and review all of your class notes with ease using the[Linked References](https://logseq.com/), [Queries](https://docs.logseq.com/#/page/queries), and [Search](https://docs.logseq.com/#/page/search) features.\n\n## **Memorize facts**\n\n## Remember facts and insights using the [Flashcards](https://docs.logseq.com/#/page/flashcards) feature.\n\n## **Outline essays**\n\n## Organize your thoughts and ideas, and quickly turn them into outlines using [Block References](https://docs.logseq.com/#/page/term%2Fblock%20reference).\n\n## Braindump everything into.**New ideas will pop up with time.**\n\n## New ideas will pop up with time.\n\n### Using Logseq helps you organize your thoughts and ideas\n\n#### so that you can come up with new outputs more easily.\n\n\n## A helpful community\n\n**1946**users online currently\n\nFeature requests, bugs, discussions\n\n\n## Overwhelmed and constantly **afraid of losing your thoughts?**\n\n## Everyday you’re bombarded with information.Your non-connected notes lead to missing context when **you need it. That gets future-you into trouble.**\n\n## Logseq helps you turn this daily mess into structured information.\n\n## **Gain clarity** in your everyday life:\n\nCommunicate better. Stay on top of your \n\nrelationships, conversations, and meetings.\n\n\n“I mostly use it for work: keeping daily notes & meeting notes. It's the best solution I've found to managing my tasks (and I only use a fraction of the features there).”\n\n**User Feedback**by oskr\n\nVia\n\nDiscord[](https://discord.com/channels/725182569297215569/725188616695054356/1045646531090448436)",
+        "summary": "Connect your notes, **increase understanding.**\n\nImage\n\n**Jessica**\n\n👥 Person\n\n👤 Jessica Albert\n\nImage\n\n**Intertwingled**\n\n📖 Book\n\n👤 Peter Morville\n\n## Today, everyone is a\n\n## knowledge worker.\n\n### Logseq is the open toolbox for\n\n#### workflows that deal with lots of information:\n\n*   🧑‍🎓**Students**\n\n*   🎓**Academics**\n\n*   🖋**Writers**\n\n*   📆**Project Managers**\n\n*   💻**Developers**\n\n## **Review notes**\n\n## Capture, structure, and review all of your class notes with ease using the[Linked References](https://logseq.com/), [Queries](https://docs.logseq.com/#/page/queries), and [Search](https://docs.logseq.com/#/page/search) features.\n\n## **Memorize facts**\n\n## Remember facts and insights using the [Flashcards](https://docs.logseq.com/#/page/flashcards) feature.\n\n## **Outline essays**\n\n## Organize your thoughts and ideas, and quickly turn them into outlines using [Block References](https://docs.logseq.com/#/page/term%2Fblock%20reference).\n\n## Braindump everything into.**New ideas will pop up with time.**\n\n## New ideas will pop up with time.\n\n### Using Logseq helps you organize your thoughts and ideas\n\n#### so that you can come up with new outputs more easily.\n\n\n## A helpful community\n\n**1946**users online currently\n\nFeature requests, bugs, discussions\n\n\n## Overwhelmed and constantly **afraid of losing your thoughts?**\n\n## Everyday you’re bombarded with information.Your non-connected notes lead to missing context when **you need it. That gets future-you into trouble.**\n\n## Logseq helps you turn this daily mess into structured information.\n\n## **Gain clarity** in your everyday life:\n\nCommunicate better. Stay on top of your \n\nrelationships, conversations, and meetings.\n\n\n“I mostly use it for work: keeping daily notes & meeting notes. It's the best solution I've found to managing my tasks (and I only use a fraction of the features there).”\n\n**User Feedback**by oskr\n\nVia\n\nDiscord[](https://discord.com/channels/725182569297215569/725188616695054356/104564653109"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 743,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

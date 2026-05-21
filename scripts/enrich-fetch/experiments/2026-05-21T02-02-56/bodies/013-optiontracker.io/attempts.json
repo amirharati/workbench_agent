@@ -1,0 +1,75 @@
+{
+  "url": "https://optiontracker.io",
+  "host": "optiontracker.io",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 10554,
+      "ms": 1003,
+      "files": {
+        "preview": "bodies/013-optiontracker.io/local.preview.txt",
+        "detail": "bodies/013-optiontracker.io/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"/><meta name=\"msapplication-TileColor\" content=\"#da532c\"/><meta name=\"theme-color\" content=\"#21222d\"/><link rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"/favicon/apple-touch-icon.png\"/><link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"/favicon/favicon-32x32.png\"/><link rel=\"icon\" type=\"image/png\" sizes=\"16x16\" href=\"/favicon/favicon-16x"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 15304,
+      "ms": 4905,
+      "error": "Readability found no article in rendered page",
+      "files": {
+        "preview": "bodies/013-optiontracker.io/tab.preview.txt",
+        "error": "bodies/013-optiontracker.io/tab.error.txt",
+        "detail": "bodies/013-optiontracker.io/tab.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "Readability found no article in rendered page"
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": false,
+      "usable": false,
+      "reason": "network",
+      "bytes": 0,
+      "ms": 757,
+      "error": "TypeError: fetch failed",
+      "files": {
+        "error": "bodies/013-optiontracker.io/jina.error.txt",
+        "detail": "bodies/013-optiontracker.io/jina.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "network",
+        "detail": "TypeError: fetch failed"
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 1338,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

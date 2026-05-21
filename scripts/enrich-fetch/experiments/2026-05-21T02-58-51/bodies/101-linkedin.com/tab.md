@@ -1,0 +1,3 @@
+LinkedIn and 3rd parties use essential and non-essential cookies to provide, secure, analyze and improve our Services, and to show you relevant ads (including **professional and job ads**) on and off LinkedIn. Learn more in our [Cookie Policy](https://www.linkedin.com/legal/cookie-policy).
+
+Select Accept to consent or Reject to decline non-essential cookies for this use. You can update your choices at any time in your [settings](https://www.linkedin.com/mypreferences/g/guest-cookies).

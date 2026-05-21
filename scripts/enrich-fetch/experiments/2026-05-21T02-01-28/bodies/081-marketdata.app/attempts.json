@@ -1,0 +1,79 @@
+{
+  "url": "https://www.marketdata.app/dashboard?swcfpc=1",
+  "host": "marketdata.app",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 2416,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 87,
+      "ms": 6697,
+      "title": "Page not found | Market Data",
+      "files": {
+        "markdown": "bodies/081-marketdata.app/tab.md"
+      },
+      "parsed": {
+        "title": "Page not found | Market Data",
+        "snippetLen": 87,
+        "snippet": "Real-Time & Historic Data for Stocks, Options, ETFs, & Mutual Funds. Get Data Anywhere.",
+        "summary": "Real-Time & Historic Data for Stocks, Options, ETFs, & Mutual Funds. Get Data Anywhere."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 10890,
+      "ms": 834,
+      "title": "Page not found | Market Data",
+      "files": {
+        "markdown": "bodies/081-marketdata.app/jina.md"
+      },
+      "parsed": {
+        "title": "Page not found | Market Data",
+        "snippetLen": 10553,
+        "snippet": "[Skip to content](https://www.marketdata.app/dashboard?swcfpc=1#content)\n\n[![Image 1: Market Data Logo](https://mds3.cdnhq.net/wp-content/uploads/2024/04/marketdata-logo-dark-small.png)](https://www.marketdata.app/)\n\n[![Image 2: Market Data Logo](https://mds3.cdnhq.net/wp-content/uploads/2020/12/Market-Data-Logo.png)](https://www.marketdata.app/)\n\n*    Data  Close Data Open Data \n\n[Explore Our Data](https://www.marketdata.app/data/)  \n\n    *   [Stocks](https://www.marketdata.app/data/stocks/)\n    *   [Options](https://www.marketdata.app/data/options/)\n    *   [ETFs](https://www.marketdata.app/data/stocks/)\n    *   [Mutual Funds](https://www.marketdata.app/data/funds/)\n\nComing Soon\n\n    *   Crypto\n    *   Futures\n    *   Currencies\n    *   Indices\n\n*    Products  Close Products Open Products \n\n[](https://www.marketdata.app/api/) [Market Data API](https://www.marketdata.app/api/)\n\n[Unparalleled Ease-of-Use. Get Data Anywhere You Need It.](https://www.marketdata.app/api/)    [](https://www.marketdata.app/custom-development/) [Custom API Development](https://www.marketdata.app/custom-development/)\n\n[Affordable, Scalable, and Tailored to Your Needs.](https://www.marketdata.app/custom-development/)    [](https://www.marketdata.app/sheets/) [Google Sheets Add-on](https://www.marketdata.app/sheets/)\n\n[Easily Download Data Into Your Spreadsheets Using Simple Formulas.](https://www.marketdata.app/sheets/)     Excel Add-in (coming soon)\n\nSupport for Microsoft Excel is Planned For Late 2026.     \n\nUpdates  \n\n    *   [Changelog](https://roadmap.marketdata.app/changelog)\n    *   [Product Roadmap](https://roadmap.marketdata.app/)\n    *   [Feature Requests](https://roadmap.marketdata.app/features)\n\n*    Learn  Close Learn Open Learn \n\nDocumentation  \n\n    *   [Tutorials](https://www.marketdata.app/tutorials/)\n    *   [Market Data API](https://www.marketdata.app/docs/api)\n    *   [SDKs](https://www.marketdata.app/docs/sdk)\n    *   [Google Sheets](https://www.marketdata.app/docs/sheets)\n    *   [Account & Billing](https://www.marketdata.app/docs/account)\n\nResources\n\n    *   [Blog](https://www.marketdata.app/tutorials/)\n    *   [Swagger](https://api.marketdata.app/)\n    *   [Service Status](https://www.marketdata.app/status/)\n\n*   [Pricing](https://www.marketdata.app/pricing/) \n*    Company  Close Company Open Company \n\n    *   [About Market Data](https://www.marketdata.app/about/)\n    *   [Custom API Development](https://www.marketdata.app/custom-development/)\n    *   [Customer Reviews](https://www.trustpilot.com/review/www.marketdata.app)\n    *   [News](https://www.marketdata.app/news/)\n\n\n[Log Out](https://dashboard.marketdata.app/marketdata/logout)\n\n[Try For Free](https://dashboard.marketdata.app/marketdata/signup)\n\n[My Account](https://dashboard.marketdata.app/marketdata/member)\n\n*   [Home](https://www.marketdata.app/)\n*   [Data](https://www.marketdata.app/data/)\n    *   [Stock Data](https://www.marketdata.app/data/stocks/)\n    *   [Options Data](https://www.marketdata.app/data/options/)\n    *   [ETF Data](https://www.marketdata.app/data/stocks/)\n    *   [Mutual Fund Data](https://www.marketdata.app/data/funds/)\n\n*   [Products](https://www.marketdata.app/dashboard?swcfpc=1)\n    *   [Market Data API](https://www.marketdata.app/docs/api)\n    *   [Google Sheets Add-on](https://www.marketdata.app/sheets/)\n    *   [Custom API Development](https://www.marketdata.app/custom-development/)\n\n*   [Learn](https://www.marketdata.app/dashboard?swcfpc=1)\n    *   [Tutorials](https://www.marketdata.app/tutorials/)\n    *   [API Documentation](https://www.marketdata.app/docs/api)\n    *   [SDK Documentation](https://www.marketdata.app/docs/sdk)\n    *   [Google Sheets Documentation](https://www.marketdata.app/docs/sheets)\n    *   [Account Documentation](https://www.marketdata.app/docs/account)\n\n*   [Pricing](https://www.marketdata.app/pricing/)\n*   [Company](https://www.marketdata.app/dashboard?swcfpc=1)\n    *   [About Market Data](https://www.marketdata.app/about/)\n    *   [Custom API Development](https://www.marketdata.app/custom-development/)\n    *   [Customer Reviews](https://www.trustpilot.com/review/www.marketdata.app)\n    *   [News](https://www.marketdata.app/tutorials/)\n\n*   [My Account](https://dashboard.marketdata.app/marketdata/member)\n*   [Try For Free](https://www.marketdata.app/signup/)\n*   [Logout](https://dashboard.marketdata.app/marketdata/logout)\n\n[![Image 3: Market Data Logo](https://mds3.cdnhq.net/wp-content/uploads/2024/04/marketdata-logo-dark-small.png)](https://www.marketdata.app/)\n\n[![Image 4: Market Data Logo](https://mds3.cdnhq.net/wp-content/uploads/2020/12/Market-Data-Logo.png)](https://www.marketdata.app/)\n\n*    Data  Close Data Open Data \n\n[Explore Our Data](https://www.marketdata.app/data/)  \n\n    *   [Stocks](https://www.marketdata.app/data/stocks/)\n    *   [Options](https://www.marketdata.app/data/options/)\n    *   [ETFs](https://www.marketdata.app/data/stocks/)\n    *   [Mutual Funds](https://www.marketdata.app/data/funds/)\n\nComing Soon\n\n    *   Crypto\n    *   Futures\n    *   Currencies\n    *   Indices\n\n*    Products  Close Products Open Products \n\n[](https://www.marketdata.app/api/) [Market Data API](https://www.marketdata.app/api/)\n\n[Unparalleled Ease-of-Use. Get Data Anywhere You Need It.](https://www.marketdata.app/api/)    [](https://www.marketdata.app/custom-development/) [Custom API Development](https://www.marketdata.app/custom-development/)\n\n[Affordable, Scalable, and Tailored to Your Needs.](https://www.marketdata.app/custom-development/)    [](https://www.marketdata.app/sheets/) [Google Sheets Add-on](https://www.marketdata.app/sheets/)\n\n[Easily Download Data Into Your Spreadsheets Using Simple Formulas.](https://www.marketdata.app/sheets/)     Excel Add-in (coming soon)\n\nSupport for Microsoft Excel is Planned For Late 2026.     \n\nUpdates  \n\n    *   [Changelog](https://roadmap.marketdata.app/changelog)\n    *   [Product Roadmap](https://roadmap.marketdata.app/)\n    *   [Feature Requests](https://roadmap.marketdata.app/features)\n\n*    Learn  Close Learn Open Learn \n\nDocumentation  \n\n    *   [Tutorials](https://www.marketdata.app/tutorials/)\n    *   [Market Data API](https://www.marketdata.app/docs/api)\n    *   [SDKs](https://www.marketdata.app/docs/sdk)\n    *   [Google Sheets](https://www.marketdata.app/docs/sheets)\n    *   [Account & Billing](https://www.marketdata.app/docs/account)\n\nResources\n\n    *   [Blog](https://www.marketdata.app/tutorials/)\n    *   [Swagger](https://api.marketdata.app/)\n    *   [Service Status](https://www.marketdata.app/status/)\n\n*   [Pricing](https://www.marketdata.app/pricing/) \n*    Company  Close Company Open Company \n\n    *   [About Market Data](https://www.marketdata.app/about/)\n    *   [Custom API Development](https://www.marketdata.app/custom-development/)\n    *   [Customer Reviews](https://www.trustpilot.com/review/www.marketdata.app)\n    *   [News](https://www.marketdata.app/news/)\n\n\n[Log Out](https://dashboard.marketdata.app/marketdata/logout)\n\n[Try For Free](https://dashboard.marketdata.app/marketdata/signup)\n\n[My Account](https://dashboard.marketdata.app/marketdata/member)\n\n*   [Home](https://www.marketdata.app/)\n*   [Data](https://www.marketdata.app/data/)\n    *   [Stock Data](https://www.marketdata.app/data/stocks/)\n    *   [Options Data](https://www.marketdata.app/data/options/)\n    *   [ETF Data](https://www.marketdata.app/data/stocks/)\n    *   [Mutual Fund Data](https://www.marketdata.app/data/funds/)\n\n*   [Products](https://www.marketdata.app/dashboard?swcfpc=1)\n    *   [Market Data API](https://www.marketdata.app/docs/api)\n    *   [Google Sheets Add-on](https://www.marketdata.app/sheets/)\n    *   [Custom API Development](https://www.marketdata.app/custom-development/)\n\n*   [Learn](https://www.marketdata.app/dashboard?swcfpc=1)\n    *   [Tutorials](https://www.marketdata.app/tutorials/)\n    *   [API Documentation](https://www.marketdata.app/docs/api)\n    *   [SDK Documentation](https://www.marketdata.app/docs/sdk)\n    *   [Google Sheets Documentation](https://www.marketdata.app/docs/sheets)\n    *   [Account Documentation](https://www.marketdata.app/docs/account)\n\n*   [Pricing](https://www.marketdata.app/pricing/)\n*   [Company](https://www.marketdata.app/dashboard?swcfpc=1)\n    *   [About Market Data](https://www.marketdata.app/about/)\n    *   [Custom API Development](https://www.marketdata.app/custom-development/)\n    *   [Customer Reviews](https://www.trustpilot.com/review/www.marketdata.app)\n    *   [News](https://www.marketdata.app/tutorials/)\n\n*   [My Account](https://dashboard.marketdata.app/marketdata/member)\n*   [Try For Free](https://www.marketdata.app/signup/)\n*   [Logout](https://dashboard.marketdata.app/marketdata/logout)\n\n# The page can’t be found.\n\nIt looks like nothing was found at this location.\n\nWinning trades are born from superior data.\n\nFree 30 day demo for new accounts. No credit card required.\n\n[Sign up for free](https://www.marketdata.app/signup/)\n\n[![Image 5: Market Data Logo](https://mds3.cdnhq.net/wp-content/uploads/2024/04/marketdata-logo-dark-small.png)](https://www.marketdata.app/)\n\n[![Image 6: Market Data Logo](https://mds3.cdnhq.net/wp-content/uploads/2020/12/Market-Data-Logo.png)](https://www.marketdata.app/)\n\nReal-Time & Historic Data for Stocks, Options, ETFs, & Mutual Funds. Get Data Anywhere.\n\n*   [](https://www.facebook.com/MarketDataApp/)\n*   [](https://twitter.com/MarketDataApp)\n*   [](https://www.instagram.com/marketdata.app/)\n*   [](https://www.youtube.com/channel/UCtMeqaVWugbYyCYIAKlyC6Q)\n*   [](https://www.reddit.com/r/MarketDataApp/)\n*   [](https://github.com/MarketDataApp/)\n\nResources\n\n*   [Documentation](https://www.marketdata.app/docs/)\n*   [Service Status](https://www.marketdata.app/status/)\n*   [Changelog](https://roadmap.marketdata.app/changelog)\n*   [Product Roadmap](https://roadmap.marketdata.app/)\n\nContact & Support\n\n*   [Sales](https://www.marketdata.app/contact/)\n*   [Helpdesk](https://www.marketdata.app/helpdesk/)\n*   [Careers](https://www.marketdata.app/contact/)\n\nLegal\n\n*   [Terms of Service](https://www.marketdata.app/terms/)\n*   [Brand Guidelines](https://www.marketdata.app/terms/brand-guidelines/)\n\nCompany\n\n*   [About](https://www.marketdata.app/about/)\n*   [Customer Reviews](https://www.trustpilot.com/review/www.marketdata.app)\n*   [Media Kit](https://www.marketdata.app/media-kit/)\n*   [Affiliate Program](https://www.marketdata.app/affiliates/)\n\n* * *\n\n© 2025 [Market Data™](https://www.marketdata.app/dashboard?swcfpc=1#). All Rights Reserved.",
+        "summary": "[Skip to content](https://www.marketdata.app/dashboard?swcfpc=1#content)\n\n[![Image 1: Market Data Logo](https://mds3.cdnhq.net/wp-content/uploads/2024/04/marketdata-logo-dark-small.png)](https://www.marketdata.app/)\n\n[![Image 2: Market Data Logo](https://mds3.cdnhq.net/wp-content/uploads/2020/12/Market-Data-Logo.png)](https://www.marketdata.app/)\n\n*    Data  Close Data Open Data \n\n[Explore Our Data](https://www.marketdata.app/data/)  \n\n    *   [Stocks](https://www.marketdata.app/data/stocks/)\n    *   [Options](https://www.marketdata.app/data/options/)\n    *   [ETFs](https://www.marketdata.app/data/stocks/)\n    *   [Mutual Funds](https://www.marketdata.app/data/funds/)\n\nComing Soon\n\n    *   Crypto\n    *   Futures\n    *   Currencies\n    *   Indices\n\n*    Products  Close Products Open Products \n\n[](https://www.marketdata.app/api/) [Market Data API](https://www.marketdata.app/api/)\n\n[Unparalleled Ease-of-Use. Get Data Anywhere You Need It.](https://www.marketdata.app/api/)    [](https://www.marketdata.app/custom-development/) [Custom API Development](https://www.marketdata.app/custom-development/)\n\n[Affordable, Scalable, and Tailored to Your Needs.](https://www.marketdata.app/custom-development/)    [](https://www.marketdata.app/sheets/) [Google Sheets Add-on](https://www.marketdata.app/sheets/)\n\n[Easily Download Data Into Your Spreadsheets Using Simple Formulas.](https://www.marketdata.app/sheets/)     Excel Add-in (coming soon)\n\nSupport for Microsoft Excel is Planned For Late 2026.     \n\nUpdates  \n\n    *   [Changelog](https://roadmap.marketdata.app/changelog)\n    *   [Product Roadmap](https://roadmap.marketdata.app/)\n    *   [Feature Requests](https://roadmap.marketdata.app/features)\n\n*    Learn  Close Learn Open Learn \n\nDocumentation  \n\n    *   [Tutorials](https://www.marketdata.app/tutorials/)\n    *   [Market Data API](https://www.marketdata.app/docs/api)\n    *   [SDKs](https://www.marketdata.app/docs/sdk)\n    *   [Google Sheets](https://www.marketdata.app/docs/shee"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 488,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

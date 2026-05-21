@@ -1,0 +1,81 @@
+{
+  "url": "https://t.co/t7x4IEj0EJ",
+  "host": "t.co",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 357,
+      "ms": 646,
+      "files": {
+        "preview": "bodies/074-t.co/local.preview.txt",
+        "detail": "bodies/074-t.co/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "<head><noscript><META http-equiv=\"refresh\" content=\"0;URL=https://twitter.com/pyquantnews/status/1699213399492579590/photo/1\"></noscript><title>https://twitter.com/pyquantnews/status/1699213399492579590/photo/1</title></head><script>window.opener = null; location.replace(\"https:\\/\\/twitter.com\\/pyquantnews\\/status\\/1699213399492579590\\/photo\\/1\")</script>"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": false,
+      "reason": "weak_title",
+      "bytes": 246,
+      "ms": 6231,
+      "title": "X",
+      "files": {
+        "markdown": "bodies/074-t.co/tab.md",
+        "detail": "bodies/074-t.co/tab.detail.txt"
+      },
+      "parsed": {
+        "title": "X",
+        "snippetLen": 246,
+        "snippet": "Did someone say … cookies?\n\nX and its partners use cookies to provide you with a better, safer and faster service and to support our business. Some cookies are necessary to use our services, improve our services, and make sure they work properly.",
+        "summary": "Did someone say … cookies?\n\nX and its partners use cookies to provide you with a better, safer and faster service and to support our business. Some cookies are necessary to use our services, improve our services, and make sure they work properly."
+      },
+      "diagnosis": {
+        "reason": "weak_title",
+        "detail": "X"
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 1966,
+      "ms": 837,
+      "files": {
+        "markdown": "bodies/074-t.co/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 1675,
+        "snippet": "## Post\n\n## Conversation\n\n[PyQuant News ![Image 1: 🐍](https://abs.twimg.com/emoji/v2/svg/1f40d.svg)](https://x.com/pyquantnews)\n\n[@pyquantnews](https://x.com/pyquantnews)\n\nChatGPT will never work for trading. That's what I thought 3 months ago. Then I spent 35 hours in the GPT-4 rabbit hole. These 6 blogs show you what you can do. And it doesn't take a Ph.D. in prompt engineering:\n\n[![Image 2: Image](https://pbs.twimg.com/media/F5TRlJDXAAA6MdO?format=jpg&name=small)](https://x.com/pyquantnews/status/1699213399492579590/photo/1)\n\n[12:10 AM · Sep 6, 2023](https://x.com/pyquantnews/status/1699213399492579590)\n\n[87.4K Views](https://x.com/pyquantnews/status/1699213399492579590/analytics)\n\n## New to X?\n\nSign up now to get your own personalized timeline!\n\n[Create account](https://x.com/i/flow/signup)\n\n\n## Trending now\n\n## What’s happening\n\nTrending in United States\n\n#Survivor50\n\nTrending with [Aubry](https://x.com/search?q=Aubry&src=trend_click&vertical=trends), [Jonathan](https://x.com/search?q=Jonathan&src=trend_click&vertical=trends)\n\nSports · Trending\n\nNic Dowd\n\nSports · Trending\n\nJamal Crawford\n\nSports · Trending\n\nStephon Castle\n\nTrending with [Hartenstein](https://x.com/search?q=Hartenstein&src=trend_click&vertical=trends), [Wemby](https://x.com/search?q=Wemby&src=trend_click&vertical=trends)\n\n[Show more](https://x.com/explore/tabs/for-you)\n\n[Terms of Service](https://x.com/tos)\n\n|\n\n\n|\n\n\n|\n\n[Accessibility](https://help.x.com/resources/accessibility)\n\n|\n\n[Ads info](https://business.x.com/en/help/troubleshooting/how-twitter-ads-work.html?ref=web-twc-ao-gbl-adsinfo&utm_source=twc&utm_medium=web&utm_campaign=ao&utm_content=adsinfo)\n\n|\n\n© 2026 X Corp.",
+        "summary": "## Post\n\n## Conversation\n\n[PyQuant News ![Image 1: 🐍](https://abs.twimg.com/emoji/v2/svg/1f40d.svg)](https://x.com/pyquantnews)\n\n[@pyquantnews](https://x.com/pyquantnews)\n\nChatGPT will never work for trading. That's what I thought 3 months ago. Then I spent 35 hours in the GPT-4 rabbit hole. These 6 blogs show you what you can do. And it doesn't take a Ph.D. in prompt engineering:\n\n[![Image 2: Image](https://pbs.twimg.com/media/F5TRlJDXAAA6MdO?format=jpg&name=small)](https://x.com/pyquantnews/status/1699213399492579590/photo/1)\n\n[12:10 AM · Sep 6, 2023](https://x.com/pyquantnews/status/1699213399492579590)\n\n[87.4K Views](https://x.com/pyquantnews/status/1699213399492579590/analytics)\n\n## New to X?\n\nSign up now to get your own personalized timeline!\n\n[Create account](https://x.com/i/flow/signup)\n\n\n## Trending now\n\n## What’s happening\n\nTrending in United States\n\n#Survivor50\n\nTrending with [Aubry](https://x.com/search?q=Aubry&src=trend_click&vertical=trends), [Jonathan](https://x.com/search?q=Jonathan&src=trend_click&vertical=trends)\n\nSports · Trending\n\nNic Dowd\n\nSports · Trending\n\nJamal Crawford\n\nSports · Trending\n\nStephon Castle\n\nTrending with [Hartenstein](https://x.com/search?q=Hartenstein&src=trend_click&vertical=trends), [Wemby](https://x.com/search?q=Wemby&src=trend_click&vertical=trends)\n\n[Show more](https://x.com/explore/tabs/for-you)\n\n[Terms of Service](https://x.com/tos)\n\n|\n\n\n|\n\n\n|\n\n[Accessibility](https://help.x.com/resources/accessibility)\n\n|\n\n[Ads info](https://business.x.com/en/help/troubleshooting/how-twitter-ads-work.html?ref=web-twc-ao-gbl-adsinfo&utm_source=twc&utm_medium=web&utm_campaign=ao&utm_content=adsinfo)\n\n|\n\n© 2026 X Corp."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 485,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

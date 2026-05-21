@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head prefix="og: http://ogp.me/ns# fb: http://ogp.me/ns/fb# gumroad: http://ogp.me/ns/fb/gumroad#">
+    <link rel="dns-prefetch" href="//assets.gumroad.com">
+    <link rel="dns-prefetch" href="//static-2.gumroad.com">
+    <link rel="dns-prefetch" href="//public-files.gumroad.com">
+  <meta name="action-cable-url" content="wss://cable.gumroad.com/cable" />
+  
+  
+ 

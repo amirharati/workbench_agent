@@ -1,5 +1,6 @@
 import React from 'react';
 import { bulkImportBookmarks, ensureProjectUnsortedCollection, type Collection, type Project } from '../../lib/db';
+import { EnrichmentPanel } from './EnrichmentPanel';
 
 type ImportTab = 'file' | 'chrome' | 'ai';
 
@@ -48,6 +49,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   const [committing, setCommitting] = React.useState(false);
   const [commitMessage, setCommitMessage] = React.useState('');
   const [commitError, setCommitError] = React.useState('');
+  const [lastImportCollectionId, setLastImportCollectionId] = React.useState<string | undefined>();
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [selectedProjectId, setSelectedProjectId] = React.useState('');
   const [selectedCollectionId, setSelectedCollectionId] = React.useState('');
@@ -599,6 +601,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       setCommitMessage(
         `Imported to ${targetLabel}: created ${result.created}, merged ${result.merged}, skipped ${result.skipped}.`
       );
+      setLastImportCollectionId(targetCollectionId || undefined);
 
       if (onImported) {
         await onImported();
@@ -695,6 +698,12 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       </div>
       {commitError ? <div style={{ fontSize: 'var(--text-xs)', color: '#dc2626' }}>{commitError}</div> : null}
       {commitMessage ? <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{commitMessage}</div> : null}
+      {commitMessage && lastImportCollectionId ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Enrich imported items:</span>
+          <EnrichmentPanel onComplete={onImported} />
+        </div>
+      ) : null}
     </div>
   );
 

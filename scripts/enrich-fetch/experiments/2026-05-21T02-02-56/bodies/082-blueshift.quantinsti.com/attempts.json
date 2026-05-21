@@ -1,0 +1,80 @@
+{
+  "url": "https://blueshift.quantinsti.com",
+  "host": "blueshift.quantinsti.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 1971,
+      "ms": 869,
+      "files": {
+        "preview": "bodies/082-blueshift.quantinsti.com/local.preview.txt",
+        "detail": "bodies/082-blueshift.quantinsti.com/local.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "<!DOCTYPE html><html><head><meta charset=utf-8><meta http-equiv=X-UA-Compatible content=\"IE=edge\"><meta name=viewport content=\"width=device-width,initial-scale=1\"><link rel=apple-touch-icon sizes=180x180 href=/accounts-assets/static/images/favicon_io/apple-touch-icon.png><link rel=icon type=image/png sizes=32x32 href=/accounts-assets/static/images/favicon_io/favicon-32x32.png><link rel=icon type=i"
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2110,
+      "ms": 4888,
+      "title": "Research & Automate Your Trading",
+      "files": {
+        "markdown": "bodies/082-blueshift.quantinsti.com/tab.md"
+      },
+      "parsed": {
+        "title": "Research & Automate Your Trading",
+        "snippetLen": 859,
+        "snippet": "Blueshift is a versatile platform for research, backtesting, and trading, turning ideas into strategies anytime, anywhere.\n\nSign Up\n\n## Code & Automate Strategies in Python\n\n\nStart with sample strategies or develop your own\n\n\nBacktest over 10+ years of high-quality, minute-level data\n\n\nAutomate Trades in Live Markets\n\n\n## Platform Features\n\n\n### Event-driven CEP Engine\n\nHighly flexible and bias-free, seamless from research to live trading.\n\n\n### State-of-the-art\n\nScalable, fault-tolerant trading system with comprehensive APIs\n\n\n### High Quality Data\n\nBuilt-in curated, bias-free and fully-adjusted datasets covering multiple asset classes.\n\n\n### Cloud Based\n\nHigh availability, access from anywhere, anytime\n\n## Learn\n\nTo boost to your quant trading quotient, head over to our dedicated learning zone for free courses on python and quant trading topics.",
+        "summary": "Blueshift is a versatile platform for research, backtesting, and trading, turning ideas into strategies anytime, anywhere.\n\nSign Up\n\n## Code & Automate Strategies in Python\n\n\nStart with sample strategies or develop your own\n\n\nBacktest over 10+ years of high-quality, minute-level data\n\n\nAutomate Trades in Live Markets\n\n\n## Platform Features\n\n\n### Event-driven CEP Engine\n\nHighly flexible and bias-free, seamless from research to live trading.\n\n\n### State-of-the-art\n\nScalable, fault-tolerant trading system with comprehensive APIs\n\n\n### High Quality Data\n\nBuilt-in curated, bias-free and fully-adjusted datasets covering multiple asset classes.\n\n\n### Cloud Based\n\nHigh availability, access from anywhere, anytime\n\n## Learn\n\nTo boost to your quant trading quotient, head over to our dedicated learning zone for free courses on python and quant trading topics."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2026,
+      "ms": 745,
+      "files": {
+        "markdown": "bodies/082-blueshift.quantinsti.com/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 859,
+        "snippet": "Blueshift is a versatile platform for research, backtesting, and trading, turning ideas into strategies anytime, anywhere.\n\nSign Up\n\n## Code & Automate Strategies in Python\n\n\nStart with sample strategies or develop your own\n\n\nBacktest over 10+ years of high-quality, minute-level data\n\n\nAutomate Trades in Live Markets\n\n\n## Platform Features\n\n\n### Event-driven CEP Engine\n\nHighly flexible and bias-free, seamless from research to live trading.\n\n\n### State-of-the-art\n\nScalable, fault-tolerant trading system with comprehensive APIs\n\n\n### High Quality Data\n\nBuilt-in curated, bias-free and fully-adjusted datasets covering multiple asset classes.\n\n\n### Cloud Based\n\nHigh availability, access from anywhere, anytime\n\n## Learn\n\nTo boost to your quant trading quotient, head over to our dedicated learning zone for free courses on python and quant trading topics.",
+        "summary": "Blueshift is a versatile platform for research, backtesting, and trading, turning ideas into strategies anytime, anywhere.\n\nSign Up\n\n## Code & Automate Strategies in Python\n\n\nStart with sample strategies or develop your own\n\n\nBacktest over 10+ years of high-quality, minute-level data\n\n\nAutomate Trades in Live Markets\n\n\n## Platform Features\n\n\n### Event-driven CEP Engine\n\nHighly flexible and bias-free, seamless from research to live trading.\n\n\n### State-of-the-art\n\nScalable, fault-tolerant trading system with comprehensive APIs\n\n\n### High Quality Data\n\nBuilt-in curated, bias-free and fully-adjusted datasets covering multiple asset classes.\n\n\n### Cloud Based\n\nHigh availability, access from anywhere, anytime\n\n## Learn\n\nTo boost to your quant trading quotient, head over to our dedicated learning zone for free courses on python and quant trading topics."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 482,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

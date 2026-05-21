@@ -1,0 +1,3 @@
+page.goto: net::ERR_CONNECTION_CLOSED at https://crossminds.ai/
+Call log:
+  - navigating to "https://crossminds.ai/", waiting until "domcontentloaded"

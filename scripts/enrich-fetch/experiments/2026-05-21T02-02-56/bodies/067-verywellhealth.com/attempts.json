@@ -1,0 +1,79 @@
+{
+  "url": "https://www.verywellhealth.com/cbd-for-sex-and-erectile-dysfunction-facts-types-dosage-5200774",
+  "host": "verywellhealth.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 741,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": false,
+      "usable": false,
+      "reason": "parse_empty",
+      "bytes": 690199,
+      "ms": 5176,
+      "error": "Readability found no article in rendered page",
+      "files": {
+        "preview": "bodies/067-verywellhealth.com/tab.preview.txt",
+        "error": "bodies/067-verywellhealth.com/tab.error.txt",
+        "detail": "bodies/067-verywellhealth.com/tab.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "parse_empty",
+        "detail": "Readability found no article in rendered page"
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": false,
+      "reason": "auth_required",
+      "blockedBy": "matched block pattern /just a moment\\.\\.\\./i",
+      "bytes": 90,
+      "ms": 5113,
+      "title": "Just a moment...",
+      "files": {
+        "markdown": "bodies/067-verywellhealth.com/jina.md",
+        "detail": "bodies/067-verywellhealth.com/jina.detail.txt"
+      },
+      "parsed": {
+        "title": "Just a moment...",
+        "snippetLen": 70,
+        "snippet": "Verification successful. Waiting for www.verywellhealth.com to respond",
+        "summary": "Verification successful. Waiting for www.verywellhealth.com to respond"
+      },
+      "diagnosis": {
+        "reason": "auth_required",
+        "blockedBy": "matched block pattern /just a moment\\.\\.\\./i",
+        "detail": "# Just a moment...\n\nVerification successful. Waiting for www.verywellhealth.com to respond"
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 558,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

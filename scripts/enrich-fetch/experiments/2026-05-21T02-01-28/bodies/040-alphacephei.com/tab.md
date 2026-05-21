@@ -1,0 +1,1309 @@
+We have two types of models - big and small, small models are ideal for some limited task on mobile applications. They can run on smartphones, Raspberry Pi’s. They are also recommended for desktop applications. Small model typically is around 50Mb in size and requires about 300Mb of memory in runtime. Big models are for the high-accuracy transcription on the server. Big models require up to 16Gb in memory since they apply advanced AI algorithms. Ideally you run them on some high-end servers like i7 or latest AMD Ryzen. On AWS you can take a look on c5a machines and similar machines in other clouds.
+
+Most small model allow dynamic vocabulary reconfiguration. Big models are static the vocabulary can not be modified in runtime.
+
+## Model list
+
+This is the list of models compatible with Vosk-API.
+
+To add a new model here create an issue on Github.
+
+Model
+
+Size
+
+Word error rate/Speed
+
+Notes
+
+License
+
+**English**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-en-us-0.15](https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip)
+
+40M
+
+9.85 (librispeech test-clean) 10.38 (tedlium)
+
+Lightweight wideband model for Android and RPi
+
+Apache 2.0
+
+[vosk-model-en-us-0.22](https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip)
+
+1.8G
+
+5.69 (librispeech test-clean) 6.05 (tedlium) 29.78(callcenter)
+
+Accurate generic US English model
+
+Apache 2.0
+
+[vosk-model-en-us-0.22-lgraph](https://alphacephei.com/vosk/models/vosk-model-en-us-0.22-lgraph.zip)
+
+128M
+
+7.82 (librispeech) 8.20 (tedlium)
+
+Big US English model with dynamic graph
+
+Apache 2.0
+
+[vosk-model-en-us-0.42-gigaspeech](https://alphacephei.com/vosk/models/vosk-model-en-us-0.42-gigaspeech.zip)
+
+2.3G
+
+5.64 (librispeech test-clean) 6.24 (tedlium) 30.17 (callcenter)
+
+Accurate generic US English model trained by Kaldi on [Gigaspeech](http://kaldi-asr.org/models/m14). Mostly for podcasts, not for telephony
+
+Apache 2.0
+
+**English Other**
+
+ 
+
+**Older Models**
+
+ 
+
+ 
+
+[vosk-model-en-us-daanzu-20200905](https://alphacephei.com/vosk/models/vosk-model-en-us-daanzu-20200905.zip)
+
+1.0G
+
+7.08 (librispeech test-clean) 8.25 (tedlium)
+
+Wideband model for dictation from [Kaldi-active-grammar](https://github.com/daanzu/kaldi-active-grammar) project
+
+AGPL
+
+[vosk-model-en-us-daanzu-20200905-lgraph](https://alphacephei.com/vosk/models/vosk-model-en-us-daanzu-20200905-lgraph.zip)
+
+129M
+
+8.20 (librispeech test-clean) 9.28 (tedlium)
+
+Wideband model for dictation from [Kaldi-active-grammar](https://github.com/daanzu/kaldi-active-grammar) project with configurable graph
+
+AGPL
+
+[vosk-model-en-us-librispeech-0.2](https://alphacephei.com/vosk/models/vosk-model-en-us-librispeech-0.2.zip)
+
+845M
+
+TBD
+
+Repackaged Librispeech model from [Kaldi](https://kaldi-asr.org/models/m13), not very accurate
+
+Apache 2.0
+
+[vosk-model-small-en-us-zamia-0.5](https://alphacephei.com/vosk/models/vosk-model-small-en-us-zamia-0.5.zip)
+
+49M
+
+11.55 (librispeech test-clean) 12.64 (tedlium)
+
+Repackaged Zamia model f\_250, mainly for research
+
+LGPL-3.0
+
+[vosk-model-en-us-aspire-0.2](https://alphacephei.com/vosk/models/vosk-model-en-us-aspire-0.2.zip)
+
+1.4G
+
+13.64 (librispeech test-clean) 12.89 (tedlium) 33.82(callcenter)
+
+Kaldi original ASPIRE model, not very accurate
+
+Apache 2.0
+
+[vosk-model-en-us-0.21](https://alphacephei.com/vosk/models/vosk-model-en-us-0.21.zip)
+
+1.6G
+
+5.43 (librispeech test-clean) 6.42 (tedlium) 40.63(callcenter)
+
+Wideband model previous generation
+
+Apache 2.0
+
+**Indian English**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-en-in-0.5](https://alphacephei.com/vosk/models/vosk-model-en-in-0.5.zip)
+
+1G
+
+36.12 (NPTEL Pure)
+
+Generic Indian English model for telecom and broadcast
+
+Apache 2.0
+
+[vosk-model-small-en-in-0.4](https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip)
+
+36M
+
+49.05 (NPTEL Pure)
+
+Lightweight Indian English model for mobile applications
+
+Apache 2.0
+
+**Chinese**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-cn-0.22](https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip)
+
+42M
+
+23.54 (SpeechIO-02) 38.29 (SpeechIO-06) 17.15 (THCHS)
+
+Lightweight model for Android and RPi
+
+Apache 2.0
+
+[vosk-model-cn-0.22](https://alphacephei.com/vosk/models/vosk-model-cn-0.22.zip)
+
+1.3G
+
+13.98 (SpeechIO-02) 27.30 (SpeechIO-06) 7.43 (THCHS)
+
+Big generic Chinese model for server processing
+
+Apache 2.0
+
+**Chinese Other**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-cn-kaldi-multicn-0.15](https://alphacephei.com/vosk/models/vosk-model-cn-kaldi-multicn-0.15.zip)
+
+1.5G
+
+17.44 (SpeechIO-02) 9.56 (THCHS)
+
+Original Wideband Kaldi multi-cn model from [Kaldi](https://kaldi-asr.org/models/m11) with Vosk LM
+
+Apache 2.0
+
+**Russian**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-ru-0.42](https://alphacephei.com/vosk/models/vosk-model-ru-0.42.zip)
+
+1.8G
+
+4.5 (our audiobooks) 11.1 (open\_stt audiobooks) 19.5 (open\_stt youtube) 36.0 (openstt calls) 4.4 (golos crowd) 17.9 (sova devices)
+
+Big mixed band Russian model for servers
+
+Apache 2.0
+
+[vosk-model-small-ru-0.22](https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip)
+
+45M
+
+22.71 (openstt audiobooks) 31.97 (openstt youtube) 29.89 (sova devices) 11.79 (golos crowd)
+
+Lightweight wideband model for Android/iOS and RPi
+
+Apache 2.0
+
+**Russian Other**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-ru-0.22](https://alphacephei.com/vosk/models/vosk-model-ru-0.22.zip)
+
+1.5G
+
+5.74 (our audiobooks) 13.35 (open\_stt audiobooks) 20.73 (open\_stt youtube) 37.38 (openstt calls) 8.65 (golos crowd) 19.71 (sova devices)
+
+Big mixed band Russian model for servers
+
+Apache 2.0
+
+[vosk-model-ru-0.10](https://alphacephei.com/vosk/models/vosk-model-ru-0.10.zip)
+
+2.5G
+
+5.71 (our audiobooks) 16.26 (open\_stt audiobooks) 26.20 (public\_youtube\_700\_val open\_stt) 40.15 (asr\_calls\_2\_val open\_stt)
+
+Big narrowband Russian model for servers
+
+Apache 2.0
+
+**French**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-fr-0.22](https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip)
+
+41M
+
+23.95 (cv test) 19.30 (mtedx) 27.25 (podcast)
+
+Lightweight wideband model for Android/iOS and RPi
+
+Apache 2.0
+
+[vosk-model-fr-0.22](https://alphacephei.com/vosk/models/vosk-model-fr-0.22.zip)
+
+1.4G
+
+14.72 (cv test) 11.64 (mls) 13.10 (mtedx) 21.61 (podcast) 13.22 (voxpopuli)
+
+Big accurate model for servers
+
+Apache 2.0
+
+**French Other**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-fr-pguyot-0.3](https://alphacephei.com/vosk/models/vosk-model-small-fr-pguyot-0.3.zip)
+
+39M
+
+37.04 (cv test) 28.72 (mtedx) 37.46 (podcast)
+
+Lightweight wideband model for Android and RPi trained by [Paul Guyot](https://github.com/pguyot/zamia-speech/releases)
+
+CC-BY-NC-SA 4.0
+
+[vosk-model-fr-0.6-linto-2.2.0](https://alphacephei.com/vosk/models/vosk-model-fr-0.6-linto-2.2.0.zip)
+
+1.5G
+
+16.19 (cv test) 16.44 (mtedx) 23.77 (podcast) 0.4xRT
+
+Model from [LINTO](https://doc.linto.ai/#/services/linstt) project
+
+AGPL
+
+**German**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-de-0.21](https://alphacephei.com/vosk/models/vosk-model-de-0.21.zip)
+
+1.9G
+
+9.83 (Tuda-de test), 24.00 (podcast) 12.82 (cv-test) 12.42 (mls) 33.26 (mtedx)
+
+Big German model for telephony and server
+
+Apache 2.0
+
+[vosk-model-de-tuda-0.6-900k](https://alphacephei.com/vosk/models/vosk-model-de-tuda-0.6-900k.zip)
+
+4.4G
+
+9.48 (Tuda-de test), 25.82 (podcast) 4.97 (cv-test) 11.01 (mls) 35.20 (mtedx)
+
+Latest big wideband model from [Tuda-DE](https://github.com/uhh-lt/kaldi-tuda-de) project
+
+Apache 2.0
+
+[vosk-model-small-de-zamia-0.3](https://alphacephei.com/vosk/models/vosk-model-small-de-zamia-0.3.zip)
+
+49M
+
+14.81 (Tuda-de test, 37.46 (podcast)
+
+Zamia f\_250 small model repackaged (not recommended)
+
+LGPL-3.0
+
+[vosk-model-small-de-0.15](https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip)
+
+45M
+
+13.75 (Tuda-de test), 30.67 (podcast)
+
+Lightweight wideband model for Android and RPi
+
+Apache 2.0
+
+**Spanish**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-es-0.42](https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip)
+
+39M
+
+16.02 (cv test) 16.72 (mtedx test) 11.21 (mls)
+
+Lightweight wideband model for Android and RPi
+
+Apache 2.0
+
+[vosk-model-es-0.42](https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip)
+
+1.4G
+
+7.50 (cv test) 10.05 (mtedx test) 5.84 (mls)
+
+Big model for Spanish
+
+Apache 2.0
+
+**Portuguese/Brazilian Portuguese**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-pt-0.3](https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip)
+
+31M
+
+68.92 (coraa dev) 32.60 (cv test)
+
+Lightweight wideband model for Android and RPi
+
+Apache 2.0
+
+[vosk-model-pt-fb-v0.1.1-20220516\_2113](https://alphacephei.com/vosk/models/vosk-model-pt-fb-v0.1.1-20220516_2113.zip)
+
+1.6G
+
+54.34 (coraa dev) 27.70 (cv test)
+
+Big model from [FalaBrazil](https://gitlab.com/fb-resources/kaldi-br)
+
+GPLv3.0
+
+**Greek**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-el-gr-0.7](https://alphacephei.com/vosk/models/vosk-model-el-gr-0.7.zip)
+
+1.1G
+
+TBD
+
+Big narrowband Greek model for server processing, not extremely accurate though
+
+Apache 2.0
+
+**Turkish**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-tr-0.3](https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip)
+
+35M
+
+TBD
+
+Lightweight wideband model for Android and RPi
+
+Apache 2.0
+
+**Vietnamese**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-vn-0.4](https://alphacephei.com/vosk/models/vosk-model-small-vn-0.4.zip)
+
+32M
+
+15.70 (Vivos test)
+
+Lightweight Vietnamese model
+
+Apache 2.0
+
+[vosk-model-vn-0.4](https://alphacephei.com/vosk/models/vosk-model-vn-0.4.zip)
+
+78M
+
+15.70 (Vivos test)
+
+Bigger Vietnamese model for server
+
+Apache 2.0
+
+**Italian**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-it-0.22](https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip)
+
+48M
+
+16.88 (cv test) 25.87 (mls) 17.01 (mtedx)
+
+Lightweight model for Android and RPi
+
+Apache 2.0
+
+[vosk-model-it-0.22](https://alphacephei.com/vosk/models/vosk-model-it-0.22.zip)
+
+1.2G
+
+8.10 (cv test) 15.68 (mls) 11.23 (mtedx)
+
+Big generic Italian model for servers
+
+Apache 2.0
+
+**Dutch**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-nl-0.22](https://alphacephei.com/vosk/models/vosk-model-small-nl-0.22.zip)
+
+39M
+
+22.45 (cv test) 26.80 (tv) 25.84 (mls) 24.09 (voxpopuli)
+
+Lightweight model for Dutch
+
+Apache 2.0
+
+**Dutch Other**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-nl-spraakherkenning-0.6](https://alphacephei.com/vosk/models/vosk-model-nl-spraakherkenning-0.6.zip)
+
+860M
+
+20.40 (cv test) 32.64 (tv) 17.73 (mls) 19.96 (voxpopuli)
+
+Medium Dutch model from [Kaldi\_NL](https://github.com/opensource-spraakherkenning-nl/Kaldi_NL)
+
+CC-BY-NC-SA
+
+[vosk-model-nl-spraakherkenning-0.6-lgraph](https://alphacephei.com/vosk/models/vosk-model-nl-spraakherkenning-0.6-lgraph.zip)
+
+100M
+
+22.82 (cv test) 34.01 (tv) 18.81 (mls) 21.01 (voxpopuli)
+
+Smaller model with dynamic graph
+
+CC-BY-NC-SA
+
+**Catalan**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-ca-0.4](https://alphacephei.com/vosk/models/vosk-model-small-ca-0.4.zip)
+
+42M
+
+TBD
+
+Lightweight wideband model for Android and RPi for Catalan
+
+Apache 2.0
+
+**Arabic**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-ar-mgb2-0.4](https://alphacephei.com/vosk/models/vosk-model-ar-mgb2-0.4.zip)
+
+318M
+
+16.40 (MGB-2 dev set)
+
+Repackaged Arabic model trained on MGB2 dataset from [Kaldi](https://kaldi-asr.org/models/m9)
+
+Apache 2.0
+
+[vosk-model-ar-0.22-linto-1.1.0](https://alphacephei.com/vosk/models/vosk-model-ar-0.22-linto-1.1.0.zip)
+
+1.3G
+
+52.87 (cv test) 28.50 (MBG-2 dev set) 1.0xRT
+
+Big model from [LINTO](https://doc.linto.ai/#/services/linstt) project
+
+AGPL
+
+**Arabic Tunisian**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-ar-tn-0.1-linto](https://alphacephei.com/vosk/models/vosk-model-small-ar-tn-0.1-linto.zip)
+
+158M
+
+16.06 (TARIC set)
+
+Small Arabic Tunisian model from [Linagora](https://huggingface.co/linagora/linto-asr-ar-tn-0.1)
+
+Apache 2.0
+
+[vosk-model-ar-tn-0.1-linto](https://alphacephei.com/vosk/models/vosk-model-ar-tn-0.1-linto.zip)
+
+517M
+
+16.06 (TARIC set)
+
+Arabic Tunisian model from [Linagora](https://huggingface.co/linagora/linto-asr-ar-tn-0.1)
+
+Apache 2.0
+
+**Farsi**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-fa-0.42](https://alphacephei.com/vosk/models/vosk-model-fa-0.42.zip)
+
+1.6G
+
+16.7 (CV17) 11.1 (Fleurs)
+
+Model with large vocabulary, not yet accurate but better than before (Persian)
+
+Apache 2.0
+
+[vosk-model-small-fa-0.42](https://alphacephei.com/vosk/models/vosk-model-small-fa-0.42.zip)
+
+53M
+
+23.4 (CV17) 14.0 (Fleurs)
+
+Small model for desktop and mobile applications (Persian)
+
+Apache 2.0
+
+**Farsi Other**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-fa-0.5](https://alphacephei.com/vosk/models/vosk-model-fa-0.5.zip)
+
+1G
+
+29.7 (CV17) 25.1 (Fleurs)
+
+Model with large vocabulary, not yet accurate but better than before (Persian)
+
+Apache 2.0
+
+[vosk-model-small-fa-0.5](https://alphacephei.com/vosk/models/vosk-model-small-fa-0.5.zip)
+
+60M
+
+31.2 (CV17) 26.2 (Fleurs)
+
+Bigger small model for desktop applications (Persian)
+
+Apache 2.0
+
+**Filipino**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-tl-ph-generic-0.6](https://alphacephei.com/vosk/models/vosk-model-tl-ph-generic-0.6.zip)
+
+320M
+
+18.87 (FLEURS-dev) 18.61 (FLEURS-test) 97.9 (BABEL-dev) MATERIAL-dev (41.31)
+
+Medium wideband model for Filipino (Tagalog) by [feddybear](https://github.com/feddybear/flipside_ph)
+
+CC-BY-NC-SA 4.0
+
+**Ukrainian**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-uk-v3-nano](https://alphacephei.com/vosk/models/vosk-model-small-uk-v3-nano.zip)
+
+73M
+
+TBD
+
+Nano model from [Speech Recognition for Ukrainian](https://github.com/egorsmkv/speech-recognition-uk)
+
+Apache 2.0
+
+[vosk-model-small-uk-v3-small](https://alphacephei.com/vosk/models/vosk-model-small-uk-v3-small.zip)
+
+133M
+
+TBD
+
+Small model from [Speech Recognition for Ukrainian](https://github.com/egorsmkv/speech-recognition-uk)
+
+Apache 2.0
+
+[vosk-model-uk-v3](https://alphacephei.com/vosk/models/vosk-model-uk-v3.zip)
+
+343M
+
+TBD
+
+Bigger model from [Speech Recognition for Ukrainian](https://github.com/egorsmkv/speech-recognition-uk)
+
+Apache 2.0
+
+[vosk-model-uk-v3-lgraph](https://alphacephei.com/vosk/models/vosk-model-uk-v3-lgraph.zip)
+
+325M
+
+TBD
+
+Big dynamic model from [Speech Recognition for Ukrainian](https://github.com/egorsmkv/speech-recognition-uk)
+
+Apache 2.0
+
+**Kazakh**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-kz-0.42](https://alphacephei.com/vosk/models/vosk-model-small-kz-0.42.zip)
+
+58M
+
+21.10 (fleurs) 30.0 (CV17) 9.7 (KSC) 24.86 (KSC Other)
+
+Small mobile model for Kazakh
+
+Apache 2.0
+
+[vosk-model-kz-0.42](https://alphacephei.com/vosk/models/vosk-model-kz-0.42.zip)
+
+1.3G
+
+13.09 (fleurs) 12.50 (CV17) 4.49 (KSC) 18.51 (KSC Other)
+
+Bigger model for Kazakh
+
+Apache 2.0
+
+**Swedish**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-sv-rhasspy-0.15](https://alphacephei.com/vosk/models/vosk-model-small-sv-rhasspy-0.15.zip)
+
+289M
+
+TBD
+
+Repackaged model from [Rhasspy project](https://github.com/rhasspy/sv_kaldi-rhasspy)
+
+MIT
+
+**Japanese**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-ja-0.22](https://alphacephei.com/vosk/models/vosk-model-small-ja-0.22.zip)
+
+48M
+
+9.52(csj CER) 17.07(ted10k CER)
+
+Lightweight wideband model for Japanese
+
+Apache 2.0
+
+[vosk-model-ja-0.22](https://alphacephei.com/vosk/models/vosk-model-ja-0.22.zip)
+
+1Gb
+
+8.40(csj CER) 13.91(ted10k CER)
+
+Big model for Japanese
+
+Apache 2.0
+
+**Esperanto**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-eo-0.42](https://alphacephei.com/vosk/models/vosk-model-small-eo-0.42.zip)
+
+42M
+
+7.24 (CV Test)
+
+Lightweight model for Esperanto
+
+Apache 2.0
+
+**Hindi**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-hi-0.22](https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip)
+
+42M
+
+20.89 (IITM Challenge) 24.72 (MUCS Challenge)
+
+Lightweight model for Hindi
+
+Apache 2.0
+
+[vosk-model-hi-0.22](https://alphacephei.com/vosk/models/vosk-model-hi-0.22.zip)
+
+1.5Gb
+
+14.85 (CV Test) 14.83 (IITM Challenge) 13.11 (MUCS Challenge)
+
+Big accurate model for servers
+
+Apache 2.0
+
+**Czech**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-cs-0.4-rhasspy](https://alphacephei.com/vosk/models/vosk-model-small-cs-0.4-rhasspy.zip)
+
+44M
+
+21.29 (CV Test)
+
+Lightweight model for Czech from Rhasspy project
+
+MIT
+
+**Polish**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-pl-0.22](https://alphacephei.com/vosk/models/vosk-model-small-pl-0.22.zip)
+
+50M
+
+18.36 (CV Test) 16.88 (MLS Test) 11.55 (Voxpopuli Test)
+
+Lightweight model for Polish
+
+Apache 2.0
+
+**Uzbek**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-uz-0.22](https://alphacephei.com/vosk/models/vosk-model-small-uz-0.22.zip)
+
+49M
+
+13.54 (CV Test) 12.92 (IS2AI USC test)
+
+Lightweight model for Uzbek
+
+Apache 2.0
+
+**Korean**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-ko-0.22](https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip)
+
+82M
+
+28.1 (Zeroth Test)
+
+Lightweight model for Korean
+
+Apache 2.0
+
+**Breton**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-br-0.8](https://alphacephei.com/vosk/models/vosk-model-br-0.8.zip)
+
+70M
+
+36.4 (MCV11 Test)
+
+Breton model from [vosk-br](https://github.com/gweltou/vosk-br) project
+
+MIT license
+
+**Gujarati**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-gu-0.42](https://alphacephei.com/vosk/models/vosk-model-gu-0.42.zip)
+
+700M
+
+16.45 (MS Test)
+
+Big Gujarati model
+
+Apache 2.0
+
+[vosk-model-small-gu-0.42](https://alphacephei.com/vosk/models/vosk-model-small-gu-0.42.zip)
+
+100M
+
+20.49 (MS Test)
+
+Lightweight model for Gujarati
+
+Apache 2.0
+
+**Tajik**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-tg-0.22](https://alphacephei.com/vosk/models/vosk-model-tg-0.22.zip)
+
+327M
+
+41.1 (Fleurs test)
+
+Big Tajik model
+
+Apache 2.0
+
+[vosk-model-small-tg-0.22](https://alphacephei.com/vosk/models/vosk-model-small-tg-0.22.zip)
+
+50M
+
+38.4 (Fleurs test)
+
+Lightweight model for Tajik
+
+Apache 2.0
+
+**Telugu**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-te-0.42](https://alphacephei.com/vosk/models/vosk-model-small-te-0.42.zip)
+
+58M
+
+87.9 (Fleurs test)
+
+Lightweight model for Telugu
+
+Apache 2.0
+
+**Kyrgyz**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-ky-0.42](https://alphacephei.com/vosk/models/vosk-model-small-ky-0.42.zip)
+
+49M
+
+18.95 (Fleurs) 16.96 (CV17)
+
+Small mobile model for Kyrgyz
+
+Apache 2.0
+
+[vosk-model-ky-0.42](https://alphacephei.com/vosk/models/vosk-model-ky-0.42.zip)
+
+1.1G
+
+13.45 (Fleurs) 8.75 (CV17)
+
+Bigger model for Kyrgyz
+
+Apache 2.0
+
+**Georgian**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-small-ka-0.42](https://alphacephei.com/vosk/models/vosk-model-small-ka-0.42.zip)
+
+45M
+
+18.0 (Fleurs) 14.2 (CV17)
+
+Small mobile model for Georgian
+
+Apache 2.0
+
+[vosk-model-ka-0.42](https://alphacephei.com/vosk/models/vosk-model-ka-0.42.zip)
+
+700M
+
+12.7 (Fleurs) 5.2 (CV17)
+
+Bigger model for Georgian
+
+Apache 2.0
+
+**Speaker identification model**
+
+ 
+
+ 
+
+ 
+
+ 
+
+[vosk-model-spk-0.4](https://alphacephei.com/vosk/models/vosk-model-spk-0.4.zip)
+
+13M
+
+TBD
+
+Model for speaker identification, should work for all languages
+
+Apache 2.0
+
+## Punctuation models
+
+For punctuation and case restoration we recommend the models trained with [https://github.com/benob/recasepunc](https://github.com/benob/recasepunc)
+
+Model
+
+Size
+
+License
+
+**English**
+
+ 
+
+ 
+
+[vosk-recasepunc-en-0.22](https://alphacephei.com/vosk/models/vosk-recasepunc-en-0.22.zip)
+
+1.6G
+
+Apache 2.0
+
+**Russian**
+
+ 
+
+ 
+
+[vosk-recasepunc-ru-0.22](https://alphacephei.com/vosk/models/vosk-recasepunc-ru-0.22.zip)
+
+1.6G
+
+Apache 2.0
+
+**German**
+
+ 
+
+ 
+
+[vosk-recasepunc-de-0.21](https://alphacephei.com/vosk/models/vosk-recasepunc-de-0.21.zip)
+
+1.1G
+
+Apache 2.0
+
+## Other models
+
+Other places where you can check for models which might be compatible:
+
+*   [https://kaldi-asr.org/models.html](https://kaldi-asr.org/models.html) - variety of models from Kaldi - librispeech, aspire, chinese models
+*   [https://github.com/daanzu/kaldi-active-grammar/blob/master/docs/models.md](https://github.com/daanzu/kaldi-active-grammar/blob/master/docs/models.md) - Big dictation models for English
+*   [https://github.com/uhh-lt/vosk-model-tuda-de](https://github.com/uhh-lt/vosk-model-tuda-de) - German models
+*   [https://github.com/german-asr/kaldi-german](https://github.com/german-asr/kaldi-german) - Another German project
+*   [https://zamia-speech.org/asr/](https://zamia-speech.org/asr/) - German and English model from Zamia
+*   [https://github.com/pguyot/zamia-speech/releases](https://github.com/pguyot/zamia-speech/releases) - French models for Zamia
+*   [https://github.com/opensource-spraakherkenning-nl/Kaldi\_NL](https://github.com/opensource-spraakherkenning-nl/Kaldi_NL) - Dutch model
+*   [https://montreal-forced-aligner.readthedocs.io/en/latest/pretrained\_models.html](https://montreal-forced-aligner.readthedocs.io/en/latest/pretrained_models.html) (GMM models, not compatible but might be still useful)
+*   [https://github.com/goodatlas/zeroth](https://github.com/goodatlas/zeroth) - Korean Kaldi (just a recipe and data to train)
+*   [https://github.com/undertheseanlp/automatic\_speech\_recognition](https://github.com/undertheseanlp/automatic_speech_recognition) - Vietnamese Kaldi project
+*   [https://doc.linto.ai/#/services/linstt](https://doc.linto.ai/#/services/linstt) - LINTO project by [Linagora](https://linagora.com/) with French, English and Arabic models
+*   [https://community.rhasspy.org/](https://community.rhasspy.org/) - Rhasspy (some Kaldi models for Czech, probably even more)
+*   [https://github.com/feddybear/flipside\_ph](https://github.com/feddybear/flipside_ph) - Filipino model project by Federico Ang
+*   [https://github.com/alumae/kiirkirjutaja](https://github.com/alumae/kiirkirjutaja) - Estonian Speech Recognition project with Vosk models
+*   [https://github.com/falabrasil/kaldi-br](https://github.com/falabrasil/kaldi-br) - Portuguese models from FalaBrasil project
+*   [https://github.com/egorsmkv/speech-recognition-uk](https://github.com/egorsmkv/speech-recognition-uk) - Ukrainian ASR project with Vosk models
+*   [https://github.com/Appen/UHV-OTS-Speech](https://github.com/Appen/UHV-OTS-Speech) - repository from Appen for Scalable Data Annotation Pipeline for High-Quality Large Speech Datasets Development
+*   [https://github.com/vistec-AI/commonvoice-th](https://github.com/vistec-AI/commonvoice-th) - Thai models trained on CommonVoice
+*   [https://github.com/gweltou/vosk-br](https://github.com/gweltou/vosk-br) - Vosk for Breton
+
+## Training your own model
+
+You can train your model with Kaldi toolkit. The training is pretty standard - you need tdnn nnet3 model with i-vectors. You can check Vosk recipe for details:
+
+[https://github.com/alphacep/vosk-api/tree/master/training](https://github.com/alphacep/vosk-api/tree/master/training)
+
+*   For smaller mobile models watch the number of parameters
+*   Train the model without pitch. It might be helpful for small amount of data, but for large database it doesn’t give the advantage but complicates the processing and increases response time.
+*   Train ivector of dim 40 instead of standard 100 to save memory of mobile models.
+*   Many Kaldi recipes are overcomplicated and do many unnecessary steps
+*   PLEASE NOTE THAT THE SIMPLE GMM MODEL YOU TRAIN WITH **“KALDI FOR DUMMIES”** TUTORIAL **DOES NOT WORK** WITH VOSK. YOU NEED TO RUN VOSK RECIPE FROM START TO END, INCLUDING **CHAIN MODEL TRAINING**. You also need CUDA GPU to train. If you do not have a GPU, try to run Kaldi on Google Colab.
+
+## Model structure
+
+Once you trained the model arrange the files according to the following layout (see en-us-aspire for details):
+
+*   `am/final.mdl` - acoustic model
+*   `am/global_cmvn.stats` - required for online-cmvn models, if present enables online cmvn on features.
+*   `conf/mfcc.conf` - mfcc config file. Make sure you take mfcc\_hires.conf version if you are using hires model (most external ones)
+*   `conf/model.conf` - provide default decoding beams and silence phones. you have to create this file yourself, it is not present in kaldi model
+*   `conf/pitch.conf` - optional file to create feature pipeline with pitch features. Might be missing if model doesn’t use pitch
+*   `ivector/final.dubm` - take ivector files from ivector extractor (optional folder if the model is trained with ivectors)
+*   `ivector/final.ie`
+*   `ivector/final.mat`
+*   `ivector/splice.conf`
+*   `ivector/global_cmvn.stats`
+*   `ivector/online_cmvn.conf`
+*   `graph/phones/word_boundary.int` - from the graph
+*   `graph/HCLG.fst` - this is the decoding graph, if you are not using lookahead
+*   `graph/HCLr.fst` - use Gr.fst and HCLr.fst instead of one big HCLG.fst if you want to run rescoring
+*   `graph/Gr.fst`
+*   `graph/phones.txt` - from the graph
+*   `graph/words.txt` - from the graph
+*   `rescore/G.carpa` - carpa rescoring is optional but helpful in big models. Usually located inside data/lang\_test\_rescore
+*   `rescore/G.fst` - also optional if you want to use rescoring, also used for interpolation with RNNLM
+*   `rnnlm/feat_embedding.final.mat` - RNNLM embedding for rescoring. Optional if you have it.
+*   `rnnlm/special_symbol_opts.conf` - RNNLM model options
+*   `rnnlm/final.raw` - RNNLM model
+*   `rnnlm/word_feats.txt` - RNNLM model word feats

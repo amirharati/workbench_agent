@@ -1,0 +1,82 @@
+{
+  "url": "https://docs.google.com/document/d/1FG35w9teKo-1sgqvE7Rte8_RbhrI_FHrBObtaqwVZxw/edit?eesel-onboarding=true&pli=1&tab=t.0",
+  "host": "docs.google.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 981,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": false,
+      "reason": "parse_empty",
+      "blockedBy": "only 26 chars",
+      "bytes": 26,
+      "ms": 10126,
+      "title": "Google Docs: Sign-in",
+      "files": {
+        "markdown": "bodies/019-docs.google.com/tab.md",
+        "detail": "bodies/019-docs.google.com/tab.detail.txt"
+      },
+      "parsed": {
+        "title": "Google Docs: Sign-in",
+        "snippetLen": 26,
+        "snippet": "to continue to Google Docs",
+        "summary": "to continue to Google Docs"
+      },
+      "diagnosis": {
+        "reason": "parse_empty",
+        "blockedBy": "only 26 chars",
+        "detail": "to continue to Google Docs"
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 1868,
+      "ms": 1084,
+      "title": "Google Docs: Sign-in",
+      "files": {
+        "markdown": "bodies/019-docs.google.com/jina.md"
+      },
+      "parsed": {
+        "title": "Google Docs: Sign-in",
+        "snippetLen": 1520,
+        "snippet": "to continue to Google Docs\n\nEmail or phone\n\nForgot email?\n\n\nType the text you hear or see\n\n\nNext\n\nCreate account\n\n*   For my personal use\n*   For my child\n*   For work or my business\n\nEnglish (United States)\n\n*   Afrikaans\n*   azərbaycan\n*   bosanski\n*   català\n*   Čeština\n*   Cymraeg\n*   Dansk\n*   Deutsch\n*   eesti\n*   English (United Kingdom)\n*   English (United States)\n*   Español (España)\n*   Español (Latinoamérica)\n*   euskara\n*   Filipino\n*   Français (Canada)\n*   Français (France)\n*   Gaeilge\n*   galego\n*   Hrvatski\n*   Indonesia\n*   isiZulu\n*   íslenska\n*   Italiano\n*   Kiswahili\n*   latviešu\n*   lietuvių\n*   magyar\n*   Melayu\n*   Nederlands\n*   norsk\n*   o‘zbek\n*   polski\n*   Português (Brasil)\n*   Português (Portugal)\n*   română\n*   shqip\n*   Slovenčina\n*   slovenščina\n*   srpski (latinica)\n*   Suomi\n*   Svenska\n*   Tiếng Việt\n*   Türkçe\n*   Ελληνικά\n*   беларуская\n*   български\n*   кыргызча\n*   қазақ тілі\n*   македонски\n*   монгол\n*   Русский\n*   српски (ћирилица)\n*   Українська\n*   ქართული\n*   հայերեն\n*   ‫עברית‬‎\n*   ‫اردو‬‎\n*   ‫العربية‬‎\n*   ‫فارسی‬‎\n*   አማርኛ\n*   नेपाली\n*   मराठी\n*   हिन्दी\n*   অসমীয়া\n*   বাংলা\n*   ਪੰਜਾਬੀ\n*   ગુજરાતી\n*   ଓଡ଼ିଆ\n*   தமிழ்\n*   తెలుగు\n*   ಕನ್ನಡ\n*   മലയാളം\n*   සිංහල\n*   ไทย\n*   ລາວ\n*   မြန်မာ\n*   ខ្មែរ\n*   한국어\n*   中文（香港）\n*   日本語\n*   简体中文\n*   繁體中文\n\n*   [Help](https://support.google.com/accounts?hl=en-US&p=account_iph)\n*   [Privacy](https://accounts.google.com/TOS?loc=US&hl=en-US&privacy=true)\n*   [Terms](https://accounts.google.com/TOS?loc=US&hl=en-US)",
+        "summary": "to continue to Google Docs\n\nEmail or phone\n\nForgot email?\n\n\nType the text you hear or see\n\n\nNext\n\nCreate account\n\n*   For my personal use\n*   For my child\n*   For work or my business\n\nEnglish (United States)\n\n*   Afrikaans\n*   azərbaycan\n*   bosanski\n*   català\n*   Čeština\n*   Cymraeg\n*   Dansk\n*   Deutsch\n*   eesti\n*   English (United Kingdom)\n*   English (United States)\n*   Español (España)\n*   Español (Latinoamérica)\n*   euskara\n*   Filipino\n*   Français (Canada)\n*   Français (France)\n*   Gaeilge\n*   galego\n*   Hrvatski\n*   Indonesia\n*   isiZulu\n*   íslenska\n*   Italiano\n*   Kiswahili\n*   latviešu\n*   lietuvių\n*   magyar\n*   Melayu\n*   Nederlands\n*   norsk\n*   o‘zbek\n*   polski\n*   Português (Brasil)\n*   Português (Portugal)\n*   română\n*   shqip\n*   Slovenčina\n*   slovenščina\n*   srpski (latinica)\n*   Suomi\n*   Svenska\n*   Tiếng Việt\n*   Türkçe\n*   Ελληνικά\n*   беларуская\n*   български\n*   кыргызча\n*   қазақ тілі\n*   македонски\n*   монгол\n*   Русский\n*   српски (ћирилица)\n*   Українська\n*   ქართული\n*   հայերեն\n*   ‫עברית‬‎\n*   ‫اردو‬‎\n*   ‫العربية‬‎\n*   ‫فارسی‬‎\n*   አማርኛ\n*   नेपाली\n*   मराठी\n*   हिन्दी\n*   অসমীয়া\n*   বাংলা\n*   ਪੰਜਾਬੀ\n*   ગુજરાતી\n*   ଓଡ଼ିଆ\n*   தமிழ்\n*   తెలుగు\n*   ಕನ್ನಡ\n*   മലയാളം\n*   සිංහල\n*   ไทย\n*   ລາວ\n*   မြန်မာ\n*   ខ្មែរ\n*   한국어\n*   中文（香港）\n*   日本語\n*   简体中文\n*   繁體中文\n\n*   [Help](https://support.google.com/accounts?hl=en-US&p=account_iph)\n*   [Privacy](https://accounts.google.com/TOS?loc=US&hl=en-US&privacy=true)\n*   [Terms](https://accounts.google.com/TOS?loc=US&hl=en-US)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 481,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

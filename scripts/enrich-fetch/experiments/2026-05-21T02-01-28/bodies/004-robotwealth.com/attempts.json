@@ -1,0 +1,85 @@
+{
+  "url": "https://robotwealth.com/blog",
+  "host": "robotwealth.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2807,
+      "ms": 1939,
+      "title": "Algo Trading & Quant Analysis Blog - Robot Wealth",
+      "files": {
+        "markdown": "bodies/004-robotwealth.com/local.md"
+      },
+      "parsed": {
+        "title": "Algo Trading & Quant Analysis Blog - Robot Wealth",
+        "snippetLen": 2807,
+        "snippet": "*   ![For The Love of The Game](https://media.robotwealth.com/wp-content/uploads/2026/04/29224153/for_the_love_of_the_game-768x660.png)\n    \n    Think like a trader\n    \n    ## [For The Love of The Game](https://robotwealth.com/for-the-love-of-the-game/)\n    \n    Why the path to making money in trading runs through work you’d better find interesting Data mining and vibe quanting\n    \n*   ![To Trend or Not To Trend? (Wrong question)](https://media.robotwealth.com/wp-content/uploads/2026/04/11012122/elevator-768x429.png)\n    \n    Think like a trader\n    \n*   ![Brave New Backtest](https://media.robotwealth.com/wp-content/uploads/2026/03/19154151/brave_new_backtst-768x768.jpeg)\n    \n    Think like a trader\n    \n    ## [Brave New Backtest](https://robotwealth.com/brave-new-backtest/)\n    \n    My last two articles on AI and trading research got more engagement than almost anything I’ve written. “More of the\n    \n*   ![AI Will Create Millions of Quants](https://media.robotwealth.com/wp-content/uploads/2026/03/19153217/ai-quants-768x429.png)\n    \n    Think like a trader\n    \n*   ![More of the Disease, Faster (What happens when you ask an LLM to find you an edge)](https://media.robotwealth.com/wp-content/uploads/2026/03/19150757/hamsterwheel-768x515.png)\n    \n    Think like a trader\n    \n*   ![Everything Everywhere All at Once](https://media.robotwealth.com/wp-content/uploads/2026/03/08160429/four_hats-768x419.png)\n    \n    Think like a trader\n    \n*   ![The Winter of our Pairs Trading Discontent: Problems, limitations, frustrations](https://media.robotwealth.com/wp-content/uploads/2026/03/02130642/iceberg-768x429.png)\n    \n    Trading strategies\n    \n*   ![Moneyball: Finding Undervalued Pairs Using Unconventional Metrics](https://media.robotwealth.com/wp-content/uploads/2026/02/20182905/combined_features-768x578.webp)\n    \n    Trading strategies\n    \n*   ![A Tale of Two Prices](https://media.robotwealth.com/wp-content/uploads/2025/09/19193611/email-bf1d4eed-20c8-47a3-9965-8c50508ebb04-300x158.jpg)\n    \n    Trading strategies\n    \n    ## [A Tale of Two Prices](https://robotwealth.com/a-tale-of-two-prices/)\n    \n    Part 1 of a series on Statistical Arbitrage for Independent Traders. It was the age of wisdom, it was the\n    \n*   ![Much Ado About Variance](https://media.robotwealth.com/wp-content/uploads/2026/01/11211039/image.png)\n    \n    Quant trading\n    \n    ## [Much Ado About Variance](https://robotwealth.com/much-ado-about-variance/)\n    \n    What’s Past is Prologue Let’s be honest: 2025 was a pretty good year to be a systematic trader. If you\n    \n*   Think like a trader\n    \n*   ![Trading Without Edge? That’s expensive gambling, I said…](https://media.robotwealth.com/wp-content/uploads/2025/09/23150759/hamburger-beer-300x200.webp)\n    \n    Think like a trader",
+        "summary": "*   ![For The Love of The Game](https://media.robotwealth.com/wp-content/uploads/2026/04/29224153/for_the_love_of_the_game-768x660.png)\n    \n    Think like a trader\n    \n    ## [For The Love of The Game](https://robotwealth.com/for-the-love-of-the-game/)\n    \n    Why the path to making money in trading runs through work you’d better find interesting Data mining and vibe quanting\n    \n*   ![To Trend or Not To Trend? (Wrong question)](https://media.robotwealth.com/wp-content/uploads/2026/04/11012122/elevator-768x429.png)\n    \n    Think like a trader\n    \n*   ![Brave New Backtest](https://media.robotwealth.com/wp-content/uploads/2026/03/19154151/brave_new_backtst-768x768.jpeg)\n    \n    Think like a trader\n    \n    ## [Brave New Backtest](https://robotwealth.com/brave-new-backtest/)\n    \n    My last two articles on AI and trading research got more engagement than almost anything I’ve written. “More of the\n    \n*   ![AI Will Create Millions of Quants](https://media.robotwealth.com/wp-content/uploads/2026/03/19153217/ai-quants-768x429.png)\n    \n    Think like a trader\n    \n*   ![More of the Disease, Faster (What happens when you ask an LLM to find you an edge)](https://media.robotwealth.com/wp-content/uploads/2026/03/19150757/hamsterwheel-768x515.png)\n    \n    Think like a trader\n    \n*   ![Everything Everywhere All at Once](https://media.robotwealth.com/wp-content/uploads/2026/03/08160429/four_hats-768x419.png)\n    \n    Think like a trader\n    \n*   ![The Winter of our Pairs Trading Discontent: Problems, limitations, frustrations](https://media.robotwealth.com/wp-content/uploads/2026/03/02130642/iceberg-768x429.png)\n    \n    Trading strategies\n    \n*   ![Moneyball: Finding Undervalued Pairs Using Unconventional Metrics](https://media.robotwealth.com/wp-content/uploads/2026/02/20182905/combined_features-768x578.webp)\n    \n    Trading strategies\n    \n*   ![A Tale of Two Prices](https://media.robotwealth.com/wp-content/uploads/2025/09/19193611/email-bf1d4eed-20c8-47a3-9965-8"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2807,
+      "ms": 6128,
+      "title": "Algo Trading & Quant Analysis Blog - Robot Wealth",
+      "files": {
+        "markdown": "bodies/004-robotwealth.com/tab.md"
+      },
+      "parsed": {
+        "title": "Algo Trading & Quant Analysis Blog - Robot Wealth",
+        "snippetLen": 2807,
+        "snippet": "*   ![For The Love of The Game](https://media.robotwealth.com/wp-content/uploads/2026/04/29224153/for_the_love_of_the_game-768x660.png)\n    \n    Think like a trader\n    \n    ## [For The Love of The Game](https://robotwealth.com/for-the-love-of-the-game/)\n    \n    Why the path to making money in trading runs through work you’d better find interesting Data mining and vibe quanting\n    \n*   ![To Trend or Not To Trend? (Wrong question)](https://media.robotwealth.com/wp-content/uploads/2026/04/11012122/elevator-768x429.png)\n    \n    Think like a trader\n    \n*   ![Brave New Backtest](https://media.robotwealth.com/wp-content/uploads/2026/03/19154151/brave_new_backtst-768x768.jpeg)\n    \n    Think like a trader\n    \n    ## [Brave New Backtest](https://robotwealth.com/brave-new-backtest/)\n    \n    My last two articles on AI and trading research got more engagement than almost anything I’ve written. “More of the\n    \n*   ![AI Will Create Millions of Quants](https://media.robotwealth.com/wp-content/uploads/2026/03/19153217/ai-quants-768x429.png)\n    \n    Think like a trader\n    \n*   ![More of the Disease, Faster (What happens when you ask an LLM to find you an edge)](https://media.robotwealth.com/wp-content/uploads/2026/03/19150757/hamsterwheel-768x515.png)\n    \n    Think like a trader\n    \n*   ![Everything Everywhere All at Once](https://media.robotwealth.com/wp-content/uploads/2026/03/08160429/four_hats-768x419.png)\n    \n    Think like a trader\n    \n*   ![The Winter of our Pairs Trading Discontent: Problems, limitations, frustrations](https://media.robotwealth.com/wp-content/uploads/2026/03/02130642/iceberg-768x429.png)\n    \n    Trading strategies\n    \n*   ![Moneyball: Finding Undervalued Pairs Using Unconventional Metrics](https://media.robotwealth.com/wp-content/uploads/2026/02/20182905/combined_features-768x578.webp)\n    \n    Trading strategies\n    \n*   ![A Tale of Two Prices](https://media.robotwealth.com/wp-content/uploads/2025/09/19193611/email-bf1d4eed-20c8-47a3-9965-8c50508ebb04-300x158.jpg)\n    \n    Trading strategies\n    \n    ## [A Tale of Two Prices](https://robotwealth.com/a-tale-of-two-prices/)\n    \n    Part 1 of a series on Statistical Arbitrage for Independent Traders. It was the age of wisdom, it was the\n    \n*   ![Much Ado About Variance](https://media.robotwealth.com/wp-content/uploads/2026/01/11211039/image.png)\n    \n    Quant trading\n    \n    ## [Much Ado About Variance](https://robotwealth.com/much-ado-about-variance/)\n    \n    What’s Past is Prologue Let’s be honest: 2025 was a pretty good year to be a systematic trader. If you\n    \n*   Think like a trader\n    \n*   ![Trading Without Edge? That’s expensive gambling, I said…](https://media.robotwealth.com/wp-content/uploads/2025/09/23150759/hamburger-beer-300x200.webp)\n    \n    Think like a trader",
+        "summary": "*   ![For The Love of The Game](https://media.robotwealth.com/wp-content/uploads/2026/04/29224153/for_the_love_of_the_game-768x660.png)\n    \n    Think like a trader\n    \n    ## [For The Love of The Game](https://robotwealth.com/for-the-love-of-the-game/)\n    \n    Why the path to making money in trading runs through work you’d better find interesting Data mining and vibe quanting\n    \n*   ![To Trend or Not To Trend? (Wrong question)](https://media.robotwealth.com/wp-content/uploads/2026/04/11012122/elevator-768x429.png)\n    \n    Think like a trader\n    \n*   ![Brave New Backtest](https://media.robotwealth.com/wp-content/uploads/2026/03/19154151/brave_new_backtst-768x768.jpeg)\n    \n    Think like a trader\n    \n    ## [Brave New Backtest](https://robotwealth.com/brave-new-backtest/)\n    \n    My last two articles on AI and trading research got more engagement than almost anything I’ve written. “More of the\n    \n*   ![AI Will Create Millions of Quants](https://media.robotwealth.com/wp-content/uploads/2026/03/19153217/ai-quants-768x429.png)\n    \n    Think like a trader\n    \n*   ![More of the Disease, Faster (What happens when you ask an LLM to find you an edge)](https://media.robotwealth.com/wp-content/uploads/2026/03/19150757/hamsterwheel-768x515.png)\n    \n    Think like a trader\n    \n*   ![Everything Everywhere All at Once](https://media.robotwealth.com/wp-content/uploads/2026/03/08160429/four_hats-768x419.png)\n    \n    Think like a trader\n    \n*   ![The Winter of our Pairs Trading Discontent: Problems, limitations, frustrations](https://media.robotwealth.com/wp-content/uploads/2026/03/02130642/iceberg-768x429.png)\n    \n    Trading strategies\n    \n*   ![Moneyball: Finding Undervalued Pairs Using Unconventional Metrics](https://media.robotwealth.com/wp-content/uploads/2026/02/20182905/combined_features-768x578.webp)\n    \n    Trading strategies\n    \n*   ![A Tale of Two Prices](https://media.robotwealth.com/wp-content/uploads/2025/09/19193611/email-bf1d4eed-20c8-47a3-9965-8"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2708,
+      "ms": 2566,
+      "files": {
+        "markdown": "bodies/004-robotwealth.com/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 2708,
+        "snippet": "*   ![Image 1: For The Love of The Game](https://media.robotwealth.com/wp-content/uploads/2026/04/29224153/for_the_love_of_the_game-768x660.png)\n\nThink like a trader ## [For The Love of The Game](https://robotwealth.com/for-the-love-of-the-game/)\n\nWhy the path to making money in trading runs through work you’d better find interesting Data mining and vibe quanting \n*   ![Image 2: To Trend or Not To Trend? (Wrong question)](https://media.robotwealth.com/wp-content/uploads/2026/04/11012122/elevator-768x429.png)\n\nThink like a trader \n*   ![Image 3: Brave New Backtest](https://media.robotwealth.com/wp-content/uploads/2026/03/19154151/brave_new_backtst-768x768.jpeg)\n\nThink like a trader ## [Brave New Backtest](https://robotwealth.com/brave-new-backtest/)\n\nMy last two articles on AI and trading research got more engagement than almost anything I’ve written. “More of the \n*   ![Image 4: AI Will Create Millions of Quants](https://media.robotwealth.com/wp-content/uploads/2026/03/19153217/ai-quants-768x429.png)\n\nThink like a trader \n*   ![Image 5: More of the Disease, Faster (What happens when you ask an LLM to find you an edge)](https://media.robotwealth.com/wp-content/uploads/2026/03/19150757/hamsterwheel-768x515.png)\n\nThink like a trader \n*   ![Image 6: Everything Everywhere All at Once](https://media.robotwealth.com/wp-content/uploads/2026/03/08160429/four_hats-768x419.png)\n\nThink like a trader \n*   ![Image 7: The Winter of our Pairs Trading Discontent: Problems, limitations, frustrations](https://media.robotwealth.com/wp-content/uploads/2026/03/02130642/iceberg-768x429.png)\n\nTrading strategies \n*   ![Image 8: Moneyball: Finding Undervalued Pairs Using Unconventional Metrics](https://media.robotwealth.com/wp-content/uploads/2026/02/20182905/combined_features-768x578.webp)\n\nTrading strategies \n*   ![Image 9: A Tale of Two Prices](https://media.robotwealth.com/wp-content/uploads/2025/09/19193611/email-bf1d4eed-20c8-47a3-9965-8c50508ebb04-300x158.jpg)\n\nTrading strategies ## [A Tale of Two Prices](https://robotwealth.com/a-tale-of-two-prices/)\n\nPart 1 of a series on Statistical Arbitrage for Independent Traders. It was the age of wisdom, it was the \n*   ![Image 10: Much Ado About Variance](https://media.robotwealth.com/wp-content/uploads/2026/01/11211039/image.png)\n\nQuant trading ## [Much Ado About Variance](https://robotwealth.com/much-ado-about-variance/)\n\nWhat’s Past is Prologue Let’s be honest: 2025 was a pretty good year to be a systematic trader. If you \n*   Think like a trader \n*   ![Image 11: Trading Without Edge? That’s expensive gambling, I said…](https://media.robotwealth.com/wp-content/uploads/2025/09/23150759/hamburger-beer-300x200.webp)\n\nThink like a trader",
+        "summary": "*   ![Image 1: For The Love of The Game](https://media.robotwealth.com/wp-content/uploads/2026/04/29224153/for_the_love_of_the_game-768x660.png)\n\nThink like a trader ## [For The Love of The Game](https://robotwealth.com/for-the-love-of-the-game/)\n\nWhy the path to making money in trading runs through work you’d better find interesting Data mining and vibe quanting \n*   ![Image 2: To Trend or Not To Trend? (Wrong question)](https://media.robotwealth.com/wp-content/uploads/2026/04/11012122/elevator-768x429.png)\n\nThink like a trader \n*   ![Image 3: Brave New Backtest](https://media.robotwealth.com/wp-content/uploads/2026/03/19154151/brave_new_backtst-768x768.jpeg)\n\nThink like a trader ## [Brave New Backtest](https://robotwealth.com/brave-new-backtest/)\n\nMy last two articles on AI and trading research got more engagement than almost anything I’ve written. “More of the \n*   ![Image 4: AI Will Create Millions of Quants](https://media.robotwealth.com/wp-content/uploads/2026/03/19153217/ai-quants-768x429.png)\n\nThink like a trader \n*   ![Image 5: More of the Disease, Faster (What happens when you ask an LLM to find you an edge)](https://media.robotwealth.com/wp-content/uploads/2026/03/19150757/hamsterwheel-768x515.png)\n\nThink like a trader \n*   ![Image 6: Everything Everywhere All at Once](https://media.robotwealth.com/wp-content/uploads/2026/03/08160429/four_hats-768x419.png)\n\nThink like a trader \n*   ![Image 7: The Winter of our Pairs Trading Discontent: Problems, limitations, frustrations](https://media.robotwealth.com/wp-content/uploads/2026/03/02130642/iceberg-768x429.png)\n\nTrading strategies \n*   ![Image 8: Moneyball: Finding Undervalued Pairs Using Unconventional Metrics](https://media.robotwealth.com/wp-content/uploads/2026/02/20182905/combined_features-768x578.webp)\n\nTrading strategies \n*   ![Image 9: A Tale of Two Prices](https://media.robotwealth.com/wp-content/uploads/2025/09/19193611/email-bf1d4eed-20c8-47a3-9965-8c50508ebb04-300x158.jpg)\n\nTrading strategies ## ["
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 644,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

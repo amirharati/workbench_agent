@@ -1,0 +1,87 @@
+{
+  "url": "https://notebooklm.google.com/notebook/dc15514a-e42e-472c-a95b-be723a452b09",
+  "host": "notebooklm.google.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 150,
+      "ms": 5785,
+      "title": "Sign in - Google Accounts",
+      "files": {
+        "markdown": "bodies/052-notebooklm.google.com/local.md"
+      },
+      "parsed": {
+        "title": "Sign in - Google Accounts",
+        "snippetLen": 150,
+        "snippet": "Not your computer? Use Guest mode to sign in privately. [Learn more about using Guest mode](https://support.google.com/chrome/answer/6130773?hl=en-US)",
+        "summary": "Not your computer? Use Guest mode to sign in privately. [Learn more about using Guest mode](https://support.google.com/chrome/answer/6130773?hl=en-US)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 150,
+      "ms": 7339,
+      "title": "Sign in - Google Accounts",
+      "files": {
+        "markdown": "bodies/052-notebooklm.google.com/tab.md"
+      },
+      "parsed": {
+        "title": "Sign in - Google Accounts",
+        "snippetLen": 150,
+        "snippet": "Not your computer? Use Guest mode to sign in privately. [Learn more about using Guest mode](https://support.google.com/chrome/answer/6130773?hl=en-US)",
+        "summary": "Not your computer? Use Guest mode to sign in privately. [Learn more about using Guest mode](https://support.google.com/chrome/answer/6130773?hl=en-US)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 536,
+      "ms": 1622,
+      "title": "Sign in - Google Accounts",
+      "files": {
+        "markdown": "bodies/052-notebooklm.google.com/jina.md"
+      },
+      "parsed": {
+        "title": "Sign in - Google Accounts",
+        "snippetLen": 109,
+        "snippet": "Use your Google Account\n\nEmail or phone\n\nForgot email?\n\n\nType the text you hear or see\n\n\nNext\n\nCreate account",
+        "summary": "Use your Google Account\n\nEmail or phone\n\nForgot email?\n\n\nType the text you hear or see\n\n\nNext\n\nCreate account"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 484,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "url": "https://www.ideaflow.io",
+  "host": "ideaflow.io",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2637,
+      "ms": 1897,
+      "title": "Ideaflow",
+      "files": {
+        "markdown": "bodies/045-ideaflow.io/local.md"
+      },
+      "parsed": {
+        "title": "Ideaflow",
+        "snippetLen": 2444,
+        "snippet": "*   [![](https://www.ideaflow.io/images/ideaflow-logo-white.png)](https://www.ideaflow.io/)\n*   [Home](#)\n*   [Try it!](https://www.ideaflow.io/download)\n*   [We're Hiring! JS, iOS +](https://www.ideaflow.io/careers)\n*   [Blog](https://www.ideaflow.io/blog/)\n*   [Agent-First Web](https://agentfirst.ideaflow.app/)\n*   [Contact](mailto:pleasecontact@ideaflow.io)\n\n## The Intelligence Amplification Company\n\nWe’re creating an ecosystem for humans and machines to work together to solve the world’s most important problems – starting with a notebook that augments your intelligence.\n\n[Try Ideaflow Notes](https://ideaflow.app/)[Download iOS](https://apps.apple.com/us/app/ideaflow-notes/id6463830566)[Guide](https://onboarding.ideaflow.app/)[Twitter](https://x.com/IdeaflowApp)[Follow](https://kaib430d7vl.typeform.com/to/cg7ZCvD9)\n\n\nComing Soon\n\n## Base — Your team should compound, not reset\n\nEvery week, your team re-explains decisions, re-finds context, and re-discovers what someone already knew. Base captures knowledge from Slack, meetings, and docs — then surfaces it exactly when it's needed.\n\n## Connecting people with matching puzzle pieces\n\n_There are millions of scientists trying to cure the likes of AIDS and Alzheimer’s. Maybe the cure is currently separated in different people’s heads. How can we design the web so that these half-formed solutions can come together?  \n‍  \n\\- Sir Tim Berners-Lee, Creator of the Web_  \n\n## The auto-suggest layer for human thinking\n\nConnect fragments of information from siloed sources faster than ever before.\n\nYour organization's collective memory at your fingertips.\n\n[Learn more](https://docs.google.com/forms/d/1yhBzEkGB_nyDx9mVOQHsXvF3G1ovK4_SfAvh0TYAUds/edit)\n\n\n#### Marty Weiner\n\n##### Former CTO, Reddit  \nIdeaflow Advisor\n\n#### Marty Weiner\n\n##### Former CTO, Reddit  \nIdeaflow Advisor\n\n“A key step to realizing the potential of the Web as a medium for collective intelligence.”\n\n\n#### John Devadoss\n\n##### Founding Director, Microsoft Digital Consulting  \n\n#### John Devadoss\n\n##### Founding Director, Microsoft Digital Consulting\n\n“Ideaflow is the force multiplier for business productivity in this new normal.”\n\n\n#### Tim Draper\n\n##### Founder, DFJ  \nIdeaflow Investor\n\n#### Tim Draper\n\n##### Founder, DFJ  \nIdeaflow Investor\n\n“The amount of value that can be unlocked by connecting the right people and ideas together is incredible. I’m very excited for what Ideaflow is building”.",
+        "summary": "*   [![](https://www.ideaflow.io/images/ideaflow-logo-white.png)](https://www.ideaflow.io/)\n*   [Home](#)\n*   [Try it!](https://www.ideaflow.io/download)\n*   [We're Hiring! JS, iOS +](https://www.ideaflow.io/careers)\n*   [Blog](https://www.ideaflow.io/blog/)\n*   [Agent-First Web](https://agentfirst.ideaflow.app/)\n*   [Contact](mailto:pleasecontact@ideaflow.io)\n\n## The Intelligence Amplification Company\n\nWe’re creating an ecosystem for humans and machines to work together to solve the world’s most important problems – starting with a notebook that augments your intelligence.\n\n[Try Ideaflow Notes](https://ideaflow.app/)[Download iOS](https://apps.apple.com/us/app/ideaflow-notes/id6463830566)[Guide](https://onboarding.ideaflow.app/)[Twitter](https://x.com/IdeaflowApp)[Follow](https://kaib430d7vl.typeform.com/to/cg7ZCvD9)\n\n\nComing Soon\n\n## Base — Your team should compound, not reset\n\nEvery week, your team re-explains decisions, re-finds context, and re-discovers what someone already knew. Base captures knowledge from Slack, meetings, and docs — then surfaces it exactly when it's needed.\n\n## Connecting people with matching puzzle pieces\n\n_There are millions of scientists trying to cure the likes of AIDS and Alzheimer’s. Maybe the cure is currently separated in different people’s heads. How can we design the web so that these half-formed solutions can come together?  \n‍  \n\\- Sir Tim Berners-Lee, Creator of the Web_  \n\n## The auto-suggest layer for human thinking\n\nConnect fragments of information from siloed sources faster than ever before.\n\nYour organization's collective memory at your fingertips.\n\n[Learn more](https://docs.google.com/forms/d/1yhBzEkGB_nyDx9mVOQHsXvF3G1ovK4_SfAvh0TYAUds/edit)\n\n\n#### Marty Weiner\n\n##### Former CTO, Reddit  \nIdeaflow Advisor\n\n#### Marty Weiner\n\n##### Former CTO, Reddit  \nIdeaflow Advisor\n\n“A key step to realizing the potential of the Web as a medium for collective intelligence.”\n\n\n#### John Devadoss\n\n##### Founding Director, Microsoft Digit"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2637,
+      "ms": 5487,
+      "title": "Ideaflow",
+      "files": {
+        "markdown": "bodies/045-ideaflow.io/tab.md"
+      },
+      "parsed": {
+        "title": "Ideaflow",
+        "snippetLen": 2444,
+        "snippet": "*   [![](https://www.ideaflow.io/images/ideaflow-logo-white.png)](https://www.ideaflow.io/)\n*   [Home](#)\n*   [Try it!](https://www.ideaflow.io/download)\n*   [We're Hiring! JS, iOS +](https://www.ideaflow.io/careers)\n*   [Blog](https://www.ideaflow.io/blog/)\n*   [Agent-First Web](https://agentfirst.ideaflow.app/)\n*   [Contact](mailto:pleasecontact@ideaflow.io)\n\n## The Intelligence Amplification Company\n\nWe’re creating an ecosystem for humans and machines to work together to solve the world’s most important problems – starting with a notebook that augments your intelligence.\n\n[Try Ideaflow Notes](https://ideaflow.app/)[Download iOS](https://apps.apple.com/us/app/ideaflow-notes/id6463830566)[Guide](https://onboarding.ideaflow.app/)[Twitter](https://x.com/IdeaflowApp)[Follow](https://kaib430d7vl.typeform.com/to/cg7ZCvD9)\n\n\nComing Soon\n\n## Base — Your team should compound, not reset\n\nEvery week, your team re-explains decisions, re-finds context, and re-discovers what someone already knew. Base captures knowledge from Slack, meetings, and docs — then surfaces it exactly when it's needed.\n\n## Connecting people with matching puzzle pieces\n\n_There are millions of scientists trying to cure the likes of AIDS and Alzheimer’s. Maybe the cure is currently separated in different people’s heads. How can we design the web so that these half-formed solutions can come together?  \n‍  \n\\- Sir Tim Berners-Lee, Creator of the Web_  \n\n## The auto-suggest layer for human thinking\n\nConnect fragments of information from siloed sources faster than ever before.\n\nYour organization's collective memory at your fingertips.\n\n[Learn more](https://docs.google.com/forms/d/1yhBzEkGB_nyDx9mVOQHsXvF3G1ovK4_SfAvh0TYAUds/edit)\n\n\n#### Marty Weiner\n\n##### Former CTO, Reddit  \nIdeaflow Advisor\n\n#### Marty Weiner\n\n##### Former CTO, Reddit  \nIdeaflow Advisor\n\n“A key step to realizing the potential of the Web as a medium for collective intelligence.”\n\n\n#### John Devadoss\n\n##### Founding Director, Microsoft Digital Consulting  \n\n#### John Devadoss\n\n##### Founding Director, Microsoft Digital Consulting\n\n“Ideaflow is the force multiplier for business productivity in this new normal.”\n\n\n#### Tim Draper\n\n##### Founder, DFJ  \nIdeaflow Investor\n\n#### Tim Draper\n\n##### Founder, DFJ  \nIdeaflow Investor\n\n“The amount of value that can be unlocked by connecting the right people and ideas together is incredible. I’m very excited for what Ideaflow is building”.",
+        "summary": "*   [![](https://www.ideaflow.io/images/ideaflow-logo-white.png)](https://www.ideaflow.io/)\n*   [Home](#)\n*   [Try it!](https://www.ideaflow.io/download)\n*   [We're Hiring! JS, iOS +](https://www.ideaflow.io/careers)\n*   [Blog](https://www.ideaflow.io/blog/)\n*   [Agent-First Web](https://agentfirst.ideaflow.app/)\n*   [Contact](mailto:pleasecontact@ideaflow.io)\n\n## The Intelligence Amplification Company\n\nWe’re creating an ecosystem for humans and machines to work together to solve the world’s most important problems – starting with a notebook that augments your intelligence.\n\n[Try Ideaflow Notes](https://ideaflow.app/)[Download iOS](https://apps.apple.com/us/app/ideaflow-notes/id6463830566)[Guide](https://onboarding.ideaflow.app/)[Twitter](https://x.com/IdeaflowApp)[Follow](https://kaib430d7vl.typeform.com/to/cg7ZCvD9)\n\n\nComing Soon\n\n## Base — Your team should compound, not reset\n\nEvery week, your team re-explains decisions, re-finds context, and re-discovers what someone already knew. Base captures knowledge from Slack, meetings, and docs — then surfaces it exactly when it's needed.\n\n## Connecting people with matching puzzle pieces\n\n_There are millions of scientists trying to cure the likes of AIDS and Alzheimer’s. Maybe the cure is currently separated in different people’s heads. How can we design the web so that these half-formed solutions can come together?  \n‍  \n\\- Sir Tim Berners-Lee, Creator of the Web_  \n\n## The auto-suggest layer for human thinking\n\nConnect fragments of information from siloed sources faster than ever before.\n\nYour organization's collective memory at your fingertips.\n\n[Learn more](https://docs.google.com/forms/d/1yhBzEkGB_nyDx9mVOQHsXvF3G1ovK4_SfAvh0TYAUds/edit)\n\n\n#### Marty Weiner\n\n##### Former CTO, Reddit  \nIdeaflow Advisor\n\n#### Marty Weiner\n\n##### Former CTO, Reddit  \nIdeaflow Advisor\n\n“A key step to realizing the potential of the Web as a medium for collective intelligence.”\n\n\n#### John Devadoss\n\n##### Founding Director, Microsoft Digit"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2647,
+      "ms": 3344,
+      "files": {
+        "markdown": "bodies/045-ideaflow.io/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 2442,
+        "snippet": "*   [![Image 1](https://ideaflow.io/images/ideaflow-logo-white.png)](https://ideaflow.io/)\n*   [Home](https://www.ideaflow.io/#)\n*   [Try it!](https://ideaflow.io/download)\n*   [We're Hiring! JS, iOS +](https://ideaflow.io/careers)\n*   [Blog](https://ideaflow.io/blog/)\n*   [Agent-First Web](https://agentfirst.ideaflow.app/)\n*   [Contact](mailto:pleasecontact@ideaflow.io)\n\n## The Intelligence Amplification Company\n\nWe’re creating an ecosystem for humans and machines to work together to solve the world’s most important problems – starting with a notebook that augments your intelligence.\n\n[Try Ideaflow Notes](https://ideaflow.app/)[Download iOS](https://apps.apple.com/us/app/ideaflow-notes/id6463830566)[Guide](https://onboarding.ideaflow.app/)[Twitter](https://x.com/IdeaflowApp)[Follow](https://kaib430d7vl.typeform.com/to/cg7ZCvD9)\n\n\nComing Soon\n\n## Base — Your team should compound, not reset\n\nEvery week, your team re-explains decisions, re-finds context, and re-discovers what someone already knew. Base captures knowledge from Slack, meetings, and docs — then surfaces it exactly when it's needed.\n\n## Connecting people with matching puzzle pieces\n\n_There are millions of scientists trying to cure the likes of AIDS and Alzheimer’s. Maybe the cure is currently separated in different people’s heads. How can we design the web so that these half-formed solutions can come together?\n\n‍\n\n- Sir Tim Berners-Lee, Creator of the Web_\n\n## The auto-suggest layer for human thinking\n\nConnect fragments of information from siloed sources faster than ever before.\n\nYour organization's collective memory at your fingertips.\n\n[Learn more](https://docs.google.com/forms/d/1yhBzEkGB_nyDx9mVOQHsXvF3G1ovK4_SfAvh0TYAUds/edit)\n\n\n#### Marty Weiner\n\n##### Former CTO,Reddit\n\nIdeaflow Advisor\n\n#### Marty Weiner\n\n##### Former CTO,Reddit\n\nIdeaflow Advisor\n\n“A key step to realizing the potential of the Web as a medium for collective intelligence.”\n\n\n#### John Devadoss\n\n##### Founding Director, Microsoft Digital Consulting\n\n#### John Devadoss\n\n##### Founding Director, Microsoft Digital Consulting\n\n“Ideaflow is the force multiplier for business productivity in this new normal.”\n\n\n#### Tim Draper\n\n##### Founder, DFJ\n\nIdeaflow Investor\n\n#### Tim Draper\n\n##### Founder, DFJ\n\nIdeaflow Investor\n\n“The amount of value that can be unlocked by connecting the right people and ideas together is incredible. I’m very excited for what Ideaflow is building”.",
+        "summary": "*   [![Image 1](https://ideaflow.io/images/ideaflow-logo-white.png)](https://ideaflow.io/)\n*   [Home](https://www.ideaflow.io/#)\n*   [Try it!](https://ideaflow.io/download)\n*   [We're Hiring! JS, iOS +](https://ideaflow.io/careers)\n*   [Blog](https://ideaflow.io/blog/)\n*   [Agent-First Web](https://agentfirst.ideaflow.app/)\n*   [Contact](mailto:pleasecontact@ideaflow.io)\n\n## The Intelligence Amplification Company\n\nWe’re creating an ecosystem for humans and machines to work together to solve the world’s most important problems – starting with a notebook that augments your intelligence.\n\n[Try Ideaflow Notes](https://ideaflow.app/)[Download iOS](https://apps.apple.com/us/app/ideaflow-notes/id6463830566)[Guide](https://onboarding.ideaflow.app/)[Twitter](https://x.com/IdeaflowApp)[Follow](https://kaib430d7vl.typeform.com/to/cg7ZCvD9)\n\n\nComing Soon\n\n## Base — Your team should compound, not reset\n\nEvery week, your team re-explains decisions, re-finds context, and re-discovers what someone already knew. Base captures knowledge from Slack, meetings, and docs — then surfaces it exactly when it's needed.\n\n## Connecting people with matching puzzle pieces\n\n_There are millions of scientists trying to cure the likes of AIDS and Alzheimer’s. Maybe the cure is currently separated in different people’s heads. How can we design the web so that these half-formed solutions can come together?\n\n‍\n\n- Sir Tim Berners-Lee, Creator of the Web_\n\n## The auto-suggest layer for human thinking\n\nConnect fragments of information from siloed sources faster than ever before.\n\nYour organization's collective memory at your fingertips.\n\n[Learn more](https://docs.google.com/forms/d/1yhBzEkGB_nyDx9mVOQHsXvF3G1ovK4_SfAvh0TYAUds/edit)\n\n\n#### Marty Weiner\n\n##### Former CTO,Reddit\n\nIdeaflow Advisor\n\n#### Marty Weiner\n\n##### Former CTO,Reddit\n\nIdeaflow Advisor\n\n“A key step to realizing the potential of the Web as a medium for collective intelligence.”\n\n\n#### John Devadoss\n\n##### Founding Director, Microsoft Dig"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 480,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

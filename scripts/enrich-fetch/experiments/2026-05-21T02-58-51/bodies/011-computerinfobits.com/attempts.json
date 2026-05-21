@@ -1,0 +1,75 @@
+{
+  "url": "https://computerinfobits.com/how-to-speed-up-graphics-card-fan",
+  "host": "computerinfobits.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 20834,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 1068,
+      "ms": 23686,
+      "title": "hardwareloop.net | 522: Connection timed out",
+      "files": {
+        "markdown": "bodies/011-computerinfobits.com/tab.md"
+      },
+      "parsed": {
+        "title": "hardwareloop.net | 522: Connection timed out",
+        "snippetLen": 1068,
+        "snippet": "## Connection timed out Error code 522\n\n2026-05-21 03:01:07 UTC\n\nYou\n\n### Browser\n\nWorking\n\nhardwareloop.net\n\n### Host\n\nError\n\n## What happened?\n\nThe initial connection between Cloudflare's network and the origin web server timed out. As a result, the web page can not be displayed.\n\n## What can I do?\n\n### If you're a visitor of this website:\n\nPlease try again in a few minutes.\n\n### If you're the owner of this website:\n\nContact your hosting provider letting them know your web server is not completing requests. An Error 522 means that the request was able to connect to your web server, but that the request didn't finish. The most likely cause is that something on your server is hogging resources. [Additional troubleshooting information here.](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-522/)\n\nCloudflare Ray ID: **9ff0553a2e9d9aa0** • Your IP: 156.67.94.185 • Performance & security by [Cloudflare](https://www.cloudflare.com/5xx-error-landing?utm_source=errorcode_522&utm_campaign=hardwareloop.net)",
+        "summary": "## Connection timed out Error code 522\n\n2026-05-21 03:01:07 UTC\n\nYou\n\n### Browser\n\nWorking\n\nhardwareloop.net\n\n### Host\n\nError\n\n## What happened?\n\nThe initial connection between Cloudflare's network and the origin web server timed out. As a result, the web page can not be displayed.\n\n## What can I do?\n\n### If you're a visitor of this website:\n\nPlease try again in a few minutes.\n\n### If you're the owner of this website:\n\nContact your hosting provider letting them know your web server is not completing requests. An Error 522 means that the request was able to connect to your web server, but that the request didn't finish. The most likely cause is that something on your server is hogging resources. [Additional troubleshooting information here.](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-522/)\n\nCloudflare Ray ID: **9ff0553a2e9d9aa0** • Your IP: 156.67.94.185 • Performance & security by [Cloudflare](https://www.cloudflare.com/5xx-error-landing?utm_source=errorcode_522&utm_campaign=hardwareloop.net)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": false,
+      "usable": false,
+      "reason": "timeout",
+      "bytes": 0,
+      "ms": 25008,
+      "error": "AbortError: This operation was aborted",
+      "files": {
+        "error": "bodies/011-computerinfobits.com/jina.error.txt",
+        "detail": "bodies/011-computerinfobits.com/jina.detail.txt"
+      },
+      "parsed": null,
+      "diagnosis": {
+        "reason": "timeout",
+        "detail": "AbortError: This operation was aborted"
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 482,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

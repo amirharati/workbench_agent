@@ -1,0 +1,87 @@
+{
+  "url": "https://app.clickup.com/9003012021/v/dc/8c9y3xn-22/8c9y3xn-42",
+  "host": "app.clickup.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 896,
+      "ms": 930,
+      "title": "ClickUp",
+      "files": {
+        "markdown": "bodies/005-app.clickup.com/local.md"
+      },
+      "parsed": {
+        "title": "ClickUp",
+        "snippetLen": 776,
+        "snippet": "ClickUp is best experienced using our mobile app.\n\nOur web app has features so BIG, they won't fit on a small screen.\n\n[![](https://app-cdn.clickup.com/assets/images/app_store_badge.svg)](https://apps.apple.com/us/app/clickup-manage-teams-tasks/id1535098836)\n\n\n[Open in free mobile app](https://apps.apple.com/us/app/clickup-manage-teams-tasks/id1535098836)\n\nContinue on web anyway\n\nClickUp is best experienced using our mobile app.\n\nOur web app has features so BIG, they won't fit on a small screen.\n\n[![](https://app-cdn.clickup.com/assets/images/google_play_badge.svg)](https://play.google.com/store/apps/details?id=co.mangotechnologies.clickup)\n\n\n[Open in free mobile app](https://play.google.com/store/apps/details?id=co.mangotechnologies.clickup)\n\nContinue on web anyway",
+        "summary": "ClickUp is best experienced using our mobile app.\n\nOur web app has features so BIG, they won't fit on a small screen.\n\n[![](https://app-cdn.clickup.com/assets/images/app_store_badge.svg)](https://apps.apple.com/us/app/clickup-manage-teams-tasks/id1535098836)\n\n\n[Open in free mobile app](https://apps.apple.com/us/app/clickup-manage-teams-tasks/id1535098836)\n\nContinue on web anyway\n\nClickUp is best experienced using our mobile app.\n\nOur web app has features so BIG, they won't fit on a small screen.\n\n[![](https://app-cdn.clickup.com/assets/images/google_play_badge.svg)](https://play.google.com/store/apps/details?id=co.mangotechnologies.clickup)\n\n\n[Open in free mobile app](https://play.google.com/store/apps/details?id=co.mangotechnologies.clickup)\n\nContinue on web anyway"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 130,
+      "ms": 8264,
+      "title": "ClickUp",
+      "files": {
+        "markdown": "bodies/005-app.clickup.com/tab.md"
+      },
+      "parsed": {
+        "title": "ClickUp",
+        "snippetLen": 130,
+        "snippet": "[](https://clickup.com/?noRedirect=true)\n\n#### Welcome back!\n\nDon’t have an account? [Sign up](https://app.clickup.com/signup)\n\nor",
+        "summary": "[](https://clickup.com/?noRedirect=true)\n\n#### Welcome back!\n\nDon’t have an account? [Sign up](https://app.clickup.com/signup)\n\nor"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 895,
+      "ms": 7331,
+      "title": "Login",
+      "files": {
+        "markdown": "bodies/005-app.clickup.com/jina.md"
+      },
+      "parsed": {
+        "title": "Login",
+        "snippetLen": 307,
+        "snippet": "[](https://clickup.com/?noRedirect=true)\n#### Welcome back!\n\nDon’t have an account?[Sign up](https://app.clickup.com/signup)\n\nContinue with Google Continue with Google. Opens in new tab\n\n Continue with SSO \n\nor\n\n\n[Forgot Password?](https://app.clickup.com/login/forgot)[Need help?](https://clickup.com/help)",
+        "summary": "[](https://clickup.com/?noRedirect=true)\n#### Welcome back!\n\nDon’t have an account?[Sign up](https://app.clickup.com/signup)\n\nContinue with Google Continue with Google. Opens in new tab\n\n Continue with SSO \n\nor\n\n\n[Forgot Password?](https://app.clickup.com/login/forgot)[Need help?](https://clickup.com/help)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 499,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

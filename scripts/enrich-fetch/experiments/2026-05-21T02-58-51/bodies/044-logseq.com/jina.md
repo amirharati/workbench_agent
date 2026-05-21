@@ -1,0 +1,87 @@
+Connect your notes, **increase understanding.**
+
+Image
+
+**Jessica**
+
+👥 Person
+
+👤 Jessica Albert
+
+Image
+
+**Intertwingled**
+
+📖 Book
+
+👤 Peter Morville
+
+## Today, everyone is a
+
+## knowledge worker.
+
+### Logseq is the open toolbox for
+
+#### workflows that deal with lots of information:
+
+*   🧑‍🎓**Students**
+
+*   🎓**Academics**
+
+*   🖋**Writers**
+
+*   📆**Project Managers**
+
+*   💻**Developers**
+
+## **Review notes**
+
+## Capture, structure, and review all of your class notes with ease using the[Linked References](https://logseq.com/), [Queries](https://docs.logseq.com/#/page/queries), and [Search](https://docs.logseq.com/#/page/search) features.
+
+## **Memorize facts**
+
+## Remember facts and insights using the [Flashcards](https://docs.logseq.com/#/page/flashcards) feature.
+
+## **Outline essays**
+
+## Organize your thoughts and ideas, and quickly turn them into outlines using [Block References](https://docs.logseq.com/#/page/term%2Fblock%20reference).
+
+## Braindump everything into.**New ideas will pop up with time.**
+
+## New ideas will pop up with time.
+
+### Using Logseq helps you organize your thoughts and ideas
+
+#### so that you can come up with new outputs more easily.
+
+![Image 1: image](https://logseq.com/promise-0-0.9e77bf1b.png)
+
+## A helpful community
+
+**1946**users online currently
+
+Feature requests, bugs, discussions
+
+![Image 2: image](https://logseq.com/full-bg-text.c1d5a921.png)
+
+## Overwhelmed and constantly **afraid of losing your thoughts?**
+
+## Everyday you’re bombarded with information.Your non-connected notes lead to missing context when **you need it. That gets future-you into trouble.**
+
+## Logseq helps you turn this daily mess into structured information.
+
+## **Gain clarity** in your everyday life:
+
+Communicate better. Stay on top of your 
+
+relationships, conversations, and meetings.
+
+![Image 3: image](https://logseq.com/benefit-0.94936967.png)
+
+“I mostly use it for work: keeping daily notes & meeting notes. It's the best solution I've found to managing my tasks (and I only use a fraction of the features there).”
+
+**User Feedback**by oskr
+
+Via
+
+Discord[](https://discord.com/channels/725182569297215569/725188616695054356/1045646531090448436)

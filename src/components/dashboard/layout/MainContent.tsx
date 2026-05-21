@@ -9,6 +9,7 @@ import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
 import { SettingsView } from '../SettingsView';
 import { ImportStudioView } from '../ImportStudioView';
+import { EnrichmentPanel } from '../EnrichmentPanel';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
 import { CollectionsView } from '../CollectionsView';
@@ -810,6 +811,10 @@ export const MainContent: React.FC<MainContentProps> = ({
                 >
                   Import
                 </button>
+                <EnrichmentPanel
+                  preselectedIds={filteredBookmarkItems.map((i) => i.id)}
+                  onComplete={onRefresh}
+                />
                 <button
                   onClick={() => setShowAddBookmark(true)}
                   disabled={!onCreateItem}

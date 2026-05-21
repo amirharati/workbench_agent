@@ -1,0 +1,85 @@
+{
+  "url": "https://convexvalue.com/docs",
+  "host": "convexvalue.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 1089,
+      "ms": 1027,
+      "title": "ConvexValue | Financial Analytics Browser",
+      "files": {
+        "markdown": "bodies/012-convexvalue.com/local.md"
+      },
+      "parsed": {
+        "title": "ConvexValue | Financial Analytics Browser",
+        "snippetLen": 1089,
+        "snippet": "## Docs\n\nWelcome to ConvexValue.\n\nThe ConvexValue Terminal is a desktop app. It is like a web-browser (Chrome, Safari, etc.) but instead of browsing the internet, you browse a curated selection of financial analytics modules.\n\nIt allows you to create and save split-pane dashboards. You can also share them with others and clone dashboards others have published.\n\nThe following guide covers how to operate The ConvexValue Terminal.\n\nYou can also build your own ConvexValue apps with the scaffold tool and Codex:\n\n```\nnpm create convexvalue@latest my-app\ncd my-app\ncvx login\nnpm run dev:cvx\ncodex\n```\n\nIt is also available as a [long-form video crash course](https://youtu.be/uGe5wL8lTp0) , and as a [3-minute flash tutorial](https://youtu.be/KGh1Ifp9d0Q).\n\nAny questions, issues, feedback - anything! - I am at your service.\n\nReach out via email at [\\[email protected\\]](https://convexvalue.com/cdn-cgi/l/email-protection) or Twitter/X: [@ConvexValue](https://x.com/ConvexValue) .\n\n[Get Started](https://convexvalue.com/docs/start) [Build an App](https://convexvalue.com/docs/build-an-app)",
+        "summary": "## Docs\n\nWelcome to ConvexValue.\n\nThe ConvexValue Terminal is a desktop app. It is like a web-browser (Chrome, Safari, etc.) but instead of browsing the internet, you browse a curated selection of financial analytics modules.\n\nIt allows you to create and save split-pane dashboards. You can also share them with others and clone dashboards others have published.\n\nThe following guide covers how to operate The ConvexValue Terminal.\n\nYou can also build your own ConvexValue apps with the scaffold tool and Codex:\n\n```\nnpm create convexvalue@latest my-app\ncd my-app\ncvx login\nnpm run dev:cvx\ncodex\n```\n\nIt is also available as a [long-form video crash course](https://youtu.be/uGe5wL8lTp0) , and as a [3-minute flash tutorial](https://youtu.be/KGh1Ifp9d0Q).\n\nAny questions, issues, feedback - anything! - I am at your service.\n\nReach out via email at [\\[email protected\\]](https://convexvalue.com/cdn-cgi/l/email-protection) or Twitter/X: [@ConvexValue](https://x.com/ConvexValue) .\n\n[Get Started](https://convexvalue.com/docs/start) [Build an App](https://convexvalue.com/docs/build-an-app)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 1034,
+      "ms": 4582,
+      "title": "ConvexValue | Financial Analytics Browser",
+      "files": {
+        "markdown": "bodies/012-convexvalue.com/tab.md"
+      },
+      "parsed": {
+        "title": "ConvexValue | Financial Analytics Browser",
+        "snippetLen": 1034,
+        "snippet": "## Docs\n\nWelcome to ConvexValue.\n\nThe ConvexValue Terminal is a desktop app. It is like a web-browser (Chrome, Safari, etc.) but instead of browsing the internet, you browse a curated selection of financial analytics modules.\n\nIt allows you to create and save split-pane dashboards. You can also share them with others and clone dashboards others have published.\n\nThe following guide covers how to operate The ConvexValue Terminal.\n\nYou can also build your own ConvexValue apps with the scaffold tool and Codex:\n\n```\nnpm create convexvalue@latest my-app\ncd my-app\ncvx login\nnpm run dev:cvx\ncodex\n```\n\nIt is also available as a [long-form video crash course](https://youtu.be/uGe5wL8lTp0) , and as a [3-minute flash tutorial](https://youtu.be/KGh1Ifp9d0Q).\n\nAny questions, issues, feedback - anything! - I am at your service.\n\nReach out via email at jb@ConvexValue.com or Twitter/X: [@ConvexValue](https://x.com/ConvexValue) .\n\n[Get Started](https://convexvalue.com/docs/start) [Build an App](https://convexvalue.com/docs/build-an-app)",
+        "summary": "## Docs\n\nWelcome to ConvexValue.\n\nThe ConvexValue Terminal is a desktop app. It is like a web-browser (Chrome, Safari, etc.) but instead of browsing the internet, you browse a curated selection of financial analytics modules.\n\nIt allows you to create and save split-pane dashboards. You can also share them with others and clone dashboards others have published.\n\nThe following guide covers how to operate The ConvexValue Terminal.\n\nYou can also build your own ConvexValue apps with the scaffold tool and Codex:\n\n```\nnpm create convexvalue@latest my-app\ncd my-app\ncvx login\nnpm run dev:cvx\ncodex\n```\n\nIt is also available as a [long-form video crash course](https://youtu.be/uGe5wL8lTp0) , and as a [3-minute flash tutorial](https://youtu.be/KGh1Ifp9d0Q).\n\nAny questions, issues, feedback - anything! - I am at your service.\n\nReach out via email at jb@ConvexValue.com or Twitter/X: [@ConvexValue](https://x.com/ConvexValue) .\n\n[Get Started](https://convexvalue.com/docs/start) [Build an App](https://convexvalue.com/docs/build-an-app)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 1031,
+      "ms": 781,
+      "files": {
+        "markdown": "bodies/012-convexvalue.com/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 1031,
+        "snippet": "## Docs\n\nWelcome to ConvexValue.\n\nThe ConvexValue Terminal is a desktop app. It is like a web-browser (Chrome, Safari, etc.) but instead of browsing the internet, you browse a curated selection of financial analytics modules.\n\nIt allows you to create and save split-pane dashboards. You can also share them with others and clone dashboards others have published.\n\nThe following guide covers how to operate The ConvexValue Terminal.\n\nYou can also build your own ConvexValue apps with the scaffold tool and Codex:\n\n```\nnpm create convexvalue@latest my-app\ncd my-app\ncvx login\nnpm run dev:cvx\ncodex\n```\n\nIt is also available as a [long-form video crash course](https://youtu.be/uGe5wL8lTp0), and as a [3-minute flash tutorial](https://youtu.be/KGh1Ifp9d0Q).\n\nAny questions, issues, feedback - anything! - I am at your service.\n\nReach out via email at jb@ConvexValue.com or Twitter/X: [@ConvexValue](https://x.com/ConvexValue).\n\n[Get Started](https://convexvalue.com/docs/start)[Build an App](https://convexvalue.com/docs/build-an-app)",
+        "summary": "## Docs\n\nWelcome to ConvexValue.\n\nThe ConvexValue Terminal is a desktop app. It is like a web-browser (Chrome, Safari, etc.) but instead of browsing the internet, you browse a curated selection of financial analytics modules.\n\nIt allows you to create and save split-pane dashboards. You can also share them with others and clone dashboards others have published.\n\nThe following guide covers how to operate The ConvexValue Terminal.\n\nYou can also build your own ConvexValue apps with the scaffold tool and Codex:\n\n```\nnpm create convexvalue@latest my-app\ncd my-app\ncvx login\nnpm run dev:cvx\ncodex\n```\n\nIt is also available as a [long-form video crash course](https://youtu.be/uGe5wL8lTp0), and as a [3-minute flash tutorial](https://youtu.be/KGh1Ifp9d0Q).\n\nAny questions, issues, feedback - anything! - I am at your service.\n\nReach out via email at jb@ConvexValue.com or Twitter/X: [@ConvexValue](https://x.com/ConvexValue).\n\n[Get Started](https://convexvalue.com/docs/start)[Build an App](https://convexvalue.com/docs/build-an-app)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 487,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

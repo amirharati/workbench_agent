@@ -1,0 +1,85 @@
+{
+  "url": "https://www.vagrantup.com",
+  "host": "vagrantup.com",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2899,
+      "ms": 1785,
+      "title": "Vagrant | HashiCorp Developer",
+      "files": {
+        "markdown": "bodies/129-vagrantup.com/local.md"
+      },
+      "parsed": {
+        "title": "Vagrant | HashiCorp Developer",
+        "snippetLen": 2462,
+        "snippet": "## Development Environments Made Easy\n\n\n*   [](https://www.vagrantup.com/vagrant/install)Install\n    \n*   [](https://www.vagrantup.com/vagrant/tutorials)Tutorials\n    \n*   [](https://www.vagrantup.com/vagrant/docs)Documentation\n    \n\nVagrant is the command line utility for managing the lifecycle of virtual machines. Isolate dependencies and their configuration within a single disposable and consistent environment.\n\n[\n\nLearn more about Vagrant features\n\n\n\n](https://www.vagrantup.com/vagrant/intro)\n\n\nUse Vagrant to create and configure a reproducible and portable work environment.\n\nHCP Vagrant Registry\n\nVirtual boxes for Linux, Laravel and any development environment\n\nTry HCP Vagrant Registry for free\n\n*   Boxes\n    \n    The package format for Vagrant environments - create your own or use one from the public catalog.\n    \n*   Vagrantfile\n    \n    Describe your virtual machine's configuration and how to provision it.\n    \n*   vagrant up\n    \n    Create and configure your virtual machine with the single most important Vagrant CLI command.\n    \n\n*   Synced Folders\n    \n    Sync files from your host machine to the guest machine.\n    \n*   Networking\n    \n    Access your virtual machines through the high-level networking set up by Vagrant.\n    \n*   Configure Your Network\n    \n    Forward network traffic from your local machine to your virtual guest machine running on Vagrant.\n    \n\n*   Plugins\n    \n    Add additional functionality to Vagrant via plugins.\n    \n*   Providers\n    \n    Manage other types of machines via providers.\n    \n*   Triggers\n    \n    Execute commands on your system before or after Vagrant operations.\n    \n*   Vagrant Share\n    \n    Share your Vagrant environment with anyone via a single command.\n    \n\n*   The Nomad Autoscaler\n    \n    Try out the autoscaling feature of HashiCorp Nomad in a Vagrant environment.\n    \n*   Data Encryption in Vault\n    \n    Try out data encryption in a Java application with HashiCorp Vault in a Vagrant environment.\n    \n\nHashiCorp has some community guidelines to ensure our public forums are a safe space for everyone. When contributing to Vagrant, please respect the same guidelines.\n\nVagrant is not the only tool to manage virtual machines and development environments.\n\n*   [](https://www.vagrantup.com/vagrant/intro/vs/cli-tools)CLI Tools\n    \n*   [](https://www.vagrantup.com/vagrant/intro/vs/docker)Docker\n    \n*   [](https://www.vagrantup.com/vagrant/intro/vs/terraform)Terraform",
+        "summary": "## Development Environments Made Easy\n\n\n*   [](https://www.vagrantup.com/vagrant/install)Install\n    \n*   [](https://www.vagrantup.com/vagrant/tutorials)Tutorials\n    \n*   [](https://www.vagrantup.com/vagrant/docs)Documentation\n    \n\nVagrant is the command line utility for managing the lifecycle of virtual machines. Isolate dependencies and their configuration within a single disposable and consistent environment.\n\n[\n\nLearn more about Vagrant features\n\n\n\n](https://www.vagrantup.com/vagrant/intro)\n\n\nUse Vagrant to create and configure a reproducible and portable work environment.\n\nHCP Vagrant Registry\n\nVirtual boxes for Linux, Laravel and any development environment\n\nTry HCP Vagrant Registry for free\n\n*   Boxes\n    \n    The package format for Vagrant environments - create your own or use one from the public catalog.\n    \n*   Vagrantfile\n    \n    Describe your virtual machine's configuration and how to provision it.\n    \n*   vagrant up\n    \n    Create and configure your virtual machine with the single most important Vagrant CLI command.\n    \n\n*   Synced Folders\n    \n    Sync files from your host machine to the guest machine.\n    \n*   Networking\n    \n    Access your virtual machines through the high-level networking set up by Vagrant.\n    \n*   Configure Your Network\n    \n    Forward network traffic from your local machine to your virtual guest machine running on Vagrant.\n    \n\n*   Plugins\n    \n    Add additional functionality to Vagrant via plugins.\n    \n*   Providers\n    \n    Manage other types of machines via providers.\n    \n*   Triggers\n    \n    Execute commands on your system before or after Vagrant operations.\n    \n*   Vagrant Share\n    \n    Share your Vagrant environment with anyone via a single command.\n    \n\n*   The Nomad Autoscaler\n    \n    Try out the autoscaling feature of HashiCorp Nomad in a Vagrant environment.\n    \n*   Data Encryption in Vault\n    \n    Try out data encryption in a Java application with HashiCorp Vault in a Vagrant environment.\n    \n\nHash"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2899,
+      "ms": 5468,
+      "title": "Vagrant | HashiCorp Developer",
+      "files": {
+        "markdown": "bodies/129-vagrantup.com/tab.md"
+      },
+      "parsed": {
+        "title": "Vagrant | HashiCorp Developer",
+        "snippetLen": 2462,
+        "snippet": "## Development Environments Made Easy\n\n\n*   [](https://www.vagrantup.com/vagrant/install)Install\n    \n*   [](https://www.vagrantup.com/vagrant/tutorials)Tutorials\n    \n*   [](https://www.vagrantup.com/vagrant/docs)Documentation\n    \n\nVagrant is the command line utility for managing the lifecycle of virtual machines. Isolate dependencies and their configuration within a single disposable and consistent environment.\n\n[\n\nLearn more about Vagrant features\n\n\n\n](https://www.vagrantup.com/vagrant/intro)\n\n\nUse Vagrant to create and configure a reproducible and portable work environment.\n\nHCP Vagrant Registry\n\nVirtual boxes for Linux, Laravel and any development environment\n\nTry HCP Vagrant Registry for free\n\n*   Boxes\n    \n    The package format for Vagrant environments - create your own or use one from the public catalog.\n    \n*   Vagrantfile\n    \n    Describe your virtual machine's configuration and how to provision it.\n    \n*   vagrant up\n    \n    Create and configure your virtual machine with the single most important Vagrant CLI command.\n    \n\n*   Synced Folders\n    \n    Sync files from your host machine to the guest machine.\n    \n*   Networking\n    \n    Access your virtual machines through the high-level networking set up by Vagrant.\n    \n*   Configure Your Network\n    \n    Forward network traffic from your local machine to your virtual guest machine running on Vagrant.\n    \n\n*   Plugins\n    \n    Add additional functionality to Vagrant via plugins.\n    \n*   Providers\n    \n    Manage other types of machines via providers.\n    \n*   Triggers\n    \n    Execute commands on your system before or after Vagrant operations.\n    \n*   Vagrant Share\n    \n    Share your Vagrant environment with anyone via a single command.\n    \n\n*   The Nomad Autoscaler\n    \n    Try out the autoscaling feature of HashiCorp Nomad in a Vagrant environment.\n    \n*   Data Encryption in Vault\n    \n    Try out data encryption in a Java application with HashiCorp Vault in a Vagrant environment.\n    \n\nHashiCorp has some community guidelines to ensure our public forums are a safe space for everyone. When contributing to Vagrant, please respect the same guidelines.\n\nVagrant is not the only tool to manage virtual machines and development environments.\n\n*   [](https://www.vagrantup.com/vagrant/intro/vs/cli-tools)CLI Tools\n    \n*   [](https://www.vagrantup.com/vagrant/intro/vs/docker)Docker\n    \n*   [](https://www.vagrantup.com/vagrant/intro/vs/terraform)Terraform",
+        "summary": "## Development Environments Made Easy\n\n\n*   [](https://www.vagrantup.com/vagrant/install)Install\n    \n*   [](https://www.vagrantup.com/vagrant/tutorials)Tutorials\n    \n*   [](https://www.vagrantup.com/vagrant/docs)Documentation\n    \n\nVagrant is the command line utility for managing the lifecycle of virtual machines. Isolate dependencies and their configuration within a single disposable and consistent environment.\n\n[\n\nLearn more about Vagrant features\n\n\n\n](https://www.vagrantup.com/vagrant/intro)\n\n\nUse Vagrant to create and configure a reproducible and portable work environment.\n\nHCP Vagrant Registry\n\nVirtual boxes for Linux, Laravel and any development environment\n\nTry HCP Vagrant Registry for free\n\n*   Boxes\n    \n    The package format for Vagrant environments - create your own or use one from the public catalog.\n    \n*   Vagrantfile\n    \n    Describe your virtual machine's configuration and how to provision it.\n    \n*   vagrant up\n    \n    Create and configure your virtual machine with the single most important Vagrant CLI command.\n    \n\n*   Synced Folders\n    \n    Sync files from your host machine to the guest machine.\n    \n*   Networking\n    \n    Access your virtual machines through the high-level networking set up by Vagrant.\n    \n*   Configure Your Network\n    \n    Forward network traffic from your local machine to your virtual guest machine running on Vagrant.\n    \n\n*   Plugins\n    \n    Add additional functionality to Vagrant via plugins.\n    \n*   Providers\n    \n    Manage other types of machines via providers.\n    \n*   Triggers\n    \n    Execute commands on your system before or after Vagrant operations.\n    \n*   Vagrant Share\n    \n    Share your Vagrant environment with anyone via a single command.\n    \n\n*   The Nomad Autoscaler\n    \n    Try out the autoscaling feature of HashiCorp Nomad in a Vagrant environment.\n    \n*   Data Encryption in Vault\n    \n    Try out data encryption in a Java application with HashiCorp Vault in a Vagrant environment.\n    \n\nHash"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 2803,
+      "ms": 4250,
+      "files": {
+        "markdown": "bodies/129-vagrantup.com/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 2333,
+        "snippet": "## Development Environments Made Easy\n\n\n*   [](https://developer.hashicorp.com/vagrant/install)Install\n\n*   [](https://developer.hashicorp.com/vagrant/tutorials)Tutorials\n\n*   [](https://developer.hashicorp.com/vagrant/docs)Documentation\n\nVagrant is the command line utility for managing the lifecycle of virtual machines. Isolate dependencies and their configuration within a single disposable and consistent environment.\n\n[Learn more about Vagrant features](https://developer.hashicorp.com/vagrant/intro)\n\n\nUse Vagrant to create and configure a reproducible and portable work environment.\n\nHCP Vagrant Registry\n\nVirtual boxes for Linux, Laravel and any development environment\n\nTry HCP Vagrant Registry for free\n\n*   Boxes\n\nThe package format for Vagrant environments - create your own or use one from the public catalog. \n*   Vagrantfile\n\nDescribe your virtual machine's configuration and how to provision it. \n*   vagrant up\n\nCreate and configure your virtual machine with the single most important Vagrant CLI command. \n\n*   Synced Folders\n\nSync files from your host machine to the guest machine. \n*   Networking\n\nAccess your virtual machines through the high-level networking set up by Vagrant. \n*   Configure Your Network\n\nForward network traffic from your local machine to your virtual guest machine running on Vagrant. \n\n*   Plugins\n\nAdd additional functionality to Vagrant via plugins. \n*   Providers\n\nManage other types of machines via providers. \n*   Triggers\n\nExecute commands on your system before or after Vagrant operations. \n*   Vagrant Share\n\nShare your Vagrant environment with anyone via a single command. \n\n*   The Nomad Autoscaler\n\nTry out the autoscaling feature of HashiCorp Nomad in a Vagrant environment. \n*   Data Encryption in Vault\n\nTry out data encryption in a Java application with HashiCorp Vault in a Vagrant environment. \n\nHashiCorp has some community guidelines to ensure our public forums are a safe space for everyone. When contributing to Vagrant, please respect the same guidelines.\n\nVagrant is not the only tool to manage virtual machines and development environments.\n\n*   [](https://developer.hashicorp.com/vagrant/intro/vs/cli-tools)CLI Tools\n\n*   [](https://developer.hashicorp.com/vagrant/intro/vs/docker)Docker\n\n*   [](https://developer.hashicorp.com/vagrant/intro/vs/terraform)Terraform",
+        "summary": "## Development Environments Made Easy\n\n\n*   [](https://developer.hashicorp.com/vagrant/install)Install\n\n*   [](https://developer.hashicorp.com/vagrant/tutorials)Tutorials\n\n*   [](https://developer.hashicorp.com/vagrant/docs)Documentation\n\nVagrant is the command line utility for managing the lifecycle of virtual machines. Isolate dependencies and their configuration within a single disposable and consistent environment.\n\n[Learn more about Vagrant features](https://developer.hashicorp.com/vagrant/intro)\n\n\nUse Vagrant to create and configure a reproducible and portable work environment.\n\nHCP Vagrant Registry\n\nVirtual boxes for Linux, Laravel and any development environment\n\nTry HCP Vagrant Registry for free\n\n*   Boxes\n\nThe package format for Vagrant environments - create your own or use one from the public catalog. \n*   Vagrantfile\n\nDescribe your virtual machine's configuration and how to provision it. \n*   vagrant up\n\nCreate and configure your virtual machine with the single most important Vagrant CLI command. \n\n*   Synced Folders\n\nSync files from your host machine to the guest machine. \n*   Networking\n\nAccess your virtual machines through the high-level networking set up by Vagrant. \n*   Configure Your Network\n\nForward network traffic from your local machine to your virtual guest machine running on Vagrant. \n\n*   Plugins\n\nAdd additional functionality to Vagrant via plugins. \n*   Providers\n\nManage other types of machines via providers. \n*   Triggers\n\nExecute commands on your system before or after Vagrant operations. \n*   Vagrant Share\n\nShare your Vagrant environment with anyone via a single command. \n\n*   The Nomad Autoscaler\n\nTry out the autoscaling feature of HashiCorp Nomad in a Vagrant environment. \n*   Data Encryption in Vault\n\nTry out data encryption in a Java application with HashiCorp Vault in a Vagrant environment. \n\nHashiCorp has some community guidelines to ensure our public forums are a safe space for everyone. When contributing to Vagrant, please respect"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 485,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

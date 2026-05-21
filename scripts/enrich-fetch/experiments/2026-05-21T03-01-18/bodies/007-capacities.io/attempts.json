@@ -1,0 +1,87 @@
+{
+  "url": "https://capacities.io/faq",
+  "host": "capacities.io",
+  "sourceKind": "article",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 458,
+      "ms": 2555,
+      "title": "FAQ",
+      "files": {
+        "markdown": "bodies/007-capacities.io/local.md"
+      },
+      "parsed": {
+        "title": "FAQ",
+        "snippetLen": 458,
+        "snippet": "## Frequently Asked Questions\n\nFind answers to common questions about Capacities.\n\n### Help & Product Questions\n\n### Roadmap & User Engagement\n\n### Collaboration\n\n### Team & About\n\n### Differences to other Apps\n\n### Plans, Payments, and Refunds\n\n## Ready to organize your mind?\n\nJoin thousands of thinkers who use Capacities to capture and connect their ideas.\n\n[Get Started Free](https://app.capacities.io/start)[View Pricing](https://capacities.io/pricing)",
+        "summary": "## Frequently Asked Questions\n\nFind answers to common questions about Capacities.\n\n### Help & Product Questions\n\n### Roadmap & User Engagement\n\n### Collaboration\n\n### Team & About\n\n### Differences to other Apps\n\n### Plans, Payments, and Refunds\n\n## Ready to organize your mind?\n\nJoin thousands of thinkers who use Capacities to capture and connect their ideas.\n\n[Get Started Free](https://app.capacities.io/start)[View Pricing](https://capacities.io/pricing)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 458,
+      "ms": 4891,
+      "title": "FAQ",
+      "files": {
+        "markdown": "bodies/007-capacities.io/tab.md"
+      },
+      "parsed": {
+        "title": "FAQ",
+        "snippetLen": 458,
+        "snippet": "## Frequently Asked Questions\n\nFind answers to common questions about Capacities.\n\n### Help & Product Questions\n\n### Roadmap & User Engagement\n\n### Collaboration\n\n### Team & About\n\n### Differences to other Apps\n\n### Plans, Payments, and Refunds\n\n## Ready to organize your mind?\n\nJoin thousands of thinkers who use Capacities to capture and connect their ideas.\n\n[Get Started Free](https://app.capacities.io/start)[View Pricing](https://capacities.io/pricing)",
+        "summary": "## Frequently Asked Questions\n\nFind answers to common questions about Capacities.\n\n### Help & Product Questions\n\n### Roadmap & User Engagement\n\n### Collaboration\n\n### Team & About\n\n### Differences to other Apps\n\n### Plans, Payments, and Refunds\n\n## Ready to organize your mind?\n\nJoin thousands of thinkers who use Capacities to capture and connect their ideas.\n\n[Get Started Free](https://app.capacities.io/start)[View Pricing](https://capacities.io/pricing)"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 4302,
+      "ms": 834,
+      "title": "FAQ | Capacities",
+      "files": {
+        "markdown": "bodies/007-capacities.io/jina.md"
+      },
+      "parsed": {
+        "title": "FAQ | Capacities",
+        "snippetLen": 4139,
+        "snippet": "[Capacities](https://capacities.io/)\n\nProduct \n\nResources \n\n[Download](https://capacities.io/download-app)\n\n[Pricing](https://capacities.io/pricing)\n\n### Discover\n\n*   [Features What makes Capacities unique](https://capacities.io/product)\n*   [What's new Latest releases](https://capacities.io/whats-new)\n*   [Roadmap See what we are working on](https://capacities.io/roadmap)\n\n### Plans\n\n*   [Capacities Pro AI, queries, calendar & more](https://capacities.io/pro)\n*   [Capacities Believer Support our mission](https://capacities.io/believer)\n\n### Learn\n\n*   [Documentation Guides and tutorials](https://docs.capacities.io/)\n*   [YouTube Watch our workflow & showcase videos](https://www.youtube.com/@CapacitiesHQ)\n*   [Help Get answers to your questions](https://capacities.io/help)\n*   [Blog Updates and insights](https://capacities.io/blog)\n*   [Compare See how Capacities compares to other tools](https://capacities.io/compare)\n\n\n# Frequently Asked Questions\n\nFind answers to common questions about Capacities.\n\n### Help & Product Questions\n\nI need help with the product, where should I look?\n\nDoes Capacities have an offline mode?\n\nIs my data protected and secure?\n\nWhat devices are supported?\n\nWhat languages are supported?\n\nWhy can I use Capacities for free?\n\nHow can I delete my account?\n\nI want to know what data you stored about me?\n\n### Roadmap & User Engagement\n\nWhat is the roadmap for Capacities?\n\nAn important feature is missing. Can I submit feature requests?\n\nCapacities is amazing. How can I support you?\n\n### Collaboration\n\nI love the vision of Capacities. Can I work with you?\n\n### Team & About\n\nWho are the people behind Capacities?\n\n### Differences to other Apps\n\nCapacities looks similar to Notion. What's the difference?\n\n### Plans, Payments, and Refunds\n\nWhich plans do you offer and how much does it cost?\n\nWhich payment options are supported and how are my payments being processed?\n\nWhat's the difference between Capacities Pro and Capacities Believer?\n\nDo you offer discounts?\n\nHow does VAT work with the payments?\n\nHow can I cancel my plan?\n\nWhat happens if I cancel a plan?\n\nWhat is your refund policy?\n\nCan I change my payment method?\n\nDo you offer any discounts for non-profit organizations?\n\nDo you offer team plans or organizational plans?\n\n## Ready to organize your mind?\n\nJoin thousands of thinkers who use Capacities to capture and connect their ideas.\n\n[Get Started Free](https://app.capacities.io/start)[View Pricing](https://capacities.io/pricing)\n\n[Capacities](https://capacities.io/)\nThe studio for your mind\n\n[](https://discord.gg/3eBP9YxHgQ)[](https://www.youtube.com/@CapacitiesHQ)[](https://substack.com/@capacities)[](https://twitter.com/capacitiesHQ)[](https://www.instagram.com/capacitieshq/)[](https://www.reddit.com/r/capacitiesapp/)\n\n### Product\n\n*   [Features](https://capacities.io/product)\n*   [Pro](https://capacities.io/pro)\n*   [Believer](https://capacities.io/believer)\n*   [Pricing](https://capacities.io/pricing)\n*   [Download](https://capacities.io/download-app)\n*   [Roadmap](https://capacities.io/roadmap)\n*   [What's new](https://capacities.io/whats-new)\n*   [What's next?](https://capacities.io/whats-next)\n*   [What's Not Next?](https://capacities.io/whats-not-next)\n\n### Resources\n\n*   [Documentation](https://docs.capacities.io/)\n*   [Blog](https://capacities.io/blog)\n*   [Compare](https://capacities.io/compare)\n*   [Help](https://capacities.io/help)\n*   [FAQ](https://capacities.io/faq)\n*   [Community](https://capacities.io/community)\n*   [Newsletter](https://capacities.io/newsletter)\n\n### Company\n\n*   [Team](https://capacities.io/about/team)\n*   [Principles](https://capacities.io/about/principles)\n*   [Sustainability](https://capacities.io/about/sustainability)\n*   [Contact](https://capacities.io/contact)\n*   [Status](https://status.capacities.io/)\n*    Supported by ![Image 1: Media Lab Bayern](https://capacities.io/_ipx/f_webp&q_80&s_40x40/misc/MLB_logo.png)Media Lab Bayern \n\n### Legal\n\n*   [Terms & Conditions](https://capacities.io/terms-and-conditions)\n*   [Imprint](https://capacities.io/impressum)\n\n© 2026 Capacities Labs GmbH. All rights reserved.",
+        "summary": "[Capacities](https://capacities.io/)\n\nProduct \n\nResources \n\n[Download](https://capacities.io/download-app)\n\n[Pricing](https://capacities.io/pricing)\n\n### Discover\n\n*   [Features What makes Capacities unique](https://capacities.io/product)\n*   [What's new Latest releases](https://capacities.io/whats-new)\n*   [Roadmap See what we are working on](https://capacities.io/roadmap)\n\n### Plans\n\n*   [Capacities Pro AI, queries, calendar & more](https://capacities.io/pro)\n*   [Capacities Believer Support our mission](https://capacities.io/believer)\n\n### Learn\n\n*   [Documentation Guides and tutorials](https://docs.capacities.io/)\n*   [YouTube Watch our workflow & showcase videos](https://www.youtube.com/@CapacitiesHQ)\n*   [Help Get answers to your questions](https://capacities.io/help)\n*   [Blog Updates and insights](https://capacities.io/blog)\n*   [Compare See how Capacities compares to other tools](https://capacities.io/compare)\n\n\n# Frequently Asked Questions\n\nFind answers to common questions about Capacities.\n\n### Help & Product Questions\n\nI need help with the product, where should I look?\n\nDoes Capacities have an offline mode?\n\nIs my data protected and secure?\n\nWhat devices are supported?\n\nWhat languages are supported?\n\nWhy can I use Capacities for free?\n\nHow can I delete my account?\n\nI want to know what data you stored about me?\n\n### Roadmap & User Engagement\n\nWhat is the roadmap for Capacities?\n\nAn important feature is missing. Can I submit feature requests?\n\nCapacities is amazing. How can I support you?\n\n### Collaboration\n\nI love the vision of Capacities. Can I work with you?\n\n### Team & About\n\nWho are the people behind Capacities?\n\n### Differences to other Apps\n\nCapacities looks similar to Notion. What's the difference?\n\n### Plans, Payments, and Refunds\n\nWhich plans do you offer and how much does it cost?\n\nWhich payment options are supported and how are my payments being processed?\n\nWhat's the difference between Capacities Pro and Capacities Believer?\n\nDo you offer disc"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 485,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

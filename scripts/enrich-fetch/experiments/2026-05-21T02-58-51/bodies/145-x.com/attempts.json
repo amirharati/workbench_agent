@@ -1,0 +1,87 @@
+{
+  "url": "https://x.com/quantymacro/status/1640375531374878721",
+  "host": "x.com",
+  "sourceKind": "x",
+  "attempts": [
+    {
+      "provider": "local",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 292,
+      "ms": 1033,
+      "title": "@quantymacro: Here's my (bold) attempt on building a strategy based on Euro-Dollar dominance, ",
+      "files": {
+        "markdown": "bodies/145-x.com/local.md"
+      },
+      "parsed": {
+        "title": "@quantymacro: Here's my (bold) attempt on building a strategy based on Euro-Dollar dominance, ",
+        "snippetLen": 289,
+        "snippet": "# @quantymacro\nHere's my (bold) attempt on building a strategy based on Euro-Dollar dominance, and thought process behind it.\nInfluenced by:\n@macrocephalopod @HangukQuant @hughesanalytics @cryptoquantHQ @0xLightcycle @thodoha @CliffordAsness @chanep @GautierMarti1 \nhttps://t.co/6xFxiDSvf4",
+        "summary": "# @quantymacro\nHere's my (bold) attempt on building a strategy based on Euro-Dollar dominance, and thought process behind it.\nInfluenced by:\n@macrocephalopod @HangukQuant @hughesanalytics @cryptoquantHQ @0xLightcycle @thodoha @CliffordAsness @chanep @GautierMarti1 \nhttps://t.co/6xFxiDSvf4",
+        "quotedAuthor": "macrocephalopod"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "tab",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 246,
+      "ms": 5022,
+      "title": "qm on X: \"Here's my (bold) attempt on building a strategy based on Euro-Dollar dominance, and thought process behind it.\n\nInfluenced by:\n@macrocephalopod @HangukQuant @hughesanalytics @cryptoquantHQ @0xLightcycle @thodoha @CliffordAsness @chanep @GautierMarti1 \n\nhttps://t.co/6xFxiDSvf4\" / X",
+      "files": {
+        "markdown": "bodies/145-x.com/tab.md"
+      },
+      "parsed": {
+        "title": "qm on X: \"Here's my (bold) attempt on building a strategy based on Euro-Dollar dominance, and thought process behind it.\n\nInfluenced by:\n@macrocephalopod @HangukQuant @hughesanalytics @cryptoquantHQ @0xLightcycle @thodoha @CliffordAsness @chanep @GautierMarti1 \n\nhttps://t.co/6xFxiDSvf4\" / X",
+        "snippetLen": 245,
+        "snippet": "Did someone say … cookies?\nX and its partners use cookies to provide you with a better, safer and faster service and to support our business. Some cookies are necessary to use our services, improve our services, and make sure they work properly.",
+        "summary": "Did someone say … cookies?\nX and its partners use cookies to provide you with a better, safer and faster service and to support our business. Some cookies are necessary to use our services, improve our services, and make sure they work properly."
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "jina",
+      "ok": true,
+      "usable": true,
+      "reason": "ok",
+      "bytes": 974,
+      "ms": 891,
+      "files": {
+        "markdown": "bodies/145-x.com/jina.md"
+      },
+      "parsed": {
+        "snippetLen": 957,
+        "snippet": "## Post\n## Conversation\n[qm](https://x.com/quantymacro)\n[@quantymacro](https://x.com/quantymacro)\nHere's my (bold) attempt on building a strategy based on Euro-Dollar dominance, and thought process behind it. Influenced by:\n[@macrocephalopod](https://x.com/macrocephalopod)\n[@HangukQuant](https://x.com/HangukQuant)\n[@hughesanalytics](https://x.com/hughesanalytics)\n[@cryptoquantHQ](https://x.com/cryptoquantHQ)\n[@0xLightcycle](https://x.com/0xLightcycle)\n@thodoha\n[@CliffordAsness](https://x.com/CliffordAsness)\n[@chanep](https://x.com/chanep)\n[@GautierMarti1](https://x.com/GautierMarti1)\n[![Image 1](https://pbs.twimg.com/card_img/2057297832902905856/6vc1QD6_?format=jpg&name=small) FX Euro-Dollar Dominance Strategy](https://t.co/6xFxiDSvf4)\n[From quantymacro.substack.com](https://t.co/6xFxiDSvf4)\n[3:29 PM · Mar 27, 2023](https://x.com/quantymacro/status/1640375531374878721)\n[16K Views](https://x.com/quantymacro/status/1640375531374878721/analytics)",
+        "summary": "## Post\n## Conversation\n[qm](https://x.com/quantymacro)\n[@quantymacro](https://x.com/quantymacro)\nHere's my (bold) attempt on building a strategy based on Euro-Dollar dominance, and thought process behind it. Influenced by:\n[@macrocephalopod](https://x.com/macrocephalopod)\n[@HangukQuant](https://x.com/HangukQuant)\n[@hughesanalytics](https://x.com/hughesanalytics)\n[@cryptoquantHQ](https://x.com/cryptoquantHQ)\n[@0xLightcycle](https://x.com/0xLightcycle)\n@thodoha\n[@CliffordAsness](https://x.com/CliffordAsness)\n[@chanep](https://x.com/chanep)\n[@GautierMarti1](https://x.com/GautierMarti1)\n[![Image 1](https://pbs.twimg.com/card_img/2057297832902905856/6vc1QD6_?format=jpg&name=small) FX Euro-Dollar Dominance Strategy](https://t.co/6xFxiDSvf4)\n[From quantymacro.substack.com](https://t.co/6xFxiDSvf4)\n[3:29 PM · Mar 27, 2023](https://x.com/quantymacro/status/1640375531374878721)\n[16K Views](https://x.com/quantymacro/status/1640375531374878721/analytics)",
+        "quotedAuthor": "thodoha"
+      },
+      "diagnosis": {
+        "reason": "ok",
+        "detail": null
+      }
+    },
+    {
+      "provider": "markdown-new",
+      "ok": false,
+      "usable": false,
+      "reason": "provider_error",
+      "bytes": 0,
+      "ms": 494,
+      "files": {},
+      "parsed": null,
+      "diagnosis": {
+        "reason": "provider_error",
+        "detail": null
+      }
+    }
+  ]
+}

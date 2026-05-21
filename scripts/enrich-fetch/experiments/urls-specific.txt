@@ -1,0 +1,53 @@
+# Diverse bookmark URLs from backup
+# source: /Users/amir/Downloads/backup-before-migration-v5-2026-05-20T19-49-49-276Z.json
+# items in backup: 8707, picked: 50, per-host: 10, random
+https://www.reddit.com/r/options/wiki/toolbox/links	# r/options Wiki: Options Trading Resources
+https://t.co/zi7hsRxSBb	# https://t.co/zi7hsRxSBb
+https://medium.com/syncedreview/how-to-train-a-very-large-and-deep-model-on-one-gpu-7b7edfe2d072	# How to Train a Very Large and Deep Model on One GPU?
+https://www.youtube.com/watch?v=8YI5hGucHSg	# Canadian Citizenship Test 2023 (414 Questions)
+https://github.com/openlm-research/open_llama	# openlm-research/open_llama
+https://www.linkedin.com/posts/aleksandermolak_python-causality-causalinference-activity-7016346967383420928-4xGe	# Aleksander Molak on LinkedIn: #python #causality #causalinference #machinelearni
+https://x.com/rohanpaul_ai/status/1775608234180558851	# rohanpaul_ai: This BitMat package should be massive for the new era…
+https://www.reddit.com/r/reinforcementlearning/comments/gid83v/solutions_manual_for_sutton_barto_2nd_edition	# Solutions manual for Sutton & Barto 2nd Edition : r/reinforcementlearning
+https://t.co/BLuowaPpQU	# https://t.co/BLuowaPpQU
+https://medium.com/kbtg-life/implementing-face-liveness-detection-in-flutter-with-high-performance-6997edd28b29	# Implementing Face Liveness Detection in Flutter With High Performance
+https://www.youtube.com/watch?t=551s&v=pt4auu_ZPm4	# Introduction to BACKTRADER [Backtesting Trading Strategies Library for Python]
+https://github.com/brynhayder/reinforcement_learning_an_introduction/tree/master	# brynhayder/reinforcement_learning_an_introduction: Notes and exercise solutions 
+https://www.linkedin.com/posts/generative-artificial-intelligence_chatgpt-ugcPost-7019600139677794305-9okW	# ChatGPT on LinkedIn: ChatGPT | 32 comments
+https://x.com/FiSurgi/status/1765207468391465127	# FiSurgi: Just finished. My final takeaway: Just f**king read it. Ps…
+https://www.reddit.com/r/nvidia/comments/ulfxc2/my_experience_with_3090_ti_and_coil_whine	# r/nvidia - My experience with 3090 ti and coil whine
+https://t.co/YrDbnGlZIk	# https://t.co/YrDbnGlZIk
+https://medium.com/@shawnchen_17577/efficient-qa-in-langchain-mixing-small-and-large-language-models-2c3a25eb9f2a	# Efficient QA in LangChain: Mixing Small and Large Language Models
+https://www.youtube.com/watch?v=SmmIJ7wjsnw	# Remote Desktop with Gaming support
+https://github.com/amirharati/workbench_agent	# amirharati/workbench_agent
+https://www.linkedin.com/posts/vincent-moens-9bb91972_tensordict-machinelearning-pythonprogramming-activity-7016132418881376256-S0Z7	# Vincent Moens on LinkedIn: #tensordict #machinelearning #pythonprogramming #pyth
+https://x.com/matthijspoot/status/1708888627223158822	# matthijspoot: @pyquantnews And the code (in python) is on GitHub 👌…
+https://www.reddit.com/r/LocalLLaMA/comments/1d4yi7v/what_tools_are_like_cursorsh_but_using_local	# What tools are like Cursor.sh but using local models : r/LocalLLaMA
+https://t.co/ybe9S1HzEv	# https://t.co/ybe9S1HzEv
+https://medium.com/@kutovenko/flutter-offline-speech-recognition-with-vosk-645791c312fa	# Flutter offline speech recognition with VOSK
+https://www.youtube.com/watch?v=UkGbyS9vrFA	# Raindrop + Obsidian/Logseq/Roam = 🔥🔥🔥 | How I Use Raindrop with my note-takin
+https://github.com/yissachar/awesome-dart	# yissachar/awesome-dart: A curated list of awesome Dart frameworks, libraries, an
+https://x.com/chrysb/status/1825561834151436288	# chrysb: Woke up to a great piece about @joinrosebud on @mashable…
+https://www.reddit.com/r/SaaS/comments/1lwlk57/how_i_used_claude_to_validate_my_idea_in_10	# How I used Claude to validate my idea in 10 minutes (Now at $2.3k MRR) : r/SaaS
+https://t.co/qxymiq7Zmb	# https://t.co/qxymiq7Zmb
+https://medium.com/microsoftazure/build-and-deploy-fast-and-portable-speech-recognition-applications-with-onnx-runtime-and-whisper-5bf0969dd56b	# Build and deploy fast and portable speech recognition applications with ONNX Run
+https://www.youtube.com/watch?v=O8Un3pg84Zg	# Every RTX 4090 Owner Needs To Do This! Undervolt + Power Limit
+https://github.com/trailofbits/algo	# trailofbits/algo: Set up a personal VPN in the cloud
+https://x.com/quantymacro/status/1640375531374878721	# quantymacro: Here's my (bold) attempt on building a strategy based on…
+https://www.reddit.com/r/SideProject/comments/1c6ch2w/i_generated_25000_startup_ideas_with_ai_by	# I generated 25000 startup ideas with AI by scanning Reddit for pain : r/SideProj
+https://t.co/t7x4IEj0EJ	# https://t.co/t7x4IEj0EJ
+https://medium.com/@lyndseyscott/keenasr-ios-tutorial-6d299b7fff4d	# Keen ASR iOS Tutorial
+https://www.youtube.com/watch?v=7VzXHUTqE7E	# Liquid Cooling vs. Air Cooling Benchmark In-Depth (NH-D15, NZXT X62, & More)
+https://github.com/huggingface/diffusion-models-class	# huggingface/diffusion-models-class: Materials for the Hugging Face Diffusion Mod
+https://x.com/krypticmouse/status/1777354442825724235	# krypticmouse: @nezubn @akankshanc @rzsgrt @CohereForAI Hi! Make sure you join th
+https://www.reddit.com/r/askTO/comments/blwgnk/looking_for_a_good_local_computer_shop_to_build_a	# r/askTO - Looking for a good local computer shop to build a PC
+https://t.co/rdcR3F6o6T	# https://t.co/rdcR3F6o6T
+https://medium.com/flutter-community/flutter-login-with-rest-api-and-sqlite-using-blocs-61866fafc844	# Flutter Login with REST API and SQLITE using Blocs.
+https://www.youtube.com/watch?t=13s&v=FbrNHpXaWkE	# Supplements - User Manual For Humans S1 E11 - Dr Ekberg
+https://github.com/mitutitu16/Awesome-Mobile-Machine-Learning	# mitutitu16/Awesome-Mobile-Machine-Learning: A curated list of awesome mobile mac
+https://x.com/deliprao/status/1742990019185250383	# deliprao: My instructor copy arrived. Excited to dive into this tome!…
+https://www.reddit.com/r/nvidia/comments/yskxc0/4090_coil_whine_survey	# r/nvidia - 4090 Coil Whine Survey
+https://t.co/PkHi8HhfLv	# https://t.co/PkHi8HhfLv
+https://www.youtube.com/watch?v=xl8TNhsBG0o	# Hands-On Introduction To Quantitative Trading | Yale School of Management
+https://github.com/amirharati?tab=repositories	# Your Repositories
+https://x.com/austinvhuang/status/1824877790153584730	# austinvhuang: I’m working on a little something to make GPU programming…
