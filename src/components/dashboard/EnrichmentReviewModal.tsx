@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import { getAllItems } from '../../lib/db';
-import { enrichBatch, enrichOne, getAllEnrichments, loadRawBody, type ItemEnrichment } from '../../lib/enrichment';
+import { enrichBatch, enrichOne, getAllEnrichments, loadRawBody, reextractAI, type ItemEnrichment } from '../../lib/enrichment';
 import { ItemFieldInventory } from './ItemFieldInventory';
 
 type StatusFilter = 'all' | 'ok' | 'failed' | 'skipped' | 'other';
@@ -120,6 +120,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
     null
   );
   const [refetchError, setRefetchError] = useState('');
+  const [rerunningAi, setRerunningAi] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -219,6 +220,27 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
       setRawError(e instanceof Error ? e.message : 'Failed to load dump');
     } finally {
       setRawLoading(false);
+    }
+  };
+
+  const handleRerunAi = async () => {
+    if (!active?.item.id || rerunningAi || refetching) return;
+    setRerunningAi(true);
+    setRefetchError('');
+    try {
+      const result = await reextractAI(active.item.id);
+      await load();
+      if (result.skipped || result.message) {
+        if (result.skipped && result.message !== 'ok') {
+          setRefetchError(`Re-run AI: ${result.message}`);
+        } else if (result.message && result.message !== 'ok') {
+          setRefetchError(`Re-run AI: ${result.message}`);
+        }
+      }
+    } catch (e) {
+      setRefetchError(e instanceof Error ? e.message : 'Re-run AI failed');
+    } finally {
+      setRerunningAi(false);
     }
   };
 
@@ -502,8 +524,26 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                 </button>
                 <button
                   type="button"
+                  onClick={handleRerunAi}
+                  disabled={refetching || rerunningAi || enrich?.status !== 'ok'}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: 'var(--text-xs)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 4,
+                    background: 'var(--bg-panel)',
+                    color: 'var(--text)',
+                    cursor: refetching || rerunningAi || enrich?.status !== 'ok' ? 'not-allowed' : 'pointer',
+                    opacity: refetching || rerunningAi || enrich?.status !== 'ok' ? 0.6 : 1,
+                  }}
+                  title="Re-run AI extraction from cached snippet (no network fetch)"
+                >
+                  {rerunningAi ? 'Re-running AI…' : 'Re-run AI'}
+                </button>
+                <button
+                  type="button"
                   onClick={handleRefetch}
-                  disabled={refetching}
+                  disabled={refetching || rerunningAi}
                   style={{
                     marginLeft: 'auto',
                     padding: '4px 10px',
@@ -512,8 +552,8 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                     borderRadius: 4,
                     background: 'var(--bg-panel)',
                     color: 'var(--text)',
-                    cursor: refetching ? 'wait' : 'pointer',
-                    opacity: refetching ? 0.7 : 1,
+                    cursor: refetching || rerunningAi ? 'wait' : 'pointer',
+                    opacity: refetching || rerunningAi ? 0.7 : 1,
                   }}
                   title="Re-fetch this item only (hybrid pipeline + AI)"
                 >
@@ -617,7 +657,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                 <Section
                   title="AI summary"
                   empty={
-                    !enrich?.summary?.trim()
+                    !enrich?.summary?.trim() && !enrich?.aiKeyPoints?.length
                       ? enrich?.status === 'ok' && enrich.aiStatus && enrich.aiStatus !== 'ok'
                         ? enrich.aiError || aiStatusHint[enrich.aiStatus] || 'No AI summary'
                         : enrich?.status === 'ok' && enrich.aiStatus === 'ok'
@@ -629,6 +669,12 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                   }
                 >
                   {enrich?.summary?.trim()}
+                  {enrich?.aiKeyPoints?.length ? (
+                    <>
+                      {'\n\n'}
+                      {enrich.aiKeyPoints.map((p) => `• ${p}`).join('\n')}
+                    </>
+                  ) : null}
                 </Section>
 
                 <ItemFieldInventory item={active.item} enrichment={enrich} />

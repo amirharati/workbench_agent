@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "fetch-test": "node scripts/enrich-fetch/fetch-test.mjs",
-    "fetch-experiment": "node scripts/enrich-fetch/run-experiment.mjs"
+    "fetch-experiment": "node scripts/enrich-fetch/run-experiment.mjs",
+    "fetch-ai-eval": "node scripts/enrich-fetch/run-ai-eval.mjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

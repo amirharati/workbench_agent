@@ -18,6 +18,7 @@ export * from './parse';
 export {
   enrichOne,
   enrichBatch,
+  reextractAI,
   checkEligibility,
   checkUrlEligibility,
   getEnrichmentState,

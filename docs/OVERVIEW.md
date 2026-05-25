@@ -88,6 +88,8 @@ Chrome MV3 extension
 - AI infra baseline: pluggable client layer (`src/lib/ai`) with OpenRouter-compatible chat adapter plus optional Chrome native/on-device provider path, persisted AI Settings (provider/model/base URL/API key), timeout + error handling, strict model-match toggle, and Settings test prompt with provider-returned model display.
 - Bookmark-grounded AI starter: Bookmarks view supports “Ask AI” over current filtered bookmark scope, with grounded context assembly and visible source refs (`[B1]`, `[B2]`, ...).
 - Import Studio: Bookmarks → Import — **file** (Netscape HTML, CSV, JSON; content-based **auto-detect**; `.js`/`.txt` JSON-like payloads), **X bookmarks export** adapter, **Chrome bookmarks API** (`getTree`), preview + stats, optional project/collection target, **`Commit to DB`** with dedupe/merge (`bulkImportBookmarks`, batch IndexedDB transaction). Import Studio **AI tab** still mock only. **Follow-ups:** cover/provenance on `metadata`, folder→collection mapping, very-large-library scale (see [`BACKLOG.md`](BACKLOG.md)).
+- Fetch enrichment service (Task 01): `src/lib/enrichment` shipped with hybrid provider routing (X/video/article), `item_enrichment` IndexedDB store, disk raw cache (`rawRef`), and `buildItemText()` contract for downstream AI categorization.
+- AI extraction tuning (Task 01.5): sourceKind-aware prompts (`v2`/`v2.1`), CLI eval harness (`npm run fetch-ai-eval`) on saved corpus, AI-only rerun path (`reextractAI`), and richer extraction fields (`summary`, `keyPoints`, `improvedTitle`, `tags`) validated in-app.
 
 ---
 
@@ -102,6 +104,7 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Area | Status |
 |------|--------|
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
+| **Enrichment product UX** | Fetch + tuned extraction pipeline shipped, but current Enrich/Results flow is dev-oriented; final user workflow placement and indicators are still pending. |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | Recent items works; pinned / favorites / trash mostly placeholders (needs fields + UX). |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
@@ -121,4 +124,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-05-10 — Import Studio **commit + X adapter + batch import**; IndexedDB **v4** placements/dedup; dashboard aggregate/common tabs + DnD tab strip; workspace append; placement-aware delete and side-panel copy flows; see [`BACKLOG.md`](BACKLOG.md).*
+*Last updated: 2026-05-24 — Fetch enrichment service (Task 01) and AI extraction tuning (Task 01.5) closed: hybrid fetch + enrichment storage + AI-only rerun + prompt/eval harness shipped; next focus is Task 02 categorization.*

@@ -251,6 +251,7 @@ export function buildAllDataModelFields(
     { key: 'snippet', label: 'snippet' },
     { key: 'summary', label: 'summary' },
     { key: 'aiTags', label: 'aiTags' },
+    { key: 'aiKeyPoints', label: 'aiKeyPoints' },
     { key: 'quotedText', label: 'quotedText' },
     { key: 'quotedAuthor', label: 'quotedAuthor' },
     { key: 'channel', label: 'channel' },
@@ -274,6 +275,9 @@ export function buildAllDataModelFields(
     }
     if (key === 'aiTags' && enrich?.aiTags?.length) {
       raw = enrich.aiTags.join(', ');
+    }
+    if (key === 'aiKeyPoints' && enrich?.aiKeyPoints?.length) {
+      raw = enrich.aiKeyPoints.join('; ');
     }
     const val = clip(raw as string | undefined);
     rows.push(
@@ -416,6 +420,11 @@ export function buildFillableFields(
   }[] = [
     { id: 'snippet', label: 'Main text (snippet)', get: (e) => e.snippet },
     { id: 'summary', label: 'AI summary', get: (e) => e.summary },
+    {
+      id: 'aiKeyPoints',
+      label: 'AI key points',
+      get: (e) => (e.aiKeyPoints?.length ? e.aiKeyPoints.join('\n') : null),
+    },
     { id: 'quotedText', label: 'Quoted tweet', get: (e) => e.quotedText },
     { id: 'quotedAuthor', label: 'Quote author', get: (e) => e.quotedAuthor },
     { id: 'channel', label: 'Channel', get: (e) => e.channel },

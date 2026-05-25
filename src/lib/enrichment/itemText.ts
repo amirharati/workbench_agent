@@ -44,10 +44,23 @@ export function buildItemText(
   }
   if (enrichment?.channel) lines.push(`Channel: ${enrichment.channel}`);
   if (enrichment?.description) lines.push(`Description: ${enrichment.description}`);
-  if (enrichment?.snippet?.trim()) {
-    lines.push(`Enrichment:\n${enrichment.snippet.trim()}`);
-  } else if (enrichment?.summary?.trim()) {
-    lines.push(`Enrichment:\n${enrichment.summary.trim()}`);
+  const snippet = enrichment?.snippet?.trim() || '';
+  const aiSummary = enrichment?.aiStatus === 'ok' ? enrichment.summary?.trim() || '' : '';
+
+  if (snippet) {
+    lines.push(`Enrichment:\n${snippet}`);
+  } else if (aiSummary) {
+    lines.push(`Enrichment:\n${aiSummary}`);
+  }
+
+  if (aiSummary && aiSummary !== snippet) {
+    lines.push(`Summary:\n${aiSummary}`);
+  }
+
+  const keyPoints =
+    enrichment?.aiStatus === 'ok' ? enrichment.aiKeyPoints?.filter((p) => p.trim()) : undefined;
+  if (keyPoints?.length) {
+    lines.push(`Key points:\n${keyPoints.map((p) => `- ${p.trim()}`).join('\n')}`);
   }
 
   return lines.join('\n\n');

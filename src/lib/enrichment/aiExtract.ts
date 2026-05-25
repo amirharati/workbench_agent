@@ -1,10 +1,18 @@
 import { AIClientError } from '../ai/types';
+import type { AISettings } from '../ai/types';
 import { runAICompletion } from '../ai/client';
 import { loadAISettings } from '../ai/settings';
-import type { EnrichmentAIStatus } from './types';
+import type { EnrichmentAIStatus, SourceKind } from './types';
+import {
+  buildExtractUserContent,
+  getSystemPrompt,
+  type EnrichmentAIHints,
+  type PromptVariant,
+} from './prompts';
 
 export type EnrichmentAIExtract = {
   summary?: string;
+  keyPoints?: string[];
   improvedTitle?: string;
   tags?: string[];
 };
@@ -16,27 +24,34 @@ export type EnrichmentAIOutcome = {
   at: number;
 };
 
-const SYSTEM_PROMPT = `You extract structured metadata from web page content for a bookmark manager.
-Return ONLY valid JSON (no markdown fences) with this shape:
-{
-  "summary": "2-3 sentence summary of the main content",
-  "improvedTitle": "clean human-readable title without site suffix",
-  "tags": ["tag1", "tag2", "tag3"]
-}
-Rules:
-- summary: factual, concise, no fluff
-- improvedTitle: omit " | Medium", " - Reddit", etc.; empty string if unknown
-- tags: 3-5 lowercase topic tags; empty array if unclear
-- If content is a login wall, paywall, or error page, return {"summary":"","improvedTitle":"","tags":[]}`;
+export type ExtractEnrichmentOptions = {
+  sourceKind?: SourceKind;
+  hints?: EnrichmentAIHints;
+  /** CLI / tests — skip chrome.storage lookup */
+  settings?: AISettings;
+  promptVariant?: PromptVariant;
+};
 
-function parseJsonResponse(text: string): EnrichmentAIExtract | null {
+const SUMMARY_MAX = 3000;
+const KEY_POINT_MAX = 400;
+
+function parseKeyPoints(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const points = value
+    .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+    .map((p) => p.trim().slice(0, KEY_POINT_MAX))
+    .slice(0, 8);
+  return points.length ? points : undefined;
+}
+
+export function parseJsonResponse(text: string): EnrichmentAIExtract | null {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = (fenced ? fenced[1] : trimmed).trim();
   try {
     const parsed = JSON.parse(candidate) as Record<string, unknown>;
     const summary =
-      typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, 2000) : undefined;
+      typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, SUMMARY_MAX) : undefined;
     const improvedTitle =
       typeof parsed.improvedTitle === 'string'
         ? parsed.improvedTitle.trim().slice(0, 300)
@@ -47,8 +62,10 @@ function parseJsonResponse(text: string): EnrichmentAIExtract | null {
           .map((t) => t.trim().toLowerCase().slice(0, 40))
           .slice(0, 8)
       : undefined;
+    const keyPoints = parseKeyPoints(parsed.keyPoints);
     return {
       summary: summary || undefined,
+      keyPoints,
       improvedTitle: improvedTitle || undefined,
       tags: tags?.length ? tags : undefined,
     };
@@ -60,6 +77,7 @@ function parseJsonResponse(text: string): EnrichmentAIExtract | null {
 function hasUsefulExtract(data: EnrichmentAIExtract): boolean {
   return Boolean(
     data.summary?.trim() ||
+      data.keyPoints?.length ||
       data.improvedTitle?.trim() ||
       (data.tags && data.tags.length > 0)
   );
@@ -69,10 +87,11 @@ function hasUsefulExtract(data: EnrichmentAIExtract): boolean {
 export async function extractEnrichmentWithAI(
   markdown: string,
   url: string,
-  title?: string
+  title?: string,
+  options?: ExtractEnrichmentOptions
 ): Promise<EnrichmentAIOutcome> {
   const at = Date.now();
-  const settings = await loadAISettings();
+  const settings = options?.settings ?? (await loadAISettings());
   if (!settings.apiKey.trim()) {
     return {
       status: 'not_configured',
@@ -90,17 +109,24 @@ export async function extractEnrichmentWithAI(
     };
   }
 
+  const sourceKind = options?.sourceKind ?? 'article';
+  const variant = options?.promptVariant ?? 'v2';
+  const maxOutputTokens = Math.max(settings.maxOutputTokens, variant === 'v2' ? 1200 : 700);
+
   try {
-    const response = await runAICompletion(settings, {
-      taskType: 'summarize',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `URL: ${url}\nCurrent title: ${title || '(none)'}\n\nContent:\n${body}`,
-        },
-      ],
-    });
+    const response = await runAICompletion(
+      { ...settings, maxOutputTokens },
+      {
+        taskType: 'summarize',
+        messages: [
+          { role: 'system', content: getSystemPrompt(variant, sourceKind) },
+          {
+            role: 'user',
+            content: buildExtractUserContent(url, title, body, options?.hints),
+          },
+        ],
+      }
+    );
     const parsed = parseJsonResponse(response.text);
     if (!parsed) {
       return {

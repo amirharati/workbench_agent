@@ -294,7 +294,16 @@ export async function enrichOne(
       aiOutcome = await extractEnrichmentWithAI(
         parsed.snippet || cleanMarkdown,
         item.url,
-        parsed.title || item.title
+        parsed.title || item.title,
+        {
+          sourceKind,
+          hints: {
+            quotedText: parsed.quotedText,
+            quotedAuthor: parsed.quotedAuthor,
+            channel: parsed.channel,
+            description: parsed.description,
+          },
+        }
       );
       aiExtract = aiOutcome.data;
       if (aiExtract?.improvedTitle) {
@@ -357,6 +366,7 @@ export async function enrichOne(
       channel: parsed.channel,
       description: parsed.description,
       aiTags: aiExtract?.tags,
+      aiKeyPoints: aiExtract?.keyPoints,
       aiStatus: aiOutcome?.status,
       aiError: aiOutcome?.error,
       aiAt: aiOutcome?.at,
@@ -389,6 +399,85 @@ export async function enrichOne(
     await putEnrichment(failed);
     return { itemId, status: 'failed', errorCode };
   }
+}
+
+/** Re-run AI extraction from cached snippet — no network fetch. */
+export async function reextractAI(itemId: string): Promise<EnrichmentResult> {
+  const item = await getItem(itemId);
+  if (!item?.url) {
+    return { itemId, status: 'failed', errorCode: 'excluded', message: 'no_item' };
+  }
+
+  const existing = await getEnrichment(itemId);
+  if (!existing || existing.status !== 'ok') {
+    return {
+      itemId,
+      status: existing?.status ?? 'none',
+      skipped: true,
+      message: 'needs_successful_fetch',
+    };
+  }
+
+  const snippet = existing.snippet?.trim() || '';
+  if (snippet.length < ENRICHMENT_DEFAULTS.minUsefulSnippetChars) {
+    return {
+      itemId,
+      status: 'ok',
+      skipped: true,
+      message: 'snippet_too_short',
+    };
+  }
+
+  const sourceKind = existing.sourceKind ?? classifySourceKind(item.url, item);
+  const aiOutcome = await extractEnrichmentWithAI(
+    snippet,
+    item.url,
+    existing.fetchedTitle || item.title,
+    {
+      sourceKind,
+      hints: {
+        quotedText: existing.quotedText,
+        quotedAuthor: existing.quotedAuthor,
+        channel: existing.channel,
+        description: existing.description,
+      },
+    }
+  );
+
+  const aiExtract = aiOutcome.data;
+  let tier2Applied = existing.tier2Applied;
+  if (aiExtract) {
+    const applied = await applyItemTier2Updates(
+      item,
+      aiExtract.improvedTitle || existing.fetchedTitle,
+      sourceKind,
+      aiExtract
+    );
+    if (applied.length > 0) {
+      tier2Applied = [...new Set([...(tier2Applied || []), ...applied])];
+    }
+  }
+
+  const now = Date.now();
+  const record: ItemEnrichment = {
+    ...existing,
+    summary: aiExtract?.summary,
+    fetchedTitle: aiExtract?.improvedTitle || existing.fetchedTitle,
+    aiTags: aiExtract?.tags,
+    aiKeyPoints: aiExtract?.keyPoints,
+    aiStatus: aiOutcome.status,
+    aiError: aiOutcome.error,
+    aiAt: aiOutcome.at,
+    tier2Applied,
+    updated_at: now,
+  };
+  await putEnrichment(record);
+
+  return {
+    itemId,
+    status: 'ok',
+    message: aiOutcome.status === 'ok' ? undefined : aiOutcome.status,
+  };
 }
 
 async function resolveBatchItems(options: EnrichBatchOptions): Promise<Item[]> {

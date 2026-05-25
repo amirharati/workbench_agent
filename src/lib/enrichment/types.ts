@@ -63,6 +63,8 @@ export interface ItemEnrichment {
   fetchSourceId?: string;
   /** AI-generated tags (suggested; may be merged onto Item.tags) */
   aiTags?: string[];
+  /** AI-extracted bullet points for search/categorization */
+  aiKeyPoints?: string[];
   /** LLM extraction outcome (only set when fetch succeeded and AI step ran) */
   aiStatus?: EnrichmentAIStatus;
   aiError?: string;

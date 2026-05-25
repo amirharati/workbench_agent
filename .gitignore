@@ -1,3 +1,6 @@
+# dbx-ignore metadata folder - not needed in version control
+.dbx-ignore/
+
 # Dependencies
 node_modules/
 package-lock.json
