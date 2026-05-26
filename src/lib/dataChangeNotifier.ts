@@ -25,6 +25,9 @@ export type DataChangeReason =
   | 'workspace.delete'
   | 'snapshot.add'
   | 'import.replace'
+  | 'enrichment.update'
+  | 'categorization.update'
+  | 'pipeline.clear'
   | 'unknown';
 
 export interface DataChangeEvent {

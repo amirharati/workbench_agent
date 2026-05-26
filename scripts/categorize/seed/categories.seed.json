@@ -1,0 +1,581 @@
+{
+  "version": 1,
+  "taxonomyVersion": 4,
+  "description": "LLM-discovered leaf taxonomy from batched title+summary samples (parents fixed). Used for embedding shortlist + classify.",
+  "discoveredAt": "2026-05-25T03:54:51.184Z",
+  "corpusMeta": {
+    "initialSeed": "/Users/amir/Dropbox/CodingProjects/personal_tools/workbench_agent/scripts/categorize/seed/categories.seed.manual-v0.json",
+    "corpora": [
+      "2026-05-21T02-02-56",
+      "2026-05-21T03-03-24"
+    ],
+    "aiEvalJsonl": "scripts/enrich-fetch/experiments/ai-eval-2026-05-25T01-53-38/results-v2.jsonl",
+    "eligible": 111,
+    "batches": 4,
+    "batchSize": 32
+  },
+  "parents": [
+    {
+      "id": "quant-finance",
+      "name": "Quantitative finance & trading",
+      "description": "Algorithmic trading, backtesting, market systems, and trading education — not generic personal budgeting."
+    },
+    {
+      "id": "machine-learning",
+      "name": "Machine learning & AI research",
+      "description": "ML theory, models, training, diffusion, transformers, RL — not SaaS productivity wrappers unless core topic is the model."
+    },
+    {
+      "id": "ai-productivity",
+      "name": "AI tools & research workflows",
+      "description": "AI assistants, research tools, writing partners, browser automation, and ML infrastructure APIs for builders."
+    },
+    {
+      "id": "software-dev",
+      "name": "Software development",
+      "description": "Programming languages, frameworks, mobile, native integration, and developer tooling."
+    },
+    {
+      "id": "product-gtm",
+      "name": "Product, demos & go-to-market",
+      "description": "Interactive demos, sales enablement, onboarding products, and no-code site builders."
+    },
+    {
+      "id": "personal-finance",
+      "name": "Personal finance & investing",
+      "description": "Retail investing education, budgeting, and personal money topics — not health, sexuality, or adult content."
+    },
+    {
+      "id": "health-lifestyle",
+      "name": "Health, sexuality & lifestyle",
+      "description": "Health, nutrition, sexuality education, adult content, and personal civic/lifestyle topics — not trading or personal finance."
+    },
+    {
+      "id": "infra-hosting",
+      "name": "Infrastructure & hosting",
+      "description": "Cloud hosting, servers, DevOps, and platform operations for self-hosted or VPS workloads."
+    },
+    {
+      "id": "hardware",
+      "name": "Hardware & workstations",
+      "description": "PC builds, fanless/quiet systems, components, and physical workstation topics."
+    }
+  ],
+  "leaves": [
+    {
+      "id": "algo-trading-platforms",
+      "parentId": "quant-finance",
+      "name": "Algorithmic trading platforms",
+      "description": "Open-source or commercial algo trading platforms, brokers APIs, and quant dev environments (QuantConnect, vectorbt, Zipline-style).",
+      "canonicalTags": [
+        "trading",
+        "algorithmic",
+        "backtesting",
+        "quant"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "trading-strategies-education",
+      "parentId": "quant-finance",
+      "name": "Trading strategies & education",
+      "description": "Articles on rules, breakouts, systematic strategies, and practitioner trading guides — not RL theory alone.",
+      "canonicalTags": [
+        "trading",
+        "strategies",
+        "backtesting",
+        "markets"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "reinforcement-learning",
+      "parentId": "machine-learning",
+      "name": "Reinforcement learning",
+      "description": "RL algorithms, policies, Spinning Up, Stable Baselines, robotics RL — not generic quant platform docs.",
+      "canonicalTags": [
+        "reinforcementlearning",
+        "rl",
+        "robotics",
+        "policy"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "ml-theory-tutorials",
+      "parentId": "machine-learning",
+      "name": "ML theory & tutorials",
+      "description": "General ML concepts, model families, training intuition, and course-style ML content not specific to diffusion or trading.",
+      "canonicalTags": [
+        "machinelearning",
+        "tutorial",
+        "models"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "diffusion-generative-models",
+      "parentId": "machine-learning",
+      "name": "Diffusion & generative models",
+      "description": "Diffusion models, image generation, Imagen/SD-class material, and generative ML math or implementations.",
+      "canonicalTags": [
+        "diffusion",
+        "generative",
+        "imagen",
+        "deeplearning"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "nlp-transformers",
+      "parentId": "machine-learning",
+      "name": "NLP & transformers",
+      "description": "Transformers, ViT, language models, and NLP implementation articles — not generic AI product landing pages.",
+      "canonicalTags": [
+        "transformers",
+        "nlp",
+        "pytorch",
+        "vit"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "ml-inference-infra",
+      "parentId": "ai-productivity",
+      "name": "ML inference infrastructure",
+      "description": "Hosted inference APIs, GPU clouds, and model-serving infra (DeepInfra-class) for running models.",
+      "canonicalTags": [
+        "inference",
+        "hosting",
+        "gpu",
+        "models"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "ai-research-assistants",
+      "parentId": "ai-productivity",
+      "name": "AI research assistants",
+      "description": "Tools for literature review, research writing, knowledge synthesis (Otio-class) — not generic chatbots.",
+      "canonicalTags": [
+        "research",
+        "writing",
+        "productivity",
+        "ai"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "browser-ai-automation",
+      "parentId": "ai-productivity",
+      "name": "Browser AI automation",
+      "description": "Browser extensions and agents that automate web tasks, summaries, or workflows (HARPA-class).",
+      "canonicalTags": [
+        "browser",
+        "automation",
+        "productivity",
+        "ai"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "knowledge-management",
+      "parentId": "ai-productivity",
+      "name": "Knowledge management",
+      "description": "PKM, wissensmanagement, note systems, and organizing personal knowledge — not Flutter or trading.",
+      "canonicalTags": [
+        "pkm",
+        "knowledge",
+        "notes",
+        "productivity"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "flutter-mobile",
+      "parentId": "software-dev",
+      "name": "Flutter & mobile development",
+      "description": "Flutter apps, Dart, mobile UI, speech recognition, liveness, SQLite on mobile — not generic web frontend.",
+      "canonicalTags": [
+        "flutter",
+        "dart",
+        "mobile",
+        "android",
+        "ios"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "native-ffi-integration",
+      "parentId": "software-dev",
+      "name": "Native & FFI integration",
+      "description": "Calling native libraries from Dart/Flutter, FFI, ONNX in mobile, and cross-language bindings.",
+      "canonicalTags": [
+        "ffi",
+        "native",
+        "onnx",
+        "integration"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "webrtc-realtime",
+      "parentId": "software-dev",
+      "name": "WebRTC & realtime media",
+      "description": "WebRTC, live video/audio SDKs, and realtime communication in apps.",
+      "canonicalTags": [
+        "webrtc",
+        "video",
+        "realtime",
+        "streaming"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "coding-interview-prep",
+      "parentId": "software-dev",
+      "name": "Coding interview prep",
+      "description": "LeetCode, algorithm puzzles, and interview preparation platforms.",
+      "canonicalTags": [
+        "leetcode",
+        "algorithms",
+        "interview",
+        "coding"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "interactive-product-demos",
+      "parentId": "product-gtm",
+      "name": "Interactive product demos",
+      "description": "Demo software for sales and onboarding (Storylane, Supademo, Navattic-class) — not the product being demoed.",
+      "canonicalTags": [
+        "demos",
+        "sales",
+        "onboarding",
+        "saas"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "no-code-website-builders",
+      "parentId": "product-gtm",
+      "name": "No-code & website builders",
+      "description": "AI or visual site builders and landing-page tools (Typedream-class).",
+      "canonicalTags": [
+        "nocode",
+        "website",
+        "builder",
+        "saas"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "personal-investing-education",
+      "parentId": "personal-finance",
+      "name": "Personal investing education",
+      "description": "Retail investing ideas, trader education, Minervini-style content — not algo dev platforms.",
+      "canonicalTags": [
+        "investing",
+        "trading",
+        "education",
+        "finance"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "personal-finance-money",
+      "parentId": "personal-finance",
+      "name": "Personal finance & money",
+      "description": "Budgeting, financial planning, and personal money management articles.",
+      "canonicalTags": [
+        "personalfinance",
+        "money",
+        "planning"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "health-nutrition",
+      "parentId": "health-lifestyle",
+      "name": "Health & nutrition",
+      "description": "Food, supplements, health claims, and wellness — not financial trading or explicit adult video.",
+      "canonicalTags": [
+        "health",
+        "nutrition",
+        "supplements",
+        "food"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "adult-erotic-content",
+      "parentId": "health-lifestyle",
+      "name": "Adult & erotic content",
+      "description": "Explicit adult video, erotic fiction/audio platforms, fetish and pornographic pages — classify and track like any other topic; not login shells.",
+      "canonicalTags": [
+        "adult",
+        "erotic",
+        "sexual",
+        "fetish",
+        "porn"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "sexuality-wellness-education",
+      "parentId": "health-lifestyle",
+      "name": "Sexuality & wellness education",
+      "description": "Articles on sex dreams, lucid dreaming, sexual health education, relationships — not explicit porn/video tube pages.",
+      "canonicalTags": [
+        "sexuality",
+        "wellness",
+        "education",
+        "dreams",
+        "relationships"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "seo-data-analytics",
+      "parentId": "product-gtm",
+      "name": "SEO & marketing analytics",
+      "description": "SEO tools, marketing data, analytics dashboards — not quant trading backtests.",
+      "canonicalTags": [
+        "seo",
+        "analytics",
+        "marketing",
+        "data"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "cloud-vps-hosting",
+      "parentId": "infra-hosting",
+      "name": "Cloud & VPS hosting",
+      "description": "VPS providers, cloud servers, Hetzner-class hosting and deployment targets.",
+      "canonicalTags": [
+        "hosting",
+        "vps",
+        "cloud",
+        "servers"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "quiet-pc-hardware",
+      "parentId": "hardware",
+      "name": "Quiet & fanless PCs",
+      "description": "Silent PCs, fanless workstations, and hardware for low-noise builds.",
+      "canonicalTags": [
+        "hardware",
+        "pc",
+        "fanless",
+        "workstation"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "government-forms-requests",
+      "parentId": "health-lifestyle",
+      "name": "Government & official forms",
+      "description": "Government portals, benefits, and official request flows (HHS-class) — not SaaS demos.",
+      "canonicalTags": [
+        "government",
+        "forms",
+        "official"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "crypto-web3",
+      "parentId": "software-dev",
+      "name": "Crypto & Web3",
+      "description": "Wallets, dApps, MetaMask, and blockchain developer or user tooling.",
+      "canonicalTags": [
+        "crypto",
+        "web3",
+        "wallet",
+        "blockchain"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "gaming-hardware",
+      "parentId": "hardware",
+      "name": "Gaming PCs & components",
+      "description": "Gaming rigs, GPUs for gaming builds, and consumer PC hardware retail — not algo trading.",
+      "canonicalTags": [
+        "gaming",
+        "gpu",
+        "hardware",
+        "pc"
+      ],
+      "fromInitialSeed": true
+    },
+    {
+      "id": "residual-memorization-algorithm",
+      "parentId": "machine-learning",
+      "name": "Residual memorization algorithm",
+      "description": "Algorithm enhancing model performance by fitting residuals, not generic ML concepts.",
+      "canonicalTags": [
+        "algorithm",
+        "residuals",
+        "model"
+      ],
+      "discoveredFrom": [
+        "2026-05-21T02-02-56/090-marktechpost.com"
+      ]
+    },
+    {
+      "id": "tensor-manipulation-tool",
+      "parentId": "machine-learning",
+      "name": "Tensor manipulation tool",
+      "description": "Tool for efficient tensor operations in PyTorch, not general ML libraries.",
+      "canonicalTags": [
+        "tensor",
+        "manipulation",
+        "pytorch"
+      ],
+      "discoveredFrom": [
+        "2026-05-21T03-03-24/020-linkedin.com"
+      ]
+    },
+    {
+      "id": "edge-llm-inference",
+      "parentId": "machine-learning",
+      "name": "Edge LLM inference",
+      "description": "Running large language models on edge devices, not cloud-based solutions.",
+      "canonicalTags": [
+        "llm",
+        "edge",
+        "inference"
+      ],
+      "discoveredFrom": [
+        "2026-05-21T02-02-56/096-ubiquitouslearning.github.io"
+      ]
+    },
+    {
+      "id": "diffusion-models-implementation",
+      "parentId": "machine-learning",
+      "name": "Diffusion models implementation",
+      "description": "Tutorials and guides on implementing diffusion models for image generation and other applications.",
+      "canonicalTags": [
+        "diffusion",
+        "models",
+        "implementation"
+      ],
+      "discoveredFrom": [
+        "2026-05-21T02-02-56/085-assemblyai.com"
+      ]
+    },
+    {
+      "id": "quant-finance-general",
+      "parentId": "quant-finance",
+      "name": "Other (Quantitative finance & trading)",
+      "description": "Bookmarks clearly in “Quantitative finance & trading” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
+      "canonicalTags": [
+        "quant",
+        "other"
+      ],
+      "isGeneralFallback": true,
+      "fromInitialSeed": true
+    },
+    {
+      "id": "machine-learning-general",
+      "parentId": "machine-learning",
+      "name": "Other (Machine learning & AI research)",
+      "description": "Bookmarks clearly in “Machine learning & AI research” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
+      "canonicalTags": [
+        "machine",
+        "other"
+      ],
+      "isGeneralFallback": true,
+      "fromInitialSeed": true
+    },
+    {
+      "id": "ai-productivity-general",
+      "parentId": "ai-productivity",
+      "name": "Other (AI tools & research workflows)",
+      "description": "Bookmarks clearly in “AI tools & research workflows” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
+      "canonicalTags": [
+        "ai",
+        "other"
+      ],
+      "isGeneralFallback": true,
+      "fromInitialSeed": true
+    },
+    {
+      "id": "software-dev-general",
+      "parentId": "software-dev",
+      "name": "Other (Software development)",
+      "description": "Bookmarks clearly in “Software development” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
+      "canonicalTags": [
+        "software",
+        "other"
+      ],
+      "isGeneralFallback": true,
+      "fromInitialSeed": true
+    },
+    {
+      "id": "product-gtm-general",
+      "parentId": "product-gtm",
+      "name": "Other (Product, demos & go-to-market)",
+      "description": "Bookmarks clearly in “Product, demos & go-to-market” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
+      "canonicalTags": [
+        "product",
+        "other"
+      ],
+      "isGeneralFallback": true,
+      "fromInitialSeed": true
+    },
+    {
+      "id": "personal-finance-general",
+      "parentId": "personal-finance",
+      "name": "Other (Personal finance & investing)",
+      "description": "Bookmarks clearly in personal finance/investing when no more specific sibling leaf applies.",
+      "canonicalTags": [
+        "finance",
+        "other"
+      ],
+      "isGeneralFallback": true,
+      "fromInitialSeed": true
+    },
+    {
+      "id": "health-lifestyle-general",
+      "parentId": "health-lifestyle",
+      "name": "Other (Health, sexuality & lifestyle)",
+      "description": "Bookmarks clearly in health/sexuality/lifestyle when no more specific sibling leaf applies.",
+      "canonicalTags": [
+        "lifestyle",
+        "other"
+      ],
+      "isGeneralFallback": true,
+      "fromInitialSeed": true
+    },
+    {
+      "id": "infra-hosting-general",
+      "parentId": "infra-hosting",
+      "name": "Other (Infrastructure & hosting)",
+      "description": "Bookmarks clearly in “Infrastructure & hosting” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
+      "canonicalTags": [
+        "infra",
+        "other"
+      ],
+      "isGeneralFallback": true,
+      "fromInitialSeed": true
+    },
+    {
+      "id": "hardware-general",
+      "parentId": "hardware",
+      "name": "Other (Hardware & workstations)",
+      "description": "Bookmarks clearly in “Hardware & workstations” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
+      "canonicalTags": [
+        "hardware",
+        "other"
+      ],
+      "isGeneralFallback": true,
+      "fromInitialSeed": true
+    }
+  ]
+}

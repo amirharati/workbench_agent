@@ -1,3 +1,0 @@
-page.goto: net::ERR_NAME_NOT_RESOLVED at https://fmovies.to/series/the-last-of-us-x1qo8/1-1
-Call log:
-[2m  - navigating to "https://fmovies.to/series/the-last-of-us-x1qo8/1-1", waiting until "domcontentloaded"[22m

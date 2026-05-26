@@ -2,6 +2,12 @@
  * CLI mirror of src/lib/enrichment/prompts.ts + aiExtract.ts — keep in sync.
  */
 
+import {
+  hasSubstantiveExtract,
+  prepareExtractInput,
+  sanitizeExtractOutput,
+} from './extractFilters.mjs';
+
 const JSON_SHAPE_V1 = `{
   "summary": "2-3 sentence summary of the main content",
   "improvedTitle": "clean human-readable title without site suffix",
@@ -16,12 +22,16 @@ const JSON_SHAPE_V2 = `{
 }`;
 
 const JSON_RULES_V2 = `- Return ONLY valid JSON (no markdown fences)
-- summary: factual digest for humans and search — not a vague paraphrase
+- summary: factual digest of the MAIN content the user bookmarked — not page chrome
 - keyPoints: 0-6 short bullets with concrete entities, claims, or topics (empty array if none)
 - improvedTitle: omit " | Medium", " - Reddit", etc.; empty string only if truly unknown
-- tags: 3-8 lowercase topic tags; include proper nouns when useful
-- Return all-empty fields ONLY when input is purely a cookie/login/captcha gate with no describable content
-- If any usable text exists, provide at least summary OR keyPoints OR improvedTitle OR tags`;
+- tags: 3-8 lowercase topic tags about subject matter; include proper nouns when useful
+- IGNORE login forms, cookie banners, CAPTCHA, and password fields — do not summarize or tag those UI elements
+- If the page mixes login chrome WITH product/docs/marketing copy, extract ONLY the substantive copy (what the site/product does)
+- NEVER use tags like cookies, privacy, login, sign in, consent, authentication, newsletter unless the article is ABOUT that topic
+- Return all-empty JSON ONLY when, after ignoring chrome, there is truly no describable topic (pure login form, empty 404)
+- If real article or product description exists, ignore navigation and legal boilerplate
+- Adult/erotic/pornographic pages are valid bookmarks: summarize the scene or topic factually (tags: adult, erotic, fetish, etc. when applicable). NEVER refuse or return empty solely because content is sexual — this is a personal library, not public moderation`;
 
 export const PROMPT_V1_SYSTEM = `You extract structured metadata from web page content for a bookmark manager.
 Return ONLY valid JSON (no markdown fences) with this shape:
@@ -59,13 +69,13 @@ Source type: video page (often YouTube). Transcript may be absent — use title,
 
   article: `${PROMPT_V2_BASE}
 
-Source type: article or web page. Input may be long.
-- summary: 4-6 sentences covering thesis, scope, and takeaway; name key entities
+Source type: article or web page. Input may include login forms plus marketing copy.
+- summary: 4-6 sentences on the MAIN topic (article body or product value prop); skip login/cookie UI
 - keyPoints: 3-6 bullets — main ideas, tools, people, methods, or conclusions
-- 404/moved pages: note the error and what the site/topic is
-- Thin pages: extract whatever is present
-- improvedTitle: headline without publisher suffix
-- tags: specific topics and named entities`,
+- Login landing with product description: summarize the product/service, not the form
+- Pure 404 with no topic: all-empty JSON
+- improvedTitle: headline without publisher suffix; infer from URL if title is generic (Welcome, Sign in)
+- tags: subject-matter only — never cookies/login/privacy UI`,
 
   generic: `${PROMPT_V2_BASE}
 
@@ -142,13 +152,7 @@ export function parseJsonResponse(text) {
 }
 
 export function hasUsefulExtract(data) {
-  if (!data) return false;
-  return Boolean(
-    data.summary?.trim() ||
-      data.keyPoints?.length ||
-      data.improvedTitle?.trim() ||
-      (data.tags && data.tags.length > 0)
-  );
+  return hasSubstantiveExtract(data);
 }
 
 /** Hybrid provider order per source kind (matches src/lib/enrichment/providers/hybrid.ts). */
@@ -163,9 +167,19 @@ export async function runOpenRouterExtract(settings, { url, title, body, sourceK
     return { status: 'not_configured', error: 'Missing OPENROUTER_API_KEY' };
   }
 
-  const markdown = body.trim().slice(0, 12_000);
-  if (markdown.length < 80) {
+  const rawBody = body.trim().slice(0, 12_000);
+  if (rawBody.length < 80) {
     return { status: 'content_too_short', error: 'Body too short' };
+  }
+
+  const prepared = prepareExtractInput(title, rawBody, sourceKind);
+  if (prepared.shouldSkip) {
+    return { status: 'empty_response', error: prepared.skipReason ?? 'No substantive text after chrome strip' };
+  }
+
+  const markdown = prepared.body;
+  if (markdown.length < 80) {
+    return { status: 'content_too_short', error: 'Too short after chrome strip' };
   }
 
   const baseUrl = (settings.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
@@ -215,10 +229,11 @@ export async function runOpenRouterExtract(settings, { url, title, body, sourceK
     if (!parsed) {
       return { status: 'parse_failed', error: 'Invalid JSON', raw: text.slice(0, 500) };
     }
-    if (!hasUsefulExtract(parsed)) {
-      return { status: 'empty_response', error: 'No useful fields', data: parsed };
+    const sanitized = sanitizeExtractOutput(parsed);
+    if (!hasUsefulExtract(sanitized)) {
+      return { status: 'empty_response', error: 'No substantive content after chrome filter', data: sanitized };
     }
-    return { status: 'ok', data: parsed };
+    return { status: 'ok', data: sanitized };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Request failed';
     return { status: 'api_error', error: message };

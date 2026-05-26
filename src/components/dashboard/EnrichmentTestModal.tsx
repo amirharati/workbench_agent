@@ -2,7 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import { getAllItems } from '../../lib/db';
-import { enrichBatch, getAllEnrichments, type EnrichBatchResult, type ItemEnrichment } from '../../lib/enrichment';
+import {
+  clearPipelineData,
+  enrichBatch,
+  getAllEnrichments,
+  type EnrichBatchResult,
+  type ItemEnrichment,
+} from '../../lib/enrichment';
 import { EnrichmentReviewModal } from './EnrichmentReviewModal';
 
 type Props = {
@@ -32,6 +38,8 @@ export const EnrichmentTestModal: React.FC<Props> = ({
   const loadGenerationRef = useRef(0);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [lastRunIds, setLastRunIds] = useState<string[]>([]);
+  const [pickCount, setPickCount] = useState(50);
+  const [clearing, setClearing] = useState(false);
 
   const fetchBookmarks = useCallback(async () => {
     const all = await getAllItems();
@@ -119,7 +127,43 @@ export const EnrichmentTestModal: React.FC<Props> = ({
   const selectNone = () => setSelected(new Set());
 
   const selectFirst = (n: number) => {
-    setSelected(new Set(filtered.slice(0, n).map((i) => i.id)));
+    const count = Math.max(1, Math.min(n, filtered.length));
+    setSelected(new Set(filtered.slice(0, count).map((i) => i.id)));
+  };
+
+  const selectRandom = (n: number) => {
+    const count = Math.max(1, Math.min(n, filtered.length));
+    const pool = [...filtered];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    setSelected(new Set(pool.slice(0, count).map((i) => i.id)));
+  };
+
+  const handleClearPipeline = async () => {
+    const msg =
+      'Delete ALL enrichment rows, AI summaries, category links, and classify signals for every bookmark?\n\n' +
+      'Taxonomy (40 topics) is kept unless you also clear taxonomy in Settings.\n\n' +
+      'Bookmarks themselves are NOT deleted. Run a manual backup first if unsure.';
+    if (!window.confirm(msg)) return;
+    setClearing(true);
+    setError('');
+    try {
+      const r = await clearPipelineData({ keepTaxonomy: true });
+      setResult(null);
+      setLastRunIds([]);
+      setSelected(new Set());
+      await refreshStatuses();
+      setError(
+        `Cleared: ${r.enrichmentsRemoved} enrichments, ${r.linksRemoved} links, ${r.signalsRemoved} signals. ` +
+          'Pick N bookmarks and re-run Enrich.'
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Clear failed');
+    } finally {
+      setClearing(false);
+    }
   };
 
   const selectEnriched = () => {
@@ -243,6 +287,7 @@ export const EnrichmentTestModal: React.FC<Props> = ({
       >
         <input
           type="search"
+          className="er-field"
           placeholder="Filter by title or URL…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -252,23 +297,62 @@ export const EnrichmentTestModal: React.FC<Props> = ({
             minWidth: 180,
             padding: '6px 10px',
             fontSize: 'var(--text-sm)',
-            borderRadius: 6,
-            border: '1px solid var(--border)',
-            background: 'var(--input-bg)',
-            color: 'var(--text)',
           }}
         />
-        <button type="button" onClick={() => selectFirst(5)} disabled={running || filtered.length === 0} style={btnSm}>
-          Select first 5
+        <label
+          className="er-field-label"
+          style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)' }}
+        >
+          N
+          <input
+            type="number"
+            className="er-field"
+            min={1}
+            max={Math.max(1, filtered.length)}
+            value={pickCount}
+            disabled={running || clearing}
+            onChange={(e) => setPickCount(Math.max(1, Number(e.target.value) || 1))}
+            style={{
+              width: 64,
+              padding: '6px 8px',
+              fontSize: 'var(--text-sm)',
+              fontWeight: 600,
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => selectFirst(pickCount)}
+          disabled={running || clearing || filtered.length === 0}
+          style={btnSm}
+        >
+          First N
+        </button>
+        <button
+          type="button"
+          onClick={() => selectRandom(pickCount)}
+          disabled={running || clearing || filtered.length === 0}
+          style={btnSm}
+        >
+          Random N
         </button>
         <button type="button" onClick={selectEnriched} disabled={running || filtered.length === 0} style={btnSm}>
           Select enriched
         </button>
-        <button type="button" onClick={selectAllVisible} disabled={running || filtered.length === 0} style={btnSm}>
-          Select visible
+        <button type="button" onClick={selectAllVisible} disabled={running || clearing || filtered.length === 0} style={btnSm}>
+          All visible
         </button>
-        <button type="button" onClick={selectNone} disabled={running} style={btnSm}>
-          Clear
+        <button type="button" onClick={selectNone} disabled={running || clearing} style={btnSm}>
+          Clear selection
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleClearPipeline()}
+          disabled={running || clearing}
+          style={{ ...btnSm, color: 'var(--error, #dc2626)', borderColor: 'var(--error, #dc2626)' }}
+          title="Remove all enrichment + assignments (keeps bookmarks + topic list)"
+        >
+          {clearing ? 'Clearing…' : 'Reset all enrich/classify'}
         </button>
         <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
           {selected.size} selected · {filtered.length} shown · {items.length} total · re-runs overwrite prior enrichment

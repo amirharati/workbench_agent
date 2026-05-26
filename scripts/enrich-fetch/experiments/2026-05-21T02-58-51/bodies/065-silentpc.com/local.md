@@ -1,1 +1,0 @@
-[Click here if you are not redirected.](https://silentpc.com/)

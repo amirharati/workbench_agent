@@ -1,0 +1,224 @@
+{
+  "version": 1,
+  "taxonomyVersion": 0,
+  "description": "A0 seed taxonomy — atomic leaf topics for embedding shortlist + LLM classify. Parents group leaves only.",
+  "parents": [
+    {
+      "id": "quant-finance",
+      "name": "Quantitative finance & trading",
+      "description": "Algorithmic trading, backtesting, market systems, and trading education — not generic personal budgeting."
+    },
+    {
+      "id": "machine-learning",
+      "name": "Machine learning & AI research",
+      "description": "ML theory, models, training, diffusion, transformers, RL — not SaaS productivity wrappers unless core topic is the model."
+    },
+    {
+      "id": "ai-productivity",
+      "name": "AI tools & research workflows",
+      "description": "AI assistants, research tools, writing partners, browser automation, and ML infrastructure APIs for builders."
+    },
+    {
+      "id": "software-dev",
+      "name": "Software development",
+      "description": "Programming languages, frameworks, mobile, native integration, and developer tooling."
+    },
+    {
+      "id": "product-gtm",
+      "name": "Product, demos & go-to-market",
+      "description": "Interactive demos, sales enablement, onboarding products, and no-code site builders."
+    },
+    {
+      "id": "personal-life",
+      "name": "Personal finance & lifestyle",
+      "description": "Personal investing education, health, nutrition, and non-trading money topics."
+    },
+    {
+      "id": "infra-hosting",
+      "name": "Infrastructure & hosting",
+      "description": "Cloud hosting, servers, DevOps, and platform operations for self-hosted or VPS workloads."
+    },
+    {
+      "id": "hardware",
+      "name": "Hardware & workstations",
+      "description": "PC builds, fanless/quiet systems, components, and physical workstation topics."
+    }
+  ],
+  "leaves": [
+    {
+      "id": "algo-trading-platforms",
+      "parentId": "quant-finance",
+      "name": "Algorithmic trading platforms",
+      "description": "Open-source or commercial algo trading platforms, brokers APIs, and quant dev environments (QuantConnect, vectorbt, Zipline-style).",
+      "canonicalTags": ["trading", "algorithmic", "backtesting", "quant"]
+    },
+    {
+      "id": "trading-strategies-education",
+      "parentId": "quant-finance",
+      "name": "Trading strategies & education",
+      "description": "Articles on rules, breakouts, systematic strategies, and practitioner trading guides — not RL theory alone.",
+      "canonicalTags": ["trading", "strategies", "backtesting", "markets"]
+    },
+    {
+      "id": "reinforcement-learning",
+      "parentId": "machine-learning",
+      "name": "Reinforcement learning",
+      "description": "RL algorithms, policies, Spinning Up, Stable Baselines, robotics RL — not generic quant platform docs.",
+      "canonicalTags": ["reinforcementlearning", "rl", "robotics", "policy"]
+    },
+    {
+      "id": "ml-theory-tutorials",
+      "parentId": "machine-learning",
+      "name": "ML theory & tutorials",
+      "description": "General ML concepts, model families, training intuition, and course-style ML content not specific to diffusion or trading.",
+      "canonicalTags": ["machinelearning", "tutorial", "models"]
+    },
+    {
+      "id": "diffusion-generative-models",
+      "parentId": "machine-learning",
+      "name": "Diffusion & generative models",
+      "description": "Diffusion models, image generation, Imagen/SD-class material, and generative ML math or implementations.",
+      "canonicalTags": ["diffusion", "generative", "imagen", "deeplearning"]
+    },
+    {
+      "id": "nlp-transformers",
+      "parentId": "machine-learning",
+      "name": "NLP & transformers",
+      "description": "Transformers, ViT, language models, and NLP implementation articles — not generic AI product landing pages.",
+      "canonicalTags": ["transformers", "nlp", "pytorch", "vit"]
+    },
+    {
+      "id": "ml-inference-infra",
+      "parentId": "ai-productivity",
+      "name": "ML inference infrastructure",
+      "description": "Hosted inference APIs, GPU clouds, and model-serving infra (DeepInfra-class) for running models.",
+      "canonicalTags": ["inference", "hosting", "gpu", "models"]
+    },
+    {
+      "id": "ai-research-assistants",
+      "parentId": "ai-productivity",
+      "name": "AI research assistants",
+      "description": "Tools for literature review, research writing, knowledge synthesis (Otio-class) — not generic chatbots.",
+      "canonicalTags": ["research", "writing", "productivity", "ai"]
+    },
+    {
+      "id": "browser-ai-automation",
+      "parentId": "ai-productivity",
+      "name": "Browser AI automation",
+      "description": "Browser extensions and agents that automate web tasks, summaries, or workflows (HARPA-class).",
+      "canonicalTags": ["browser", "automation", "productivity", "ai"]
+    },
+    {
+      "id": "knowledge-management",
+      "parentId": "ai-productivity",
+      "name": "Knowledge management",
+      "description": "PKM, wissensmanagement, note systems, and organizing personal knowledge — not Flutter or trading.",
+      "canonicalTags": ["pkm", "knowledge", "notes", "productivity"]
+    },
+    {
+      "id": "flutter-mobile",
+      "parentId": "software-dev",
+      "name": "Flutter & mobile development",
+      "description": "Flutter apps, Dart, mobile UI, speech recognition, liveness, SQLite on mobile — not generic web frontend.",
+      "canonicalTags": ["flutter", "dart", "mobile", "android", "ios"]
+    },
+    {
+      "id": "native-ffi-integration",
+      "parentId": "software-dev",
+      "name": "Native & FFI integration",
+      "description": "Calling native libraries from Dart/Flutter, FFI, ONNX in mobile, and cross-language bindings.",
+      "canonicalTags": ["ffi", "native", "onnx", "integration"]
+    },
+    {
+      "id": "webrtc-realtime",
+      "parentId": "software-dev",
+      "name": "WebRTC & realtime media",
+      "description": "WebRTC, live video/audio SDKs, and realtime communication in apps.",
+      "canonicalTags": ["webrtc", "video", "realtime", "streaming"]
+    },
+    {
+      "id": "coding-interview-prep",
+      "parentId": "software-dev",
+      "name": "Coding interview prep",
+      "description": "LeetCode, algorithm puzzles, and interview preparation platforms.",
+      "canonicalTags": ["leetcode", "algorithms", "interview", "coding"]
+    },
+    {
+      "id": "interactive-product-demos",
+      "parentId": "product-gtm",
+      "name": "Interactive product demos",
+      "description": "Demo software for sales and onboarding (Storylane, Supademo, Navattic-class) — not the product being demoed.",
+      "canonicalTags": ["demos", "sales", "onboarding", "saas"]
+    },
+    {
+      "id": "no-code-website-builders",
+      "parentId": "product-gtm",
+      "name": "No-code & website builders",
+      "description": "AI or visual site builders and landing-page tools (Typedream-class).",
+      "canonicalTags": ["nocode", "website", "builder", "saas"]
+    },
+    {
+      "id": "personal-investing-education",
+      "parentId": "personal-life",
+      "name": "Personal investing education",
+      "description": "Retail investing ideas, trader education, Minervini-style content — not algo dev platforms.",
+      "canonicalTags": ["investing", "trading", "education", "finance"]
+    },
+    {
+      "id": "personal-finance-money",
+      "parentId": "personal-life",
+      "name": "Personal finance & money",
+      "description": "Budgeting, financial planning, and personal money management articles.",
+      "canonicalTags": ["personalfinance", "money", "planning"]
+    },
+    {
+      "id": "health-nutrition",
+      "parentId": "personal-life",
+      "name": "Health & nutrition",
+      "description": "Food, supplements, health claims, and wellness — not financial trading.",
+      "canonicalTags": ["health", "nutrition", "supplements", "food"]
+    },
+    {
+      "id": "seo-data-analytics",
+      "parentId": "product-gtm",
+      "name": "SEO & marketing analytics",
+      "description": "SEO tools, marketing data, analytics dashboards — not quant trading backtests.",
+      "canonicalTags": ["seo", "analytics", "marketing", "data"]
+    },
+    {
+      "id": "cloud-vps-hosting",
+      "parentId": "infra-hosting",
+      "name": "Cloud & VPS hosting",
+      "description": "VPS providers, cloud servers, Hetzner-class hosting and deployment targets.",
+      "canonicalTags": ["hosting", "vps", "cloud", "servers"]
+    },
+    {
+      "id": "quiet-pc-hardware",
+      "parentId": "hardware",
+      "name": "Quiet & fanless PCs",
+      "description": "Silent PCs, fanless workstations, and hardware for low-noise builds.",
+      "canonicalTags": ["hardware", "pc", "fanless", "workstation"]
+    },
+    {
+      "id": "government-forms-requests",
+      "parentId": "personal-life",
+      "name": "Government & official forms",
+      "description": "Government portals, benefits, and official request flows (HHS-class) — not SaaS demos.",
+      "canonicalTags": ["government", "forms", "official"]
+    },
+    {
+      "id": "crypto-web3",
+      "parentId": "software-dev",
+      "name": "Crypto & Web3",
+      "description": "Wallets, dApps, MetaMask, and blockchain developer or user tooling.",
+      "canonicalTags": ["crypto", "web3", "wallet", "blockchain"]
+    },
+    {
+      "id": "gaming-hardware",
+      "parentId": "hardware",
+      "name": "Gaming PCs & components",
+      "description": "Gaming rigs, GPUs for gaming builds, and consumer PC hardware retail — not algo trading.",
+      "canonicalTags": ["gaming", "gpu", "hardware", "pc"]
+    }
+  ]
+}

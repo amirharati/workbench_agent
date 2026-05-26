@@ -1,3 +1,5 @@
+import { markItemsPendingClassify } from '../categorization/classifyTopicExtract';
+import { notifyDataChanged } from '../dataChangeNotifier';
 import { getDB } from '../db';
 import type { ItemEnrichment } from './types';
 
@@ -9,6 +11,10 @@ export async function getEnrichment(itemId: string): Promise<ItemEnrichment | un
 export async function putEnrichment(record: ItemEnrichment): Promise<void> {
   const db = await getDB();
   await db.put('item_enrichment', record);
+  notifyDataChanged('enrichment.update');
+  if (record.aiStatus === 'ok') {
+    void markItemsPendingClassify([record.itemId]);
+  }
 }
 
 export async function deleteEnrichment(itemId: string): Promise<void> {

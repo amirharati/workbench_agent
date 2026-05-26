@@ -1,3 +1,0 @@
-Fetching all of your documents
-
-This initial load may take a moment...

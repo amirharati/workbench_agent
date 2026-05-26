@@ -1,3 +1,0 @@
-page.goto: Timeout 30000ms exceeded.
-Call log:
-[2m  - navigating to "https://puzzled-savory-63c.notion.site/24fb0b88f4fc42248d726505dad2b596?v=a426b5c5100149a88150fc6fe13649c1", waiting until "domcontentloaded"[22m

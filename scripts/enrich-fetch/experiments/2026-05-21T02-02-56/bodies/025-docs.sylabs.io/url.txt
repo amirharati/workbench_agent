@@ -1,1 +1,0 @@
-https://docs.sylabs.io/guides/3.7/admin-guide/installation.html

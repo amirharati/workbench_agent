@@ -19,17 +19,9 @@ import {
   buildSummaryMarkdown,
 } from './lib/aiEvalCorpus.mjs';
 
-const __dir = dirname(fileURLToPath(import.meta.url));
+import { loadProjectEnv } from '../lib/loadProjectEnv.mjs';
 
-function loadEnvFile() {
-  const envPath = join(__dir, '..', '..', '.env');
-  if (!existsSync(envPath)) return;
-  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-    const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
-    if (!m || process.env[m[1]]) continue;
-    process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
-  }
-}
+const __dir = dirname(fileURLToPath(import.meta.url));
 
 function parseArgs(argv) {
   const opts = {
@@ -43,6 +35,7 @@ function parseArgs(argv) {
       'experiments',
       `ai-eval-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}`
     ),
+    ids: null,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -53,6 +46,24 @@ function parseArgs(argv) {
     else if (a === '--concurrency') opts.concurrency = Number(argv[++i]) || opts.concurrency;
     else if (a === '--corpus') opts.corpora = (argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--out') opts.outDir = argv[++i];
+    else if (a === '--ids') {
+      opts.ids = new Set(
+        (argv[++i] || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
+    } else if (a === '--from-results') {
+      const p = argv[++i];
+      const rows = readFileSync(p, 'utf8')
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
+      opts.ids = new Set(
+        rows.filter((r) => r.status === 'empty_response').map((r) => r.id)
+      );
+    }
   }
 
   return opts;
@@ -111,7 +122,8 @@ async function runVariant(variant, items, settings, concurrency) {
 }
 
 async function main() {
-  loadEnvFile();
+  const env = loadProjectEnv(__dir);
+  if (!env.loaded) console.error('Warning: .env not found at', env.path);
   const opts = parseArgs(process.argv.slice(2));
   const settings = aiSettingsFromEnv();
 
@@ -121,6 +133,10 @@ async function main() {
   }
 
   let corpus = loadCorpusItems(opts.corpora);
+  if (opts.ids?.size) {
+    corpus = corpus.filter((c) => opts.ids.has(c.id));
+    console.error(`Filtered to ${corpus.length} item(s) by --ids / --from-results`);
+  }
   if (opts.max < corpus.length) corpus = corpus.slice(0, opts.max);
 
   console.error(`Corpus: ${corpus.length} items from ${opts.corpora.join(', ')}`);
@@ -177,6 +193,35 @@ async function main() {
     const cmpPath = join(opts.outDir, 'COMPARE.md');
     writeFileSync(cmpPath, cmp);
     console.error(`Wrote ${cmpPath}`);
+  }
+
+  for (const { variant, jsonlPath } of summaries) {
+    const lines = readFileSync(jsonlPath, 'utf8').trim().split('\n').filter(Boolean);
+    const rows = lines.map((l) => JSON.parse(l));
+    const apiErrors = rows.filter((r) => r.status === 'api_error');
+    const auth401 = apiErrors.filter(
+      (r) => typeof r.error === 'string' && r.error.includes('401')
+    );
+    if (auth401.length === rows.length && rows.length > 0) {
+      console.error('');
+      console.error(
+        `❌ All ${rows.length} item(s) failed with HTTP 401 (OpenRouter: "User not found").`
+      );
+      console.error(
+        '   This is the same .env key categorize uses — fix OPENROUTER_API_KEY in .env (and Settings > AI).'
+      );
+      console.error(
+        '   OpenRouter often returns this for expired/revoked keys: https://openrouter.ai/keys'
+      );
+      console.error(`   See ${jsonlPath} for details.`);
+      process.exit(1);
+    }
+    if (apiErrors.length === rows.length && rows.length > 0) {
+      console.error('');
+      console.error(`❌ All ${rows.length} item(s) had api_error (variant ${variant}).`);
+      console.error(`   See ${jsonlPath}`);
+      process.exit(1);
+    }
   }
 
   console.error('Done.');

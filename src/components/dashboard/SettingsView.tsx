@@ -2,6 +2,7 @@ import React from 'react';
 import type { BackupStatusSnapshot } from '../../lib/backupCoordinator';
 import type { AISettings } from '../../lib/ai/types';
 import { EnrichmentPanel } from './EnrichmentPanel';
+import { CategorizationSetupSection } from './CategorizationPanel';
 
 interface SettingsViewProps {
   backupFolderReady?: boolean;
@@ -517,6 +518,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           <EnrichmentPanel />
+        </div>
+        <CategorizationSetupSection />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {!backupFolderReady && (
             <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
               Configure backup folder below for disk cache.

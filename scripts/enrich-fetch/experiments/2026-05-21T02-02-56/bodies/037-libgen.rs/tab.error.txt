@@ -1,3 +1,0 @@
-page.goto: net::ERR_EMPTY_RESPONSE at http://libgen.rs/book/index.php?md5=E1F49ABBDA61DEE494729944627E3C8F
-Call log:
-[2m  - navigating to "http://libgen.rs/book/index.php?md5=E1F49ABBDA61DEE494729944627E3C8F", waiting until "domcontentloaded"[22m

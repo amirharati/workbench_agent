@@ -4,6 +4,11 @@ import { runAICompletion } from '../ai/client';
 import { loadAISettings } from '../ai/settings';
 import type { EnrichmentAIStatus, SourceKind } from './types';
 import {
+  hasSubstantiveExtract,
+  prepareExtractInput,
+  sanitizeExtractOutput,
+} from './extractFilters';
+import {
   buildExtractUserContent,
   getSystemPrompt,
   type EnrichmentAIHints,
@@ -75,12 +80,7 @@ export function parseJsonResponse(text: string): EnrichmentAIExtract | null {
 }
 
 function hasUsefulExtract(data: EnrichmentAIExtract): boolean {
-  return Boolean(
-    data.summary?.trim() ||
-      data.keyPoints?.length ||
-      data.improvedTitle?.trim() ||
-      (data.tags && data.tags.length > 0)
-  );
+  return hasSubstantiveExtract(data);
 }
 
 /** Cloud LLM extraction after a successful fetch. Always returns a structured outcome. */
@@ -100,8 +100,9 @@ export async function extractEnrichmentWithAI(
     };
   }
 
-  const body = markdown.trim().slice(0, 12_000);
-  if (body.length < 80) {
+  const sourceKind = options?.sourceKind ?? 'article';
+  const rawBody = markdown.trim().slice(0, 12_000);
+  if (rawBody.length < 80) {
     return {
       status: 'content_too_short',
       error: 'Fetched text too short for AI extraction.',
@@ -109,7 +110,24 @@ export async function extractEnrichmentWithAI(
     };
   }
 
-  const sourceKind = options?.sourceKind ?? 'article';
+  const prepared = prepareExtractInput(title, rawBody, sourceKind);
+  if (prepared.shouldSkip) {
+    return {
+      status: 'empty_response',
+      error: prepared.skipReason ?? 'No substantive text after removing login/cookie chrome.',
+      at,
+    };
+  }
+
+  const body = prepared.body;
+  if (body.length < 80) {
+    return {
+      status: 'content_too_short',
+      error: 'Fetched text too short after chrome strip.',
+      at,
+    };
+  }
+
   const variant = options?.promptVariant ?? 'v2';
   const maxOutputTokens = Math.max(settings.maxOutputTokens, variant === 'v2' ? 1200 : 700);
 
@@ -135,14 +153,15 @@ export async function extractEnrichmentWithAI(
         at,
       };
     }
-    if (!hasUsefulExtract(parsed)) {
+    const sanitized = sanitizeExtractOutput(parsed);
+    if (!hasUsefulExtract(sanitized)) {
       return {
         status: 'empty_response',
-        error: 'AI returned no summary, title, or tags (login wall or unclear content).',
+        error: 'No substantive content after filtering login/cookie/error chrome.',
         at,
       };
     }
-    return { status: 'ok', data: parsed, at };
+    return { status: 'ok', data: sanitized, at };
   } catch (e) {
     const message =
       e instanceof AIClientError

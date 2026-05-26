@@ -1,3 +1,0 @@
-page.goto: net::ERR_NAME_NOT_RESOLVED at https://www.qmr.ai/marty-mk
-Call log:
-  - navigating to "https://www.qmr.ai/marty-mk", waiting until "domcontentloaded"

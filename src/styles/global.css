@@ -206,10 +206,36 @@ body {
   color: var(--text);
 }
 
-.enrichment-review input,
 .enrichment-review button,
 .enrichment-review a {
   color: inherit;
+}
+
+/* Typed text must be explicit — inherit + translucent bg made inputs look blank */
+.enrichment-review input.er-field,
+.enrichment-review input[type='number'],
+.enrichment-review input[type='search'] {
+  background-color: var(--bg-panel);
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color-scheme: light dark;
+}
+
+.enrichment-review input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.enrichment-review input[type='number']::-webkit-inner-spin-button,
+.enrichment-review input[type='number']::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+.enrichment-review label.er-field-label {
+  color: var(--text);
 }
 
 .enrichment-review .er-panel {

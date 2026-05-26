@@ -1,1 +1,0 @@
-Refact Cloud is shutting down soon [Read More](https://refact.ai/blog/2026/refact-cloud-is-shutting-down/)

@@ -1,2 +1,0 @@
-<!DOCTYPE html><html lang="en" class="is-not-native-app theme--light "><head>
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script></head></html>

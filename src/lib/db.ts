@@ -3,9 +3,17 @@ import { notifyDataChanged } from './dataChangeNotifier';
 import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
 import { revisionTracker } from './revisionTracker';
 import type { ItemEnrichment } from './enrichment/types';
+import type {
+  AiCategory,
+  AiItemCategoryLink,
+  AiItemSignal,
+  AiTaxonomyState,
+} from './categorization/types';
+
+export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
 
 const DB_NAME = 'personal-tools-db';
-const DB_VERSION = 5;
+const DB_VERSION = 7;
 
 // The default project for orphan items (items without a specific project)
 const DEFAULT_PROJECT_ID = 'project_default';
@@ -152,6 +160,29 @@ interface TabManagerDB extends DBSchema {
     key: string;
     value: ItemEnrichment;
     indexes: { 'by-status': string; 'by-updated': number };
+  };
+  ai_categories: {
+    key: string;
+    value: AiCategory;
+    indexes: { 'by-status': string; 'by-updated': number };
+  };
+  ai_item_category_links: {
+    key: string;
+    value: AiItemCategoryLink;
+    indexes: { 'by-item': string; 'by-category': string; 'by-updated': number };
+  };
+  ai_item_signals: {
+    key: string;
+    value: AiItemSignal;
+    indexes: {
+      'by-updated': number;
+      'by-classify-state': string;
+      'by-discover-state': string;
+    };
+  };
+  ai_taxonomy_state: {
+    key: string;
+    value: AiTaxonomyState;
   };
 }
 
@@ -581,6 +612,81 @@ export const getDB = () => {
           const store = transaction.objectStore('item_enrichment');
           if (!store.indexNames.contains('by-status')) store.createIndex('by-status', 'status');
           if (!store.indexNames.contains('by-updated')) store.createIndex('by-updated', 'updated_at');
+        }
+
+        // AI categorization (v6)
+        if (!db.objectStoreNames.contains('ai_categories')) {
+          const store = db.createObjectStore('ai_categories', { keyPath: 'id' });
+          store.createIndex('by-status', 'status');
+          store.createIndex('by-updated', 'updated_at');
+        } else {
+          const store = transaction.objectStore('ai_categories');
+          if (!store.indexNames.contains('by-status')) store.createIndex('by-status', 'status');
+          if (!store.indexNames.contains('by-updated')) store.createIndex('by-updated', 'updated_at');
+        }
+
+        if (!db.objectStoreNames.contains('ai_item_category_links')) {
+          const store = db.createObjectStore('ai_item_category_links', { keyPath: 'id' });
+          store.createIndex('by-item', 'itemId');
+          store.createIndex('by-category', 'categoryId');
+          store.createIndex('by-updated', 'updated_at');
+        } else {
+          const store = transaction.objectStore('ai_item_category_links');
+          if (!store.indexNames.contains('by-item')) store.createIndex('by-item', 'itemId');
+          if (!store.indexNames.contains('by-category')) store.createIndex('by-category', 'categoryId');
+          if (!store.indexNames.contains('by-updated')) store.createIndex('by-updated', 'updated_at');
+        }
+
+        if (!db.objectStoreNames.contains('ai_item_signals')) {
+          const store = db.createObjectStore('ai_item_signals', { keyPath: 'itemId' });
+          store.createIndex('by-updated', 'lastProcessedAt');
+          store.createIndex('by-classify-state', 'classifyState');
+          store.createIndex('by-discover-state', 'discoverState');
+        } else {
+          const store = transaction.objectStore('ai_item_signals');
+          if (!store.indexNames.contains('by-updated')) {
+            store.createIndex('by-updated', 'lastProcessedAt');
+          }
+          if (!store.indexNames.contains('by-classify-state')) {
+            store.createIndex('by-classify-state', 'classifyState');
+          }
+          if (!store.indexNames.contains('by-discover-state')) {
+            store.createIndex('by-discover-state', 'discoverState');
+          }
+        }
+
+        if (!db.objectStoreNames.contains('ai_taxonomy_state')) {
+          db.createObjectStore('ai_taxonomy_state', { keyPath: 'id' });
+        }
+
+        // ---- v7: hierarchy fields on legacy flat categories ----
+        if (oldVersion < 7 && db.objectStoreNames.contains('ai_categories')) {
+          const catStore = transaction.objectStore('ai_categories');
+          const legacyCats: AiCategory[] = await catStore.getAll();
+          for (const cat of legacyCats) {
+            if (!cat.kind) {
+              await catStore.put({
+                ...cat,
+                kind: 'leaf',
+                assignable: cat.assignable !== false,
+                itemCount: cat.itemCount ?? 0,
+                updated_at: now,
+              });
+            }
+          }
+        }
+        if (oldVersion < 7 && db.objectStoreNames.contains('ai_item_signals')) {
+          const sigStore = transaction.objectStore('ai_item_signals');
+          const legacySignals: AiItemSignal[] = await sigStore.getAll();
+          for (const sig of legacySignals) {
+            if (!sig.classifyState) {
+              await sigStore.put({
+                ...sig,
+                classifyState: 'pending_classify',
+                discoverState: sig.discoverState ?? 'none',
+              });
+            }
+          }
         }
 
         // ---- Data migration to v3 ----
@@ -1438,6 +1544,8 @@ export interface BulkImportResult {
   created: number;
   merged: number;
   skipped: number;
+  /** Item ids created in this import (for AI queue). */
+  createdItemIds: string[];
 }
 
 /**
@@ -1455,6 +1563,7 @@ export const bulkImportBookmarks = async (
   let created = 0;
   let merged = 0;
   let skipped = 0;
+  const createdItemIds: string[] = [];
   
   // Group by normalized URL to handle duplicates within import
   const byUrl = new Map<string, ImportCandidate[]>();
@@ -1545,6 +1654,7 @@ export const bulkImportBookmarks = async (
 
     created += 1;
     const id = crypto.randomUUID();
+    createdItemIds.push(id);
     const source = (best.source || 'import') as Item['source'];
     const placements: Record<string, ItemPlacement> = {
       [targetCollection]: {
@@ -1580,7 +1690,17 @@ export const bulkImportBookmarks = async (
     notifyDataChanged('item.update');
   }
   
-  return { created, merged, skipped };
+  if (createdItemIds.length > 0) {
+    try {
+      const { markItemsPendingClassify, noteBulkImport } = await import('./categorization/classifyTopicExtract');
+      await markItemsPendingClassify(createdItemIds);
+      await noteBulkImport(createdItemIds.length);
+    } catch (e) {
+      console.warn('Bulk import: could not queue categorization', e);
+    }
+  }
+
+  return { created, merged, skipped, createdItemIds };
 };
 
 export const exportDB = async () => {
@@ -1597,8 +1717,49 @@ export const exportDB = async () => {
     } catch {
       /* store may not exist on very old handles */
     }
+    let ai_categories: AiCategory[] = [];
+    let ai_item_category_links: AiItemCategoryLink[] = [];
+    let ai_item_signals: AiItemSignal[] = [];
+    let ai_taxonomy_state: AiTaxonomyState[] = [];
+    try {
+      if (db.objectStoreNames.contains('ai_categories')) {
+        ai_categories = await db.getAll('ai_categories');
+        ai_item_category_links = await db.getAll('ai_item_category_links');
+        ai_item_signals = await db.getAll('ai_item_signals');
+      }
+      if (db.objectStoreNames.contains('ai_taxonomy_state')) {
+        ai_taxonomy_state = await db.getAll('ai_taxonomy_state');
+      }
+    } catch {
+      /* v5 backup restore */
+    }
+    const pipelineExportCounts = {
+      exportedAt: Date.now(),
+      item_enrichment: item_enrichment.length,
+      ai_categories: ai_categories.length,
+      ai_categories_parents: ai_categories.filter((c) => c.kind === 'parent').length,
+      ai_categories_leaves: ai_categories.filter((c) => c.kind === 'leaf').length,
+      ai_item_category_links: ai_item_category_links.length,
+      ai_item_signals: ai_item_signals.length,
+      ai_taxonomy_state: ai_taxonomy_state.length,
+      taxonomyVersion: ai_taxonomy_state[0]?.taxonomyVersion ?? null,
+    };
+
     return JSON.stringify(
-      { projects, collections, items, notes, snapshots, workspaces, item_enrichment },
+      {
+        _pipelineExportCounts: pipelineExportCounts,
+        projects,
+        collections,
+        items,
+        notes,
+        snapshots,
+        workspaces,
+        item_enrichment,
+        ai_categories,
+        ai_item_category_links,
+        ai_item_signals,
+        ai_taxonomy_state,
+      },
       null,
       2
     );
@@ -1632,6 +1793,22 @@ export const verifyBackup = (
     item_enrichment: Array.isArray(data.item_enrichment)
       ? (data.item_enrichment as unknown[]).length
       : 0,
+    ai_categories: Array.isArray(data.ai_categories)
+      ? (data.ai_categories as unknown[]).length
+      : 0,
+    ai_item_category_links: Array.isArray(data.ai_item_category_links)
+      ? (data.ai_item_category_links as unknown[]).length
+      : 0,
+    ai_item_signals: Array.isArray(data.ai_item_signals)
+      ? (data.ai_item_signals as unknown[]).length
+      : 0,
+    ai_taxonomy_state: Array.isArray(data.ai_taxonomy_state)
+      ? (data.ai_taxonomy_state as unknown[]).length
+      : 0,
+    pipelineExportCounts:
+      data._pipelineExportCounts && typeof data._pipelineExportCounts === 'object'
+        ? data._pipelineExportCounts
+        : null,
   };
 
   if (stats.projects === 0 && stats.items === 0 && stats.collections === 0) {
@@ -1688,10 +1865,33 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
     }
 
     // Use transactions for atomicity - all or nothing
-    const tx = db.transaction(
-      ['projects', 'collections', 'items', 'notes', 'workspaces', 'item_enrichment'],
-      'readwrite'
-    );
+    type ImportStore =
+      | 'projects'
+      | 'collections'
+      | 'items'
+      | 'notes'
+      | 'workspaces'
+      | 'item_enrichment'
+      | 'ai_categories'
+      | 'ai_item_category_links'
+      | 'ai_item_signals'
+      | 'ai_taxonomy_state';
+    const storeNames: ImportStore[] = (
+      [
+        'projects',
+        'collections',
+        'items',
+        'notes',
+        'workspaces',
+        'item_enrichment',
+        'ai_categories',
+        'ai_item_category_links',
+        'ai_item_signals',
+        'ai_taxonomy_state',
+      ] as ImportStore[]
+    ).filter((name) => db.objectStoreNames.contains(name));
+
+    const tx = db.transaction(storeNames, 'readwrite');
     
     try {
         if (data.projects) {
@@ -1734,6 +1934,28 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
           const enrichStore = tx.objectStore('item_enrichment');
           await Promise.all(
             (data.item_enrichment as ItemEnrichment[]).map((row) => enrichStore.put(row))
+          );
+        }
+        if (data.ai_categories && db.objectStoreNames.contains('ai_categories')) {
+          const catStore = tx.objectStore('ai_categories');
+          await Promise.all((data.ai_categories as AiCategory[]).map((row) => catStore.put(row)));
+        }
+        if (data.ai_item_category_links && db.objectStoreNames.contains('ai_item_category_links')) {
+          const linkStore = tx.objectStore('ai_item_category_links');
+          await Promise.all(
+            (data.ai_item_category_links as AiItemCategoryLink[]).map((row) => linkStore.put(row))
+          );
+        }
+        if (data.ai_item_signals && db.objectStoreNames.contains('ai_item_signals')) {
+          const sigStore = tx.objectStore('ai_item_signals');
+          await Promise.all(
+            (data.ai_item_signals as AiItemSignal[]).map((row) => sigStore.put(row))
+          );
+        }
+        if (data.ai_taxonomy_state && db.objectStoreNames.contains('ai_taxonomy_state')) {
+          const metaStore = tx.objectStore('ai_taxonomy_state');
+          await Promise.all(
+            (data.ai_taxonomy_state as AiTaxonomyState[]).map((row) => metaStore.put(row))
           );
         }
       

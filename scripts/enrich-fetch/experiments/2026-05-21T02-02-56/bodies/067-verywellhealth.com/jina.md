@@ -1,3 +1,0 @@
-# Just a moment...
-
-Verification successful. Waiting for www.verywellhealth.com to respond

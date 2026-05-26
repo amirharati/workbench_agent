@@ -7,7 +7,8 @@ const DEFAULT_AI_SETTINGS: AISettings = {
   baseUrl: 'https://openrouter.ai/api/v1',
   model: 'openai/gpt-4o-mini',
   apiKey: '',
-  timeoutMs: 25_000,
+  /** Enrich/single-shot; batch classify/discover use at least BATCH_AI_TIMEOUT_MS. */
+  timeoutMs: 45_000,
   temperature: 0.2,
   maxOutputTokens: 700,
   strictModelMatch: false,
@@ -68,6 +69,20 @@ const sanitizeSettings = (value: Partial<AISettings> | null | undefined): AISett
     taskModels,
   };
 };
+
+/** Large catalog + N summaries; OpenRouter often exceeds 25s. */
+export const BATCH_AI_TIMEOUT_MS = 90_000;
+
+export function aiSettingsForBatchJob(
+  settings: AISettings,
+  minOutputTokens = 4000
+): AISettings {
+  return {
+    ...settings,
+    timeoutMs: Math.max(settings.timeoutMs, BATCH_AI_TIMEOUT_MS),
+    maxOutputTokens: Math.max(settings.maxOutputTokens, minOutputTokens),
+  };
+}
 
 export const getDefaultAISettings = (): AISettings => ({ ...DEFAULT_AI_SETTINGS });
 

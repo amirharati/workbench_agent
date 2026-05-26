@@ -1,3 +1,0 @@
-page.goto: Timeout 30000ms exceeded.
-Call log:
-  - navigating to "https://www.indiehackers.com/post/i-tested-100-startup-ideas-in-30-days-only-3-were-worth-building-here-s-the-exact-framework-i-used-b91cdf7331", waiting until "domcontentloaded"

@@ -1,3 +1,0 @@
-page.goto: Download is starting
-Call log:
-  - navigating to "https://arxiv.org/pdf/1807.03748.pdf", waiting until "domcontentloaded"

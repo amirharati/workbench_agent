@@ -2,6 +2,11 @@ export * from './types';
 export * from './eligibility';
 export { getPlacementNotes } from './itemText';
 export {
+  buildCategorizationText,
+  CATEGORIZATION_SNIPPET_MAX_CHARS,
+} from './categorizationText';
+export type { BuildCategorizationTextOptions } from './categorizationText';
+export {
   buildAllDataModelFields,
   buildFillableFields,
   labelColor,
@@ -15,6 +20,12 @@ export type {
   FillableFieldState,
 } from './fieldInventory';
 export * from './parse';
+export {
+  clearPipelineData,
+  syncClassifySignalsFromLinks,
+  type ClearPipelineDataOptions,
+  type ClearPipelineDataResult,
+} from './pipelineReset';
 export {
   enrichOne,
   enrichBatch,

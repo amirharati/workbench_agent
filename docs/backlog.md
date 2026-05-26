@@ -130,6 +130,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [ ] **Bootstrap empty library:** If few/no categories, create **`ai_proposed_*`** categories from largest stable clusters in first batch so the system is usable immediately; user rename/merge/approve later.
 - [ ] **Compute UX:** Run embedding + batch scoring in **Web Worker** (or dedicated off-main path); strict **budgets** (max items/run, timeouts) so dashboard stays responsive.
 - [ ] **Pluggable interfaces (prep for V2/cloud without rewiring):** Introduce narrow contracts — **`Embedder`**, **`Fetcher`** (already directionally covered by fetch task), **`Retriever`** (local stub: metadata filter + cosine on doc vectors), **`Indexer`** (background refresh of vectors / centroids) — implemented locally first, swappable later.
+- [ ] **V1.1 / Task 02.1 — Incremental LLM refine (after Task 02 V1):** Keep embed + k-means + centroid assign as core; add **second-pass** LLM on **minimal payloads** (short title/tags/summary, category name list) — **not** full-library clustering in one prompt. Runs **incrementally** as library grows (1000s): new/changed items via `textHash`, borderline scores, per-category rename, batched borderline review; optional stronger model for refine only. **Also:** enrichment **quality gate** (skip assign when AI/fetch failed — no chrome-snippet embed). Spec: [`docs/temp/TASK-02-ai-categorization-v1.md`](temp/TASK-02-ai-categorization-v1.md) § Next iteration.
 
 **AI — V2 (powerful search + scale; after V1 stable)**
 
@@ -193,4 +194,4 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ---
 
-*Last updated: 2026-05-24 — Task 01.5 closed (AI extraction tuning + eval harness). Backlog now reflects: fetch service + tuned extraction complete; remaining enrichment follow-ups are product UX / deep fetch / hardening; Task 02 categorization is next.*
+*Last updated: 2026-05-25 — Task 02 V1 shipped (CLI + DB v6 + embed pipeline + experiments). Task 02.1 queued: enrichment gate + incremental LLM refine pass.*

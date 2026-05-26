@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "fetch-test": "node scripts/enrich-fetch/fetch-test.mjs",
     "fetch-experiment": "node scripts/enrich-fetch/run-experiment.mjs",
-    "fetch-ai-eval": "node scripts/enrich-fetch/run-ai-eval.mjs"
+    "fetch-ai-eval": "node scripts/enrich-fetch/run-ai-eval.mjs",
+    "categorize": "node scripts/categorize/run-categorize.mjs",
+    "discover-taxonomy": "node scripts/categorize/discover-taxonomy.mjs",
+    "check-openrouter-key": "node scripts/check-openrouter-key.mjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

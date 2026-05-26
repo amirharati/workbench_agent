@@ -4,8 +4,19 @@ import type { Item } from '../../lib/db';
 import { getAllItems } from '../../lib/db';
 import { enrichBatch, enrichOne, getAllEnrichments, loadRawBody, reextractAI, type ItemEnrichment } from '../../lib/enrichment';
 import { ItemFieldInventory } from './ItemFieldInventory';
+import { CategorizationPanel, ItemCategoryLinks } from './CategorizationPanel';
+import { getAiCategories, itemNeedsClassify } from '../../lib/categorization';
+import { getDB } from '../../lib/db';
+import type { ClassifyState } from '../../lib/categorization/types';
 
 type StatusFilter = 'all' | 'ok' | 'failed' | 'skipped' | 'other';
+type CatFilter = 'all' | 'no_topic' | 'has_topic';
+
+type RowCatMeta = {
+  primaryName: string | null;
+  needsClassify: boolean;
+  classifyState?: ClassifyState;
+};
 
 type ReviewRow = {
   item: Item;
@@ -111,6 +122,8 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [catFilter, setCatFilter] = useState<CatFilter>('all');
+  const [catByItem, setCatByItem] = useState<Map<string, RowCatMeta>>(new Map());
   const [search, setSearch] = useState('');
   const [rawDump, setRawDump] = useState<string | null>(null);
   const [rawLoading, setRawLoading] = useState(false);
@@ -154,6 +167,52 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
         setRows(list);
       }
       setActiveIndex(0);
+
+      const rowIds = new Set(list.map((r) => r.item.id));
+      const catMeta = new Map<string, RowCatMeta>();
+      try {
+        const db = await getDB();
+        const [categories, links, signals] = await Promise.all([
+          getAiCategories(),
+          db.objectStoreNames.contains('ai_item_category_links')
+            ? db.getAll('ai_item_category_links')
+            : [],
+          db.objectStoreNames.contains('ai_item_signals')
+            ? db.getAll('ai_item_signals')
+            : [],
+        ]);
+        const nameById = new Map(categories.map((c) => [c.id, c.name]));
+        const primaryNameByItem = new Map<string, string>();
+        const primaryIdByItem = new Map<string, string>();
+        for (const l of links) {
+          if (
+            !rowIds.has(l.itemId) ||
+            l.source !== 'ai' ||
+            !l.isPrimary ||
+            l.status === 'rejected'
+          ) {
+            continue;
+          }
+          primaryIdByItem.set(l.itemId, l.categoryId);
+          primaryNameByItem.set(l.itemId, nameById.get(l.categoryId) ?? l.categoryId);
+        }
+        const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
+        for (const row of list) {
+          const id = row.item.id;
+          const st = signalByItem.get(id)?.classifyState;
+          const primaryId = primaryIdByItem.get(id);
+          const primaryName = primaryNameByItem.get(id) ?? null;
+          const aiOk = row.enrichment?.aiStatus === 'ok';
+          catMeta.set(id, {
+            primaryName,
+            needsClassify: itemNeedsClassify(st, primaryId, false, aiOk),
+            classifyState: st,
+          });
+        }
+      } catch {
+        /* non-fatal */
+      }
+      setCatByItem(catMeta);
     } finally {
       setLoading(false);
     }
@@ -177,15 +236,22 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
           (r.item.url || '').toLowerCase().includes(q)
       );
     }
-    if (statusFilter === 'all') return list;
+    if (statusFilter !== 'all') {
+      list = list.filter((r) => {
+        const s = r.enrichment?.status ?? 'none';
+        if (statusFilter === 'ok') return s === 'ok';
+        if (statusFilter === 'failed') return s === 'failed';
+        if (statusFilter === 'skipped') return s === 'skipped';
+        return s !== 'ok' && s !== 'failed' && s !== 'skipped';
+      });
+    }
+    if (catFilter === 'all') return list;
     return list.filter((r) => {
-      const s = r.enrichment?.status ?? 'none';
-      if (statusFilter === 'ok') return s === 'ok';
-      if (statusFilter === 'failed') return s === 'failed';
-      if (statusFilter === 'skipped') return s === 'skipped';
-      return s !== 'ok' && s !== 'failed' && s !== 'skipped';
+      const cat = catByItem.get(r.item.id);
+      if (catFilter === 'has_topic') return !!cat?.primaryName;
+      return r.enrichment?.aiStatus === 'ok' && !cat?.primaryName;
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, catFilter, catByItem]);
 
   useEffect(() => {
     if (activeIndex >= filteredRows.length) {
@@ -305,6 +371,15 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
     return c;
   }, [rows]);
 
+  /** Items in this review list with AI summary ready — default scope for categorize. */
+  const aiReadyItemIds = useMemo(
+    () =>
+      rows
+        .filter((r) => r.enrichment?.aiStatus === 'ok')
+        .map((r) => r.item.id),
+    [rows]
+  );
+
   if (!open) return null;
 
   const enrich = active?.enrichment;
@@ -374,6 +449,11 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
         </button>
       </header>
 
+      <CategorizationPanel
+        scopedItemIds={aiReadyItemIds}
+        scopeLabel={itemIds?.length ? 'this enrich run' : 'all results'}
+      />
+
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* List */}
         <aside
@@ -389,12 +469,14 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
           <div style={{ padding: 10, borderBottom: '1px solid var(--border)' }}>
             <input
               type="search"
+              className="er-field"
               placeholder="Filter…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={inputStyle}
             />
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: '100%' }}>Fetch</span>
               {(['all', 'ok', 'failed', 'skipped', 'other'] as StatusFilter[]).map((f) => (
                 <button
                   key={f}
@@ -416,6 +498,26 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                 </button>
               ))}
             </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: '100%' }}>Topic</span>
+              {(['all', 'no_topic', 'has_topic'] as CatFilter[]).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => {
+                    setCatFilter(f);
+                    setActiveIndex(0);
+                  }}
+                  className={catFilter === f ? 'er-btn er-btn-active' : 'er-btn'}
+                  style={{
+                    ...chipBtn,
+                    fontWeight: catFilter === f ? 600 : 400,
+                  }}
+                >
+                  {f === 'all' ? 'all' : f === 'has_topic' ? 'has topic' : 'no topic'}
+                </button>
+              ))}
+            </div>
           </div>
           <div style={{ flex: 1, overflow: 'auto' }}>
             {loading ? (
@@ -425,6 +527,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
             ) : (
               filteredRows.map((row, idx) => {
                 const st = row.enrichment?.status ?? 'none';
+                const cat = catByItem.get(row.item.id);
                 const isActive = idx === activeIndex;
                 return (
                   <button
@@ -470,6 +573,18 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                           {row.enrichment.lastErrorCode}
                         </span>
                       )}
+                      {cat?.primaryName ? (
+                        <span
+                          style={{ fontSize: 10, color: 'var(--accent)', maxWidth: 120 }}
+                          title={cat.primaryName}
+                        >
+                          {cat.primaryName.length > 18
+                            ? `${cat.primaryName.slice(0, 16)}…`
+                            : cat.primaryName}
+                        </span>
+                      ) : row.enrichment?.aiStatus === 'ok' ? (
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>no topic</span>
+                      ) : null}
                     </div>
                   </button>
                 );
@@ -654,6 +769,8 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                   )}
                 </Section>
 
+                {active?.item.id ? <ItemCategoryLinks itemId={active.item.id} /> : null}
+
                 <Section
                   title="AI summary"
                   empty={
@@ -750,9 +867,6 @@ const inputStyle: React.CSSProperties = {
   padding: '6px 10px',
   fontSize: 'var(--text-sm)',
   borderRadius: 6,
-  border: '1px solid var(--border)',
-  background: 'var(--input-bg)',
-  color: 'var(--text)',
   boxSizing: 'border-box',
 };
 

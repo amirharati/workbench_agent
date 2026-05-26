@@ -56,3 +56,7 @@ coverage/
 *.temp
 .cache/
 
+# CLI experiment outputs (local eval runs)
+scripts/categorize/experiments/
+scripts/enrich-fetch/experiments/
+

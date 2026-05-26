@@ -1,1 +1,0 @@
-https://medium.com/@kutovenko/flutter-offline-speech-recognition-with-vosk-645791c312fa

@@ -1,3 +1,0 @@
-page.goto: Download is starting
-Call log:
-[2m  - navigating to "https://enjeeneer.io/sutton_and_barto/rl_exercises.pdf", waiting until "domcontentloaded"[22m

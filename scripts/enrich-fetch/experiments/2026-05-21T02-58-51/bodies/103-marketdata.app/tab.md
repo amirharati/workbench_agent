@@ -1,1 +1,0 @@
-Real-Time & Historic Data for Stocks, Options, ETFs, & Mutual Funds. Get Data Anywhere.

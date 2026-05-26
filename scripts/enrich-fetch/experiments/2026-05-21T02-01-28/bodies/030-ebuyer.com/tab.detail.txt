@@ -1,3 +1,0 @@
-page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://www.ebuyer.com/blog/2021/03/what-is-the-nvidia-shield-and-what-does-it-do
-Call log:
-  - navigating to "https://www.ebuyer.com/blog/2021/03/what-is-the-nvidia-shield-and-what-does-it-do", waiting until "domcontentloaded"

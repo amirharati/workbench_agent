@@ -1,1 +1,0 @@
-https://www.run.ai/guides/gpu-deep-learning/fpga-for-deep-learning

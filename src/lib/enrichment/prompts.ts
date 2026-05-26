@@ -23,12 +23,16 @@ const JSON_SHAPE_V2 = `{
 }`;
 
 const JSON_RULES_V2 = `- Return ONLY valid JSON (no markdown fences)
-- summary: factual digest for humans and search — not a vague paraphrase
+- summary: factual digest of the MAIN content the user bookmarked — not page chrome
 - keyPoints: 0-6 short bullets with concrete entities, claims, or topics (empty array if none)
 - improvedTitle: omit " | Medium", " - Reddit", etc.; empty string only if truly unknown
-- tags: 3-8 lowercase topic tags; include proper nouns when useful
-- Return all-empty fields ONLY when input is purely a cookie/login/captcha gate with no describable content
-- If any usable text exists, provide at least summary OR keyPoints OR improvedTitle OR tags`;
+- tags: 3-8 lowercase topic tags about subject matter; include proper nouns when useful
+- IGNORE login forms, cookie banners, CAPTCHA, and password fields — do not summarize or tag those UI elements
+- If the page mixes login chrome WITH product/docs/marketing copy, extract ONLY the substantive copy (what the site/product does)
+- NEVER use tags like cookies, privacy, login, sign in, consent, authentication, newsletter unless the article is ABOUT that topic
+- Return all-empty JSON ONLY when, after ignoring chrome, there is truly no describable topic (pure login form, empty 404)
+- If real article or product description exists, ignore navigation and legal boilerplate
+- Adult/erotic/pornographic pages are valid bookmarks: summarize the scene or topic factually (tags: adult, erotic, fetish, etc. when applicable). NEVER refuse or return empty solely because content is sexual — this is a personal library, not public moderation`;
 
 /** Baseline prompt shipped in Task 01 (single prompt for all sources). */
 export const PROMPT_V1_SYSTEM = `You extract structured metadata from web page content for a bookmark manager.
@@ -67,13 +71,13 @@ Source type: video page (often YouTube). Transcript may be absent — use title,
 
   article: `${PROMPT_V2_BASE}
 
-Source type: article or web page. Input may be long.
-- summary: 4-6 sentences covering thesis, scope, and takeaway; name key entities
+Source type: article or web page. Input may include login forms plus marketing copy.
+- summary: 4-6 sentences on the MAIN topic (article body or product value prop); skip login/cookie UI
 - keyPoints: 3-6 bullets — main ideas, tools, people, methods, or conclusions
-- 404/moved pages: note the error and what the site/topic is
-- Thin pages: extract whatever is present
-- improvedTitle: headline without publisher suffix
-- tags: specific topics and named entities`,
+- Login landing with product description: summarize the product/service, not the form
+- Pure 404 with no topic: all-empty JSON
+- improvedTitle: headline without publisher suffix; infer from URL if title is generic (Welcome, Sign in)
+- tags: subject-matter only — never cookies/login/privacy UI`,
 
   generic: `${PROMPT_V2_BASE}
 
