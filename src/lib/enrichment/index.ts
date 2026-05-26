@@ -5,6 +5,18 @@ export {
   buildCategorizationText,
   CATEGORIZATION_SNIPPET_MAX_CHARS,
 } from './categorizationText';
+export {
+  buildSearchEmbedText,
+  searchEmbedTextLength,
+  MIN_SEARCH_EMBED_TEXT_LENGTH,
+} from './searchEmbedText';
+export { ensureItemEmbedding, embedIncrementalBatch, getEmbedBackfillStats } from './embedItemSignal';
+export type {
+  EnsureItemEmbeddingResult,
+  EmbedBatchSummary,
+  EmbedBackfillStats,
+  EmbedBackfillProgress,
+} from './embedItemSignal';
 export type { BuildCategorizationTextOptions } from './categorizationText';
 export {
   buildAllDataModelFields,

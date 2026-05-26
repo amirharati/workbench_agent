@@ -34,6 +34,8 @@ export interface CategorizationEligibilityResult {
   /** Semantic substance excluding host and junk title. */
   semanticLength: number;
   allowSnippetFallback: boolean;
+  /** Balanced quality tier for classify observability. */
+  qualityTier?: 'high' | 'medium' | 'low';
 }
 
 export function isGenericTitle(title: string): boolean {
@@ -102,14 +104,44 @@ export function assessCategorizationEligibility(
   const aiOk = aiStatus === 'ok' && summary.length >= MIN_AI_SUMMARY_LENGTH;
   const notesOk = notes.length >= MIN_NOTES_LENGTH;
   const substanceOk = semanticLength >= MIN_SEMANTIC_SUBSTANCE;
+  const substanceBorderline =
+    semanticLength >= MIN_SEMANTIC_SUBSTANCE - 20 && semanticLength < MIN_SEMANTIC_SUBSTANCE;
 
   const snippet = enrichment?.snippet?.trim() || '';
   const snippetOk = snippetSubstance(snippet) > 0;
   const allowSnippetFallback =
     aiOk || (!FAILED_AI.includes(aiStatus as EnrichmentAIStatus) && snippetOk && !genericTitle);
 
-  if (aiOk || notesOk || substanceOk) {
-    return { eligible: true, semanticLength, allowSnippetFallback };
+  if (aiOk) {
+    return { eligible: true, semanticLength, allowSnippetFallback, qualityTier: 'high' };
+  }
+
+  if (notesOk) {
+    return { eligible: true, semanticLength, allowSnippetFallback, qualityTier: 'medium' };
+  }
+
+  if (substanceOk) {
+    return {
+      eligible: true,
+      semanticLength,
+      allowSnippetFallback,
+      qualityTier: genericTitle ? 'low' : 'medium',
+    };
+  }
+
+  // Balanced: allow thin-but-valid snippet path when title is specific and snippet has substance.
+  if (
+    !FAILED_AI.includes(aiStatus as EnrichmentAIStatus) &&
+    snippetOk &&
+    !genericTitle &&
+    substanceBorderline
+  ) {
+    return {
+      eligible: true,
+      semanticLength,
+      allowSnippetFallback: true,
+      qualityTier: 'low',
+    };
   }
 
   if (FAILED_AI.includes(aiStatus as EnrichmentAIStatus)) {

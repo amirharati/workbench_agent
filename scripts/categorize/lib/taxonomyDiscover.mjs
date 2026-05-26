@@ -237,7 +237,7 @@ function buildDiscoveryPrompt(parents, leavesSoFar, batchItems, opts) {
     parents
   );
   const catalogMd = formatGroupedCatalogMarkdown(grouped);
-  const stuckCount = batchItems.filter((i) => i.stuckKind && i.stuckKind !== 'retry').length;
+  const stuckCount = batchItems.filter((i) => i.stuckKind && i.stuckKind !== 'manual_review').length;
   return [
     '## Task',
     bootstrapMode

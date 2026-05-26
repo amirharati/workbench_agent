@@ -1,6 +1,7 @@
 import { markItemsPendingClassify } from '../categorization/classifyTopicExtract';
 import { notifyDataChanged } from '../dataChangeNotifier';
 import { getDB } from '../db';
+import { ensureItemEmbedding } from './embedItemSignal';
 import type { ItemEnrichment } from './types';
 
 export async function getEnrichment(itemId: string): Promise<ItemEnrichment | undefined> {
@@ -13,6 +14,7 @@ export async function putEnrichment(record: ItemEnrichment): Promise<void> {
   await db.put('item_enrichment', record);
   notifyDataChanged('enrichment.update');
   if (record.aiStatus === 'ok') {
+    await ensureItemEmbedding(record.itemId, record);
     void markItemsPendingClassify([record.itemId]);
   }
 }

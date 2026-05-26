@@ -9,7 +9,8 @@ import { parseFetchedContent } from './parse.mjs';
 import { HYBRID_PROVIDER_ORDER } from './aiPrompts.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const EXPERIMENTS_DIR = join(__dir, '..', 'experiments');
+const REPO_ROOT = join(__dir, '..', '..', '..');
+const EXPERIMENTS_DIR = join(REPO_ROOT, 'data', 'experiments', 'enrich-fetch');
 
 const DEFAULT_CORPORA = [
   '2026-05-21T02-02-56',

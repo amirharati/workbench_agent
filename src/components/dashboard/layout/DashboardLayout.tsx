@@ -7,6 +7,7 @@ import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 import type { AISettings } from '../../../lib/ai/types';
 import { LayoutGrid, List, X } from 'lucide-react';
 import { DeleteConfirmDialog, type DeleteConfirmResult } from '../../DeleteConfirmDialog';
+import { ensurePendingClassifySignals } from '../../../lib/categorization';
 
 export type DashboardView =
   | 'home'
@@ -138,6 +139,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     placementId?: string;
   } | null>(null);
   const [listTabViewById, setListTabViewById] = useState<Record<string, 'list' | 'grid'>>({});
+
+  useEffect(() => {
+    void ensurePendingClassifySignals();
+  }, []);
   
   // Right panel AI state
   const [rightPrompt, setRightPrompt] = useState('');

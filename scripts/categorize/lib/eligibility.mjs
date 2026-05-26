@@ -54,12 +54,34 @@ export function assessCategorizationEligibility(item) {
   const aiOk = aiStatus === 'ok' && summary.length >= MIN_AI_SUMMARY_LENGTH;
   const notesOk = notes.length >= MIN_NOTES_LENGTH;
   const substanceOk = semanticLength >= MIN_SEMANTIC_SUBSTANCE;
+  const substanceBorderline =
+    semanticLength >= MIN_SEMANTIC_SUBSTANCE - 20 && semanticLength < MIN_SEMANTIC_SUBSTANCE;
+
   const snippetOk = snippetSubstance(item.snippet) > 0;
   const allowSnippetFallback =
     aiOk || (!FAILED_AI.has(aiStatus) && snippetOk && !genericTitle);
 
-  if (aiOk || notesOk || substanceOk) {
-    return { eligible: true, semanticLength, allowSnippetFallback };
+  if (aiOk) {
+    return { eligible: true, semanticLength, allowSnippetFallback, qualityTier: 'high' };
+  }
+  if (notesOk) {
+    return { eligible: true, semanticLength, allowSnippetFallback, qualityTier: 'medium' };
+  }
+  if (substanceOk) {
+    return {
+      eligible: true,
+      semanticLength,
+      allowSnippetFallback,
+      qualityTier: genericTitle ? 'low' : 'medium',
+    };
+  }
+  if (!FAILED_AI.has(aiStatus) && snippetOk && !genericTitle && substanceBorderline) {
+    return {
+      eligible: true,
+      semanticLength,
+      allowSnippetFallback: true,
+      qualityTier: 'low',
+    };
   }
 
   if (FAILED_AI.has(aiStatus)) {

@@ -13,6 +13,10 @@ export * from './counts';
 export * from './taxonomyState';
 export * from './topicExtract';
 export * from './categorizationFairGame';
+export * from './classifyPolicy';
+export * from './discoverPolicy';
+export * from './classifyQueueReason';
+export * from './devQueries';
 export * from './classifyTopicExtract';
 export {
   runCategorizationOnItems,

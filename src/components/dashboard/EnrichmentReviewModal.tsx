@@ -5,17 +5,67 @@ import { getAllItems } from '../../lib/db';
 import { enrichBatch, enrichOne, getAllEnrichments, loadRawBody, reextractAI, type ItemEnrichment } from '../../lib/enrichment';
 import { ItemFieldInventory } from './ItemFieldInventory';
 import { CategorizationPanel, ItemCategoryLinks } from './CategorizationPanel';
-import { getAiCategories, itemNeedsClassify } from '../../lib/categorization';
+import { ItemSimilarSection } from './SearchDiscoveryBlocks';
+import { PipelineDevView } from './PipelineDevView';
+import { getAiCategories, ensurePendingClassifySignals, getScopedCategorizationStats, hasSpecificPrimaryTopic } from '../../lib/categorization';
+import { resolveEffectiveClassifyState } from '../../lib/categorization/counts';
+import { describeClassifyQueueStatus } from '../../lib/categorization/classifyQueueReason';
+import { assessCategorizationEligibility } from '../../lib/enrichment/categorizationEligibility';
+import { ClassifyQueueReasonBlock } from './ClassifyQueueReasonBlock';
 import { getDB } from '../../lib/db';
 import type { ClassifyState } from '../../lib/categorization/types';
 
 type StatusFilter = 'all' | 'ok' | 'failed' | 'skipped' | 'other';
 type CatFilter = 'all' | 'no_topic' | 'has_topic';
+type QueueFilter = 'all' | 'pending' | 'discover' | 'ineligible' | 'manual_review' | 'needs_attention';
+
+function rowPassesFetchFilter(status: string | undefined, statusFilter: StatusFilter): boolean {
+  const s = status ?? 'none';
+  if (statusFilter === 'all') return true;
+  if (statusFilter === 'ok') return s === 'ok';
+  if (statusFilter === 'failed') return s === 'failed';
+  if (statusFilter === 'skipped') return s === 'skipped';
+  return s !== 'ok' && s !== 'failed' && s !== 'skipped';
+}
+
+function rowPassesQueueFilter(
+  queueFilter: QueueFilter,
+  cat: RowCatMeta | undefined,
+  aiOk: boolean
+): boolean {
+  if (queueFilter === 'all') return true;
+  if (!aiOk) return false;
+  const st = cat?.classifyState ?? 'pending_classify';
+  if (queueFilter === 'pending') {
+    return !!cat?.readyToClassify;
+  }
+  if (queueFilter === 'discover') {
+    return st === 'pending_discover';
+  }
+  if (queueFilter === 'ineligible') return st === 'ineligible';
+  if (queueFilter === 'manual_review') return st === 'manual_review';
+  if (queueFilter === 'needs_attention') {
+    if (hasSpecificPrimaryTopic(cat?.primaryCategoryId, st)) return false;
+    if (st === 'skipped' || st === 'manual_only') return false;
+    return true;
+  }
+  return true;
+}
 
 type RowCatMeta = {
   primaryName: string | null;
-  needsClassify: boolean;
+  primaryCategoryId: string | null;
+  readyToClassify: boolean;
   classifyState?: ClassifyState;
+  queueReason?: string;
+  signal?: {
+    eligibilityReason?: string;
+    lastClassifySkipReason?: string;
+    classifyRetryCount?: number;
+    inputQualityTier?: import('../../lib/categorization/types').ClassifyInputQualityTier;
+    llmReview?: { reason?: string };
+    signalStatus?: import('../../lib/categorization/types').AiSignalStatus;
+  };
 };
 
 type ReviewRow = {
@@ -23,11 +73,15 @@ type ReviewRow = {
   enrichment?: ItemEnrichment;
 };
 
+type DevHubTab = 'results' | 'pipeline';
+
 type Props = {
   open: boolean;
   onClose: () => void;
   /** If set, list is limited to these item ids (e.g. last enrich run) */
   itemIds?: string[];
+  /** Which top-level dev tab to show when the modal opens. */
+  initialTab?: DevHubTab;
 };
 
 const statusColor: Record<string, string> = {
@@ -88,7 +142,7 @@ function Section({
       <h3
         style={{
           margin: '0 0 8px',
-          fontSize: 'var(--text-xs)',
+          fontSize: 'var(--dev-fs-sm)',
           fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: '0.04em',
@@ -100,7 +154,7 @@ function Section({
       <div
         className="er-panel"
         style={{
-          fontSize: 'var(--text-sm)',
+          fontSize: 'var(--dev-fs-base)',
           lineHeight: 1.5,
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
@@ -117,12 +171,14 @@ function Section({
   );
 }
 
-export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds }) => {
+export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds, initialTab = 'results' }) => {
+  const [devTab, setDevTab] = useState<DevHubTab>(initialTab);
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [catFilter, setCatFilter] = useState<CatFilter>('all');
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
   const [catByItem, setCatByItem] = useState<Map<string, RowCatMeta>>(new Map());
   const [search, setSearch] = useState('');
   const [rawDump, setRawDump] = useState<string | null>(null);
@@ -138,6 +194,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      await ensurePendingClassifySignals();
       const allItems = await getAllItems();
       const enrichments = await getAllEnrichments();
       const enrichMap = new Map(enrichments.map((e) => [e.itemId, e]));
@@ -199,15 +256,48 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
         const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
         for (const row of list) {
           const id = row.item.id;
-          const st = signalByItem.get(id)?.classifyState;
+          const rawSignal = signalByItem.get(id);
+          const rawSt = rawSignal?.classifyState;
           const primaryId = primaryIdByItem.get(id);
           const primaryName = primaryNameByItem.get(id) ?? null;
-          const aiOk = row.enrichment?.aiStatus === 'ok';
+          const effectiveSt = resolveEffectiveClassifyState({
+            signalState: rawSt,
+            primaryCategoryId: primaryId,
+          });
+          const eligibility = assessCategorizationEligibility(row.item, row.enrichment);
+          const reasonInfo = describeClassifyQueueStatus({
+            classifyState: effectiveSt,
+            signal: rawSignal,
+            eligibleNow: eligibility.eligible,
+            eligibilityReasonNow: eligibility.reason,
+            hasPrimaryTopic: !!primaryName,
+          });
           catMeta.set(id, {
             primaryName,
-            needsClassify: itemNeedsClassify(st, primaryId, false, aiOk),
-            classifyState: st,
+            primaryCategoryId: primaryId ?? null,
+            readyToClassify: false,
+            classifyState: effectiveSt,
+            queueReason: reasonInfo.primaryReason,
+            signal: rawSignal
+              ? {
+                  eligibilityReason: rawSignal.eligibilityReason,
+                  lastClassifySkipReason: rawSignal.lastClassifySkipReason,
+                  classifyRetryCount: rawSignal.classifyRetryCount,
+                  inputQualityTier: rawSignal.inputQualityTier,
+                  llmReview: rawSignal.llmReview,
+                  signalStatus: rawSignal.signalStatus,
+                }
+              : undefined,
           });
+        }
+      } catch {
+        /* non-fatal */
+      }
+      try {
+        const scopeStats = await getScopedCategorizationStats(list.map((r) => r.item.id));
+        const readySet = new Set(scopeStats.readyItemIds);
+        for (const [id, meta] of catMeta) {
+          catMeta.set(id, { ...meta, readyToClassify: readySet.has(id) });
         }
       } catch {
         /* non-fatal */
@@ -220,11 +310,12 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
 
   useEffect(() => {
     if (open) {
+      setDevTab(initialTab);
       setRawDump(null);
       setRawError('');
       void load();
     }
-  }, [open, load]);
+  }, [open, initialTab, load]);
 
   const filteredRows = useMemo(() => {
     let list = rows;
@@ -237,21 +328,63 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
       );
     }
     if (statusFilter !== 'all') {
+      list = list.filter((r) =>
+        rowPassesFetchFilter(r.enrichment?.status, statusFilter)
+      );
+    }
+    if (catFilter !== 'all') {
       list = list.filter((r) => {
-        const s = r.enrichment?.status ?? 'none';
-        if (statusFilter === 'ok') return s === 'ok';
-        if (statusFilter === 'failed') return s === 'failed';
-        if (statusFilter === 'skipped') return s === 'skipped';
-        return s !== 'ok' && s !== 'failed' && s !== 'skipped';
+        const cat = catByItem.get(r.item.id);
+        if (catFilter === 'has_topic') return !!cat?.primaryName;
+        return r.enrichment?.aiStatus === 'ok' && !cat?.primaryName;
       });
     }
-    if (catFilter === 'all') return list;
-    return list.filter((r) => {
-      const cat = catByItem.get(r.item.id);
-      if (catFilter === 'has_topic') return !!cat?.primaryName;
-      return r.enrichment?.aiStatus === 'ok' && !cat?.primaryName;
-    });
-  }, [rows, search, statusFilter, catFilter, catByItem]);
+    if (queueFilter !== 'all') {
+      list = list.filter((r) => {
+        const cat = catByItem.get(r.item.id);
+        return rowPassesQueueFilter(queueFilter, cat, r.enrichment?.aiStatus === 'ok');
+      });
+    }
+    return list;
+  }, [rows, search, statusFilter, catFilter, queueFilter, catByItem]);
+
+  const queueCounts = useMemo(() => {
+    const c = {
+      pending: 0,
+      pendingDiscover: 0,
+      ineligible: 0,
+      manualReview: 0,
+      needsAttention: 0,
+      noTopic: 0,
+      hasTopic: 0,
+    };
+    for (const row of rows) {
+      if (!rowPassesFetchFilter(row.enrichment?.status, statusFilter)) continue;
+      const cat = catByItem.get(row.item.id);
+      if (row.enrichment?.aiStatus !== 'ok') continue;
+      const st = cat?.classifyState ?? 'pending_classify';
+      if (cat?.primaryName) c.hasTopic++;
+      else c.noTopic++;
+      if (cat?.readyToClassify) c.pending++;
+      if (st === 'pending_discover') c.pendingDiscover++;
+      if (st === 'ineligible') c.ineligible++;
+      if (st === 'manual_review') c.manualReview++;
+      if (rowPassesQueueFilter('needs_attention', cat, true)) c.needsAttention++;
+    }
+    return c;
+  }, [rows, catByItem, statusFilter]);
+
+  const noTopicBreakdown = useMemo(() => {
+    const buckets: Record<string, number> = {};
+    for (const row of rows) {
+      if (!rowPassesFetchFilter(row.enrichment?.status, statusFilter)) continue;
+      const cat = catByItem.get(row.item.id);
+      if (row.enrichment?.aiStatus !== 'ok' || cat?.primaryName) continue;
+      const st = cat?.classifyState ?? 'pending_classify';
+      buckets[st] = (buckets[st] ?? 0) + 1;
+    }
+    return buckets;
+  }, [rows, catByItem, statusFilter]);
 
   useEffect(() => {
     if (activeIndex >= filteredRows.length) {
@@ -260,6 +393,11 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
   }, [filteredRows.length, activeIndex]);
 
   const active = filteredRows[activeIndex];
+  const activeCat = active ? catByItem.get(active.item.id) : undefined;
+  const activeEligibility = useMemo(() => {
+    if (!active?.item || active.enrichment?.aiStatus !== 'ok') return null;
+    return assessCategorizationEligibility(active.item, active.enrichment);
+  }, [active?.item, active?.enrichment]);
 
   useEffect(() => {
     setRawDump(null);
@@ -388,7 +526,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
     <div
       role="dialog"
       aria-modal="true"
-      className="enrichment-review"
+      className="enrichment-review dev-pipeline-ui"
       style={{
         position: 'fixed',
         inset: 0,
@@ -411,10 +549,44 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
         }}
       >
         <div style={{ minWidth: 0, flex: 1 }}>
-          <h1 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)' }}>
-            Enrichment review
+          <h1 style={{ margin: 0, fontSize: 'var(--dev-fs-lg)', fontWeight: 600, color: 'var(--text)' }}>
+            Enrichment dev
           </h1>
-          <p className="er-muted" style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 4,
+              marginTop: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            {(
+              [
+                ['results', 'Results'],
+                ['pipeline', 'Queue & taxonomy'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setDevTab(id)}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: 'var(--dev-fs-sm)',
+                  fontWeight: devTab === id ? 600 : 400,
+                  border: `1px solid ${devTab === id ? 'var(--accent)' : 'var(--border)'}`,
+                  borderRadius: 6,
+                  background: devTab === id ? 'var(--accent-weak)' : 'var(--bg-panel)',
+                  color: devTab === id ? 'var(--text)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {devTab === 'results' ? (
+          <p className="er-muted" style={{ margin: '6px 0 0', fontSize: 'var(--dev-fs-sm)' }}>
             {itemIds?.length
               ? `Last run: ${rows.length} items · ok ${counts.ok} · failed ${counts.failed} · skipped ${counts.skipped}`
               : `${rows.length} with enrichment · ok ${counts.ok} · failed ${counts.failed} · skipped ${counts.skipped}`}
@@ -422,14 +594,20 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
               ? ` · Re-fetching ${refetchAllProgress.done}/${refetchAllProgress.total}…`
               : null}
           </p>
+          ) : (
+          <p className="er-muted" style={{ margin: '6px 0 0', fontSize: 'var(--dev-fs-sm)' }}>
+            Classify queue filters, taxonomy tree with counts, and pipeline controls for the whole library.
+          </p>
+          )}
         </div>
+        {devTab === 'results' ? (
         <button
           type="button"
           onClick={handleRefetchAll}
           disabled={refetching || rows.length === 0}
           style={{
             padding: '6px 12px',
-            fontSize: 'var(--text-xs)',
+            fontSize: 'var(--dev-fs-sm)',
             border: '1px solid var(--border)',
             borderRadius: 4,
             background: 'var(--bg-panel)',
@@ -444,29 +622,48 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
             ? `Re-fetching ${refetchAllProgress.done}/${refetchAllProgress.total}…`
             : `Re-fetch all (${rows.length})`}
         </button>
+        ) : null}
         <button type="button" onClick={onClose} style={iconBtn} title="Close">
           <X size={22} />
         </button>
       </header>
 
+      {devTab === 'pipeline' ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <PipelineDevView embedded />
+        </div>
+      ) : (
+      <>
       <CategorizationPanel
         scopedItemIds={aiReadyItemIds}
         scopeLabel={itemIds?.length ? 'this enrich run' : 'all results'}
+        defaultCollapsed
+        onPipelineComplete={() => void load()}
       />
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {/* List */}
         <aside
           style={{
             width: 320,
             flexShrink: 0,
+            minHeight: 0,
             borderRight: '1px solid var(--border)',
             display: 'flex',
             flexDirection: 'column',
             background: 'var(--bg-panel)',
+            overflow: 'hidden',
           }}
         >
-          <div style={{ padding: 10, borderBottom: '1px solid var(--border)' }}>
+          <div
+            style={{
+              padding: 10,
+              borderBottom: '1px solid var(--border)',
+              flexShrink: 0,
+              maxHeight: '38vh',
+              overflowY: 'auto',
+            }}
+          >
             <input
               type="search"
               className="er-field"
@@ -476,7 +673,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
               style={inputStyle}
             />
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: '100%' }}>Fetch</span>
+              <span style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)', width: '100%' }}>Fetch</span>
               {(['all', 'ok', 'failed', 'skipped', 'other'] as StatusFilter[]).map((f) => (
                 <button
                   key={f}
@@ -498,9 +695,9 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                 </button>
               ))}
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: '100%' }}>Topic</span>
-              {(['all', 'no_topic', 'has_topic'] as CatFilter[]).map((f) => (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)', width: '100%' }}>Topic</span>
+              {(['all', 'has_topic', 'no_topic'] as CatFilter[]).map((f) => (
                 <button
                   key={f}
                   type="button"
@@ -514,16 +711,70 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                     fontWeight: catFilter === f ? 600 : 400,
                   }}
                 >
-                  {f === 'all' ? 'all' : f === 'has_topic' ? 'has topic' : 'no topic'}
+                  {f === 'all'
+                    ? 'all'
+                    : f === 'has_topic'
+                      ? `has topic (${queueCounts.hasTopic})`
+                      : `no topic (${queueCounts.noTopic})`}
                 </button>
               ))}
             </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)', width: '100%' }}>Classify</span>
+              {(
+                [
+                  ['all', 'all', null],
+                  ['pending', 'ready', queueCounts.pending],
+                  ['discover', 'need discover', queueCounts.pendingDiscover],
+                  ['needs_attention', 'needs attn', queueCounts.needsAttention],
+                  ['ineligible', 'ineligible', queueCounts.ineligible],
+                  ['manual_review', 'manual', queueCounts.manualReview],
+                ] as const
+              ).map(([id, label, n]) => (
+                <button
+                  key={id}
+                  type="button"
+                  title={
+                    id === 'pending'
+                      ? 'Eligible for the next Classify pending run (matches the button above)'
+                      : id === 'needs_attention'
+                        ? 'No specific topic yet — includes ineligible, manual review, general/other'
+                        : undefined
+                  }
+                  onClick={() => {
+                    setQueueFilter(id);
+                    setActiveIndex(0);
+                  }}
+                  className={queueFilter === id ? 'er-btn er-btn-active' : 'er-btn'}
+                  style={{
+                    ...chipBtn,
+                    fontWeight: queueFilter === id ? 600 : 400,
+                    ...(id === 'pending' && queueFilter !== id && queueCounts.pending > 0
+                      ? { borderColor: '#58a6ff55' }
+                      : {}),
+                  }}
+                >
+                  {label}
+                  {id !== 'all' ? ` (${n ?? 0})` : ''}
+                </button>
+              ))}
+            </div>
+            {(catFilter === 'no_topic' || queueFilter !== 'all') &&
+            Object.keys(noTopicBreakdown).length > 0 ? (
+              <p style={{ margin: '6px 0 0', fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                Queue:{' '}
+                {Object.entries(noTopicBreakdown)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([st, n]) => `${st.replace(/_/g, ' ')} ${n}`)
+                  .join(' · ')}
+              </p>
+            ) : null}
           </div>
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          <div style={{ flex: 1, minHeight: 240, overflowY: 'auto', overflowX: 'hidden' }}>
             {loading ? (
-              <p style={{ padding: 12, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Loading…</p>
+              <p style={{ padding: 12, fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>Loading…</p>
             ) : filteredRows.length === 0 ? (
-              <p style={{ padding: 12, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>No matches.</p>
+              <p style={{ padding: 12, fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>No matches.</p>
             ) : (
               filteredRows.map((row, idx) => {
                 const st = row.enrichment?.status ?? 'none';
@@ -548,7 +799,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                   >
                     <div
                       style={{
-                        fontSize: 'var(--text-sm)',
+                        fontSize: 'var(--dev-fs-base)',
                         fontWeight: 500,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -561,7 +812,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                     <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
                       <span
                         style={{
-                          fontSize: 10,
+                          fontSize: 'var(--dev-fs-caption)',
                           fontWeight: 600,
                           color: statusColor[st] || '#6b7280',
                         }}
@@ -569,13 +820,13 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                         {st}
                       </span>
                       {row.enrichment?.lastErrorCode && (
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                        <span style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}>
                           {row.enrichment.lastErrorCode}
                         </span>
                       )}
                       {cat?.primaryName ? (
                         <span
-                          style={{ fontSize: 10, color: 'var(--accent)', maxWidth: 120 }}
+                          style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--accent)', maxWidth: 120 }}
                           title={cat.primaryName}
                         >
                           {cat.primaryName.length > 18
@@ -583,7 +834,39 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                             : cat.primaryName}
                         </span>
                       ) : row.enrichment?.aiStatus === 'ok' ? (
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>no topic</span>
+                        <span
+                          style={{
+                            fontSize: 'var(--dev-fs-caption)',
+                            color:
+                              cat?.classifyState === 'pending_classify'
+                                ? '#58a6ff'
+                                : cat?.classifyState === 'ineligible'
+                                  ? 'var(--text-faint)'
+                                  : cat?.classifyState === 'manual_review'
+                                    ? '#f85149'
+                                    : 'var(--text-muted)',
+                          }}
+                          title="Classify queue state"
+                        >
+                          {(cat?.classifyState ?? 'pending_classify').replace(/_/g, ' ')}
+                        </span>
+                      ) : null}
+                      {cat?.queueReason && !cat.primaryName ? (
+                        <span
+                          style={{
+                            fontSize: 'var(--dev-fs-caption)',
+                            color: 'var(--text-faint)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: 140,
+                          }}
+                          title={cat.queueReason}
+                        >
+                          {cat.queueReason.length > 36
+                            ? `${cat.queueReason.slice(0, 34)}…`
+                            : cat.queueReason}
+                        </span>
                       ) : null}
                     </div>
                   </button>
@@ -626,7 +909,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                 >
                   <ChevronLeft size={18} />
                 </button>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>
                   {activeIndex + 1} / {filteredRows.length}
                 </span>
                 <button
@@ -643,7 +926,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                   disabled={refetching || rerunningAi || enrich?.status !== 'ok'}
                   style={{
                     padding: '4px 10px',
-                    fontSize: 'var(--text-xs)',
+                    fontSize: 'var(--dev-fs-sm)',
                     border: '1px solid var(--border)',
                     borderRadius: 4,
                     background: 'var(--bg-panel)',
@@ -662,7 +945,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                   style={{
                     marginLeft: 'auto',
                     padding: '4px 10px',
-                    fontSize: 'var(--text-xs)',
+                    fontSize: 'var(--dev-fs-sm)',
                     border: '1px solid var(--border)',
                     borderRadius: 4,
                     background: 'var(--bg-panel)',
@@ -679,7 +962,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
-                    fontSize: 'var(--text-xs)',
+                    fontSize: 'var(--dev-fs-sm)',
                     color: 'var(--accent)',
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -691,21 +974,21 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
               </div>
 
               <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-                <h2 style={{ margin: '0 0 4px', fontSize: 'var(--text-base)', color: 'var(--text)' }}>
+                <h2 style={{ margin: '0 0 4px', fontSize: 'var(--dev-fs-md)', color: 'var(--text)' }}>
                   {active.item.title || 'Untitled'}
                 </h2>
                 <p
                   className="er-muted"
                   style={{
                     margin: '0 0 16px',
-                    fontSize: 'var(--text-xs)',
+                    fontSize: 'var(--dev-fs-sm)',
                     wordBreak: 'break-all',
                   }}
                 >
                   {active.item.url}
                 </p>
                 {refetchError ? (
-                  <p style={{ margin: '0 0 12px', fontSize: 'var(--text-xs)', color: 'var(--error, #dc2626)' }}>
+                  <p style={{ margin: '0 0 12px', fontSize: 'var(--dev-fs-sm)', color: 'var(--error, #dc2626)' }}>
                     Re-fetch: {refetchError}
                   </p>
                 ) : null}
@@ -769,7 +1052,21 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                   )}
                 </Section>
 
+                {active?.item.id && activeCat ? (
+                  <ClassifyQueueReasonBlock
+                    itemId={active.item.id}
+                    onActionComplete={() => void load()}
+                    classifyState={activeCat.classifyState}
+                    signal={activeCat.signal}
+                    eligibleNow={activeEligibility?.eligible}
+                    eligibilityReasonNow={activeEligibility?.reason}
+                    hasPrimaryTopic={!!activeCat.primaryName}
+                  />
+                ) : null}
+
                 {active?.item.id ? <ItemCategoryLinks itemId={active.item.id} /> : null}
+
+                {active?.item.id ? <ItemSimilarSection itemId={active.item.id} /> : null}
 
                 <Section
                   title="AI summary"
@@ -808,7 +1105,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                     <h3
                       style={{
                         margin: 0,
-                        fontSize: 'var(--text-xs)',
+                        fontSize: 'var(--dev-fs-sm)',
                         fontWeight: 700,
                         textTransform: 'uppercase',
                         letterSpacing: '0.04em',
@@ -830,7 +1127,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
                   <div
                     className="er-panel"
                     style={{
-                      fontSize: 'var(--text-xs)',
+                      fontSize: 'var(--dev-fs-sm)',
                       lineHeight: 1.45,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
@@ -858,6 +1155,8 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
           )}
         </main>
       </div>
+      </>
+      )}
     </div>
   );
 };
@@ -865,7 +1164,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '6px 10px',
-  fontSize: 'var(--text-sm)',
+  fontSize: 'var(--dev-fs-base)',
   borderRadius: 6,
   boxSizing: 'border-box',
 };
@@ -881,8 +1180,8 @@ const iconBtn: React.CSSProperties = {
 };
 
 const chipBtn: React.CSSProperties = {
-  padding: '4px 8px',
-  fontSize: 'var(--text-xs)',
+  padding: '6px 10px',
+  fontSize: 'var(--dev-fs-sm)',
   border: '1px solid var(--border)',
   borderRadius: 4,
   cursor: 'pointer',

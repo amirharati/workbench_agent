@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Tags, Loader2 } from 'lucide-react';
+import { Tags, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   classifyIncremental,
   discoverBatch,
+  ensurePendingClassifySignals,
   getAiCategories,
   getAiLinksForItem,
+  getAiSignal,
   getCategorizationQueueStats,
+  getDiscoverPoolStats,
   getScopedCategorizationStats,
   getTaxonomyState,
   importSeedTaxonomy,
 } from '../../lib/categorization';
+import { ClassifyQueueReasonBlock } from './ClassifyQueueReasonBlock';
+import { assessCategorizationEligibility } from '../../lib/enrichment/categorizationEligibility';
+import { getEnrichment } from '../../lib/enrichment/storage';
+import { getItem } from '../../lib/db';
 import {
   clearPipelineData,
   syncClassifySignalsFromLinks,
@@ -17,6 +24,8 @@ import {
 import type {
   CategorizationQueueStats,
   ClassifyProgressUpdate,
+  DiscoverBatchResult,
+  DiscoverRunSummary,
   ScopedCategorizationStats,
 } from '../../lib/categorization';
 import type { TopicClassifyResult } from '../../lib/categorization/types';
@@ -25,22 +34,36 @@ export type CategorizationPanelProps = {
   /** Items with AI summary in enrichment Results list. */
   scopedItemIds?: string[];
   scopeLabel?: string;
+  /** Called after classify/discover/import finishes (e.g. refresh dev lists). */
+  onPipelineComplete?: () => void;
+  /** Start collapsed so the bookmark list stays visible (Enrichment Results). */
+  defaultCollapsed?: boolean;
 };
 
 /** Run categorization on enriched bookmarks (Enrichment → Results only). */
 export function CategorizationPanel({
   scopedItemIds,
   scopeLabel = 'results',
+  onPipelineComplete,
+  defaultCollapsed = false,
 }: CategorizationPanelProps = {}) {
   const scopeCount = scopedItemIds?.length ?? 0;
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ClassifyProgressUpdate | null>(null);
   const [result, setResult] = useState<TopicClassifyResult | null>(null);
+  const [discoverResult, setDiscoverResult] = useState<DiscoverBatchResult | null>(null);
   const [queue, setQueue] = useState<CategorizationQueueStats | null>(null);
+  const [discoverPool, setDiscoverPool] = useState<DiscoverRunSummary | null>(null);
   const [scoped, setScoped] = useState<ScopedCategorizationStats | null>(null);
   const [taxonomyVersion, setTaxonomyVersion] = useState<number | null>(null);
+  const [lastDiscoverRun, setLastDiscoverRun] = useState<
+    import('../../lib/categorization/types').DiscoverRunSnapshot | null | undefined
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [autoDiscover, setAutoDiscover] = useState(true);
+  const [maxDiscoverBatches, setMaxDiscoverBatches] = useState(2);
   const [maxItems, setMaxItems] = useState(() =>
     scopeCount > 0 ? Math.min(scopeCount, 200) : 100
   );
@@ -51,16 +74,20 @@ export function CategorizationPanel({
 
   const loadStats = useCallback(async () => {
     try {
-      const [stats, meta, scopeStats] = await Promise.all([
+      await ensurePendingClassifySignals();
+      const [stats, meta, scopeStats, poolStats] = await Promise.all([
         getCategorizationQueueStats(),
         getTaxonomyState(),
         scopedItemIds?.length
           ? getScopedCategorizationStats(scopedItemIds)
           : Promise.resolve(null),
+        getDiscoverPoolStats(scopedItemIds?.length ? scopedItemIds : undefined),
       ]);
       setQueue(stats);
       setScoped(scopeStats);
+      setDiscoverPool(poolStats);
       setTaxonomyVersion(meta.taxonomyVersion);
+      setLastDiscoverRun(meta.lastDiscoverRun);
     } catch {
       /* non-fatal */
     }
@@ -78,10 +105,21 @@ export function CategorizationPanel({
     () => ({
       itemIds: scopedItemIds?.length ? scopedItemIds : undefined,
       maxItems: scopedItemIds?.length ? Math.min(maxItems, scopedItemIds.length) : maxItems,
-      autoDiscover: true as const,
+      autoDiscover,
       onProgress,
     }),
-    [scopedItemIds, maxItems, onProgress]
+    [scopedItemIds, maxItems, autoDiscover, onProgress]
+  );
+
+  const discoverOpts = useMemo(
+    () => ({
+      itemIds: scopedItemIds?.length ? scopedItemIds : undefined,
+      stuckOnly: true as const,
+      maxBatches: maxDiscoverBatches,
+      sampleBatchSize: 16,
+      onProgress,
+    }),
+    [scopedItemIds, maxDiscoverBatches, onProgress]
   );
 
   const runWithProgress = async (label: string, fn: () => Promise<void>) => {
@@ -97,6 +135,7 @@ export function CategorizationPanel({
     } finally {
       setRunning(false);
       await loadStats();
+      onPipelineComplete?.();
     }
   };
 
@@ -132,52 +171,71 @@ export function CategorizationPanel({
         );
       } else {
         setInfo(
-          `Done: ${r.summary.processed} processed · ${r.summary.assignedPrimary} assigned · ` +
-            `${r.summary.unassigned} unassigned · ${r.summary.batches} LLM batches`
+          `Done: ${r.summary.processed} LLM · ${r.summary.skippedHash} skipped unchanged · ` +
+            `${r.summary.classifiedSpecific} specific · ${r.summary.classifiedGeneral} general · ` +
+            `${r.summary.unassigned} unassigned · ${r.summary.batches} batches`
         );
       }
     });
 
-  const handleDiscover = () =>
+  const handleDiscoverStuck = (andClassify: boolean) =>
     runWithProgress('Discover', async () => {
-      const d = await discoverBatch({
-        itemIds: scopedItemIds?.length ? scopedItemIds : undefined,
-        onProgress,
-      });
+      setDiscoverResult(null);
+      const d = await discoverBatch(discoverOpts);
+      setDiscoverResult(d);
+      const s = d.summary;
       if (d.newParents || d.newLeaves) {
-        setInfo(
-          `Discover scanned ${d.itemsSampled} items (${d.discoverBatches} LLM batches), ` +
-            `+${d.newParents ?? 0} parents, +${d.newLeaves ?? 0} leaves. Running classify…`
-        );
-        const r = await classifyIncremental({ ...classifyOpts, autoDiscover: false });
-        setResult(r);
-        setInfo(
-          `Discover + classify: ${d.itemsSampled} items · ${d.discoverBatches} batches · ` +
-            `+${d.newParents ?? 0} parents · +${d.newLeaves ?? 0} leaves · ` +
-            `${r.summary.assignedPrimary} newly assigned`
-        );
+        let msg =
+          `Discover (gap-fill): ${s?.itemsSampled ?? d.itemsSampled} stuck sampled · ` +
+          `+${d.newParents} parents · +${d.newLeaves} leaves · ` +
+          `${s?.itemsMarkedForReclassify ?? 0} queued reclassify`;
+        if (andClassify && (d.shouldReclassify || d.newLeaves)) {
+          const r = await classifyIncremental({ ...classifyOpts, autoDiscover: false });
+          setResult(r);
+          msg +=
+            ` · classify: ${r.summary.processed} LLM · ${r.summary.classifiedSpecific} specific`;
+        }
+        setInfo(msg);
       } else {
         const parts = [
-          `${d.itemsSampled} items`,
+          `${s?.stuckPool ?? discoverPool?.stuckPool ?? 0} stuck in pool`,
+          `${d.itemsSampled} sampled`,
           `${d.discoverBatches} batches`,
-          `${d.taxonomyLeafCount} leaves in taxonomy`,
         ];
         if (d.proposedParents || d.proposedLeaves) {
-          parts.push(
-            `LLM proposed ${d.proposedParents} parents / ${d.proposedLeaves} leaves (all already exist)`
-          );
+          parts.push(`proposed ${d.proposedParents}/${d.proposedLeaves} (duplicates)`);
         } else if (d.llmErrors) {
-          parts.push(`${d.llmErrors} batch error(s) — check Settings → AI`);
+          parts.push(`${d.llmErrors} batch error(s)`);
+        } else if ((s?.stuckPool ?? 0) < 3) {
+          parts.push('need ≥3 stuck items');
         } else {
-          parts.push(
-            'LLM returned no new labels (catalog likely covers your corpus — see data/experiments/categorize/discover-*)'
-          );
+          parts.push('0 new labels');
         }
-        setInfo(`Discover: 0 added · ${parts.join(' · ')}`);
-        if (d.batchErrors?.length) {
-          setError(d.batchErrors.join('; '));
-        }
+        setInfo(`Discover: ${parts.join(' · ')}`);
+        if (d.batchErrors?.length) setError(d.batchErrors.join('; '));
       }
+    });
+
+  const handleRetryManualReview = () =>
+    runWithProgress('Retry manual review', async () => {
+      const n = queue?.manualReview ?? 0;
+      if (
+        n > 0 &&
+        !window.confirm(`Re-run classify on up to ${n} manual-review item(s)? Uses LLM.`)
+      ) {
+        return;
+      }
+      const r = await classifyIncremental({
+        ...classifyOpts,
+        retryManualReview: true,
+        autoDiscover: false,
+        maxItems: scopedItemIds?.length ? scopedItemIds.length : n || maxItems,
+      });
+      setResult(r);
+      setInfo(
+        `Manual review retry: ${r.summary.processed} LLM · ${r.summary.classifiedSpecific} specific · ` +
+          `${r.summary.skippedManualReview} still skipped`
+      );
     });
 
   const pct =
@@ -195,13 +253,13 @@ export function CategorizationPanel({
       <style>{`@keyframes wb-spin { to { transform: rotate(360deg); } }`}</style>
     <div
       style={{
-        padding: '10px 16px',
+        padding: expanded ? '10px 16px' : '8px 16px',
         borderBottom: '1px solid var(--border)',
         background: 'var(--bg-panel)',
         flexShrink: 0,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: expanded ? 8 : 0 }}>
         {running ? (
           <Loader2
             size={16}
@@ -215,18 +273,57 @@ export function CategorizationPanel({
           <Tags size={16} style={{ flexShrink: 0, marginTop: 2 }} />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <strong style={{ fontSize: 'var(--text-sm)' }}>Step 3 — Categorize topics</strong>
-          <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: 'var(--dev-fs-base)' }}>Step 3 — Categorize topics</strong>
+            {!expanded ? (
+              <span style={{ fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>
+                · {scoped?.needsClassify ?? queue?.pendingClassify ?? 0} ready to classify
+                {queue ? ` · ${queue.pendingClassify} pending (library)` : ''}
+              </span>
+            ) : null}
+          </div>
+          {expanded ? (
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>
             Assigns each bookmark to a <strong>parent domain + leaf topic</strong> (seed ~9 parents /
             ~40 topics). <strong>Classify</strong> assigns topics; <strong>Discover</strong> adds new
             labels when items are stuck on <strong>Other / *-general</strong> or unassigned (gap-fill
             mode). Not failed fetch or missing AI text. API key in{' '}
             <strong>Settings → AI</strong>.
           </p>
+          ) : null}
         </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '4px 10px',
+            fontSize: 'var(--dev-fs-sm)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            background: 'var(--bg)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          {expanded ? (
+            <>
+              <ChevronUp size={14} /> Hide
+            </>
+          ) : (
+            <>
+              <ChevronDown size={14} /> Show pipeline
+            </>
+          )}
+        </button>
       </div>
 
-      <p style={{ margin: '0 0 4px', fontSize: 'var(--text-xs)' }}>
+      {expanded ? (
+      <>
+      <p style={{ margin: '0 0 4px', fontSize: 'var(--dev-fs-sm)' }}>
         This list ({scopeLabel}): <strong>{scopeCount}</strong> with AI summary
         {scoped ? (
           <>
@@ -239,23 +336,74 @@ export function CategorizationPanel({
           </>
         ) : null}
       </p>
-      <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+      <p style={{ margin: '0 0 8px', fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>
         Taxonomy: v{taxonomyVersion ?? '—'} · <strong>{leafCount}</strong> topic labels
         {queue ? (
           <>
             {' '}
-            (library-wide: {queue.classified + queue.classifiedGeneral} classified,{' '}
-            {queue.unassignedEligible} unassigned)
+            (library-wide: {queue.classified + queue.classifiedGeneral} classified ·{' '}
+            {queue.classified} specific · {queue.classifiedGeneral} general ·{' '}
+            {queue.unassignedEligible} unassigned · {queue.manualReview} manual review)
           </>
         ) : null}
         {needsSeed ? (
           <span style={{ color: 'var(--er-warn, #d29922)' }}> — import seed first</span>
         ) : null}
       </p>
-      <p style={{ margin: '0 0 8px', fontSize: 10, color: 'var(--text-muted)' }}>
+      <p style={{ margin: '0 0 8px', fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}>
         Left filters (ok / failed / other) are <strong>fetch</strong> status, not topics. Use{' '}
         <strong>No topic</strong> below to see uncategorized items.
       </p>
+
+      {(queue || discoverPool) && (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: '8px 10px',
+            borderRadius: 6,
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            fontSize: 'var(--dev-fs-caption)',
+            color: 'var(--text-muted)',
+            lineHeight: 1.5,
+          }}
+        >
+          <strong style={{ color: 'var(--text)', fontSize: 'var(--dev-fs-sm)' }}>
+            Pipeline stats (dev)
+          </strong>
+          {queue ? (
+            <div style={{ marginTop: 4 }}>
+              Classify: {queue.classified} specific · {queue.classifiedGeneral} general ·{' '}
+              {queue.pendingDiscover} pending discover · {queue.pendingClassify} pending classify ·{' '}
+              {queue.ineligible} ineligible · {queue.manualReview} manual review
+            </div>
+          ) : null}
+          {discoverPool ? (
+            <div>
+              Discover pool (stuck): <strong>{discoverPool.stuckPool}</strong> — general{' '}
+              {discoverPool.stuckKindBreakdown.general} · pending discover{' '}
+              {discoverPool.stuckKindBreakdown.pending_discover} · unassigned{' '}
+              {discoverPool.stuckKindBreakdown.unassigned} · skipped specific{' '}
+              {discoverPool.skippedNotStuck}
+            </div>
+          ) : null}
+          {queue?.lastClassifyRun ? (
+            <div>
+              Last classify ({new Date(queue.lastClassifyRun.at).toLocaleString()}):{' '}
+              {queue.lastClassifyRun.summary.skippedHash} skipped ·{' '}
+              {queue.lastClassifyRun.summary.classifiedSpecific} specific ·{' '}
+              {queue.lastClassifyRun.summary.classifiedGeneral} general
+            </div>
+          ) : null}
+          {lastDiscoverRun ? (
+            <div>
+              Last discover ({new Date(lastDiscoverRun.at).toLocaleString()}): +{' '}
+              {lastDiscoverRun.summary.newLeaves} leaves · {lastDiscoverRun.summary.itemsSampled}{' '}
+              sampled · {lastDiscoverRun.summary.itemsMarkedForReclassify} reclassify queued
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {(running || progress) && (
         <div
@@ -285,11 +433,11 @@ export function CategorizationPanel({
               }}
             />
           </div>
-          <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text)' }}>
+          <p style={{ margin: 0, fontSize: 'var(--dev-fs-sm)', color: 'var(--text)' }}>
             {progress?.label ?? 'Working…'}
             {progress && progress.total > 0 ? ` (${pct}%)` : ''}
           </p>
-          <p style={{ margin: '4px 0 0', fontSize: 10, color: 'var(--text-muted)' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}>
             Each batch calls OpenRouter (up to ~90s per batch). Large lists can take several minutes —
             keep this tab open. If you see timeouts, raise <strong>Settings → AI → Timeout (ms)</strong>{' '}
             (e.g. 90000).
@@ -318,7 +466,7 @@ export function CategorizationPanel({
         </button>
         <label
           className="er-field-label"
-          style={{ fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: 4 }}
+          style={{ fontSize: 'var(--dev-fs-sm)', display: 'flex', alignItems: 'center', gap: 4 }}
         >
           batch
           <input
@@ -332,7 +480,7 @@ export function CategorizationPanel({
             style={{
               width: 64,
               padding: '6px 8px',
-              fontSize: 'var(--text-sm)',
+              fontSize: 'var(--dev-fs-base)',
               fontWeight: 600,
             }}
           />
@@ -366,31 +514,85 @@ export function CategorizationPanel({
         </button>
         <button
           type="button"
-          disabled={running || needsSeed}
-          onClick={() => void handleDiscover()}
+          disabled={running || needsSeed || !(discoverPool?.stuckPool ?? 0)}
+          onClick={() => void handleDiscoverStuck(true)}
           style={btnStyle()}
-          title="Scan every AI-ready item in this list (50 per LLM batch), propose new parents and leaf topics, then classify"
+          title="Gap-fill discover on general/unassigned only, then reclassify sampled items"
         >
-          {running ? '…' : '3. Discover'}
+          {running ? '…' : `3. Discover stuck (${discoverPool?.stuckPool ?? 0})`}
         </button>
+        <label
+          className="er-field-label"
+          style={{ fontSize: 'var(--dev-fs-caption)', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          disc batches
+          <input
+            type="number"
+            className="er-field"
+            min={1}
+            max={8}
+            value={maxDiscoverBatches}
+            disabled={running}
+            onChange={(e) => setMaxDiscoverBatches(Number(e.target.value) || 1)}
+            style={{ width: 44, padding: '4px 6px', fontSize: 'var(--dev-fs-sm)' }}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={running || needsSeed || !(queue?.manualReview ?? 0)}
+          onClick={() => void handleRetryManualReview()}
+          style={btnStyle()}
+          title="Re-classify items in manual-review bucket (controlled LLM retry)"
+        >
+          Retry manual ({queue?.manualReview ?? 0})
+        </button>
+        <label
+          style={{ fontSize: 'var(--dev-fs-caption)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+        >
+          <input
+            type="checkbox"
+            checked={autoDiscover}
+            disabled={running}
+            onChange={(e) => setAutoDiscover(e.target.checked)}
+          />
+          auto-discover after classify
+        </label>
       </div>
 
       {info && (
-        <p style={{ margin: '8px 0 0', fontSize: 'var(--text-xs)', color: 'var(--er-ok, #3fb950)' }}>
+        <p style={{ margin: '8px 0 0', fontSize: 'var(--dev-fs-sm)', color: 'var(--er-ok, #3fb950)' }}>
           {info}
         </p>
       )}
       {error && (
-        <p style={{ margin: '8px 0 0', fontSize: 'var(--text-xs)', color: 'var(--error)' }}>
+        <p style={{ margin: '8px 0 0', fontSize: 'var(--dev-fs-sm)', color: 'var(--error)' }}>
           {error}
         </p>
       )}
       {result && !running && (
-        <p style={{ margin: '6px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-          Last: {result.summary.processed} processed · {result.summary.assignedPrimary} primary ·{' '}
-          {result.summary.unassigned} unassigned
+        <p style={{ margin: '6px 0 0', fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>
+          Last run: {result.summary.processed} LLM · {result.summary.skippedHash} skipped (unchanged) ·{' '}
+          {result.summary.classifiedSpecific} specific · {result.summary.classifiedGeneral} general ·{' '}
+          {result.summary.unassigned} unassigned · {result.summary.skippedIneligible} ineligible
+          {result.summary.skippedManualReview
+            ? ` · ${result.summary.skippedManualReview} manual review (use CLI --retry-stuck)`
+            : ''}
         </p>
       )}
+      {discoverResult && !running && discoverResult.summary && (
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}>
+          Last discover: pool {discoverResult.summary.stuckPool} · sampled{' '}
+          {discoverResult.summary.itemsSampled} · +{discoverResult.newLeaves} leaves ·{' '}
+          {discoverResult.summary.itemsMarkedForReclassify} reclassify queued
+        </p>
+      )}
+      </>
+      ) : null}
+      {(running || info || error) && !expanded ? (
+        <p style={{ margin: '6px 0 0', fontSize: 'var(--dev-fs-sm)', color: running ? 'var(--text)' : info ? 'var(--er-ok, #3fb950)' : 'var(--error)' }}>
+          {running ? progress?.label ?? 'Pipeline running…' : info ?? error}
+        </p>
+      ) : null}
     </div>
     </>
   );
@@ -399,7 +601,7 @@ export function CategorizationPanel({
 function btnStyle(highlight = false, primary = false): React.CSSProperties {
   return {
     padding: primary ? '5px 12px' : '4px 10px',
-    fontSize: 'var(--text-xs)',
+    fontSize: 'var(--dev-fs-sm)',
     fontWeight: primary || highlight ? 600 : 400,
     border: `1px solid ${highlight ? 'var(--er-warn, #d29922)' : 'var(--border)'}`,
     borderRadius: 4,
@@ -483,15 +685,15 @@ export function CategorizationSetupSection() {
         background: 'var(--bg)',
       }}
     >
-      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: 6 }}>
+      <div style={{ fontSize: 'var(--dev-fs-base)', fontWeight: 600, marginBottom: 6 }}>
         AI categorization (setup)
       </div>
-      <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+      <p style={{ margin: '0 0 8px', fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>
         <strong>Run classify here → Bookmarks toolbar → Results</strong> (after Enrich + AI summary).
         This section is only for loading the topic list and checking API key above.
       </p>
       {meta && (
-        <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 'var(--dev-fs-sm)' }}>
           Taxonomy v{meta.version} · {meta.leaves} topics loaded
         </p>
       )}
@@ -499,16 +701,16 @@ export function CategorizationSetupSection() {
         type="button"
         disabled={running}
         onClick={() => void handleImport()}
-        style={{ padding: '4px 10px', fontSize: 'var(--text-xs)' }}
+        style={{ padding: '4px 10px', fontSize: 'var(--dev-fs-sm)' }}
       >
         {running ? 'Importing…' : 'Import / reset seed taxonomy'}
       </button>
       {message && (
-        <p style={{ margin: '6px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+        <p style={{ margin: '6px 0 0', fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>
           {message}
         </p>
       )}
-      <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--text-muted)' }}>
+      <p style={{ margin: '8px 0 0', fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}>
         Backups include <code>ai_categories</code>, links, signals, counts — see{' '}
         <code>_pipelineExportCounts</code> in <code>latest.json</code>.
       </p>
@@ -517,7 +719,7 @@ export function CategorizationSetupSection() {
           type="button"
           disabled={running}
           onClick={() => void repairSignals()}
-          style={{ padding: '4px 10px', fontSize: 'var(--text-xs)' }}
+          style={{ padding: '4px 10px', fontSize: 'var(--dev-fs-sm)' }}
         >
           Fix signal/link mismatch
         </button>
@@ -525,12 +727,64 @@ export function CategorizationSetupSection() {
           type="button"
           disabled={running}
           onClick={() => void clearTaxonomyOnly()}
-          style={{ padding: '4px 10px', fontSize: 'var(--text-xs)', color: 'var(--error)' }}
+          style={{ padding: '4px 10px', fontSize: 'var(--dev-fs-sm)', color: 'var(--error)' }}
         >
           Clear taxonomy too
         </button>
       </div>
     </div>
+  );
+}
+
+/** Classify queue hint when item has no category links yet. */
+function ItemCategoryQueueHint({ itemId }: { itemId: string }) {
+  const [payload, setPayload] = useState<{
+    classifyState?: import('../../lib/categorization/types').ClassifyState;
+    signal?: Parameters<typeof ClassifyQueueReasonBlock>[0]['signal'];
+    eligibleNow?: boolean;
+    eligibilityReasonNow?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    void loadPayload();
+  }, [itemId]);
+
+  const loadPayload = () =>
+    void (async () => {
+      const [item, enrichment, signal] = await Promise.all([
+        getItem(itemId),
+        getEnrichment(itemId),
+        getAiSignal(itemId),
+      ]);
+      if (!item) return;
+      const eligibility = assessCategorizationEligibility(item, enrichment);
+      setPayload({
+        classifyState: signal?.classifyState,
+        signal: signal ?? undefined,
+        eligibleNow: eligibility.eligible,
+        eligibilityReasonNow: eligibility.reason,
+      });
+    })();
+
+  if (!payload) {
+    return (
+      <p style={{ fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)', marginBottom: 12 }}>
+        Loading classify status…
+      </p>
+    );
+  }
+
+  return (
+    <ClassifyQueueReasonBlock
+      compact={false}
+      style={{ marginBottom: 12 }}
+      itemId={itemId}
+      onActionComplete={loadPayload}
+      classifyState={payload.classifyState}
+      signal={payload.signal}
+      eligibleNow={payload.eligibleNow}
+      eligibilityReasonNow={payload.eligibilityReasonNow}
+    />
   );
 }
 
@@ -566,7 +820,7 @@ export function ItemCategoryLinks({ itemId }: { itemId: string }) {
 
   if (loading) {
     return (
-      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 12 }}>
+      <p style={{ fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)', marginBottom: 12 }}>
         Loading categories…
       </p>
     );
@@ -574,9 +828,7 @@ export function ItemCategoryLinks({ itemId }: { itemId: string }) {
 
   if (!links.length) {
     return (
-      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 12 }}>
-        No categories yet — use <strong>Classify pending</strong> in the bar above.
-      </p>
+      <ItemCategoryQueueHint itemId={itemId} />
     );
   }
 
@@ -585,7 +837,7 @@ export function ItemCategoryLinks({ itemId }: { itemId: string }) {
       <h3
         style={{
           margin: '0 0 8px',
-          fontSize: 'var(--text-xs)',
+          fontSize: 'var(--dev-fs-sm)',
           fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: '0.04em',
@@ -594,7 +846,7 @@ export function ItemCategoryLinks({ itemId }: { itemId: string }) {
       >
         AI categories
       </h3>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 'var(--text-sm)' }}>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 'var(--dev-fs-base)' }}>
         {links.map((l) => (
           <li key={l.categoryId}>
             {names.get(l.categoryId) ?? l.categoryId}

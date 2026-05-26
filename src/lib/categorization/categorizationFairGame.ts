@@ -1,5 +1,6 @@
-import { isGeneralLeafId } from './taxonomyCatalog';
 import type { ClassifyState } from './types';
+import { isGeneralLeafId } from './taxonomyCatalog';
+import { itemNeedsClassifyFromPolicy } from './classifyPolicy';
 
 /**
  * Bookmark is in scope for classify / discover when it has enough semantic text
@@ -11,12 +12,14 @@ export function isFairGameForCategorization(input: {
   classifyState?: ClassifyState;
   primaryCategoryId?: string | null;
   forceReclassify?: boolean;
+  retryManualReview?: boolean;
 }): boolean {
   if (!input.eligible) return false;
-  if (input.forceReclassify) return true;
+  const force = input.forceReclassify || input.retryManualReview;
+  if (force) return true;
 
   const st = input.classifyState;
-  if (st === 'ineligible' || st === 'manual_only') return false;
+  if (st === 'ineligible' || st === 'manual_only' || st === 'manual_review') return false;
   if (st === 'skipped') return false;
 
   const primaryId = input.primaryCategoryId ?? null;
@@ -36,7 +39,8 @@ export function itemNeedsClassify(
   primaryCategoryId: string | null | undefined,
   hashMatch: boolean,
   eligible: boolean,
-  forceReclassify = false
+  forceReclassify = false,
+  retryManualReview = false
 ): boolean {
   if (
     !isFairGameForCategorization({
@@ -44,15 +48,15 @@ export function itemNeedsClassify(
       classifyState: st,
       primaryCategoryId,
       forceReclassify,
+      retryManualReview,
     })
   ) {
     return false;
   }
-  if (forceReclassify) return true;
-  if (st === 'skipped' && hashMatch) return false;
-  const pid = primaryCategoryId ?? null;
-  if (pid && !isGeneralLeafId(pid) && hashMatch) return false;
-  return true;
+  return itemNeedsClassifyFromPolicy(st, primaryCategoryId, hashMatch, eligible, {
+    forceReclassify,
+    retryManualReview,
+  });
 }
 
 export function hasSpecificPrimaryTopic(

@@ -5,7 +5,7 @@ import { getDB } from '../db';
 import type { ItemEnrichment } from '../enrichment/types';
 import { assessCategorizationEligibility } from '../enrichment/categorizationEligibility';
 import { buildCategorizationText } from '../enrichment/categorizationText';
-import { applyCountsToCategories, linkCountsForCategories } from './counts';
+import { applyCountsToCategories, linkCountsForCategories, resolveEffectiveClassifyState } from './counts';
 import {
   getAssignableLeaves,
   getParentsFromCategories,
@@ -22,13 +22,11 @@ import {
 import { chunk } from './parseReview';
 import {
   hasSpecificPrimaryTopic,
-  isFairGameForCategorization,
   itemNeedsClassify,
 } from './categorizationFairGame';
 import { hashText } from './textHash';
 import { getTaxonomyState, saveTaxonomyState, shouldTriggerDiscover } from './taxonomyState';
 import {
-  callDiscoveryBatch,
   mergeDiscoveryTaxonomy,
   promoteProposedLeaf,
   type DiscoverSampleItem,
@@ -46,9 +44,31 @@ import type {
   CategorizationQueueStats,
   ScopedCategorizationStats,
   TopicClassifyResult,
+  DiscoverRunSummary,
 } from './types';
 import { syncClassifySignalsFromLinks } from '../enrichment/pipelineReset';
 import { aiLinkId } from './service';
+import {
+  applyClassifyRetryPolicy,
+  bumpFailureBucket,
+  emptyTopicClassifySummary,
+  shouldSkipClassify,
+} from './classifyPolicy';
+import {
+  classifyOutcomeReason,
+  formatClassifySkipReason,
+} from './classifyQueueReason';
+import {
+  bumpDiscoverFailureBucket,
+  callDiscoveryBatchWithRetry,
+  DEFAULT_DISCOVER_BATCH_SIZE,
+  discoverSamplePriority,
+  discoverStuckKind,
+  emptyDiscoverRunSummary,
+  isDiscoverFairGame,
+  MIN_DISCOVER_POOL,
+  shouldMarkReclassifyAfterDiscover,
+} from './discoverPolicy';
 
 const COUNTABLE_STATUSES = new Set(['suggested', 'accepted']);
 
@@ -67,6 +87,7 @@ export async function getScopedCategorizationStats(
     categorized: 0,
     needsClassify: 0,
     ineligible: 0,
+    readyItemIds: [],
   };
   if (!itemIds.length) return stats;
 
@@ -106,6 +127,7 @@ export async function getScopedCategorizationStats(
     if (hasSpecificPrimaryTopic(primaryId, st)) stats.categorized++;
     if (itemNeedsClassify(st, primaryId, hashMatch, true)) {
       stats.needsClassify++;
+      stats.readyItemIds.push(item.id);
     }
   }
 
@@ -131,11 +153,24 @@ function assignmentsFromCategoryIds(categoryIds: string[]): Array<{
 async function buildClassifyBatchItem(
   item: Item,
   enrichment: ItemEnrichment | undefined
-): Promise<{ batch: ClassifyBatchItem | null; eligible: boolean; classifyText: string; hash: string }> {
+): Promise<{
+  batch: ClassifyBatchItem | null;
+  eligible: boolean;
+  classifyText: string;
+  hash: string;
+  eligibilityReason?: string;
+  qualityTier?: 'high' | 'medium' | 'low';
+}> {
   const hints = { aiTags: enrichment?.aiTags };
   const eligibility = assessCategorizationEligibility(item, enrichment, hints);
   if (!eligibility.eligible) {
-    return { batch: null, eligible: false, classifyText: '', hash: '' };
+    return {
+      batch: null,
+      eligible: false,
+      classifyText: '',
+      hash: '',
+      eligibilityReason: eligibility.reason,
+    };
   }
   const classifyText = buildCategorizationText(item, enrichment, {
     includeSnippet: false,
@@ -146,6 +181,7 @@ async function buildClassifyBatchItem(
     eligible: true,
     classifyText,
     hash,
+    qualityTier: eligibility.qualityTier,
     batch: {
       itemId: item.id,
       title: item.title,
@@ -156,6 +192,7 @@ async function buildClassifyBatchItem(
 }
 
 export async function getCategorizationQueueStats(): Promise<CategorizationQueueStats> {
+  await ensurePendingClassifySignals();
   const db = await getDB();
   const state = await getTaxonomyState();
   const categories = db.objectStoreNames.contains('ai_categories')
@@ -164,9 +201,15 @@ export async function getCategorizationQueueStats(): Promise<CategorizationQueue
   const signals = db.objectStoreNames.contains('ai_item_signals')
     ? await db.getAll('ai_item_signals')
     : [];
+  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
   const links = db.objectStoreNames.contains('ai_item_category_links')
     ? await db.getAll('ai_item_category_links')
     : [];
+  const enrichments = db.objectStoreNames.contains('item_enrichment')
+    ? await db.getAll('item_enrichment')
+    : [];
+  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  const items = (await db.getAll('items')).filter((i) => !!i.url?.trim());
 
   const primaryByItem = new Map<string, string>();
   for (const l of links) {
@@ -181,10 +224,20 @@ export async function getCategorizationQueueStats(): Promise<CategorizationQueue
   let skipped = 0;
   let classified = 0;
   let classifiedGeneral = 0;
+  let manualReview = 0;
   let unassignedEligible = 0;
 
-  for (const s of signals) {
-    const st = s.classifyState ?? 'pending_classify';
+  for (const item of items) {
+    const enrichment = enrichByItem.get(item.id);
+    const signal = signalByItem.get(item.id);
+    if (enrichment?.aiStatus !== 'ok' && !signal) continue;
+
+    const primaryId = primaryByItem.get(item.id);
+    const st = resolveEffectiveClassifyState({
+      signalState: signal?.classifyState,
+      primaryCategoryId: primaryId,
+    });
+
     if (st === 'pending_classify') pendingClassify++;
     else if (st === 'pending_reclassify') pendingReclassify++;
     else if (st === 'pending_discover') pendingDiscover++;
@@ -192,9 +245,10 @@ export async function getCategorizationQueueStats(): Promise<CategorizationQueue
     else if (st === 'skipped') skipped++;
     else if (st === 'classified') classified++;
     else if (st === 'classified_general') classifiedGeneral++;
-    const primaryId = primaryByItem.get(s.itemId);
+    else if (st === 'manual_review') manualReview++;
+
     const fairGame =
-      s.signalStatus === 'ok' &&
+      (signal?.signalStatus === 'ok' || enrichment?.aiStatus === 'ok') &&
       st !== 'skipped' &&
       st !== 'ineligible' &&
       st !== 'manual_only' &&
@@ -217,11 +271,80 @@ export async function getCategorizationQueueStats(): Promise<CategorizationQueue
     skipped,
     classified,
     classifiedGeneral,
+    manualReview,
     unassignedEligible,
     leafCount: categories.filter((c) => c.kind === 'leaf').length,
     parentCount: categories.filter((c) => c.kind === 'parent').length,
     bulkModeActive: state.bulkModeActive,
+    lastClassifyRun: state.lastClassifyRun,
+    lastDiscoverRun: state.lastDiscoverRun,
   };
+}
+
+/** Preview discover gap-fill pool (stuck general/unassigned) without LLM. */
+export async function getDiscoverPoolStats(itemIds?: string[]): Promise<DiscoverRunSummary> {
+  const db = await getDB();
+  const scopeIds = itemIds?.length ? new Set(itemIds) : null;
+  const items = await db.getAll('items');
+  const enrichments = db.objectStoreNames.contains('item_enrichment')
+    ? await db.getAll('item_enrichment')
+    : [];
+  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  const signals = db.objectStoreNames.contains('ai_item_signals')
+    ? await db.getAll('ai_item_signals')
+    : [];
+  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
+  const links = db.objectStoreNames.contains('ai_item_category_links')
+    ? await db.getAll('ai_item_category_links')
+    : [];
+  const primaryCategoryByItem = new Map<string, string>();
+  for (const l of links) {
+    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+      primaryCategoryByItem.set(l.itemId, l.categoryId);
+    }
+  }
+
+  const summary = emptyDiscoverRunSummary();
+  for (const item of items) {
+    if (scopeIds && !scopeIds.has(item.id)) continue;
+    summary.totalConsidered++;
+    const enrichment = enrichByItem.get(item.id);
+    const built = await buildClassifyBatchItem(item, enrichment);
+    if (!built.eligible) {
+      summary.skippedIneligible++;
+      summary.failureBuckets = bumpDiscoverFailureBucket(summary.failureBuckets, 'ineligible');
+      continue;
+    }
+    summary.eligiblePool++;
+    const prev = signalByItem.get(item.id);
+    const st = prev?.classifyState;
+    const primaryId = primaryCategoryByItem.get(item.id);
+    const stuckKind = discoverStuckKind(st, primaryId);
+    if (stuckKind) summary.stuckKindBreakdown[stuckKind]++;
+    if (st === 'manual_review') summary.skippedManualReview++;
+
+    if (
+      !isDiscoverFairGame({
+        eligible: true,
+        classifyState: st,
+        primaryCategoryId: primaryId,
+        stuckOnly: true,
+      })
+    ) {
+      if (st === 'classified') summary.skippedNotStuck++;
+      continue;
+    }
+
+    const summaryText =
+      enrichment?.aiStatus === 'ok' ? enrichment.summary?.trim() || '' : '';
+    const text = built.classifyText.trim() || summaryText || (item.title || '').trim();
+    if (text.length < 40 && summaryText.length < 40) {
+      summary.skippedTooShort++;
+      continue;
+    }
+    summary.stuckPool++;
+  }
+  return summary;
 }
 
 export async function markItemsPendingClassify(itemIds: string[]): Promise<void> {
@@ -252,17 +375,215 @@ export async function markItemsPendingClassify(itemIds: string[]): Promise<void>
       ...prev,
       itemId,
       textHash: prev?.textHash ?? '',
+      classifyTextHash: prev?.classifyTextHash ?? '',
       embeddingModel: prev?.embeddingModel ?? '',
       embedding: prev?.embedding ?? [],
       derivedTags: prev?.derivedTags ?? [],
-      signalStatus: prev?.signalStatus ?? 'ok',
+      signalStatus: 'ok',
       classifyState: 'pending_classify',
       discoverState: prev?.discoverState ?? 'none',
+      isNovelty: prev?.isNovelty ?? false,
+      eligibilityReason: undefined,
+      lastClassifySkipReason: undefined,
       lastProcessedAt: now,
     };
     await tx.objectStore('ai_item_signals').put(next);
   }
   await tx.done;
+}
+
+/** Reset stale ineligible signals when enrichment now passes the quality gate. */
+export async function reconcileStaleIneligibleSignals(): Promise<number> {
+  const db = await getDB();
+  if (!db.objectStoreNames.contains('ai_item_signals')) return 0;
+
+  const signals = await db.getAll('ai_item_signals');
+  const stale = signals.filter((s) => s.classifyState === 'ineligible');
+  if (!stale.length) return 0;
+
+  const items = await db.getAll('items');
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const enrichments = db.objectStoreNames.contains('item_enrichment')
+    ? await db.getAll('item_enrichment')
+    : [];
+  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  const links = db.objectStoreNames.contains('ai_item_category_links')
+    ? await db.getAll('ai_item_category_links')
+    : [];
+  const primaryByItem = new Map<string, string>();
+  for (const l of links) {
+    if (l.source !== 'ai' || !l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
+    primaryByItem.set(l.itemId, l.categoryId);
+  }
+
+  const now = Date.now();
+  let updated = 0;
+  for (const sig of stale) {
+    const item = itemById.get(sig.itemId);
+    if (!item?.url?.trim()) continue;
+    const primaryId = primaryByItem.get(sig.itemId);
+    if (hasSpecificPrimaryTopic(primaryId, sig.classifyState)) continue;
+
+    const enrichment = enrichByItem.get(sig.itemId);
+    const eligibility = assessCategorizationEligibility(item, enrichment);
+    if (!eligibility.eligible) continue;
+
+    await db.put('ai_item_signals', {
+      ...sig,
+      signalStatus: 'ok',
+      classifyState: 'pending_classify',
+      eligibilityReason: undefined,
+      lastClassifySkipReason: undefined,
+      lastProcessedAt: now,
+    });
+    updated++;
+  }
+
+  if (updated > 0) notifyDataChanged('categorization.update');
+  return updated;
+}
+
+/** Move legacy LLM-skipped items (no specific topic) into the discover queue. */
+export async function reconcileSkippedToPendingDiscover(): Promise<number> {
+  const db = await getDB();
+  if (!db.objectStoreNames.contains('ai_item_signals')) return 0;
+
+  const signals = await db.getAll('ai_item_signals');
+  const legacySkipped = signals.filter((s) => s.classifyState === 'skipped');
+  if (!legacySkipped.length) return 0;
+
+  const items = await db.getAll('items');
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const enrichments = db.objectStoreNames.contains('item_enrichment')
+    ? await db.getAll('item_enrichment')
+    : [];
+  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  const links = db.objectStoreNames.contains('ai_item_category_links')
+    ? await db.getAll('ai_item_category_links')
+    : [];
+  const primaryByItem = new Map<string, string>();
+  for (const l of links) {
+    if (l.source !== 'ai' || !l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
+    primaryByItem.set(l.itemId, l.categoryId);
+  }
+
+  const now = Date.now();
+  let updated = 0;
+  const tx = db.transaction(['ai_item_signals'], 'readwrite');
+  for (const sig of legacySkipped) {
+    const primaryId = primaryByItem.get(sig.itemId);
+    if (hasSpecificPrimaryTopic(primaryId, sig.classifyState)) continue;
+    const item = itemById.get(sig.itemId);
+    if (!item) continue;
+    const enrichment = enrichByItem.get(sig.itemId);
+    if (enrichment?.aiStatus !== 'ok') continue;
+
+    await tx.objectStore('ai_item_signals').put({
+      ...sig,
+      classifyState: 'pending_discover',
+      discoverState: 'pending',
+      isNovelty: true,
+      lastClassifySkipReason: formatClassifySkipReason('pending_discover'),
+      lastProcessedAt: now,
+    });
+    updated++;
+  }
+  await tx.done;
+  if (updated > 0) notifyDataChanged('categorization.update');
+  return updated;
+}
+
+/** After classify found no topic, ensure state is pending_discover (not stuck on pending_classify). */
+export async function reconcileUnassignedAfterClassify(): Promise<number> {
+  const db = await getDB();
+  if (!db.objectStoreNames.contains('ai_item_signals')) return 0;
+
+  const signals = await db.getAll('ai_item_signals');
+  const candidates = signals.filter((s) => s.classifyState === 'pending_classify');
+  if (!candidates.length) return 0;
+
+  const enrichments = db.objectStoreNames.contains('item_enrichment')
+    ? await db.getAll('item_enrichment')
+    : [];
+  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  const links = db.objectStoreNames.contains('ai_item_category_links')
+    ? await db.getAll('ai_item_category_links')
+    : [];
+  const primaryByItem = new Map<string, string>();
+  for (const l of links) {
+    if (l.source !== 'ai' || !l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
+    primaryByItem.set(l.itemId, l.categoryId);
+  }
+
+  const now = Date.now();
+  let updated = 0;
+  const tx = db.transaction(['ai_item_signals'], 'readwrite');
+  for (const sig of candidates) {
+    const primaryId = primaryByItem.get(sig.itemId);
+    if (hasSpecificPrimaryTopic(primaryId, sig.classifyState)) continue;
+    const enrichment = enrichByItem.get(sig.itemId);
+    if (enrichment?.aiStatus !== 'ok') continue;
+    const classifyAttempted = !!(
+      sig.lastClassifiedAt ||
+      sig.llmReview ||
+      sig.lastClassifySkipReason
+    );
+    if (!classifyAttempted) continue;
+
+    await tx.objectStore('ai_item_signals').put({
+      ...sig,
+      classifyState: 'pending_discover',
+      discoverState: 'pending',
+      isNovelty: true,
+      lastClassifySkipReason: formatClassifySkipReason('pending_discover'),
+      lastProcessedAt: now,
+    });
+    updated++;
+  }
+  await tx.done;
+  if (updated > 0) notifyDataChanged('categorization.update');
+  return updated;
+}
+
+/**
+ * Backfill classify signals for AI-ready bookmarks with no topic yet.
+ * Covers restore/import paths that skipped putEnrichment → markItemsPendingClassify.
+ */
+export async function ensurePendingClassifySignals(): Promise<number> {
+  const reconciledIneligible = await reconcileStaleIneligibleSignals();
+  const reconciledSkipped = await reconcileSkippedToPendingDiscover();
+  const reconciledUnassigned = await reconcileUnassignedAfterClassify();
+  const db = await getDB();
+  if (!db.objectStoreNames.contains('item_enrichment')) return 0;
+
+  const items = (await db.getAll('items')).filter((i) => !!i.url?.trim());
+  const enrichments = await db.getAll('item_enrichment');
+  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  const signals = db.objectStoreNames.contains('ai_item_signals')
+    ? await db.getAll('ai_item_signals')
+    : [];
+  const signalIds = new Set(signals.map((s) => s.itemId));
+  const links = db.objectStoreNames.contains('ai_item_category_links')
+    ? await db.getAll('ai_item_category_links')
+    : [];
+  const primaryByItem = new Map<string, string>();
+  for (const l of links) {
+    if (l.source !== 'ai' || !l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
+    primaryByItem.set(l.itemId, l.categoryId);
+  }
+
+  const toMark: string[] = [];
+  for (const item of items) {
+    const enrichment = enrichByItem.get(item.id);
+    if (enrichment?.aiStatus !== 'ok') continue;
+    if (signalIds.has(item.id)) continue;
+    const primaryId = primaryByItem.get(item.id);
+    if (hasSpecificPrimaryTopic(primaryId, undefined)) continue;
+    toMark.push(item.id);
+  }
+
+  if (toMark.length) await markItemsPendingClassify(toMark);
+  return reconciledIneligible + reconciledSkipped + reconciledUnassigned + toMark.length;
 }
 
 export async function importSeedTaxonomy(replaceExisting = true): Promise<{
@@ -418,47 +739,153 @@ export async function classifyIncremental(
     }
   }
 
-  const toProcess: Array<{ item: Item; batch: ClassifyBatchItem; hash: string }> = [];
+  const toProcess: Array<{
+    item: Item;
+    batch: ClassifyBatchItem;
+    hash: string;
+    qualityTier?: 'high' | 'medium' | 'low';
+  }> = [];
+  const gateWrites: Array<{ itemId: string; signal: AiItemSignal }> = [];
+  const summary = emptyTopicClassifySummary();
 
   for (const item of items) {
+    summary.totalConsidered++;
     const enrichment = enrichByItem.get(item.id);
     const built = await buildClassifyBatchItem(item, enrichment);
-    if (!built.eligible || !built.batch) {
-      continue;
-    }
     const prev = signalByItem.get(item.id);
     const st = prev?.classifyState;
-    const hashMatch = prev?.classifyTextHash === built.hash;
     const primaryId = primaryCategoryByItem.get(item.id);
 
-    if (
-      !itemNeedsClassify(st, primaryId, hashMatch, true, opts.forceReclassify)
-    ) {
+    if (!built.eligible || !built.batch) {
+      summary.skippedIneligible++;
+      summary.failureBuckets = bumpFailureBucket(
+        summary.failureBuckets,
+        built.eligibilityReason?.split('(')[0]?.trim() || 'ineligible'
+      );
+      const now = Date.now();
+      gateWrites.push({
+        itemId: item.id,
+        signal: {
+          itemId: item.id,
+          textHash: prev?.textHash ?? '',
+          classifyTextHash: prev?.classifyTextHash ?? '',
+          embeddingModel: prev?.embeddingModel ?? '',
+          embedding: prev?.embedding ?? [],
+          derivedTags: prev?.derivedTags ?? [],
+          signalStatus: 'insufficient_enrichment',
+          classifyState: 'ineligible',
+          discoverState: 'none',
+          isNovelty: false,
+          eligibilityReason: built.eligibilityReason,
+          lastClassifySkipReason:
+            built.eligibilityReason ?? formatClassifySkipReason('quality_gate'),
+          lastProcessedAt: now,
+          classifyRetryCount: prev?.classifyRetryCount ?? 0,
+        },
+      });
       continue;
     }
 
-    toProcess.push({ item, batch: built.batch, hash: built.hash });
+    if (built.qualityTier) {
+      summary.inputQuality[built.qualityTier]++;
+    }
+
+    const hashMatch = prev?.classifyTextHash === built.hash;
+    const skipDecision = shouldSkipClassify({
+      classifyState: st,
+      primaryCategoryId: primaryId,
+      hashMatch,
+      eligible: true,
+      forceReclassify: opts.forceReclassify,
+      retryManualReview: opts.retryManualReview,
+    });
+
+    if (skipDecision.markPendingReclassify && prev && st === 'classified') {
+      const now = Date.now();
+      gateWrites.push({
+        itemId: item.id,
+        signal: {
+          ...prev,
+          itemId: item.id,
+          classifyState: 'pending_reclassify',
+          lastClassifySkipReason: 'Bookmark text changed — queued for reclassify',
+          lastProcessedAt: now,
+        },
+      });
+    }
+
+    if (skipDecision.skip) {
+      if (skipDecision.reason === 'unchanged_hash_specific' || skipDecision.reason === 'unchanged_hash_skipped') {
+        summary.skippedHash++;
+      } else if (skipDecision.reason === 'manual_review') {
+        summary.skippedManualReview++;
+      }
+      if (prev) {
+        gateWrites.push({
+          itemId: item.id,
+          signal: {
+            ...prev,
+            itemId: item.id,
+            lastClassifySkipReason: formatClassifySkipReason(skipDecision.reason),
+            lastProcessedAt: Date.now(),
+          },
+        });
+      }
+      continue;
+    }
+
+    if (
+      !itemNeedsClassify(
+        skipDecision.markPendingReclassify ? 'pending_reclassify' : st,
+        primaryId,
+        hashMatch,
+        true,
+        opts.forceReclassify,
+        opts.retryManualReview
+      )
+    ) {
+      summary.skippedHash++;
+      if (prev) {
+        gateWrites.push({
+          itemId: item.id,
+          signal: {
+            ...prev,
+            itemId: item.id,
+            lastClassifySkipReason: formatClassifySkipReason('unchanged_hash_specific'),
+            lastProcessedAt: Date.now(),
+          },
+        });
+      }
+      continue;
+    }
+
+    toProcess.push({
+      item,
+      batch: built.batch,
+      hash: built.hash,
+      qualityTier: built.qualityTier,
+    });
     if (opts.maxItems && toProcess.length >= opts.maxItems) break;
   }
 
-  const summary = {
-    processed: 0,
-    skippedIneligible: 0,
-    skippedHash: 0,
-    skippedLlm: 0,
-    assignedPrimary: 0,
-    assignedSecondary: 0,
-    multiLabel: 0,
-    unassigned: 0,
-    pendingDiscover: 0,
-    llmErrors: 0,
-    batches: 0,
-  };
+  if (gateWrites.length) {
+    const db = await getDB();
+    const tx = db.transaction(['ai_item_signals'], 'readwrite');
+    for (const w of gateWrites) {
+      await tx.objectStore('ai_item_signals').put(w.signal);
+    }
+    await tx.done;
+  }
 
   if (!toProcess.length) {
+    const runAt = Date.now();
+    await saveTaxonomyState({
+      lastClassifyAt: runAt,
+      lastClassifyRun: { at: runAt, summary },
+    });
     reportProgress(opts, {
       phase: 'done',
-      label: 'Nothing to classify (import seed, enrich items, or lower filters)',
+      label: `Nothing to classify (${summary.skippedHash} unchanged · ${summary.skippedIneligible} ineligible · ${summary.skippedManualReview} manual review)`,
       current: 0,
       total: 0,
     });
@@ -550,19 +977,42 @@ export async function classifyIncremental(
       const hash = meta?.hash ?? '';
       const decision = normalized.get(batchItem.itemId);
       const prevSignal = signalByItem.get(batchItem.itemId);
+      const prevRetry = prevSignal?.classifyRetryCount ?? 0;
 
       let classifyState: ClassifyState = 'pending_classify';
       const links: AiItemCategoryLink[] = [];
-      let removeAiSuggested = true;
+      const removeAiSuggested = true;
+      let retryCount = prevRetry;
+      let lastClassifySkipReason: string | undefined;
 
       if (!decision || decision.status === 'error') {
-        classifyState = 'pending_classify';
+        const retry = applyClassifyRetryPolicy(prevRetry, 'error');
+        classifyState = retry.nextState;
+        retryCount = retry.nextRetryCount;
         summary.llmErrors++;
+        summary.failureBuckets = bumpFailureBucket(summary.failureBuckets, 'llm_error');
+        if (retry.routedToManualReview) {
+          summary.failureBuckets = bumpFailureBucket(summary.failureBuckets, 'manual_review_error');
+        }
+        lastClassifySkipReason = classifyOutcomeReason('error', {
+          routedToManualReview: retry.routedToManualReview,
+          llmReason: decision?.reason,
+        });
       } else if (decision.decisionType === 'none' && !decision.categoryIds?.length) {
-        const isSkip = (decision.reason || '').length > 0 && decision.confidence != null && decision.confidence >= 0.7;
-        classifyState = isSkip ? 'skipped' : 'pending_discover';
-        if (!isSkip) summary.unassigned++;
-        else summary.skippedLlm++;
+        // No matching topic → discover gap-fill (never terminal "skipped" for valid AI-ready items).
+        const retry = applyClassifyRetryPolicy(prevRetry, 'unassigned');
+        classifyState = retry.nextState;
+        retryCount = retry.nextRetryCount;
+        summary.unassigned++;
+        if (retry.routedToManualReview) {
+          summary.failureBuckets = bumpFailureBucket(summary.failureBuckets, 'manual_review_unassigned');
+        } else {
+          summary.pendingDiscover++;
+        }
+        lastClassifySkipReason = classifyOutcomeReason('unassigned', {
+          routedToManualReview: retry.routedToManualReview,
+          llmReason: decision.reason,
+        });
       } else if (decision.decisionType === 'existing' && decision.categoryIds?.length) {
         const assignments = assignmentsFromCategoryIds(decision.categoryIds);
         for (const a of assignments) {
@@ -579,8 +1029,26 @@ export async function classifyIncremental(
           });
         }
         const primaryId = decision.categoryIds[0];
-        classifyState = isGeneralLeafId(primaryId) ? 'classified_general' : 'classified';
-        summary.assignedPrimary++;
+        if (isGeneralLeafId(primaryId)) {
+          const retry = applyClassifyRetryPolicy(prevRetry, 'general');
+          classifyState = retry.nextState;
+          retryCount = retry.nextRetryCount;
+          summary.classifiedGeneral++;
+          summary.assignedPrimary++;
+          if (retry.routedToManualReview) {
+            summary.failureBuckets = bumpFailureBucket(summary.failureBuckets, 'manual_review_general');
+          }
+          lastClassifySkipReason = classifyOutcomeReason('general', {
+            routedToManualReview: retry.routedToManualReview,
+            llmReason: decision.reason,
+          });
+        } else {
+          const retry = applyClassifyRetryPolicy(prevRetry, 'specific');
+          classifyState = retry.nextState;
+          retryCount = retry.nextRetryCount;
+          summary.classifiedSpecific++;
+          summary.assignedPrimary++;
+        }
         if (decision.categoryIds.length > 1) summary.multiLabel++;
         if (assignments.length > 1) summary.assignedSecondary += assignments.length - 1;
       } else if (decision.decisionType === 'new_category' && decision.proposedCategory) {
@@ -600,20 +1068,38 @@ export async function classifyIncremental(
             created_at: now,
             updated_at: now,
           });
-          classifyState = 'classified';
+          const retry = applyClassifyRetryPolicy(prevRetry, 'specific');
+          classifyState = retry.nextState;
+          retryCount = retry.nextRetryCount;
           summary.assignedPrimary++;
+          summary.classifiedSpecific++;
         } else {
-          classifyState = 'pending_discover';
+          const retry = applyClassifyRetryPolicy(prevRetry, 'unassigned');
+          classifyState = retry.nextState;
+          retryCount = retry.nextRetryCount;
           summary.pendingDiscover++;
           summary.unassigned++;
+          if (retry.routedToManualReview) {
+            summary.failureBuckets = bumpFailureBucket(summary.failureBuckets, 'manual_review_new_category');
+          }
+          lastClassifySkipReason = classifyOutcomeReason('unassigned', {
+            routedToManualReview: retry.routedToManualReview,
+          });
         }
-      } else if (decision.decisionType === 'new_category') {
-        classifyState = 'pending_discover';
-        summary.pendingDiscover++;
-        summary.unassigned++;
       } else {
-        classifyState = 'pending_discover';
+        const retry = applyClassifyRetryPolicy(prevRetry, 'unassigned');
+        classifyState = retry.nextState;
+        retryCount = retry.nextRetryCount;
         summary.unassigned++;
+        if (retry.routedToManualReview) {
+          summary.failureBuckets = bumpFailureBucket(summary.failureBuckets, 'manual_review_unassigned');
+        } else {
+          summary.pendingDiscover++;
+        }
+        lastClassifySkipReason = classifyOutcomeReason('unassigned', {
+          routedToManualReview: retry.routedToManualReview,
+          llmReason: decision?.reason,
+        });
       }
 
       const signal: AiItemSignal = {
@@ -626,9 +1112,15 @@ export async function classifyIncremental(
         signalStatus: 'ok',
         classifyState,
         discoverState: classifyState === 'pending_discover' ? 'pending' : 'none',
-        isNovelty: classifyState === 'pending_discover' || classifyState === 'pending_classify',
+        isNovelty:
+          classifyState === 'pending_discover' ||
+          classifyState === 'pending_classify' ||
+          classifyState === 'classified_general',
         lastProcessedAt: now,
         lastClassifiedAt: now,
+        classifyRetryCount: retryCount,
+        inputQualityTier: meta?.qualityTier ?? prevSignal?.inputQualityTier,
+        lastClassifySkipReason,
         llmReview: {
           decisionType: decision?.decisionType,
           categoryIds: decision?.categoryIds,
@@ -651,7 +1143,11 @@ export async function classifyIncremental(
   await yieldToUi();
   categories = await persistClassifyResults(categories, itemWrites);
   await syncClassifySignalsFromLinks(itemWrites.map((w) => w.itemId));
-  await saveTaxonomyState({ lastClassifyAt: Date.now() });
+  const runAt = Date.now();
+  await saveTaxonomyState({
+    lastClassifyAt: runAt,
+    lastClassifyRun: { at: runAt, summary },
+  });
 
   if (opts.autoDiscover !== false) {
     const stats = await getCategorizationQueueStats();
@@ -663,7 +1159,12 @@ export async function classifyIncremental(
         current: 0,
         total: 1,
       });
-      await discoverBatch({ singleBatch: true, enforceBulkRunCap: true });
+      await discoverBatch({
+        singleBatch: true,
+        enforceBulkRunCap: true,
+        stuckOnly: true,
+        sampleBatchSize: 16,
+      });
     }
   }
 
@@ -678,47 +1179,17 @@ export async function classifyIncremental(
 }
 
 /** Match CLI discover batch size — smaller prompts, fewer timeouts. */
-const DISCOVER_SAMPLE_BATCH = 32;
-
-function discoverStuckKind(
-  classifyState?: ClassifyState,
-  primaryCategoryId?: string
-): DiscoverSampleItem['stuckKind'] | undefined {
-  if (classifyState === 'pending_discover') return 'pending_discover';
-  if (
-    classifyState === 'classified_general' ||
-    (primaryCategoryId && isGeneralLeafId(primaryCategoryId))
-  ) {
-    return 'general';
-  }
-  if (
-    !primaryCategoryId &&
-    classifyState !== 'classified' &&
-    classifyState !== 'skipped' &&
-    classifyState !== 'ineligible'
-  ) {
-    return 'unassigned';
-  }
-  return undefined;
-}
-
-function discoverSamplePriority(s: DiscoverSampleItem): number {
-  if (s.stuckKind === 'pending_discover') return 0;
-  if (s.stuckKind === 'general') return 1;
-  if (s.stuckKind === 'unassigned') return 2;
-  return 3;
-}
+const DISCOVER_SAMPLE_BATCH = DEFAULT_DISCOVER_BATCH_SIZE;
 
 export async function discoverBatch(
   opts: {
-    /** Limit how many items to scan (default: all eligible in scope). */
     maxItems?: number;
-    /** When set, only these item ids (e.g. Enrichment Results list). */
     itemIds?: string[];
-    /** One LLM call on first chunk only (auto-discover after classify). */
     singleBatch?: boolean;
-    /** Respect maxBulkDiscoverRuns (auto-discover only). Manual Discover ignores. */
+    maxBatches?: number;
     enforceBulkRunCap?: boolean;
+    /** Gap-fill: only general / unassigned / pending_discover (default true). */
+    stuckOnly?: boolean;
     sampleBatchSize?: number;
     onProgress?: (update: ClassifyProgressUpdate) => void;
   } = {}
@@ -774,50 +1245,74 @@ export async function discoverBatch(
   const enrichments = await db.getAll('item_enrichment');
   const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
 
+  const stuckOnly = opts.stuckOnly !== false;
+  const runSummary = emptyDiscoverRunSummary();
   const samples: DiscoverSampleItem[] = [];
+
   for (const item of items) {
     if (scopeIds && !scopeIds.has(item.id)) continue;
+    runSummary.totalConsidered++;
     const enrichment = enrichByItem.get(item.id);
     const built = await buildClassifyBatchItem(item, enrichment);
-    if (!built.eligible) continue;
+    if (!built.eligible) {
+      runSummary.skippedIneligible++;
+      runSummary.failureBuckets = bumpDiscoverFailureBucket(
+        runSummary.failureBuckets,
+        'ineligible'
+      );
+      continue;
+    }
+    runSummary.eligiblePool++;
 
     const prev = signalByItem.get(item.id);
     const primaryId = primaryCategoryByItem.get(item.id);
+    const st = prev?.classifyState;
+    const stuckKind = discoverStuckKind(st, primaryId);
+    if (stuckKind) runSummary.stuckKindBreakdown[stuckKind]++;
+    if (st === 'manual_review') runSummary.skippedManualReview++;
+
     if (
-      !isFairGameForCategorization({
+      !isDiscoverFairGame({
         eligible: true,
-        classifyState: prev?.classifyState,
+        classifyState: st,
         primaryCategoryId: primaryId,
+        stuckOnly,
       })
     ) {
+      if (stuckOnly && st === 'classified') runSummary.skippedNotStuck++;
       continue;
     }
 
-    const summary =
+    const summaryText =
       enrichment?.aiStatus === 'ok' ? enrichment.summary?.trim() || '' : '';
-    const text = built.classifyText.trim() || summary || (item.title || '').trim();
-    if (text.length < 40) continue;
-    const stuckKind = discoverStuckKind(prev?.classifyState, primaryId);
+    const text = built.classifyText.trim() || summaryText || (item.title || '').trim();
+    if (text.length < 40 && summaryText.length < 40) {
+      runSummary.skippedTooShort++;
+      continue;
+    }
+
     samples.push({
       itemId: item.id,
       title: item.title || '',
-      aiSummary: summary || text.slice(0, 2000),
+      aiSummary: summaryText || text.slice(0, 2000),
       stuckKind,
     });
+    runSummary.stuckPool++;
     if (opts.maxItems && samples.length >= opts.maxItems) break;
   }
 
-  samples.sort((a, b) => discoverSamplePriority(a) - discoverSamplePriority(b));
+  samples.sort(
+    (a, b) => discoverSamplePriority(a.stuckKind) - discoverSamplePriority(b.stuckKind)
+  );
 
-  const stuckInBatch = samples.filter(
-    (s) => s.stuckKind && s.stuckKind !== 'retry'
-  ).length;
-  const gapFillMode = !opts.singleBatch && stuckInBatch >= Math.min(3, samples.length);
+  const gapFillMode = stuckOnly && runSummary.stuckPool >= MIN_DISCOVER_POOL;
 
-  if (samples.length < 3) {
+  if (samples.length < MIN_DISCOVER_POOL) {
     opts.onProgress?.({
       phase: 'done',
-      label: 'Not enough items to discover (need ≥3 with AI summary)',
+      label: stuckOnly
+        ? `Not enough stuck items for discover (need ≥${MIN_DISCOVER_POOL}, have ${samples.length})`
+        : 'Not enough items to discover (need ≥3 with AI summary)',
       current: 0,
       total: 0,
     });
@@ -832,13 +1327,16 @@ export async function discoverBatch(
       taxonomyLeafCount: taxonomyLeafCountStart,
       taxonomyVersion: state.taxonomyVersion,
       shouldReclassify: false,
+      summary: runSummary,
     };
   }
 
   const batchSize = opts.sampleBatchSize ?? DISCOVER_SAMPLE_BATCH;
-  const sampleChunks = opts.singleBatch
-    ? [samples.slice(0, batchSize)]
-    : chunk(samples, batchSize);
+  const maxBatches =
+    opts.maxBatches ?? (opts.singleBatch ? 1 : Number.POSITIVE_INFINITY);
+  const sampleChunks = chunk(samples, batchSize).slice(0, maxBatches);
+  runSummary.itemsSampled = sampleChunks.reduce((n, c) => n + c.length, 0);
+  runSummary.discoverBatches = sampleChunks.length;
 
   const maxNewParents = state.maxNewParentsPerDiscover ?? 5;
   const now = Date.now();
@@ -850,6 +1348,7 @@ export async function discoverBatch(
   const batchErrors: string[] = [];
   let taxonomyVersion = state.taxonomyVersion;
   let anyAdded = false;
+  const successfulSampleIds = new Set<string>();
 
   for (let i = 0; i < sampleChunks.length; i++) {
     const chunkSamples = sampleChunks[i];
@@ -857,34 +1356,59 @@ export async function discoverBatch(
 
     opts.onProgress?.({
       phase: 'discover',
-      label: `Discover batch ${i + 1}/${sampleChunks.length} (${chunkSamples.length} items)…`,
+      label: `Discover batch ${i + 1}/${sampleChunks.length} (${chunkSamples.length} stuck items)…`,
       current: i,
       total: sampleChunks.length,
     });
     await yieldToUi();
 
-    const resp = await callDiscoveryBatch(aiSettings, parents, categories, chunkSamples, {
-      maxNewParents,
-      maxNewLeaves: state.maxNewLeavesPerDiscover,
-      gapFillMode,
-    });
+    const resp = await callDiscoveryBatchWithRetry(
+      aiSettings,
+      parents,
+      categories,
+      chunkSamples,
+      {
+        maxNewParents,
+        maxNewLeaves: state.maxNewLeavesPerDiscover,
+        gapFillMode,
+      }
+    );
 
     let addedParents: AiCategory[] = [];
     let addedLeaves: AiCategory[] = [];
     if (!resp.ok) {
       llmErrors++;
+      runSummary.llmErrors++;
+      runSummary.failureBuckets = bumpDiscoverFailureBucket(
+        runSummary.failureBuckets,
+        'llm_batch_error'
+      );
       if (resp.error) batchErrors.push(`batch ${i + 1}: ${resp.error}`);
-    } else if (resp.data) {
-      const rawParents = resp.data.newParents ?? [];
-      const rawLeaves = resp.data.newLeaves ?? [];
+    } else {
+      for (const row of chunkSamples) successfulSampleIds.add(row.itemId);
+      if (resp.singleErrors) {
+        llmErrors += resp.singleErrors;
+        runSummary.llmErrors += resp.singleErrors;
+        runSummary.failureBuckets = bumpDiscoverFailureBucket(
+          runSummary.failureBuckets,
+          'llm_single_error'
+        );
+      }
+      const data = resp.data;
+      const rawParents = data?.newParents ?? [];
+      const rawLeaves = data?.newLeaves ?? [];
       proposedParents += rawParents.length;
       proposedLeaves += rawLeaves.length;
+      runSummary.proposedParentsRaw += rawParents.length;
+      runSummary.proposedLeavesRaw += rawLeaves.length;
 
-      const merged = mergeDiscoveryTaxonomy(categories, resp.data, {
+      const merged = mergeDiscoveryTaxonomy(categories, data ?? {}, {
         maxNewParents,
         maxNewLeaves: state.maxNewLeavesPerDiscover,
         now,
       });
+      runSummary.duplicateLeavesSkipped +=
+        rawLeaves.length + (data?.itemResults?.length ?? 0) - (merged.addedLeaves?.length ?? 0);
       addedParents = merged.addedParents;
       addedLeaves = merged.addedLeaves;
       categories = merged.categories;
@@ -895,6 +1419,8 @@ export async function discoverBatch(
       anyAdded = true;
       totalNewParents += addedParents.length;
       totalNewLeaves += addedLeaves.length;
+      runSummary.newParents += addedParents.length;
+      runSummary.newLeaves += addedLeaves.length;
       taxonomyVersion += 1;
 
       opts.onProgress?.({
@@ -926,25 +1452,25 @@ export async function discoverBatch(
     bulkDiscoverRuns: opts.enforceBulkRunCap
       ? state.bulkDiscoverRuns + 1
       : state.bulkDiscoverRuns,
+    lastDiscoverRun: { at: now, summary: runSummary },
   });
 
-  const sampledIds = new Set(samples.map((s) => s.itemId));
-  for (const itemId of sampledIds) {
+  for (const itemId of successfulSampleIds) {
     const sig = await db.get('ai_item_signals', itemId);
     if (!sig) continue;
-    const st = sig.classifyState;
-    if (st !== 'pending_discover' && sig.discoverState !== 'pending') continue;
+    if (!shouldMarkReclassifyAfterDiscover(sig.classifyState, sig.discoverState)) continue;
     await db.put('ai_item_signals', {
       ...sig,
       classifyState: 'pending_classify',
       discoverState: 'done',
       lastProcessedAt: now,
     });
+    runSummary.itemsMarkedForReclassify++;
   }
 
   let doneLabel = anyAdded
-    ? `Discover done: ${samples.length} items · ${sampleChunks.length} batches · +${totalNewParents} parents · +${totalNewLeaves} leaves`
-    : `Discover done: ${samples.length} items · ${sampleChunks.length} batches · 0 added`;
+    ? `Discover done: ${runSummary.itemsSampled} stuck · ${sampleChunks.length} batches · +${totalNewParents} parents · +${totalNewLeaves} leaves`
+    : `Discover done: ${runSummary.itemsSampled} stuck · ${sampleChunks.length} batches · 0 added`;
   if (!anyAdded && (proposedParents > 0 || proposedLeaves > 0)) {
     doneLabel += ` (LLM proposed ${proposedParents} parents, ${proposedLeaves} leaves — all duplicates of existing labels)`;
   } else if (!anyAdded && llmErrors === sampleChunks.length) {
@@ -967,15 +1493,16 @@ export async function discoverBatch(
   return {
     newParents: totalNewParents,
     newLeaves: totalNewLeaves,
-    itemsSampled: samples.length,
+    itemsSampled: runSummary.itemsSampled,
     discoverBatches: sampleChunks.length,
     proposedParents,
     proposedLeaves,
     llmErrors,
     taxonomyLeafCount: categories.filter((c) => c.kind === 'leaf').length,
     taxonomyVersion,
-    shouldReclassify: anyAdded,
+    shouldReclassify: anyAdded || runSummary.itemsMarkedForReclassify > 0,
     batchErrors: batchErrors.length ? batchErrors : undefined,
+    summary: runSummary,
   };
 }
 

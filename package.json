@@ -11,7 +11,12 @@
     "fetch-experiment": "node scripts/enrich-fetch/run-experiment.mjs",
     "fetch-ai-eval": "node scripts/enrich-fetch/run-ai-eval.mjs",
     "categorize": "node scripts/categorize/run-categorize.mjs",
+    "classify-incremental": "node scripts/categorize/run-classify-incremental.mjs",
+    "discover-incremental": "node scripts/categorize/run-discover-incremental.mjs",
     "discover-taxonomy": "node scripts/categorize/discover-taxonomy.mjs",
+    "search-eval": "tsx scripts/search/run-search-eval.mts",
+    "embed-incremental": "tsx scripts/search/run-embed-incremental.mts",
+    "search-similar": "tsx scripts/search/run-search-similar.mts",
     "check-openrouter-key": "node scripts/check-openrouter-key.mjs"
   },
   "dependencies": {
@@ -30,6 +35,7 @@
     "@vitejs/plugin-react": "^4.2.1",
     "jsdom": "^29.1.1",
     "playwright": "^1.60.0",
+    "tsx": "^4.19.4",
     "typescript": "^5.2.2",
     "vite": "^5.0.8"
   }

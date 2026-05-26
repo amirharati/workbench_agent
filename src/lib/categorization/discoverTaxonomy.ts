@@ -37,7 +37,7 @@ export interface DiscoverSampleItem {
   title: string;
   aiSummary: string;
   /** Why this item is in a discover batch (drives gap-fill prompting). */
-  stuckKind?: 'pending_discover' | 'general' | 'unassigned' | 'retry';
+  stuckKind?: 'pending_discover' | 'general' | 'unassigned' | 'manual_review';
 }
 
 export interface DiscoveryParentProposal {
@@ -76,7 +76,7 @@ function buildDiscoveryPrompt(
 ): string {
   const grouped = buildGroupedLeafCatalog(leavesSoFar, parents);
   const catalogMd = formatGroupedCatalogMarkdown(grouped);
-  const stuckCount = batchItems.filter((i) => i.stuckKind && i.stuckKind !== 'retry').length;
+  const stuckCount = batchItems.filter((i) => i.stuckKind && i.stuckKind !== 'manual_review').length;
   return [
     '## Task',
     gapFillMode

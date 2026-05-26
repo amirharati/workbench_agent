@@ -103,3 +103,18 @@ export function classifyStateFromPrimary(leafId: string | null, eligible: boolea
   if (isGeneralLeafId(leafId)) return 'classified_general';
   return 'classified';
 }
+
+/** Derive display/queue bucket; persisted signal always wins. */
+export function resolveEffectiveClassifyState(input: {
+  signalState?: import('./types').ClassifyState;
+  primaryCategoryId?: string | null;
+  /** @deprecated eligibility is applied when classify runs, not before a signal exists */
+  eligible?: boolean;
+}): import('./types').ClassifyState {
+  if (input.signalState) return input.signalState;
+  const pid = input.primaryCategoryId ?? null;
+  if (pid && !isGeneralLeafId(pid)) return 'classified';
+  if (pid && isGeneralLeafId(pid)) return 'classified_general';
+  // AI-ready but no topic stored yet → pending until classify gate runs
+  return 'pending_classify';
+}

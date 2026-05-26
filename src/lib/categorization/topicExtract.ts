@@ -47,6 +47,8 @@ export function buildTopicExtractPrompt(
     'Indie hackers / business ideas → product-gtm-general or propose one specific GTM leaf.',
     'proposed: parentId one of quant-finance, machine-learning, ai-productivity, software-dev, product-gtm, personal-finance, health-lifestyle, infra-hosting, hardware.',
     'Do not invent topics from URL alone; use summary substance.',
+    'If no catalog leaf fits, return empty topicIds and a proposed leaf — do NOT skip valid articles, tutorials, or product pages.',
+    'Use skip:true ONLY for empty/login/placeholder/captcha pages with no substantive content.',
     'Return one result object per item in items[] — same itemId, no omissions.',
   ];
 
@@ -167,7 +169,7 @@ export async function callTopicExtractBatch(
           {
             role: 'system',
             content:
-              'You extract concurrent atomic topics for bookmarks. Return only valid JSON. Use leafId or topicPaths from grouped topicCatalog. Prefer specific leaves over *-general fallbacks. skip only for junk/login/placeholder pages — always classify valid adult/erotic pages (adult-erotic-content), never skip as inappropriate.',
+              'You extract concurrent atomic topics for bookmarks. Return only valid JSON. Use leafId or topicPaths from grouped topicCatalog. Prefer specific leaves over *-general fallbacks. If nothing fits, propose a new leaf under the best parent — do not skip substantive pages. skip:true only for junk/login/placeholder pages with no real content.',
           },
           { role: 'user', content: prompt },
         ],

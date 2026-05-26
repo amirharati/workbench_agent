@@ -193,6 +193,34 @@ body {
   background: rgba(0, 0, 0, 0.42);
 }
 
+/* ===== Dev pipeline UI typography (enrichment review, classify, pipeline dev) ===== */
+.dev-pipeline-ui {
+  --dev-fs-caption: 0.875rem; /* 14px — labels, badges, table meta */
+  --dev-fs-sm: 0.9375rem; /* 15px — body secondary, chips */
+  --dev-fs-base: 1rem; /* 16px — default body */
+  --dev-fs-md: 1.125rem; /* 18px — section titles */
+  --dev-fs-lg: 1.25rem; /* 20px — page titles */
+  font-size: var(--dev-fs-base);
+  line-height: 1.45;
+}
+
+.dev-pipeline-ui .er-btn {
+  font-size: var(--dev-fs-sm);
+  padding: 6px 12px;
+}
+
+.dev-pipeline-ui .er-table-header,
+.dev-pipeline-ui .er-group-header {
+  font-size: var(--dev-fs-sm);
+}
+
+.dev-pipeline-ui input.er-field,
+.dev-pipeline-ui input[type='number'],
+.dev-pipeline-ui input[type='search'] {
+  font-size: var(--dev-fs-base);
+  padding: 8px 10px;
+}
+
 /* ===== Enrichment review modal (theme-safe) ===== */
 .enrichment-review {
   color: var(--text);

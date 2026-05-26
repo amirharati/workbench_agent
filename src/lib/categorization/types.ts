@@ -20,7 +20,10 @@ export type ClassifyState =
   | 'classified'
   | 'classified_general'
   | 'pending_discover'
+  | 'manual_review'
   | 'manual_only';
+
+export type ClassifyInputQualityTier = 'high' | 'medium' | 'low';
 
 export type DiscoverState = 'none' | 'pending' | 'done';
 
@@ -78,6 +81,13 @@ export interface AiItemSignal {
   classifyState?: ClassifyState;
   discoverState?: DiscoverState;
   isNovelty?: boolean;
+  /** How many times item landed general/unassigned/error (auto retry cap). */
+  classifyRetryCount?: number;
+  /** Why last classify run skipped this item (dev/CLI diagnostics). */
+  lastClassifySkipReason?: string;
+  /** Deterministic eligibility gate reason when classifyState=ineligible. */
+  eligibilityReason?: string;
+  inputQualityTier?: ClassifyInputQualityTier;
   lastProcessedAt: number;
   lastClassifiedAt?: number;
   llmReview?: LlmReviewSnapshot;
@@ -98,7 +108,45 @@ export interface AiTaxonomyState {
   unassignedThresholdPercent: number;
   lastDiscoverAt?: number;
   lastClassifyAt?: number;
+  lastClassifyRun?: ClassifyRunSnapshot;
+  lastDiscoverRun?: DiscoverRunSnapshot;
   updated_at: number;
+}
+
+export interface ClassifyRunSnapshot {
+  at: number;
+  summary: TopicClassifySummary;
+}
+
+export interface DiscoverRunSummary {
+  totalConsidered: number;
+  eligiblePool: number;
+  stuckPool: number;
+  skippedIneligible: number;
+  skippedNotStuck: number;
+  skippedManualReview: number;
+  skippedTooShort: number;
+  itemsSampled: number;
+  discoverBatches: number;
+  newParents: number;
+  newLeaves: number;
+  proposedParentsRaw: number;
+  proposedLeavesRaw: number;
+  duplicateLeavesSkipped: number;
+  llmErrors: number;
+  itemsMarkedForReclassify: number;
+  failureBuckets: Record<string, number>;
+  stuckKindBreakdown: {
+    pending_discover: number;
+    general: number;
+    unassigned: number;
+    manual_review: number;
+  };
+}
+
+export interface DiscoverRunSnapshot {
+  at: number;
+  summary: DiscoverRunSummary;
 }
 
 export const DEFAULT_TAXONOMY_STATE: AiTaxonomyState = {
@@ -188,17 +236,23 @@ export interface CategorizationRunSummary {
 }
 
 export interface TopicClassifySummary {
+  totalConsidered: number;
   processed: number;
   skippedIneligible: number;
   skippedHash: number;
   skippedLlm: number;
+  skippedManualReview: number;
   assignedPrimary: number;
+  classifiedSpecific: number;
+  classifiedGeneral: number;
   assignedSecondary: number;
   multiLabel: number;
   unassigned: number;
   pendingDiscover: number;
   llmErrors: number;
   batches: number;
+  failureBuckets: Record<string, number>;
+  inputQuality: { high: number; medium: number; low: number };
 }
 
 export interface TopicClassifyResult {
@@ -217,19 +271,15 @@ export interface DiscoverBatchResult {
   newParents: number;
   newLeaves: number;
   itemsSampled: number;
-  /** How many LLM discover calls ran (one per sample chunk). */
   discoverBatches: number;
-  /** Raw counts from LLM JSON before dedupe/merge. */
   proposedParents: number;
   proposedLeaves: number;
-  /** Batches where the LLM call or JSON parse failed. */
   llmErrors: number;
-  /** Leaf labels already in taxonomy (import seed includes prior discovery runs). */
   taxonomyLeafCount: number;
   taxonomyVersion: number;
   shouldReclassify: boolean;
-  /** Set when one or more batches failed (API/parse). */
   batchErrors?: string[];
+  summary?: DiscoverRunSummary;
 }
 
 export interface ClassifyProgressUpdate {
@@ -246,6 +296,8 @@ export interface ClassifyIncrementalOptions {
   autoDiscover?: boolean;
   /** Re-run LLM even when a primary category already exists (same text hash). */
   forceReclassify?: boolean;
+  /** Include manual_review bucket items (CLI-style controlled retry). */
+  retryManualReview?: boolean;
   onProgress?: (update: ClassifyProgressUpdate) => void;
 }
 
@@ -256,6 +308,8 @@ export interface ScopedCategorizationStats {
   categorized: number;
   needsClassify: number;
   ineligible: number;
+  /** Item ids that would enter the next Classify pending batch (same logic as the button). */
+  readyItemIds: string[];
 }
 
 export interface CategorizationQueueStats {
@@ -266,10 +320,14 @@ export interface CategorizationQueueStats {
   skipped: number;
   classified: number;
   classifiedGeneral: number;
+  manualReview: number;
   unassignedEligible: number;
   leafCount: number;
   parentCount: number;
   bulkModeActive: boolean;
+  lastClassifyRun?: ClassifyRunSnapshot;
+  lastDiscoverRun?: DiscoverRunSnapshot;
+  discoverPool?: DiscoverRunSummary;
 }
 
 export interface ProposedCategoryDraft {
