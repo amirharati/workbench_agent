@@ -170,7 +170,7 @@ export function CategorizationPanel({
           parts.push(`${d.llmErrors} batch error(s) — check Settings → AI`);
         } else {
           parts.push(
-            'LLM returned no new labels (catalog likely covers your corpus — see scripts/categorize/experiments/discover-*)'
+            'LLM returned no new labels (catalog likely covers your corpus — see data/experiments/categorize/discover-*)'
           );
         }
         setInfo(`Discover: 0 added · ${parts.join(' · ')}`);

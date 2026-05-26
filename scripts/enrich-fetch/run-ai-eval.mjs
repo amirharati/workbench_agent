@@ -22,6 +22,8 @@ import {
 import { loadProjectEnv } from '../lib/loadProjectEnv.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dir, '..', '..');
+const EXPERIMENTS_DIR = join(REPO_ROOT, 'data', 'experiments', 'enrich-fetch');
 
 function parseArgs(argv) {
   const opts = {
@@ -30,11 +32,7 @@ function parseArgs(argv) {
     max: Infinity,
     concurrency: 3,
     corpora: ['2026-05-21T02-02-56', '2026-05-21T03-03-24'],
-    outDir: join(
-      __dir,
-      'experiments',
-      `ai-eval-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}`
-    ),
+    outDir: join(EXPERIMENTS_DIR, `ai-eval-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}`),
     ids: null,
   };
 

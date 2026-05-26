@@ -9,7 +9,7 @@
       "2026-05-21T02-02-56",
       "2026-05-21T03-03-24"
     ],
-    "aiEvalJsonl": "scripts/enrich-fetch/experiments/ai-eval-2026-05-25T01-53-38/results-v2.jsonl",
+    "aiEvalJsonl": "data/experiments/enrich-fetch/ai-eval-2026-05-25T01-53-38/results-v2.jsonl",
     "eligible": 111,
     "batches": 4,
     "batchSize": 32

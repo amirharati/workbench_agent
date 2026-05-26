@@ -18,6 +18,8 @@ import { persistUrlResults } from './lib/experimentStore.mjs';
 import { analyzeResults } from './analyze-experiment.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dir, '..', '..');
+const EXPERIMENTS_DIR = join(REPO_ROOT, 'data', 'experiments', 'enrich-fetch');
 const CORE_PROVIDERS = ['local', 'tab', 'jina', 'markdown-new'];
 
 function parseArgs(argv) {
@@ -28,7 +30,7 @@ function parseArgs(argv) {
     tabHeaded: false,
     tabProfile: null,
     max: 2,
-    outDir: join(__dir, 'experiments', new Date().toISOString().slice(0, 19).replace(/:/g, '-')),
+    outDir: join(EXPERIMENTS_DIR, new Date().toISOString().slice(0, 19).replace(/:/g, '-')),
     urlFile: null,
     backup: null,
   };

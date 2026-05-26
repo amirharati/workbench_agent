@@ -40,7 +40,7 @@ npm run fetch-experiment -- --from-backup /path/to/latest.json
 npm run fetch-experiment -- --no-tab seeds/diverse-urls.txt
 ```
 
-Output: `scripts/enrich-fetch/experiments/<timestamp>/`
+Output: `data/experiments/enrich-fetch/<timestamp>/`
 - `results.jsonl` — one JSON row per URL with all provider outcomes
 - `ANALYSIS.md` — success rates, per-host table, boilerplate hits, patterns
 

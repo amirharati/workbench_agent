@@ -3,7 +3,7 @@
  * Discover seed taxonomy from corpus via batched LLM (title + summary only).
  *
  *   npm run discover-taxonomy
- *   npm run discover-taxonomy -- --ai-eval scripts/enrich-fetch/experiments/ai-eval-2026-05-25T01-53-38/results-v2.jsonl
+ *   npm run discover-taxonomy -- --ai-eval data/experiments/enrich-fetch/ai-eval-2026-05-25T01-53-38/results-v2.jsonl
  */
 
 import { mkdirSync, writeFileSync, existsSync, copyFileSync } from 'fs';
@@ -28,6 +28,9 @@ import {
 import { ensureGeneralFallbackLeaves } from './lib/taxonomyCatalog.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dir, '..', '..');
+const ENRICH_EXPERIMENTS_DIR = join(REPO_ROOT, 'data', 'experiments', 'enrich-fetch');
+const CATEGORIZE_EXPERIMENTS_DIR = join(REPO_ROOT, 'data', 'experiments', 'categorize');
 const SEED_PATH = DEFAULT_SEED_PATH;
 const MANUAL_BACKUP = join(__dir, 'seed', 'categories.seed.manual-v0.json');
 
@@ -36,10 +39,7 @@ function parseArgs(argv) {
     max: Infinity,
     corpora: ['2026-05-21T02-02-56', '2026-05-21T03-03-24'],
     aiEvalJsonl: join(
-      __dir,
-      '..',
-      'enrich-fetch',
-      'experiments',
+      ENRICH_EXPERIMENTS_DIR,
       'ai-eval-2026-05-25T01-53-38',
       'results-v2.jsonl'
     ),
@@ -50,11 +50,7 @@ function parseArgs(argv) {
     bootstrapMaxNew: 20,
     writeSeed: true,
     initialSeed: join(__dir, 'seed', 'categories.seed.manual-v0.json'),
-    outDir: join(
-      __dir,
-      'experiments',
-      `discover-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}`
-    ),
+    outDir: join(CATEGORIZE_EXPERIMENTS_DIR, `discover-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}`),
   };
 
   for (let i = 0; i < argv.length; i++) {

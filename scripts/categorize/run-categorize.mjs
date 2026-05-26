@@ -27,16 +27,16 @@ import {
 } from './lib/seedTaxonomy.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dir, '..', '..');
+const ENRICH_EXPERIMENTS_DIR = join(REPO_ROOT, 'data', 'experiments', 'enrich-fetch');
+const CATEGORIZE_EXPERIMENTS_DIR = join(REPO_ROOT, 'data', 'experiments', 'categorize');
 
 function parseArgs(argv) {
   const opts = {
     max: Infinity,
     corpora: ['2026-05-21T02-02-56', '2026-05-21T03-03-24'],
     aiEvalJsonl: join(
-      __dir,
-      '..',
-      'enrich-fetch',
-      'experiments',
+      ENRICH_EXPERIMENTS_DIR,
       'ai-eval-2026-05-25T01-53-38',
       'results-v2.jsonl'
     ),
@@ -58,11 +58,7 @@ function parseArgs(argv) {
     classifyMode: 'topic-extract',
     seedShortlistK: DEFAULT_SHORTLIST.topK,
     seedShortlistMin: DEFAULT_SHORTLIST.minScore,
-    outDir: join(
-      __dir,
-      'experiments',
-      `cat-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}`
-    ),
+    outDir: join(CATEGORIZE_EXPERIMENTS_DIR, `cat-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}`),
   };
 
   for (let i = 0; i < argv.length; i++) {

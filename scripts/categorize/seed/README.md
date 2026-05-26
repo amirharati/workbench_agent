@@ -6,7 +6,7 @@
 
 ```bash
 npm run discover-taxonomy -- \
-  --ai-eval scripts/enrich-fetch/experiments/ai-eval-2026-05-25T01-53-38/results-v2.jsonl
+  --ai-eval data/experiments/enrich-fetch/ai-eval-2026-05-25T01-53-38/results-v2.jsonl
 ```
 
 - Filters ineligible / low-info pages
@@ -21,7 +21,7 @@ npm run discover-taxonomy -- \
 
 ```bash
 npm run categorize -- \
-  --ai-eval scripts/enrich-fetch/experiments/ai-eval-2026-05-25T01-53-38/results-v2.jsonl
+  --ai-eval data/experiments/enrich-fetch/ai-eval-2026-05-25T01-53-38/results-v2.jsonl
 ```
 
 Default classify: **topic extraction** — grouped catalog, 0–3 `topicIds` (or `topicPaths`), few-shot examples. Legacy: `--legacy-shortlist`.
@@ -33,8 +33,8 @@ Default classify: **topic extraction** — grouped catalog, 0–3 `topicIds` (or
 - `categories.seed.json` — parents (fixed) + leaves (including `*-general` per parent)
 - `categories.seed.manual-v0.json` — backup of hand-written seed
 - `../lib/taxonomyCatalog.mjs` — grouped catalog, path labels, general leaves, resolve rules
-- `experiments/discover-<ts>/` — discovery logs
-- `experiments/cat-<ts>/` — classify outputs
+- `data/experiments/categorize/discover-<ts>/` — discovery logs
+- `data/experiments/categorize/cat-<ts>/` — classify outputs
 
 ```bash
 npm run categorize -- --no-seed   # legacy k-means bootstrap
