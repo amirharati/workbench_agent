@@ -8,7 +8,7 @@ interface SearchBarProps {
   inputRef?: RefObject<HTMLInputElement>;
 }
 
-export const SearchBar: React.FC<SearchBarProps> = ({ value, onChange, placeholder = '⌘K Search...', inputRef }) => {
+export const SearchBar: React.FC<SearchBarProps> = ({ value, onChange, placeholder = 'Filter in list...', inputRef }) => {
   return (
     <div style={{ flex: 1, minWidth: 160, position: 'relative', maxWidth: 280 }}>
       <input

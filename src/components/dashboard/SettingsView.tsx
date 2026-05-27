@@ -1,8 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { BackupStatusSnapshot } from '../../lib/backupCoordinator';
 import type { AISettings } from '../../lib/ai/types';
 import { EnrichmentPanel } from './EnrichmentPanel';
 import { CategorizationSetupSection } from './CategorizationPanel';
+
+type FontScalePreset = 'small' | 'normal' | 'large';
+const FONT_SCALE_VALUES: Record<FontScalePreset, string> = {
+  small: '0.9',
+  normal: '1',
+  large: '1.15',
+};
 
 interface SettingsViewProps {
   backupFolderReady?: boolean;
@@ -64,6 +71,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onSaveAISettings,
   onTestAI,
 }) => {
+  const [fontScale, setFontScale] = useState<FontScalePreset>(() => {
+    const stored = localStorage.getItem('workbench-font-scale');
+    if (stored === '0.9') return 'small';
+    if (stored === '1.15') return 'large';
+    return 'normal';
+  });
+
+  const handleFontScaleChange = (preset: FontScalePreset) => {
+    const value = FONT_SCALE_VALUES[preset];
+    setFontScale(preset);
+    localStorage.setItem('workbench-font-scale', value);
+    document.documentElement.style.setProperty('--font-scale', value);
+  };
+
   const [restoreMode, setRestoreMode] = React.useState<'replace' | 'merge'>('replace');
   const [, forceTick] = React.useState(0);
   const [resolving, setResolving] = React.useState<null | 'remote' | 'local'>(null);
@@ -174,6 +195,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <p style={{ marginTop: '0.5rem', color: '#6b7280' }}>
         Backup is required for safe usage. Configure your folder below, then you can restore from a backup file any time.
       </p>
+
+      {/* Appearance section */}
+      <div
+        style={{
+          border: '1px solid #d1d5db',
+          borderRadius: 10,
+          padding: '1rem',
+          background: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.6rem',
+        }}
+      >
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Appearance</div>
+        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>Font size</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['small', 'normal', 'large'] as FontScalePreset[]).map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => handleFontScaleChange(preset)}
+              style={{
+                padding: '5px 14px',
+                borderRadius: 6,
+                border: fontScale === preset ? '2px solid #6366f1' : '1px solid #d1d5db',
+                background: fontScale === preset ? 'rgba(99,102,241,0.1)' : '#ffffff',
+                color: fontScale === preset ? '#4f46e5' : '#374151',
+                fontWeight: fontScale === preset ? 600 : 400,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                textTransform: 'capitalize',
+              }}
+            >
+              {preset}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div
         style={{

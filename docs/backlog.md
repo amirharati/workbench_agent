@@ -10,10 +10,15 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ## Near-term roadmap (agreed with [`OVERVIEW.md`](OVERVIEW.md))
 
-1. **🟡 AI infra (cloud first)** — Settings for provider/API key/model; secure persistence (`chrome.storage.local` pattern); thin HTTP client for chat/completions (OpenAI-compatible baseline); minimal UI smoke surface; no embeddings/RAG milestone requirement yet.
-2. **🟡 Bookmarks manual-at-scale** — **Import commit + batch path shipped** (see Done). Next: **scale/backup posture** for huge libraries, **import polish** (cover/provenance/folder→collection), then **AI-assisted organization** (cluster → collections/projects) and **enrichment** (especially X-shaped links).
-3. **🟡 AI + bookmarks** — Ground prompts over user’s bookmark set (titles, notes, snippets); cite source items; lightweight assists (summaries, tags) before heavier RAG; **auto-categorization** as an early high-leverage slice (see Items / AI backlog).
-4. **⏸ Order TBD** — Local or API embeddings; vector index; guided tab capture agents; workspaces+AI; study-path entities; content scripts per-page.
+**V1 backend foundation — closed (Tasks 01–04):** fetch → AI extract → doc embed → classify/discover → hybrid search (dev). Good enough for testing; not production-perfect.
+
+**V2 (active) — product first, then refine backend:**
+
+1. **🟡 V2-A — UX / UI** — Major IA and shell polish ([`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md) phases 2–4): one understandable flow for browse, enrich, categorize, search; fold or retire dev-only surfaces (`PipelineDevView`, scattered modals). Spec: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md) (draft).
+2. **🟡 V2-B — Data model cleanup** — Align UI with truth in `db.ts`: notes store vs bookmark-items, AI semantic layer vs projects/collections, provenance/metadata; small migrations only where necessary.
+3. **🟡 V2-C — V1 backend refinement** — *After* V2-A/B baseline: fetch coverage/quality, pipeline automation (auto-embed, import hooks), search tuning (`04-defer-*`), embed/classify text unify, accept/reject for AI categories. CLI track continues in parallel.
+
+**V3 (deferred) — scale AI:** chunk RAG, ANN, concept DAG taxonomy, cloud `Embedder`, agentic RAG — see **AI — V3** below. Not a gate for V2 UX.
 
 ---
 
@@ -50,7 +55,8 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **Item tab strip — reorder**: Open bookmark/note/workspace/list tabs reorder by **drag-and-drop** (HTML5 DnD), not icon buttons.
 - **Fetch enrichment v1 (Task 01 — closed 2026-05-20):** Plug-and-play `src/lib/enrichment/` service — hybrid fetch (X CDN→syndication, video/article local→jina), IDB `item_enrichment` + disk cache, OpenRouter AI extract, `buildItemText()` for Task 02. CLI experiments complete. Dev UI only (Enrich/Results modals) — **product UX TBD**. Spec: [`docs/temp/TASK-01-fetch-enrichment-v1.md`](temp/TASK-01-fetch-enrichment-v1.md).
 - **AI extraction tuning + eval harness (Task 01.5 — closed 2026-05-24):** SourceKind-aware prompt package (`v2`/`v2.1`), CLI eval harness over saved bodies (`npm run fetch-ai-eval`), AI-only rerun (`reextractAI`), `buildItemText` upgrades (summary + key points), and in-app validation on review flow. Spec: [`docs/temp/TASK-01.5-ai-extraction-tuning.md`](temp/TASK-01.5-ai-extraction-tuning.md).
-- **V1.5 search foundation (Task 04 — closed 2026-05-26):** Hybrid retrieval (`src/lib/search/`) — lexical + doc embedding + category expansion, explainable rerank, CLI eval (`npm run search-eval`), embed backfill step, Search (dev) tab + discovery (similar items, topics/tags, related links). Dev-only — product search UX deferred to V2. Spec + return: [`docs/temp/TASK-04-search-foundation-v1.5.md`](temp/TASK-04-search-foundation-v1.5.md).
+- **V1.5 search foundation (Task 04 — closed 2026-05-26):** Hybrid retrieval (`src/lib/search/`) — lexical + doc embedding + category expansion, explainable rerank, CLI eval (`npm run search-eval`), Search (dev) tab + discovery (similar items, topics/tags, related links). Dev-only — product search UX deferred to V2. Spec + return: [`docs/temp/TASK-04-search-foundation-v1.5.md`](temp/TASK-04-search-foundation-v1.5.md).
+- **Doc embedding step (Task 04 — shared pipeline stage):** Incremental backfill of `ai_item_signals.embedding` from **title + AI summary** (`buildSearchEmbedText`, `embedBackfillPlan.ts`) — same queue in app (`EmbedBackfillBlock`) and CLI (`npm run embed-incremental`). Powers hybrid search, similar-items, and related-links; **reuse for categorize shortlist/centroids deferred to V2+** (see AI — V2).
 
 ---
 
@@ -130,19 +136,59 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [x] **Pipeline (V1):** `buildItemText` + enrichment signals feed classify/discover loops. V1 default is LLM topic-extract + discover (seed + gap-fill); embeddings remain stored and reused (`textHash` skip logic, signals, optional shortlist modes).
 - [x] **Tags after category:** Category-aware signals/tags flow is active in V1; quality polish continues in 02.1.
 - [x] **Bootstrap empty library:** Seed taxonomy + discover flow provide immediate category coverage; no k-means-only bootstrap required for normal runs.
-- [ ] **Compute UX:** Run embedding + batch scoring in **Web Worker** (or dedicated off-main path); strict **budgets** (max items/run, timeouts) so dashboard stays responsive.
-- [ ] **Pluggable interfaces (prep for V2/cloud without rewiring):** Introduce narrow contracts — **`Embedder`**, **`Fetcher`** (already directionally covered by fetch task), **`Retriever`** (local stub: metadata filter + cosine on doc vectors), **`Indexer`** (background refresh of vectors / centroids) — implemented locally first, swappable later.
+- [ ] **Compute UX** → moved to **V2-C** (Web Worker embed/classify batches).
+- [ ] **Pluggable interfaces** → moved to **V2-C** (`Embedder`, `Fetcher`, `Retriever`, `Indexer`).
 - [x] **V1.1 / Task 03 — Pipeline hardening (done 2026-05-26):** Incremental classify-by-hash, quality gate tiers, retry→`manual_review`, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks: Results / Enrich / Categories), queue reconcilers, LLM no-topic→`pending_discover`, discover pool includes unassigned. Spec + return: [`docs/temp/TASK-03-v1.1-pipeline-hardening.md`](temp/TASK-03-v1.1-pipeline-hardening.md). **Still open from original 02.1 scope:** accept/reject UX for suggested links, guided in-app workflow, product (non-dev) enrichment UI.
-- [x] **V1.5 / Task 04 — Search foundation (done 2026-05-26):** Hybrid lexical + doc-embedding + category retrieval, CLI eval harness, dev Search tab + discovery (similar/related). Embed step after AI summary. **Baseline good enough for R&D** — formal weight tuning deferred. Spec + return: [`docs/temp/TASK-04-search-foundation-v1.5.md`](temp/TASK-04-search-foundation-v1.5.md).
-- [ ] **V1.5 / Task 04 follow-ups (deferred — after fetch bottleneck):** Re-run `search-eval` post-embedding backfill; optional **4.2 ranking tuning** mini-task (weights, general-category noise); search quality spot-check doc. **Priority:** improve **fetch/enrichment** first — better corpus lifts search more than ranker tweaks now. IDs: `04-defer-1` … `04-defer-3` in task return.
+- [x] **V1.5 / Task 04 — Search foundation (done 2026-05-26):** Hybrid lexical + doc-embedding + category retrieval, CLI eval harness, dev Search tab + discovery (similar/related). **Baseline good enough for R&D** — formal weight tuning deferred. Spec + return: [`docs/temp/TASK-04-search-foundation-v1.5.md`](temp/TASK-04-search-foundation-v1.5.md).
+- [x] **V1.5 / Doc embedding step (done 2026-05-26, Task 04):** Shared incremental embed queue — `src/lib/enrichment/embedBackfillPlan.ts`, `searchEmbedText.ts`, `embedItemSignal.ts`; app `EmbedBackfillBlock`; CLI `npm run embed-incremental`. Input: enriched items with `aiStatus === 'ok'` and min text length; output: `ai_item_signals.embedding` + `textHash` skip. OpenRouter / `DEFAULT_EMBEDDING_MODEL`. CLI workflow: [`CLI_WORKFLOW.md`](CLI_WORKFLOW.md#doc-embedding-step-shared-pipeline).
+- [x] **V1.5 / Task 04 follow-ups** — tracked under **V2-C** (`04-defer-1` … `04-defer-3`); product search UX under **V2-A** (`04-defer-4`). See [`TASK-04`](temp/TASK-04-search-foundation-v1.5.md#master-backlog-handoff-deferred--not-blockers-for-closing-task-04).
 
-**AI — V2 (powerful search + scale; after V1 stable)**
+## V2 — Product (UX/UI + data model + backend refinement)
 
-- [ ] **V2 boundary (explicit):** Product-grade search UX + chunk retrieval scale work starts **after** Task 04 dev baseline + **fetch/enrichment quality improves** (current pipeline bottleneck). Keep current dev UX until this phase.
+**Goal:** Make the app usable daily; expose V1 pipeline without dev-hub complexity. Backend refinement is **V2-C**, not a prerequisite for starting V2-A.
+
+### V2-A — UX / UI (umbrella — **TASK-05**)
+
+**Start with [`TASK-05.0`](../temp/TASK-05-v2-product-ux.md#task-050--uxui-review--brainstorm-do-this-first):** A→Z review/brainstorm (workflows W1–W8), IA map, **product vs dev UI** (dev stays parallel → later Advanced/Debug). Then implementation **subtasks** 05.1… (see task brief).
+
+Workflow areas (brainstorm checklist):
+
+- [ ] **W1 Daily library** — assume digested corpus; browse, filter, item detail, Ask AI
+- [ ] **W2 Single-link digest** — save one URL → fetch/extract/embed/classify UX
+- [ ] **W3 Batch import** — Import Studio + post-commit processing
+- [ ] **W4 Post-processing** — rerun AI, re-embed, re-classify, batch maintenance
+- [ ] **W5 Search & discovery** — product hybrid search + similar/related
+- [ ] **W6 User signals** — accept/reject categories, corrections, future ranking hints
+- [ ] **W7 Shell & focus** — clean default UI; power under Advanced ([`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md))
+- [ ] **W8 Settings & trust** — keys, backup, budgets
+
+Implementation subtasks (order TBD after 05.0): search (05.1), daily browse (05.2), single digest (05.3), import batch (05.4), maintenance panel (05.5), user signals (05.6), shell (05.7), Advanced/dev gate (05.8).
+
+### V2-B — Data model cleanup
+
+- [ ] **Notes strategy** — First-class `notes` store vs URL-empty `items`; one UI path; migration/export rules documented.
+- [ ] **Schema / import debt** — Reconcile backup normalization, multi-collection merge semantics, validation (see Known data-model debt).
+- [ ] **AI layer presentation** — Document and UI-label: `projects`/`collections` (manual) vs `ai_categories` (semantic); no forced DAG in V2-B (DAG → V3).
+
+### V2-C — V1 backend refinement (after V2-A usable baseline)
+
+- [ ] **Fetch / enrichment improvement** — Coverage, retries, import hook, failure stats (lifts classify + search more than ranker-only work).
+- [ ] **Task 04 follow-ups (`04-defer-1` … `04-defer-3`)** — Re-run `search-eval` on embedded corpus; optional ranking mini-task; spot-check doc.
+- [ ] **Embed pipeline** — Auto-embed after extract; unify `buildSearchEmbedText` vs `buildItemText`; Web Worker batches (moved from V1 open items).
+- [ ] **Pluggable interfaces** — `Embedder`, `Retriever`, `Indexer` stubs when refactoring for product automation.
+
+Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
+
+---
+
+**AI — V3 (scale & advanced AI; deferred until V2 product baseline)**
+
+- [ ] **V3 boundary:** Chunk retrieval, ANN, concept DAG, cloud embedder offload — **not** required for V2 UX launch.
+- [ ] **Embed pipeline — categorization reuse (V3):** Use stored doc vectors for LLM shortlist ordering, nearest-category hints, centroid maintenance, and duplicate-category merge (embedding distance).
 - [ ] **Two-stage retrieval:** **Coarse:** doc-level embedding + **lexical index** (e.g. MiniSearch / FlexSearch / Orama-style inverted index in worker) + filters (project, domain, tags, date). **Fine:** for **top-K** items only, load **chunk embeddings** (cap **K×M** chunks per query, e.g. K≈200, M≈8) — compare query to chunks in-memory; neighbors primarily **chunks within same item**, optional small expansion within same AI category.
 - [ ] **Chunk storage:** Chunk text + vectors in IndexedDB **or** side store; **lazy** chunking (only after fetch, only for long content, max chunks per URL). Quantization (fp16/int8) if needed for footprint.
-- [ ] **Centroid maintenance:** Recompute category centroids when memberships change; merge near-duplicate AI categories (embedding distance + user merge).
-- [ ] **When IndexedDB + brute-force is not enough:** Add **ANN** (WASM / bundled index) or **narrowed candidate sets** only — avoid full-corpus vector scan on every keystroke at 10k–100k×chunks.
+- [ ] **Centroid maintenance (V3):** Recompute category centroids when memberships change; prefer **shared doc embeddings**; merge near-duplicate AI categories (embedding distance + user merge).
+- [ ] **When IndexedDB + brute-force is not enough (V3):** Add **ANN** (WASM / bundled index) or narrowed candidate sets — avoid full-corpus scan on every keystroke at 10k–100k×chunks.
 
 **AI — Later (optional cloud; minimal custom backend)**
 
@@ -150,7 +196,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [ ] **Pay-per-task / ephemeral compute:** If first-party billing or “no user API key” is required, expect a **minimal orchestration endpoint** (short-lived tokens, quotas) — pure browser-to-GPU without any gate is unrealistic for abuse/cost reasons. Document “tiny proxy vs BYO key” tradeoff.
 - [ ] **Sync / multi-device (if ever):** Treat cloud index as **optional replica**; local DB remains source of truth unless product explicitly chooses otherwise.
 
-- [ ] **V2 (deferred, after basic AI categorization works) — taxonomy data-model upgrade (concept hierarchy / DAG):** Capture discussion decisions explicitly so we do not lose context. **Why deferred:** ship value first with V1 tag/collection suggestions and review/apply UX, then harden taxonomy. **Semantics split:** `projects/collections` remain manual workflow containers; AI taxonomy is a separate semantic layer. **Graph shape:** one **shared** concept DAG for the library (not per-item DAG), concept nodes support multiple parents (`parentIds[]`) for cases like `computer -> coding -> c++` while still allowing cross-branch links. **Candidate schema:** `ConceptNode { id, name, slug, parentIds[], synonyms[]?, createdBy }`, plus item↔concept links with `{ source: manual|ai, confidence, status: suggested|accepted|rejected, timestamps }`. **Rules:** prevent cycles on writes, keep aliases/synonyms mapped to canonical concepts, never auto-delete manual mappings during recategorization. **Migration path from V1:** keep existing `tags` and project/collection mappings; add a staged migration that maps stable/high-frequency tags to concepts and preserves provenance for rollback/audit. **Entry points after V2 exists:** optional post-import categorization, subset categorization (selected links / collection / project), and batched global recategorization.
+- [ ] **V3 — taxonomy data-model upgrade (concept hierarchy / DAG):** Capture discussion decisions explicitly so we do not lose context. **Why deferred:** ship value first with V1 tag/collection suggestions and review/apply UX, then harden taxonomy. **Semantics split:** `projects/collections` remain manual workflow containers; AI taxonomy is a separate semantic layer. **Graph shape:** one **shared** concept DAG for the library (not per-item DAG), concept nodes support multiple parents (`parentIds[]`) for cases like `computer -> coding -> c++` while still allowing cross-branch links. **Candidate schema:** `ConceptNode { id, name, slug, parentIds[], synonyms[]?, createdBy }`, plus item↔concept links with `{ source: manual|ai, confidence, status: suggested|accepted|rejected, timestamps }`. **Rules:** prevent cycles on writes, keep aliases/synonyms mapped to canonical concepts, never auto-delete manual mappings during recategorization. **Migration path from V1:** keep existing `tags` and project/collection mappings; add a staged migration that maps stable/high-frequency tags to concepts and preserves provenance for rollback/audit. **Entry points after V2 exists:** optional post-import categorization, subset categorization (selected links / collection / project), and batched global recategorization.
 
 **Workspaces / tabs**
 
@@ -187,7 +233,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ## Suggested order (adjust freely)
 
-**Active product thread:** Near-term roadmap above (AI infra → **bulk import polish + scale assessment** → **fetch/enrichment improvement (current bottleneck)** → **AI — V1** semantic layer + categorization hardening → **V1.5 search foundation (done, dev baseline)** → optional **4.2 search tuning after fetch** → **AI — V2** chunk/ANN + product search UX → broader RAG/agentic).
+**Active product thread:** **V1 closed** → **V2-A UX/UI** → **V2-B data model** → **V2-C V1 backend refinement** (fetch, tuning, embed unify) → **V3** scale AI (chunk/ANN/DAG). Bulk import polish, backup hygiene, and agentic chat run in parallel as needed.
 
 **Parallel / hygiene (pick as needed):**
 
@@ -199,4 +245,4 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ---
 
-*Last updated: 2026-05-26 — Task 04 V1.5 search foundation closed (dev baseline). Next pipeline priority: fetch/enrichment improvement; search tuning deferred (04-defer-*). V2 remains chunk/ANN + product UX.*
+*Last updated: 2026-05-26 — **V1 backend closed** (Tasks 01–04). **V2 active:** UX/UI first (Task 05 draft), then data model cleanup, then V1 backend refinement. **V3:** chunk/ANN/DAG/cloud. See [`TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).*

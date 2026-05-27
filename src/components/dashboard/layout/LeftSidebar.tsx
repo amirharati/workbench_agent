@@ -10,7 +10,9 @@ import {
   Folder,
   Terminal,
   Plus,
-  Trash2
+  Trash2,
+  Home,
+  Search,
 } from 'lucide-react';
 import { DashboardView } from './DashboardLayout';
 import type { Collection, Item, Project } from '../../../lib/db';
@@ -92,6 +94,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     {
       title: 'Tools',
       items: [
+        { icon: Search, label: 'Search', id: 'search' },
         { icon: Terminal, label: 'Tab Commander', id: 'tab-commander' },
         { icon: Settings, label: 'Settings', id: 'settings' },
       ],
@@ -624,6 +627,41 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
         {/* Divider before nav sections */}
         {!isCollapsed && <div style={{ borderTop: '1px solid var(--border)' }} />}
+
+        {/* Home nav item */}
+        {(() => {
+          const isActive = activeView === 'home';
+          return (
+            <button
+              onClick={() => onSelectView('home')}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: isCollapsed ? 'center' : 'flex-start',
+                padding: isCollapsed ? '8px' : '6px 8px',
+                height: 30,
+                borderRadius: 4,
+                background: isActive ? 'var(--accent-weak)' : 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 'var(--text-sm)',
+                fontWeight: isActive ? 500 : 400,
+                color: isActive ? 'var(--text)' : 'var(--text-muted)',
+                gap: 8,
+                marginBottom: 4,
+              }}
+              title="Home"
+            >
+              <Home size={16} strokeWidth={isActive ? 2 : 1.5} style={{ flexShrink: 0 }} />
+              {!isCollapsed && (
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Home
+                </span>
+              )}
+            </button>
+          );
+        })()}
 
         {/* 3. CONTENT & TOOLS NAV */}
         {navSections.map((section) => (

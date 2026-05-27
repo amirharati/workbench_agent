@@ -1,16 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
 import { Workspace, Collection, Item, Project, UpdateItemOptions } from '../../../lib/db';
 import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 import type { AISettings } from '../../../lib/ai/types';
-import { LayoutGrid, List, X } from 'lucide-react';
-import { DeleteConfirmDialog, type DeleteConfirmResult } from '../../DeleteConfirmDialog';
 import { ensurePendingClassifySignals } from '../../../lib/categorization';
+import { type GlobalTabState, loadGlobalTabState, saveGlobalTabState, GlobalTabSystem, type GlobalTabSearch } from '../GlobalTabSystem';
+import { WorkspaceTabRenderer } from '../WorkspaceTabRenderer';
+import { RightPanel } from './RightPanel';
+import { StatusBar, useStatusBar } from '../StatusBar';
+import { ToastProvider, useToast } from '../../ToastContainer';
+import { CommandPalette } from '../CommandPalette';
+import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID } from '../../../hooks/useLibrarySearch';
 
 export type DashboardView =
   | 'home'
+  | 'search'
   | 'settings'
   | 'projects'
   | 'tab-commander'
@@ -34,6 +40,7 @@ export interface ItemTab {
 }
 
 const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander']);
+const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search']);
 
 interface DashboardLayoutProps {
   windows: WindowGroup[];
@@ -79,7 +86,13 @@ interface DashboardLayoutProps {
   ) => Promise<{ text: string; model: string; requestedModel?: string; modelMismatch?: boolean }>;
 }
 
-export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ 
+export const DashboardLayout: React.FC<DashboardLayoutProps> = (props) => (
+  <ToastProvider>
+    <DashboardLayoutInner {...props} />
+  </ToastProvider>
+);
+
+const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({ 
   windows,
   projects,
   collections,
@@ -110,57 +123,142 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onSaveAISettings,
   onTestAI,
 }) => {
+  const { addToast } = useToast();
+  const { messages: statusMessages, addStatusMessage, dismissStatusMessage } = useStatusBar();
+  const librarySearch = useLibrarySearch((message) => {
+    addToast({ type: 'error', message: `Search failed: ${message}` });
+  });
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const statusBar = (
+    <StatusBar messages={statusMessages} onDismiss={dismissStatusMessage} />
+  );
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [activeView, setActiveView] = useState<DashboardView>('bookmarks');
+  const [activeView, setActiveView] = useState<DashboardView>('home');
   const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>('all');
   const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>('all');
+  const [globalTabState, setGlobalTabState] = useState<GlobalTabState>(() => loadGlobalTabState());
+  const handleGlobalTabStateChange = (next: GlobalTabState) => {
+    setGlobalTabState(next);
+    saveGlobalTabState(next);
+  };
+
   
   // Item tabs - persist across navigation
-  const [openItemTabs, setOpenItemTabs] = useState<ItemTab[]>([]);
-  const [activeItemTabId, setActiveItemTabId] = useState<string | null>(null);
   
-  // Workspace link selection (key = "wsId:winIdx:tabIdx")
-  const [selectedWsLinks, setSelectedWsLinks] = useState<Set<string>>(new Set());
-  
-  // Workspace link action dialogs
-  const [removeConfirm, setRemoveConfirm] = useState<{ tabs: { url: string; title?: string }[]; wsId: string } | null>(null);
-  const [bookmarkDialog, setBookmarkDialog] = useState<{ tabs: { url: string; title?: string }[] } | null>(null);
-  const [bookmarkProjectId, setBookmarkProjectId] = useState<string>('');
-  const [bookmarkCollectionId, setBookmarkCollectionId] = useState<string>('');
-  
-  // Item tab editing state
-  const [isEditingItem, setIsEditingItem] = useState(false);
-  const [editItemTitle, setEditItemTitle] = useState('');
-  const [editItemUrl, setEditItemUrl] = useState('');
-  const [editItemNotes, setEditItemNotes] = useState('');
-  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
-  const [itemTabDeletePending, setItemTabDeletePending] = useState<{
-    item: Item;
-    placementId?: string;
-  } | null>(null);
-  const [listTabViewById, setListTabViewById] = useState<Record<string, 'list' | 'grid'>>({});
 
   useEffect(() => {
     void ensurePendingClassifySignals();
   }, []);
-  
-  // Right panel AI state
-  const [rightPrompt, setRightPrompt] = useState('');
-  const [rightAnswer, setRightAnswer] = useState('');
-  const [rightError, setRightError] = useState('');
-  const [rightRunning, setRightRunning] = useState(false);
 
   useEffect(() => {
-    const current = document.documentElement.dataset.theme;
-    if (!current) {
-      document.documentElement.dataset.theme = 'dark';
+    const stored = localStorage.getItem('workbench-font-scale');
+    if (stored) {
+      document.documentElement.style.setProperty('--font-scale', stored);
     }
   }, []);
 
-  // Reset placement selection when active tab changes
   useEffect(() => {
-    setSelectedPlacementId(null);
-  }, [activeItemTabId]);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const openLibrarySearch = useCallback(
+    (query?: string) => {
+      setActiveView('search');
+      if (query?.trim()) {
+        librarySearch.setQuery(query.trim());
+        void librarySearch.runSearch(query.trim());
+      }
+    },
+    [librarySearch]
+  );
+
+  const openLibrarySearchInTab = useCallback(
+    (query?: string) => {
+      const trimmed = query?.trim();
+      if (trimmed) {
+        librarySearch.setQuery(trimmed);
+        void librarySearch.runSearch(trimmed);
+      }
+
+      setGlobalTabState((prev) => {
+        const withoutSearch = prev.tabs.filter((t) => t.kind !== 'search');
+        const tabQuery = trimmed || librarySearch.state.query || '';
+        const searchTab: GlobalTabSearch = {
+          kind: 'search',
+          id: LIBRARY_SEARCH_TAB_ID,
+          query: tabQuery,
+        };
+        const next = {
+          ...prev,
+          tabs: [...withoutSearch, searchTab],
+          activeTabId: LIBRARY_SEARCH_TAB_ID,
+        };
+        saveGlobalTabState(next);
+        return next;
+      });
+
+      setActiveView('home');
+    },
+    [librarySearch]
+  );
+
+  useEffect(() => {
+    const q = librarySearch.state.query.trim();
+    if (!q) return;
+    setGlobalTabState((prev) => {
+      const searchTab = prev.tabs.find(
+        (t) => t.kind === 'search' && t.id === LIBRARY_SEARCH_TAB_ID
+      );
+      if (!searchTab || searchTab.kind !== 'search' || searchTab.query === q) return prev;
+      const next = {
+        ...prev,
+        tabs: prev.tabs.map((t) =>
+          t.kind === 'search' && t.id === LIBRARY_SEARCH_TAB_ID ? { ...t, query: q } : t
+        ),
+      };
+      saveGlobalTabState(next);
+      return next;
+    });
+  }, [librarySearch.state.query]);
+
+  const collectionLabel = useCallback((collectionId?: string) => {
+    if (!collectionId) return 'library';
+    return collections.find(c => c.id === collectionId)?.name ?? 'library';
+  }, [collections]);
+
+  const handleAddBookmarkWithToast = useCallback(async (url: string, title?: string, collectionId?: string) => {
+    if (!onAddBookmark) return;
+    if (!url || !/^https?:\/\//i.test(url)) {
+      addStatusMessage({ type: 'warning', message: 'Please enter a valid http(s) URL' });
+      return;
+    }
+    await onAddBookmark(url, title, collectionId);
+    addToast({ type: 'success', message: `Bookmark saved to ${collectionLabel(collectionId)}` });
+  }, [onAddBookmark, addToast, addStatusMessage, collectionLabel]);
+
+  const handleUpdateBookmarkWithToast = useCallback(async (
+    id: string,
+    updates: Partial<Omit<Item, 'id' | 'created_at'>>,
+    options?: UpdateItemOptions
+  ) => {
+    if (!onUpdateBookmark) return;
+    await onUpdateBookmark(id, updates, options);
+    addToast({ type: 'success', message: 'Changes saved' });
+  }, [onUpdateBookmark, addToast]);
+
+  const handleDeleteBookmarkWithToast = useCallback(async (id: string, collectionId?: string) => {
+    if (!onDeleteBookmark) return;
+    await onDeleteBookmark(id, collectionId);
+    addToast({ type: 'info', message: 'Bookmark removed' });
+  }, [onDeleteBookmark, addToast]);
 
   const handleSelectView = (view: DashboardView) => {
     setActiveView(view);
@@ -195,169 +293,135 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     return deleted;
   };
 
+
   const handleOpenItemTab = (item: Item) => {
-    const type = item.url && item.url.trim() ? 'bookmark' : 'note';
-    const exists = openItemTabs.find((t) => t.id === item.id);
-    if (!exists) {
-      setOpenItemTabs((prev) => [...prev, { id: item.id, type, title: item.title || 'Untitled' }]);
-    }
-    setActiveItemTabId(item.id);
+    setGlobalTabState(prev => {
+      const existing = prev.tabs.find(t => t.kind === 'item' && t.itemId === item.id);
+      if (existing) return { ...prev, activeTabId: existing.id };
+      const id = 'item-' + item.id;
+      const next = { ...prev, tabs: [...prev.tabs, { kind: 'item' as const, id, itemId: item.id }], activeTabId: id };
+      saveGlobalTabState(next);
+      return next;
+    });
   };
 
   const handleOpenWorkspaceTab = (workspace: Workspace) => {
-    const exists = openItemTabs.find((t) => t.id === workspace.id);
-    if (!exists) {
-      setOpenItemTabs((prev) => [...prev, { id: workspace.id, type: 'workspace', title: workspace.name }]);
-    }
-    setActiveItemTabId(workspace.id);
+    const tabId = 'workspace-' + workspace.id;
+    setGlobalTabState(prev => {
+      const existing = prev.tabs.find(t => t.id === tabId);
+      if (existing) return { ...prev, activeTabId: existing.id };
+      const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: 'workspace' as const, title: workspace.name, workspaceId: workspace.id }], activeTabId: tabId };
+      saveGlobalTabState(next);
+      return next;
+    });
   };
 
   const handleOpenListTab = (type: 'bookmark-list' | 'note-list', itemIds: string[], title: string) => {
-    // Include title so same items from different scope can be distinct tabs.
     const titleKey = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const tabId = `${type}-${titleKey}-${itemIds.slice(0, 5).join('-')}-${itemIds.length}`;
-    const exists = openItemTabs.find((t) => t.id === tabId);
-    if (!exists) {
-      setOpenItemTabs((prev) => [...prev, { id: tabId, type, title, itemIds }]);
-    }
-    setActiveItemTabId(tabId);
+    setGlobalTabState(prev => {
+      const existing = prev.tabs.find(t => t.id === tabId);
+      if (existing) return { ...prev, activeTabId: existing.id };
+      const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: type as any, title, itemIds }], activeTabId: tabId };
+      saveGlobalTabState(next);
+      return next;
+    });
   };
 
-  const handleAddToCommonListTab = (type: 'bookmark-list' | 'note-list', itemIds: string[], title: string) => {
+  const handleAddToCommonListTab = (_type: 'bookmark-list' | 'note-list', itemIds: string[], _title: string) => {
     const tabId = 'common-list';
-    const sectionId = `${type}:${title.toLowerCase()}`;
-    setOpenItemTabs((prev) => {
-      const existingIdx = prev.findIndex((t) => t.id === tabId);
+    setGlobalTabState(prev => {
+      const existingIdx = prev.tabs.findIndex(t => t.id === tabId);
       if (existingIdx === -1) {
-        return [
-          ...prev,
-          {
-            id: tabId,
-            type: 'common-list',
-            title: 'Common tab',
-            sections: [{ id: sectionId, type, title, itemIds: Array.from(new Set(itemIds)) }],
-          },
-        ];
+        const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: 'common-list' as const, title: 'Common tab', itemIds }], activeTabId: tabId };
+        saveGlobalTabState(next);
+        return next;
       }
-
-      const existingTab = prev[existingIdx];
-      const existingSections = existingTab.sections || [];
-      const sectionIdx = existingSections.findIndex((s) => s.id === sectionId);
-      const nextSections =
-        sectionIdx === -1
-          ? [...existingSections, { id: sectionId, type, title, itemIds: Array.from(new Set(itemIds)) }]
-          : existingSections.map((s, idx) =>
-              idx === sectionIdx
-                ? { ...s, itemIds: Array.from(new Set([...s.itemIds, ...itemIds])) }
-                : s
-            );
-
-      const next = [...prev];
-      next[existingIdx] = { ...existingTab, sections: nextSections };
-      return next;
-    });
-    setActiveItemTabId(tabId);
-  };
-
-  const activeTabWorkspace = activeItemTabId ? workspaces.find((ws) => ws.id === activeItemTabId) : null;
-  const activeListTab = activeItemTabId ? openItemTabs.find((t) => t.id === activeItemTabId && (t.type === 'bookmark-list' || t.type === 'note-list')) : null;
-  const activeCommonTab = activeItemTabId ? openItemTabs.find((t) => t.id === activeItemTabId && t.type === 'common-list') : null;
-  const activeListItems = activeListTab?.itemIds ? items.filter(i => activeListTab.itemIds!.includes(i.id)) : [];
-
-  const handleCloseItemTab = (tabId: string) => {
-    setOpenItemTabs((prev) => {
-      const index = prev.findIndex((t) => t.id === tabId);
-      const next = prev.filter((t) => t.id !== tabId);
-      if (activeItemTabId === tabId && next.length > 0) {
-        setActiveItemTabId(next[Math.min(index, next.length - 1)]?.id ?? null);
-      } else if (next.length === 0) {
-        setActiveItemTabId(null);
-      }
-      return next;
-    });
-  };
-
-  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
-
-  const handleTabDragStart = (e: React.DragEvent, tabId: string) => {
-    setDraggedTabId(tabId);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', tabId);
-  };
-
-  const handleTabDragOver = (e: React.DragEvent, targetTabId: string) => {
-    e.preventDefault();
-    if (!draggedTabId || draggedTabId === targetTabId) return;
-    
-    setOpenItemTabs((prev) => {
-      const dragIndex = prev.findIndex((t) => t.id === draggedTabId);
-      const targetIndex = prev.findIndex((t) => t.id === targetTabId);
-      if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) return prev;
+      const existingTab = prev.tabs[existingIdx];
+      if (existingTab.kind !== 'list') return prev;
       
-      const next = [...prev];
-      const [draggedTab] = next.splice(dragIndex, 1);
-      next.splice(targetIndex, 0, draggedTab);
+      const newTabs = [...prev.tabs];
+      newTabs[existingIdx] = { ...existingTab, itemIds: Array.from(new Set([...(existingTab.itemIds || []), ...itemIds])) };
+      const next = { ...prev, tabs: newTabs, activeTabId: tabId };
+      saveGlobalTabState(next);
       return next;
     });
   };
 
-  const handleTabDragEnd = () => {
-    setDraggedTabId(null);
-  };
-
-  const completeItemTabDelete = async (result: DeleteConfirmResult) => {
-    const pending = itemTabDeletePending;
-    setItemTabDeletePending(null);
-    if (result.action === 'cancel' || !pending || !onDeleteBookmark) return;
-    if (result.action === 'remove-from-collection' && pending.placementId) {
-      await onDeleteBookmark(pending.item.id, pending.placementId);
-    } else if (result.action === 'delete-everywhere') {
-      await onDeleteBookmark(pending.item.id);
-      handleCloseItemTab(pending.item.id);
-    }
-    if (onRefresh) await onRefresh();
-  };
-
-  const activeTabItem = activeItemTabId ? items.find((i) => i.id === activeItemTabId) : null;
-
-  useEffect(() => {
-    setSelectedPlacementId(null);
-    setIsEditingItem(false);
-  }, [activeTabItem?.id]);
-
-  const runRightAssist = async () => {
-    const prompt = rightPrompt.trim();
-    if (!prompt) {
-      setRightError('Enter a prompt.');
-      return;
-    }
-    if (!onTestAI || !aiSettings) {
-      setRightError('Configure AI in Settings first.');
-      return;
-    }
-    setRightRunning(true);
-    setRightError('');
-    setRightAnswer('');
-    try {
-      const scopeSummary =
-        scopeCollectionId !== 'all'
-          ? `collection:${scopeCollectionId}`
-          : scopeProjectId !== 'all'
-            ? `project:${scopeProjectId}`
-            : 'all';
-      const result = await onTestAI(
-        aiSettings,
-        `Context view=${activeView}; scope=${scopeSummary}\n\nUser prompt:\n${prompt}`
+  const renderListTab = (tab: any) => {
+    if (tab.listType === 'workspace') {
+      const ws = workspaces.find(w => w.id === tab.workspaceId);
+      if (!ws) return <div style={{ padding: 20, color: 'var(--text-faint)' }}>Workspace not found.</div>;
+      return (
+        <WorkspaceTabRenderer 
+          workspace={ws} 
+        />
       );
-      setRightAnswer(result.text.trim());
-    } catch (error) {
-      setRightError(error instanceof Error ? error.message : 'AI request failed.');
-    } finally {
-      setRightRunning(false);
     }
+    if (tab.listType === 'bookmark-list' || tab.listType === 'note-list' || tab.listType === 'common-list') {
+      const tabItems = items.filter(i => (tab.itemIds || []).includes(i.id));
+      return (
+        <div style={{ height: '100%', overflowY: 'auto', padding: '16px 20px', background: 'var(--bg)' }} className="scrollbar">
+          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, margin: '0 0 16px', lineHeight: 1.3 }}>{tab.title}</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {tabItems.length === 0 && <div style={{ color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>No items.</div>}
+            {tabItems.map(item => (
+              <div key={item.id} style={{ padding: '12px 14px', background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ overflow: 'hidden' }}>
+                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title || 'Untitled'}</div>
+                  {item.url && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 4 }}>{item.url}</div>}
+                </div>
+                <button onClick={() => handleOpenItemTab(item)} style={{ flexShrink: 0, padding: '4px 10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}>Open</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return null;
   };
+
+
+
+
+
+
+  const inspectorItem = React.useMemo(() => {
+    if (librarySearch.state.selectedItemId) {
+      return items.find((i) => i.id === librarySearch.state.selectedItemId) ?? null;
+    }
+    const activeGlobalTab = globalTabState.tabs.find(t => t.id === globalTabState.activeTabId);
+    if (activeGlobalTab?.kind === 'item') {
+      return items.find(i => i.id === activeGlobalTab.itemId) ?? null;
+    }
+    return null;
+  }, [librarySearch.state.selectedItemId, globalTabState.tabs, globalTabState.activeTabId, items]);
+
+  const searchContext = useMemo(() => {
+    if (!librarySearch.state.result?.results.length) return null;
+    return {
+      query: librarySearch.state.query,
+      resultItemIds: librarySearch.state.result.results.slice(0, 20).map((r) => r.itemId),
+      items,
+    };
+  }, [librarySearch.state.result, librarySearch.state.query, items]);
+
+  const isSearchSurface = useMemo(() => {
+    if (activeView === 'search') return true;
+    const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
+    return activeGlobalTab?.kind === 'search';
+  }, [activeView, globalTabState.tabs, globalTabState.activeTabId]);
+
+  const handleRerunSearch = useCallback(
+    (query: string) => {
+      librarySearch.setQuery(query);
+      void librarySearch.runSearch(query);
+    },
+    [librarySearch]
+  );
 
   const isFullPageView = FULL_PAGE_VIEWS.has(activeView);
+  const isFullMiddleView = FULL_MIDDLE_VIEWS.has(activeView);
 
   return (
     <div style={{ 
@@ -416,9 +480,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 onWorkspacesChanged={onWorkspacesChanged}
                 onCloseTab={onCloseTab}
                 onCloseWindow={onCloseWindow}
-                onAddBookmark={onAddBookmark}
-                onUpdateBookmark={onUpdateBookmark}
-                onDeleteBookmark={onDeleteBookmark}
+                onAddBookmark={handleAddBookmarkWithToast}
+                onUpdateBookmark={handleUpdateBookmarkWithToast}
+                onDeleteBookmark={handleDeleteBookmarkWithToast}
                 onCreateProject={onCreateProject}
                 onCreateCollection={onCreateCollection}
                 onCreateItem={onCreateItem}
@@ -439,13 +503,56 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 scopeCollectionId={scopeCollectionId}
               />
             </div>
+          ) : isFullMiddleView ? (
+            // Full-middle views: no list pane, right panel stays (Home, future Search tab)
+            // The right panel is rendered outside this block, at the same level as the middle workspace
+            <MainContent 
+              activeView={activeView} 
+              projects={projects}
+              workspaces={workspaces} 
+              items={items}
+              collections={collections}
+              windows={windows}
+              onWorkspacesChanged={onWorkspacesChanged}
+              onCloseTab={onCloseTab}
+              onCloseWindow={onCloseWindow}
+              onAddBookmark={handleAddBookmarkWithToast}
+              onUpdateBookmark={handleUpdateBookmarkWithToast}
+              onDeleteBookmark={handleDeleteBookmarkWithToast}
+              onCreateProject={onCreateProject}
+              onCreateCollection={onCreateCollection}
+              onCreateItem={onCreateItem}
+              onRefresh={onRefresh}
+              onChooseBackupFolder={onChooseBackupFolder}
+              onSetAsBrowserHome={onSetAsBrowserHome}
+              onRestoreBackupFile={onRestoreBackupFile}
+              onManualBackup={onManualBackup}
+              onResolveConflictLoadRemote={onResolveConflictLoadRemote}
+              onResolveConflictKeepLocal={onResolveConflictKeepLocal}
+              backupFolderReady={backupFolderReady}
+              backupFolderName={backupFolderName}
+              backupStatus={backupStatus}
+              aiSettings={aiSettings}
+              onSaveAISettings={onSaveAISettings}
+              onTestAI={onTestAI}
+              scopeProjectId={scopeProjectId}
+              scopeCollectionId={scopeCollectionId}
+              globalTabState={globalTabState}
+              onGlobalTabStateChange={handleGlobalTabStateChange}
+              renderListTab={renderListTab}
+              statusBar={statusBar}
+              librarySearch={librarySearch}
+              onLibrarySearch={openLibrarySearch}
+              onLibrarySearchInTab={openLibrarySearchInTab}
+              onOpenItemFromSearch={handleOpenItemTab}
+            />
           ) : (
             // Split view: List pane (left) + Tabbed detail pane (right)
             <div style={{ flex: 1, display: 'flex', gap: 1, overflow: 'hidden' }}>
               
               {/* LIST PANE - left middle */}
               <div style={{ 
-                width: 280, 
+                width: 'clamp(220px, 22%, 320px)', 
                 flexShrink: 0, 
                 display: 'flex', 
                 flexDirection: 'column',
@@ -462,9 +569,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   onWorkspacesChanged={onWorkspacesChanged}
                   onCloseTab={onCloseTab}
                   onCloseWindow={onCloseWindow}
-                  onAddBookmark={onAddBookmark}
-                  onUpdateBookmark={onUpdateBookmark}
-                  onDeleteBookmark={onDeleteBookmark}
+                  onAddBookmark={handleAddBookmarkWithToast}
+                  onUpdateBookmark={handleUpdateBookmarkWithToast}
+                  onDeleteBookmark={handleDeleteBookmarkWithToast}
                   onCreateProject={onCreateProject}
                   onCreateCollection={onCreateCollection}
                   onCreateItem={onCreateItem}
@@ -488,1387 +595,69 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   onOpenWorkspace={handleOpenWorkspaceTab}
                   onOpenListTab={handleOpenListTab}
                   onAddToCommonListTab={handleAddToCommonListTab}
+              globalTabState={globalTabState}
+              onGlobalTabStateChange={handleGlobalTabStateChange}
+              renderListTab={renderListTab}
                 />
               </div>
 
               {/* TABBED DETAIL PANE - right middle */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                {/* Tab strip */}
-                <div 
-                  style={{ 
-                    height: 36, 
+                {globalTabState.tabs.length === 0 ? (
+                  <div style={{ 
+                    flex: 1, 
                     display: 'flex', 
-                    alignItems: 'flex-end',
-                    gap: 2,
-                    paddingLeft: 8,
-                    borderBottom: '1px solid var(--border)',
-                    background: 'var(--bg-panel)',
-                    flexShrink: 0,
-                    overflowX: 'auto',
-                  }}
-                  className="scrollbar"
-                >
-                  {openItemTabs.length === 0 && (
-                    <div style={{ 
-                      padding: '8px 12px', 
-                      fontSize: 'var(--text-xs)', 
-                      color: 'var(--text-faint)',
-                    }}>
-                      Click an item to open it here
-                    </div>
-                  )}
-                  {openItemTabs.map((tab) => {
-                    const isActive = activeItemTabId === tab.id;
-                    const isDragging = draggedTabId === tab.id;
-                    return (
-                      <div
-                        key={tab.id}
-                        draggable
-                        onDragStart={(e) => handleTabDragStart(e, tab.id)}
-                        onDragOver={(e) => handleTabDragOver(e, tab.id)}
-                        onDragEnd={handleTabDragEnd}
-                        onClick={() => setActiveItemTabId(tab.id)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          height: 30,
-                          padding: '0 10px',
-                          borderRadius: '6px 6px 0 0',
-                          border: isActive ? '1px solid var(--border)' : '1px solid transparent',
-                          borderBottom: isActive ? '1px solid var(--bg)' : '1px solid transparent',
-                          background: isActive ? 'var(--bg)' : 'transparent',
-                          color: isActive ? 'var(--text)' : 'var(--text-muted)',
-                          fontSize: 'var(--text-sm)',
-                          cursor: 'grab',
-                          whiteSpace: 'nowrap',
-                          maxWidth: 180,
-                          opacity: isDragging ? 0.5 : 1,
-                          transition: 'opacity 0.15s',
-                        }}
-                        title={`${tab.title} (drag to reorder)`}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
-                          {tab.title || 'Untitled'}
-                        </span>
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCloseItemTab(tab.id);
-                          }}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 16,
-                            height: 16,
-                            borderRadius: 3,
-                            color: 'var(--text-faint)',
-                            cursor: 'pointer',
-                            flexShrink: 0,
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.color = '#ef4444';
-                            e.currentTarget.style.background = 'var(--bg-glass)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.color = 'var(--text-faint)';
-                            e.currentTarget.style.background = 'transparent';
-                          }}
-                          title="Close tab"
-                        >
-                          <X size={12} />
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Tab content */}
-                <div style={{ flex: 1, overflow: 'auto', padding: 16, background: 'var(--bg)' }} className="scrollbar">
-                  {activeTabWorkspace ? (() => {
-                    // Compute all link keys for this workspace
-                    const allLinkKeys: string[] = [];
-                    activeTabWorkspace.windows.forEach((win, winIdx) => {
-                      win.tabs.forEach((_, tabIdx) => {
-                        allLinkKeys.push(`${activeTabWorkspace.id}:${winIdx}:${tabIdx}`);
-                      });
-                    });
-                    const selectedCount = allLinkKeys.filter(k => selectedWsLinks.has(k)).length;
-                    const allSelected = selectedCount === allLinkKeys.length && allLinkKeys.length > 0;
-                    const someSelected = selectedCount > 0;
-                    
-                    const toggleAll = () => {
-                      if (allSelected) {
-                        setSelectedWsLinks(prev => {
-                          const next = new Set(prev);
-                          allLinkKeys.forEach(k => next.delete(k));
-                          return next;
-                        });
-                      } else {
-                        setSelectedWsLinks(prev => {
-                          const next = new Set(prev);
-                          allLinkKeys.forEach(k => next.add(k));
-                          return next;
-                        });
-                      }
-                    };
-                    
-                    const getSelectedTabs = () => {
-                      const tabs: { url: string; title?: string }[] = [];
-                      activeTabWorkspace.windows.forEach((win, winIdx) => {
-                        win.tabs.forEach((tab, tabIdx) => {
-                          if (selectedWsLinks.has(`${activeTabWorkspace.id}:${winIdx}:${tabIdx}`)) {
-                            tabs.push(tab);
-                          }
-                        });
-                      });
-                      return tabs;
-                    };
-                    
-                    const openSelected = () => {
-                      getSelectedTabs().forEach(tab => {
-                        if (tab.url) window.open(tab.url, '_blank');
-                      });
-                    };
-                    
-                    const showBookmarkDialog = (tabs: { url: string; title?: string }[]) => {
-                      // Set default project/collection based on scope
-                      const defaultProject = scopeProjectId !== 'all' ? scopeProjectId : '';
-                      const defaultCollection = scopeCollectionId !== 'all' ? scopeCollectionId : '';
-                      setBookmarkProjectId(defaultProject);
-                      setBookmarkCollectionId(defaultCollection);
-                      setBookmarkDialog({ tabs });
-                    };
-                    
-                    const clearSelectionForWs = () => {
-                      setSelectedWsLinks(prev => {
-                        const next = new Set(prev);
-                        allLinkKeys.forEach(k => next.delete(k));
-                        return next;
-                      });
-                    };
-                    
-                    // Get collections for selected project
-                    const projectCollections = bookmarkProjectId 
-                      ? collections.filter(c => 
-                          c.primaryProjectId === bookmarkProjectId || 
-                          (Array.isArray(c.projectIds) && c.projectIds.includes(bookmarkProjectId)))
-                      : [];
-                    
-                    return (
-                      <div style={{ maxWidth: 700 }}>
-                        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 4 }}>
-                          {activeTabWorkspace.name}
-                        </h2>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', marginBottom: 16 }}>
-                          {allLinkKeys.length} links · {activeTabWorkspace.windows.length} window{activeTabWorkspace.windows.length !== 1 ? 's' : ''}
-                          {!activeTabWorkspace.projectId && <span style={{ marginLeft: 8, color: 'var(--warning, #f59e0b)' }}>detached</span>}
-                        </div>
-                        
-                        {/* Selection actions */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 'var(--text-sm)' }}>
-                            <input
-                              type="checkbox"
-                              checked={allSelected}
-                              onChange={toggleAll}
-                              style={{ width: 16, height: 16, cursor: 'pointer' }}
-                            />
-                            Select all
-                          </label>
-                          
-                          {someSelected && (
-                            <>
-                              <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-                                {selectedCount} selected
-                              </span>
-                              <button
-                                onClick={openSelected}
-                                style={{
-                                  padding: '5px 10px',
-                                  borderRadius: 6,
-                                  border: 'none',
-                                  background: 'var(--accent)',
-                                  color: '#fff',
-                                  fontSize: 'var(--text-xs)',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Open
-                              </button>
-                              <button
-                                onClick={() => showBookmarkDialog(getSelectedTabs())}
-                                style={{
-                                  padding: '5px 10px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'transparent',
-                                  color: 'var(--text)',
-                                  fontSize: 'var(--text-xs)',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Bookmark
-                              </button>
-                              <button
-                                onClick={() => setRemoveConfirm({ tabs: getSelectedTabs(), wsId: activeTabWorkspace.id })}
-                                style={{
-                                  padding: '5px 10px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'transparent',
-                                  color: '#ef4444',
-                                  fontSize: 'var(--text-xs)',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Remove
-                              </button>
-                            </>
-                          )}
-                          
-                          {!someSelected && (
-                            <button
-                              onClick={() => {
-                                activeTabWorkspace.windows.forEach(w => {
-                                  w.tabs.forEach(tab => {
-                                    if (tab.url) window.open(tab.url, '_blank');
-                                  });
-                                });
-                              }}
-                              style={{
-                                padding: '5px 10px',
-                                borderRadius: 6,
-                                border: 'none',
-                                background: 'var(--accent)',
-                                color: '#fff',
-                                fontSize: 'var(--text-xs)',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Open all
-                            </button>
-                          )}
-                        </div>
-                        
-                        {/* Remove Confirmation Dialog */}
-                        {removeConfirm && (
-                          <div style={{
-                            position: 'fixed',
-                            inset: 0,
-                            background: 'rgba(0,0,0,0.5)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            zIndex: 1000,
-                          }}>
-                            <div style={{
-                              background: 'var(--bg-panel)',
-                              borderRadius: 8,
-                              padding: 20,
-                              maxWidth: 400,
-                              width: '90%',
-                              maxHeight: '80vh',
-                              overflow: 'auto',
-                            }}>
-                              <h3 style={{ margin: '0 0 12px', fontSize: 'var(--text-base)', fontWeight: 600 }}>
-                                Remove {removeConfirm.tabs.length} link{removeConfirm.tabs.length !== 1 ? 's' : ''}?
-                              </h3>
-                              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: 16 }}>
-                                The following will be removed from this workspace:
-                              </div>
-                              <ul style={{ margin: '0 0 16px', paddingLeft: 20, fontSize: 'var(--text-xs)', color: 'var(--text-faint)', maxHeight: 150, overflow: 'auto' }}>
-                                {removeConfirm.tabs.slice(0, 10).map((tab, i) => (
-                                  <li key={i} style={{ marginBottom: 4 }}>{tab.title || tab.url}</li>
-                                ))}
-                                {removeConfirm.tabs.length > 10 && (
-                                  <li>...and {removeConfirm.tabs.length - 10} more</li>
-                                )}
-                              </ul>
-                              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                                <button
-                                  onClick={() => setRemoveConfirm(null)}
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: 6,
-                                    border: '1px solid var(--border)',
-                                    background: 'transparent',
-                                    color: 'var(--text)',
-                                    fontSize: 'var(--text-sm)',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    // TODO: Actually remove tabs from workspace
-                                    // For now, just clear selection and close
-                                    clearSelectionForWs();
-                                    setRemoveConfirm(null);
-                                  }}
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: 6,
-                                    border: 'none',
-                                    background: '#ef4444',
-                                    color: '#fff',
-                                    fontSize: 'var(--text-sm)',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Bookmark Dialog */}
-                        {bookmarkDialog && (
-                          <div style={{
-                            position: 'fixed',
-                            inset: 0,
-                            background: 'rgba(0,0,0,0.5)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            zIndex: 1000,
-                          }}>
-                            <div style={{
-                              background: 'var(--bg-panel)',
-                              borderRadius: 8,
-                              padding: 20,
-                              maxWidth: 400,
-                              width: '90%',
-                            }}>
-                              <h3 style={{ margin: '0 0 16px', fontSize: 'var(--text-base)', fontWeight: 600 }}>
-                                Add {bookmarkDialog.tabs.length} link{bookmarkDialog.tabs.length !== 1 ? 's' : ''} to bookmarks
-                              </h3>
-                              
-                              <div style={{ marginBottom: 12 }}>
-                                <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: 4, color: 'var(--text-muted)' }}>
-                                  Project
-                                </label>
-                                <select
-                                  value={bookmarkProjectId}
-                                  onChange={(e) => {
-                                    setBookmarkProjectId(e.target.value);
-                                    setBookmarkCollectionId('');
-                                  }}
-                                  style={{
-                                    width: '100%',
-                                    padding: '8px 10px',
-                                    borderRadius: 6,
-                                    border: '1px solid var(--border)',
-                                    background: 'var(--bg-input)',
-                                    color: 'var(--text)',
-                                    fontSize: 'var(--text-sm)',
-                                  }}
-                                >
-                                  <option value="">Select a project...</option>
-                                  {projects.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              
-                              <div style={{ marginBottom: 16 }}>
-                                <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, marginBottom: 4, color: 'var(--text-muted)' }}>
-                                  Collection
-                                </label>
-                                <select
-                                  value={bookmarkCollectionId}
-                                  onChange={(e) => setBookmarkCollectionId(e.target.value)}
-                                  disabled={!bookmarkProjectId}
-                                  style={{
-                                    width: '100%',
-                                    padding: '8px 10px',
-                                    borderRadius: 6,
-                                    border: '1px solid var(--border)',
-                                    background: 'var(--bg-input)',
-                                    color: 'var(--text)',
-                                    fontSize: 'var(--text-sm)',
-                                    opacity: bookmarkProjectId ? 1 : 0.5,
-                                  }}
-                                >
-                                  <option value="">Select a collection...</option>
-                                  {projectCollections.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              
-                              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                                <button
-                                  onClick={() => setBookmarkDialog(null)}
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: 6,
-                                    border: '1px solid var(--border)',
-                                    background: 'transparent',
-                                    color: 'var(--text)',
-                                    fontSize: 'var(--text-sm)',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    if (!bookmarkCollectionId) return;
-                                    for (const tab of bookmarkDialog.tabs) {
-                                      if (tab.url && onAddBookmark) {
-                                        await onAddBookmark(tab.url, tab.title, bookmarkCollectionId);
-                                      }
-                                    }
-                                    clearSelectionForWs();
-                                    setBookmarkDialog(null);
-                                  }}
-                                  disabled={!bookmarkCollectionId}
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: 6,
-                                    border: 'none',
-                                    background: bookmarkCollectionId ? 'var(--accent)' : 'var(--accent-weak)',
-                                    color: '#fff',
-                                    fontSize: 'var(--text-sm)',
-                                    cursor: bookmarkCollectionId ? 'pointer' : 'not-allowed',
-                                  }}
-                                >
-                                  Add to Bookmarks
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {activeTabWorkspace.windows.map((win, winIdx) => (
-                          <div key={win.id || winIdx} style={{ marginBottom: 16 }}>
-                            {activeTabWorkspace.windows.length > 1 && (
-                              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-faint)', marginBottom: 8, textTransform: 'uppercase' }}>
-                                Window {winIdx + 1} ({win.tabs.length})
-                              </div>
-                            )}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              {win.tabs.map((tab, tabIdx) => {
-                                const linkKey = `${activeTabWorkspace.id}:${winIdx}:${tabIdx}`;
-                                const isSelected = selectedWsLinks.has(linkKey);
-                                
-                                const toggleSelection = () => {
-                                  setSelectedWsLinks(prev => {
-                                    const next = new Set(prev);
-                                    if (isSelected) {
-                                      next.delete(linkKey);
-                                    } else {
-                                      next.add(linkKey);
-                                    }
-                                    return next;
-                                  });
-                                };
-                                
-                                return (
-                                  <label
-                                    key={tabIdx}
-                                    style={{
-                                      padding: '8px 10px',
-                                      borderRadius: 6,
-                                      background: isSelected ? 'var(--accent-weak)' : 'var(--bg-panel)',
-                                      border: isSelected ? '1px solid var(--accent)' : '1px solid transparent',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: 8,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={toggleSelection}
-                                      style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
-                                    />
-                                    {tab.favIconUrl && (
-                                      <img src={tab.favIconUrl} alt="" style={{ width: 16, height: 16, borderRadius: 2, flexShrink: 0 }} />
-                                    )}
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {tab.title || tab.url || 'Untitled'}
-                                      </div>
-                                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {tab.url}
-                                      </div>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          if (tab.url) window.open(tab.url, '_blank');
-                                        }}
-                                        style={{
-                                          padding: '4px 8px',
-                                          borderRadius: 4,
-                                          border: '1px solid var(--border)',
-                                          background: 'transparent',
-                                          color: 'var(--text-muted)',
-                                          fontSize: 'var(--text-xs)',
-                                          cursor: 'pointer',
-                                        }}
-                                        title="Open in new tab"
-                                      >
-                                        Open
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          showBookmarkDialog([tab]);
-                                        }}
-                                        style={{
-                                          padding: '4px 8px',
-                                          borderRadius: 4,
-                                          border: '1px solid var(--border)',
-                                          background: 'transparent',
-                                          color: 'var(--text-muted)',
-                                          fontSize: 'var(--text-xs)',
-                                          cursor: 'pointer',
-                                        }}
-                                        title="Add to bookmarks"
-                                      >
-                                        +
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          setRemoveConfirm({ tabs: [tab], wsId: activeTabWorkspace.id });
-                                        }}
-                                        style={{
-                                          padding: '4px 8px',
-                                          borderRadius: 4,
-                                          border: '1px solid var(--border)',
-                                          background: 'transparent',
-                                          color: '#ef4444',
-                                          fontSize: 'var(--text-xs)',
-                                          cursor: 'pointer',
-                                        }}
-                                        title="Remove from workspace"
-                                      >
-                                        ×
-                                      </button>
-                                    </div>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })() : activeCommonTab && (activeCommonTab.sections || []).length > 0 ? (
-                    <div style={{ width: '100%' }}>
-                      <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 4 }}>
-                        {activeCommonTab.title}
-                      </h2>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
-                          {(activeCommonTab.sections || []).length} section{(activeCommonTab.sections || []).length !== 1 ? 's' : ''}
-                        </div>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--border)', borderRadius: 6, padding: 2 }}>
-                          <button
-                            onClick={() => setListTabViewById((prev) => ({ ...prev, [activeCommonTab.id]: 'list' }))}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: 26,
-                              height: 24,
-                              border: 'none',
-                              borderRadius: 4,
-                              background: (listTabViewById[activeCommonTab.id] ?? 'list') === 'list' ? 'var(--accent-weak)' : 'transparent',
-                              color: (listTabViewById[activeCommonTab.id] ?? 'list') === 'list' ? 'var(--accent)' : 'var(--text-muted)',
-                              cursor: 'pointer',
-                            }}
-                            title="List view"
-                          >
-                            <List size={14} />
-                          </button>
-                          <button
-                            onClick={() => setListTabViewById((prev) => ({ ...prev, [activeCommonTab.id]: 'grid' }))}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: 26,
-                              height: 24,
-                              border: 'none',
-                              borderRadius: 4,
-                              background: (listTabViewById[activeCommonTab.id] ?? 'list') === 'grid' ? 'var(--accent-weak)' : 'transparent',
-                              color: (listTabViewById[activeCommonTab.id] ?? 'list') === 'grid' ? 'var(--accent)' : 'var(--text-muted)',
-                              cursor: 'pointer',
-                            }}
-                            title="Card view"
-                          >
-                            <LayoutGrid size={14} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {(activeCommonTab.sections || []).map((section) => {
-                          const sectionItems = section.itemIds
-                            .map((id) => items.find((i) => i.id === id))
-                            .filter((i): i is Item => Boolean(i));
-                          if (sectionItems.length === 0) return null;
-                          return (
-                            <div key={section.id} style={{ border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-panel)' }}>
-                              <div
-                                style={{
-                                  padding: '10px 12px',
-                                  borderBottom: '1px solid var(--border)',
-                                  fontSize: 'var(--text-sm)',
-                                  fontWeight: 600,
-                                  color: 'var(--text)',
-                                }}
-                              >
-                                {section.title}
-                              </div>
-                              <div
-                                style={
-                                  (listTabViewById[activeCommonTab.id] ?? 'list') === 'grid'
-                                    ? {
-                                        display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                                        gap: 8,
-                                        padding: 8,
-                                        alignItems: 'start',
-                                      }
-                                    : { display: 'flex', flexDirection: 'column', gap: 4, padding: 8 }
-                                }
-                              >
-                                {sectionItems.map((item) => (
-                                  <div
-                                    key={`${section.id}-${item.id}`}
-                                    style={{
-                                      padding: '8px 10px',
-                                      borderRadius: 6,
-                                      background: 'var(--bg)',
-                                      border: '1px solid var(--border)',
-                                      display: 'flex',
-                                      alignItems: 'flex-start',
-                                      gap: 10,
-                                    }}
-                                  >
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 2 }}>
-                                        {item.title || 'Untitled'}
-                                      </div>
-                                      {item.url && (
-                                        <a
-                                          href={item.url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          style={{
-                                            fontSize: 'var(--text-xs)',
-                                            color: 'var(--accent)',
-                                            display: 'block',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
-                                          }}
-                                        >
-                                          {item.url}
-                                        </a>
-                                      )}
-                                      {item.notes && (
-                                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4, whiteSpace: 'pre-wrap' }}>
-                                          {item.notes.length > 100 ? `${item.notes.slice(0, 100)}...` : item.notes}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                                      {item.url && (
-                                        <button
-                                          onClick={() => window.open(item.url, '_blank')}
-                                          style={{
-                                            padding: '4px 8px',
-                                            borderRadius: 4,
-                                            border: '1px solid var(--border)',
-                                            background: 'transparent',
-                                            color: 'var(--text-muted)',
-                                            fontSize: 'var(--text-xs)',
-                                            cursor: 'pointer',
-                                          }}
-                                        >
-                                          Open
-                                        </button>
-                                      )}
-                                      <button
-                                        onClick={() => handleOpenItemTab(item)}
-                                        style={{
-                                          padding: '4px 8px',
-                                          borderRadius: 4,
-                                          border: '1px solid var(--border)',
-                                          background: 'transparent',
-                                          color: 'var(--text-muted)',
-                                          fontSize: 'var(--text-xs)',
-                                          cursor: 'pointer',
-                                        }}
-                                      >
-                                        View
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : activeListTab && activeListItems.length > 0 ? (
-                    // Bookmark-list or Note-list tab content
-                    <div style={{ width: '100%' }}>
-                      <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 4 }}>
-                        {activeListTab.title}
-                      </h2>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
-                          {activeListItems.length} {activeListTab.type === 'bookmark-list' ? 'bookmark' : 'note'}{activeListItems.length !== 1 ? 's' : ''}
-                        </div>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--border)', borderRadius: 6, padding: 2 }}>
-                          <button
-                            onClick={() => setListTabViewById((prev) => ({ ...prev, [activeListTab.id]: 'list' }))}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: 26,
-                              height: 24,
-                              border: 'none',
-                              borderRadius: 4,
-                              background: (listTabViewById[activeListTab.id] ?? 'list') === 'list' ? 'var(--accent-weak)' : 'transparent',
-                              color: (listTabViewById[activeListTab.id] ?? 'list') === 'list' ? 'var(--accent)' : 'var(--text-muted)',
-                              cursor: 'pointer',
-                            }}
-                            title="List view"
-                          >
-                            <List size={14} />
-                          </button>
-                          <button
-                            onClick={() => setListTabViewById((prev) => ({ ...prev, [activeListTab.id]: 'grid' }))}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: 26,
-                              height: 24,
-                              border: 'none',
-                              borderRadius: 4,
-                              background: (listTabViewById[activeListTab.id] ?? 'list') === 'grid' ? 'var(--accent-weak)' : 'transparent',
-                              color: (listTabViewById[activeListTab.id] ?? 'list') === 'grid' ? 'var(--accent)' : 'var(--text-muted)',
-                              cursor: 'pointer',
-                            }}
-                            title="Card view"
-                          >
-                            <LayoutGrid size={14} />
-                          </button>
-                        </div>
-                      </div>
-                      
-                      {activeListTab.type === 'bookmark-list' && (
-                        <button
-                          onClick={() => {
-                            activeListItems.forEach(item => {
-                              if (item.url) window.open(item.url, '_blank');
-                            });
-                          }}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: 6,
-                            border: 'none',
-                            background: 'var(--accent)',
-                            color: '#fff',
-                            fontSize: 'var(--text-sm)',
-                            cursor: 'pointer',
-                            marginBottom: 16,
-                          }}
-                        >
-                          Open all links
-                        </button>
-                      )}
-                      
-                      <div
-                        style={
-                          (listTabViewById[activeListTab.id] ?? 'list') === 'grid'
-                            ? {
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                                gap: 8,
-                                alignItems: 'start',
-                              }
-                            : { display: 'flex', flexDirection: 'column', gap: 4 }
-                        }
-                      >
-                        {activeListItems.map(item => (
-                          <div
-                            key={item.id}
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: 6,
-                              background: 'var(--bg-panel)',
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                              gap: 10,
-                              border: '1px solid var(--border)',
-                            }}
-                          >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: 2 }}>
-                                {item.title || 'Untitled'}
-                              </div>
-                              {item.url && (
-                                <a 
-                                  href={item.url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  style={{ 
-                                    fontSize: 'var(--text-xs)', 
-                                    color: 'var(--accent)',
-                                    display: 'block',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                >
-                                  {item.url}
-                                </a>
-                              )}
-                              {item.notes && (
-                                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4, whiteSpace: 'pre-wrap' }}>
-                                  {item.notes.length > 100 ? item.notes.slice(0, 100) + '...' : item.notes}
-                                </div>
-                              )}
-                            </div>
-                            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                              {item.url && (
-                                <button
-                                  onClick={() => window.open(item.url, '_blank')}
-                                  style={{
-                                    padding: '4px 8px',
-                                    borderRadius: 4,
-                                    border: '1px solid var(--border)',
-                                    background: 'transparent',
-                                    color: 'var(--text-muted)',
-                                    fontSize: 'var(--text-xs)',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Open
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleOpenItemTab(item)}
-                                style={{
-                                  padding: '4px 8px',
-                                  borderRadius: 4,
-                                  border: '1px solid var(--border)',
-                                  background: 'transparent',
-                                  color: 'var(--text-muted)',
-                                  fontSize: 'var(--text-xs)',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                View
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : activeTabItem ? (() => {
-                    const isBookmark = !!activeTabItem.url;
-                    const startEditing = () => {
-                      setEditItemTitle(activeTabItem.title || '');
-                      setEditItemUrl(activeTabItem.url || '');
-                      const placements = activeTabItem.placements || {};
-                      const itemCollections = collections.filter((c) =>
-                        (activeTabItem.collectionIds || []).includes(c.id)
-                      );
-                      const effectiveId = selectedPlacementId || itemCollections[0]?.id;
-                      const placementNotes = effectiveId ? placements[effectiveId]?.notes : undefined;
-                      setEditItemNotes(placementNotes ?? activeTabItem.notes ?? '');
-                      setIsEditingItem(true);
-                    };
-                    const cancelEditing = () => {
-                      setIsEditingItem(false);
-                    };
-                    const saveEditing = async () => {
-                      if (onUpdateBookmark) {
-                        const itemCollections = collections.filter((c) =>
-                          (activeTabItem.collectionIds || []).includes(c.id)
-                        );
-                        const effectiveId = selectedPlacementId || itemCollections[0]?.id;
-                        await onUpdateBookmark(
-                          activeTabItem.id,
-                          {
-                            title: editItemTitle,
-                            url: editItemUrl || undefined,
-                            notes: editItemNotes || undefined,
-                            updated_at: Date.now(),
-                          },
-                          effectiveId ? { notesPlacementCollectionId: effectiveId } : undefined
-                        );
-                        // Update the tab title
-                        setOpenItemTabs(prev => prev.map(t => 
-                          t.id === activeTabItem.id ? { ...t, title: editItemTitle || 'Untitled' } : t
-                        ));
-                      }
-                      setIsEditingItem(false);
-                    };
-                    
-                    return (
-                      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                        {/* Header with actions */}
-                        <div style={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
-                          alignItems: 'flex-start',
-                          marginBottom: 16,
-                          gap: 16,
-                        }}>
-                          <div style={{ flex: 1 }}>
-                            {isEditingItem ? (
-                              <input
-                                type="text"
-                                value={editItemTitle}
-                                onChange={(e) => setEditItemTitle(e.target.value)}
-                                placeholder="Title"
-                                style={{
-                                  width: '100%',
-                                  fontSize: 'var(--text-lg)',
-                                  fontWeight: 600,
-                                  padding: '8px 12px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'var(--bg-input)',
-                                  color: 'var(--text)',
-                                }}
-                              />
-                            ) : (
-                              <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, margin: 0 }}>
-                                {activeTabItem.title || 'Untitled'}
-                              </h2>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                            {!isEditingItem ? (
-                              <>
-                                {isBookmark && (
-                                  <button
-                                    onClick={() => window.open(activeTabItem.url, '_blank')}
-                                    style={{
-                                      padding: '6px 12px',
-                                      borderRadius: 6,
-                                      border: 'none',
-                                      background: 'var(--accent)',
-                                      color: '#fff',
-                                      fontSize: 'var(--text-sm)',
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    Open
-                                  </button>
-                                )}
-                                <button
-                                  onClick={startEditing}
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: 6,
-                                    border: '1px solid var(--border)',
-                                    background: 'transparent',
-                                    color: 'var(--text)',
-                                    fontSize: 'var(--text-sm)',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (!activeTabItem || !onDeleteBookmark) return;
-                                    const itemCollections = collections.filter((c) =>
-                                      (activeTabItem.collectionIds || []).includes(c.id)
-                                    );
-                                    const placementId =
-                                      selectedPlacementId || itemCollections[0]?.id;
-                                    setItemTabDeletePending({
-                                      item: activeTabItem,
-                                      placementId: placementId || undefined,
-                                    });
-                                  }}
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: 6,
-                                    border: '1px solid var(--border)',
-                                    background: 'transparent',
-                                    color: '#ef4444',
-                                    fontSize: 'var(--text-sm)',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={cancelEditing}
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: 6,
-                                    border: '1px solid var(--border)',
-                                    background: 'transparent',
-                                    color: 'var(--text-muted)',
-                                    fontSize: 'var(--text-sm)',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={saveEditing}
-                                  style={{
-                                    padding: '6px 12px',
-                                    borderRadius: 6,
-                                    border: 'none',
-                                    background: 'var(--accent)',
-                                    color: '#fff',
-                                    fontSize: 'var(--text-sm)',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Save
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        
-                        {/* URL (for bookmarks) */}
-                        {(isBookmark || isEditingItem) && (
-                          <div style={{ marginBottom: 16 }}>
-                            <label style={{ 
-                              display: 'block', 
-                              fontSize: 'var(--text-xs)', 
-                              fontWeight: 500, 
-                              color: 'var(--text-muted)', 
-                              marginBottom: 4,
-                              textTransform: 'uppercase',
-                            }}>
-                              URL
-                            </label>
-                            {isEditingItem ? (
-                              <input
-                                type="url"
-                                value={editItemUrl}
-                                onChange={(e) => setEditItemUrl(e.target.value)}
-                                placeholder="https://..."
-                                style={{
-                                  width: '100%',
-                                  padding: '8px 12px',
-                                  borderRadius: 6,
-                                  border: '1px solid var(--border)',
-                                  background: 'var(--bg-input)',
-                                  color: 'var(--text)',
-                                  fontSize: 'var(--text-sm)',
-                                }}
-                              />
-                            ) : (
-                              <a 
-                                href={activeTabItem.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ 
-                                  color: 'var(--accent)', 
-                                  fontSize: 'var(--text-sm)',
-                                  wordBreak: 'break-all',
-                                }}
-                              >
-                                {activeTabItem.url}
-                              </a>
-                            )}
-                          </div>
-                        )}
-                        
-                        {/* Saved In - always show which collections this item belongs to */}
-                        {(() => {
-                          const itemCollections = collections.filter((c) => (activeTabItem.collectionIds || []).includes(c.id));
-                          if (itemCollections.length === 0) return null;
-                          
-                          return (
-                            <div style={{ marginBottom: 12 }}>
-                              <label style={{ 
-                                display: 'block', 
-                                fontSize: 'var(--text-xs)', 
-                                fontWeight: 500, 
-                                color: 'var(--text-muted)', 
-                                marginBottom: 4,
-                                textTransform: 'uppercase',
-                              }}>
-                                Saved In
-                              </label>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                {itemCollections.map((c) => {
-                                  const project = projects.find(p => p.id === c.primaryProjectId);
-                                  return (
-                                    <span
-                                      key={c.id}
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: 4,
-                                        padding: '3px 8px',
-                                        background: 'var(--bg-glass)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: 4,
-                                        fontSize: 'var(--text-xs)',
-                                        color: 'var(--text)',
-                                      }}
-                                    >
-                                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
-                                      {project?.name || 'Unassigned'} / {c.name}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                        
-                        {/* Notes - with collection tabs for per-collection notes */}
-                        {(() => {
-                          const itemCollections = collections.filter((c) => (activeTabItem.collectionIds || []).includes(c.id));
-                          const placements = activeTabItem.placements || {};
-                          const hasMultipleCollections = itemCollections.length > 1;
-                          
-                          const placementData = itemCollections.map((c) => {
-                            const project = projects.find(p => p.id === c.primaryProjectId);
-                            const placement = placements[c.id];
-                            return { collection: c, project, placement };
-                          });
-                          
-                          const effectiveSelectedId = selectedPlacementId || placementData[0]?.collection.id;
-                          const selectedPlacement = placementData.find(p => p.collection.id === effectiveSelectedId);
-                          const displayNotes = selectedPlacement?.placement?.notes || activeTabItem.notes;
-                          
-                          return (
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                              <label style={{ 
-                                display: 'block', 
-                                fontSize: 'var(--text-xs)', 
-                                fontWeight: 500, 
-                                color: 'var(--text-muted)', 
-                                marginBottom: 4,
-                                textTransform: 'uppercase',
-                              }}>
-                                Notes
-                              </label>
-                              
-                              {/* Tab bar - show if multiple collections (even when editing) */}
-                              {hasMultipleCollections && (
-                                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', gap: 0, overflowX: 'auto', flexShrink: 0 }}>
-                                  {placementData.map(({ collection: c, project }) => {
-                                    const isSelected = c.id === effectiveSelectedId;
-                                    return (
-                                      <button
-                                        key={c.id}
-                                        onClick={() => {
-                                          setSelectedPlacementId(c.id);
-                                          if (isEditingItem && activeTabItem) {
-                                            const pn = activeTabItem.placements?.[c.id]?.notes;
-                                            setEditItemNotes(pn ?? activeTabItem.notes ?? '');
-                                          }
-                                        }}
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 4,
-                                          padding: '6px 10px',
-                                          background: isSelected ? 'var(--bg-glass)' : 'transparent',
-                                          border: 'none',
-                                          borderBottom: isSelected ? '2px solid var(--accent)' : '2px solid transparent',
-                                          marginBottom: -1,
-                                          fontSize: 'var(--text-xs)',
-                                          color: isSelected ? 'var(--text)' : 'var(--text-muted)',
-                                          cursor: 'pointer',
-                                          whiteSpace: 'nowrap',
-                                        }}
-                                      >
-                                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
-                                        <span>{project?.name || 'Unassigned'} / {c.name}</span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                              
-                              {/* Notes content or editor */}
-                              {isEditingItem ? (
-                                <textarea
-                                  value={editItemNotes}
-                                  onChange={(e) => setEditItemNotes(e.target.value)}
-                                  placeholder="Add notes..."
-                                  style={{
-                                    flex: 1,
-                                    minHeight: 150,
-                                    padding: '12px',
-                                    borderRadius: hasMultipleCollections ? '0 0 6px 6px' : 6,
-                                    border: '1px solid var(--border)',
-                                    background: 'var(--bg-input)',
-                                    color: 'var(--text)',
-                                    fontSize: 'var(--text-sm)',
-                                    resize: 'vertical',
-                                    fontFamily: 'inherit',
-                                  }}
-                                />
-                              ) : (
-                                <div style={{ 
-                                  flex: 1,
-                                  padding: 12, 
-                                  background: 'var(--bg-panel)', 
-                                  borderRadius: hasMultipleCollections ? '0 0 6px 6px' : 6,
-                                  fontSize: 'var(--text-sm)',
-                                  whiteSpace: 'pre-wrap',
-                                  overflowY: 'auto',
-                                  color: displayNotes ? 'var(--text)' : 'var(--text-faint)',
-                                  minHeight: 100,
-                                }}>
-                                  {displayNotes || 'No notes yet. Click Edit to add some.'}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                        
-                        {/* Metadata footer */}
-                        <div style={{ 
-                          marginTop: 16, 
-                          paddingTop: 12, 
-                          borderTop: '1px solid var(--border)',
-                          fontSize: 'var(--text-xs)', 
-                          color: 'var(--text-faint)',
-                          display: 'flex',
-                          gap: 16,
-                        }}>
-                          <span>Created: {new Date(activeTabItem.created_at).toLocaleDateString()}</span>
-                          <span>Updated: {new Date(activeTabItem.updated_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                    );
-                  })() : (
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      height: '100%',
-                      color: 'var(--text-faint)',
-                      fontSize: 'var(--text-sm)',
-                    }}>
-                      Select an item from the list to view details
-                    </div>
-                  )}
-                </div>
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    color: 'var(--text-faint)',
+                    fontSize: 'var(--text-sm)',
+                    background: 'var(--bg-panel)'
+                  }}>
+                    Click an item to open it here
+                  </div>
+                ) : (
+                  <GlobalTabSystem 
+                    items={items} 
+                    collections={collections} 
+                    projects={projects} 
+                    tabState={globalTabState} 
+                    onTabStateChange={handleGlobalTabStateChange} 
+                    onUpdateItem={handleUpdateBookmarkWithToast} 
+                    onDeleteBookmark={handleDeleteBookmarkWithToast}
+                    renderListTab={renderListTab}
+                    statusBar={statusBar}
+                    librarySearch={librarySearch}
+                    onOpenItemFromSearch={handleOpenItemTab}
+                  />
+                )}
               </div>
             </div>
           )}
         </div>
 
-        {/* Right Assistant Panel */}
-        <div
-          style={{
-            width: 280,
-            flexShrink: 0,
-            borderLeft: '1px solid var(--border)',
-            background: 'var(--bg-panel)',
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: 0,
-          }}
-        >
-          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', fontSize: 'var(--text-sm)', fontWeight: 600 }}>
-            Assistant
-          </div>
-          <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0 }}>
-            <textarea
-              value={rightPrompt}
-              onChange={(e) => setRightPrompt(e.target.value)}
-              placeholder="Ask AI..."
-              style={{
-                width: '100%',
-                minHeight: 80,
-                border: '1px solid var(--border)',
-                background: 'var(--input-bg)',
-                color: 'var(--text)',
-                borderRadius: 6,
-                padding: '8px',
-                fontSize: 'var(--text-sm)',
-                resize: 'vertical',
-              }}
-            />
-            <button
-              onClick={runRightAssist}
-              disabled={rightRunning}
-              style={{
-                padding: '6px 10px',
-                borderRadius: 6,
-                border: 'none',
-                background: rightRunning ? 'var(--accent-weak)' : 'var(--accent)',
-                color: '#fff',
-                cursor: rightRunning ? 'progress' : 'pointer',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-              }}
-            >
-              {rightRunning ? 'Asking…' : 'Ask'}
-            </button>
-            {rightError && <div style={{ color: '#ef4444', fontSize: 'var(--text-xs)' }}>{rightError}</div>}
-            <div 
-              className="scrollbar" 
-              style={{ 
-                flex: 1, 
-                minHeight: 0, 
-                overflowY: 'auto', 
-                fontSize: 'var(--text-sm)', 
-                color: 'var(--text)', 
-                whiteSpace: 'pre-wrap',
-                padding: 8,
-                background: 'var(--bg)',
-                borderRadius: 6,
-              }}
-            >
-              {rightAnswer || 'Output appears here'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-        {itemTabDeletePending && onDeleteBookmark && (
-          <DeleteConfirmDialog
-            item={itemTabDeletePending.item}
-            collectionId={itemTabDeletePending.placementId}
-            collectionName={
-              itemTabDeletePending.placementId
-                ? collections.find((c) => c.id === itemTabDeletePending.placementId)?.name
-                : undefined
-            }
-            onResult={completeItemTabDelete}
+        {/* Right Panel */}
+        {!isFullPageView && (
+          <RightPanel
+            activeItem={inspectorItem}
+            aiSettings={aiSettings}
+            scopeProjectId={scopeProjectId}
+            scopeCollectionId={scopeCollectionId}
+            searchContext={searchContext}
+            isSearchSurface={isSearchSurface}
+            recentQueries={librarySearch.state.recentQueries}
+            currentSearchQuery={librarySearch.state.query}
+            onRerunSearch={handleRerunSearch}
+            onTestAI={onTestAI}
           />
         )}
+      </div>
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        recentQueries={librarySearch.state.recentQueries}
+        onClose={() => setCommandPaletteOpen(false)}
+        onSearch={(query) => openLibrarySearch(query)}
+      />
     </div>
   );
 };

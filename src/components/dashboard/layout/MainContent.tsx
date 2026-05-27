@@ -7,6 +7,9 @@ import { formatDateTime } from '../../../lib/utils';
 import { DashboardView } from './DashboardLayout';
 import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
+import { ProductSearchView } from '../ProductSearchView';
+import { useLibrarySearch } from '../../../hooks/useLibrarySearch';
+import { type GlobalTabState } from '../GlobalTabSystem';
 import { SettingsView } from '../SettingsView';
 import { ImportStudioView } from '../ImportStudioView';
 import { EnrichmentPanel } from '../EnrichmentPanel';
@@ -21,6 +24,8 @@ import { ItemContextMenu } from '../ItemContextMenu';
 import { List, Grid, ExternalLink, Eye, Pencil, Trash2, Calendar, Plus } from 'lucide-react';
 import { NewProjectModal, NewCollectionModal, NewItemModal } from '../CreateModals';
 import { DeleteConfirmDialog } from '../../DeleteConfirmDialog';
+
+type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
 interface MainContentProps {
   activeView: DashboardView;
@@ -70,6 +75,14 @@ interface MainContentProps {
   onOpenWorkspace?: (workspace: Workspace) => void;
   onOpenListTab?: (type: 'bookmark-list' | 'note-list', itemIds: string[], title: string) => void;
   onAddToCommonListTab?: (type: 'bookmark-list' | 'note-list', itemIds: string[], sectionTitle: string) => void;
+  globalTabState?: GlobalTabState;
+  onGlobalTabStateChange?: (next: GlobalTabState) => void;
+  renderListTab?: (tab: any) => React.ReactNode;
+  statusBar?: React.ReactNode;
+  librarySearch?: LibrarySearchApi;
+  onLibrarySearch?: (query?: string) => void;
+  onLibrarySearchInTab?: (query?: string) => void;
+  onOpenItemFromSearch?: (item: Item) => void;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -108,6 +121,13 @@ export const MainContent: React.FC<MainContentProps> = ({
   onOpenWorkspace,
   onOpenListTab,
   onAddToCommonListTab,
+  globalTabState,
+  onGlobalTabStateChange,
+  renderListTab,
+  statusBar,
+  librarySearch,
+  onLibrarySearchInTab,
+  onOpenItemFromSearch,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -493,7 +513,49 @@ export const MainContent: React.FC<MainContentProps> = ({
   const renderContent = () => {
     switch (activeView) {
       case 'home':
-        return <HomeView />;
+        return (
+          <HomeView
+            items={items}
+            collections={collections}
+            projects={projects}
+            homeState={globalTabState ?? { tabs: [], activeTabId: null, topPct: 40, searchQuery: '', bottomLayout: 'tabs', isSidebarCollapsed: false }}
+            onHomeStateChange={onGlobalTabStateChange ?? (() => {})}
+            onUpdateItem={onUpdateBookmark}
+            onDeleteBookmark={onDeleteBookmark}
+            searchQuery={globalTabState?.searchQuery ?? ''}
+            onSearchQueryChange={(q) => onGlobalTabStateChange?.({ ...globalTabState!, searchQuery: q })}
+            onLibrarySearchInTab={(q) => onLibrarySearchInTab?.(q)}
+            librarySearch={librarySearch}
+            onOpenItemFromSearch={onOpenItemFromSearch}
+            topPct={globalTabState?.topPct ?? 40}
+            onTopPctChange={(pct) => onGlobalTabStateChange?.({ ...globalTabState!, topPct: pct })}
+            renderListTab={renderListTab}
+            statusBar={statusBar}
+          />
+        );
+      case 'search':
+        if (!librarySearch) {
+          return (
+            <div style={{ padding: 24, color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+              Library search is unavailable.
+            </div>
+          );
+        }
+        return (
+          <ProductSearchView
+            items={items}
+            collections={collections}
+            state={librarySearch.state}
+            onQueryChange={librarySearch.setQuery}
+            onFiltersChange={librarySearch.setFilters}
+            onModeChange={librarySearch.setMode}
+            onSelectedItemIdChange={librarySearch.setSelectedItemId}
+            onRunSearch={librarySearch.runSearch}
+            onOpenItem={onOpenItemFromSearch ?? (() => {})}
+            showOpenInTab
+            onOpenInTab={() => onLibrarySearchInTab?.()}
+          />
+        );
       case 'settings':
         return (
           <SettingsView
@@ -885,7 +947,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               <SearchBar
                 value={searchQuery}
                 onChange={setSearchQuery}
-                placeholder="⌘K Search bookmarks..."
+                placeholder="Filter in list..."
               />
             </div>
 
@@ -1752,7 +1814,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               <SearchBar
                 value={searchQuery}
                 onChange={setSearchQuery}
-                placeholder="⌘K Search notes..."
+                placeholder="Filter in list..."
               />
             </div>
 
@@ -2433,7 +2495,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             <SearchBar 
               value={searchQuery} 
               onChange={setSearchQuery} 
-              placeholder="Search workspaces..."
+              placeholder="Filter in list..."
             />
           </div>
 
@@ -2576,7 +2638,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           <SearchBar 
             value={searchQuery} 
             onChange={setSearchQuery} 
-            placeholder={`Search ${activeView}...`}
+            placeholder="Filter in list..."
           />
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <button

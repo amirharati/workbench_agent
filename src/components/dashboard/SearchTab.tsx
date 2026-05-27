@@ -8,15 +8,25 @@ interface SearchTabProps {
   items: Item[];
   collections: Collection[];
   onItemClick?: (item: Item) => void;
+  // When used inside HomeView: seed initial query and report query changes back
+  initialQuery?: string;
+  onQueryChange?: (query: string) => void;
 }
 
 export const SearchTab: React.FC<SearchTabProps> = ({
   items,
   collections,
   onItemClick,
+  initialQuery,
+  onQueryChange,
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialQuery ?? '');
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
+
+  // Keep in sync if initialQuery changes from parent (e.g. hero search reruns)
+  React.useEffect(() => {
+    if (initialQuery !== undefined) setSearchQuery(initialQuery);
+  }, [initialQuery]);
 
   // Filter items based on search query and collection
   const filteredItems = useMemo(() => {
@@ -90,7 +100,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
           <Input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); onQueryChange?.(e.target.value); }}
             placeholder="Search items by title, URL, notes, or tags..."
             style={{
               width: '100%',
@@ -100,7 +110,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={() => { setSearchQuery(''); onQueryChange?.(''); }}
               style={{
                 position: 'absolute',
                 right: '0.5rem',

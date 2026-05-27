@@ -31,8 +31,9 @@ Order is deliberate: **infra before features**, **bookmark volume before retriev
 
 1. **AI infrastructure** — Wire **cloud LLM APIs** first (provider + model + API key in settings; client module; errors/timeouts). Minimal UX (e.g. Settings section + slim **chat or “test prompt” surface**). *No embeddings/RAG required for this milestone.*
 2. **Bookmarks at scale (manual-first)** — **Bulk / manual import** and dedupe against existing `normalizeBookmarkUrl` rules; improve organization UX as library grows.
-3. **AI on bookmarks** — Use infra to **ground** answers in selected bookmarks / library excerpts (titles, notes, optional fetched snippets later); citations visible to the user.
-4. **Later (order TBD)** — Embeddings + vector RAG; optional in-browser embeddings; site capture importers; deeper agentic tools; workspace/study-path features; per-page content script or richer URL-keyed panels.
+3. **AI on bookmarks** — Use infra to **ground** answers in selected bookmarks / library excerpts (titles, notes, optional fetched snippets later); citations visible to the user. **Search dev baseline (Task 04)** exists in Enrichment dev hub; product search UX later.
+4. **V2 (active)** — **UX/UI + data model cleanup first**, then V1 backend refinement (fetch, tuning, automation). See [`BACKLOG.md`](BACKLOG.md) V2-A/B/C and [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
+5. **V3 (deferred)** — Chunk RAG, ANN, concept DAG, cloud embedder; optional in-browser embeddings; deeper agentic tools.
 
 Details and checkboxes live in [`BACKLOG.md`](BACKLOG.md).
 
@@ -91,6 +92,9 @@ Chrome MV3 extension
 - Fetch enrichment service (Task 01): `src/lib/enrichment` shipped with hybrid provider routing (X/video/article), `item_enrichment` IndexedDB store, disk raw cache (`rawRef`), and `buildItemText()` contract for downstream AI categorization.
 - AI extraction tuning (Task 01.5): sourceKind-aware prompts (`v2`/`v2.1`), CLI eval harness (`npm run fetch-ai-eval`) on saved corpus, AI-only rerun path (`reextractAI`), and richer extraction fields (`summary`, `keyPoints`, `improvedTitle`, `tags`) validated in-app.
 - AI categorization V1 (Task 02): app + CLI pipeline shipped with seed taxonomy + discover + topic-extract classify, AI stores (`ai_categories`, `ai_item_category_links`, `ai_item_signals`) and backup/export integration. Current V1 runtime uses **LLM-first** assignment with embeddings as supporting signals.
+- AI pipeline hardening V1.1 (Task 03): incremental classify-by-hash, quality gate tiers, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks toolbar: Results / Enrich / Categories), queue reconcilers, `pending_discover` for no-topic outcomes.
+- Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion, explainable blended rerank; CLI eval (`npm run search-eval`, `embed-incremental`, `search-similar`); **Search (dev)** tab in `PipelineDevView` with score breakdown; discovery layer (similar bookmarks, topics/tags chips, related links). **Dev-only** — product `SearchTab` unchanged; formal weight tuning deferred until fetch/corpus improves.
+- **Doc embedding step (Task 04, shared pipeline):** Incremental backfill of `ai_item_signals.embedding` from title + AI summary (`buildSearchEmbedText` → `embedBackfillPlan.ts`) — app `EmbedBackfillBlock` + CLI `embed-incremental`. Powers search/similar/related today; **categorization shortlist/centroids reuse → V2+** (see backlog).
 
 ---
 
@@ -105,8 +109,10 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Area | Status |
 |------|--------|
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
-| **AI Categorization (V1)** | Shipped via Task 02. **V1.1 (Task 03):** incremental hardening + dev hub done. Next: accept/reject UX, simpler guided workflow, or search foundation. |
-| **Enrichment product UX** | Fetch + pipeline shipped; **Enrichment dev** (Results / Categories on Bookmarks toolbar) works for R&D. Product UX + step guidance still pending. |
+| **V2 — Product (active)** | **V2-A:** major UX/UI — one IA for browse, pipeline, search, AI categories ([`TASK-05`](temp/TASK-05-v2-product-ux.md)). **V2-B:** data model cleanup (notes, AI vs manual). **V2-C:** V1 backend refinement (fetch, tuning, embed unify). **V3:** chunk/ANN/DAG. |
+| **AI Categorization (V1)** | Backend shipped (Tasks 02–03). Product accept/reject + guided workflow → **V2-A**. |
+| **Search (V1.5)** | Backend shipped (Task 04, dev hub). Product hybrid search → **V2-A**; tuning → **V2-C**; chunk/ANN → **V3**. |
+| **Enrichment** | Backend shipped (Task 01). Product UX → **V2-A**; fetch quality → **V2-C**. |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | Recent items works; pinned / favorites / trash mostly placeholders (needs fields + UX). |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
@@ -120,11 +126,11 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Doc | Use |
 |-----|-----|
 | [`BACKLOG.md`](BACKLOG.md) | Prioritized work items (maintain this). |
-| [`CLI_WORKFLOW.md`](CLI_WORKFLOW.md) | Parallel CLI R&D workflow (step-by-step) used across Tasks 01/01.5/02 and future V2 work. |
+| [`CLI_WORKFLOW.md`](CLI_WORKFLOW.md) | Parallel CLI R&D workflow (step-by-step) across Tasks 01–04; search CLI shares `src/lib/search/*` with app. |
 | [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md) | Backup / integrity design (file‑based now; swappable sinks later). |
 | [`workbench_agent.prd`](workbench_agent.prd) | Full PRD; update when roadmap shifts. |
 | `docs/old/` | Archived checkpoints (backlogs, UI plans, status snapshots). |
 
 ---
 
-*Last updated: 2026-05-26 — Tasks 01/01.5/02/03 are in place (fetch + tuned extraction + categorization V1 + hardening/dev hub). Near-term focus shifts to search foundation (still dev UX), with full UX redesign deferred to V2.*
+*Last updated: 2026-05-26 — **V1 backend closed** (Tasks 01–04). **V2 active:** UX/UI first (Task 05), then data model, then V1 refinement. **V3:** scale AI. [`BACKLOG.md`](BACKLOG.md), [`TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).*

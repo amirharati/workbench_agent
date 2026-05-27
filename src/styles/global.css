@@ -11,15 +11,20 @@
   /* ===== Typography ===== */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
-  
-  --text-xs: 0.7rem;      /* 11.2px */
-  --text-sm: 0.8rem;      /* 12.8px */
-  --text-base: 0.875rem;  /* 14px */
-  --text-lg: 1rem;        /* 16px */
-  --text-xl: 1.125rem;    /* 18px */
+
+  /* Font scale — set by JS from user preference (localStorage: workbench-font-scale) */
+  --font-scale: 1;
+
+  --text-xs: calc(0.7rem * var(--font-scale));      /* ~11.2px at 1.0 */
+  --text-sm: calc(0.8rem * var(--font-scale));      /* ~12.8px at 1.0 */
+  --text-base: calc(0.875rem * var(--font-scale));  /* ~14px at 1.0 */
+  --text-lg: calc(1rem * var(--font-scale));        /* ~16px at 1.0 */
+  --text-xl: calc(1.125rem * var(--font-scale));    /* ~18px at 1.0 */
 
   --leading-tight: 1.25;
   --leading-normal: 1.4;
+  /* Reading leading scales with font size for comfortable long-form text */
+  --reading-leading: calc(1.6 * var(--font-scale));
 
   /* ===== Border Radius (Tighter for IDE feel) ===== */
   --radius-sm: 4px;
@@ -155,6 +160,14 @@ body {
 
 [data-theme='light'] .scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
+}
+
+/* Hide scrollbar entirely for tab strips */
+.hide-scrollbar {
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Side panel: saved-copy list — visible track so scrolling is obvious */
@@ -335,4 +348,68 @@ body {
 ::selection {
   background: var(--accent-weak);
   color: var(--text);
+}
+
+/* ===== Reading Content ===== */
+.reading-content {
+  max-width: 680px;
+  margin: 0 auto;
+  line-height: var(--reading-leading);
+  font-size: var(--text-base);
+}
+
+/* ===== Right Panel (minimizable) ===== */
+.right-panel {
+  transition: width 200ms ease;
+  overflow: hidden;
+}
+
+.right-panel-collapsed {
+  width: 8px !important;
+  min-width: 8px !important;
+  cursor: col-resize;
+}
+
+.right-panel-handle {
+  width: 8px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  opacity: 0.4;
+  transition: opacity 150ms ease;
+}
+
+.right-panel-handle:hover {
+  opacity: 1;
+}
+
+/* ===== Status Bar ===== */
+@keyframes statusBarSlideIn {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+.status-bar-message {
+  animation: statusBarSlideIn 200ms ease forwards;
+}
+
+/* ===== Toast Animations ===== */
+@keyframes toastSlideIn {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes toastFadeOut {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
+}
+
+.toast-enter {
+  animation: toastSlideIn 250ms ease forwards;
+}
+
+.toast-exit {
+  animation: toastFadeOut 250ms ease forwards;
 }

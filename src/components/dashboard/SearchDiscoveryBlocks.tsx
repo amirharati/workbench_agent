@@ -25,6 +25,7 @@ function LinkRow({
   score,
   url,
   onSelect,
+  hideScore,
 }: {
   title: string;
   domain: string;
@@ -32,6 +33,7 @@ function LinkRow({
   score?: number;
   url?: string;
   onSelect?: () => void;
+  hideScore?: boolean;
 }) {
   return (
     <div
@@ -64,7 +66,7 @@ function LinkRow({
         <div style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}>
           {domain}
           {category ? ` · ${category}` : ''}
-          {score != null ? ` · ${score.toFixed(2)}` : ''}
+          {!hideScore && score != null ? ` · ${score.toFixed(2)}` : ''}
         </div>
       </div>
       {url ? (
@@ -87,12 +89,17 @@ export function SearchRelatedPanel({
   onTopicClick,
   onTagClick,
   onRelatedClick,
+  variant = 'dev',
 }: {
   related: SearchRelatedFacets;
   onTopicClick?: (name: string) => void;
   onTagClick?: (tag: string) => void;
   onRelatedClick?: (itemId: string, title: string) => void;
+  variant?: 'dev' | 'product';
 }) {
+  const hideScore = variant === 'product';
+  const chipFontSize = variant === 'product' ? 'var(--text-xs)' : 'var(--dev-fs-caption)';
+  const sectionFontSize = variant === 'product' ? 'var(--text-sm)' : 'var(--dev-fs-sm)';
   const hasTopics = related.topics.length > 0;
   const hasTags = related.tags.length > 0;
   const hasRelated = related.relatedLinks.length > 0;
@@ -112,7 +119,7 @@ export function SearchRelatedPanel({
       <h3
         style={{
           margin: '0 0 10px',
-          fontSize: 'var(--dev-fs-sm)',
+          fontSize: sectionFontSize,
           fontWeight: 700,
           textTransform: 'uppercase',
           letterSpacing: '0.04em',
@@ -138,7 +145,7 @@ export function SearchRelatedPanel({
               <button
                 key={t.categoryId}
                 type="button"
-                style={chipStyle}
+                style={{ ...chipStyle, fontSize: chipFontSize }}
                 onClick={() => onTopicClick?.(t.name)}
                 title={t.source === 'query' ? 'Matched by query' : 'From top results'}
               >
@@ -166,7 +173,7 @@ export function SearchRelatedPanel({
               <button
                 key={t.tag}
                 type="button"
-                style={chipStyle}
+                style={{ ...chipStyle, fontSize: chipFontSize }}
                 onClick={() => onTagClick?.(t.tag)}
               >
                 {t.tag}
@@ -196,6 +203,7 @@ export function SearchRelatedPanel({
               category={row.primaryCategoryName}
               score={row.breakdown.finalScore}
               url={row.url}
+              hideScore={hideScore}
               onSelect={
                 onRelatedClick
                   ? () => onRelatedClick(row.itemId, row.title || row.itemId)

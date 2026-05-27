@@ -39,6 +39,7 @@ Use `docs/temp/README.md` as queue/status source of truth.
 - Experiment outputs (gitignored large artifacts):
   - `data/experiments/enrich-fetch/...`
   - `data/experiments/categorize/...`
+  - `data/experiments/search/...` (eval + embed backfill runs)
 - Task specs and handoff docs:
   - `docs/temp/TASK-*.md`
 
@@ -118,14 +119,40 @@ Use the return template embedded in each `TASK-*.md`.
 
 ---
 
-## Current chain (as of Task 03)
+## AI pipeline order (app + CLI)
+
+End-to-end dev pipeline as of Task 04:
+
+```text
+import / items
+  → fetch (Task 01)           scripts/enrich-fetch/
+  → AI extract (Task 01.5)    item_enrichment (summary, tags, …)
+  → doc embed (Task 04)       ai_item_signals.embedding  ← shared step
+  → classify / discover (02–03)  ai_item_category_links, taxonomy
+  → search / similar (04)     hybrid retrieval + discovery
+```
+
+**Doc embedding** is a **first-class stage** (not only a side effect of classify). Same logic in app and CLI — do not fork.
+
+| Stage | Shared modules | App (dev) | CLI |
+|-------|----------------|-----------|-----|
+| Embed queue | `embedBackfillPlan.ts`, `searchEmbedText.ts` | `embedItemSignal.ts`, `EmbedBackfillBlock` | `npm run embed-incremental` |
+| Search | `src/lib/search/*` | Search (dev) tab in `PipelineDevView` | `npm run search-eval`, `search-similar` |
+
+**Prerequisite for hybrid search eval:** items need `ai_item_signals.embedding` (run embed backfill on backup or app first). Corpus-only classify experiments often have **0 embeddings** — eval falls back to lexical + category only.
+
+**Return later (V2+):** auto-embed after extract; unify embed text with `buildItemText` for categorize shortlist/centroids; Web Worker batches; ANN index. See `docs/backlog.md` → **AI — V2+**.
+
+---
+
+## Current chain (as of Task 04)
 
 - **Task 01**: fetch enrichment service + storage split + hybrid fetch
 - **Task 01.5**: AI extraction prompt tuning + eval harness + AI-only rerun
 - **Task 02**: AI categorization V1 (seed/discover/classify, app + CLI)
 - **Task 03**: V1.1 pipeline hardening — incremental classify, quality gate, run stats, discover CLI loop, **Enrichment dev hub** (Results / Categories), queue reconcilers, `pending_discover` for no-topic outcomes
-- **Task 04 (closed)**: V1.5 search foundation — hybrid retrieval, discovery (similar/related), dev Search tab. **CLI = app core:** `npm run search-eval`, `embed-incremental`, `search-similar` run via **tsx** and import `src/lib/search/*` + `embedBackfillPlan.ts` directly.
-- **Next:** fetch/enrichment improvement (pipeline bottleneck); search tuning deferred (`04-defer-*` in task return).
+- **Task 04 (closed)**: V1.5 search foundation + **shared doc-embed step** — hybrid retrieval, discovery (similar/related), dev Search tab. **CLI = app core:** `search-eval`, `embed-incremental`, `search-similar` via **tsx** → `src/lib/search/*` + `src/lib/enrichment/embedBackfillPlan.ts`.
+- **V2 (active):** product UX/UI first ([`TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md)); V1 backend refinement (fetch, tuning, embed unify) in **V2-C**; scale AI in **V3**.
 
 See:
 
@@ -136,26 +163,57 @@ See:
 - `docs/temp/TASK-03-v1.1-pipeline-hardening.md`
 - `docs/temp/TASK-04-search-foundation-v1.5.md`
 
+## Doc embedding step (shared pipeline)
+
+**Input:** `items` + `item_enrichment` where `aiStatus === 'ok'`, text from `buildSearchEmbedText(item, enrichment)` (title + summary, min length 24).
+
+**Output:** `ai_item_signals` with `embedding`, `embeddingModel`, `textHash` (skip re-embed when hash unchanged).
+
+**API:** OpenRouter embeddings (`src/lib/ai/openrouterEmbeddings.ts`), model `DEFAULT_EMBEDDING_MODEL` from categorization service.
+
+### Embed CLI
+
+```bash
+# Plan only (counts pending / skipped)
+npm run embed-incremental -- --backup ~/Documents/testing/latest.json --dry-run
+
+# Backfill (writes updated backup + run-stats under data/experiments/search/embed-*)
+npm run embed-incremental -- --backup ~/Documents/testing/latest.json --run-embed --max 100
+```
+
+Options: `--backup`, `--out`, `--max`, `--dry-run`, `--run-embed`. Requires `.env` with embedding API key (same as app AI settings pattern in CLI).
+
+**Consumers today:** hybrid search candidate path, `findSimilarItems`, search-related links, query embedding at search time.
+
+**Consumers later (V2+ backlog):** category shortlist, centroid refresh, duplicate-category merge — reuse same vectors once embed/classify text is unified.
+
+---
+
 ### Search CLI (Task 04 — same core as app)
 
 | Command | Purpose |
 |---------|---------|
-| `npm run search-eval -- --backup ~/Documents/testing/latest.json [--run-embed] [--with-related]` | Hybrid vs lexical eval; outputs under `data/experiments/search/` |
-| `npm run embed-incremental -- --backup <path> [--run-embed]` | Backfill vectors into backup (uses `embedBackfillPlan.ts`) |
-| `npm run search-similar -- --backup <path> --item-id <id>` | Similar-items for one bookmark (uses `findSimilar.ts`) |
+| `npm run embed-incremental -- --backup <path> [--run-embed] [--max N]` | **Run first** when backup lacks vectors; shared embed queue |
+| `npm run search-eval -- --backup <path> [--run-embed] [--with-related]` | Hybrid vs lexical eval; outputs under `data/experiments/search/eval-*` |
+| `npm run search-similar -- --backup <path> --item-id <id>` | Similar-items for one bookmark (`findSimilar.ts`) |
 
-**Parity rule:** search ranking, similar-items, embed queue logic live in `src/lib/search/` and `src/lib/enrichment/embedBackfillPlan.ts` only. CLI scripts are thin IO + env wrappers (`tsx`).
+**Parity rule:** embed queue in `src/lib/enrichment/embedBackfillPlan.ts` (+ `embedItemSignal.ts` for app writes). Search ranking in `src/lib/search/*` only. CLI scripts are thin IO + env wrappers (`tsx`).
 
 ---
 
-## V2 / future use
+## V2-C / V3 (backlog pointers)
 
-This workflow remains the default for:
+**V2-C** = V1 backend refinement (CLI still valid). **V3** = scale AI. Track in `docs/backlog.md`:
 
-- retrieval quality experiments (hybrid search tuning)
-- ANN threshold and index experiments
-- chunking strategy tests
-- cloud/offload A/B tests
+| ID / theme | What to revisit |
+|------------|-----------------|
+| `04-defer-1` … `04-defer-3` | Re-run `search-eval` after corpus has embeddings; weight tuning; spot-check doc |
+| `04-defer-4` | Product `SearchTab` / item UX (not dev hub) |
+| Embed unify | One embed text + queue for search **and** categorize (today: `buildSearchEmbedText` vs `buildItemText`) |
+| Auto-embed | Queue embed after successful AI extract / import |
+| Centroids / ANN | Category centroids from shared vectors; WASM ANN when brute-force too slow |
+| Chunk RAG | Chunk store + two-stage retrieval (coarse doc → fine chunk) |
+| Pluggable `Embedder` | Local vs cloud swap without app rewire |
 
 Always validate in CLI first, then migrate only stable behavior into app code.
 
