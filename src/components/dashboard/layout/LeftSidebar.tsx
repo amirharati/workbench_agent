@@ -9,10 +9,12 @@ import {
   ChevronDown,
   Folder,
   Terminal,
+  Upload,
   Plus,
   Trash2,
   Home,
   Search,
+  Tags,
 } from 'lucide-react';
 import { DashboardView } from './DashboardLayout';
 import type { Collection, Item, Project } from '../../../lib/db';
@@ -95,6 +97,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       title: 'Tools',
       items: [
         { icon: Search, label: 'Search', id: 'search' },
+        { icon: Upload, label: 'Import Studio', id: 'import-studio' },
+        { icon: Tags, label: 'AI Categories', id: 'ai-categories' },
         { icon: Terminal, label: 'Tab Commander', id: 'tab-commander' },
         { icon: Settings, label: 'Settings', id: 'settings' },
       ],

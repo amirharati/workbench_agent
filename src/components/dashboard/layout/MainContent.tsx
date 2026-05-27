@@ -9,8 +9,12 @@ import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
 import { ProductSearchView } from '../ProductSearchView';
 import { useLibrarySearch } from '../../../hooks/useLibrarySearch';
+import { usePipelineBadgeMap } from '../../../hooks/usePipelineBadgeMap';
+import type { CategoryBrowseFilter, PipelineBrowseFilter, PipelineQueueKind } from '../../../lib/pipeline';
+import { ItemPipelineBadge } from '../PipelineDisplayBlocks';
 import { type GlobalTabState } from '../GlobalTabSystem';
 import { SettingsView } from '../SettingsView';
+import { AiCategoriesView } from '../AiCategoriesView';
 import { ImportStudioView } from '../ImportStudioView';
 import { EnrichmentPanel } from '../EnrichmentPanel';
 import { TabCommanderView } from '../TabCommanderView';
@@ -83,6 +87,14 @@ interface MainContentProps {
   onLibrarySearch?: (query?: string) => void;
   onLibrarySearchInTab?: (query?: string) => void;
   onOpenItemFromSearch?: (item: Item) => void;
+  categoryBrowse?: CategoryBrowseFilter | null;
+  onClearCategoryBrowse?: () => void;
+  onBrowseCategory?: (categoryId: string, name: string) => void;
+  pipelineBrowse?: PipelineBrowseFilter | null;
+  onClearPipelineBrowse?: () => void;
+  onPipelineBrowse?: (kind: PipelineQueueKind) => void;
+  onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
+  onSelectView?: (view: DashboardView) => void;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -128,6 +140,14 @@ export const MainContent: React.FC<MainContentProps> = ({
   librarySearch,
   onLibrarySearchInTab,
   onOpenItemFromSearch,
+  categoryBrowse,
+  onClearCategoryBrowse,
+  onBrowseCategory,
+  pipelineBrowse,
+  onClearPipelineBrowse,
+  onPipelineBrowse,
+  onBatchProcessQueue,
+  onSelectView,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -223,6 +243,16 @@ export const MainContent: React.FC<MainContentProps> = ({
         (item.collectionIds || []).some(cid => projectCollectionIds.has(cid))
       );
     }
+
+    if (categoryBrowse) {
+      const allowed = new Set(categoryBrowse.itemIds);
+      filtered = filtered.filter((item) => allowed.has(item.id));
+    }
+
+    if (pipelineBrowse) {
+      const allowed = new Set(pipelineBrowse.itemIds);
+      filtered = filtered.filter((item) => allowed.has(item.id));
+    }
     
     // Filter by search
     if (searchQuery.trim()) {
@@ -238,7 +268,13 @@ export const MainContent: React.FC<MainContentProps> = ({
     }
     
     return filtered.sort((a, b) => b.updated_at - a.updated_at);
-  }, [activeView, bookmarkItems, collections, selectedBookmarkProjectId, searchQuery, scopeCollectionId]);
+  }, [activeView, bookmarkItems, collections, selectedBookmarkProjectId, searchQuery, scopeCollectionId, categoryBrowse, pipelineBrowse]);
+
+  const bookmarkBadgeIds = useMemo(() => {
+    if (activeView !== 'bookmarks') return [];
+    return filteredBookmarkItems.map((i) => i.id);
+  }, [activeView, filteredBookmarkItems]);
+  const bookmarkBadgeMap = usePipelineBadgeMap(bookmarkBadgeIds);
 
   // Notes are items without URLs (bookmark notes stay in Bookmarks view).
   const notesItems = useMemo(() => {
@@ -510,6 +546,76 @@ export const MainContent: React.FC<MainContentProps> = ({
     }
   };
 
+  const renderBrowseFilterChips = () => {
+    if (!categoryBrowse && !pipelineBrowse) return null;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+        {categoryBrowse && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 10px',
+              borderRadius: 999,
+              border: '1px solid var(--accent)',
+              background: 'var(--accent-weak)',
+              color: 'var(--accent)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+            }}
+          >
+            Category: {categoryBrowse.name}
+            <span style={{ color: 'var(--text-faint)', fontWeight: 500 }}>
+              ({filteredBookmarkItems.length})
+            </span>
+          </span>
+        )}
+        {pipelineBrowse && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 10px',
+              borderRadius: 999,
+              border: '1px solid var(--accent)',
+              background: 'var(--accent-weak)',
+              color: 'var(--accent)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+            }}
+          >
+            {pipelineBrowse.label}
+            <span style={{ color: 'var(--text-faint)', fontWeight: 500 }}>
+              ({filteredBookmarkItems.length})
+            </span>
+          </span>
+        )}
+        {(onClearCategoryBrowse && categoryBrowse) || (onClearPipelineBrowse && pipelineBrowse) ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (categoryBrowse) onClearCategoryBrowse?.();
+              if (pipelineBrowse) onClearPipelineBrowse?.();
+            }}
+            style={{
+              padding: '2px 8px',
+              borderRadius: 4,
+              border: '1px solid var(--border)',
+              background: 'transparent',
+              color: 'var(--text-muted)',
+              fontSize: 'var(--text-xs)',
+              cursor: 'pointer',
+            }}
+          >
+            Clear filter
+          </button>
+        ) : null}
+      </div>
+    );
+  };
+
   const renderContent = () => {
     switch (activeView) {
       case 'home':
@@ -531,6 +637,9 @@ export const MainContent: React.FC<MainContentProps> = ({
             onTopPctChange={(pct) => onGlobalTabStateChange?.({ ...globalTabState!, topPct: pct })}
             renderListTab={renderListTab}
             statusBar={statusBar}
+            onBrowseCategory={onBrowseCategory}
+            onPipelineBrowse={onPipelineBrowse}
+            onBatchProcessQueue={onBatchProcessQueue}
           />
         );
       case 'search':
@@ -583,6 +692,17 @@ export const MainContent: React.FC<MainContentProps> = ({
             onCloseTab={onCloseTab}
             onCloseWindow={onCloseWindow}
             onRefresh={onRefresh}
+          />
+        );
+      case 'ai-categories':
+        return <AiCategoriesView onBrowseCategory={onBrowseCategory} />;
+      case 'import-studio':
+        return (
+          <ImportStudioView
+            projects={projects}
+            collections={collections}
+            onBack={() => onSelectView?.('bookmarks')}
+            onImported={onRefresh}
           />
         );
       case 'projects':
@@ -949,6 +1069,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                 onChange={setSearchQuery}
                 placeholder="Filter in list..."
               />
+              {renderBrowseFilterChips()}
             </div>
 
             <Panel
@@ -1239,6 +1360,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                               flexShrink: 0,
                               alignItems: 'center',
                             }}>
+                              <ItemPipelineBadge badge={bookmarkBadgeMap.get(item.id)} />
                               {collection && (
                                 <span style={{
                                   padding: '2px 6px',
@@ -1407,6 +1529,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                               overflow: 'hidden',
                               alignItems: 'center',
                             }}>
+                              <ItemPipelineBadge badge={bookmarkBadgeMap.get(item.id)} />
                               {collection && (
                                 <span style={{
                                   padding: '2px 6px',
@@ -2640,6 +2763,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onChange={setSearchQuery} 
             placeholder="Filter in list..."
           />
+          {activeView === 'bookmarks' && renderBrowseFilterChips()}
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <button
               onClick={() => activeView === 'bookmarks' ? setShowAddBookmark(true) : setShowAddNote(true)}
@@ -2719,8 +2843,16 @@ export const MainContent: React.FC<MainContentProps> = ({
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
                   }}>
-                    {item.title || 'Untitled'}
+                    {activeView === 'bookmarks' && (
+                      <ItemPipelineBadge badge={bookmarkBadgeMap.get(item.id)} />
+                    )}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.title || 'Untitled'}
+                    </span>
                   </span>
                   {item.url && (
                     <span style={{ 
@@ -2790,7 +2922,9 @@ export const MainContent: React.FC<MainContentProps> = ({
     }}>
       {/* Wrapper header is only shown for views that don't render their own header. */}
       {!(activeView === 'projects' && selectedProjectId !== null) &&
-        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings'].includes(activeView) && (
+        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings', 'ai-categories', 'import-studio'].includes(
+          activeView
+        ) && (
           <div style={{ 
             marginBottom: '8px', 
             display: 'flex', 

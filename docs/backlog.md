@@ -56,7 +56,8 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **Fetch enrichment v1 (Task 01 — closed 2026-05-20):** Plug-and-play `src/lib/enrichment/` service — hybrid fetch (X CDN→syndication, video/article local→jina), IDB `item_enrichment` + disk cache, OpenRouter AI extract, `buildItemText()` for Task 02. CLI experiments complete. Dev UI only (Enrich/Results modals) — **product UX TBD**. Spec: [`docs/temp/TASK-01-fetch-enrichment-v1.md`](temp/TASK-01-fetch-enrichment-v1.md).
 - **AI extraction tuning + eval harness (Task 01.5 — closed 2026-05-24):** SourceKind-aware prompt package (`v2`/`v2.1`), CLI eval harness over saved bodies (`npm run fetch-ai-eval`), AI-only rerun (`reextractAI`), `buildItemText` upgrades (summary + key points), and in-app validation on review flow. Spec: [`docs/temp/TASK-01.5-ai-extraction-tuning.md`](temp/TASK-01.5-ai-extraction-tuning.md).
 - **V1.5 search foundation (Task 04 — closed 2026-05-26):** Hybrid retrieval (`src/lib/search/`) — lexical + doc embedding + category expansion, explainable rerank, CLI eval (`npm run search-eval`), Search (dev) tab + discovery (similar items, topics/tags, related links). Dev-only — product search UX deferred to V2. Spec + return: [`docs/temp/TASK-04-search-foundation-v1.5.md`](temp/TASK-04-search-foundation-v1.5.md).
-- **Doc embedding step (Task 04 — shared pipeline stage):** Incremental backfill of `ai_item_signals.embedding` from **title + AI summary** (`buildSearchEmbedText`, `embedBackfillPlan.ts`) — same queue in app (`EmbedBackfillBlock`) and CLI (`npm run embed-incremental`). Powers hybrid search, similar-items, and related-links; **reuse for categorize shortlist/centroids deferred to V2+** (see AI — V2).
+- **Doc embedding step (Task 04 — shared pipeline stage):** Incremental backfill of `ai_item_signals.embedding` from **title + AI summary** (`buildSearchEmbedText`, `embedBackfillPlan.ts`) — same queue in app (`EmbedBackfillBlock`) and CLI (`npm run embed-incremental`). Powers hybrid search, similar-items, and related-links; **reuse for categorize shortlist/centroids deferred to V2+** (see AI — V3).
+- **V2-A product UX (partial — Task 05):** **05.1** Home + right panel + toasts; **05.2** product hybrid search; **05.3** read-only enrichment/pipeline in item tabs, Inspector, lists, Home digest/overview. Favorites/pins still placeholders. Spec: [`temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ---
 
@@ -149,20 +150,27 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ### V2-A — UX / UI (umbrella — **TASK-05**)
 
-**Start with [`TASK-05.0`](../temp/TASK-05-v2-product-ux.md#task-050--uxui-review--brainstorm-do-this-first):** A→Z review/brainstorm (workflows W1–W8), IA map, **product vs dev UI** (dev stays parallel → later Advanced/Debug). Then implementation **subtasks** 05.1… (see task brief).
+**Policy:** Product workflows first using **existing V1 stores**; **favorites/pins/trash** stay **coming-soon placeholders** (no schema work during UI pass). Track deferred work: [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).
 
-Workflow areas (brainstorm checklist):
+| Subtask | Status | Focus |
+|---------|--------|--------|
+| 05.0 spec | done | [`V2-PRODUCT-DESIGN-SPEC.md`](temp/V2-PRODUCT-DESIGN-SPEC.md) |
+| 05.1 shell | done (iter 1) | Home, right panel, toasts |
+| 05.2 search | done | W5 |
+| **05.3 enrichment UI** | **done** | W1 read paths — presentation polish → D-40 |
+| **05.4 category review** | **done** | Accept/reject in Inspector; split Home digest queues; Tools → AI Categories page |
+| **05.5 single-link digest** | **done** | Auto digest on save/update; hash-aware skip; side panel AI panel; Inspector retry/re-digest |
+| 05.6 import/batch maintenance | deferred | W3/W4 → tracker D-21…D-22 |
+| 05.7–05.8 shell / Advanced gate | later | |
 
-- [ ] **W1 Daily library** — assume digested corpus; browse, filter, item detail, Ask AI
-- [ ] **W2 Single-link digest** — save one URL → fetch/extract/embed/classify UX
-- [ ] **W3 Batch import** — Import Studio + post-commit processing
-- [ ] **W4 Post-processing** — rerun AI, re-embed, re-classify, batch maintenance
-- [ ] **W5 Search & discovery** — product hybrid search + similar/related
-- [ ] **W6 User signals** — accept/reject categories, corrections, future ranking hints
-- [ ] **W7 Shell & focus** — clean default UI; power under Advanced ([`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md))
-- [ ] **W8 Settings & trust** — keys, backup, budgets
+Workflow checklist (product, no new schema first):
 
-Implementation subtasks (order TBD after 05.0): search (05.1), daily browse (05.2), single digest (05.3), import batch (05.4), maintenance panel (05.5), user signals (05.6), shell (05.7), Advanced/dev gate (05.8).
+- [x] **W5 Search** — 05.2
+- [x] **W1 Daily library (core)** — 05.3 read + 05.4 review/browse; polish **D-40** optional
+- [x] **W6 User signals (MVP)** — accept/reject in Inspector (05.4); Change category / un-accept deferred
+- [ ] **W7 Shell** — partial (05.1); polish optional
+- [x] **W2 Single digest** — 05.5 (hash-aware digest, side panel panel, toasts); auth fetch → **D-25**
+- [ ] **W3 / W4** — import + maintenance ([`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md))
 
 ### V2-B — Data model cleanup
 
@@ -245,4 +253,4 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ---
 
-*Last updated: 2026-05-26 — **V1 backend closed** (Tasks 01–04). **V2 active:** UX/UI first (Task 05 draft), then data model cleanup, then V1 backend refinement. **V3:** chunk/ANN/DAG/cloud. See [`TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).*
+*Last updated: 2026-05-27 — **V2-A:** 05.1–05.5 shipped. **Next:** D-40 / D-41 polish, 05.6 batch, or D-25 auth fetch. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*

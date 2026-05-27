@@ -3,6 +3,7 @@ import { Save, RefreshCw } from 'lucide-react';
 import { Collection, Item, Project, normalizeBookmarkUrl } from '../lib/db';
 import { Panel, Input, ButtonGhost, ButtonPrimary, Divider } from '../styles/primitives';
 import { isValidHttpUrl } from '../lib/utils';
+import { SidePanelDigestPanel } from './SidePanelDigestPanel';
 
 interface SidePanelViewProps {
   projects: Project[];
@@ -17,6 +18,12 @@ interface SidePanelViewProps {
   onOpenFullPage: () => void;
   onSetAsBrowserHome: () => Promise<void>;
   status: string;
+  digestItemId?: string | null;
+  digestStatus?: string;
+  onRunDigest?: (
+    itemId: string,
+    opts?: { forceEnrich?: boolean }
+  ) => Promise<{ message: string; failed: boolean }>;
 }
 
 export const SidePanelView: React.FC<SidePanelViewProps> = ({
@@ -32,6 +39,9 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   onOpenFullPage,
   onSetAsBrowserHome,
   status,
+  digestItemId,
+  digestStatus,
+  onRunDigest,
 }) => {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
@@ -122,6 +132,20 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     [matchingItems, selectedExistingItemId]
   );
   const hasExistingForUrl = matchingItems.length > 0;
+
+  const pipelineItemId = useMemo(() => {
+    if (digestItemId) return digestItemId;
+    if (
+      selectedExistingItemId &&
+      matchingItems.some((item) => item.id === selectedExistingItemId)
+    ) {
+      return selectedExistingItemId;
+    }
+    return matchingItems[0]?.id ?? null;
+  }, [digestItemId, selectedExistingItemId, matchingItems]);
+
+  const showPipelinePanel =
+    !!pipelineItemId && !!url.trim() && isValidHttpUrl(url.trim());
 
   // Auto-set collection when project changes, but not in new copy mode (user must pick explicitly)
   useEffect(() => {
@@ -409,7 +433,18 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   }, []);
 
   return (
-    <div style={{ padding: '0.65rem', display: 'flex', flexDirection: 'column', gap: '0.65rem', color: 'var(--text)' }}>
+    <div
+      style={{
+        padding: '0.65rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.65rem',
+        color: 'var(--text)',
+        minHeight: '100vh',
+        boxSizing: 'border-box',
+      }}
+    >
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
       <div
         style={{
           fontSize: 'var(--text-xs)',
@@ -857,7 +892,20 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         </ButtonPrimary>
       </Panel>
 
-      <Divider style={{ margin: '0.25rem 0' }} />
+      </div>
+
+      {showPipelinePanel && pipelineItemId ? (
+        <SidePanelDigestPanel
+          itemId={pipelineItemId}
+          statusLabel={
+            digestItemId === pipelineItemId ? digestStatus || status : undefined
+          }
+          onOpenInApp={onOpenFullPage}
+          onRunDigest={onRunDigest}
+        />
+      ) : null}
+
+      <Divider style={{ margin: '0.25rem 0', flexShrink: 0 }} />
 
       <ButtonGhost
         onClick={onOpenFullPage}
@@ -869,6 +917,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           padding: '0.75rem',
           fontSize: 'var(--text-sm)',
           fontWeight: 500,
+          flexShrink: 0,
         }}
       >
         <RefreshCw size={16} /> Open Dashboard
@@ -879,6 +928,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           padding: '0.55rem',
           fontSize: 'var(--text-xs)',
           fontWeight: 500,
+          flexShrink: 0,
         }}
       >
         Set Workbench as Home

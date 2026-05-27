@@ -56,10 +56,11 @@ export function titleLooksWeak(title: string, url: string): boolean {
 export function checkEligibility(
   item: Item,
   enrichment?: ItemEnrichment | null,
-  options?: { force?: boolean }
+  options?: { force?: boolean; refetchCompare?: boolean }
 ): EligibilityResult {
   const url = (item.url || '').trim();
   const force = options?.force === true;
+  const refetchCompare = options?.refetchCompare === true;
 
   if (!url) {
     return { eligible: false, reason: 'no_url' };
@@ -87,7 +88,17 @@ export function checkEligibility(
   const textHash = hashText(localBundle);
   const weakTitle = titleLooksWeak(item.title, url);
 
-  if (!force && enrichment?.textHash === textHash && enrichment.status === 'ok') {
+  const hasPriorFetch =
+    enrichment?.status === 'ok' && typeof enrichment.contentHash === 'string';
+
+  // Saved page snapshot: always re-fetch and compare content hash (single digest, import, batch).
+  if (
+    !force &&
+    !refetchCompare &&
+    !hasPriorFetch &&
+    enrichment?.textHash === textHash &&
+    enrichment.status === 'ok'
+  ) {
     return {
       eligible: false,
       reason: 'unchanged',
@@ -104,7 +115,7 @@ export function checkEligibility(
       sourceKind === 'x' &&
       localLen < ENRICHMENT_DEFAULTS.richLocalMinChars * 2 &&
       !localBundle.includes('\n\n');
-    if (!xThin) {
+    if (!xThin && !hasPriorFetch) {
       return {
         eligible: true,
         skipFetch: true,
@@ -116,6 +127,7 @@ export function checkEligibility(
 
   if (
     !force &&
+    !hasPriorFetch &&
     sourceKind === 'x' &&
     localLen >= 200 &&
     (localBundle.includes('http') || localBundle.length >= 280)

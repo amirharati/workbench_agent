@@ -22,6 +22,10 @@ import {
 } from './lib/db';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
+import {
+  runSingleLinkDigest,
+  type SingleLinkDigestResult,
+} from './lib/pipeline/singleLinkDigest';
 import { BackupOnboardingModal } from './components/BackupOnboardingModal';
 import {
   shouldShowBackupOnboarding,
@@ -54,6 +58,8 @@ function App() {
   const [isSidePanel, setIsSidePanel] = useState(false);
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
   const [status, setStatus] = useState('');
+  const [digestItemId, setDigestItemId] = useState<string | null>(null);
+  const [digestStatus, setDigestStatus] = useState('');
   const [showBackupOnboarding, setShowBackupOnboarding] = useState(false);
   const [backupFolderReady, setBackupFolderReady] = useState(false);
   const [backupFolderName, setBackupFolderName] = useState<string | null>(null);
@@ -265,10 +271,39 @@ function App() {
     };
   }, []);
 
-  // Handlers
-  const showStatus = (msg: string) => {
+  const statusClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showStatus = (msg: string, holdMs = 2500) => {
+    if (statusClearRef.current) clearTimeout(statusClearRef.current);
     setStatus(msg);
-    setTimeout(() => setStatus(''), 2000);
+    statusClearRef.current = setTimeout(() => setStatus(''), holdMs);
+  };
+
+  const startSingleLinkDigest = (
+    itemId: string,
+    opts?: { forceEnrich?: boolean }
+  ): Promise<SingleLinkDigestResult> => {
+    setDigestItemId(itemId);
+    setDigestStatus('Starting digest…');
+    return runSingleLinkDigest(itemId, {
+      forceEnrich: opts?.forceEnrich,
+      onProgress: (p) => {
+        setDigestStatus(p.label);
+        showStatus(p.label, 12_000);
+      },
+    })
+      .then(async (r) => {
+        setDigestStatus(r.message);
+        showStatus(r.message, 5000);
+        await loadData();
+        return r;
+      })
+      .catch((error) => {
+        const msg = toStatusMessage(error, 'Digest failed');
+        setDigestStatus(msg);
+        showStatus(msg, 5000);
+        throw error;
+      });
   };
 
   const toStatusMessage = (error: unknown, fallback: string) => {
@@ -292,14 +327,15 @@ function App() {
         });
         
         if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
-          showStatus('Already saved in this collection');
+          showStatus('Already saved in this collection — digesting…', 4000);
         } else if (result.merged && result.addedToCollections.length > 0) {
-          showStatus('Added to collection (link already saved elsewhere)');
+          showStatus('Added to collection — digesting…', 4000);
         } else {
-          showStatus('Tab saved!');
+          showStatus('Tab saved — digesting…', 4000);
         }
-        
+
         await loadData();
+        startSingleLinkDigest(result.itemId);
       } catch (error) {
         showStatus(toStatusMessage(error, 'Could not save tab'));
       }
@@ -308,36 +344,27 @@ function App() {
     }
   };
 
-  const handleAddBookmark = async (url: string, title?: string, collectionId?: string) => {
+  /** Full-app bookmark add (digest + toast run in DashboardLayout). Returns item id for http(s) saves. */
+  const handleAddBookmark = async (
+    url: string,
+    title?: string,
+    collectionId?: string
+  ): Promise<string | undefined> => {
     if (!url || !/^https?:\/\//i.test(url)) {
-      showStatus('Please enter a valid http(s) URL');
-      return;
+      return undefined;
     }
     const cleanTitle = title && title.trim().length > 0 ? title.trim() : url;
     const collectionIds = collectionId ? [collectionId] : [];
-    try {
-      const result = await addItemWithMerge({
-        url,
-        title: cleanTitle,
-        favicon: undefined,
-        tags: [],
-        source: 'manual',
-        collectionIds,
-      });
-      
-      // Provide clear feedback based on what happened
-      if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
-        showStatus('Already saved in this collection');
-      } else if (result.merged && result.addedToCollections.length > 0) {
-        showStatus('Added to collection (link already saved elsewhere)');
-      } else {
-        showStatus('Bookmark added');
-      }
-      
-      await loadData();
-    } catch (error) {
-      showStatus(toStatusMessage(error, 'Could not add bookmark'));
-    }
+    const result = await addItemWithMerge({
+      url,
+      title: cleanTitle,
+      favicon: undefined,
+      tags: [],
+      source: 'manual',
+      collectionIds,
+    });
+    await loadData();
+    return result.itemId;
   };
 
   const handleUpdateBookmark = async (
@@ -348,7 +375,13 @@ function App() {
     try {
       await updateItem(id, updates, options);
       await loadData();
-      showStatus('Bookmark updated');
+      const url = (updates.url ?? items.find((i) => i.id === id)?.url ?? '').trim();
+      if (url && /^https?:\/\//i.test(url)) {
+        showStatus('Bookmark updated — digesting…', 4000);
+        startSingleLinkDigest(id);
+      } else {
+        showStatus('Bookmark updated');
+      }
     } catch (error) {
       showStatus(toStatusMessage(error, 'Could not update bookmark'));
     }
@@ -471,16 +504,17 @@ function App() {
       });
       await loadData();
       
-      if (data.url) {
+      if (data.url && /^https?:\/\//i.test(data.url)) {
         if (result.updatedPlacementNotes && result.addedToCollections.length === 0) {
-          showStatus('Notes saved for this copy');
+          showStatus('Notes saved — digesting…', 4000);
         } else if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
-          showStatus('Already saved in this collection');
+          showStatus('Already saved in this collection — digesting…', 4000);
         } else if (result.merged && result.addedToCollections.length > 0) {
-          showStatus('Added to collection (link already saved elsewhere)');
+          showStatus('Added to collection — digesting…', 4000);
         } else {
-          showStatus('Bookmark added');
+          showStatus('Bookmark added — digesting…', 4000);
         }
+        startSingleLinkDigest(result.itemId);
       } else {
         showStatus('Note added');
       }
@@ -758,6 +792,15 @@ function App() {
             onOpenFullPage={handleOpenFullPage}
             onSetAsBrowserHome={handleSetAsBrowserHome}
             status={status}
+            digestItemId={digestItemId}
+            digestStatus={digestStatus}
+            onRunDigest={async (itemId, opts) => {
+              const r = await startSingleLinkDigest(itemId, opts);
+              return {
+                message: r.message,
+                failed: r.enrich.status === 'failed',
+              };
+            }}
           />
         ) : null}
       </div>

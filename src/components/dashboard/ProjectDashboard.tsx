@@ -1,6 +1,8 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { Project, Collection, Item, Workspace } from '../../lib/db';
 import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItemWithMerge, getAllItems, deleteItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID, type UpdateItemOptions } from '../../lib/db';
+import { runSingleLinkDigest } from '../../lib/pipeline/singleLinkDigest';
+import { useToast } from '../ToastContainer';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -54,6 +56,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   onDeleteItem,
   onRefresh,
 }) => {
+  const { addToast } = useToast();
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [primaryTabs, setPrimaryTabs] = useState<Tab[]>([]);
@@ -682,6 +685,16 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       if (newItem) {
         // Open the item in a tab
         handleItemClick(newItem);
+      }
+
+      if (data.url && /^https?:\/\//i.test(data.url)) {
+        void runSingleLinkDigest(result.itemId).then((r) => {
+          addToast({
+            type: r.enrich.status === 'failed' ? 'error' : 'success',
+            message: r.message,
+          });
+          if (onRefresh) void onRefresh();
+        });
       }
 
       return result.itemId;

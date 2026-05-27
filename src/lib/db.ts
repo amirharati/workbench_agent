@@ -1540,12 +1540,23 @@ export interface ImportCandidate {
   favicon?: string;
 }
 
+export interface BulkImportAffectedItem {
+  itemId: string;
+  url: string;
+  title: string;
+  outcome: 'created' | 'merged';
+}
+
 export interface BulkImportResult {
   created: number;
   merged: number;
   skipped: number;
   /** Item ids created in this import (for AI queue). */
   createdItemIds: string[];
+  /** Item ids written in this import (created + merged into existing). */
+  affectedItemIds: string[];
+  /** Metadata for post-import pipeline confirmation UI. */
+  affectedItems: BulkImportAffectedItem[];
 }
 
 /**
@@ -1564,6 +1575,8 @@ export const bulkImportBookmarks = async (
   let merged = 0;
   let skipped = 0;
   const createdItemIds: string[] = [];
+  const affectedItemIds: string[] = [];
+  const affectedItems: BulkImportAffectedItem[] = [];
   
   // Group by normalized URL to handle duplicates within import
   const byUrl = new Map<string, ImportCandidate[]>();
@@ -1649,6 +1662,13 @@ export const bulkImportBookmarks = async (
 
       await itemsStore.put(updatedItem);
       existingByNormalizedUrl.set(normalizedUrl, updatedItem);
+      affectedItemIds.push(existing.id);
+      affectedItems.push({
+        itemId: existing.id,
+        url: updatedItem.url,
+        title: updatedItem.title || updatedItem.url,
+        outcome: 'merged',
+      });
       continue;
     }
 
@@ -1683,6 +1703,13 @@ export const bulkImportBookmarks = async (
 
     await itemsStore.put(newItem);
     existingByNormalizedUrl.set(normalizedUrl, newItem);
+    affectedItemIds.push(id);
+    affectedItems.push({
+      itemId: id,
+      url: newItem.url,
+      title: newItem.title || newItem.url,
+      outcome: 'created',
+    });
   }
 
   await tx.done;
@@ -1700,7 +1727,7 @@ export const bulkImportBookmarks = async (
     }
   }
 
-  return { created, merged, skipped, createdItemIds };
+  return { created, merged, skipped, createdItemIds, affectedItemIds, affectedItems };
 };
 
 export const exportDB = async () => {

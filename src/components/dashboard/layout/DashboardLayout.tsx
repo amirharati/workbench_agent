@@ -13,6 +13,16 @@ import { StatusBar, useStatusBar } from '../StatusBar';
 import { ToastProvider, useToast } from '../../ToastContainer';
 import { CommandPalette } from '../CommandPalette';
 import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID } from '../../../hooks/useLibrarySearch';
+import {
+  loadItemIdsForCategory,
+  loadItemIdsForPipelineQueue,
+  PIPELINE_QUEUE_LABELS,
+  runBatchDigest,
+  runSingleLinkDigest,
+  type CategoryBrowseFilter,
+  type PipelineBrowseFilter,
+  type PipelineQueueKind,
+} from '../../../lib/pipeline';
 
 export type DashboardView =
   | 'home'
@@ -20,6 +30,8 @@ export type DashboardView =
   | 'settings'
   | 'projects'
   | 'tab-commander'
+  | 'ai-categories'
+  | 'import-studio'
   | 'bookmarks'
   | 'notes'
   | 'collections'
@@ -39,7 +51,7 @@ export interface ItemTab {
   }[];
 }
 
-const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander']);
+const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander', 'ai-categories', 'import-studio']);
 const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search']);
 
 interface DashboardLayoutProps {
@@ -49,7 +61,7 @@ interface DashboardLayoutProps {
   items: Item[];
   workspaces: Workspace[];
   onWorkspacesChanged?: () => Promise<void>;
-  onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<void>;
+  onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<string | undefined>;
   onUpdateBookmark?: (
     id: string,
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
@@ -137,6 +149,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const [activeView, setActiveView] = useState<DashboardView>('home');
   const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>('all');
   const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>('all');
+  const [categoryBrowse, setCategoryBrowse] = useState<CategoryBrowseFilter | null>(null);
+  const [pipelineBrowse, setPipelineBrowse] = useState<PipelineBrowseFilter | null>(null);
   const [globalTabState, setGlobalTabState] = useState<GlobalTabState>(() => loadGlobalTabState());
   const handleGlobalTabStateChange = (next: GlobalTabState) => {
     setGlobalTabState(next);
@@ -240,8 +254,23 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       addStatusMessage({ type: 'warning', message: 'Please enter a valid http(s) URL' });
       return;
     }
-    await onAddBookmark(url, title, collectionId);
-    addToast({ type: 'success', message: `Bookmark saved to ${collectionLabel(collectionId)}` });
+    try {
+      const itemId = await onAddBookmark(url, title, collectionId);
+      addToast({ type: 'success', message: `Bookmark saved to ${collectionLabel(collectionId)}` });
+      if (itemId) {
+        void runSingleLinkDigest(itemId).then((r) => {
+          addToast({
+            type: r.enrich.status === 'failed' ? 'error' : 'success',
+            message: r.message,
+          });
+        });
+      }
+    } catch (error) {
+      addToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Could not add bookmark',
+      });
+    }
   }, [onAddBookmark, addToast, addStatusMessage, collectionLabel]);
 
   const handleUpdateBookmarkWithToast = useCallback(async (
@@ -262,7 +291,70 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   const handleSelectView = (view: DashboardView) => {
     setActiveView(view);
+    if (view !== 'bookmarks') {
+      setPipelineBrowse(null);
+      setCategoryBrowse(null);
+    }
   };
+
+  const handleBrowseCategory = useCallback(async (categoryId: string, name: string) => {
+    const itemIds = await loadItemIdsForCategory(categoryId);
+    setPipelineBrowse(null);
+    setCategoryBrowse({ categoryId, name, itemIds });
+    setScopeProjectId('all');
+    setScopeCollectionId('all');
+    setActiveView('bookmarks');
+  }, []);
+
+  const handleClearCategoryBrowse = useCallback(() => {
+    setCategoryBrowse(null);
+  }, []);
+
+  const handlePipelineBrowse = useCallback(async (kind: PipelineQueueKind) => {
+    const itemIds = await loadItemIdsForPipelineQueue(kind);
+    setCategoryBrowse(null);
+    setPipelineBrowse({
+      kind,
+      label: PIPELINE_QUEUE_LABELS[kind],
+      itemIds,
+    });
+    setScopeProjectId('all');
+    setScopeCollectionId('all');
+    setActiveView('bookmarks');
+  }, []);
+
+  const handleClearPipelineBrowse = useCallback(() => {
+    setPipelineBrowse(null);
+  }, []);
+
+  const handleBatchProcessQueue = useCallback(async (kind: PipelineQueueKind) => {
+    if (kind !== 'not_enriched') return;
+
+    const allIds = await loadItemIdsForPipelineQueue(kind);
+    if (allIds.length === 0) {
+      addToast({ type: 'info', message: 'Nothing to process' });
+      return;
+    }
+
+    addToast({
+      type: 'info',
+      message: `Processing up to ${Math.min(allIds.length, 50)} of ${allIds.length} not enriched…`,
+    });
+
+    try {
+      const result = await runBatchDigest(allIds);
+      addToast({
+        type: result.failed > 0 ? 'error' : 'success',
+        message: result.message,
+      });
+      await onRefresh?.();
+    } catch (e) {
+      addToast({
+        type: 'error',
+        message: e instanceof Error ? e.message : 'Batch processing failed',
+      });
+    }
+  }, [addToast, onRefresh]);
 
   const handleSelectProjectScope = (projectId: string | 'all') => {
     setScopeProjectId(projectId);
@@ -501,6 +593,14 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onTestAI={onTestAI}
                 scopeProjectId={scopeProjectId}
                 scopeCollectionId={scopeCollectionId}
+                categoryBrowse={categoryBrowse}
+                onClearCategoryBrowse={handleClearCategoryBrowse}
+                onBrowseCategory={handleBrowseCategory}
+                pipelineBrowse={pipelineBrowse}
+                onClearPipelineBrowse={handleClearPipelineBrowse}
+                onPipelineBrowse={handlePipelineBrowse}
+                onBatchProcessQueue={handleBatchProcessQueue}
+                onSelectView={handleSelectView}
               />
             </div>
           ) : isFullMiddleView ? (
@@ -545,6 +645,14 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onLibrarySearch={openLibrarySearch}
               onLibrarySearchInTab={openLibrarySearchInTab}
               onOpenItemFromSearch={handleOpenItemTab}
+              categoryBrowse={categoryBrowse}
+              onClearCategoryBrowse={handleClearCategoryBrowse}
+              onBrowseCategory={handleBrowseCategory}
+              pipelineBrowse={pipelineBrowse}
+              onClearPipelineBrowse={handleClearPipelineBrowse}
+              onPipelineBrowse={handlePipelineBrowse}
+              onBatchProcessQueue={handleBatchProcessQueue}
+              onSelectView={handleSelectView}
             />
           ) : (
             // Split view: List pane (left) + Tabbed detail pane (right)
@@ -598,6 +706,12 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               globalTabState={globalTabState}
               onGlobalTabStateChange={handleGlobalTabStateChange}
               renderListTab={renderListTab}
+              categoryBrowse={categoryBrowse}
+              onClearCategoryBrowse={handleClearCategoryBrowse}
+              onBrowseCategory={handleBrowseCategory}
+              pipelineBrowse={pipelineBrowse}
+              onClearPipelineBrowse={handleClearPipelineBrowse}
+              onPipelineBrowse={handlePipelineBrowse}
                 />
               </div>
 

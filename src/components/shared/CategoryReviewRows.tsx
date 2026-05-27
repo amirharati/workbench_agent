@@ -1,0 +1,155 @@
+import { useState } from 'react';
+import {
+  acceptAiCategoryLinkByIds,
+  rejectAiCategoryLinkByIds,
+  CategoryReviewError,
+} from '../../lib/categorization/categoryReview';
+import { useToast } from '../ToastContainer';
+
+export type CategoryReviewFeedback = (message: string, type: 'success' | 'error') => void;
+
+export function CategoryChip({ label, muted }: { label: string; muted?: boolean }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        padding: '2px 8px',
+        borderRadius: 999,
+        border: '1px solid var(--border)',
+        background: muted ? 'transparent' : 'var(--accent-weak)',
+        color: muted ? 'var(--text-faint)' : 'var(--accent)',
+        fontSize: 'var(--text-xs)',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function ReviewActionButton({
+  label,
+  onClick,
+  disabled,
+  variant,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  variant: 'accept' | 'reject' | 'edit';
+}) {
+  const isAccept = variant === 'accept';
+  const isEdit = variant === 'edit';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: '2px 8px',
+        borderRadius: 'var(--radius-sm)',
+        border: `1px solid ${isAccept ? 'var(--accent)' : 'var(--border)'}`,
+        background: isAccept ? 'var(--accent-weak)' : 'transparent',
+        color: isAccept ? 'var(--accent)' : 'var(--text-muted)',
+        fontSize: 'var(--text-xs)',
+        fontWeight: 600,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        fontStyle: isEdit ? 'normal' : undefined,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+export function SuggestedCategoryRow({
+  itemId,
+  link,
+  onDone,
+  onEdit,
+  feedback,
+}: {
+  itemId: string;
+  link: { categoryId: string; name: string; score: number };
+  onDone: () => void;
+  onEdit?: () => void;
+  feedback?: CategoryReviewFeedback;
+}) {
+  const { addToast } = useToast();
+  const [busy, setBusy] = useState<'accept' | 'reject' | null>(null);
+
+  const notify = (message: string, type: 'success' | 'error') => {
+    if (feedback) {
+      feedback(message, type);
+      return;
+    }
+    addToast({ type, message });
+  };
+
+  const run = async (action: 'accept' | 'reject') => {
+    setBusy(action);
+    try {
+      if (action === 'accept') {
+        await acceptAiCategoryLinkByIds(itemId, link.categoryId);
+        notify('Category accepted', 'success');
+      } else {
+        await rejectAiCategoryLinkByIds(itemId, link.categoryId);
+        notify('Category rejected', 'success');
+      }
+      onDone();
+    } catch (e) {
+      const reason =
+        e instanceof CategoryReviewError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'Unknown error';
+      notify(`Could not update category${reason ? `: ${reason}` : ''}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        padding: '6px 0',
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        <CategoryChip label={`${link.name} (suggested)`} muted />
+        {link.score > 0 && (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+            {Math.round(link.score * 100)}%
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <ReviewActionButton
+          label="Accept"
+          variant="accept"
+          disabled={busy !== null}
+          onClick={() => void run('accept')}
+        />
+        <ReviewActionButton
+          label="Reject"
+          variant="reject"
+          disabled={busy !== null}
+          onClick={() => void run('reject')}
+        />
+        {onEdit ? (
+          <ReviewActionButton
+            label="Edit in app"
+            variant="edit"
+            disabled={busy !== null}
+            onClick={onEdit}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}

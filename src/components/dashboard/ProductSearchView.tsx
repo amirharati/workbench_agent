@@ -6,6 +6,8 @@ import type { LibrarySearchState } from '../../hooks/useLibrarySearch';
 import type { SearchFilters } from '../../lib/search';
 import { SearchRelatedPanel } from './SearchDiscoveryBlocks';
 import { isValidHttpUrl } from '../../lib/utils';
+import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
+import { ItemPipelineBadge } from './PipelineDisplayBlocks';
 
 interface ProductSearchViewProps {
   items: Item[];
@@ -59,6 +61,11 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  const resultItemIds = useMemo(
+    () => state.result?.results.map((r) => r.itemId) ?? [],
+    [state.result]
+  );
+  const badgeMap = usePipelineBadgeMap(resultItemIds);
 
   useEffect(() => {
     if (autofocus) {
@@ -385,9 +392,14 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                       fontSize: 'var(--text-sm)',
                       color: 'var(--text)',
                       marginBottom: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      flexWrap: 'wrap',
                     }}
                   >
-                    {row.title || 'Untitled'}
+                    <span>{row.title || 'Untitled'}</span>
+                    <ItemPipelineBadge badge={badgeMap.get(row.itemId)} />
                   </div>
                   <div
                     style={{

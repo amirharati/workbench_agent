@@ -3,6 +3,8 @@ import { Search, Star, Clock, Zap, BarChart2 } from 'lucide-react';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { GlobalTabSystem, type GlobalTabState } from './GlobalTabSystem';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
+import { useHomePipelineStats } from '../../hooks/useHomePipelineStats';
+import type { PipelineQueueKind } from '../../lib/pipeline';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -24,6 +26,9 @@ interface HomeViewProps {
   onLibrarySearchInTab?: (query: string) => void;
   librarySearch?: LibrarySearchApi;
   onOpenItemFromSearch?: (item: Item) => void;
+  onBrowseCategory?: (categoryId: string, name: string) => void;
+  onPipelineBrowse?: (kind: PipelineQueueKind) => void;
+  onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
   topPct: number;
   onTopPctChange: (pct: number) => void;
   renderListTab?: (tab: any) => React.ReactNode;
@@ -31,13 +36,31 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, topPct, onTopPctChange, renderListTab, statusBar
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBrowseCategory, onPipelineBrowse, onBatchProcessQueue, topPct, onTopPctChange, renderListTab, statusBar
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  const { digest, categories, loading: pipelineLoading } = useHomePipelineStats();
+  const [batchRunning, setBatchRunning] = React.useState(false);
+
+  const handleProcessNotEnriched = async () => {
+    if (!onBatchProcessQueue || batchRunning || !digest?.notEnriched) return;
+    setBatchRunning(true);
+    try {
+      await onBatchProcessQueue('not_enriched');
+    } finally {
+      setBatchRunning(false);
+    }
+  };
 
   const recentItems = useMemo(
-    () => [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, RECENTLY_ADDED_LIMIT),
+    () =>
+      [...items]
+        .sort(
+          (a, b) =>
+            (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at)
+        )
+        .slice(0, RECENTLY_ADDED_LIMIT),
     [items]
   );
 
@@ -141,15 +164,123 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </HomeCard>
 
           <HomeCard icon={<Zap size={14} />} title="Processing Digest">
-            <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
-              Processing overview coming soon.<br /><span style={{ color: 'var(--text-faint)' }}>Lands in 05.3.</span>
-            </div>
+            {pipelineLoading ? (
+              <div style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', padding: '4px 0' }}>
+                Loading…
+              </div>
+            ) : digest?.healthy ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
+                All caught up — library processing looks healthy.
+              </div>
+            ) : digest ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                <DigestLine
+                  label="AI categories"
+                  count={digest.suggestedCategories}
+                  tone="warning"
+                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('suggested_categories') : undefined}
+                />
+                <DigestLine
+                  label="Manual review"
+                  count={digest.manualReview}
+                  tone="warning"
+                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('manual_review') : undefined}
+                />
+                <DigestLine
+                  label="Enrich failed"
+                  count={digest.enrichFailed}
+                  tone="error"
+                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('enrich_failed') : undefined}
+                />
+                <DigestLine
+                  label="Pending classify"
+                  count={digest.pendingClassify}
+                  tone="info"
+                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('pending_classify') : undefined}
+                />
+                <DigestLine
+                  label="Not enriched"
+                  count={digest.notEnriched}
+                  tone="muted"
+                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('not_enriched') : undefined}
+                />
+                {digest.notEnriched > 0 && onBatchProcessQueue ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleProcessNotEnriched()}
+                    disabled={batchRunning}
+                    style={{
+                      marginTop: 4,
+                      padding: '5px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--accent)',
+                      background: batchRunning ? 'var(--bg-hover)' : 'var(--accent-weak)',
+                      color: 'var(--accent)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 600,
+                      cursor: batchRunning ? 'wait' : 'pointer',
+                      opacity: batchRunning ? 0.7 : 1,
+                      width: 'fit-content',
+                    }}
+                  >
+                    {batchRunning
+                      ? 'Processing…'
+                      : `Process not enriched (${digest.notEnriched})`}
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
+                No processing data yet.
+              </div>
+            )}
           </HomeCard>
 
           <HomeCard icon={<BarChart2 size={14} />} title="Library Overview">
-            <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
-              Category overview coming soon.<br /><span style={{ color: 'var(--text-faint)' }}>Lands in 05.3.</span>
-            </div>
+            {pipelineLoading ? (
+              <div style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', padding: '4px 0' }}>
+                Loading…
+              </div>
+            ) : categories.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
+                No AI categories with items yet.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                {categories.map((tile) => (
+                  <button
+                    key={tile.categoryId}
+                    type="button"
+                    onClick={() => onBrowseCategory?.(tile.categoryId, tile.name)}
+                    title={`Browse ${tile.name}`}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 6px',
+                      textAlign: 'left',
+                      cursor: onBrowseCategory ? 'pointer' : 'default',
+                      color: 'var(--text)',
+                      fontSize: 'var(--text-xs)',
+                      borderRadius: 'var(--radius-sm)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (onBrowseCategory) e.currentTarget.style.background = 'var(--bg-hover)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'none';
+                    }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {tile.name}
+                    </span>
+                    <span style={{ color: 'var(--text-faint)', flexShrink: 0 }}>{tile.itemCount}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </HomeCard>
         </div>
 
@@ -198,3 +329,75 @@ const HomeCard: React.FC<HomeCardProps> = ({ icon, title, children }) => (
     <div style={{ flex: 1 }}>{children}</div>
   </div>
 );
+
+const DigestLine: React.FC<{
+  label: string;
+  count: number;
+  tone: 'warning' | 'error' | 'info' | 'muted';
+  onBrowse?: () => void;
+}> = ({ label, count, tone, onBrowse }) => {
+  if (count === 0) return null;
+
+  const color =
+    tone === 'warning'
+      ? '#d29922'
+      : tone === 'error'
+        ? '#ef4444'
+        : tone === 'info'
+          ? '#818cf8'
+          : 'var(--text-muted)';
+
+  const row = (
+    <>
+      <span>{label}</span>
+      <span style={{ fontWeight: 600, color }}>{count}</span>
+    </>
+  );
+
+  if (!onBrowse) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 8,
+          fontSize: 'var(--text-xs)',
+          color: 'var(--text-muted)',
+        }}
+      >
+        {row}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onBrowse}
+      title={`Browse ${label.toLowerCase()}`}
+      style={{
+        all: 'unset',
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 8,
+        width: '100%',
+        fontSize: 'var(--text-xs)',
+        color: 'var(--text-muted)',
+        cursor: 'pointer',
+        padding: '2px 4px',
+        margin: '0 -4px',
+        borderRadius: 'var(--radius-sm)',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--bg-hover)';
+        e.currentTarget.style.color = 'var(--text)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.color = 'var(--text-muted)';
+      }}
+    >
+      {row}
+    </button>
+  );
+};

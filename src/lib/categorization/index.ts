@@ -30,6 +30,13 @@ export {
 } from './service';
 export type { CategoryReviewRow, RunCategorizationOptions } from './service';
 export {
+  acceptAiCategoryLink,
+  acceptAiCategoryLinkByIds,
+  rejectAiCategoryLink,
+  rejectAiCategoryLinkByIds,
+  CategoryReviewError,
+} from './categoryReview';
+export {
   buildCategorizationEmbedText,
   buildCategorizationText,
   substantiveTextLength,

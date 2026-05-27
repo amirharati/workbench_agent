@@ -25,6 +25,33 @@ export function rawRefForItem(itemId: string): string {
   return `${itemId}.md`;
 }
 
+export function reviewRawRefForItem(itemId: string): string {
+  return `${itemId}.review-pending.md`;
+}
+
+export async function writeReviewRawBody(itemId: string, body: string): Promise<{
+  ok: boolean;
+  rawRef?: string;
+  rawBytes?: number;
+  error?: string;
+}> {
+  const dir = await getCacheDirectory();
+  if (!dir) {
+    return { ok: false, error: 'no_backup_folder' };
+  }
+  const rawRef = reviewRawRefForItem(itemId);
+  try {
+    const fileHandle = await dir.getFileHandle(rawRef, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(body);
+    await writable.close();
+    const rawBytes = new TextEncoder().encode(body).length;
+    return { ok: true, rawRef, rawBytes };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 export async function writeRawBody(itemId: string, body: string): Promise<{
   ok: boolean;
   rawRef?: string;

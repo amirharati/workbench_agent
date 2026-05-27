@@ -17,7 +17,7 @@ import {
   parseFetchedContent,
   snippetIsUseful,
 } from './parse';
-import { deleteRawBody, loadRawBody, writeRawBody } from './rawBodyStore';
+import { deleteRawBody, loadRawBody, writeRawBody, writeReviewRawBody } from './rawBodyStore';
 import {
   deleteEnrichment,
   getAllEnrichments,
@@ -28,6 +28,7 @@ import {
 import type {
   EnrichBatchOptions,
   EnrichBatchResult,
+  EnrichmentErrorCode,
   EnrichmentResult,
   ItemEnrichment,
 } from './types';
@@ -175,9 +176,48 @@ async function persistSkipped(
   return { itemId: item.id, status: 'skipped', skipped: true, message: skipReason };
 }
 
+function hasValuablePriorEnrichment(existing?: ItemEnrichment | null): boolean {
+  if (!existing || existing.status !== 'ok') return false;
+  if (existing.aiStatus === 'ok' && existing.summary?.trim()) return true;
+  return (existing.snippet?.trim().length ?? 0) >= ENRICHMENT_DEFAULTS.minUsefulSnippetChars;
+}
+
+async function preservePriorOnSuspiciousFetch(
+  item: Item,
+  existing: ItemEnrichment,
+  pending: ItemEnrichment,
+  reason: EnrichmentErrorCode,
+  suspiciousMarkdown?: string
+): Promise<EnrichmentResult> {
+  const now = Date.now();
+  let reviewRawRef: string | undefined;
+  if (suspiciousMarkdown?.trim()) {
+    const review = await writeReviewRawBody(
+      item.id,
+      `# Suspicious re-fetch (${reason})\n\nURL: ${item.url}\n\n${suspiciousMarkdown}`
+    );
+    if (review.ok && review.rawRef) reviewRawRef = review.rawRef;
+  }
+  await putEnrichment({
+    ...existing,
+    attempts: pending.attempts,
+    lastErrorCode: reason,
+    pendingFetchReview: true,
+    pendingFetchReviewReason: reason,
+    reviewRawRef,
+    updated_at: now,
+  });
+  return {
+    itemId: item.id,
+    status: 'ok',
+    skipped: true,
+    message: `prior_kept_${reason}`,
+  };
+}
+
 export async function enrichOne(
   itemId: string,
-  options?: { force?: boolean; signal?: AbortSignal }
+  options?: { force?: boolean; signal?: AbortSignal; refetchCompare?: boolean }
 ): Promise<EnrichmentResult> {
   const item = await getItem(itemId);
   if (!item?.url) {
@@ -185,7 +225,10 @@ export async function enrichOne(
   }
 
   const existing = await getEnrichment(itemId);
-  const elig = checkEligibility(item, existing, { force: options?.force });
+  const elig = checkEligibility(item, existing, {
+    force: options?.force,
+    refetchCompare: options?.refetchCompare,
+  });
 
   if (!elig.eligible) {
     return {
@@ -236,6 +279,9 @@ export async function enrichOne(
 
     if (!fetchResult.ok || !fetchResult.markdown) {
       const errorCode = fetchResult.errorCode ?? 'provider_error';
+      if (existing && hasValuablePriorEnrichment(existing)) {
+        return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode);
+      }
       const nextRetryAt =
         attempts < ENRICHMENT_DEFAULTS.maxAttempts
           ? now + ENRICHMENT_DEFAULTS.backoffBaseMs * Math.pow(2, attempts - 1)
@@ -256,6 +302,15 @@ export async function enrichOne(
       fetchResult.rawBytesApprox &&
       fetchResult.rawBytesApprox > ENRICHMENT_DEFAULTS.maxResponseBytes
     ) {
+      if (existing && hasValuablePriorEnrichment(existing)) {
+        return preservePriorOnSuspiciousFetch(
+          item,
+          existing,
+          pending,
+          'oversized',
+          fetchResult.markdown
+        );
+      }
       const failed: ItemEnrichment = {
         ...pending,
         status: 'failed',
@@ -288,9 +343,51 @@ export async function enrichOne(
       lastErrorCode = 'parse_empty';
     }
 
+    if (status === 'failed' && existing && hasValuablePriorEnrichment(existing)) {
+      return preservePriorOnSuspiciousFetch(
+        item,
+        existing,
+        pending,
+        lastErrorCode ?? 'parse_empty',
+        cleanMarkdown
+      );
+    }
+
+    const textHash = hashText(localBundle);
+    const contentHash = hashText(cleanMarkdown);
+    const pageUnchanged =
+      !options?.force &&
+      status === 'ok' &&
+      existing?.status === 'ok' &&
+      !!existing.contentHash &&
+      existing.contentHash === contentHash;
+
+    if (pageUnchanged && existing.aiStatus === 'ok') {
+      await putEnrichment({
+        ...existing,
+        textHash,
+        snippet: parsed.snippet ?? existing.snippet,
+        fetchedTitle: parsed.title ?? existing.fetchedTitle,
+        fetchedAt: now,
+        fetchSourceId: fetchResult.fetchSourceId,
+        pendingFetchReview: false,
+        pendingFetchReviewReason: undefined,
+        reviewRawRef: undefined,
+        updated_at: now,
+      });
+      return {
+        itemId: item.id,
+        status: 'ok',
+        skipped: true,
+        message: 'content_unchanged',
+      };
+    }
+
     let aiOutcome: Awaited<ReturnType<typeof extractEnrichmentWithAI>> | undefined;
     let aiExtract: EnrichmentAIExtract | undefined;
-    if (status === 'ok') {
+    const needsAiExtract =
+      status === 'ok' && (!pageUnchanged || existing.aiStatus !== 'ok');
+    if (needsAiExtract) {
       aiOutcome = await extractEnrichmentWithAI(
         parsed.snippet || cleanMarkdown,
         item.url,
@@ -333,9 +430,6 @@ export async function enrichOne(
       }
     }
 
-    const textHash = hashText(localBundle);
-    const contentHash = hashText(cleanMarkdown);
-
     let tier2Applied: string[] | undefined;
     if (status === 'ok') {
       tier2Applied = await applyItemTier2Updates(item, parsed.title, sourceKind, aiExtract);
@@ -374,6 +468,9 @@ export async function enrichOne(
       rawBytes,
       hasRawBody,
       tier2Applied,
+      pendingFetchReview: false,
+      pendingFetchReviewReason: undefined,
+      reviewRawRef: undefined,
       updated_at: now,
     };
     await putEnrichment(record);
@@ -388,6 +485,9 @@ export async function enrichOne(
     clearTimeout(timeout);
     const errorCode =
       e instanceof DOMException && e.name === 'AbortError' ? 'timeout' : 'network';
+    if (existing && hasValuablePriorEnrichment(existing)) {
+      return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode);
+    }
     const failed: ItemEnrichment = {
       ...pending,
       status: 'failed',
@@ -535,6 +635,7 @@ export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<Enr
   let processed = 0;
   let skipped = 0;
   let failed = 0;
+  const itemResults: EnrichmentResult[] = [];
   const concurrency = ENRICHMENT_DEFAULTS.concurrency;
   let index = 0;
 
@@ -556,12 +657,21 @@ export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<Enr
         const result = await enrichOne(item.id, {
           force: options.force,
           signal: options.signal,
+          refetchCompare: options.refetchCompare,
         });
+        if (options.collectItemResults) itemResults.push(result);
         if (result.skipped || result.status === 'skipped') skipped++;
         else if (result.status === 'ok') processed++;
         else failed++;
       } catch {
         failed++;
+        if (options.collectItemResults) {
+          itemResults.push({
+            itemId: item.id,
+            status: 'failed',
+            message: 'enrich_batch_error',
+          });
+        }
       }
     }
   };
@@ -584,6 +694,7 @@ export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<Enr
     skipped,
     failed,
     cancelled: options.signal?.aborted,
+    itemResults: options.collectItemResults ? itemResults : undefined,
   };
 }
 

@@ -1,6 +1,9 @@
 import React from 'react';
-import { bulkImportBookmarks, ensureProjectUnsortedCollection, type Collection, type Project } from '../../lib/db';
+import { bulkImportBookmarks, ensureProjectUnsortedCollection, type BulkImportAffectedItem, type Collection, type Project } from '../../lib/db';
+import { runBatchDigest, formatBatchDigestProgress, buildImportReport, type BatchDigestResult, type ImportReport } from '../../lib/pipeline';
+import { useToast } from '../ToastContainer';
 import { EnrichmentPanel } from './EnrichmentPanel';
+import { ImportReportOverlay } from './ImportReportOverlay';
 
 type ImportTab = 'file' | 'chrome' | 'ai';
 
@@ -47,12 +50,165 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [committing, setCommitting] = React.useState(false);
+  const [processing, setProcessing] = React.useState(false);
+  const [processProgress, setProcessProgress] = React.useState('');
+  const [processNewImports, setProcessNewImports] = React.useState(true);
+  const [pipelineConfirm, setPipelineConfirm] = React.useState<{
+    importSummary: string;
+    items: BulkImportAffectedItem[];
+  } | null>(null);
+  const [pipelineSelectedIds, setPipelineSelectedIds] = React.useState<Set<string>>(() => new Set());
+  const [pipelineFilter, setPipelineFilter] = React.useState('');
   const [commitMessage, setCommitMessage] = React.useState('');
   const [commitError, setCommitError] = React.useState('');
   const [lastImportCollectionId, setLastImportCollectionId] = React.useState<string | undefined>();
+  const [lastCommitMeta, setLastCommitMeta] = React.useState<{
+    importSummary: string;
+    targetLabel: string;
+    created: number;
+    merged: number;
+    skipped: number;
+    items: BulkImportAffectedItem[];
+  } | null>(null);
+  const [importReport, setImportReport] = React.useState<ImportReport | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [selectedProjectId, setSelectedProjectId] = React.useState('');
   const [selectedCollectionId, setSelectedCollectionId] = React.useState('');
+  const { addToast } = useToast();
+
+  React.useEffect(() => {
+    if (!processing) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [processing]);
+
+  const filteredPipelineItems = React.useMemo(() => {
+    if (!pipelineConfirm) return [];
+    const q = pipelineFilter.trim().toLowerCase();
+    if (!q) return pipelineConfirm.items;
+    return pipelineConfirm.items.filter(
+      (item) =>
+        item.title.toLowerCase().includes(q) ||
+        item.url.toLowerCase().includes(q) ||
+        item.outcome.includes(q)
+    );
+  }, [pipelineConfirm, pipelineFilter]);
+
+  const selectedPipelineCount = pipelineSelectedIds.size;
+
+  const togglePipelineItem = (itemId: string, checked: boolean) => {
+    setPipelineSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(itemId);
+      else next.delete(itemId);
+      return next;
+    });
+  };
+
+  const setPipelineSelectionForFiltered = (select: boolean) => {
+    setPipelineSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const item of filteredPipelineItems) {
+        if (select) next.add(item.itemId);
+        else next.delete(item.itemId);
+      }
+      return next;
+    });
+  };
+
+  const resetImportSession = () => {
+    setRows([]);
+    setSourceLabel('');
+    setError('');
+    setCommitMessage('');
+    setCommitError('');
+    setPipelineConfirm(null);
+    setPipelineFilter('');
+    setPipelineSelectedIds(new Set());
+    setLastCommitMeta(null);
+    setImportReport(null);
+  };
+
+  const openImportReport = async (
+    meta: NonNullable<typeof lastCommitMeta>,
+    processedIds: Set<string>,
+    batchResult?: BatchDigestResult
+  ) => {
+    const report = await buildImportReport({
+      ...meta,
+      processedIds,
+      batchResult,
+      enrichResults: batchResult?.itemEnrichResults,
+    });
+    setImportReport(report);
+    setPipelineConfirm(null);
+    setPipelineFilter('');
+    setCommitMessage('');
+  };
+
+  const skipPipelineConfirm = async () => {
+    const meta = pipelineConfirm;
+    setPipelineConfirm(null);
+    setPipelineFilter('');
+    if (meta && lastCommitMeta) {
+      await openImportReport(lastCommitMeta, new Set());
+    } else {
+      addToast({
+        type: 'info',
+        message: 'Import saved. Run fetch + AI later from Home → Process not enriched.',
+      });
+    }
+  };
+
+  const runSelectedPipeline = async () => {
+    if (!pipelineConfirm || !lastCommitMeta) return;
+    const ids = pipelineConfirm.items
+      .map((item) => item.itemId)
+      .filter((id) => pipelineSelectedIds.has(id));
+    if (ids.length === 0) {
+      addToast({ type: 'info', message: 'Select at least one link to process.' });
+      return;
+    }
+
+    setPipelineConfirm(null);
+    setPipelineFilter('');
+    setProcessing(true);
+    setProcessProgress(`Starting pipeline on ${ids.length} selected link${ids.length === 1 ? '' : 's'}…`);
+    addToast({
+      type: 'info',
+      message: `Running fetch + AI + classify on ${ids.length} link${ids.length === 1 ? '' : 's'}. Keep this tab open.`,
+    });
+
+    try {
+      const batch = await runBatchDigest(ids, {
+        processAll: true,
+        collectItemResults: true,
+        onProgress: (p) => {
+          setProcessProgress(formatBatchDigestProgress(p));
+        },
+      });
+      addToast({
+        type: batch.failed > 0 ? 'error' : 'success',
+        message: batch.message,
+      });
+      if (onImported) {
+        await onImported();
+      }
+      await openImportReport(lastCommitMeta, new Set(ids), batch);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Post-import processing failed';
+      addToast({ type: 'error', message: msg });
+      setCommitError(msg);
+    } finally {
+      setProcessing(false);
+      setProcessProgress('');
+      setPipelineSelectedIds(new Set());
+    }
+  };
 
   const normalizeUrl = (url: string): string => {
     try {
@@ -598,19 +754,208 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           ? `${projects.find((p) => p.id === selectedProjectId)?.name || 'selected project'} / Unsorted`
           : 'Default / Unsorted';
 
-      setCommitMessage(
-        `Imported to ${targetLabel}: created ${result.created}, merged ${result.merged}, skipped ${result.skipped}.`
-      );
+      const importSummary = `Imported to ${targetLabel}: created ${result.created}, merged ${result.merged}, skipped ${result.skipped}.`;
+      const commitMeta = {
+        importSummary,
+        targetLabel,
+        created: result.created,
+        merged: result.merged,
+        skipped: result.skipped,
+        items: result.affectedItems,
+      };
+      setCommitMessage(importSummary);
       setLastImportCollectionId(targetCollectionId || undefined);
+      setLastCommitMeta(commitMeta);
 
       if (onImported) {
         await onImported();
+      }
+
+      if (processNewImports && result.affectedItems.length > 0) {
+        setPipelineConfirm({ importSummary, items: result.affectedItems });
+        setPipelineSelectedIds(new Set(result.affectedItems.map((item) => item.itemId)));
+        setPipelineFilter('');
+      } else if (processNewImports && result.affectedItems.length === 0) {
+        addToast({
+          type: 'info',
+          message: 'No valid links to process — all rows were skipped.',
+        });
+        await openImportReport(commitMeta, new Set());
+      } else {
+        await openImportReport(commitMeta, new Set());
       }
     } catch (e) {
       setCommitError(e instanceof Error ? e.message : 'Import commit failed.');
     } finally {
       setCommitting(false);
     }
+  };
+
+  const renderPipelineConfirmPanel = () => {
+    if (!pipelineConfirm || processing) return null;
+
+    return (
+      <div
+        style={{
+          ...sectionStyle,
+          borderColor: 'var(--accent)',
+          background: 'var(--accent-weak)',
+        }}
+      >
+        <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
+          Run pipeline on imported links?
+        </div>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Import is already saved. Uncheck links you want to skip, then confirm. You can also skip now and
+          run batch processing later from Home.
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            type="text"
+            value={pipelineFilter}
+            onChange={(e) => setPipelineFilter(e.target.value)}
+            placeholder="Filter by title or URL…"
+            style={{
+              flex: '1 1 180px',
+              padding: '6px 8px',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              fontSize: 'var(--text-xs)',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setPipelineSelectionForFiltered(true)}
+            disabled={filteredPipelineItems.length === 0}
+            style={{
+              padding: '5px 8px',
+              borderRadius: 6,
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              fontSize: 'var(--text-xs)',
+              cursor: 'pointer',
+            }}
+          >
+            Select {pipelineFilter.trim() ? 'filtered' : 'all'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPipelineSelectionForFiltered(false)}
+            disabled={filteredPipelineItems.length === 0}
+            style={{
+              padding: '5px 8px',
+              borderRadius: 6,
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              fontSize: 'var(--text-xs)',
+              cursor: 'pointer',
+            }}
+          >
+            Deselect {pipelineFilter.trim() ? 'filtered' : 'all'}
+          </button>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+            {selectedPipelineCount} of {pipelineConfirm.items.length} selected
+          </span>
+        </div>
+        <div
+          style={{
+            maxHeight: 240,
+            overflow: 'auto',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            background: 'var(--bg)',
+          }}
+        >
+          {filteredPipelineItems.length === 0 ? (
+            <div style={{ padding: '10px 12px', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+              No links match this filter.
+            </div>
+          ) : (
+            filteredPipelineItems.map((item) => {
+              const checked = pipelineSelectedIds.has(item.itemId);
+              return (
+                <label
+                  key={item.itemId}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderBottom: '1px solid var(--border)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-xs)',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => togglePipelineItem(item.itemId, e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        marginRight: 6,
+                        padding: '1px 6px',
+                        borderRadius: 999,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        background: item.outcome === 'created' ? 'var(--accent-weak)' : 'var(--bg-hover)',
+                        color: item.outcome === 'created' ? 'var(--accent)' : 'var(--text-muted)',
+                      }}
+                    >
+                      {item.outcome === 'created' ? 'new' : 'existing'}
+                    </span>
+                    <strong style={{ color: 'var(--text)' }}>{item.title || 'Untitled'}</strong>
+                    <div style={{ color: 'var(--text-muted)', wordBreak: 'break-all', marginTop: 2 }}>{item.url}</div>
+                  </span>
+                </label>
+              );
+            })
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={skipPipelineConfirm}
+            style={{
+              padding: '6px 10px',
+              borderRadius: 6,
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              fontSize: 'var(--text-xs)',
+              cursor: 'pointer',
+            }}
+          >
+            Skip for now
+          </button>
+          <button
+            type="button"
+            onClick={() => void runSelectedPipeline()}
+            disabled={selectedPipelineCount === 0}
+            style={{
+              padding: '6px 10px',
+              borderRadius: 6,
+              border: '1px solid var(--accent)',
+              background: 'var(--accent)',
+              color: 'var(--accent-text, #fff)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              cursor: selectedPipelineCount === 0 ? 'not-allowed' : 'pointer',
+              opacity: selectedPipelineCount === 0 ? 0.6 : 1,
+            }}
+          >
+            Run pipeline ({selectedPipelineCount})
+          </button>
+        </div>
+      </div>
+    );
   };
 
   const renderPreviewTable = () => (
@@ -673,31 +1018,75 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           Showing first 300 rows. Full row count is still used for stats.
         </div>
       ) : null}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-          Commit uses URL dedupe/merge and writes to selected collection (or project Unsorted/default Unsorted).
-        </div>
-        <button
-          type="button"
-          onClick={handleCommitToDb}
-          disabled={committing || rows.length === 0}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label
           style={{
-            padding: '6px 10px',
-            borderRadius: 6,
-            border: '1px solid var(--accent)',
-            background: 'var(--accent)',
-            color: 'var(--accent-text, #fff)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 6,
             fontSize: 'var(--text-xs)',
-            fontWeight: 600,
-            cursor: committing || rows.length === 0 ? 'not-allowed' : 'pointer',
-            opacity: committing || rows.length === 0 ? 0.6 : 1,
+            color: 'var(--text-muted)',
+            cursor: committing || processing ? 'not-allowed' : 'pointer',
           }}
         >
-          {committing ? 'Committing…' : 'Commit to DB'}
-        </button>
+          <input
+            type="checkbox"
+            checked={processNewImports}
+            onChange={(e) => setProcessNewImports(e.target.checked)}
+            disabled={committing || processing}
+            style={{ marginTop: 2 }}
+          />
+          <span>
+            <strong style={{ color: 'var(--text)' }}>Offer pipeline after commit</strong> (fetch page → AI summary → classify)
+            <br />
+            After import saves, choose which links to process — all selected by default. Re-imports
+            re-fetch saved pages and compare content; suspicious new fetches (login wall, errors) keep your
+            existing summary for review.
+          </span>
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={handleCommitToDb}
+            disabled={committing || processing || !!pipelineConfirm || rows.length === 0}
+            style={{
+              padding: '6px 10px',
+              borderRadius: 6,
+              border: '1px solid var(--accent)',
+              background: 'var(--accent)',
+              color: 'var(--accent-text, #fff)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+            cursor: committing || processing || !!pipelineConfirm || rows.length === 0 ? 'not-allowed' : 'pointer',
+            opacity: committing || processing || !!pipelineConfirm || rows.length === 0 ? 0.6 : 1,
+            }}
+          >
+            {committing ? 'Committing…' : processing ? 'Running pipeline…' : 'Commit to DB'}
+          </button>
+        </div>
       </div>
+      {processing && processProgress ? (
+        <div
+          style={{
+            padding: '8px 10px',
+            borderRadius: 6,
+            border: '1px solid var(--accent)',
+            background: 'var(--accent-weak)',
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text)',
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>Pipeline running — keep this tab open</div>
+          {processProgress}
+          <div style={{ marginTop: 6, color: 'var(--text-muted)' }}>
+            Refreshing or closing this tab will stop the batch. In-app navigation may also interrupt it.
+          </div>
+        </div>
+      ) : null}
       {commitError ? <div style={{ fontSize: 'var(--text-xs)', color: '#dc2626' }}>{commitError}</div> : null}
       {commitMessage ? <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{commitMessage}</div> : null}
+      {renderPipelineConfirmPanel()}
       {commitMessage && lastImportCollectionId ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Enrich imported items:</span>
@@ -890,7 +1279,20 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%', position: 'relative' }}>
+      {importReport ? (
+        <ImportReportOverlay
+          report={importReport}
+          onClose={() => {
+            setImportReport(null);
+            resetImportSession();
+          }}
+          onImportAnother={() => {
+            setImportReport(null);
+            resetImportSession();
+          }}
+        />
+      ) : null}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)' }}>
           Bookmark Import Studio
@@ -898,6 +1300,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         <button
           type="button"
           onClick={onBack}
+          disabled={processing}
+          title={processing ? 'Wait for the pipeline to finish' : undefined}
           style={{
             padding: '6px 10px',
             borderRadius: 6,
@@ -905,7 +1309,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
             background: 'var(--bg)',
             color: 'var(--text)',
             fontSize: 'var(--text-xs)',
-            cursor: 'pointer',
+            cursor: processing ? 'not-allowed' : 'pointer',
+            opacity: processing ? 0.6 : 1,
           }}
         >
           Back to bookmarks

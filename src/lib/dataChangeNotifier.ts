@@ -27,6 +27,7 @@ export type DataChangeReason =
   | 'import.replace'
   | 'enrichment.update'
   | 'categorization.update'
+  | 'categorization.review'
   | 'pipeline.clear'
   | 'unknown';
 

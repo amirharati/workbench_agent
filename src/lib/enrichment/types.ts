@@ -69,6 +69,10 @@ export interface ItemEnrichment {
   aiStatus?: EnrichmentAIStatus;
   aiError?: string;
   aiAt?: number;
+  /** Re-fetch looked worse than saved snapshot; review raw may be stored separately. */
+  pendingFetchReview?: boolean;
+  pendingFetchReviewReason?: EnrichmentErrorCode;
+  reviewRawRef?: string;
   updated_at: number;
 }
 
@@ -96,6 +100,9 @@ export interface EnrichBatchOptions {
   collectionId?: string;
   onProgress?: (progress: EnrichBatchProgress) => void;
   signal?: AbortSignal;
+  collectItemResults?: boolean;
+  /** Re-fetch saved URLs and compare content hash (import / digest refresh). */
+  refetchCompare?: boolean;
 }
 
 export interface EnrichBatchProgress {
@@ -113,6 +120,7 @@ export interface EnrichBatchResult {
   skipped: number;
   failed: number;
   cancelled?: boolean;
+  itemResults?: EnrichmentResult[];
 }
 
 export const ENRICHMENT_DEFAULTS = {

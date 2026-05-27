@@ -3,6 +3,9 @@ import { Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft } from 
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { ProductSearchView } from './ProductSearchView';
 import { LIBRARY_SEARCH_TAB_ID, useLibrarySearch } from '../../hooks/useLibrarySearch';
+import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
+import { resolvePipelineBadge } from '../../lib/pipeline';
+import { EnrichmentContent, ItemPipelineBadge } from './PipelineDisplayBlocks';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -517,6 +520,9 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
             : <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontSize: 'var(--text-sm)', wordBreak: 'break-all' }}>{item.url}</a>}
         </div>
       )}
+      {isBookmark && !isEditing && (
+        <ItemDetailEnrichment itemId={item.id} />
+      )}
       {itemCollections.length > 0 && (
         <div><Label>Saved in</Label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -549,6 +555,24 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
 const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>{children}</div>
 );
+
+const ItemDetailEnrichment: React.FC<{ itemId: string }> = ({ itemId }) => {
+  const { context } = useItemPipelineContext(itemId);
+  const badge = context ? resolvePipelineBadge(context) : null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {badge && (
+        <div>
+          <ItemPipelineBadge badge={badge} />
+        </div>
+      )}
+      <EnrichmentContent
+        summary={context?.summary}
+        keyPoints={context?.keyPoints ?? []}
+      />
+    </div>
+  );
+};
 
 const btnStyle = (variant: 'primary' | 'secondary'): React.CSSProperties => ({
   padding: '5px 12px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)', cursor: 'pointer',

@@ -93,8 +93,9 @@ Chrome MV3 extension
 - AI extraction tuning (Task 01.5): sourceKind-aware prompts (`v2`/`v2.1`), CLI eval harness (`npm run fetch-ai-eval`) on saved corpus, AI-only rerun path (`reextractAI`), and richer extraction fields (`summary`, `keyPoints`, `improvedTitle`, `tags`) validated in-app.
 - AI categorization V1 (Task 02): app + CLI pipeline shipped with seed taxonomy + discover + topic-extract classify, AI stores (`ai_categories`, `ai_item_category_links`, `ai_item_signals`) and backup/export integration. Current V1 runtime uses **LLM-first** assignment with embeddings as supporting signals.
 - AI pipeline hardening V1.1 (Task 03): incremental classify-by-hash, quality gate tiers, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks toolbar: Results / Enrich / Categories), queue reconcilers, `pending_discover` for no-topic outcomes.
-- Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion, explainable blended rerank; CLI eval (`npm run search-eval`, `embed-incremental`, `search-similar`); **Search (dev)** tab in `PipelineDevView` with score breakdown; discovery layer (similar bookmarks, topics/tags chips, related links). **Dev-only** — product `SearchTab` unchanged; formal weight tuning deferred until fetch/corpus improves.
-- **Doc embedding step (Task 04, shared pipeline):** Incremental backfill of `ai_item_signals.embedding` from title + AI summary (`buildSearchEmbedText` → `embedBackfillPlan.ts`) — app `EmbedBackfillBlock` + CLI `embed-incremental`. Powers search/similar/related today; **categorization shortlist/centroids reuse → V2+** (see backlog).
+- Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion; CLI eval; dev `SearchDevPanel` for R&D.
+- **Doc embedding step (Task 04):** `embedBackfillPlan` + `embed-incremental` CLI; vectors in `ai_item_signals`.
+- **V2 product UX (Task 05):** **05.1–05.5** shipped — shell, search, enrichment display, category review, **single-link digest** (hash-aware, side panel AI panel). Favorites placeholder. Polish → **D-40** / **D-41**; batch → **05.6**; auth-page fetch → **D-25**.
 
 ---
 
@@ -109,10 +110,10 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Area | Status |
 |------|--------|
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
-| **V2 — Product (active)** | **V2-A:** major UX/UI — one IA for browse, pipeline, search, AI categories ([`TASK-05`](temp/TASK-05-v2-product-ux.md)). **V2-B:** data model cleanup (notes, AI vs manual). **V2-C:** V1 backend refinement (fetch, tuning, embed unify). **V3:** chunk/ANN/DAG. |
-| **AI Categorization (V1)** | Backend shipped (Tasks 02–03). Product accept/reject + guided workflow → **V2-A**. |
-| **Search (V1.5)** | Backend shipped (Task 04, dev hub). Product hybrid search → **V2-A**; tuning → **V2-C**; chunk/ANN → **V3**. |
-| **Enrichment** | Backend shipped (Task 01). Product UX → **V2-A**; fetch quality → **V2-C**. |
+| **V2 — Product (active)** | **05.1–05.5 shipped.** **Next:** D-40 / D-41 polish, 05.6 batch, D-25 fetch. Deferred: fav/pin/schema ([`V2-DEFERRED-TRACKER`](temp/V2-DEFERRED-TRACKER.md)). |
+| **AI Categorization (V1)** | Backend shipped. Product: browse taxonomy (Tools), accept/reject suggestions (Inspector), digest queues (Home). |
+| **Search** | Product hybrid search shipped (**05.2**); dev score breakdown in `SearchDevPanel`. |
+| **Enrichment** | Read (**05.3**) + single-link run/rerun (**05.5**); batch/maintenance → **05.6** / V2-C. |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | Recent items works; pinned / favorites / trash mostly placeholders (needs fields + UX). |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
@@ -133,4 +134,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-05-26 — **V1 backend closed** (Tasks 01–04). **V2 active:** UX/UI first (Task 05), then data model, then V1 refinement. **V3:** scale AI. [`BACKLOG.md`](BACKLOG.md), [`TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).*
+*Last updated: 2026-05-27 — V1 closed. V2-A: 05.1–05.5 shipped. Next: D-40 / 05.6 / D-25. [`BACKLOG.md`](BACKLOG.md), [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*
