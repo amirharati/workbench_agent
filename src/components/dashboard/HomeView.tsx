@@ -2,9 +2,11 @@ import React, { useMemo, useRef } from 'react';
 import { Search, Star, Clock, Zap, BarChart2 } from 'lucide-react';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { GlobalTabSystem, type GlobalTabState } from './GlobalTabSystem';
+import { Resizer } from './Resizer';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { useHomePipelineStats } from '../../hooks/useHomePipelineStats';
-import type { PipelineQueueKind } from '../../lib/pipeline';
+import type { PipelineQueueKind, ProcessingDigest } from '../../lib/pipeline';
+import { PIPELINE_QUEUE_LABELS, PIPELINE_QUEUE_HINTS } from '../../lib/pipeline';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -29,6 +31,9 @@ interface HomeViewProps {
   onBrowseCategory?: (categoryId: string, name: string) => void;
   onPipelineBrowse?: (kind: PipelineQueueKind) => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
+  scopeProjectId?: string | 'all';
+  scopeCollectionId?: string | 'all';
+  onSwitchScopeForItem?: (item: Item) => void;
   topPct: number;
   onTopPctChange: (pct: number) => void;
   renderListTab?: (tab: any) => React.ReactNode;
@@ -36,10 +41,9 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBrowseCategory, onPipelineBrowse, onBatchProcessQueue, topPct, onTopPctChange, renderListTab, statusBar
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBrowseCategory, onPipelineBrowse, onBatchProcessQueue, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
   const { digest, categories, loading: pipelineLoading } = useHomePipelineStats();
   const [batchRunning, setBatchRunning] = React.useState(false);
 
@@ -79,23 +83,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
     if (q) onLibrarySearchInTab?.(q);
   };
 
-  const onDividerMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    dragging.current = true;
-    const onMove = (ev: MouseEvent) => {
-      if (!dragging.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const y = ev.clientY - rect.top;
-      const clamped = Math.max(MIN_TOP_PX, Math.min(rect.height - MIN_BOTTOM_PX, y));
-      onTopPctChange((clamped / rect.height) * 100);
-    };
-    const onUp = () => {
-      dragging.current = false;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+  const onDividerResize = (delta: number) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const currentPx = (topPct / 100) * rect.height;
+    const clamped = Math.max(MIN_TOP_PX, Math.min(rect.height - MIN_BOTTOM_PX, currentPx + delta));
+    onTopPctChange((clamped / rect.height) * 100);
   };
 
   const hasBottomRow = homeState.tabs.length > 0;
@@ -173,62 +166,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 All caught up — library processing looks healthy.
               </div>
             ) : digest ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-                <DigestLine
-                  label="AI categories"
-                  count={digest.suggestedCategories}
-                  tone="warning"
-                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('suggested_categories') : undefined}
-                />
-                <DigestLine
-                  label="Manual review"
-                  count={digest.manualReview}
-                  tone="warning"
-                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('manual_review') : undefined}
-                />
-                <DigestLine
-                  label="Enrich failed"
-                  count={digest.enrichFailed}
-                  tone="error"
-                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('enrich_failed') : undefined}
-                />
-                <DigestLine
-                  label="Pending classify"
-                  count={digest.pendingClassify}
-                  tone="info"
-                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('pending_classify') : undefined}
-                />
-                <DigestLine
-                  label="Not enriched"
-                  count={digest.notEnriched}
-                  tone="muted"
-                  onBrowse={onPipelineBrowse ? () => onPipelineBrowse('not_enriched') : undefined}
-                />
-                {digest.notEnriched > 0 && onBatchProcessQueue ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleProcessNotEnriched()}
-                    disabled={batchRunning}
-                    style={{
-                      marginTop: 4,
-                      padding: '5px 8px',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--accent)',
-                      background: batchRunning ? 'var(--bg-hover)' : 'var(--accent-weak)',
-                      color: 'var(--accent)',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 600,
-                      cursor: batchRunning ? 'wait' : 'pointer',
-                      opacity: batchRunning ? 0.7 : 1,
-                      width: 'fit-content',
-                    }}
-                  >
-                    {batchRunning
-                      ? 'Processing…'
-                      : `Process not enriched (${digest.notEnriched})`}
-                  </button>
-                ) : null}
-              </div>
+              <ProcessingDigestBody
+                digest={digest}
+                onPipelineBrowse={onPipelineBrowse}
+                onBatchProcessQueue={onBatchProcessQueue}
+                batchRunning={batchRunning}
+                onProcessNotEnriched={() => void handleProcessNotEnriched()}
+              />
             ) : (
               <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
                 No processing data yet.
@@ -246,7 +190,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 No AI categories with items yet.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
                 {categories.map((tile) => (
                   <button
                     key={tile.categoryId}
@@ -256,7 +200,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     style={{
                       background: 'none',
                       border: 'none',
-                      padding: '4px 6px',
+                      padding: '5px 8px',
                       textAlign: 'left',
                       cursor: onBrowseCategory ? 'pointer' : 'default',
                       color: 'var(--text)',
@@ -293,12 +237,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* ===== DIVIDER ===== */}
       {hasBottomRow && (
-        <div
-          onMouseDown={onDividerMouseDown}
-          style={{ height: 5, flexShrink: 0, background: 'var(--border)', cursor: 'row-resize', zIndex: 1 }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-weak)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')}
-        />
+        <Resizer direction="horizontal" onResize={onDividerResize} thickness={5} />
       )}
 
       {/* ===== BOTTOM PANE ===== */}
@@ -315,6 +254,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           statusBar={statusBar}
           librarySearch={librarySearch}
           onOpenItemFromSearch={onOpenItemFromSearch}
+          scopeProjectId={scopeProjectId}
+          scopeCollectionId={scopeCollectionId}
+          onSwitchScopeForItem={onSwitchScopeForItem}
         />
       )}
     </div>
@@ -335,7 +277,9 @@ const DigestLine: React.FC<{
   count: number;
   tone: 'warning' | 'error' | 'info' | 'muted';
   onBrowse?: () => void;
-}> = ({ label, count, tone, onBrowse }) => {
+  hint?: string;
+  deemphasized?: boolean;
+}> = ({ label, count, tone, onBrowse, hint, deemphasized }) => {
   if (count === 0) return null;
 
   const color =
@@ -349,22 +293,25 @@ const DigestLine: React.FC<{
 
   const row = (
     <>
-      <span>{label}</span>
-      <span style={{ fontWeight: 600, color }}>{count}</span>
+      <span style={deemphasized ? { color: 'var(--text-faint)' } : undefined}>{label}</span>
+      <span style={{ fontWeight: deemphasized ? 500 : 600, color: deemphasized ? 'var(--text-faint)' : color }}>
+        {count}
+      </span>
     </>
   );
 
+  const rowStyle: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 8,
+    fontSize: 'var(--text-xs)',
+    color: deemphasized ? 'var(--text-faint)' : 'var(--text-muted)',
+    opacity: deemphasized ? 0.85 : 1,
+  };
+
   if (!onBrowse) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          gap: 8,
-          fontSize: 'var(--text-xs)',
-          color: 'var(--text-muted)',
-        }}
-      >
+      <div style={rowStyle} title={hint}>
         {row}
       </div>
     );
@@ -374,18 +321,14 @@ const DigestLine: React.FC<{
     <button
       type="button"
       onClick={onBrowse}
-      title={`Browse ${label.toLowerCase()}`}
+      title={hint ?? `Browse ${label.toLowerCase()}`}
       style={{
         all: 'unset',
-        display: 'flex',
-        justifyContent: 'space-between',
-        gap: 8,
+        ...rowStyle,
         width: '100%',
-        fontSize: 'var(--text-xs)',
-        color: 'var(--text-muted)',
         cursor: 'pointer',
-        padding: '2px 4px',
-        margin: '0 -4px',
+        padding: '3px 6px',
+        margin: '0 -6px',
         borderRadius: 'var(--radius-sm)',
       }}
       onMouseEnter={(e) => {
@@ -394,10 +337,103 @@ const DigestLine: React.FC<{
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = 'transparent';
-        e.currentTarget.style.color = 'var(--text-muted)';
+        e.currentTarget.style.color = deemphasized ? 'var(--text-faint)' : 'var(--text-muted)';
       }}
     >
       {row}
     </button>
+  );
+};
+
+interface ProcessingDigestBodyProps {
+  digest: ProcessingDigest;
+  onPipelineBrowse?: (kind: PipelineQueueKind) => void;
+  onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
+  batchRunning: boolean;
+  onProcessNotEnriched: () => void;
+}
+
+const ACTIONABLE_DIGEST_LINES: Array<{
+  kind: PipelineQueueKind;
+  countKey: keyof Pick<
+    ProcessingDigest,
+    'suggestedCategories' | 'manualReview' | 'enrichFailed' | 'pendingClassify'
+  >;
+  tone: 'warning' | 'error' | 'info';
+}> = [
+  { kind: 'suggested_categories', countKey: 'suggestedCategories', tone: 'warning' },
+  { kind: 'manual_review', countKey: 'manualReview', tone: 'warning' },
+  { kind: 'enrich_failed', countKey: 'enrichFailed', tone: 'error' },
+  { kind: 'pending_classify', countKey: 'pendingClassify', tone: 'info' },
+];
+
+const ProcessingDigestBody: React.FC<ProcessingDigestBodyProps> = ({
+  digest,
+  onPipelineBrowse,
+  onBatchProcessQueue,
+  batchRunning,
+  onProcessNotEnriched,
+}) => {
+  const hasActionable = ACTIONABLE_DIGEST_LINES.some((line) => digest[line.countKey] > 0);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+      {ACTIONABLE_DIGEST_LINES.map(({ kind, countKey, tone }) => (
+        <DigestLine
+          key={kind}
+          label={PIPELINE_QUEUE_LABELS[kind]}
+          count={digest[countKey]}
+          tone={tone}
+          hint={PIPELINE_QUEUE_HINTS[kind]}
+          onBrowse={onPipelineBrowse ? () => onPipelineBrowse(kind) : undefined}
+        />
+      ))}
+
+      {digest.notEnriched > 0 && (
+        <>
+          {hasActionable && (
+            <div
+              style={{
+                borderTop: '1px solid var(--border)',
+                marginTop: 4,
+                paddingTop: 4,
+              }}
+            />
+          )}
+          <DigestLine
+            label={PIPELINE_QUEUE_LABELS.not_enriched}
+            count={digest.notEnriched}
+            tone="muted"
+            hint={PIPELINE_QUEUE_HINTS.not_enriched}
+            deemphasized={hasActionable}
+            onBrowse={onPipelineBrowse ? () => onPipelineBrowse('not_enriched') : undefined}
+          />
+          {onBatchProcessQueue ? (
+            <button
+              type="button"
+              onClick={onProcessNotEnriched}
+              disabled={batchRunning}
+              style={{
+                marginTop: 4,
+                padding: '5px 8px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: batchRunning ? 'var(--bg-hover)' : 'transparent',
+                color: 'var(--text-muted)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                cursor: batchRunning ? 'wait' : 'pointer',
+                opacity: batchRunning ? 0.7 : 1,
+                width: 'fit-content',
+              }}
+            >
+              {batchRunning
+                ? 'Processing…'
+                : `Process not enriched (${digest.notEnriched})`}
+            </button>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 };

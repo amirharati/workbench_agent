@@ -95,7 +95,7 @@ Chrome MV3 extension
 - AI pipeline hardening V1.1 (Task 03): incremental classify-by-hash, quality gate tiers, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks toolbar: Results / Enrich / Categories), queue reconcilers, `pending_discover` for no-topic outcomes.
 - Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion; CLI eval; dev `SearchDevPanel` for R&D.
 - **Doc embedding step (Task 04):** `embedBackfillPlan` + `embed-incremental` CLI; vectors in `ai_item_signals`.
-- **V2 product UX (Task 05):** **05.1–05.5** shipped — shell, search, enrichment display, category review, **single-link digest** (hash-aware, side panel AI panel). Favorites placeholder. Polish → **D-40** / **D-41**; batch → **05.6**; auth-page fetch → **D-25**.
+- **V2 product UX (Task 05):** **V2-A core shipped** (05.1–05.7 + D-40). **05.8** + **D-41** deferred. **Top:** V2-B pins/favorites/trash (DB writes → live backup); V2-C backend; D-26+W6 and D-25 deferred.
 
 ---
 

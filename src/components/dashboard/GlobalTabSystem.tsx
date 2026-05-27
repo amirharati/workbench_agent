@@ -5,7 +5,11 @@ import { ProductSearchView } from './ProductSearchView';
 import { LIBRARY_SEARCH_TAB_ID, useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
-import { EnrichmentContent, ItemPipelineBadge } from './PipelineDisplayBlocks';
+import { EnrichmentContent, ItemPipelineBadge, ENRICHMENT_EMPTY_MESSAGE } from './PipelineDisplayBlocks';
+import {
+  isScopeNarrowed,
+  itemMatchesScope,
+} from '../../lib/shell/itemScope';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -92,6 +96,55 @@ function getTabLabel(tab: GlobalTab, items: Item[]): string {
   return item.title?.trim() || 'Untitled';
 }
 
+function TabOutOfScopeBadge({
+  tab,
+  items,
+  collections,
+  scopeProjectId = 'all',
+  scopeCollectionId = 'all',
+  onSwitchScopeForItem,
+  compact,
+}: {
+  tab: GlobalTab;
+  items: Item[];
+  collections: Collection[];
+  scopeProjectId?: string | 'all';
+  scopeCollectionId?: string | 'all';
+  onSwitchScopeForItem?: (item: Item) => void;
+  compact?: boolean;
+}) {
+  if (tab.kind !== 'item') return null;
+  const item = items.find((i) => i.id === tab.itemId);
+  if (!item || !isScopeNarrowed(scopeProjectId, scopeCollectionId)) return null;
+  if (itemMatchesScope(item, scopeProjectId, scopeCollectionId, collections)) return null;
+
+  return (
+    <button
+      type="button"
+      title="Out of scope — click to switch to this item's collection"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSwitchScopeForItem?.(item);
+      }}
+      style={{
+        flexShrink: 0,
+        padding: compact ? '0 4px' : '1px 5px',
+        borderRadius: 4,
+        border: '1px solid #d29922',
+        background: 'rgba(210, 153, 34, 0.12)',
+        color: '#d29922',
+        fontSize: compact ? 9 : 10,
+        fontWeight: 700,
+        lineHeight: 1.3,
+        cursor: 'pointer',
+        letterSpacing: 0.2,
+      }}
+    >
+      {compact ? '!' : 'OOS'}
+    </button>
+  );
+}
+
 // ===== Props =====
 interface GlobalTabSystemProps {
   items: Item[];
@@ -106,6 +159,9 @@ interface GlobalTabSystemProps {
   statusBar?: React.ReactNode;
   librarySearch?: LibrarySearchApi;
   onOpenItemFromSearch?: (item: Item) => void;
+  scopeProjectId?: string | 'all';
+  scopeCollectionId?: string | 'all';
+  onSwitchScopeForItem?: (item: Item) => void;
 }
 
 export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
@@ -120,6 +176,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   statusBar,
   librarySearch,
   onOpenItemFromSearch,
+  scopeProjectId = 'all',
+  scopeCollectionId = 'all',
+  onSwitchScopeForItem,
 }) => {
   const { tabs, activeTabId, bottomLayout, isSidebarCollapsed } = tabState;
   const set = (patch: Partial<GlobalTabState>) => onTabStateChange({ ...tabState, ...patch });
@@ -292,6 +351,15 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   {!isSidebarCollapsed && (
                     <>
                       <span style={{ marginLeft: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: 'var(--text-sm)' }}>{label}</span>
+                      <TabOutOfScopeBadge
+                        tab={tab}
+                        items={items}
+                        collections={collections}
+                        scopeProjectId={scopeProjectId}
+                        scopeCollectionId={scopeCollectionId}
+                        onSwitchScopeForItem={onSwitchScopeForItem}
+                        compact
+                      />
                       <span
                         onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
                         style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 4, color: 'var(--text-faint)', cursor: 'pointer', flexShrink: 0 }}
@@ -366,6 +434,15 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
                 >
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, pointerEvents: 'none' }}>{label}</span>
+                  <TabOutOfScopeBadge
+                    tab={tab}
+                    items={items}
+                    collections={collections}
+                    scopeProjectId={scopeProjectId}
+                    scopeCollectionId={scopeCollectionId}
+                    onSwitchScopeForItem={onSwitchScopeForItem}
+                    compact
+                  />
                   <span
                     onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
                     style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 4, color: 'var(--text-faint)', cursor: 'pointer', flexShrink: 0 }}
@@ -569,6 +646,7 @@ const ItemDetailEnrichment: React.FC<{ itemId: string }> = ({ itemId }) => {
       <EnrichmentContent
         summary={context?.summary}
         keyPoints={context?.keyPoints ?? []}
+        emptyMessage={ENRICHMENT_EMPTY_MESSAGE}
       />
     </div>
   );

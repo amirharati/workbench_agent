@@ -1,10 +1,22 @@
 import React from 'react';
 import { StatusBadge } from '../StatusBadge';
-import type { PipelineBadge } from '../../lib/pipeline';
+import {
+  shouldShowListPipelineBadge,
+  type PipelineBadge,
+} from '../../lib/pipeline';
+
+export const ENRICHMENT_EMPTY_MESSAGE =
+  'Not enriched yet. Use Run digest in the Inspector, or Process not enriched on Home. Batch tools will move to Settings → Advanced.';
 
 export const ItemPipelineBadge: React.FC<{ badge?: PipelineBadge | null }> = ({ badge }) => {
   if (!badge) return null;
   return <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>;
+};
+
+/** Badge for list/search rows — hides Ready and Not processed. */
+export const ListPipelineBadge: React.FC<{ badge?: PipelineBadge | null }> = ({ badge }) => {
+  if (!shouldShowListPipelineBadge(badge)) return null;
+  return <ItemPipelineBadge badge={badge} />;
 };
 
 interface EnrichmentContentProps {
@@ -12,6 +24,7 @@ interface EnrichmentContentProps {
   keyPoints: string[];
   compact?: boolean;
   emptyMessage?: string;
+  showKeyPoints?: boolean;
 }
 
 export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
@@ -19,8 +32,11 @@ export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
   keyPoints,
   compact,
   emptyMessage,
+  showKeyPoints = true,
 }) => {
-  if (!summary && keyPoints.length === 0) {
+  const visibleKeyPoints = showKeyPoints ? keyPoints : [];
+
+  if (!summary && visibleKeyPoints.length === 0) {
     return (
       <div
         style={{
@@ -33,8 +49,7 @@ export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
           lineHeight: 1.5,
         }}
       >
-        {emptyMessage ??
-          'Not enriched yet. Run fetch enrichment from the dev hub (Settings → Dev tools).'}
+        {emptyMessage ?? ENRICHMENT_EMPTY_MESSAGE}
       </div>
     );
   }
@@ -57,7 +72,7 @@ export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
           </p>
         </div>
       )}
-      {keyPoints.length > 0 && (
+      {visibleKeyPoints.length > 0 && (
         <div>
           <SectionLabel>Key points</SectionLabel>
           <ul
@@ -69,7 +84,7 @@ export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
               lineHeight: 1.5,
             }}
           >
-            {keyPoints.map((point, i) => (
+            {visibleKeyPoints.map((point, i) => (
               <li key={`${i}-${point.slice(0, 24)}`}>{point}</li>
             ))}
           </ul>

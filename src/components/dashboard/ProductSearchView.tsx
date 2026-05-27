@@ -7,7 +7,7 @@ import type { SearchFilters } from '../../lib/search';
 import { SearchRelatedPanel } from './SearchDiscoveryBlocks';
 import { isValidHttpUrl } from '../../lib/utils';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
-import { ItemPipelineBadge } from './PipelineDisplayBlocks';
+import { ListPipelineBadge } from './PipelineDisplayBlocks';
 
 interface ProductSearchViewProps {
   items: Item[];
@@ -392,14 +392,12 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                       fontSize: 'var(--text-sm)',
                       color: 'var(--text)',
                       marginBottom: 4,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      flexWrap: 'wrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    <span>{row.title || 'Untitled'}</span>
-                    <ItemPipelineBadge badge={badgeMap.get(row.itemId)} />
+                    {row.title || 'Untitled'}
                   </div>
                   <div
                     style={{
@@ -411,22 +409,14 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                       flexWrap: 'wrap',
                     }}
                   >
+                    <ListPipelineBadge badge={badgeMap.get(row.itemId)} />
                     <span>{row.domain}</span>
                     <span style={{ color: 'var(--text-faint)' }}>·</span>
                     <span style={{ color: 'var(--text-faint)' }}>{getMatchReason(row)}</span>
                     {row.primaryCategoryName && (
                       <>
                         <span style={{ color: 'var(--text-faint)' }}>·</span>
-                        <span
-                          style={{
-                            padding: '1px 6px',
-                            borderRadius: 999,
-                            background: 'var(--accent-weak)',
-                            color: 'var(--accent)',
-                          }}
-                        >
-                          {row.primaryCategoryName}
-                        </span>
+                        <span style={{ color: 'var(--text-muted)' }}>{row.primaryCategoryName}</span>
                       </>
                     )}
                   </div>

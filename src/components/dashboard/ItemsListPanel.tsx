@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Item } from '../../lib/db';
 import { Panel } from '../../styles/primitives';
 import { ItemContextMenu } from './ItemContextMenu';
 import { FolderOpen, List, Grid } from 'lucide-react';
+import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
+import { ListPipelineBadge } from './PipelineDisplayBlocks';
 
 interface ItemsListPanelProps {
   items: Item[];
@@ -49,6 +51,8 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   onViewModeChange,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
+  const itemIds = useMemo(() => items.map((i) => i.id), [items]);
+  const badgeMap = usePipelineBadgeMap(itemIds);
 
   const handleContextMenu = (e: React.MouseEvent, item: Item) => {
     e.preventDefault();
@@ -404,6 +408,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                   >
                     {item.title || 'Untitled'}
                   </span>
+                  <ListPipelineBadge badge={badgeMap.get(item.id)} />
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   </span>

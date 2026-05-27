@@ -4,8 +4,7 @@ import { InspectorTab } from '../InspectorTab';
 import { AskTab } from '../AskTab';
 import type { Item } from '../../../lib/db';
 import type { AISettings } from '../../../lib/ai/types';
-
-type PanelTab = 'inspector' | 'ask';
+import type { RightPanelTab } from '../../../lib/shell/shellLayoutState';
 
 interface RightPanelProps {
   activeItem: Item | null;
@@ -18,6 +17,11 @@ interface RightPanelProps {
     items: Item[];
   } | null;
   isSearchSurface?: boolean;
+  enrichmentPrimaryInItemTab?: boolean;
+  isCollapsed: boolean;
+  activeTab: RightPanelTab;
+  onCollapsedChange: (collapsed: boolean) => void;
+  onActiveTabChange: (tab: RightPanelTab) => void;
   recentQueries?: string[];
   currentSearchQuery?: string;
   onRerunSearch?: (query: string) => void;
@@ -36,16 +40,19 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   scopeCollectionId,
   searchContext,
   isSearchSurface,
+  enrichmentPrimaryInItemTab,
+  isCollapsed,
+  activeTab,
+  onCollapsedChange,
+  onActiveTabChange,
   recentQueries,
   currentSearchQuery,
   onRerunSearch,
   onTestAI,
 }) => {
-  const [activeTab, setActiveTab] = useState<PanelTab>('inspector');
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoverExpanded, setHoverExpanded] = useState(false);
 
-  const toggle = () => setIsCollapsed((v) => !v);
+  const toggle = () => onCollapsedChange(!isCollapsed);
   const showExpanded = !isCollapsed || hoverExpanded;
 
   return (
@@ -103,10 +110,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               height: 36,
             }}
           >
-            {(['inspector', 'ask'] as PanelTab[]).map((tab) => (
+            {(['inspector', 'ask'] as RightPanelTab[]).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => onActiveTabChange(tab)}
                 style={{
                   flex: 1,
                   padding: '0 4px',
@@ -160,6 +167,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               <InspectorTab
                 activeItem={activeItem}
                 isSearchSurface={isSearchSurface}
+                enrichmentPrimaryInItemTab={enrichmentPrimaryInItemTab}
                 currentQuery={currentSearchQuery}
                 recentQueries={recentQueries}
                 onRerunSearch={onRerunSearch}

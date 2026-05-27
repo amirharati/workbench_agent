@@ -157,20 +157,23 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 | 05.0 spec | done | [`V2-PRODUCT-DESIGN-SPEC.md`](temp/V2-PRODUCT-DESIGN-SPEC.md) |
 | 05.1 shell | done (iter 1) | Home, right panel, toasts |
 | 05.2 search | done | W5 |
-| **05.3 enrichment UI** | **done** | W1 read paths — presentation polish → D-40 |
+| **05.3 enrichment UI** | **done** | W1 read paths |
+| **05.40 presentation (D-40)** | **done** | List badges, digest copy, Inspector dedupe, search metadata row |
 | **05.4 category review** | **done** | Accept/reject in Inspector; split Home digest queues; Tools → AI Categories page |
 | **05.5 single-link digest** | **done** | Auto digest on save/update; hash-aware skip; side panel AI panel; Inspector retry/re-digest |
-| 05.6 import/batch maintenance | deferred | W3/W4 → tracker D-21…D-22 |
-| 05.7–05.8 shell / Advanced gate | later | |
+| **05.6 import/batch maintenance** | **done** | Import confirm + report; Home batch; suspicious-fetch preserve; Tools → Import Studio |
+| **05.7 shell polish** | **done** | Persisted layout, scope chips, OOS tabs, Ctrl+W |
+| 05.8 Advanced gate | **deferred** | Dev hub unchanged on Bookmarks toolbar |
 
 Workflow checklist (product, no new schema first):
 
 - [x] **W5 Search** — 05.2
-- [x] **W1 Daily library (core)** — 05.3 read + 05.4 review/browse; polish **D-40** optional
+- [x] **W1 Daily library** — 05.3–05.4 + **D-40** presentation; D-41 search clicks optional
 - [x] **W6 User signals (MVP)** — accept/reject in Inspector (05.4); Change category / un-accept deferred
-- [ ] **W7 Shell** — partial (05.1); polish optional
+- [x] **W7 Shell (Phase 2)** — 05.7; stretch: auto-collapse nav, shortcut sheet
 - [x] **W2 Single digest** — 05.5 (hash-aware digest, side panel panel, toasts); auth fetch → **D-25**
-- [ ] **W3 / W4** — import + maintenance ([`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md))
+- [x] **W3 Import post-processing** — 05.6 (opt-in pipeline, confirm panel, report)
+- [x] **W4 Batch maintenance (MVP)** — 05.6 Home **Process not enriched**; per-item via 05.5 Inspector
 
 ### V2-B — Data model cleanup
 
@@ -253,4 +256,4 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ---
 
-*Last updated: 2026-05-27 — **V2-A:** 05.1–05.5 shipped. **Next:** D-40 / D-41 polish, 05.6 batch, or D-25 auth fetch. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*
+*Last updated: 2026-05-27 — **V2-A core done.** Deferred: 05.8, D-41, D-26+W6, D-25 (until in-tab fetch). **Top:** V2-B (pins/favs/trash + backup on every DB write), V2-C. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*

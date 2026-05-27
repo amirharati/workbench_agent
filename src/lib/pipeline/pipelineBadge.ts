@@ -9,6 +9,14 @@ export interface PipelineBadge {
   label: string;
 }
 
+/** List/search rows: only surface badges that need user action. */
+export function shouldShowListPipelineBadge(
+  badge: PipelineBadge | null | undefined
+): badge is PipelineBadge {
+  if (!badge) return false;
+  return badge.kind === 'failed' || badge.kind === 'needs_review';
+}
+
 export function resolvePipelineBadge(ctx: ItemPipelineContext | null | undefined): PipelineBadge {
   if (!ctx) {
     return { kind: 'not_processed', variant: 'info', label: 'Not processed' };

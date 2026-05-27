@@ -11,8 +11,10 @@ import { ProductSearchView } from '../ProductSearchView';
 import { useLibrarySearch } from '../../../hooks/useLibrarySearch';
 import { usePipelineBadgeMap } from '../../../hooks/usePipelineBadgeMap';
 import type { CategoryBrowseFilter, PipelineBrowseFilter, PipelineQueueKind } from '../../../lib/pipeline';
-import { ItemPipelineBadge } from '../PipelineDisplayBlocks';
+import { ListPipelineBadge } from '../PipelineDisplayBlocks';
+import { ScopeChipsBar } from '../ScopeChipsBar';
 import { type GlobalTabState } from '../GlobalTabSystem';
+import { SHELL_LAYOUT_DEFAULTS, type ShellLayoutState } from '../../../lib/shell/shellLayoutState';
 import { SettingsView } from '../SettingsView';
 import { AiCategoriesView } from '../AiCategoriesView';
 import { ImportStudioView } from '../ImportStudioView';
@@ -95,6 +97,12 @@ interface MainContentProps {
   onPipelineBrowse?: (kind: PipelineQueueKind) => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
   onSelectView?: (view: DashboardView) => void;
+  shellLayout?: ShellLayoutState;
+  onShellLayoutPatch?: (patch: Partial<ShellLayoutState>) => void;
+  onClearProjectScope?: () => void;
+  onClearCollectionScope?: () => void;
+  onResetScope?: () => void;
+  onSwitchScopeForItem?: (item: Item) => void;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -148,7 +156,22 @@ export const MainContent: React.FC<MainContentProps> = ({
   onPipelineBrowse,
   onBatchProcessQueue,
   onSelectView,
+  shellLayout,
+  onShellLayoutPatch,
+  onClearProjectScope,
+  onClearCollectionScope,
+  onResetScope,
+  onSwitchScopeForItem,
 }) => {
+  const resolvedShellLayout = shellLayout ?? SHELL_LAYOUT_DEFAULTS;
+  const bookmarkListWidth = resolvedShellLayout.bookmarkListWidth;
+  const bookmarkDetailWidth = resolvedShellLayout.bookmarkDetailWidth;
+  const notesListWidth = resolvedShellLayout.notesListWidth;
+  const notesDetailWidth = resolvedShellLayout.notesDetailWidth;
+  const patchLayout = (patch: Partial<ShellLayoutState>) => {
+    onShellLayoutPatch?.(patch);
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUrl, setNewUrl] = useState('');
@@ -159,8 +182,6 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [editNotes, setEditNotes] = useState('');
   const [editCollectionId, setEditCollectionId] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [bookmarkListWidth, setBookmarkListWidth] = useState(240);
-  const [bookmarkDetailWidth, setBookmarkDetailWidth] = useState(380);
   const [selectedBookmarkProjectId, setSelectedBookmarkProjectId] = useState<string | 'all'>('all');
   const [bookmarkContextMenu, setBookmarkContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const [bookmarkViewMode, setBookmarkViewMode] = useState<'list' | 'grid'>('grid');
@@ -193,8 +214,6 @@ export const MainContent: React.FC<MainContentProps> = ({
   };
 
   // Notes view state
-  const [notesListWidth, setNotesListWidth] = useState(240);
-  const [notesDetailWidth, setNotesDetailWidth] = useState(400);
   const [selectedNotesProjectId, setSelectedNotesProjectId] = useState<string | 'all'>('all');
   const [notesContextMenu, setNotesContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const [notesViewMode, setNotesViewMode] = useState<'list' | 'grid'>('grid');
@@ -546,75 +565,22 @@ export const MainContent: React.FC<MainContentProps> = ({
     }
   };
 
-  const renderBrowseFilterChips = () => {
-    if (!categoryBrowse && !pipelineBrowse) return null;
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-        {categoryBrowse && (
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '3px 10px',
-              borderRadius: 999,
-              border: '1px solid var(--accent)',
-              background: 'var(--accent-weak)',
-              color: 'var(--accent)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-            }}
-          >
-            Category: {categoryBrowse.name}
-            <span style={{ color: 'var(--text-faint)', fontWeight: 500 }}>
-              ({filteredBookmarkItems.length})
-            </span>
-          </span>
-        )}
-        {pipelineBrowse && (
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '3px 10px',
-              borderRadius: 999,
-              border: '1px solid var(--accent)',
-              background: 'var(--accent-weak)',
-              color: 'var(--accent)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-            }}
-          >
-            {pipelineBrowse.label}
-            <span style={{ color: 'var(--text-faint)', fontWeight: 500 }}>
-              ({filteredBookmarkItems.length})
-            </span>
-          </span>
-        )}
-        {(onClearCategoryBrowse && categoryBrowse) || (onClearPipelineBrowse && pipelineBrowse) ? (
-          <button
-            type="button"
-            onClick={() => {
-              if (categoryBrowse) onClearCategoryBrowse?.();
-              if (pipelineBrowse) onClearPipelineBrowse?.();
-            }}
-            style={{
-              padding: '2px 8px',
-              borderRadius: 4,
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: 'var(--text-muted)',
-              fontSize: 'var(--text-xs)',
-              cursor: 'pointer',
-            }}
-          >
-            Clear filter
-          </button>
-        ) : null}
-      </div>
-    );
-  };
+  const renderScopeChipsBar = (itemCount?: number) => (
+    <ScopeChipsBar
+      scopeProjectId={scopeProjectId}
+      scopeCollectionId={scopeCollectionId}
+      projects={projects}
+      collections={collections}
+      categoryBrowse={categoryBrowse}
+      pipelineBrowse={pipelineBrowse}
+      itemCount={itemCount}
+      onClearProject={onClearProjectScope ?? (() => {})}
+      onClearCollection={onClearCollectionScope ?? (() => {})}
+      onResetScope={onResetScope ?? (() => {})}
+      onClearCategoryBrowse={onClearCategoryBrowse}
+      onClearPipelineBrowse={onClearPipelineBrowse}
+    />
+  );
 
   const renderContent = () => {
     switch (activeView) {
@@ -640,6 +606,9 @@ export const MainContent: React.FC<MainContentProps> = ({
             onBrowseCategory={onBrowseCategory}
             onPipelineBrowse={onPipelineBrowse}
             onBatchProcessQueue={onBatchProcessQueue}
+            scopeProjectId={scopeProjectId}
+            scopeCollectionId={scopeCollectionId}
+            onSwitchScopeForItem={onSwitchScopeForItem}
           />
         );
       case 'search':
@@ -1069,7 +1038,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                 onChange={setSearchQuery}
                 placeholder="Filter in list..."
               />
-              {renderBrowseFilterChips()}
+              {renderScopeChipsBar(filteredBookmarkItems.length)}
             </div>
 
             <Panel
@@ -1259,7 +1228,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               <Resizer
                 direction="vertical"
                 onResize={(delta) => {
-                  setBookmarkListWidth((w) => Math.min(Math.max(200, w + delta), 400));
+                  patchLayout({ bookmarkListWidth: bookmarkListWidth + delta });
                 }}
               />
 
@@ -1360,7 +1329,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                               flexShrink: 0,
                               alignItems: 'center',
                             }}>
-                              <ItemPipelineBadge badge={bookmarkBadgeMap.get(item.id)} />
+                              <ListPipelineBadge badge={bookmarkBadgeMap.get(item.id)} />
                               {collection && (
                                 <span style={{
                                   padding: '2px 6px',
@@ -1529,7 +1498,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                               overflow: 'hidden',
                               alignItems: 'center',
                             }}>
-                              <ItemPipelineBadge badge={bookmarkBadgeMap.get(item.id)} />
+                              <ListPipelineBadge badge={bookmarkBadgeMap.get(item.id)} />
                               {collection && (
                                 <span style={{
                                   padding: '2px 6px',
@@ -1608,7 +1577,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               <Resizer
                 direction="vertical"
                 onResize={(delta) => {
-                  setBookmarkDetailWidth((w) => Math.min(Math.max(300, w - delta), 620));
+                  patchLayout({ bookmarkDetailWidth: bookmarkDetailWidth - delta });
                 }}
               />
 
@@ -2054,7 +2023,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               <Resizer
                 direction="vertical"
                 onResize={(delta) => {
-                  setNotesListWidth((w) => Math.min(Math.max(200, w + delta), 400));
+                  patchLayout({ notesListWidth: notesListWidth + delta });
                 }}
               />
 
@@ -2387,7 +2356,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               <Resizer
                 direction="vertical"
                 onResize={(delta) => {
-                  setNotesDetailWidth((w) => Math.min(Math.max(300, w - delta), 600));
+                  patchLayout({ notesDetailWidth: notesDetailWidth - delta });
                 }}
               />
 
@@ -2620,6 +2589,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               onChange={setSearchQuery} 
               placeholder="Filter in list..."
             />
+            {renderScopeChipsBar(filteredWorkspaces.length)}
           </div>
 
           {/* Workspace list */}
@@ -2763,7 +2733,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onChange={setSearchQuery} 
             placeholder="Filter in list..."
           />
-          {activeView === 'bookmarks' && renderBrowseFilterChips()}
+          {renderScopeChipsBar(listItems.length)}
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <button
               onClick={() => activeView === 'bookmarks' ? setShowAddBookmark(true) : setShowAddNote(true)}
@@ -2848,7 +2818,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                     gap: 6,
                   }}>
                     {activeView === 'bookmarks' && (
-                      <ItemPipelineBadge badge={bookmarkBadgeMap.get(item.id)} />
+                      <ListPipelineBadge badge={bookmarkBadgeMap.get(item.id)} />
                     )}
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.title || 'Untitled'}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
@@ -11,6 +11,7 @@ import { CategoryChip, SuggestedCategoryRow } from '../shared/CategoryReviewRows
 interface InspectorTabProps {
   activeItem: Item | null;
   isSearchSurface?: boolean;
+  enrichmentPrimaryInItemTab?: boolean;
   currentQuery?: string;
   recentQueries?: string[];
   onRerunSearch?: (query: string) => void;
@@ -171,19 +172,27 @@ function InspectorDigestAction({
 function ItemInspectorBody({
   item,
   isSearchSurface,
+  enrichmentPrimaryInItemTab = false,
   recentQueries,
   currentQuery,
   onRerunSearch,
 }: {
   item: Item;
   isSearchSurface: boolean;
+  enrichmentPrimaryInItemTab?: boolean;
   recentQueries: string[];
   currentQuery?: string;
   onRerunSearch?: (query: string) => void;
 }) {
   const { context, loading, reload } = useItemPipelineContext(item.id);
-  const [summaryOpen, setSummaryOpen] = useState(true);
+  const [summaryOpen, setSummaryOpen] = useState(!enrichmentPrimaryInItemTab);
   const badge = context ? resolvePipelineBadge(context) : null;
+
+  useEffect(() => {
+    setSummaryOpen(!enrichmentPrimaryInItemTab);
+  }, [item.id, enrichmentPrimaryInItemTab]);
+
+  const hasEnrichment = Boolean(context?.summary || (context?.keyPoints.length ?? 0) > 0);
 
   return (
     <div
@@ -246,26 +255,44 @@ function ItemInspectorBody({
 
       {!loading && context && (
         <>
-          <button
-            type="button"
-            onClick={() => setSummaryOpen((v) => !v)}
-            style={{
-              all: 'unset',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: 0.4,
-            }}
-          >
-            {summaryOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            AI summary
-          </button>
-          {summaryOpen && (
+          {hasEnrichment && (
+            <>
+              <button
+                type="button"
+                onClick={() => setSummaryOpen((v) => !v)}
+                style={{
+                  all: 'unset',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.4,
+                }}
+              >
+                {summaryOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                AI summary
+              </button>
+              {!summaryOpen && enrichmentPrimaryInItemTab && (
+                <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.5 }}>
+                  Full summary and key points are in the item tab.
+                </p>
+              )}
+              {summaryOpen && (
+                <EnrichmentContent
+                  summary={context.summary}
+                  keyPoints={context.keyPoints}
+                  compact
+                  showKeyPoints={!enrichmentPrimaryInItemTab}
+                />
+              )}
+            </>
+          )}
+
+          {!hasEnrichment && (
             <EnrichmentContent summary={context.summary} keyPoints={context.keyPoints} compact />
           )}
 
@@ -358,6 +385,7 @@ function ItemInspectorBody({
 export const InspectorTab: React.FC<InspectorTabProps> = ({
   activeItem,
   isSearchSurface = false,
+  enrichmentPrimaryInItemTab = false,
   currentQuery,
   recentQueries = [],
   onRerunSearch,
@@ -401,6 +429,7 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
     <ItemInspectorBody
       item={activeItem!}
       isSearchSurface={isSearchSurface}
+      enrichmentPrimaryInItemTab={enrichmentPrimaryInItemTab}
       recentQueries={recentQueries}
       currentQuery={currentQuery}
       onRerunSearch={onRerunSearch}

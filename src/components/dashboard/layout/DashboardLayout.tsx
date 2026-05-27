@@ -23,6 +23,19 @@ import {
   type PipelineBrowseFilter,
   type PipelineQueueKind,
 } from '../../../lib/pipeline';
+import {
+  loadShellLayout,
+  patchShellLayout,
+  type ShellLayoutState,
+} from '../../../lib/shell/shellLayoutState';
+import { getItemPrimaryScope } from '../../../lib/shell/itemScope';
+import { Resizer } from '../Resizer';
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
+}
 
 export type DashboardView =
   | 'home'
@@ -141,11 +154,14 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     addToast({ type: 'error', message: `Search failed: ${message}` });
   });
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [shellLayout, setShellLayout] = useState<ShellLayoutState>(() => loadShellLayout());
+  const patchShellLayoutState = useCallback((patch: Partial<ShellLayoutState>) => {
+    setShellLayout((prev) => patchShellLayout(patch, prev));
+  }, []);
   const statusBar = (
     <StatusBar messages={statusMessages} onDismiss={dismissStatusMessage} />
   );
 
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeView, setActiveView] = useState<DashboardView>('home');
   const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>('all');
   const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>('all');
@@ -174,14 +190,38 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (commandPaletteOpen) {
+          e.preventDefault();
+          setCommandPaletteOpen(false);
+        }
+        return;
+      }
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setCommandPaletteOpen(true);
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
+        if (isEditableKeyboardTarget(e.target)) return;
+        const activeId = globalTabState.activeTabId;
+        if (!activeId) return;
+        e.preventDefault();
+        setGlobalTabState((prev) => {
+          if (!prev.activeTabId) return prev;
+          const nextTabs = prev.tabs.filter((t) => t.id !== prev.activeTabId);
+          const nextActiveId = nextTabs[nextTabs.length - 1]?.id ?? null;
+          const next = { ...prev, tabs: nextTabs, activeTabId: nextActiveId };
+          saveGlobalTabState(next);
+          return next;
+        });
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [commandPaletteOpen, globalTabState.activeTabId]);
 
   const openLibrarySearch = useCallback(
     (query?: string) => {
@@ -478,31 +518,47 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
 
 
-  const inspectorItem = React.useMemo(() => {
-    if (librarySearch.state.selectedItemId) {
-      return items.find((i) => i.id === librarySearch.state.selectedItemId) ?? null;
-    }
-    const activeGlobalTab = globalTabState.tabs.find(t => t.id === globalTabState.activeTabId);
-    if (activeGlobalTab?.kind === 'item') {
-      return items.find(i => i.id === activeGlobalTab.itemId) ?? null;
-    }
-    return null;
-  }, [librarySearch.state.selectedItemId, globalTabState.tabs, globalTabState.activeTabId, items]);
-
-  const searchContext = useMemo(() => {
-    if (!librarySearch.state.result?.results.length) return null;
-    return {
-      query: librarySearch.state.query,
-      resultItemIds: librarySearch.state.result.results.slice(0, 20).map((r) => r.itemId),
-      items,
-    };
-  }, [librarySearch.state.result, librarySearch.state.query, items]);
-
   const isSearchSurface = useMemo(() => {
     if (activeView === 'search') return true;
     const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
     return activeGlobalTab?.kind === 'search';
   }, [activeView, globalTabState.tabs, globalTabState.activeTabId]);
+
+  const inspectorItem = React.useMemo(() => {
+    if (isSearchSurface) {
+      if (librarySearch.state.selectedItemId) {
+        return items.find((i) => i.id === librarySearch.state.selectedItemId) ?? null;
+      }
+      return null;
+    }
+
+    const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
+    if (activeGlobalTab?.kind === 'item') {
+      return items.find((i) => i.id === activeGlobalTab.itemId) ?? null;
+    }
+    return null;
+  }, [
+    isSearchSurface,
+    librarySearch.state.selectedItemId,
+    globalTabState.tabs,
+    globalTabState.activeTabId,
+    items,
+  ]);
+
+  const searchContext = useMemo(() => {
+    if (!isSearchSurface || !librarySearch.state.result?.results.length) return null;
+    return {
+      query: librarySearch.state.query,
+      resultItemIds: librarySearch.state.result.results.slice(0, 20).map((r) => r.itemId),
+      items,
+    };
+  }, [isSearchSurface, librarySearch.state.result, librarySearch.state.query, items]);
+
+  const enrichmentPrimaryInItemTab = useMemo(() => {
+    const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
+    if (activeGlobalTab?.kind !== 'item' || !inspectorItem) return false;
+    return activeGlobalTab.itemId === inspectorItem.id;
+  }, [globalTabState.tabs, globalTabState.activeTabId, inspectorItem]);
 
   const handleRerunSearch = useCallback(
     (query: string) => {
@@ -511,6 +567,29 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     },
     [librarySearch]
   );
+
+  const handleSwitchScopeForItem = useCallback(
+    (item: Item) => {
+      const target = getItemPrimaryScope(item, collections);
+      setScopeProjectId(target.projectId);
+      setScopeCollectionId(target.collectionId);
+    },
+    [collections]
+  );
+
+  const handleClearProjectScope = useCallback(() => {
+    setScopeProjectId('all');
+    setScopeCollectionId('all');
+  }, []);
+
+  const handleClearCollectionScope = useCallback(() => {
+    setScopeCollectionId('all');
+  }, []);
+
+  const handleResetScope = useCallback(() => {
+    setScopeProjectId('all');
+    setScopeCollectionId('all');
+  }, []);
 
   const isFullPageView = FULL_PAGE_VIEWS.has(activeView);
   const isFullMiddleView = FULL_MIDDLE_VIEWS.has(activeView);
@@ -528,15 +607,17 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     }}>
       {/* Left Sidebar */}
       <div style={{ 
-        width: isSidebarCollapsed ? '48px' : '200px',
+        width: shellLayout.leftSidebarCollapsed ? '48px' : '200px',
         flexShrink: 0,
         borderRight: '1px solid var(--border)',
         background: 'var(--bg-panel)',
         transition: 'width 0.2s ease',
       }}>
         <LeftSidebar 
-          isCollapsed={isSidebarCollapsed} 
-          onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          isCollapsed={shellLayout.leftSidebarCollapsed} 
+          onToggle={() =>
+            patchShellLayoutState({ leftSidebarCollapsed: !shellLayout.leftSidebarCollapsed })
+          }
           activeView={activeView}
           onSelectView={handleSelectView}
           projects={projects}
@@ -653,14 +734,20 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onPipelineBrowse={handlePipelineBrowse}
               onBatchProcessQueue={handleBatchProcessQueue}
               onSelectView={handleSelectView}
+              shellLayout={shellLayout}
+              onShellLayoutPatch={patchShellLayoutState}
+              onClearProjectScope={handleClearProjectScope}
+              onClearCollectionScope={handleClearCollectionScope}
+              onResetScope={handleResetScope}
+              onSwitchScopeForItem={handleSwitchScopeForItem}
             />
           ) : (
             // Split view: List pane (left) + Tabbed detail pane (right)
-            <div style={{ flex: 1, display: 'flex', gap: 1, overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
               
               {/* LIST PANE - left middle */}
               <div style={{ 
-                width: 'clamp(220px, 22%, 320px)', 
+                width: shellLayout.listPaneWidth, 
                 flexShrink: 0, 
                 display: 'flex', 
                 flexDirection: 'column',
@@ -712,8 +799,22 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               pipelineBrowse={pipelineBrowse}
               onClearPipelineBrowse={handleClearPipelineBrowse}
               onPipelineBrowse={handlePipelineBrowse}
+              shellLayout={shellLayout}
+              onShellLayoutPatch={patchShellLayoutState}
+              onClearProjectScope={handleClearProjectScope}
+              onClearCollectionScope={handleClearCollectionScope}
+              onResetScope={handleResetScope}
                 />
               </div>
+
+              <Resizer
+                direction="vertical"
+                onResize={(delta) => {
+                  setShellLayout((prev) =>
+                    patchShellLayout({ listPaneWidth: prev.listPaneWidth + delta }, prev)
+                  );
+                }}
+              />
 
               {/* TABBED DETAIL PANE - right middle */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
@@ -742,6 +843,9 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                     statusBar={statusBar}
                     librarySearch={librarySearch}
                     onOpenItemFromSearch={handleOpenItemTab}
+                    scopeProjectId={scopeProjectId}
+                    scopeCollectionId={scopeCollectionId}
+                    onSwitchScopeForItem={handleSwitchScopeForItem}
                   />
                 )}
               </div>
@@ -758,6 +862,11 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
             scopeCollectionId={scopeCollectionId}
             searchContext={searchContext}
             isSearchSurface={isSearchSurface}
+            enrichmentPrimaryInItemTab={enrichmentPrimaryInItemTab}
+            isCollapsed={shellLayout.rightPanelCollapsed}
+            activeTab={shellLayout.rightPanelTab}
+            onCollapsedChange={(collapsed) => patchShellLayoutState({ rightPanelCollapsed: collapsed })}
+            onActiveTabChange={(tab) => patchShellLayoutState({ rightPanelTab: tab })}
             recentQueries={librarySearch.state.recentQueries}
             currentSearchQuery={librarySearch.state.query}
             onRerunSearch={handleRerunSearch}
