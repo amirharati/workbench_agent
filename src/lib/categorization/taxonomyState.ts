@@ -1,4 +1,5 @@
 import { getDB } from '../db';
+import { notifyDataChanged } from '../dataChangeNotifier';
 import type { AiTaxonomyState } from './types';
 import { DEFAULT_TAXONOMY_STATE } from './types';
 
@@ -28,6 +29,7 @@ export async function saveTaxonomyState(
   };
   if (db.objectStoreNames.contains(STORE)) {
     await db.put(STORE, next);
+    notifyDataChanged('categorization.update');
   }
   return next;
 }

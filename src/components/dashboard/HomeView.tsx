@@ -9,7 +9,7 @@ import { Resizer } from './Resizer';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { useHomePipelineStats } from '../../hooks/useHomePipelineStats';
 import type { PipelineQueueKind, ProcessingDigest } from '../../lib/pipeline';
-import { PIPELINE_QUEUE_LABELS, PIPELINE_QUEUE_HINTS } from '../../lib/pipeline';
+import { loadItemIdsForCategory, loadItemIdsForPipelineQueue, PIPELINE_QUEUE_LABELS, PIPELINE_QUEUE_HINTS } from '../../lib/pipeline';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -33,8 +33,10 @@ interface HomeViewProps {
   librarySearch?: LibrarySearchApi;
   onOpenItemFromSearch?: (item: Item) => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
-  onPipelineBrowse?: (kind: PipelineQueueKind) => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
+  batchRunning?: boolean;
+  batchCancellable?: boolean;
+  onCancelBatch?: () => void;
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   onSwitchScopeForItem?: (item: Item) => void;
@@ -45,27 +47,32 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBrowseCategory, onPipelineBrowse, onBatchProcessQueue, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const topPctRef = useRef(topPct);
   topPctRef.current = topPct;
-  const { digest, categories, loading: pipelineLoading } = useHomePipelineStats();
-  const [batchRunning, setBatchRunning] = React.useState(false);
+  const {
+    digest,
+    categories,
+    loading: pipelineLoading,
+    classifyRunnable,
+    classifyRunnableLoading,
+  } = useHomePipelineStats();
   const [homeItemContextMenu, setHomeItemContextMenu] = React.useState<{
     item: Item;
     x: number;
     y: number;
   } | null>(null);
 
-  const handleProcessNotEnriched = async () => {
+  const handleProcessNotEnriched = () => {
     if (!onBatchProcessQueue || batchRunning || !digest?.notEnriched) return;
-    setBatchRunning(true);
-    try {
-      await onBatchProcessQueue('not_enriched');
-    } finally {
-      setBatchRunning(false);
-    }
+    void onBatchProcessQueue('not_enriched');
+  };
+
+  const handleClassifyReady = () => {
+    if (!onBatchProcessQueue || batchRunning || !digest?.pendingClassify) return;
+    void onBatchProcessQueue('pending_classify');
   };
 
   const recentItems = useMemo(
@@ -120,6 +127,55 @@ export const HomeView: React.FC<HomeViewProps> = ({
     // ensure new tab is at the end
     const nextTabs = [...homeState.tabs, { kind: 'item' as const, id, itemId: item.id }];
     onHomeStateChange({ ...homeState, tabs: nextTabs, activeTabId: id });
+  };
+
+  const openCategoryBrowseTab = async (categoryId: string, name: string) => {
+    const itemIds = await loadItemIdsForCategory(categoryId);
+    const tabId = `category-${categoryId}`;
+    const existing = homeState.tabs.find((t) => t.id === tabId);
+    if (existing) {
+      onHomeStateChange({ ...homeState, activeTabId: tabId });
+      return;
+    }
+    onHomeStateChange({
+      ...homeState,
+      tabs: [
+        ...homeState.tabs,
+        {
+          kind: 'list' as const,
+          id: tabId,
+          listType: 'bookmark-list' as const,
+          title: name,
+          itemIds,
+        },
+      ],
+      activeTabId: tabId,
+    });
+  };
+
+  const openPipelineBrowseTab = async (kind: PipelineQueueKind) => {
+    const itemIds = await loadItemIdsForPipelineQueue(kind);
+    const title = PIPELINE_QUEUE_LABELS[kind];
+    const tabId = `pipeline-${kind}`;
+    const existing = homeState.tabs.find((t) => t.id === tabId);
+    if (existing) {
+      onHomeStateChange({ ...homeState, activeTabId: tabId });
+      return;
+    }
+    onHomeStateChange({
+      ...homeState,
+      tabs: [
+        ...homeState.tabs,
+        {
+          kind: 'list' as const,
+          id: tabId,
+          listType: 'bookmark-list' as const,
+          title,
+          itemIds,
+        },
+      ],
+      activeTabId: tabId,
+    });
   };
 
   const showHomeItemContextMenu = (e: React.MouseEvent, item: Item) => {
@@ -348,10 +404,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
             ) : digest ? (
               <ProcessingDigestBody
                 digest={digest}
-                onPipelineBrowse={onPipelineBrowse}
+                classifyRunnable={classifyRunnable}
+                classifyRunnableLoading={classifyRunnableLoading}
+                onBrowsePipelineQueue={(kind) => void openPipelineBrowseTab(kind)}
                 onBatchProcessQueue={onBatchProcessQueue}
                 batchRunning={batchRunning}
-                onProcessNotEnriched={() => void handleProcessNotEnriched()}
+                batchCancellable={batchCancellable}
+                onCancelBatch={onCancelBatch}
+                onProcessNotEnriched={handleProcessNotEnriched}
+                onClassifyReady={handleClassifyReady}
               />
             ) : (
               <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
@@ -375,14 +436,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   <button
                     key={tile.categoryId}
                     type="button"
-                    onClick={() => onBrowseCategory?.(tile.categoryId, tile.name)}
-                    title={`Browse ${tile.name}`}
+                    onClick={() => void openCategoryBrowseTab(tile.categoryId, tile.name)}
+                    title={`Open ${tile.name} on Home`}
                     style={{
                       background: 'none',
                       border: 'none',
                       padding: '5px 8px',
                       textAlign: 'left',
-                      cursor: onBrowseCategory ? 'pointer' : 'default',
+                      cursor: 'pointer',
                       color: 'var(--text)',
                       fontSize: 'var(--text-xs)',
                       borderRadius: 'var(--radius-sm)',
@@ -391,7 +452,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       gap: 8,
                     }}
                     onMouseEnter={(e) => {
-                      if (onBrowseCategory) e.currentTarget.style.background = 'var(--bg-hover)';
+                      e.currentTarget.style.background = 'var(--bg-hover)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'none';
@@ -504,7 +565,8 @@ const DigestLine: React.FC<{
   onBrowse?: () => void;
   hint?: string;
   deemphasized?: boolean;
-}> = ({ label, count, tone, onBrowse, hint, deemphasized }) => {
+  countSuffix?: string;
+}> = ({ label, count, tone, onBrowse, hint, deemphasized, countSuffix }) => {
   if (count === 0) return null;
 
   const color =
@@ -521,6 +583,9 @@ const DigestLine: React.FC<{
       <span style={deemphasized ? { color: 'var(--text-faint)' } : undefined}>{label}</span>
       <span style={{ fontWeight: deemphasized ? 500 : 600, color: deemphasized ? 'var(--text-faint)' : color }}>
         {count}
+        {countSuffix ? (
+          <span style={{ fontWeight: 500, color: 'var(--text-faint)' }}>{countSuffix}</span>
+        ) : null}
       </span>
     </>
   );
@@ -570,12 +635,28 @@ const DigestLine: React.FC<{
   );
 };
 
+const digestCalloutStyle: React.CSSProperties = {
+  margin: '4px 6px 0',
+  padding: '8px 10px',
+  borderRadius: 'var(--radius-sm)',
+  background: 'var(--bg-glass)',
+  border: '1px solid var(--border)',
+  fontSize: 'var(--text-xs)',
+  color: 'var(--text-muted)',
+  lineHeight: 1.5,
+};
+
 interface ProcessingDigestBodyProps {
   digest: ProcessingDigest;
-  onPipelineBrowse?: (kind: PipelineQueueKind) => void;
+  classifyRunnable?: number | null;
+  classifyRunnableLoading?: boolean;
+  onBrowsePipelineQueue?: (kind: PipelineQueueKind) => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
   batchRunning: boolean;
+  batchCancellable?: boolean;
+  onCancelBatch?: () => void;
   onProcessNotEnriched: () => void;
+  onClassifyReady: () => void;
 }
 
 const ACTIONABLE_DIGEST_LINES: Array<{
@@ -594,25 +675,101 @@ const ACTIONABLE_DIGEST_LINES: Array<{
 
 const ProcessingDigestBody: React.FC<ProcessingDigestBodyProps> = ({
   digest,
-  onPipelineBrowse,
+  classifyRunnable = null,
+  classifyRunnableLoading = false,
+  onBrowsePipelineQueue,
   onBatchProcessQueue,
   batchRunning,
+  batchCancellable,
+  onCancelBatch,
   onProcessNotEnriched,
+  onClassifyReady,
 }) => {
   const hasActionable = ACTIONABLE_DIGEST_LINES.some((line) => digest[line.countKey] > 0);
+  const queueTotal = digest.pendingClassify;
+  const runnableKnown = classifyRunnable !== null && !classifyRunnableLoading;
+  const runnableCount = classifyRunnable ?? 0;
+  const queuedButBlocked = runnableKnown ? Math.max(0, queueTotal - runnableCount) : null;
+  const batchButtonStyle = (disabled: boolean): React.CSSProperties => ({
+    marginTop: 4,
+    padding: '5px 8px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border)',
+    background: disabled ? 'var(--bg-hover)' : 'transparent',
+    color: 'var(--text-muted)',
+    fontSize: 'var(--text-xs)',
+    fontWeight: 600,
+    cursor: disabled ? 'wait' : 'pointer',
+    opacity: disabled ? 0.7 : 1,
+    width: 'fit-content',
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
       {ACTIONABLE_DIGEST_LINES.map(({ kind, countKey, tone }) => (
-        <DigestLine
-          key={kind}
-          label={PIPELINE_QUEUE_LABELS[kind]}
-          count={digest[countKey]}
-          tone={tone}
-          hint={PIPELINE_QUEUE_HINTS[kind]}
-          onBrowse={onPipelineBrowse ? () => onPipelineBrowse(kind) : undefined}
-        />
+        <React.Fragment key={kind}>
+          <DigestLine
+            label={PIPELINE_QUEUE_LABELS[kind]}
+            count={digest[countKey]}
+            tone={tone}
+            hint={PIPELINE_QUEUE_HINTS[kind]}
+            onBrowse={onBrowsePipelineQueue ? () => onBrowsePipelineQueue(kind) : undefined}
+            countSuffix={
+              kind === 'pending_classify' && runnableKnown && queueTotal > 0
+                ? ` · ${runnableCount} AI-ready`
+                : undefined
+            }
+          />
+          {kind === 'pending_classify' && queueTotal > 0 ? (
+            <div style={digestCalloutStyle}>
+              {classifyRunnableLoading ? (
+                <span style={{ color: 'var(--text-faint)' }}>Checking which items can run AI…</span>
+              ) : runnableKnown ? (
+                <>
+                  <strong style={{ color: 'var(--text)' }}>{runnableCount}</strong> of{' '}
+                  <strong style={{ color: 'var(--text)' }}>{queueTotal}</strong> in this queue can run AI
+                  classification now.
+                  {queuedButBlocked && queuedButBlocked > 0 ? (
+                    <>
+                      {' '}
+                      The other <strong style={{ color: 'var(--text)' }}>{queuedButBlocked}</strong> are blocked
+                      (unchanged text, ineligible, or waiting on discover / general topic).
+                    </>
+                  ) : null}{' '}
+                  Running classify may still leave items here if AI picks general/Other or needs discover.
+                </>
+              ) : (
+                <>
+                  This count is the <strong style={{ color: 'var(--text)' }}>queue</strong>, not a promise that every
+                  item will run AI. Use the button below to review the checklist before confirming.
+                </>
+              )}
+            </div>
+          ) : null}
+        </React.Fragment>
       ))}
+
+      {digest.pendingClassify > 0 && onBatchProcessQueue ? (
+        <button
+          type="button"
+          onClick={onClassifyReady}
+          disabled={batchRunning || (runnableKnown && runnableCount === 0)}
+          title={
+            runnableKnown && runnableCount === 0
+              ? 'Nothing in the queue can run AI right now — browse the list for details'
+              : 'Review items, then confirm which run AI classification'
+          }
+          style={batchButtonStyle(batchRunning || (runnableKnown && runnableCount === 0))}
+        >
+          {batchRunning
+            ? 'Processing…'
+            : classifyRunnableLoading
+              ? 'Review classify queue…'
+              : runnableKnown
+                ? `Review & classify (${runnableCount} AI-ready)`
+                : `Review classify queue (${queueTotal})`}
+        </button>
+      ) : null}
 
       {digest.notEnriched > 0 && (
         <>
@@ -631,26 +788,14 @@ const ProcessingDigestBody: React.FC<ProcessingDigestBodyProps> = ({
             tone="muted"
             hint={PIPELINE_QUEUE_HINTS.not_enriched}
             deemphasized={hasActionable}
-            onBrowse={onPipelineBrowse ? () => onPipelineBrowse('not_enriched') : undefined}
+            onBrowse={onBrowsePipelineQueue ? () => onBrowsePipelineQueue('not_enriched') : undefined}
           />
           {onBatchProcessQueue ? (
             <button
               type="button"
               onClick={onProcessNotEnriched}
               disabled={batchRunning}
-              style={{
-                marginTop: 4,
-                padding: '5px 8px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border)',
-                background: batchRunning ? 'var(--bg-hover)' : 'transparent',
-                color: 'var(--text-muted)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                cursor: batchRunning ? 'wait' : 'pointer',
-                opacity: batchRunning ? 0.7 : 1,
-                width: 'fit-content',
-              }}
+              style={batchButtonStyle(batchRunning)}
             >
               {batchRunning
                 ? 'Processing…'
@@ -659,6 +804,20 @@ const ProcessingDigestBody: React.FC<ProcessingDigestBodyProps> = ({
           ) : null}
         </>
       )}
+
+      {batchRunning && batchCancellable && onCancelBatch ? (
+        <button
+          type="button"
+          onClick={onCancelBatch}
+          style={{
+            ...batchButtonStyle(false),
+            color: 'var(--text)',
+            borderColor: 'var(--accent)',
+          }}
+        >
+          Cancel
+        </button>
+      ) : null}
     </div>
   );
 };

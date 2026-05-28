@@ -80,8 +80,8 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
               AI Categories
             </h1>
             <p style={{ margin: '8px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              Semantic topics assigned by the pipeline. These are separate from{' '}
-              <strong style={{ fontWeight: 600, color: 'var(--text)' }}>Collections</strong> (your manual folders).
+              AI categories are semantic tags assigned by the pipeline.{' '}
+              <strong style={{ fontWeight: 600, color: 'var(--text)' }}>Collections</strong> are your manual folders.
               Counts include suggested and accepted links.
             </p>
           </div>

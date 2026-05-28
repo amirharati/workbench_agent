@@ -23,6 +23,7 @@ import { EnrichmentPanel } from '../EnrichmentPanel';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
 import { CollectionsView } from '../CollectionsView';
+import { sortItemsWithPinsFirst } from '../../../lib/itemQuickAccess';
 import { WorkspacesView } from '../WorkspacesView';
 import { SearchBar } from '../SearchBar';
 import { Resizer } from '../Resizer';
@@ -95,8 +96,10 @@ interface MainContentProps {
   onBrowseCategory?: (categoryId: string, name: string) => void;
   pipelineBrowse?: PipelineBrowseFilter | null;
   onClearPipelineBrowse?: () => void;
-  onPipelineBrowse?: (kind: PipelineQueueKind) => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
+  batchRunning?: boolean;
+  batchCancellable?: boolean;
+  onCancelBatch?: () => void;
   onSelectView?: (view: DashboardView) => void;
   shellLayout?: ShellLayoutState;
   onShellLayoutPatch?: (patch: Partial<ShellLayoutState>) => void;
@@ -154,8 +157,10 @@ export const MainContent: React.FC<MainContentProps> = ({
   onBrowseCategory,
   pipelineBrowse,
   onClearPipelineBrowse,
-  onPipelineBrowse,
   onBatchProcessQueue,
+  batchRunning,
+  batchCancellable,
+  onCancelBatch,
   onSelectView,
   shellLayout,
   onShellLayoutPatch,
@@ -287,7 +292,7 @@ export const MainContent: React.FC<MainContentProps> = ({
       });
     }
     
-    return filtered.sort((a, b) => b.updated_at - a.updated_at);
+    return sortItemsWithPinsFirst(filtered);
   }, [activeView, bookmarkItems, collections, selectedBookmarkProjectId, searchQuery, scopeCollectionId, categoryBrowse, pipelineBrowse]);
 
   const bookmarkBadgeIds = useMemo(() => {
@@ -337,7 +342,7 @@ export const MainContent: React.FC<MainContentProps> = ({
       });
     }
     
-    return filtered.sort((a, b) => b.updated_at - a.updated_at);
+    return sortItemsWithPinsFirst(filtered);
   }, [activeView, notesItems, collections, selectedNotesProjectId, searchQuery, scopeCollectionId]);
 
   // Filter workspaces by project scope
@@ -606,8 +611,10 @@ export const MainContent: React.FC<MainContentProps> = ({
             renderListTab={renderListTab}
             statusBar={statusBar}
             onBrowseCategory={onBrowseCategory}
-            onPipelineBrowse={onPipelineBrowse}
             onBatchProcessQueue={onBatchProcessQueue}
+            batchRunning={batchRunning}
+            batchCancellable={batchCancellable}
+            onCancelBatch={onCancelBatch}
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
             onSwitchScopeForItem={onSwitchScopeForItem}

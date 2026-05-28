@@ -15,6 +15,7 @@ import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { EnrichmentContent, ItemPipelineBadge, ENRICHMENT_EMPTY_MESSAGE } from './PipelineDisplayBlocks';
 import { ItemContextMenu } from './ItemContextMenu';
+import { TabPaneFrame, TabScrollShell } from './TabScrollShell';
 import {
   isScopeNarrowed,
   itemMatchesScope,
@@ -576,9 +577,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       )}
 
       {/* --- TAB CONTENT --- */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
         {statusBar}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
+        <TabPaneFrame>
         {activeTab?.kind === 'search' && librarySearch && (
           <ProductSearchView
             embedded
@@ -600,45 +601,50 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
           </div>
         )}
         {activeTab?.kind === 'item' && activeItemObj && (
-          <div
-            style={{ height: '100%', overflowY: 'auto', padding: '16px 20px', background: 'var(--bg)' }}
+          <TabScrollShell
+            style={{ padding: '16px 20px', background: 'var(--bg)' }}
             className="scrollbar reading-content"
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setItemContextMenu({ x: e.clientX, y: e.clientY });
-            }}
           >
-            <ItemDetail
-              item={activeItemObj}
-              collections={collections}
-              projects={projects}
-              isEditing={isEditing}
-              editTitle={editTitle}
-              editUrl={editUrl}
-              editNotes={editNotes}
-              onEditTitleChange={setEditTitle}
-              onEditUrlChange={setEditUrl}
-              onEditNotesChange={setEditNotes}
-              onStartEdit={startEditing}
-              onCancelEdit={cancelEditing}
-              onSaveEdit={saveEditing}
-              onDelete={deleteItemHandler}
-              onTogglePin={togglePin}
-              onToggleFavorite={toggleFavorite}
-              canEdit={!!onUpdateItem}
-            />
-          </div>
+            <div
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setItemContextMenu({ x: e.clientX, y: e.clientY });
+              }}
+            >
+              <ItemDetail
+                item={activeItemObj}
+                collections={collections}
+                projects={projects}
+                isEditing={isEditing}
+                editTitle={editTitle}
+                editUrl={editUrl}
+                editNotes={editNotes}
+                onEditTitleChange={setEditTitle}
+                onEditUrlChange={setEditUrl}
+                onEditNotesChange={setEditNotes}
+                onStartEdit={startEditing}
+                onCancelEdit={cancelEditing}
+                onSaveEdit={saveEditing}
+                onDelete={deleteItemHandler}
+                onTogglePin={togglePin}
+                onToggleFavorite={toggleFavorite}
+                canEdit={!!onUpdateItem}
+              />
+            </div>
+          </TabScrollShell>
         )}
         {activeTab?.kind === 'item' && !activeItemObj && (
           <div style={{ padding: 20, color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>Item not found.</div>
         )}
         {activeTab?.kind === 'list' && UTILITY_LIST_TYPES.has(activeTab.listType) && (
-          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <TabPaneFrame>
             {renderUtilityListTab(activeTab.listType)}
-          </div>
+          </TabPaneFrame>
         )}
-        {activeTab?.kind === 'list' && !UTILITY_LIST_TYPES.has(activeTab.listType) && renderListTab && renderListTab(activeTab)}
-        </div>
+        {activeTab?.kind === 'list' && !UTILITY_LIST_TYPES.has(activeTab.listType) && renderListTab && (
+          <TabPaneFrame>{renderListTab(activeTab)}</TabPaneFrame>
+        )}
+        </TabPaneFrame>
       </div>
       {itemContextMenu && activeItemObj && (
         <ItemContextMenu

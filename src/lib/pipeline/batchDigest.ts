@@ -1,4 +1,5 @@
 import { classifyIncremental } from '../categorization';
+import type { TopicClassifySummary } from '../categorization/types';
 import { notifyDataChanged } from '../dataChangeNotifier';
 import { enrichBatch, type EnrichmentResult } from '../enrichment';
 
@@ -21,11 +22,57 @@ export interface BatchDigestResult {
   skipped: number;
   failed: number;
   classified: number;
+  classifySummary?: TopicClassifySummary;
   enrichCancelled?: boolean;
   classifyError?: string;
   remaining?: number;
   message: string;
   itemEnrichResults?: EnrichmentResult[];
+}
+
+export function formatClassifyBatchMessage(
+  selected: number,
+  summary: TopicClassifySummary
+): string {
+  const parts: string[] = [`${selected} selected`];
+  const skipTotal =
+    summary.skippedIneligible + summary.skippedHash + summary.skippedManualReview;
+
+  if (skipTotal > 0) {
+    const bits: string[] = [];
+    if (summary.skippedIneligible > 0) bits.push(`${summary.skippedIneligible} ineligible`);
+    if (summary.skippedHash > 0) bits.push(`${summary.skippedHash} unchanged`);
+    if (summary.skippedManualReview > 0) bits.push(`${summary.skippedManualReview} in manual review`);
+    parts.push(`${skipTotal} skipped (${bits.join(', ')})`);
+  }
+
+  if (summary.processed > 0) {
+    parts.push(`${summary.processed} sent to AI`);
+  }
+
+  const categorized = summary.classifiedSpecific + summary.classifiedGeneral;
+  if (categorized > 0) {
+    const catBits: string[] = [];
+    if (summary.classifiedSpecific > 0) catBits.push(`${summary.classifiedSpecific} specific`);
+    if (summary.classifiedGeneral > 0) catBits.push(`${summary.classifiedGeneral} general/Other`);
+    parts.push(`${categorized} got a category (${catBits.join(', ')})`);
+  }
+
+  if (summary.pendingDiscover > 0) {
+    parts.push(
+      `${summary.pendingDiscover} still need discover — stay in classify queue until discover runs`
+    );
+  }
+
+  if (summary.llmErrors > 0) {
+    parts.push(`${summary.llmErrors} AI errors — check Inspector or retry`);
+  }
+
+  if (summary.processed === 0 && skipTotal === 0 && categorized === 0) {
+    return `${selected} selected — nothing to run (queue may have updated)`;
+  }
+
+  return parts.join(' · ');
 }
 
 function buildBatchMessage(input: {
@@ -111,7 +158,13 @@ export async function runBatchDigest(
       ? uniqueIds.length
       : (options?.maxClassify ?? BATCH_DIGEST_DEFAULTS.maxClassify);
   const remaining =
-    options?.processAll === true ? 0 : Math.max(0, uniqueIds.length - maxEnrich);
+    options?.processAll === true
+      ? 0
+      : doEnrich && doClassify
+        ? Math.max(0, uniqueIds.length - maxEnrich)
+        : doClassify
+          ? Math.max(0, uniqueIds.length - maxClassify)
+          : Math.max(0, uniqueIds.length - maxEnrich);
 
   let enriched = 0;
   let skipped = 0;
@@ -148,6 +201,7 @@ export async function runBatchDigest(
 
   let classified = 0;
   let classifyError: string | undefined;
+  let classifySummary: TopicClassifySummary | undefined;
 
   if (doClassify && !options?.signal?.aborted && !enrichCancelled) {
     options?.onProgress?.({
@@ -170,7 +224,8 @@ export async function runBatchDigest(
           });
         },
       });
-      classified = classifyResult.summary.processed;
+      classifySummary = classifyResult.summary;
+      classified = classifyResult.summary.classifiedSpecific + classifyResult.summary.classifiedGeneral;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Classification failed';
       if (/missing api key/i.test(msg)) {
@@ -191,21 +246,35 @@ export async function runBatchDigest(
     total: 1,
   });
 
-  const message = buildBatchMessage({
-    enriched,
-    skipped,
-    failed,
-    classified,
-    classifyError,
-    remaining,
-    total: uniqueIds.length,
-  });
+  const message =
+    doClassify && !doEnrich && classifySummary
+      ? formatClassifyBatchMessage(uniqueIds.length, classifySummary)
+      : doClassify && classifySummary && doEnrich
+        ? `${buildBatchMessage({
+            enriched,
+            skipped,
+            failed,
+            classified,
+            classifyError,
+            remaining,
+            total: uniqueIds.length,
+          })} · ${formatClassifyBatchMessage(uniqueIds.length, classifySummary)}`
+        : buildBatchMessage({
+            enriched,
+            skipped,
+            failed,
+            classified,
+            classifyError,
+            remaining,
+            total: uniqueIds.length,
+          });
 
   return {
     enriched,
     skipped,
     failed,
     classified,
+    classifySummary,
     enrichCancelled,
     classifyError,
     remaining: remaining > 0 ? remaining : undefined,

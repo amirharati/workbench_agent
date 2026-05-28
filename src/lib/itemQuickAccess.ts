@@ -9,6 +9,22 @@ export function isActiveItem(item: Item): boolean {
   return item.deletedAt == null;
 }
 
+/**
+ * Collection/browse list order: pinned first (newest pin wins), then recency.
+ * Apply after project/collection/search filters so scope stays upstream.
+ */
+export function sortItemsWithPinsFirst(items: Item[]): Item[] {
+  return [...items].sort((a, b) => {
+    const aPin = a.pinnedAt ?? 0;
+    const bPin = b.pinnedAt ?? 0;
+    if (aPin !== bPin) {
+      if (aPin && bPin) return bPin - aPin;
+      return aPin ? -1 : 1;
+    }
+    return (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at);
+  });
+}
+
 export async function getActiveItems(): Promise<Item[]> {
   const all = await getAllItems();
   return all.filter(isActiveItem);

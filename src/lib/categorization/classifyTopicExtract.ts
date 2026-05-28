@@ -688,6 +688,106 @@ async function persistClassifyResults(
   return updated;
 }
 
+export interface ClassifyBatchPreviewItem {
+  itemId: string;
+  runnable: boolean;
+  skipReason?: string;
+}
+
+/** Read-only: which ids would enter the classify LLM batch (same gates as classifyIncremental). */
+export async function previewClassifyBatchItemIds(
+  itemIds: string[]
+): Promise<ClassifyBatchPreviewItem[]> {
+  if (!itemIds.length) return [];
+
+  const db = await getDB();
+  const idSet = new Set(itemIds);
+  const items = (await db.getAll('items')).filter((i) => idSet.has(i.id));
+  const itemById = new Map(items.map((i) => [i.id, i]));
+
+  const enrichments = db.objectStoreNames.contains('item_enrichment')
+    ? await db.getAll('item_enrichment')
+    : [];
+  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  const signals = db.objectStoreNames.contains('ai_item_signals')
+    ? await db.getAll('ai_item_signals')
+    : [];
+  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
+  const allLinks = db.objectStoreNames.contains('ai_item_category_links')
+    ? await db.getAll('ai_item_category_links')
+    : [];
+  const primaryCategoryByItem = new Map<string, string>();
+  for (const l of allLinks) {
+    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+      primaryCategoryByItem.set(l.itemId, l.categoryId);
+    }
+  }
+
+  const preview: ClassifyBatchPreviewItem[] = [];
+
+  for (const id of itemIds) {
+    const item = itemById.get(id);
+    if (!item) {
+      preview.push({ itemId: id, runnable: false, skipReason: 'Bookmark not found' });
+      continue;
+    }
+
+    const enrichment = enrichByItem.get(item.id);
+    const built = await buildClassifyBatchItem(item, enrichment);
+    const prev = signalByItem.get(item.id);
+    const st = prev?.classifyState;
+    const primaryId = primaryCategoryByItem.get(item.id);
+
+    if (!built.eligible || !built.batch) {
+      preview.push({
+        itemId: id,
+        runnable: false,
+        skipReason: built.eligibilityReason ?? 'Not eligible for classification',
+      });
+      continue;
+    }
+
+    const hashMatch = prev?.classifyTextHash === built.hash;
+    const skipDecision = shouldSkipClassify({
+      classifyState: st,
+      primaryCategoryId: primaryId,
+      hashMatch,
+      eligible: true,
+    });
+
+    if (skipDecision.skip) {
+      preview.push({
+        itemId: id,
+        runnable: false,
+        skipReason: skipDecision.reason
+          ? formatClassifySkipReason(skipDecision.reason)
+          : 'Skipped',
+      });
+      continue;
+    }
+
+    if (
+      !itemNeedsClassify(
+        skipDecision.markPendingReclassify ? 'pending_reclassify' : st,
+        primaryId,
+        hashMatch,
+        true
+      )
+    ) {
+      preview.push({
+        itemId: id,
+        runnable: false,
+        skipReason: formatClassifySkipReason('unchanged_hash_specific'),
+      });
+      continue;
+    }
+
+    preview.push({ itemId: id, runnable: true });
+  }
+
+  return preview;
+}
+
 export async function classifyIncremental(
   opts: ClassifyIncrementalOptions = {}
 ): Promise<TopicClassifyResult> {

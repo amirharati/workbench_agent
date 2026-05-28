@@ -16,6 +16,7 @@ import {
   Settings,
   Layers,
   GripHorizontal,
+  Zap,
 } from 'lucide-react';
 
 function modKeyLabel(): string {
@@ -163,6 +164,42 @@ export const HelpView: React.FC = () => {
             }
             desc="Open an item in another panel space (when split layout is available)"
           />
+          <ShortcutRow
+            keys={<span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>× on scope chip</span>}
+            desc="Clear project, collection, category, or pipeline browse filter (Bookmarks / Notes)"
+          />
+        </>
+      ),
+    },
+    {
+      id: 'processing',
+      title: 'Processing digest (Home)',
+      icon: <Zap size={18} />,
+      children: (
+        <>
+          <p style={para}>
+            The <strong>Processing Digest</strong> card on Home summarizes pipeline queues. Click a row to open a
+            filtered list tab on Home (same as Library Overview).
+          </p>
+          <ul style={list}>
+            <li>
+              <strong>Classify queue</strong> — total waiting on AI categories. The row also shows how many are{' '}
+              <strong>AI-ready</strong> (can run now). Click <strong>Review & classify</strong> for a checklist;
+              items marked &quot;Won&apos;t run&quot; are skipped. After a run, the summary explains sent to AI vs got
+              a category vs still in queue.
+            </li>
+            <li>
+              <strong>Process not enriched (N)</strong> — same checklist flow for fetch + classify; Cancel stops
+              mid-batch (saved work is kept).
+            </li>
+            <li>
+              <strong>Cancel</strong> — stops an in-flight <em>not enriched</em> batch; work already saved is kept.
+            </li>
+          </ul>
+          <p style={{ ...para, marginBottom: 0 }}>
+            <strong>Collections vs AI categories:</strong> Collections are manual folders in the sidebar. AI categories
+            are semantic tags assigned by the pipeline — review them under Tools → AI Categories or in the Inspector.
+          </p>
         </>
       ),
     },
@@ -205,7 +242,7 @@ export const HelpView: React.FC = () => {
           <FeatureRow
             icon={<Tags size={16} />}
             title="AI Categories"
-            desc="Review AI-assigned categories and browse items by topic."
+            desc="Semantic tags from the pipeline — not the same as Collections (manual folders). Review assignments and browse by topic."
           />
           <FeatureRow
             icon={<Terminal size={16} />}
@@ -235,6 +272,7 @@ export const HelpView: React.FC = () => {
             <li>Click a tab to switch; click <strong>×</strong> on a tab to close it.</li>
             <li>Item tabs show ⭐ and 📌 toggles in the header for favorites and pins.</li>
             <li>Quick links on Home open utility lists in tabs without leaving the page.</li>
+            <li>Library Overview and Processing Digest rows open a filtered list tab on Home (not Bookmarks).</li>
           </ul>
         </>
       ),
@@ -253,7 +291,7 @@ export const HelpView: React.FC = () => {
           <FeatureRow
             icon={<Pin size={16} />}
             title="Pinned"
-            desc="Pin important items for quick access. Pinned-only items show 📌; both flags show ⭐ then 📌 on cards."
+            desc="Pin important items for quick access. In collection lists, pinned items sort to the top. Pinned-only items show 📌; both flags show ⭐ then 📌 on cards."
           />
           <FeatureRow
             icon={<Trash2 size={16} style={{ color: '#ef4444' }} />}
@@ -291,8 +329,8 @@ export const HelpView: React.FC = () => {
       icon: <Tags size={18} />,
       children: (
         <p style={para}>
-          This help page is v1 — we&apos;ll add diagrams, walkthroughs, and troubleshooting as features ship.
-          Check back from the <strong>Help</strong> link at the bottom of the left sidebar.
+          This help page is updated as features ship — check back from the <strong>Help</strong> link at the bottom of
+          the left sidebar.
         </p>
       ),
     },
@@ -312,7 +350,7 @@ export const HelpView: React.FC = () => {
           Help
         </h1>
         <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
-          Workbench guide — basics, shortcuts, and where to find things. v1
+          Workbench guide — basics, shortcuts, and where to find things. v2
         </p>
       </div>
 

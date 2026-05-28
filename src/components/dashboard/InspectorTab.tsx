@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
-import { resolvePipelineBadge, runSingleLinkDigest, type PipelineBadge } from '../../lib/pipeline';
+import { resolvePipelineBadge, type PipelineBadge } from '../../lib/pipeline';
 import { ItemPipelineBadge, EnrichmentContent } from './PipelineDisplayBlocks';
 import { ItemSimilarSection } from './SearchDiscoveryBlocks';
-import { useToast } from '../ToastContainer';
+import { usePipelineProgress } from './PipelineProgressProvider';
 import { CategoryChip, SuggestedCategoryRow } from '../shared/CategoryReviewRows';
 
 interface InspectorTabProps {
@@ -106,8 +106,8 @@ function InspectorDigestAction({
   badge: PipelineBadge | null;
   onDone: () => void;
 }) {
-  const { addToast } = useToast();
-  const [running, setRunning] = useState(false);
+  const pipeline = usePipelineProgress();
+  const running = pipeline.isRunning;
 
   const show =
     badge &&
@@ -128,21 +128,15 @@ function InspectorDigestAction({
           : 'Run digest';
 
   const run = async () => {
-    setRunning(true);
+    if (running) return;
     try {
-      const result = await runSingleLinkDigest(itemId, {
+      await pipeline.runSingle(itemId, {
+        title: label,
         forceEnrich: badge?.kind === 'failed',
       });
-      addToast({
-        type: result.enrich.status === 'failed' ? 'error' : 'success',
-        message: result.message,
-      });
       onDone();
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : 'Digest failed';
-      addToast({ type: 'error', message: reason });
-    } finally {
-      setRunning(false);
+    } catch {
+      // Summary shown in modal
     }
   };
 
@@ -317,7 +311,7 @@ function ItemInspectorBody({
                 lineHeight: 1.45,
               }}
             >
-              AI categories are separate from Collections.
+              AI categories are semantic tags; Collections are manual folders.
             </p>
             {context.acceptedLinks.length === 0 && context.suggestedLinks.length === 0 ? (
               <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>

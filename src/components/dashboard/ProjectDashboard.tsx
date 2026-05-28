@@ -1,8 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { Project, Collection, Item, Workspace } from '../../lib/db';
 import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItemWithMerge, getItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID, type UpdateItemOptions } from '../../lib/db';
-import { runSingleLinkDigest } from '../../lib/pipeline/singleLinkDigest';
-import { useToast } from '../ToastContainer';
+import { usePipelineProgress } from './PipelineProgressProvider';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -13,6 +12,8 @@ import { Resizer } from './Resizer';
 import { Panel, ButtonGhost, Input } from '../../styles/primitives';
 import { Search, Sparkles, Plus, X, Sidebar, LayoutList } from 'lucide-react';
 import { DeleteConfirmDialog, type DeleteConfirmResult } from '../DeleteConfirmDialog';
+import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
+import { TabPaneFrame } from './TabScrollShell';
 
 type Tab = {
   id: string;
@@ -56,7 +57,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   onDeleteItem,
   onRefresh,
 }) => {
-  const { addToast } = useToast();
+  const pipeline = usePipelineProgress();
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [primaryTabs, setPrimaryTabs] = useState<Tab[]>([]);
@@ -259,7 +260,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         return hay.includes(q);
       });
     }
-    return list.sort((a, b) => b.created_at - a.created_at);
+    return sortItemsWithPinsFirst(list);
   }, [projectItems, selectedCollectionId, searchQuery]);
 
   const activePrimaryTab = useMemo(
@@ -687,13 +688,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       }
 
       if (data.url && /^https?:\/\//i.test(data.url)) {
-        void runSingleLinkDigest(result.itemId).then((r) => {
-          addToast({
-            type: r.enrich.status === 'failed' ? 'error' : 'success',
-            message: r.message,
-          });
-          if (onRefresh) void onRefresh();
-        });
+        void pipeline.runSingle(result.itemId, { title: 'Digesting new bookmark' });
       }
 
       return result.itemId;
@@ -1398,7 +1393,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     onTabMove={handleTabMove}
                     spaceId="primary"
                   />
-                  <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                  <TabPaneFrame>
                     <TabContent 
                       tab={activePrimaryTab || null} 
                       item={activePrimaryItem || null}
@@ -1421,7 +1416,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
                     />
-                  </div>
+                  </TabPaneFrame>
                 </div>
                 <Resizer
                   direction="horizontal"
@@ -1443,7 +1438,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       spaceId="secondary"
                     />
                   </div>
-                  <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                  <TabPaneFrame>
                       <TabContent 
                         tab={activeSecondaryTab || null} 
                         item={activeSecondaryItem || null}
@@ -1466,11 +1461,11 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
                     />
-                  </div>
+                  </TabPaneFrame>
                 </div>
               </>
             ) : (
-              <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                    <TabPaneFrame>
                 <TabContent 
                   tab={activePrimaryTab || null} 
                   item={activePrimaryItem || null}
@@ -1493,7 +1488,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   defaultCollectionId={selectedCollectionId}
                   projectId={project.id}
                 />
-              </div>
+              </TabPaneFrame>
             )}
           </div>
         </Panel>
@@ -1524,7 +1519,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         spaceId="rightPrimary"
                       />
                     </div>
-                    <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                    <TabPaneFrame>
                       <TabContent 
                         tab={activeRightPrimaryTab || null} 
                         item={activeRightPrimaryItem || null}
@@ -1547,7 +1542,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         defaultCollectionId={selectedCollectionId}
                         projectId={project.id}
                       />
-                    </div>
+                    </TabPaneFrame>
                   </div>
                   <Resizer
                     direction="horizontal"
@@ -1569,7 +1564,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         spaceId="rightSecondary"
                       />
                     </div>
-                    <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                    <TabPaneFrame>
                       <TabContent 
                         tab={activeRightSecondaryTab || null} 
                         item={activeRightSecondaryItem || null}
@@ -1592,7 +1587,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         defaultCollectionId={selectedCollectionId}
                         projectId={project.id}
                       />
-                    </div>
+                    </TabPaneFrame>
                   </div>
                 </>
               ) : (
@@ -1607,7 +1602,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       spaceId="rightPrimary"
                     />
                   </div>
-                  <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                  <TabPaneFrame>
                     <TabContent 
                       tab={activeRightPrimaryTab || null} 
                       item={activeRightPrimaryItem || null}
@@ -1630,7 +1625,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
                     />
-                  </div>
+                  </TabPaneFrame>
                 </>
               )}
             </Panel>
@@ -1734,7 +1729,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         onTabMove={handleTabMove}
                         spaceId="primary"
                       />
-                      <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                      <TabPaneFrame>
                 <TabContent 
                   tab={activePrimaryTab || null} 
                   item={activePrimaryItem || null}
@@ -1756,7 +1751,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                   defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                   projectId={project.id}
                 />
-                      </div>
+                      </TabPaneFrame>
                     </div>
                     <Resizer
                       direction="horizontal"
@@ -1778,7 +1773,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           spaceId="secondary"
                         />
                       </div>
-                      <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                      <TabPaneFrame>
                       <TabContent 
                         tab={activeSecondaryTab || null} 
                         item={activeSecondaryItem || null}
@@ -1801,11 +1796,11 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                           projectId={project.id}
                         />
-                      </div>
+                      </TabPaneFrame>
                     </div>
                   </>
                 ) : (
-                  <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                  <TabPaneFrame>
                     <TabContent 
                       tab={activePrimaryTab || null} 
                       item={activePrimaryItem || null}
@@ -1828,7 +1823,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       defaultCollectionId={selectedCollectionId !== 'all' ? selectedCollectionId : undefined}
                       projectId={project.id}
                     />
-                  </div>
+                  </TabPaneFrame>
                 )}
               </div>
             </Panel>
@@ -1858,7 +1853,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             spaceId="rightPrimary"
                           />
                         </div>
-                        <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                        <TabPaneFrame>
                           <TabContent 
                             tab={activeRightPrimaryTab || null} 
                             item={activeRightPrimaryItem || null}
@@ -1880,7 +1875,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             defaultCollectionId={selectedCollectionId}
                             projectId={project.id}
                           />
-                        </div>
+                        </TabPaneFrame>
                       </div>
                       <Resizer
                         direction="horizontal"
@@ -1902,7 +1897,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             spaceId="rightSecondary"
                           />
                         </div>
-                        <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                        <TabPaneFrame>
                           <TabContent 
                             tab={activeRightSecondaryTab || null} 
                             item={activeRightSecondaryItem || null}
@@ -1924,7 +1919,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             defaultCollectionId={selectedCollectionId}
                             projectId={project.id}
                           />
-                        </div>
+                        </TabPaneFrame>
                       </div>
                     </>
                   ) : (
@@ -1939,7 +1934,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           spaceId="rightPrimary"
                         />
                       </div>
-                      <div className="scrollbar" style={{ flex: 1, minHeight: 0 }}>
+                      <TabPaneFrame>
                         <TabContent 
                           tab={activeRightPrimaryTab || null} 
                           item={activeRightPrimaryItem || null}
@@ -1961,7 +1956,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                           defaultCollectionId={selectedCollectionId}
                           projectId={project.id}
                         />
-                      </div>
+                      </TabPaneFrame>
                     </>
                   )}
                 </Panel>

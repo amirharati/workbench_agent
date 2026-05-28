@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { previewClassifyBatchItemIds } from '../lib/categorization/classifyTopicExtract';
 import { subscribeToDataChanges } from '../lib/dataChangeNotifier';
 import {
+  loadItemIdsForPipelineQueue,
   loadLibraryCategoryOverview,
   loadProcessingDigest,
   type CategoryOverviewTile,
@@ -20,6 +22,8 @@ export function useHomePipelineStats() {
   const [categories, setCategories] = useState<CategoryOverviewTile[]>([]);
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
+  const [classifyRunnable, setClassifyRunnable] = useState<number | null>(null);
+  const [classifyRunnableLoading, setClassifyRunnableLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,5 +50,33 @@ export function useHomePipelineStats() {
     });
   }, []);
 
-  return { digest, categories, loading };
+  useEffect(() => {
+    if (!digest || digest.pendingClassify === 0) {
+      setClassifyRunnable(null);
+      setClassifyRunnableLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setClassifyRunnableLoading(true);
+
+    void loadItemIdsForPipelineQueue('pending_classify')
+      .then((ids) => previewClassifyBatchItemIds(ids))
+      .then((preview) => {
+        if (cancelled) return;
+        setClassifyRunnable(preview.filter((p) => p.runnable).length);
+      })
+      .catch(() => {
+        if (!cancelled) setClassifyRunnable(null);
+      })
+      .finally(() => {
+        if (!cancelled) setClassifyRunnableLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [digest?.pendingClassify, revision]);
+
+  return { digest, categories, loading, classifyRunnable, classifyRunnableLoading };
 }

@@ -3,6 +3,7 @@ import type { Item, Collection } from '../../lib/db';
 import { getDomain, isValidHttpUrl } from '../../lib/utils';
 import { Input } from '../../styles/primitives';
 import { Search, X, ExternalLink } from 'lucide-react';
+import { TabScrollShell } from './TabScrollShell';
 
 interface SearchTabProps {
   items: Item[];
@@ -70,9 +71,11 @@ export const SearchTab: React.FC<SearchTabProps> = ({
   return (
     <div
       style={{
-        padding: '1.25rem',
-        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
         height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
         color: 'var(--text)',
         background: 'var(--bg-panel)',
         borderRadius: 10,
@@ -80,7 +83,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
         boxShadow: 'var(--shadow-panel)',
       }}
     >
-      <div style={{ marginBottom: '1.5rem' }}>
+      <div style={{ flexShrink: 0, padding: '1.25rem 1.25rem 0' }}>
         <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2, marginBottom: '1rem' }}>
           Search
         </h2>
@@ -187,6 +190,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
         </div>
       </div>
 
+      <TabScrollShell style={{ padding: '0 1.25rem 1.25rem' }}>
       {/* Results List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {filteredItems.length === 0 ? (
@@ -283,6 +287,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
           ))
         )}
       </div>
+      </TabScrollShell>
     </div>
   );
 };

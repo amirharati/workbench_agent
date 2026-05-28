@@ -11,14 +11,13 @@ import { WorkspaceTabRenderer } from '../WorkspaceTabRenderer';
 import { RightPanel } from './RightPanel';
 import { StatusBar, useStatusBar } from '../StatusBar';
 import { ToastProvider, useToast } from '../../ToastContainer';
+import { PipelineProgressProvider, usePipelineProgress } from '../PipelineProgressProvider';
+import { PipelineBatchConfirmModal } from '../PipelineBatchConfirmModal';
 import { CommandPalette } from '../CommandPalette';
 import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID } from '../../../hooks/useLibrarySearch';
 import {
   loadItemIdsForCategory,
   loadItemIdsForPipelineQueue,
-  PIPELINE_QUEUE_LABELS,
-  runBatchDigest,
-  runSingleLinkDigest,
   type CategoryBrowseFilter,
   type PipelineBrowseFilter,
   type PipelineQueueKind,
@@ -30,6 +29,7 @@ import {
 } from '../../../lib/shell/shellLayoutState';
 import { getItemPrimaryScope } from '../../../lib/shell/itemScope';
 import { Resizer } from '../Resizer';
+import { TabPaneFrame, TabScrollShell } from '../TabScrollShell';
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -114,7 +114,9 @@ interface DashboardLayoutProps {
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = (props) => (
   <ToastProvider>
-    <DashboardLayoutInner {...props} />
+    <PipelineProgressProvider onRefresh={props.onRefresh}>
+      <DashboardLayoutInner {...props} />
+    </PipelineProgressProvider>
   </ToastProvider>
 );
 
@@ -150,6 +152,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   onTestAI,
 }) => {
   const { addToast } = useToast();
+  const pipeline = usePipelineProgress();
   const { messages: statusMessages, addStatusMessage, dismissStatusMessage } = useStatusBar();
   const librarySearch = useLibrarySearch((message) => {
     addToast({ type: 'error', message: `Search failed: ${message}` });
@@ -157,7 +160,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [shellLayout, setShellLayout] = useState<ShellLayoutState>(() => loadShellLayout());
   const patchShellLayoutState = useCallback((patch: Partial<ShellLayoutState>) => {
-    setShellLayout((prev) => patchShellLayout(patch, prev));
+    // Left nav expand/collapse is manual-only (chevron toggle) — never via generic patches.
+    const { leftSidebarCollapsed: _omit, ...rest } = patch;
+    if (Object.keys(rest).length === 0) return;
+    setShellLayout((prev) => patchShellLayout(rest, prev));
+  }, []);
+  const handleLeftSidebarToggle = useCallback(() => {
+    setShellLayout((prev) =>
+      patchShellLayout({ leftSidebarCollapsed: !prev.leftSidebarCollapsed }, prev)
+    );
   }, []);
   const statusBar = (
     <StatusBar messages={statusMessages} onDismiss={dismissStatusMessage} />
@@ -168,6 +179,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>('all');
   const [categoryBrowse, setCategoryBrowse] = useState<CategoryBrowseFilter | null>(null);
   const [pipelineBrowse, setPipelineBrowse] = useState<PipelineBrowseFilter | null>(null);
+  const [batchConfirm, setBatchConfirm] = useState<{
+    kind: PipelineQueueKind;
+    itemIds: string[];
+  } | null>(null);
   const [globalTabState, setGlobalTabState] = useState<GlobalTabState>(() => loadGlobalTabState());
   const handleGlobalTabStateChange = (next: GlobalTabState) => {
     setGlobalTabState(next);
@@ -299,12 +314,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       const itemId = await onAddBookmark(url, title, collectionId);
       addToast({ type: 'success', message: `Bookmark saved to ${collectionLabel(collectionId)}` });
       if (itemId) {
-        void runSingleLinkDigest(itemId).then((r) => {
-          addToast({
-            type: r.enrich.status === 'failed' ? 'error' : 'success',
-            message: r.message,
-          });
-        });
+        void pipeline.runSingle(itemId, { title: 'Digesting bookmark' });
       }
     } catch (error) {
       addToast({
@@ -312,7 +322,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         message: error instanceof Error ? error.message : 'Could not add bookmark',
       });
     }
-  }, [onAddBookmark, addToast, addStatusMessage, collectionLabel]);
+  }, [onAddBookmark, addToast, addStatusMessage, collectionLabel, pipeline]);
 
   const handleUpdateBookmarkWithToast = useCallback(async (
     id: string,
@@ -338,6 +348,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     }
   };
 
+  const handleCancelBatch = useCallback(() => {
+    pipeline.cancel();
+  }, [pipeline]);
+
   const handleBrowseCategory = useCallback(async (categoryId: string, name: string) => {
     const itemIds = await loadItemIdsForCategory(categoryId);
     setPipelineBrowse(null);
@@ -351,25 +365,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     setCategoryBrowse(null);
   }, []);
 
-  const handlePipelineBrowse = useCallback(async (kind: PipelineQueueKind) => {
-    const itemIds = await loadItemIdsForPipelineQueue(kind);
-    setCategoryBrowse(null);
-    setPipelineBrowse({
-      kind,
-      label: PIPELINE_QUEUE_LABELS[kind],
-      itemIds,
-    });
-    setScopeProjectId('all');
-    setScopeCollectionId('all');
-    setActiveView('bookmarks');
-  }, []);
-
   const handleClearPipelineBrowse = useCallback(() => {
     setPipelineBrowse(null);
   }, []);
 
   const handleBatchProcessQueue = useCallback(async (kind: PipelineQueueKind) => {
-    if (kind !== 'not_enriched') return;
+    if (kind !== 'not_enriched' && kind !== 'pending_classify') return;
+    if (pipeline.isRunning || batchConfirm) return;
 
     const allIds = await loadItemIdsForPipelineQueue(kind);
     if (allIds.length === 0) {
@@ -377,25 +379,36 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       return;
     }
 
-    addToast({
-      type: 'info',
-      message: `Processing up to ${Math.min(allIds.length, 50)} of ${allIds.length} not enriched…`,
-    });
+    setBatchConfirm({ kind, itemIds: allIds });
+  }, [addToast, batchConfirm, pipeline.isRunning]);
 
-    try {
-      const result = await runBatchDigest(allIds);
-      addToast({
-        type: result.failed > 0 ? 'error' : 'success',
-        message: result.message,
-      });
-      await onRefresh?.();
-    } catch (e) {
-      addToast({
-        type: 'error',
-        message: e instanceof Error ? e.message : 'Batch processing failed',
-      });
-    }
-  }, [addToast, onRefresh]);
+  const handleBatchConfirm = useCallback(
+    async (selectedIds: string[]) => {
+      if (!batchConfirm || selectedIds.length === 0) {
+        setBatchConfirm(null);
+        return;
+      }
+
+      const { kind } = batchConfirm;
+      setBatchConfirm(null);
+
+      try {
+        await pipeline.runBatch(selectedIds, {
+          title:
+            kind === 'pending_classify'
+              ? `Classify queue (${selectedIds.length})`
+              : `Process not enriched (${selectedIds.length})`,
+          enrich: kind !== 'pending_classify',
+          classify: kind === 'pending_classify' ? true : undefined,
+          processAll: true,
+          cancellable: kind === 'not_enriched',
+        });
+      } catch {
+        // Summary shown in modal
+      }
+    },
+    [batchConfirm, pipeline]
+  );
 
   const handleSelectProjectScope = (projectId: string | 'all') => {
     setScopeProjectId(projectId);
@@ -494,7 +507,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     if (tab.listType === 'bookmark-list' || tab.listType === 'note-list' || tab.listType === 'common-list') {
       const tabItems = items.filter(i => (tab.itemIds || []).includes(i.id));
       return (
-        <div style={{ height: '100%', overflowY: 'auto', padding: '16px 20px', background: 'var(--bg)' }} className="scrollbar">
+        <TabPaneFrame style={{ background: 'var(--bg)' }}>
+          <TabScrollShell style={{ padding: '16px 20px' }}>
           <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, margin: '0 0 16px', lineHeight: 1.3 }}>{tab.title}</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {tabItems.length === 0 && <div style={{ color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>No items.</div>}
@@ -508,7 +522,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               </div>
             ))}
           </div>
-        </div>
+          </TabScrollShell>
+        </TabPaneFrame>
       );
     }
     return null;
@@ -632,9 +647,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       }}>
         <LeftSidebar 
           isCollapsed={shellLayout.leftSidebarCollapsed} 
-          onToggle={() =>
-            patchShellLayoutState({ leftSidebarCollapsed: !shellLayout.leftSidebarCollapsed })
-          }
+          onToggle={handleLeftSidebarToggle}
           activeView={activeView}
           onSelectView={handleSelectView}
           projects={projects}
@@ -696,7 +709,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onBrowseCategory={handleBrowseCategory}
                 pipelineBrowse={pipelineBrowse}
                 onClearPipelineBrowse={handleClearPipelineBrowse}
-                onPipelineBrowse={handlePipelineBrowse}
                 onBatchProcessQueue={handleBatchProcessQueue}
                 onSelectView={handleSelectView}
               />
@@ -748,8 +760,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onBrowseCategory={handleBrowseCategory}
               pipelineBrowse={pipelineBrowse}
               onClearPipelineBrowse={handleClearPipelineBrowse}
-              onPipelineBrowse={handlePipelineBrowse}
               onBatchProcessQueue={handleBatchProcessQueue}
+              batchRunning={pipeline.isRunning}
+              batchCancellable={pipeline.isCancellable}
+              onCancelBatch={handleCancelBatch}
               onSelectView={handleSelectView}
               shellLayout={shellLayout}
               onShellLayoutPatch={patchShellLayoutState}
@@ -815,7 +829,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onBrowseCategory={handleBrowseCategory}
               pipelineBrowse={pipelineBrowse}
               onClearPipelineBrowse={handleClearPipelineBrowse}
-              onPipelineBrowse={handlePipelineBrowse}
               shellLayout={shellLayout}
               onShellLayoutPatch={patchShellLayoutState}
               onClearProjectScope={handleClearProjectScope}
@@ -898,6 +911,16 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         onClose={() => setCommandPaletteOpen(false)}
         onSearch={(query) => openLibrarySearch(query)}
       />
+
+      {batchConfirm ? (
+        <PipelineBatchConfirmModal
+          kind={batchConfirm.kind}
+          itemIds={batchConfirm.itemIds}
+          items={items}
+          onConfirm={(selectedIds) => void handleBatchConfirm(selectedIds)}
+          onCancel={() => setBatchConfirm(null)}
+        />
+      ) : null}
     </div>
   );
 };

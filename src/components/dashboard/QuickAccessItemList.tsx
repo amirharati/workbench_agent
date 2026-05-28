@@ -4,6 +4,7 @@ import { getDomain, isValidHttpUrl, formatDateTime } from '../../lib/utils';
 import { ExternalLink } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { ItemContextMenu } from './ItemContextMenu';
+import { TabScrollShell } from './TabScrollShell';
 
 interface QuickAccessItemListProps {
   title: string;
@@ -45,9 +46,11 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
   return (
     <div
       style={{
-        padding: '1.25rem',
-        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
         height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
         color: 'var(--text)',
         background: 'var(--bg-panel)',
         borderRadius: 10,
@@ -69,11 +72,13 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
 
       <div
         style={{
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: '0.5rem',
-          marginBottom: '1.5rem',
+          padding: '1.25rem 1.25rem 0',
+          marginBottom: '1rem',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -83,105 +88,107 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
         {headerExtra}
       </div>
 
-      {items.length === 0 ? (
-        <div
-          style={{
-            padding: '3rem',
-            textAlign: 'center',
-            color: 'var(--text-muted)',
-            background: 'var(--bg-glass)',
-            borderRadius: 8,
-            border: '1px dashed var(--border)',
-          }}
-        >
-          {emptyIcon}
-          <p style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
-            {emptyTitle}
-          </p>
-          <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.6 }}>{emptyHint}</p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {items.map((item) => {
-            const dateTs = dateField ? dateField(item) : (item.updated_at ?? item.created_at);
-            return (
-              <div
-                key={item.id}
-                onClick={() => onItemClick?.(item)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setContextMenu({ item, x: e.clientX, y: e.clientY });
-                }}
-                style={{
-                  padding: '1rem',
-                  background: 'var(--bg-glass)',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  cursor: onItemClick ? 'pointer' : 'default',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  if (!onItemClick) return;
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-                  e.currentTarget.style.borderColor = 'var(--accent)';
-                }}
-                onMouseLeave={(e) => {
-                  if (!onItemClick) return;
-                  e.currentTarget.style.background = 'var(--bg-glass)';
-                  e.currentTarget.style.borderColor = 'var(--border)';
-                }}
-              >
+      <TabScrollShell style={{ padding: '0 1.25rem 1.25rem' }}>
+        {items.length === 0 ? (
+          <div
+            style={{
+              padding: '3rem',
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+              background: 'var(--bg-glass)',
+              borderRadius: 8,
+              border: '1px dashed var(--border)',
+            }}
+          >
+            {emptyIcon}
+            <p style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
+              {emptyTitle}
+            </p>
+            <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.6 }}>{emptyHint}</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {items.map((item) => {
+              const dateTs = dateField ? dateField(item) : (item.updated_at ?? item.created_at);
+              return (
                 <div
+                  key={item.id}
+                  onClick={() => onItemClick?.(item)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setContextMenu({ item, x: e.clientX, y: e.clientY });
+                  }}
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    gap: '1rem',
+                    padding: '1rem',
+                    background: 'var(--bg-glass)',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    cursor: onItemClick ? 'pointer' : 'default',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!onItemClick) return;
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                    e.currentTarget.style.borderColor = 'var(--accent)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!onItemClick) return;
+                    e.currentTarget.style.background = 'var(--bg-glass)';
+                    e.currentTarget.style.borderColor = 'var(--border)';
                   }}
                 >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        color: 'var(--text)',
-                        marginBottom: '0.25rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      {showQuickAccessMarkers && <ItemQuickAccessMarkers item={item} size={12} />}
-                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {item.title || 'Untitled'}
-                      </span>
-                    </div>
-                    {item.url && isValidHttpUrl(item.url) && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      gap: '1rem',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
-                          fontSize: '0.85rem',
-                          color: 'var(--text-muted)',
+                          fontWeight: 600,
+                          color: 'var(--text)',
                           marginBottom: '0.25rem',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '0.25rem',
+                          gap: 6,
                         }}
                       >
-                        <ExternalLink size={12} />
-                        {getDomain(item.url)}
+                        {showQuickAccessMarkers && <ItemQuickAccessMarkers item={item} size={12} />}
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.title || 'Untitled'}
+                        </span>
                       </div>
-                    )}
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                      {dateLabel}: {formatDateTime(dateTs)}
+                      {item.url && isValidHttpUrl(item.url) && (
+                        <div
+                          style={{
+                            fontSize: '0.85rem',
+                            color: 'var(--text-muted)',
+                            marginBottom: '0.25rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                          }}
+                        >
+                          <ExternalLink size={12} />
+                          {getDomain(item.url)}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                        {dateLabel}: {formatDateTime(dateTs)}
+                      </div>
                     </div>
+                    {renderRowActions?.(item)}
                   </div>
-                  {renderRowActions?.(item)}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </TabScrollShell>
     </div>
   );
 };

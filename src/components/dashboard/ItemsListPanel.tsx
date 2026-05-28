@@ -4,6 +4,7 @@ import { Panel } from '../../styles/primitives';
 import { ItemContextMenu } from './ItemContextMenu';
 import { FolderOpen, List, Grid } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
+import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
 
@@ -52,7 +53,8 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   onViewModeChange,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
-  const itemIds = useMemo(() => items.map((i) => i.id), [items]);
+  const displayItems = useMemo(() => sortItemsWithPinsFirst(items), [items]);
+  const itemIds = useMemo(() => displayItems.map((i) => i.id), [displayItems]);
   const badgeMap = usePipelineBadgeMap(itemIds);
 
   const handleContextMenu = (e: React.MouseEvent, item: Item) => {
@@ -166,7 +168,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>{items.length}</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>{displayItems.length}</span>
           {/* View mode toggle (list/grid) */}
           {onViewModeChange && (
             <div style={{ display: 'flex', gap: '2px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px', flexShrink: 0 }}>
@@ -246,7 +248,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
           overflowY: 'auto',
           alignContent: 'start',
         }}>
-          {items.map((item) => {
+          {displayItems.map((item) => {
             const isActive = activeItemId === item.id;
             return (
               <div
@@ -361,7 +363,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
           flex: 1,
           overflowY: 'auto',
         }}>
-          {items.map((item) => {
+          {displayItems.map((item) => {
             const isActive = activeItemId === item.id;
             return (
               <div
@@ -422,7 +424,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
         </div>
       )}
 
-      {items.length === 0 && (
+      {displayItems.length === 0 && (
         <div style={{ color: 'var(--text-faint)', padding: '12px', textAlign: 'center', fontSize: 'var(--text-sm)' }}>
           No items
         </div>

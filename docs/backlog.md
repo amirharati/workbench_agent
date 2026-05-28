@@ -166,6 +166,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 | **05.6 import/batch** | **done** | Import confirm + report; Home batch |
 | **05.7 shell polish** | **done** | Layout, scope chips, Ctrl+W |
 | **05.B pins/favs/trash** | **done** | D-01…D-03; v8 schema; live backup on writes |
+| **05.C polish bundle** | **ready** | Pin sort, Home classify batch + cancel, Help, hygiene — [`TASK-05.C`](temp/TASK-05.C-v2-polish-bundle.md) |
 | 05.8 Advanced gate | **deferred** | Dev hub on Bookmarks toolbar |
 
 Workflow checklist (product, no new schema first):
@@ -263,4 +264,4 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ---
 
-*Last updated: 2026-05-27 — **05.B done** (D-01…D-03). **End-of-V2 gate: D-35** backup scale. **Top:** V2-C; deferred: 05.8, D-41, D-26+W6, D-25. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*
+*Last updated: 2026-05-27 — **05.B done.** **Next (agent-friendly):** [`TASK-05.C`](temp/TASK-05.C-v2-polish-bundle.md) polish bundle. **End-of-V2 gate: D-35.** Deferred: 05.8, D-41, D-26+W6, D-25, V2-C fetch. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*

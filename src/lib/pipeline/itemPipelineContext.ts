@@ -47,7 +47,7 @@ export const PIPELINE_QUEUE_LABELS: Record<PipelineQueueKind, string> = {
   manual_review: 'Manual review',
   suggested_categories: 'AI categories',
   enrich_failed: 'Enrich failed',
-  pending_classify: 'Pending classify',
+  pending_classify: 'Classify queue',
   not_enriched: 'Not enriched',
 };
 
@@ -55,8 +55,9 @@ export const PIPELINE_QUEUE_HINTS: Record<PipelineQueueKind, string> = {
   suggested_categories: 'AI-suggested categories awaiting accept or reject',
   manual_review: 'Flagged for manual category review',
   enrich_failed: 'Fetch or AI step failed — use Retry digest in Inspector',
-  pending_classify: 'Enriched but not yet assigned an AI category',
-  not_enriched: 'No enrichment yet — Process not enriched runs a batch from Home',
+  pending_classify:
+    'Bookmarks waiting on AI categories — includes discover retries and general/Other, not only fresh items',
+  not_enriched: 'No enrichment yet — use Process not enriched to fetch and summarize',
 };
 
 export interface PipelineQueues {
