@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Loader2, Search, X } from 'lucide-react';
 import type { Collection, Item } from '../../lib/db';
 import type { SearchResult } from '../../lib/search';
@@ -8,6 +8,7 @@ import { SearchRelatedPanel } from './SearchDiscoveryBlocks';
 import { isValidHttpUrl } from '../../lib/utils';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
+import { ItemContextMenu } from './ItemContextMenu';
 
 interface ProductSearchViewProps {
   items: Item[];
@@ -60,6 +61,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onOpenInTab,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const resultItemIds = useMemo(
     () => state.result?.results.map((r) => r.itemId) ?? [],
@@ -366,6 +368,12 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               tabIndex={0}
               onClick={() => onSelectedItemIdChange(row.itemId)}
               onDoubleClick={() => item && onOpenItem(item)}
+              onContextMenu={(e) => {
+                if (!item) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setContextMenu({ item, x: e.clientX, y: e.clientY });
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
                   e.preventDefault();
@@ -490,6 +498,17 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             onSelectedItemIdChange(itemId);
             const item = itemsById.get(itemId);
             if (item) onOpenItem(item);
+          }}
+        />
+      )}
+      {contextMenu && (
+        <ItemContextMenu
+          item={contextMenu.item}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onOpenInNewTab={(it) => {
+            if (it.url) window.open(it.url, '_blank');
           }}
         />
       )}

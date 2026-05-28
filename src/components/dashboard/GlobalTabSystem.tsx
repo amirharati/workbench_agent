@@ -1,11 +1,20 @@
-import React, { useMemo, useRef } from 'react';
-import { Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft } from 'lucide-react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
+import { Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft, Pin, Star } from 'lucide-react';
+import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
+import { getItem } from '../../lib/db';
+import { pinItem, unpinItem, favoriteItem, unfavoriteItem } from '../../lib/itemQuickAccess';
 import { ProductSearchView } from './ProductSearchView';
+import { FavoritesTab } from './FavoritesTab';
+import { PinnedTab } from './PinnedTab';
+import { QuickAccessTab } from './QuickAccessTab';
+import { TrashTab } from './TrashTab';
+import { RecentTab } from './RecentTab';
 import { LIBRARY_SEARCH_TAB_ID, useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { EnrichmentContent, ItemPipelineBadge, ENRICHMENT_EMPTY_MESSAGE } from './PipelineDisplayBlocks';
+import { ItemContextMenu } from './ItemContextMenu';
 import {
   isScopeNarrowed,
   itemMatchesScope,
@@ -17,7 +26,9 @@ type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 export interface GlobalTabItem { kind: 'item'; id: string; itemId: string; }
 export interface GlobalTabSearch { kind: 'search'; id: string; query: string; }
 // Add list tabs to support legacy DashboardLayout tabs
-export interface GlobalTabList { kind: 'list'; id: string; listType: 'bookmark-list' | 'note-list' | 'common-list' | 'workspace'; title: string; itemIds?: string[]; workspaceId?: string; }
+export interface GlobalTabList { kind: 'list'; id: string; listType: 'bookmark-list' | 'note-list' | 'common-list' | 'workspace' | 'favorites' | 'pinned' | 'quick-access' | 'trash' | 'recent'; title: string; itemIds?: string[]; workspaceId?: string; }
+
+const UTILITY_LIST_TYPES = new Set(['favorites', 'pinned', 'quick-access', 'trash', 'recent']);
 
 export type GlobalTab = GlobalTabItem | GlobalTabSearch | GlobalTabList;
 
@@ -195,6 +206,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   const [isTabMenuOpen, setIsTabMenuOpen] = React.useState(false);
   const [maxVisibleTabs, setMaxVisibleTabs] = React.useState(5);
   const [draggedTabId, setDraggedTabId] = React.useState<string | null>(null);
+  const [itemContextMenu, setItemContextMenu] = React.useState<{ x: number; y: number } | null>(null);
 
   React.useEffect(() => {
     if (!tabStripContainerRef.current) return;
@@ -210,7 +222,31 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   }, [bottomLayout]);
 
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
-  const activeItemObj = activeTab?.kind === 'item' ? items.find(i => i.id === activeTab.itemId) ?? null : null;
+  const [resolvedItem, setResolvedItem] = useState<Item | null>(null);
+
+  useEffect(() => {
+    if (activeTab?.kind !== 'item' || !activeTab.itemId) {
+      setResolvedItem(null);
+      return;
+    }
+    const fromProps = items.find((i) => i.id === activeTab.itemId);
+    if (fromProps) {
+      setResolvedItem(fromProps);
+      return;
+    }
+    let cancelled = false;
+    void getItem(activeTab.itemId).then((item) => {
+      if (!cancelled) setResolvedItem(item ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, items]);
+
+  const activeItemObj =
+    activeTab?.kind === 'item'
+      ? items.find((i) => i.id === activeTab.itemId) ?? resolvedItem
+      : null;
 
   const closeTab = (id: string) => {
     const next = tabs.filter(t => t.id !== id);
@@ -280,11 +316,49 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     setIsEditing(false);
   };
   
-  const deleteItem = async () => {
+  const deleteItemHandler = async () => {
     if (!activeItemObj || !onDeleteBookmark) return;
-    const collectionId = activeItemObj.collectionIds?.[0];
-    await onDeleteBookmark(activeItemObj.id, collectionId);
-    closeTab(activeTabId!);
+    if (!window.confirm(`Move "${activeItemObj.title || 'Untitled'}" to trash?`)) return;
+    await onDeleteBookmark(activeItemObj.id);
+  };
+
+  const togglePin = async () => {
+    if (!activeItemObj || activeItemObj.deletedAt) return;
+    if (activeItemObj.pinnedAt) await unpinItem(activeItemObj.id);
+    else await pinItem(activeItemObj.id);
+  };
+
+  const toggleFavorite = async () => {
+    if (!activeItemObj || activeItemObj.deletedAt) return;
+    if (activeItemObj.favoriteAt) await unfavoriteItem(activeItemObj.id);
+    else await favoriteItem(activeItemObj.id);
+  };
+
+  const openItemFromUtilityList = (item: Item) => {
+    const id = `item-${item.id}`;
+    const existing = tabs.find((t) => t.kind === 'item' && t.itemId === item.id);
+    if (existing) {
+      set({ activeTabId: existing.id });
+      return;
+    }
+    set({ tabs: [...tabs, { kind: 'item', id, itemId: item.id }], activeTabId: id });
+  };
+
+  const renderUtilityListTab = (listType: GlobalTabList['listType']) => {
+    switch (listType) {
+      case 'favorites':
+        return <FavoritesTab onItemClick={openItemFromUtilityList} />;
+      case 'pinned':
+        return <PinnedTab onItemClick={openItemFromUtilityList} />;
+      case 'quick-access':
+        return <QuickAccessTab onItemClick={openItemFromUtilityList} />;
+      case 'trash':
+        return <TrashTab onItemClick={openItemFromUtilityList} />;
+      case 'recent':
+        return <RecentTab items={items} onItemClick={openItemFromUtilityList} />;
+      default:
+        return null;
+    }
   };
 
   React.useEffect(() => { setIsEditing(false); }, [activeTabId]);
@@ -526,7 +600,14 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
           </div>
         )}
         {activeTab?.kind === 'item' && activeItemObj && (
-          <div style={{ height: '100%', overflowY: 'auto', padding: '16px 20px', background: 'var(--bg)' }} className="scrollbar reading-content">
+          <div
+            style={{ height: '100%', overflowY: 'auto', padding: '16px 20px', background: 'var(--bg)' }}
+            className="scrollbar reading-content"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setItemContextMenu({ x: e.clientX, y: e.clientY });
+            }}
+          >
             <ItemDetail
               item={activeItemObj}
               collections={collections}
@@ -541,7 +622,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               onStartEdit={startEditing}
               onCancelEdit={cancelEditing}
               onSaveEdit={saveEditing}
-              onDelete={deleteItem}
+              onDelete={deleteItemHandler}
+              onTogglePin={togglePin}
+              onToggleFavorite={toggleFavorite}
               canEdit={!!onUpdateItem}
             />
           </div>
@@ -549,9 +632,38 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
         {activeTab?.kind === 'item' && !activeItemObj && (
           <div style={{ padding: 20, color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>Item not found.</div>
         )}
-        {activeTab?.kind === 'list' && renderListTab && renderListTab(activeTab)}
+        {activeTab?.kind === 'list' && UTILITY_LIST_TYPES.has(activeTab.listType) && (
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            {renderUtilityListTab(activeTab.listType)}
+          </div>
+        )}
+        {activeTab?.kind === 'list' && !UTILITY_LIST_TYPES.has(activeTab.listType) && renderListTab && renderListTab(activeTab)}
         </div>
       </div>
+      {itemContextMenu && activeItemObj && (
+        <ItemContextMenu
+          item={activeItemObj}
+          x={itemContextMenu.x}
+          y={itemContextMenu.y}
+          onClose={() => setItemContextMenu(null)}
+          onEdit={onUpdateItem ? () => { startEditing(); setItemContextMenu(null); } : undefined}
+          onDelete={
+            onDeleteBookmark
+              ? () => {
+                  void deleteItemHandler();
+                  setItemContextMenu(null);
+                }
+              : undefined
+          }
+          onOpenInNewTab={
+            activeItemObj.url
+              ? (it) => {
+                  if (it.url) window.open(it.url, '_blank');
+                }
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 };
@@ -560,15 +672,19 @@ interface ItemDetailProps {
   item: Item; collections: Collection[]; projects: Project[];
   isEditing: boolean; editTitle: string; editUrl: string; editNotes: string;
   onEditTitleChange: (v: string) => void; onEditUrlChange: (v: string) => void; onEditNotesChange: (v: string) => void;
-  onStartEdit: () => void; onCancelEdit: () => void; onSaveEdit: () => void; onDelete: () => void; canEdit: boolean;
+  onStartEdit: () => void; onCancelEdit: () => void; onSaveEdit: () => void; onDelete: () => void;
+  onTogglePin: () => void;
+  onToggleFavorite: () => void;
+  canEdit: boolean;
 }
 
 const ItemDetail: React.FC<ItemDetailProps> = ({
   item, collections, projects, isEditing, editTitle, editUrl, editNotes,
   onEditTitleChange, onEditUrlChange, onEditNotesChange,
-  onStartEdit, onCancelEdit, onSaveEdit, onDelete, canEdit,
+  onStartEdit, onCancelEdit, onSaveEdit, onDelete, onTogglePin, onToggleFavorite, canEdit,
 }) => {
   const isBookmark = !!item.url;
+  const isTrashed = item.deletedAt != null;
   const itemCollections = collections.filter(c => (item.collectionIds || []).includes(c.id));
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -576,14 +692,47 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
         <div style={{ flex: 1 }}>
           {isEditing
             ? <input type="text" value={editTitle} onChange={e => onEditTitleChange(e.target.value)} placeholder="Title" style={{ width: '100%', fontSize: 'var(--text-lg)', fontWeight: 600, padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)' }} />
-            : <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, margin: 0, lineHeight: 1.3 }}>{item.title || 'Untitled'}</h2>}
+            : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, margin: 0, lineHeight: 1.3 }}>{item.title || 'Untitled'}</h2>
+                <ItemQuickAccessMarkers item={item} size={14} hideWhenTrashed />
+                {isTrashed && (
+                  <span style={{ fontSize: 'var(--text-xs)', color: '#ef4444', fontWeight: 600 }}>In trash</span>
+                )}
+              </div>
+            )}
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           {!isEditing ? (
             <>
               {isBookmark && <button onClick={() => window.open(item.url, '_blank')} style={btnStyle('primary')}>Open</button>}
-              {canEdit && <button onClick={onStartEdit} style={btnStyle('secondary')}>Edit</button>}
-              {canEdit && <button onClick={onDelete} style={{...btnStyle('secondary'), color: '#ef4444'}}>Delete</button>}
+              {!isTrashed && (
+                <button
+                  onClick={() => void onToggleFavorite()}
+                  title={item.favoriteAt ? 'Remove from favorites' : 'Add to favorites'}
+                  style={{
+                    ...btnStyle('secondary'),
+                    color: item.favoriteAt ? '#ef4444' : 'var(--text)',
+                    background: item.favoriteAt ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+                  }}
+                >
+                  <Star size={14} fill={item.favoriteAt ? '#ef4444' : 'none'} />
+                </button>
+              )}
+              {!isTrashed && (
+                <button
+                  onClick={() => void onTogglePin()}
+                  title={item.pinnedAt ? 'Unpin' : 'Pin'}
+                  style={{
+                    ...btnStyle('secondary'),
+                    background: item.pinnedAt ? 'var(--accent-weak)' : 'transparent',
+                  }}
+                >
+                  <Pin size={14} style={{ opacity: item.pinnedAt ? 1 : 0.5 }} />
+                </button>
+              )}
+              {canEdit && !isTrashed && <button onClick={onStartEdit} style={btnStyle('secondary')}>Edit</button>}
+              {canEdit && !isTrashed && <button onClick={onDelete} style={{...btnStyle('secondary'), color: '#ef4444'}}>Trash</button>}
             </>
           ) : (
             <><button onClick={onCancelEdit} style={btnStyle('secondary')}>Cancel</button><button onClick={onSaveEdit} style={btnStyle('primary')}>Save</button></>

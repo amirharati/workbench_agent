@@ -13,7 +13,7 @@ import type {
 export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
 
 const DB_NAME = 'personal-tools-db';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 // The default project for orphan items (items without a specific project)
 const DEFAULT_PROJECT_ID = 'project_default';
@@ -74,6 +74,12 @@ export interface Item {
   updated_at: number;
   source: 'tab' | 'twitter' | 'manual' | 'bookmark' | string;
   metadata?: Record<string, any>;
+  /** When set, item is pinned (sort/recency uses this timestamp). */
+  pinnedAt?: number;
+  /** When set, item is a favorite. */
+  favoriteAt?: number;
+  /** When set, item is in trash (soft-deleted). */
+  deletedAt?: number;
 }
 
 /** Optional flags for {@link updateItem} (per-placement notes, etc.). */
@@ -689,6 +695,8 @@ export const getDB = () => {
           }
         }
 
+        // ---- v8: optional pin/favorite/trash timestamps on items (no data migration) ----
+
         // ---- Data migration to v3 ----
         if (oldVersion < 3) {
           const projectsStore = transaction.objectStore('projects');
@@ -1181,17 +1189,17 @@ export const getItemPlacementCount = async (id: string): Promise<number> => {
 
 /**
  * Remove an item from a specific collection.
- * If it was the last placement, deletes the item entirely.
+ * If it was the last placement, moves the item to trash (soft delete).
  */
 export const removeItemFromCollection = async (
   itemId: string, 
   collectionId: string
-): Promise<{ removed: boolean; itemDeleted: boolean; remainingPlacements: number }> => {
+): Promise<{ removed: boolean; itemDeleted: boolean; itemTrashed: boolean; remainingPlacements: number }> => {
   const db = await getDB();
   const item = await db.get('items', itemId);
   
   if (!item) {
-    return { removed: false, itemDeleted: false, remainingPlacements: 0 };
+    return { removed: false, itemDeleted: false, itemTrashed: false, remainingPlacements: 0 };
   }
   
   // Remove from placements
@@ -1202,10 +1210,14 @@ export const removeItemFromCollection = async (
   const newCollectionIds = Object.keys(placements);
   
   if (newCollectionIds.length === 0) {
-    // No placements left — delete entirely
-    await db.delete('items', itemId);
-    notifyDataChanged('item.delete');
-    return { removed: true, itemDeleted: true, remainingPlacements: 0 };
+    const now = nowTs();
+    await db.put('items', {
+      ...item,
+      deletedAt: now,
+      updated_at: now,
+    });
+    notifyDataChanged('item.update');
+    return { removed: true, itemDeleted: false, itemTrashed: true, remainingPlacements: 0 };
   }
   
   // Update item with remaining placements
@@ -1217,7 +1229,7 @@ export const removeItemFromCollection = async (
   });
   
   notifyDataChanged('item.update');
-  return { removed: true, itemDeleted: false, remainingPlacements: newCollectionIds.length };
+  return { removed: true, itemDeleted: false, itemTrashed: false, remainingPlacements: newCollectionIds.length };
 };
 
 /**
@@ -1448,6 +1460,12 @@ export const updateItem = async (
     } else if (hasNotesUpdate && multi && !placementId) {
       // Do not write shared notes across placements
       next.notes = undefined;
+    }
+  }
+
+  for (const key of ['pinnedAt', 'favoriteAt', 'deletedAt'] as const) {
+    if (Object.prototype.hasOwnProperty.call(updates, key) && updates[key] === undefined) {
+      delete (next as unknown as Record<string, unknown>)[key];
     }
   }
 

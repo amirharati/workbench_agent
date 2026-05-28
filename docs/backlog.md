@@ -57,7 +57,8 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **AI extraction tuning + eval harness (Task 01.5 — closed 2026-05-24):** SourceKind-aware prompt package (`v2`/`v2.1`), CLI eval harness over saved bodies (`npm run fetch-ai-eval`), AI-only rerun (`reextractAI`), `buildItemText` upgrades (summary + key points), and in-app validation on review flow. Spec: [`docs/temp/TASK-01.5-ai-extraction-tuning.md`](temp/TASK-01.5-ai-extraction-tuning.md).
 - **V1.5 search foundation (Task 04 — closed 2026-05-26):** Hybrid retrieval (`src/lib/search/`) — lexical + doc embedding + category expansion, explainable rerank, CLI eval (`npm run search-eval`), Search (dev) tab + discovery (similar items, topics/tags, related links). Dev-only — product search UX deferred to V2. Spec + return: [`docs/temp/TASK-04-search-foundation-v1.5.md`](temp/TASK-04-search-foundation-v1.5.md).
 - **Doc embedding step (Task 04 — shared pipeline stage):** Incremental backfill of `ai_item_signals.embedding` from **title + AI summary** (`buildSearchEmbedText`, `embedBackfillPlan.ts`) — same queue in app (`EmbedBackfillBlock`) and CLI (`npm run embed-incremental`). Powers hybrid search, similar-items, and related-links; **reuse for categorize shortlist/centroids deferred to V2+** (see AI — V3).
-- **V2-A product UX (partial — Task 05):** **05.1** Home + right panel + toasts; **05.2** product hybrid search; **05.3** read-only enrichment/pipeline in item tabs, Inspector, lists, Home digest/overview. Favorites/pins still placeholders. Spec: [`temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
+- **V2-A product UX (Task 05):** **05.1–05.7 + D-40** shipped — Home, search, enrichment read, category review, digest, import/batch, shell polish. Spec: [`temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
+- **V2-B quick access (Task 05.B — 2026-05-27):** Pins, favorites, trash on `Item` (DB v8: `pinnedAt`, `favoriteAt`, `deletedAt`); utility tabs; Home card; context menu + side panel; soft delete. Spec: [`temp/TASK-05.B-pins-favorites-trash.md`](temp/TASK-05.B-pins-favorites-trash.md). **Adjacent same session:** Help v1, Home vertical split (not D-01–03).
 
 ---
 
@@ -66,7 +67,8 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [ ] **Error handling**: consistent try/catch on async paths (`App.tsx`, dashboard handlers, Chrome APIs); user-visible errors vs silent `console.error`.
 - [ ] **DB transactions**: multi-step deletes (`deleteCollection`, `deleteProject`, bulk moves) reviewed for atomicity in `db.ts`.
 - [ ] **Input validation**: URLs, IDs, text limits; centralize validation helpers (extend existing `src/lib/utils.ts` patterns as needed).
-- [ ] **Very large bookmark libraries (scale spike)** — With current **full JSON backup/export** + in-memory item maps on bulk paths: assess limits (memory, UI list perf, backup time/size) for **5k–50k+** bookmarks; decide if we need **chunked export**, **paged reads**, **lazy list virtualization**, or **separate blob store** for heavy fields—vs keeping “good enough” for personal-scale only. Ties to backup coordinator and `db.ts` read patterns.
+- [ ] **🔴 D-35 — Backup / export scale (end of V2 — important)** — Live backup rewrites **full** `latest.json` on every debounced change (`exportDB()`, pretty JSON, all stores incl. embeddings). Fine at personal scale; **must** spike and improve **before closing V2 iteration**: export size/time on real library, compact JSON, incremental/delta, chunked writes, blob offload, Settings size/duration warning. Tracker: [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md) **D-35**; design: [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md#end-of-v2-backup--export-scale). Raised from 05.B return.
+- [ ] **Very large bookmark libraries (scale spike)** — Broader than D-35 alone: UI list virtualization, paged reads, bulk-import memory — assess **5k–50k+** paths; ties to backup coordinator and `db.ts`.
 
 ---
 
@@ -115,7 +117,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [ ] **Bulk import polish** — Persist **cover / image URL** and **import provenance** on `Item.metadata` (not only placement notes); optional **CSV folder path → multiple collections**; commit **progress** + cancel for huge files; surface invalid/skipped rows in UI.
 - [ ] **Bookmark enrichment (X-first + generic links)** — Background or explicit action: for **X/Twitter-shaped** bookmarks (and to a lesser degree normal URLs), optionally **fetch** / resolve **threads, quotes, outbound links** to a configurable depth; fill **missing summary**, **keywords**, structured fields for **AI context**—with clear **CORS/host permission**, **rate limits**, **auth walls**, and **fallback when fetch fails** (complex; likely staged: metadata-only → optional fetch).
 - [ ] **Multi-collection / share-item UX** if still desired (dashboard backlog “B4”).
-- [ ] **Pinned / favorites / trash**: add fields (`pinned`, `favorite`, `deletedAt` or equivalent), wire Quick Access tabs.
+- [x] **Pinned / favorites / trash** — **05.B shipped:** `pinnedAt`, `favoriteAt`, `deletedAt` on `Item` (v8); Quick Access tabs; Home card; soft delete. Stretch open: sort pinned to top, 30-day auto-purge.
 
 **AI (phased — see Near-term roadmap)**
 
@@ -150,7 +152,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ### V2-A — UX / UI (umbrella — **TASK-05**)
 
-**Policy:** Product workflows first using **existing V1 stores**; **favorites/pins/trash** stay **coming-soon placeholders** (no schema work during UI pass). Track deferred work: [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).
+**Policy:** Track deferred work: [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md). **End of V2 gate:** **D-35** backup/export scale.
 
 | Subtask | Status | Focus |
 |---------|--------|--------|
@@ -158,12 +160,13 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 | 05.1 shell | done (iter 1) | Home, right panel, toasts |
 | 05.2 search | done | W5 |
 | **05.3 enrichment UI** | **done** | W1 read paths |
-| **05.40 presentation (D-40)** | **done** | List badges, digest copy, Inspector dedupe, search metadata row |
-| **05.4 category review** | **done** | Accept/reject in Inspector; split Home digest queues; Tools → AI Categories page |
-| **05.5 single-link digest** | **done** | Auto digest on save/update; hash-aware skip; side panel AI panel; Inspector retry/re-digest |
-| **05.6 import/batch maintenance** | **done** | Import confirm + report; Home batch; suspicious-fetch preserve; Tools → Import Studio |
-| **05.7 shell polish** | **done** | Persisted layout, scope chips, OOS tabs, Ctrl+W |
-| 05.8 Advanced gate | **deferred** | Dev hub unchanged on Bookmarks toolbar |
+| **05.40 presentation (D-40)** | **done** | List badges, digest copy, Inspector dedupe |
+| **05.4 category review** | **done** | Accept/reject; digest queues; AI Categories |
+| **05.5 single-link digest** | **done** | Hash-aware digest; side panel |
+| **05.6 import/batch** | **done** | Import confirm + report; Home batch |
+| **05.7 shell polish** | **done** | Layout, scope chips, Ctrl+W |
+| **05.B pins/favs/trash** | **done** | D-01…D-03; v8 schema; live backup on writes |
+| 05.8 Advanced gate | **deferred** | Dev hub on Bookmarks toolbar |
 
 Workflow checklist (product, no new schema first):
 
@@ -177,9 +180,11 @@ Workflow checklist (product, no new schema first):
 
 ### V2-B — Data model cleanup
 
-- [ ] **Notes strategy** — First-class `notes` store vs URL-empty `items`; one UI path; migration/export rules documented.
-- [ ] **Schema / import debt** — Reconcile backup normalization, multi-collection merge semantics, validation (see Known data-model debt).
+- [x] **Quick access (D-01…D-03)** — **05.B:** pin, favorite, trash on `Item`; see [`TASK-05.B`](temp/TASK-05.B-pins-favorites-trash.md).
+- [ ] **Notes strategy (D-04)** — First-class `notes` store vs URL-empty `items`; one UI path; migration/export rules documented.
+- [ ] **Schema / import debt (D-05)** — Reconcile backup normalization, multi-collection merge semantics, validation.
 - [ ] **AI layer presentation** — Document and UI-label: `projects`/`collections` (manual) vs `ai_categories` (semantic); no forced DAG in V2-B (DAG → V3).
+- [ ] **🔴 D-35 — Backup/export scale** — **End of V2** — see Reliability & data + [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md#end-of-v2-backup--export-scale).
 
 ### V2-C — V1 backend refinement (after V2-A usable baseline)
 
@@ -244,16 +249,18 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ## Suggested order (adjust freely)
 
-**Active product thread:** **V1 closed** → **V2-A UX/UI** → **V2-B data model** → **V2-C V1 backend refinement** (fetch, tuning, embed unify) → **V3** scale AI (chunk/ANN/DAG). Bulk import polish, backup hygiene, and agentic chat run in parallel as needed.
+**Active product thread:** **V1 closed** → **V2-A + 05.B done** → **V2-C** backend → **close V2 with D-35** backup scale → **V3** scale AI.
 
 **Parallel / hygiene (pick as needed):**
 
-1. Automated file backup — **scheduled `chrome.alarms` + rotation** when integrity work cycles back.
-2. Error handling + validation (trust on import + AI paths).
-3. Notes strategy + one implementation path (feeds AI context later).
-4. Quick access (pinned / favorites / trash) if daily-use value is high.
+1. **🔴 D-35** backup/export scale — **before end of V2**.
+2. V2-C fetch / in-tab fetch / embed hooks.
+3. Notes strategy (D-04) + import provenance (D-05).
+4. Scheduled backup rotation (`chrome.alarms`) when integrity work cycles back.
 5. Collection detach/share UI if multi-project workflows matter.
+
+**Adjacent UX (no task id):** Help v1, Home vertical split (shipped with 05.B session — optional polish later).
 
 ---
 
-*Last updated: 2026-05-27 — **V2-A core done.** Deferred: 05.8, D-41, D-26+W6, D-25 (until in-tab fetch). **Top:** V2-B (pins/favs/trash + backup on every DB write), V2-C. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*
+*Last updated: 2026-05-27 — **05.B done** (D-01…D-03). **End-of-V2 gate: D-35** backup scale. **Top:** V2-C; deferred: 05.8, D-41, D-26+W6, D-25. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*

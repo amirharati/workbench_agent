@@ -50,7 +50,7 @@ export const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 style={{ margin: '0 0 12px', fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text)' }}>
-          Delete "{item.title || 'Untitled'}"?
+          Move "{item.title || 'Untitled'}" to trash?
         </h3>
         
         {isInMultipleCollections && (
@@ -103,11 +103,11 @@ export const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
             }}
           >
             <div style={{ fontWeight: 500 }}>
-              {isInMultipleCollections ? 'Delete from all collections' : 'Delete'}
+              {isInMultipleCollections ? 'Move to trash (all collections)' : 'Move to trash'}
             </div>
             {isInMultipleCollections && (
               <div style={{ fontSize: 'var(--text-xs)', opacity: 0.8, marginTop: 2 }}>
-                Remove from all {placementCount} collections
+                Soft-delete from all {placementCount} collections
               </div>
             )}
           </button>

@@ -55,22 +55,41 @@ export const Resizer: React.FC<ResizerProps> = ({
         cursor: isVertical ? 'col-resize' : 'row-resize',
         background: isVertical
           ? 'linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent)'
-          : 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.1), transparent)',
+          : 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.08), transparent)',
         transition: 'background 0.2s',
         userSelect: 'none',
         touchAction: 'none',
+        position: 'relative',
+        flexShrink: 0,
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = isVertical
           ? 'linear-gradient(to right, transparent, rgba(99,102,241,0.5), transparent)'
-          : 'linear-gradient(to bottom, transparent, rgba(99,102,241,0.5), transparent)';
+          : 'linear-gradient(to bottom, transparent, rgba(99,102,241,0.35), transparent)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = isVertical
           ? 'linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent)'
-          : 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.1), transparent)';
+          : 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.08), transparent)';
       }}
-    />
+    >
+      {!isVertical && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 36,
+            height: 3,
+            borderRadius: 999,
+            background: 'var(--border)',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+    </div>
   );
 };
 

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Save, RefreshCw } from 'lucide-react';
+import { Save, RefreshCw, Pin, Star } from 'lucide-react';
 import { Collection, Item, Project, normalizeBookmarkUrl } from '../lib/db';
+import { favoriteItem, pinItem, unfavoriteItem, unpinItem } from '../lib/itemQuickAccess';
 import { Panel, Input, ButtonGhost, ButtonPrimary, Divider } from '../styles/primitives';
 import { isValidHttpUrl } from '../lib/utils';
 import { SidePanelDigestPanel } from './SidePanelDigestPanel';
@@ -25,6 +26,65 @@ interface SidePanelViewProps {
     opts?: { forceEnrich?: boolean }
   ) => Promise<{ message: string; failed: boolean }>;
 }
+
+function itemPlacementCount(item: Item): number {
+  if (item.placements) return Object.keys(item.placements).length;
+  return item.collectionIds?.length || 0;
+}
+
+const sidePanelIconBtn: React.CSSProperties = {
+  border: '1px solid var(--border)',
+  background: 'var(--bg-glass)',
+  color: 'var(--text)',
+  borderRadius: 6,
+  padding: '2px 6px',
+  fontSize: 'var(--text-xs)',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const ItemPinFavoriteButtons: React.FC<{
+  item: Item;
+  compact?: boolean;
+}> = ({ item, compact }) => {
+  if (item.deletedAt) return null;
+  const iconSize = compact ? 12 : 14;
+  return (
+    <>
+      <button
+        type="button"
+        title={item.favoriteAt ? 'Remove from favorites' : 'Add to favorites'}
+        onClick={(e) => {
+          e.stopPropagation();
+          void (item.favoriteAt ? unfavoriteItem(item.id) : favoriteItem(item.id));
+        }}
+        style={{
+          ...sidePanelIconBtn,
+          color: item.favoriteAt ? '#ef4444' : 'var(--text-muted)',
+          background: item.favoriteAt ? 'rgba(239, 68, 68, 0.12)' : 'var(--bg-glass)',
+        }}
+      >
+        <Star size={iconSize} fill={item.favoriteAt ? '#ef4444' : 'none'} />
+      </button>
+      <button
+        type="button"
+        title={item.pinnedAt ? 'Unpin' : 'Pin'}
+        onClick={(e) => {
+          e.stopPropagation();
+          void (item.pinnedAt ? unpinItem(item.id) : pinItem(item.id));
+        }}
+        style={{
+          ...sidePanelIconBtn,
+          background: item.pinnedAt ? 'var(--accent-weak)' : 'var(--bg-glass)',
+        }}
+      >
+        <Pin size={iconSize} style={{ opacity: item.pinnedAt ? 1 : 0.55 }} />
+      </button>
+    </>
+  );
+};
 
 export const SidePanelView: React.FC<SidePanelViewProps> = ({
   projects,
@@ -131,6 +191,11 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     () => matchingItems.find((item) => item.id === selectedExistingItemId) || null,
     [matchingItems, selectedExistingItemId]
   );
+  /** Fresh pin/fav flags from `items` after BroadcastChannel refresh */
+  const selectedItemLive = useMemo(() => {
+    if (!selectedExistingItemId) return null;
+    return items.find((i) => i.id === selectedExistingItemId) ?? selectedExistingItem;
+  }, [items, selectedExistingItemId, selectedExistingItem]);
   const hasExistingForUrl = matchingItems.length > 0;
 
   const pipelineItemId = useMemo(() => {
@@ -538,6 +603,26 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           }}
         />
 
+        {selectedItemLive && !forceNewCopyMode ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+              padding: '0.35rem 0.45rem',
+              background: 'var(--bg-glass)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+            }}
+          >
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', flex: 1, minWidth: 0 }}>
+              Quick access
+            </span>
+            <ItemPinFavoriteButtons item={selectedItemLive} />
+          </div>
+        ) : null}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -730,9 +815,10 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             >
             {matchingPlacements.map((row) => {
               const { item, collectionId: rowCollectionId, collection, project } = row;
+              const itemLive = items.find((i) => i.id === item.id) ?? item;
               const placementNotes = item.placements?.[rowCollectionId]?.notes;
               const notePreview = placementNotes?.trim();
-              // Check both item ID and collection ID for selection
+              const placementCount = itemPlacementCount(itemLive);
               const isSelected = selectedExistingItemId === item.id && selectedPlacementCollectionId === rowCollectionId;
               
               return (
@@ -792,7 +878,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                     </div>
                   ) : null}
                   <div>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <ItemPinFavoriteButtons item={itemLive} compact />
                       <button
                         type="button"
                         onClick={(e) => {
@@ -815,7 +902,11 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                         type="button"
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (!window.confirm('Remove this bookmark from this collection?')) return;
+                          const msg =
+                            placementCount > 1
+                              ? 'Remove this bookmark from this collection?'
+                              : 'Move this bookmark to trash?';
+                          if (!window.confirm(msg)) return;
                           await onDeleteItem(item.id, rowCollectionId);
                           if (
                             selectedExistingItemId === item.id &&
@@ -835,7 +926,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                           cursor: 'pointer',
                         }}
                       >
-                        Remove
+                        {placementCount > 1 ? 'Remove' : 'Trash'}
                       </button>
                     </div>
                   </div>

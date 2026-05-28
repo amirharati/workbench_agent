@@ -71,6 +71,27 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 4. **Import merge mode**
    - Replace mode works; merge remains disabled placeholder.
 
+5. **Export / live-backup scale (end of V2 — important)**
+   - **Today:** every `notifyDataChanged` debounce runs **`exportDB()`** and rewrites **`latest.json`** with the **full** database snapshot (pretty-printed JSON: items, enrichment, AI stores, embeddings in `ai_item_signals`, etc.).
+   - **Works well** for personal-scale libraries (roughly hundreds of items; on the order of tens of MB per file with pipeline data).
+   - **Does not scale** cleanly to very large libraries (thousands+ items, large embedding payloads): long writes, sync-folder churn, memory spikes, conflict recovery cost.
+   - **Tracked as D-35** — decision + implementation scheduled **by end of V2 iteration** (before treating V2 as “closed”). See [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md) and backlog *Very large bookmark libraries*.
+   - **Direction (TBD after spike):** compact JSON, incremental/delta export, chunked or streaming writes, optional separation of heavy blobs from main JSON, export duration/size surfaced in Settings.
+
+---
+
+## End of V2 — backup / export scale
+
+**Priority:** Important — not optional polish.
+
+| Question | Current answer |
+|----------|----------------|
+| What syncs on pin/fav/trash/import/pipeline? | Same path as all DB writes: `notifyDataChanged` → debounced full export → `latest.json`. New `Item` fields (`pinnedAt`, `favoriteAt`, `deletedAt`) are included automatically. |
+| What does *not* sync? | Ephemeral UI: open tabs, shell/home split prefs, font scale, search history (localStorage). |
+| What must improve before V2 close? | **Avoid rewriting the entire pretty JSON file on every small edit** once libraries or embedding payload size grow. Spike real export size/time on a representative library; pick one MVP improvement (e.g. compact JSON + size warning, or delta layer). |
+
+**ID:** **D-35** in deferred tracker. Aligns with backlog reliability item *Very large bookmark libraries*.
+
 ---
 
 ## Backup modes (target shape)

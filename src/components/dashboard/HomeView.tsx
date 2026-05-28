@@ -1,7 +1,10 @@
 import React, { useMemo, useRef } from 'react';
-import { Search, Star, Clock, Zap, BarChart2 } from 'lucide-react';
+import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2 } from 'lucide-react';
+import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
-import { GlobalTabSystem, type GlobalTabState } from './GlobalTabSystem';
+import { getHomeQuickAccessItems } from '../../lib/itemQuickAccess';
+import { GlobalTabSystem, type GlobalTabState, type GlobalTabList } from './GlobalTabSystem';
+import { ItemContextMenu } from './ItemContextMenu';
 import { Resizer } from './Resizer';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { useHomePipelineStats } from '../../hooks/useHomePipelineStats';
@@ -10,8 +13,9 @@ import { PIPELINE_QUEUE_LABELS, PIPELINE_QUEUE_HINTS } from '../../lib/pipeline'
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
-const MIN_TOP_PX = 120;
-const MIN_BOTTOM_PX = 100;
+const MIN_TOP_PX = 72;
+const MIN_BOTTOM_PX = 44;
+const DIVIDER_PX = 8;
 const RECENTLY_ADDED_LIMIT = 15;
 
 // ===== Props =====
@@ -44,8 +48,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
   items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBrowseCategory, onPipelineBrowse, onBatchProcessQueue, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const topPctRef = useRef(topPct);
+  topPctRef.current = topPct;
   const { digest, categories, loading: pipelineLoading } = useHomePipelineStats();
   const [batchRunning, setBatchRunning] = React.useState(false);
+  const [homeItemContextMenu, setHomeItemContextMenu] = React.useState<{
+    item: Item;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const handleProcessNotEnriched = async () => {
     if (!onBatchProcessQueue || batchRunning || !digest?.notEnriched) return;
@@ -68,6 +79,40 @@ export const HomeView: React.FC<HomeViewProps> = ({
     [items]
   );
 
+  const quickAccessItems = useMemo(() => getHomeQuickAccessItems(items, 8), [items]);
+
+  type HomeUtilTabId =
+    | 'util-pinned'
+    | 'util-favorites'
+    | 'util-quick-access'
+    | 'util-recent'
+    | 'util-trash';
+
+  const HOME_UTIL_META: Record<HomeUtilTabId, { listType: GlobalTabList['listType']; title: string }> = {
+    'util-pinned': { listType: 'pinned', title: 'Pinned' },
+    'util-favorites': { listType: 'favorites', title: 'Favorites' },
+    'util-quick-access': { listType: 'quick-access', title: 'Favorites & pins' },
+    'util-recent': { listType: 'recent', title: 'Recent' },
+    'util-trash': { listType: 'trash', title: 'Trash' },
+  };
+
+  const openUtilityTab = (tabId: HomeUtilTabId) => {
+    const meta = HOME_UTIL_META[tabId];
+    const existing = homeState.tabs.find((t) => t.id === tabId);
+    if (existing) {
+      onHomeStateChange({ ...homeState, activeTabId: tabId });
+      return;
+    }
+    onHomeStateChange({
+      ...homeState,
+      tabs: [
+        ...homeState.tabs,
+        { kind: 'list' as const, id: tabId, listType: meta.listType, title: meta.title },
+      ],
+      activeTabId: tabId,
+    });
+  };
+
   const openItemTab = (item: Item) => {
     const existing = homeState.tabs.find(t => t.kind === 'item' && t.itemId === item.id);
     if (existing) { onHomeStateChange({ ...homeState, activeTabId: existing.id }); return; }
@@ -75,6 +120,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
     // ensure new tab is at the end
     const nextTabs = [...homeState.tabs, { kind: 'item' as const, id, itemId: item.id }];
     onHomeStateChange({ ...homeState, tabs: nextTabs, activeTabId: id });
+  };
+
+  const showHomeItemContextMenu = (e: React.MouseEvent, item: Item) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setHomeItemContextMenu({ item, x: e.clientX, y: e.clientY });
   };
 
   const handleHeroSearch = (e: React.FormEvent) => {
@@ -85,20 +136,47 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const onDividerResize = (delta: number) => {
     if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const currentPx = (topPct / 100) * rect.height;
-    const clamped = Math.max(MIN_TOP_PX, Math.min(rect.height - MIN_BOTTOM_PX, currentPx + delta));
-    onTopPctChange((clamped / rect.height) * 100);
+    const containerH = containerRef.current.getBoundingClientRect().height;
+    const available = containerH - DIVIDER_PX;
+    if (available <= 0) return;
+    const maxTop = available - MIN_BOTTOM_PX;
+    // Use stored split ratio — not DOM height (content was forcing the top pane larger).
+    const currentTopPx = (topPctRef.current / 100) * available;
+    const newTop = Math.max(MIN_TOP_PX, Math.min(maxTop, currentTopPx + delta));
+    const nextPct = (newTop / available) * 100;
+    topPctRef.current = nextPct;
+    onTopPctChange(nextPct);
   };
 
   const hasBottomRow = homeState.tabs.length > 0;
+  const bottomPct = Math.max(0, 100 - topPct);
 
   return (
-    <div ref={containerRef} style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div
+      ref={containerRef}
+      style={{
+        height: '100%',
+        minHeight: 0,
+        display: 'grid',
+        gridTemplateRows: hasBottomRow
+          ? `minmax(${MIN_TOP_PX}px, ${topPct}fr) ${DIVIDER_PX}px minmax(${MIN_BOTTOM_PX}px, ${bottomPct}fr)`
+          : '1fr',
+        overflow: 'hidden',
+      }}
+    >
 
-      {/* ===== TOP PANE ===== */}
+      {/* ===== TOP PANE (landing) — scrolls independently of split size ===== */}
       <div
-        style={{ height: hasBottomRow ? `${topPct}%` : '100%', minHeight: MIN_TOP_PX, flexShrink: 0, overflowY: 'auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 24, alignItems: 'center' }}
+        style={{
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: '32px 24px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 24,
+          alignItems: 'center',
+        }}
         className="scrollbar"
       >
         {/* Hero search */}
@@ -123,12 +201,113 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </form>
         </div>
 
+        {/* Quick access links */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 640, width: '100%' }}>
+          {(
+            [
+              { id: 'util-pinned' as const, label: 'Pinned', Icon: Pin },
+              { id: 'util-favorites' as const, label: 'Favorites', Icon: Star },
+              { id: 'util-recent' as const, label: 'Recent', Icon: Clock },
+              { id: 'util-trash' as const, label: 'Trash', Icon: Trash2 },
+            ] as const
+          ).map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => openUtilityTab(id)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-panel)',
+                color: 'var(--text-muted)',
+                fontSize: 'var(--text-sm)',
+                cursor: 'pointer',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--text)';
+                e.currentTarget.style.borderColor = 'var(--accent)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-muted)';
+                e.currentTarget.style.borderColor = 'var(--border)';
+              }}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, width: '100%', maxWidth: 1000 }}>
-          <HomeCard icon={<Star size={14} />} title="Favorites">
-            <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
-              Pin items to see them here.<br />Right-click any item &rarr; Pin.
-            </div>
+          <HomeCard
+            icon={<Star size={14} />}
+            title="Favorites & pins"
+            headerExtra={
+              quickAccessItems.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => openUtilityTab('util-quick-access')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    color: 'var(--accent)',
+                    fontSize: 'var(--text-xs)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  View all
+                </button>
+              ) : null
+            }
+          >
+            {quickAccessItems.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
+                Star or pin items to see them here.<br />Right-click any item &rarr; Add to favorites or Pin.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 4 }}>
+                {quickAccessItems.map((item) => {
+                  const tabId = 'item-' + item.id;
+                  const isActive = homeState.activeTabId === tabId;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => openItemTab(item)}
+                      onContextMenu={(e) => showHomeItemContextMenu(e, item)}
+                      title={item.title || 'Untitled'}
+                      style={{
+                        background: isActive ? 'var(--bg-active)' : 'none',
+                        border: 'none',
+                        padding: '4px 6px',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        color: isActive ? 'var(--accent)' : 'var(--text)',
+                        fontSize: 'var(--text-xs)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        borderRadius: 'var(--radius-sm)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--accent)'; }}
+                      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--text)'; }}
+                    >
+                      <ItemQuickAccessMarkers item={item} size={10} />
+                      {item.title || 'Untitled'}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </HomeCard>
 
           <HomeCard icon={<Clock size={14} />} title="Recently Added">
@@ -143,6 +322,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     <button
                       key={item.id}
                       onClick={() => openItemTab(item)}
+                      onContextMenu={(e) => showHomeItemContextMenu(e, item)}
                       title={item.title || 'Untitled'}
                       style={{ background: isActive ? 'var(--bg-active)' : 'none', border: 'none', padding: '4px 6px', textAlign: 'left', cursor: 'pointer', color: isActive ? 'var(--accent)' : 'var(--text)', fontSize: 'var(--text-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRadius: 'var(--radius-sm)' }}
                       onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = 'var(--accent)'; }}
@@ -237,12 +417,34 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* ===== DIVIDER ===== */}
       {hasBottomRow && (
-        <Resizer direction="horizontal" onResize={onDividerResize} thickness={5} />
+        <div
+          style={{
+            height: DIVIDER_PX,
+            minHeight: DIVIDER_PX,
+            display: 'flex',
+            alignItems: 'stretch',
+            borderTop: '1px solid var(--border)',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-panel)',
+          }}
+          title="Drag to resize landing and tabs"
+        >
+          <Resizer direction="horizontal" onResize={onDividerResize} thickness={DIVIDER_PX} />
+        </div>
       )}
 
-      {/* ===== BOTTOM PANE ===== */}
+      {/* ===== BOTTOM PANE (tabs) — scrolls inside GlobalTabSystem ===== */}
       {hasBottomRow && (
-        <GlobalTabSystem 
+        <div
+          style={{
+            minHeight: 0,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          <GlobalTabSystem
           items={items} 
           collections={collections} 
           projects={projects} 
@@ -257,6 +459,26 @@ export const HomeView: React.FC<HomeViewProps> = ({
           scopeProjectId={scopeProjectId}
           scopeCollectionId={scopeCollectionId}
           onSwitchScopeForItem={onSwitchScopeForItem}
+          />
+        </div>
+      )}
+      {homeItemContextMenu && (
+        <ItemContextMenu
+          item={homeItemContextMenu.item}
+          x={homeItemContextMenu.x}
+          y={homeItemContextMenu.y}
+          onClose={() => setHomeItemContextMenu(null)}
+          onDelete={
+            onDeleteBookmark
+              ? (it) => {
+                  void onDeleteBookmark(it.id);
+                  setHomeItemContextMenu(null);
+                }
+              : undefined
+          }
+          onOpenInNewTab={(it) => {
+            if (it.url) chrome.tabs.create({ url: it.url });
+          }}
         />
       )}
     </div>
@@ -264,10 +486,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
 };
 
 // ===== Shared card =====
-interface HomeCardProps { icon: React.ReactNode; title: string; children: React.ReactNode; }
-const HomeCard: React.FC<HomeCardProps> = ({ icon, title, children }) => (
+interface HomeCardProps { icon: React.ReactNode; title: string; children: React.ReactNode; headerExtra?: React.ReactNode; }
+const HomeCard: React.FC<HomeCardProps> = ({ icon, title, children, headerExtra }) => (
   <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 5, minHeight: 70 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>{icon}{title}</div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>{icon}{title}</div>
+      {headerExtra}
+    </div>
     <div style={{ flex: 1 }}>{children}</div>
   </div>
 );

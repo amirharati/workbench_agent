@@ -15,6 +15,7 @@ import {
   Home,
   Search,
   Tags,
+  HelpCircle,
 } from 'lucide-react';
 import { DashboardView } from './DashboardLayout';
 import type { Collection, Item, Project } from '../../../lib/db';
@@ -722,6 +723,50 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </div>
         ))}
       </nav>
+
+      {/* Help — pinned bottom */}
+      <div
+        style={{
+          flexShrink: 0,
+          padding: 8,
+          borderTop: '1px solid var(--border)',
+        }}
+      >
+        {(() => {
+          const isActive = activeView === 'help';
+          return (
+            <button
+              type="button"
+              onClick={() => onSelectView('help')}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: isCollapsed ? 'center' : 'flex-start',
+                padding: isCollapsed ? '8px' : '6px 8px',
+                height: 30,
+                borderRadius: 4,
+                background: isActive ? 'var(--accent-weak)' : 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 'var(--text-sm)',
+                fontWeight: isActive ? 500 : 400,
+                color: isActive ? 'var(--text)' : 'var(--text-muted)',
+                gap: 8,
+              }}
+              title="Help"
+            >
+              <HelpCircle size={16} strokeWidth={isActive ? 2 : 1.5} style={{ flexShrink: 0 }} />
+              {!isCollapsed && (
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Help
+                </span>
+              )}
+            </button>
+          );
+        })()}
+      </div>
+
       {dialog && (
         <div
           style={{

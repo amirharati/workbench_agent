@@ -1,69 +1,122 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import type { Item } from '../../lib/db';
 import { Trash2 } from 'lucide-react';
+import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
+import {
+  emptyTrash,
+  getTrashedItems,
+  permanentlyDeleteItem,
+  restoreItemFromTrash,
+} from '../../lib/itemQuickAccess';
+import { QuickAccessItemList } from './QuickAccessItemList';
 
-export const TrashTab: React.FC = () => {
+interface TrashTabProps {
+  onItemClick?: (item: Item) => void;
+}
+
+export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick }) => {
+  const [items, setItems] = useState<Item[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const reload = useCallback(async () => {
+    setItems(await getTrashedItems());
+  }, []);
+
+  useEffect(() => {
+    void reload();
+    return subscribeToDataChanges(() => {
+      void reload();
+    });
+  }, [reload]);
+
+  const handleRestore = async (e: React.MouseEvent, item: Item) => {
+    e.stopPropagation();
+    await restoreItemFromTrash(item.id);
+  };
+
+  const handlePermanentDelete = async (e: React.MouseEvent, item: Item) => {
+    e.stopPropagation();
+    if (!window.confirm(`Permanently delete "${item.title || 'Untitled'}"? This cannot be undone.`)) return;
+    await permanentlyDeleteItem(item.id);
+  };
+
+  const handleEmptyTrash = async () => {
+    if (items.length === 0) return;
+    if (!window.confirm(`Permanently delete all ${items.length} item${items.length === 1 ? '' : 's'} in trash?`)) return;
+    setBusy(true);
+    try {
+      await emptyTrash();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div
-      style={{
-        padding: '1.25rem',
-        overflowY: 'auto',
-        height: '100%',
-        color: 'var(--text)',
-        background: 'var(--bg-panel)',
-        borderRadius: 10,
-        border: '1px solid var(--border)',
-        boxShadow: 'var(--shadow-panel)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
-        <Trash2 size={20} style={{ color: '#ef4444' }} />
-        <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>Trash</h2>
-      </div>
-
-      <div
-        style={{
-          padding: '3rem',
-          textAlign: 'center',
-          color: 'var(--text-muted)',
-          background: 'var(--bg-glass)',
-          borderRadius: 8,
-          border: '1px dashed var(--border)',
-        }}
-      >
-        <Trash2 size={48} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />
-        <p style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
-          Trash is Empty
-        </p>
-        <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.6 }}>
-          Deleted items will appear here and can be restored or permanently deleted.
-          <br />
-          Items are automatically removed after 30 days.
-        </p>
-        <div
-          style={{
-            marginTop: '1.5rem',
-            padding: '1rem',
-            background: 'var(--bg-panel)',
-            borderRadius: 8,
-            border: '1px solid var(--border)',
-            textAlign: 'left',
-            fontSize: '0.85rem',
-            color: 'var(--text-muted)',
-          }}
-        >
-          <strong style={{ color: 'var(--text)', display: 'block', marginBottom: '0.5rem' }}>
-            Coming Soon:
-          </strong>
-          <ul style={{ margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
-            <li>Soft delete (items move to trash instead of being deleted)</li>
-            <li>Restore deleted items</li>
-            <li>Permanently delete from trash</li>
-            <li>Auto-cleanup after 30 days</li>
-            <li>Empty trash action</li>
-          </ul>
+    <QuickAccessItemList
+      title="Trash"
+      icon={<Trash2 size={20} style={{ color: '#ef4444' }} />}
+      items={items}
+      emptyIcon={<Trash2 size={48} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />}
+      emptyTitle="Trash is empty"
+      emptyHint="Deleted items appear here. Restore them or delete permanently."
+      onItemClick={onItemClick}
+      dateField={(i) => i.deletedAt ?? i.updated_at}
+      dateLabel="Deleted"
+      headerExtra={
+        items.length > 0 ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleEmptyTrash()}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 6,
+              border: '1px solid rgba(239, 68, 68, 0.45)',
+              background: 'rgba(239, 68, 68, 0.08)',
+              color: '#ef4444',
+              fontSize: 'var(--text-xs)',
+              cursor: busy ? 'default' : 'pointer',
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            Empty trash
+          </button>
+        ) : null
+      }
+      renderRowActions={(item) => (
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={(e) => void handleRestore(e, item)}
+            style={{
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              fontSize: 'var(--text-xs)',
+              cursor: 'pointer',
+            }}
+          >
+            Restore
+          </button>
+          <button
+            type="button"
+            onClick={(e) => void handlePermanentDelete(e, item)}
+            style={{
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: '1px solid rgba(239, 68, 68, 0.45)',
+              background: 'transparent',
+              color: '#ef4444',
+              fontSize: 'var(--text-xs)',
+              cursor: 'pointer',
+            }}
+          >
+            Delete
+          </button>
         </div>
-      </div>
-    </div>
+      )}
+    />
   );
 };
-

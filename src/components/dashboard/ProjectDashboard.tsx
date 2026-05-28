@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { Project, Collection, Item, Workspace } from '../../lib/db';
-import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItemWithMerge, getAllItems, deleteItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID, type UpdateItemOptions } from '../../lib/db';
+import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItemWithMerge, getItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID, type UpdateItemOptions } from '../../lib/db';
 import { runSingleLinkDigest } from '../../lib/pipeline/singleLinkDigest';
 import { useToast } from '../ToastContainer';
 import { CollectionPills } from './CollectionPills';
@@ -680,8 +680,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       if (onRefresh) await onRefresh();
 
       // Fetch the item (new or existing if merged)
-      const allItems = await getAllItems();
-      const newItem = allItems.find((i) => i.id === result.itemId);
+      const newItem = await getItem(result.itemId);
       if (newItem) {
         // Open the item in a tab
         handleItemClick(newItem);
@@ -828,9 +827,6 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         if (onDeleteItem) await onDeleteItem(item.id, collectionId);
       } else if (result.action === 'delete-everywhere') {
         if (onDeleteItem) await onDeleteItem(item.id);
-        else await deleteItem(item.id);
-        handleTabClose(item.id);
-        handleTabClose(`edit-${item.id}`);
       }
       if (onRefresh) await onRefresh();
     } catch (error) {

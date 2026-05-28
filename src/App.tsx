@@ -10,9 +10,7 @@ import {
   getAllProjects,
   getAllCollections, 
   getAllWorkspaces,
-  getAllItems,
   updateItem,
-  deleteItem,
   removeItemFromCollection,
   Collection,
   Workspace,
@@ -20,6 +18,7 @@ import {
   Project,
   UpdateItemOptions
 } from './lib/db';
+import { getActiveItems, moveItemToTrash } from './lib/itemQuickAccess';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
 import {
@@ -222,7 +221,7 @@ function App() {
     setCollections(allCollections);
     const allWorkspaces = await getAllWorkspaces();
     setWorkspaces(allWorkspaces);
-    const allItems = await getAllItems();
+    const allItems = await getActiveItems();
     setItems(allItems.sort((a, b) => b.created_at - a.created_at));
   };
 
@@ -389,23 +388,15 @@ function App() {
 
   const handleDeleteBookmark = async (id: string, collectionId?: string) => {
     if (collectionId) {
-      // Try to remove from just this collection
       const result = await removeItemFromCollection(id, collectionId);
-      if (result.itemDeleted) {
-        showStatus('Bookmark deleted');
+      if (result.itemTrashed) {
+        showStatus('Moved to trash');
       } else if (result.removed) {
         showStatus(`Removed from collection (still in ${result.remainingPlacements} other${result.remainingPlacements > 1 ? 's' : ''})`);
       }
     } else {
-      // Delete from everywhere
-      const result = await deleteItem(id);
-      if (result.deleted) {
-        if (result.placementCount > 1) {
-          showStatus(`Bookmark deleted from ${result.placementCount} collections`);
-        } else {
-          showStatus('Bookmark deleted');
-        }
-      }
+      await moveItemToTrash(id);
+      showStatus('Moved to trash');
     }
     await loadData();
   };

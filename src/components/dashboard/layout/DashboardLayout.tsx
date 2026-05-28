@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
-import { Workspace, Collection, Item, Project, UpdateItemOptions } from '../../../lib/db';
+import { Workspace, Collection, Item, Project, UpdateItemOptions, getItem } from '../../../lib/db';
 import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
 import type { AISettings } from '../../../lib/ai/types';
 import { ensurePendingClassifySignals } from '../../../lib/categorization';
@@ -48,7 +48,8 @@ export type DashboardView =
   | 'bookmarks'
   | 'notes'
   | 'collections'
-  | 'workspaces';
+  | 'workspaces'
+  | 'help';
 
 export interface ItemTab {
   id: string;
@@ -64,7 +65,7 @@ export interface ItemTab {
   }[];
 }
 
-const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander', 'ai-categories', 'import-studio']);
+const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander', 'ai-categories', 'import-studio', 'help']);
 const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search']);
 
 interface DashboardLayoutProps {
@@ -524,26 +525,42 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     return activeGlobalTab?.kind === 'search';
   }, [activeView, globalTabState.tabs, globalTabState.activeTabId]);
 
-  const inspectorItem = React.useMemo(() => {
+  const inspectorItemId = useMemo(() => {
     if (isSearchSurface) {
-      if (librarySearch.state.selectedItemId) {
-        return items.find((i) => i.id === librarySearch.state.selectedItemId) ?? null;
-      }
-      return null;
+      return librarySearch.state.selectedItemId;
     }
-
     const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
-    if (activeGlobalTab?.kind === 'item') {
-      return items.find((i) => i.id === activeGlobalTab.itemId) ?? null;
-    }
+    if (activeGlobalTab?.kind === 'item') return activeGlobalTab.itemId;
     return null;
   }, [
     isSearchSurface,
     librarySearch.state.selectedItemId,
     globalTabState.tabs,
     globalTabState.activeTabId,
-    items,
   ]);
+
+  const [inspectorResolvedItem, setInspectorResolvedItem] = React.useState<Item | null>(null);
+
+  React.useEffect(() => {
+    if (!inspectorItemId) {
+      setInspectorResolvedItem(null);
+      return;
+    }
+    const fromList = items.find((i) => i.id === inspectorItemId);
+    if (fromList) {
+      setInspectorResolvedItem(fromList);
+      return;
+    }
+    let cancelled = false;
+    void getItem(inspectorItemId).then((item) => {
+      if (!cancelled) setInspectorResolvedItem(item ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [inspectorItemId, items]);
+
+  const inspectorItem = inspectorItemId ? inspectorResolvedItem : null;
 
   const searchContext = useMemo(() => {
     if (!isSearchSurface || !librarySearch.state.result?.results.length) return null;

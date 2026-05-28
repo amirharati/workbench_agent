@@ -1,5 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import type { Item } from '../../lib/db';
+import {
+  favoriteItem,
+  moveItemToTrash,
+  pinItem,
+  restoreItemFromTrash,
+  unfavoriteItem,
+  unpinItem,
+  permanentlyDeleteItem,
+} from '../../lib/itemQuickAccess';
 
 interface ItemContextMenuProps {
   item: Item;
@@ -17,6 +26,7 @@ interface ItemContextMenuProps {
     rightPrimary?: boolean;
     rightSecondary?: boolean;
   };
+  onQuickAccessChanged?: () => void;
 }
 
 export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
@@ -30,8 +40,10 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
   onDuplicate,
   onOpenInSpace,
   availableSpaces = { primary: true },
+  onQuickAccessChanged,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const isTrashed = item.deletedAt != null;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -53,7 +65,6 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
   }, [onClose]);
 
   useEffect(() => {
-    // Position menu within viewport
     if (menuRef.current) {
       const rect = menuRef.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
@@ -73,6 +84,12 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
       menuRef.current.style.top = `${adjustedY}px`;
     }
   }, [x, y]);
+
+  const runQuickAccess = async (fn: () => Promise<void>) => {
+    await fn();
+    onQuickAccessChanged?.();
+    onClose();
+  };
 
   const spaceLabels: Record<string, string> = {
     primary: 'Main (top)',
@@ -106,20 +123,79 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
       ].filter(Boolean)
     : [];
 
-  const menuItems: Array<{ label: string; action?: () => void; icon: string; danger?: boolean; separator?: boolean }> = [
+  type MenuItem = {
+    label: string;
+    action?: () => void;
+    icon: string;
+    danger?: boolean;
+    separator?: boolean;
+  };
+
+  const quickAccessItems: MenuItem[] = isTrashed
+    ? [
+        {
+          label: 'Restore',
+          action: () => void runQuickAccess(() => restoreItemFromTrash(item.id)),
+          icon: '↩️',
+        },
+        {
+          label: 'Delete permanently',
+          action: () => {
+            if (!window.confirm(`Permanently delete "${item.title || 'Untitled'}"?`)) return;
+            void runQuickAccess(() => permanentlyDeleteItem(item.id));
+          },
+          icon: '🗑️',
+          danger: true,
+        },
+      ]
+    : [
+        {
+          label: item.pinnedAt ? 'Unpin' : 'Pin',
+          action: () =>
+            void runQuickAccess(() => (item.pinnedAt ? unpinItem(item.id) : pinItem(item.id))),
+          icon: item.pinnedAt ? '📌' : '📍',
+        },
+        {
+          label: item.favoriteAt ? 'Remove from favorites' : 'Add to favorites',
+          action: () =>
+            void runQuickAccess(() =>
+              item.favoriteAt ? unfavoriteItem(item.id) : favoriteItem(item.id)
+            ),
+          icon: item.favoriteAt ? '💔' : '⭐',
+        },
+      ];
+
+  const menuItems: MenuItem[] = [
     ...spaceMenuItems,
-    ...(spaceMenuItems.length > 0 && (onEdit || onOpenInNewTab || onDuplicate || onDelete)
+    ...(spaceMenuItems.length > 0 ? [{ label: '', action: undefined, icon: '', separator: true }] : []),
+    ...quickAccessItems,
+    ...(quickAccessItems.length > 0 && (onEdit || onOpenInNewTab || onDuplicate || onDelete)
       ? [{ label: '', action: undefined, icon: '', separator: true }]
       : []),
-    onEdit && { label: 'Edit', action: () => onEdit(item), icon: '✏️' },
-    onOpenInNewTab && item.url && {
-      label: 'Open in new tab',
-      action: () => onOpenInNewTab(item),
-      icon: '🔗',
-    },
-    onDuplicate && { label: 'Duplicate', action: () => onDuplicate(item), icon: '📋' },
-    onDelete && { label: 'Delete', action: () => onDelete(item), icon: '🗑️', danger: true },
-  ].filter(Boolean) as Array<{ label: string; action?: () => void; icon: string; danger?: boolean; separator?: boolean }>;
+    onEdit && !isTrashed && { label: 'Edit', action: () => onEdit(item), icon: '✏️' },
+    onOpenInNewTab &&
+      item.url &&
+      !isTrashed && {
+        label: 'Open in new tab',
+        action: () => onOpenInNewTab(item),
+        icon: '🔗',
+      },
+    onDuplicate && !isTrashed && { label: 'Duplicate', action: () => onDuplicate(item), icon: '📋' },
+    !isTrashed && {
+        label: 'Move to trash',
+        action: () => {
+          if (onDelete) {
+            onDelete(item);
+            onClose();
+            return;
+          }
+          if (!window.confirm(`Move "${item.title || 'Untitled'}" to trash?`)) return;
+          void runQuickAccess(() => moveItemToTrash(item.id));
+        },
+        icon: '🗑️',
+        danger: true,
+      },
+  ].filter(Boolean) as MenuItem[];
 
   return (
     <div
@@ -158,7 +234,6 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
             onClick={() => {
               if (menuItem.action) {
                 menuItem.action();
-                onClose();
               }
             }}
             style={{
@@ -193,4 +268,3 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
     </div>
   );
 };
-

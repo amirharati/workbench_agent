@@ -3,6 +3,7 @@ import type { Item } from '../../lib/db';
 import { Panel } from '../../styles/primitives';
 import { ItemContextMenu } from './ItemContextMenu';
 import { FolderOpen, List, Grid } from 'lucide-react';
+import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
 
@@ -297,6 +298,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                   >
                     {item.title || 'Untitled'}
                   </span>
+                  <ItemQuickAccessMarkers item={item} />
                 </div>
                 
                 {/* URL - shows if available, wraps if needed */}
@@ -408,6 +410,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                   >
                     {item.title || 'Untitled'}
                   </span>
+                  <ItemQuickAccessMarkers item={item} />
                   <ListPipelineBadge badge={badgeMap.get(item.id)} />
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}

@@ -7,6 +7,7 @@ import { formatDateTime } from '../../../lib/utils';
 import { DashboardView } from './DashboardLayout';
 import type { WindowGroup } from '../../../App';
 import { HomeView } from '../HomeView';
+import { HelpView } from '../HelpView';
 import { ProductSearchView } from '../ProductSearchView';
 import { useLibrarySearch } from '../../../hooks/useLibrarySearch';
 import { usePipelineBadgeMap } from '../../../hooks/usePipelineBadgeMap';
@@ -586,7 +587,8 @@ export const MainContent: React.FC<MainContentProps> = ({
     switch (activeView) {
       case 'home':
         return (
-          <HomeView
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', height: '100%' }}>
+            <HomeView
             items={items}
             collections={collections}
             projects={projects}
@@ -610,7 +612,10 @@ export const MainContent: React.FC<MainContentProps> = ({
             scopeCollectionId={scopeCollectionId}
             onSwitchScopeForItem={onSwitchScopeForItem}
           />
+          </div>
         );
+      case 'help':
+        return <HelpView />;
       case 'search':
         if (!librarySearch) {
           return (
@@ -2892,7 +2897,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     }}>
       {/* Wrapper header is only shown for views that don't render their own header. */}
       {!(activeView === 'projects' && selectedProjectId !== null) &&
-        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings', 'ai-categories', 'import-studio'].includes(
+        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings', 'ai-categories', 'import-studio', 'help'].includes(
           activeView
         ) && (
           <div style={{ 
@@ -2916,7 +2921,15 @@ export const MainContent: React.FC<MainContentProps> = ({
           </div>
       )}
       
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: activeView === 'home' ? 'hidden' : 'auto',
+          display: activeView === 'home' ? 'flex' : 'block',
+          flexDirection: 'column',
+        }}
+      >
         {renderContent()}
       </div>
 

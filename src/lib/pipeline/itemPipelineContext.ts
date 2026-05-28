@@ -172,7 +172,7 @@ function computePipelineQueues(
 
 async function loadPipelineQueueData() {
   const db = await getDB();
-  const items = (await db.getAll('items')).filter((i) => !!i.url?.trim());
+  const items = (await db.getAll('items')).filter((i) => !!i.url?.trim() && i.deletedAt == null);
   const enrichments = db.objectStoreNames.contains('item_enrichment')
     ? await db.getAll('item_enrichment')
     : [];

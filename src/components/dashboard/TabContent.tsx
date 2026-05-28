@@ -12,7 +12,9 @@ import { TrashTab } from './TrashTab';
 import { RecentTab } from './RecentTab';
 import { WorkspaceTab } from './WorkspaceTab';
 import { ItemContextMenu } from './ItemContextMenu';
-import { Pencil, Trash2, ExternalLink, Calendar, FileText } from 'lucide-react';
+import { Pencil, Trash2, ExternalLink, Calendar, FileText, Pin, Star } from 'lucide-react';
+import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
+import { pinItem, unpinItem, favoriteItem, unfavoriteItem } from '../../lib/itemQuickAccess';
 
 interface TabContentProps {
   tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; workspaceId?: string; type?: 'item' | 'collection' | 'system' | 'workspace' }) | null;
@@ -112,17 +114,17 @@ export const TabContent: React.FC<TabContentProps> = ({
 
   // Pinned tab
   if (tab?.id === 'util-pinned') {
-    return <PinnedTab />;
+    return <PinnedTab onItemClick={onItemClick} />;
   }
 
   // Favorites tab
   if (tab?.id === 'util-favorites') {
-    return <FavoritesTab />;
+    return <FavoritesTab onItemClick={onItemClick} />;
   }
 
   // Trash tab
   if (tab?.id === 'util-trash') {
-    return <TrashTab />;
+    return <TrashTab onItemClick={onItemClick} />;
   }
 
   // Add Item tab
@@ -494,8 +496,12 @@ export const TabContent: React.FC<TabContentProps> = ({
       {/* Header with title and action buttons */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
         <div style={{ flex: 1 }}>
-          <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>
-            {iconForItem(effectiveItem)} {effectiveItem.title || 'Untitled'}
+          <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span>{iconForItem(effectiveItem)} {effectiveItem.title || 'Untitled'}</span>
+            <ItemQuickAccessMarkers item={effectiveItem} size={14} hideWhenTrashed />
+            {effectiveItem.deletedAt && (
+              <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 600 }}>In trash</span>
+            )}
           </h2>
           <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {effectiveItem.url && isValidHttpUrl(effectiveItem.url) ? (
@@ -530,6 +536,50 @@ export const TabContent: React.FC<TabContentProps> = ({
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
+          {!effectiveItem.deletedAt && (
+            <button
+              onClick={() =>
+                void (effectiveItem.favoriteAt
+                  ? unfavoriteItem(effectiveItem.id)
+                  : favoriteItem(effectiveItem.id))
+              }
+              style={{
+                padding: '0.5rem',
+                background: effectiveItem.favoriteAt ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                color: effectiveItem.favoriteAt ? '#ef4444' : 'var(--text)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              title={effectiveItem.favoriteAt ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              <Star size={16} fill={effectiveItem.favoriteAt ? '#ef4444' : 'none'} />
+            </button>
+          )}
+          {!effectiveItem.deletedAt && (
+            <button
+              onClick={() => void (effectiveItem.pinnedAt ? unpinItem(effectiveItem.id) : pinItem(effectiveItem.id))}
+              style={{
+                padding: '0.5rem',
+                background: effectiveItem.pinnedAt ? 'var(--accent-weak)' : 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                color: 'var(--text)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease',
+              }}
+              title={effectiveItem.pinnedAt ? 'Unpin' : 'Pin'}
+            >
+              <Pin size={16} />
+            </button>
+          )}
           {onUpdateItem && (
             <button
               onClick={() => setIsEditingItem(true)}
@@ -558,7 +608,7 @@ export const TabContent: React.FC<TabContentProps> = ({
               <Pencil size={16} />
             </button>
           )}
-          {onDeleteItem && (
+          {onDeleteItem && !effectiveItem.deletedAt && (
             <button
               onClick={() => onDeleteItem(effectiveItem, deleteCollectionContextId)}
               style={{
@@ -573,7 +623,7 @@ export const TabContent: React.FC<TabContentProps> = ({
                 justifyContent: 'center',
                 transition: 'all 0.15s ease',
               }}
-              title="Delete item"
+              title="Move to trash"
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
                 e.currentTarget.style.borderColor = '#ef4444';
@@ -771,8 +821,8 @@ export const TabContent: React.FC<TabContentProps> = ({
         </div>
       )}
 
-      {/* Context Menu */}
-      {contextMenu && (onUpdateItem || onDeleteItem) && (
+      {/* Context Menu — always show pin/fav/trash; edit/delete when handlers exist */}
+      {contextMenu && (
         <ItemContextMenu
           item={effectiveItem}
           x={contextMenu.x}
@@ -780,6 +830,13 @@ export const TabContent: React.FC<TabContentProps> = ({
           onClose={() => setContextMenu(null)}
           onEdit={onUpdateItem ? () => setIsEditingItem(true) : undefined}
           onDelete={onDeleteItem ? (it) => onDeleteItem(it, deleteCollectionContextId) : undefined}
+          onOpenInNewTab={
+            effectiveItem.url
+              ? (it) => {
+                  if (it.url) chrome.tabs.create({ url: it.url });
+                }
+              : undefined
+          }
         />
       )}
     </div>

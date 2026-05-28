@@ -95,7 +95,7 @@ Chrome MV3 extension
 - AI pipeline hardening V1.1 (Task 03): incremental classify-by-hash, quality gate tiers, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks toolbar: Results / Enrich / Categories), queue reconcilers, `pending_discover` for no-topic outcomes.
 - Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion; CLI eval; dev `SearchDevPanel` for R&D.
 - **Doc embedding step (Task 04):** `embedBackfillPlan` + `embed-incremental` CLI; vectors in `ai_item_signals`.
-- **V2 product UX (Task 05):** **V2-A core shipped** (05.1–05.7 + D-40). **05.8** + **D-41** deferred. **Top:** V2-B pins/favorites/trash (DB writes → live backup); V2-C backend; D-26+W6 and D-25 deferred.
+- **V2 product UX (Task 05):** **V2-A core + 05.B shipped** (pins/favorites/trash, DB v8). **05.8** + **D-41** deferred. **Top:** V2-C backend. **End of V2:** **D-35** — live backup full-JSON rewrite does not scale; must address before closing V2 ([`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md#end-of-v2-backup--export-scale)).
 
 ---
 
@@ -110,14 +110,14 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Area | Status |
 |------|--------|
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
-| **V2 — Product (active)** | **05.1–05.5 shipped.** **Next:** D-40 / D-41 polish, 05.6 batch, D-25 fetch. Deferred: fav/pin/schema ([`V2-DEFERRED-TRACKER`](temp/V2-DEFERRED-TRACKER.md)). |
+| **V2 — Product (active)** | **05.1–05.7, 05.B shipped.** **Next:** V2-C; **D-35** backup scale before V2 close. Deferred: D-26+W6, D-25, 05.8, D-41 ([`V2-DEFERRED-TRACKER`](temp/V2-DEFERRED-TRACKER.md)). |
 | **AI Categorization (V1)** | Backend shipped. Product: browse taxonomy (Tools), accept/reject suggestions (Inspector), digest queues (Home). |
 | **Search** | Product hybrid search shipped (**05.2**); dev score breakdown in `SearchDevPanel`. |
 | **Enrichment** | Read (**05.3**) + single-link run/rerun (**05.5**); batch/maintenance → **05.6** / V2-C. |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
-| **Quick access** | Recent items works; pinned / favorites / trash mostly placeholders (needs fields + UX). |
+| **Quick access** | **Shipped (05.B):** pin, favorite, trash on `Item`; utility tabs; Home card. Stretch: pinned sort-to-top, 30-day purge. |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
-| **Optional sync** | Initial file-based sync guard is implemented (envelope + conflict pause + resolve actions). Full scheduled rotation, runtime re-check while app stays open, and merge workflows are still pending. |
+| **Backup / sync** | Live debounced `latest.json` on all DB writes (incl. pin/fav/trash). **D-35 (end of V2):** full snapshot rewrite does not scale — must improve before closing V2. Scheduled rotation + runtime re-check still pending. |
 | **Bulk bookmark import** | **Commit path shipped** (batch merge/dedupe). **Next:** import polish (cover, provenance, folder→collection), scale/backup posture for huge libraries, enrichment + AI categorization (see [`BACKLOG.md`](BACKLOG.md)). |
 
 ---
