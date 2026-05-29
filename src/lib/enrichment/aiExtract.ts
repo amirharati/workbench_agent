@@ -3,6 +3,9 @@ import type { AISettings } from '../ai/types';
 import { runAICompletion } from '../ai/client';
 import { loadAISettings } from '../ai/settings';
 import type { EnrichmentAIStatus, SourceKind } from './types';
+import { isLikelyListingUrl } from './urlPolicy';
+import { looksLikeListingMarkdown } from './listingExtract';
+import { titleLooksWeak } from './eligibility';
 import {
   hasSubstantiveExtract,
   prepareExtractInput,
@@ -101,6 +104,8 @@ export async function extractEnrichmentWithAI(
   }
 
   const sourceKind = options?.sourceKind ?? 'article';
+  const listingPage = isLikelyListingUrl(url) || looksLikeListingMarkdown(markdown);
+  const effectiveKind = listingPage ? 'generic' : sourceKind;
   const rawBody = markdown.trim().slice(0, 12_000);
   if (rawBody.length < 80) {
     return {
@@ -110,7 +115,7 @@ export async function extractEnrichmentWithAI(
     };
   }
 
-  const prepared = prepareExtractInput(title, rawBody, sourceKind);
+  const prepared = prepareExtractInput(title, rawBody, effectiveKind);
   if (prepared.shouldSkip) {
     return {
       status: 'empty_response',
@@ -137,10 +142,13 @@ export async function extractEnrichmentWithAI(
       {
         taskType: 'summarize',
         messages: [
-          { role: 'system', content: getSystemPrompt(variant, sourceKind) },
+          { role: 'system', content: getSystemPrompt(variant, effectiveKind) },
           {
             role: 'user',
-            content: buildExtractUserContent(url, title, body, options?.hints),
+            content: buildExtractUserContent(url, title, body, options?.hints, {
+              listingPage,
+              weakCurrentTitle: titleLooksWeak(title ?? '', url),
+            }),
           },
         ],
       }

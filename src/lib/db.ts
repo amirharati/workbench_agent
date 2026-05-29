@@ -62,8 +62,10 @@ export interface ItemPlacement {
 
 export interface Item {
   id: string;
-  url: string;              // Normalized canonical URL
-  urlRaw?: string;          // Original URL before normalization (for display)
+  /** Exact URL as saved (tab, import, or manual). Never rewritten after save. */
+  url: string;
+  /** @deprecated Legacy — full URL when older builds stored a normalized `url`. Prefer `url`. */
+  urlRaw?: string;
   title: string;
   favicon?: string;
   collectionIds: string[];  // Quick-access array (derived from placements)
@@ -202,6 +204,11 @@ const nowTs = () => Date.now();
 
 const isHttpUrl = (url: string) => /^https?:\/\//i.test(url.trim());
 
+/** Open the bookmark — `url` is stored faithfully; `urlRaw` only for pre-fix legacy rows. */
+export function getBookmarkOpenUrl(item: Pick<Item, 'url' | 'urlRaw'>): string {
+  return (item.url?.trim() || item.urlRaw?.trim() || '').trim();
+}
+
 // Tracking params to strip during normalization
 const TRACKING_PARAMS = [
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
@@ -210,28 +217,16 @@ const TRACKING_PARAMS = [
 ];
 
 /**
- * Normalize a URL for deduplication:
- * - Strip hash
- * - Remove trailing slashes
- * - Remove tracking params
- * - Sort query params
+ * Dedup key only — strips known tracking query params. Does not alter path, hash,
+ * host, or param order. Stored `Item.url` is always the URL exactly as saved.
  */
 export const normalizeBookmarkUrl = (url: string): string => {
   const raw = url.trim();
   if (!raw) return raw;
   try {
     const u = new URL(raw);
-    // Remove hash
-    u.hash = '';
-    // Normalize trailing slashes
-    const normalizedPath = u.pathname.replace(/\/+$/, '');
-    u.pathname = normalizedPath || '/';
-    // Remove tracking params
-    TRACKING_PARAMS.forEach(p => u.searchParams.delete(p));
-    // Sort remaining params for consistency
-    u.searchParams.sort();
-    // Remove trailing slash from final URL
-    return u.toString().replace(/\/$/, '');
+    TRACKING_PARAMS.forEach((p) => u.searchParams.delete(p));
+    return u.toString();
   } catch {
     return raw;
   }
@@ -901,7 +896,7 @@ export const getDB = () => {
           
           // Process duplicates
           let mergedCount = 0;
-          for (const [normalizedUrl, items] of byNormalizedUrl) {
+          for (const [, items] of byNormalizedUrl) {
             if (items.length === 1) {
               // No duplicates, just add placements
               const item = items[0];
@@ -915,11 +910,8 @@ export const getDB = () => {
                   source: item.source || 'manual'
                 };
               }
-              const urlRaw = item.url !== normalizedUrl ? item.url : undefined;
               await itemsStore.put({
                 ...item,
-                url: normalizedUrl,
-                urlRaw,
                 placements,
                 updated_at: now
               });
@@ -962,13 +954,10 @@ export const getDB = () => {
               }
               
               const collectionIds = Object.keys(placements);
-              const urlRaw = keeper.url !== normalizedUrl ? keeper.url : undefined;
               
-              // Update keeper with merged data
+              // Update keeper with merged data (keep keeper.url as-is)
               await itemsStore.put({
                 ...keeper,
-                url: normalizedUrl,
-                urlRaw,
                 title: bestTitle,
                 favicon: bestFavicon,
                 collectionIds,
@@ -1065,9 +1054,10 @@ export const addItemWithMerge = async (
     return { itemId: id, merged: false, addedToCollections: collectionIds, alreadyInCollections: [] };
   }
   
-  // Normalize URL and check for existing
-  const normalizedUrl = normalizeBookmarkUrl(item.url);
-  const existing = await findItemByNormalizedUrl(db, normalizedUrl);
+  // Dedup key (tracking params only) — stored url stays exactly as saved
+  const savedUrl = item.url.trim();
+  const dedupeKey = normalizeBookmarkUrl(savedUrl);
+  const existing = await findItemByNormalizedUrl(db, dedupeKey);
   
   if (existing) {
     // Merge: add new placement(s) to existing item
@@ -1109,15 +1099,25 @@ export const addItemWithMerge = async (
     
     // Update title/favicon if incoming is better
     let title = existing.title;
-    if (item.title && item.title !== item.url && (!existing.title || existing.title === existing.url)) {
-      title = item.title;
+    if (item.title && item.title !== item.url) {
+      const incomingTitle = item.title.trim();
+      const existingWeak =
+        !existing.title ||
+        existing.title === existing.url ||
+        existing.title.length < 8;
+      if (
+        existingWeak ||
+        (item.source === 'tab' && incomingTitle && incomingTitle !== existing.title)
+      ) {
+        title = incomingTitle;
+      }
     }
-    
+
     let favicon = existing.favicon;
     if (item.favicon && !existing.favicon) {
       favicon = item.favicon;
     }
-    
+
     await db.put('items', {
       ...existing,
       title,
@@ -1150,13 +1150,10 @@ export const addItemWithMerge = async (
     };
   }
   
-  const urlRaw = item.url !== normalizedUrl ? item.url : undefined;
-  
   await db.put('items', { 
     ...item, 
     id, 
-    url: normalizedUrl,
-    urlRaw,
+    url: savedUrl,
     created_at: now, 
     updated_at: item.updated_at ?? now, 
     collectionIds,
@@ -1665,7 +1662,7 @@ export const bulkImportBookmarks = async (
       const mergedCollectionIds = Object.keys(placements);
       const hasBetterTitle =
         !!best.title &&
-        best.title !== normalizedUrl &&
+        best.title !== best.url &&
         (!existing.title || existing.title === existing.url);
       const hasBetterFavicon = !!best.favicon && !existing.favicon;
 
@@ -1706,9 +1703,8 @@ export const bulkImportBookmarks = async (
 
     const newItem: Item = {
       id,
-      url: normalizedUrl,
-      urlRaw: best.url !== normalizedUrl ? best.url : undefined,
-      title: best.title || normalizedUrl,
+      url: best.url.trim(),
+      title: best.title || best.url,
       favicon: best.favicon,
       collectionIds: [targetCollection],
       tags: best.tags || [],

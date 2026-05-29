@@ -712,7 +712,11 @@ const ProcessingDigestBody: React.FC<ProcessingDigestBodyProps> = ({
             label={PIPELINE_QUEUE_LABELS[kind]}
             count={digest[countKey]}
             tone={tone}
-            hint={PIPELINE_QUEUE_HINTS[kind]}
+            hint={
+              kind === 'enrich_failed' && digest.enrichFailedBreakdown
+                ? `${PIPELINE_QUEUE_HINTS[kind]} — ${digest.enrichFailedBreakdown}`
+                : PIPELINE_QUEUE_HINTS[kind]
+            }
             onBrowse={onBrowsePipelineQueue ? () => onBrowsePipelineQueue(kind) : undefined}
             countSuffix={
               kind === 'pending_classify' && runnableKnown && queueTotal > 0

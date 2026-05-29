@@ -16,6 +16,7 @@ import { PROVIDERS, diagnoseResult, setProviderRunOptions } from './lib/provider
 import { setTabBrowserOptions } from './lib/tabBrowser.mjs';
 import { persistUrlResults } from './lib/experimentStore.mjs';
 import { analyzeResults } from './analyze-experiment.mjs';
+import { isRedditHost, redditBlockedResult, resolveFetchUrl } from './lib/urlPolicy.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dir, '..', '..');
@@ -99,8 +100,12 @@ function hostOf(url) {
   }
 }
 
-async function runOne(url, providerNames) {
+const REDDIT_SKIP_PROVIDERS = new Set(['local', 'jina', 'markdown-new']);
+
+async function runOne(rawUrl, providerNames) {
+  const { url, resolvedFrom } = await resolveFetchUrl(rawUrl);
   const sourceKind = classifySourceKind(url);
+  const ctx = { url };
   const attempts = [];
 
   for (const name of providerNames) {
@@ -113,11 +118,21 @@ async function runOne(url, providerNames) {
       });
       continue;
     }
+    if (isRedditHost(url) && REDDIT_SKIP_PROVIDERS.has(name)) {
+      const blocked = redditBlockedResult(name);
+      attempts.push({
+        ...blocked,
+        diagnosis: diagnoseResult(blocked, ctx),
+        ms: 0,
+        parsed: null,
+      });
+      continue;
+    }
     const fn = PROVIDERS[name];
     if (!fn) continue;
     const t0 = Date.now();
     const result = await fn(url);
-    const diagnosis = diagnoseResult(result);
+    const diagnosis = diagnoseResult(result, ctx);
     let parsed;
     if (result.ok && result.markdown) {
       parsed = parseFetchedContent(result.markdown, sourceKind, result.title);
@@ -138,7 +153,14 @@ async function runOne(url, providerNames) {
     });
   }
 
-  return { url, host: hostOf(url), sourceKind, attempts };
+  return {
+    url: rawUrl,
+    fetchUrl: url,
+    resolvedFrom,
+    host: hostOf(url),
+    sourceKind,
+    attempts,
+  };
 }
 
 async function main() {

@@ -38,19 +38,112 @@ export function hashText(text: string): string {
   return (h >>> 0).toString(36);
 }
 
+const GENERIC_TITLE_EXACT =
+  /^(?:welcome|home|sign\s*up|log\s*in|sign\s*in|youtube|linkedin|reddit|untitled|error|undefined|gmail|grok|new\s+tab|loading\.\.\.|document|index|default)$/i;
+
+const SITE_SUFFIX_RE =
+  /\s*[|\-–—]\s*(?:Reddit|Medium|YouTube|LinkedIn|X|Twitter|GitHub|Google Docs|Gmail|Outlook|Facebook|Instagram|Hacker News|HN|Stack Overflow|Substack|Notion|Dev\.to|DEV Community|Google Drive|Google Sheets|Google Slides|Microsoft Teams|Slack|Discord|·\s*Reddit)$/i;
+
+const BARE_SUBREDDIT_RE = /^r\/[\w-]+$/i;
+
+function stripSiteSuffix(title: string): string {
+  return title.replace(SITE_SUFFIX_RE, '').trim();
+}
+
+function titleMatchesUrlSlug(title: string, url: string): boolean {
+  const t = title.trim().toLowerCase();
+  if (!t) return false;
+  try {
+    const u = new URL(url);
+    const segments = u.pathname.split('/').filter(Boolean);
+    const last = segments[segments.length - 1]?.toLowerCase();
+    if (last) {
+      const slugSpaced = last.replace(/[-_+.]+/g, ' ').trim();
+      const compact = t.replace(/\s+/g, '');
+      if (t === last || compact === last.replace(/[-_+.]/g, '')) return true;
+      if (slugSpaced.length >= 4 && t === slugSpaced) return true;
+    }
+    const rIdx = segments.findIndex((s) => s.toLowerCase() === 'r');
+    if (rIdx >= 0 && segments[rIdx + 1]) {
+      const name = segments[rIdx + 1].toLowerCase();
+      if (name && (t === name || t.replace(/\s+/g, '') === name.replace(/[-_]/g, ''))) {
+        return true;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/** True when the page title is generic, empty, or mostly site chrome — not the topic. */
 export function titleLooksWeak(title: string, url: string): boolean {
   const t = (title || '').trim();
   if (!t) return true;
+  if (GENERIC_TITLE_EXACT.test(t)) return true;
+  if (BARE_SUBREDDIT_RE.test(t)) return true;
+
   const normalized = normalizeBookmarkUrl(url);
   if (t === url || t === normalized) return true;
+
   try {
     const u = new URL(url);
     const host = u.hostname.replace(/^www\./, '');
     if (t === host || t === u.hostname) return true;
+    const hostBase = host.split('.').slice(-2).join('.');
+    if (t.toLowerCase() === hostBase.split('.')[0]) return true;
   } catch {
     /* ignore */
   }
-  return t.length < 8;
+
+  if (titleMatchesUrlSlug(t, url)) return true;
+
+  const withoutSuffix = stripSiteSuffix(t);
+  if (withoutSuffix !== t && withoutSuffix.length < 12) return true;
+  if (SITE_SUFFIX_RE.test(t) && withoutSuffix.length < 18) return true;
+
+  return t.length < 12;
+}
+
+/** Whether AI/fetched title should replace the saved bookmark title. */
+export function shouldUpgradeBookmarkTitle(
+  existingTitle: string | undefined,
+  candidateTitle: string | undefined,
+  url: string
+): boolean {
+  const candidate = candidateTitle?.trim();
+  if (!candidate || candidate.length < 6) return false;
+  if (candidate === url || GENERIC_TITLE_EXACT.test(candidate)) return false;
+
+  const normalized = normalizeBookmarkUrl(url);
+  if (candidate === normalized) return false;
+
+  const current = (existingTitle || '').trim();
+  if (!current) return true;
+  if (candidate === current) return false;
+
+  if (titleLooksWeak(current, url)) return true;
+
+  const currentCore = stripSiteSuffix(current);
+  const candidateCore = stripSiteSuffix(candidate);
+  if (
+    SITE_SUFFIX_RE.test(current) &&
+    !SITE_SUFFIX_RE.test(candidate) &&
+    candidateCore.length >= 12 &&
+    candidateCore.length >= currentCore.length - 4
+  ) {
+    return true;
+  }
+
+  if (currentCore.length < 18 && candidateCore.length >= currentCore.length + 8) {
+    return true;
+  }
+
+  if (titleMatchesUrlSlug(current, url) && candidateCore.length >= 14) {
+    return true;
+  }
+
+  return false;
 }
 
 export function checkEligibility(

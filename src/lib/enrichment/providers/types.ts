@@ -5,6 +5,8 @@ export interface FetchProviderResult {
   markdown?: string;
   title?: string;
   errorCode?: EnrichmentErrorCode;
+  /** Provider-specific detail (HTTP status line, parse reason, etc.). */
+  error?: string;
   rawBytesApprox?: number;
   /** Which sub-provider produced a successful hybrid fetch */
   fetchSourceId?: string;

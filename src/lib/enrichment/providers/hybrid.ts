@@ -1,5 +1,6 @@
 import { classifySourceKind } from '../eligibility';
-import { detectFetchFailure, isFetchBodyUsable, titleFromBlockedPage } from '../fetchQuality';
+import { explainHardFetchFailure, isFetchBodyUsable, type FetchQualityContext } from '../fetchQuality';
+import { isRedditHost, isShortLinkHost, resolveFetchUrl, tcoUnresolvedError } from '../urlPolicy';
 import { jinaProvider } from './jina';
 import { localProvider } from './local';
 import { syndicationProvider } from './syndication';
@@ -7,13 +8,12 @@ import type { FetchProvider, FetchProviderInput, FetchProviderResult } from './t
 
 const ARTICLE_CHAIN = [localProvider, jinaProvider] as const;
 const VIDEO_CHAIN = [jinaProvider] as const;
-const X_CHAIN = [localProvider, syndicationProvider] as const;
+const X_CHAIN = [syndicationProvider, localProvider] as const;
 
-function resultUsable(result: FetchProviderResult): boolean {
+function resultUsable(result: FetchProviderResult, ctx: FetchQualityContext): boolean {
   if (!result.ok || !result.markdown?.trim()) return false;
-  if (titleFromBlockedPage(result.title)) return false;
-  if (detectFetchFailure(result.markdown)) return false;
-  return isFetchBodyUsable(result.markdown);
+  if (explainHardFetchFailure(result.markdown, ctx)) return false;
+  return isFetchBodyUsable(result.markdown, undefined, ctx);
 }
 
 function chainForUrl(url: string): FetchProvider[] {
@@ -26,27 +26,57 @@ function chainForUrl(url: string): FetchProvider[] {
 /** 
  * Articles: local → Jina
  * Video (YouTube): Jina
- * X: local (Twitter CDN) → syndication
+ * X: syndication (/2/thread) → local (Twitter CDN)
  */
 export const hybridProvider: FetchProvider = {
   id: 'hybrid',
   async fetchUrl(input: FetchProviderInput) {
-    let last: FetchProviderResult = { ok: false, errorCode: 'provider_error' };
+    const { url: resolvedUrl } = await resolveFetchUrl(input.url, input.signal);
+    const ctx: FetchQualityContext = { url: resolvedUrl };
 
-    for (const provider of chainForUrl(input.url)) {
-      const result = await provider.fetchUrl(input);
+    if (isShortLinkHost(input.url) && isShortLinkHost(resolvedUrl)) {
+      return {
+        ok: false,
+        errorCode: 'provider_error',
+        error: tcoUnresolvedError(input.url),
+        fetchSourceId: 'hybrid',
+      };
+    }
+
+    if (isRedditHost(resolvedUrl)) {
+      return {
+        ok: false,
+        errorCode: 'bot_blocked',
+        error:
+          'reddit.com blocked for headless fetch — opening in your browser tab',
+        fetchSourceId: 'hybrid',
+      };
+    }
+
+    const resolvedInput = { ...input, url: resolvedUrl };
+    let last: FetchProviderResult = { ok: false, errorCode: 'provider_error' };
+    const failures: FetchProviderResult[] = [];
+
+    for (const provider of chainForUrl(resolvedUrl)) {
+      const result = await provider.fetchUrl(resolvedInput);
       last = {
         ...result,
         fetchSourceId: result.fetchSourceId ?? provider.id,
       };
-      if (resultUsable(result)) {
+      if (resultUsable(result, ctx)) {
         return {
           ...result,
           fetchSourceId: result.fetchSourceId ?? provider.id,
         };
       }
+      if (!result.ok) failures.push(last);
     }
 
-    return last;
+    const withDetail = failures.find((f) => f.error?.trim()) ?? last;
+    return {
+      ...last,
+      error: withDetail.error ?? last.error,
+      errorCode: withDetail.errorCode ?? last.errorCode,
+    };
   },
 };

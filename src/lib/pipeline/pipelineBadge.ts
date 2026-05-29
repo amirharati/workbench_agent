@@ -1,4 +1,5 @@
 import type { StatusBadgeVariant } from '../../components/StatusBadge';
+import { resolveEnrichmentFailureLabel } from '../enrichment/failureLabels';
 import type { ItemPipelineContext } from './itemPipelineContext';
 
 export type PipelineBadgeKind = 'not_processed' | 'ready' | 'needs_review' | 'failed';
@@ -7,6 +8,9 @@ export interface PipelineBadge {
   kind: PipelineBadgeKind;
   variant: StatusBadgeVariant;
   label: string;
+  /** Structured failure slug when kind === failed (for filters). */
+  failureCategory?: string;
+  failureStage?: 'fetch' | 'ai' | 'embed';
 }
 
 /** List/search rows: only surface badges that need user action. */
@@ -22,20 +26,21 @@ export function resolvePipelineBadge(ctx: ItemPipelineContext | null | undefined
     return { kind: 'not_processed', variant: 'info', label: 'Not processed' };
   }
 
-  const { enrichment, signal, classifyState, hasSuggestedLinks, eligible } = ctx;
+  const { enrichment, signal, classifyState, hasSuggestedLinks } = ctx;
 
-  if (enrichment?.status === 'failed') {
-    return { kind: 'failed', variant: 'error', label: 'Fetch failed' };
-  }
-  if (
-    enrichment?.aiStatus === 'api_error' ||
-    enrichment?.aiStatus === 'parse_failed' ||
-    enrichment?.aiStatus === 'empty_response'
-  ) {
-    return { kind: 'failed', variant: 'error', label: 'AI failed' };
-  }
-  if (signal?.signalStatus === 'embed_failed') {
-    return { kind: 'failed', variant: 'error', label: 'Embed failed' };
+  const failureLabel = resolveEnrichmentFailureLabel(
+    enrichment,
+    signal?.signalStatus === 'embed_failed'
+  );
+
+  if (failureLabel) {
+    return {
+      kind: 'failed',
+      variant: 'error',
+      label: failureLabel.shortLabel,
+      failureCategory: failureLabel.category,
+      failureStage: failureLabel.stage,
+    };
   }
 
   if (classifyState === 'manual_review') {
@@ -67,7 +72,7 @@ export function resolvePipelineBadge(ctx: ItemPipelineContext | null | undefined
     return { kind: 'ready', variant: 'success', label: 'Enriched' };
   }
 
-  if (!eligible || !enrichment || enrichment.status === 'none') {
+  if (!ctx.eligible || !enrichment || enrichment.status === 'none') {
     return { kind: 'not_processed', variant: 'info', label: 'Not processed' };
   }
 

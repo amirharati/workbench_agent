@@ -17,6 +17,8 @@ const TIMEOUT_MS = 30_000;
 const defaultOptions = {
   headed: false,
   userDataDir: null,
+  /** Use installed Google Chrome when a persistent profile is set (matches login session). */
+  channel: null,
   /** Extra wait after domcontentloaded for lazy JS */
   settleMs: 2500,
 };
@@ -95,10 +97,25 @@ export async function fetchViaBrowserTab(url) {
 
   try {
     if (tabOptions.userDataDir) {
-      context = await chromium.launchPersistentContext(tabOptions.userDataDir, {
+      const launchOpts = {
         headless,
         viewport: { width: 1280, height: 900 },
-      });
+        args: ['--disable-blink-features=AutomationControlled'],
+      };
+      const channel = tabOptions.channel || 'chrome';
+      try {
+        context = await chromium.launchPersistentContext(tabOptions.userDataDir, {
+          ...launchOpts,
+          channel,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (channel && /channel|chrome/i.test(msg)) {
+          context = await chromium.launchPersistentContext(tabOptions.userDataDir, launchOpts);
+        } else {
+          throw e;
+        }
+      }
     } else {
       browser = await chromium.launch({ headless });
       ownsBrowser = true;

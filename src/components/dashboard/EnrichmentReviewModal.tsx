@@ -14,8 +14,18 @@ import { assessCategorizationEligibility } from '../../lib/enrichment/categoriza
 import { ClassifyQueueReasonBlock } from './ClassifyQueueReasonBlock';
 import { getDB } from '../../lib/db';
 import type { ClassifyState } from '../../lib/categorization/types';
+import {
+  formatEnrichmentFailureMessage,
+  ENRICHMENT_ERROR_HINTS,
+  AI_STATUS_HINTS,
+  describeAiFailure,
+  resolveEnrichmentFailureLabel,
+  FAILURE_CATEGORY_LABELS,
+  type FailureCategory,
+} from '../../lib/enrichment';
 
 type StatusFilter = 'all' | 'ok' | 'failed' | 'skipped' | 'other';
+type FailureCategoryFilter = 'all' | FailureCategory;
 type CatFilter = 'all' | 'no_topic' | 'has_topic';
 type QueueFilter = 'all' | 'pending' | 'discover' | 'ineligible' | 'manual_review' | 'needs_attention';
 
@@ -98,27 +108,6 @@ function formatTime(ts?: number): string {
   return new Date(ts).toLocaleString();
 }
 
-const errorCodeHint: Record<string, string> = {
-  excluded: 'URL or domain excluded from fetch',
-  parse_empty: 'Fetch succeeded but no usable text extracted',
-  auth_required: 'Paywall or login required',
-  timeout: 'Request timed out',
-  rate_limited: 'Provider rate limit',
-  network: 'Network error',
-  provider_error: 'Provider returned an error',
-  oversized: 'Response too large to store',
-  no_backup_folder: 'Set backup folder in Settings for disk dumps',
-};
-
-const aiStatusHint: Record<string, string> = {
-  ok: 'Summary, title, and/or tags extracted',
-  not_configured: 'OpenRouter API key missing — set in Settings > AI',
-  content_too_short: 'Fetched text too short for AI',
-  parse_failed: 'AI response was not valid JSON',
-  empty_response: 'AI found no usable content (wall or empty page)',
-  api_error: 'AI provider request failed',
-};
-
 const aiStatusColor: Record<string, string> = {
   ok: 'var(--er-ok, #3fb950)',
   not_configured: 'var(--er-warn, #d29922)',
@@ -177,6 +166,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [failureCategoryFilter, setFailureCategoryFilter] = useState<FailureCategoryFilter>('all');
   const [catFilter, setCatFilter] = useState<CatFilter>('all');
   const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
   const [catByItem, setCatByItem] = useState<Map<string, RowCatMeta>>(new Map());
@@ -332,6 +322,12 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
         rowPassesFetchFilter(r.enrichment?.status, statusFilter)
       );
     }
+    if (failureCategoryFilter !== 'all') {
+      list = list.filter((r) => {
+        const label = resolveEnrichmentFailureLabel(r.enrichment);
+        return label?.category === failureCategoryFilter;
+      });
+    }
     if (catFilter !== 'all') {
       list = list.filter((r) => {
         const cat = catByItem.get(r.item.id);
@@ -346,7 +342,18 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
       });
     }
     return list;
-  }, [rows, search, statusFilter, catFilter, queueFilter, catByItem]);
+  }, [rows, search, statusFilter, failureCategoryFilter, catFilter, queueFilter, catByItem]);
+
+  const failureCategoryCounts = useMemo(() => {
+    const counts: Partial<Record<FailureCategory, number>> = {};
+    for (const row of rows) {
+      if (!rowPassesFetchFilter(row.enrichment?.status, statusFilter)) continue;
+      const label = resolveEnrichmentFailureLabel(row.enrichment);
+      if (!label) continue;
+      counts[label.category] = (counts[label.category] ?? 0) + 1;
+    }
+    return counts;
+  }, [rows, statusFilter]);
 
   const queueCounts = useMemo(() => {
     const c = {
@@ -695,6 +702,42 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
                 </button>
               ))}
             </div>
+            {counts.failed > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, alignItems: 'center' }}>
+                <span style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)', width: '100%' }}>
+                  Error type
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFailureCategoryFilter('all');
+                    setActiveIndex(0);
+                  }}
+                  className={failureCategoryFilter === 'all' ? 'er-btn er-btn-active' : 'er-btn'}
+                  style={{ ...chipBtn, fontWeight: failureCategoryFilter === 'all' ? 600 : 400 }}
+                >
+                  all ({counts.failed})
+                </button>
+                {(Object.entries(failureCategoryCounts) as Array<[FailureCategory, number]>)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([cat, n]) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => {
+                        setFailureCategoryFilter(cat);
+                        setStatusFilter('failed');
+                        setActiveIndex(0);
+                      }}
+                      className={failureCategoryFilter === cat ? 'er-btn er-btn-active' : 'er-btn'}
+                      style={{ ...chipBtn, fontWeight: failureCategoryFilter === cat ? 600 : 400 }}
+                      title={FAILURE_CATEGORY_LABELS[cat]}
+                    >
+                      {cat.replace(/^ai_/, 'ai:')} ({n})
+                    </button>
+                  ))}
+              </div>
+            ) : null}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, alignItems: 'center' }}>
               <span style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)', width: '100%' }}>Topic</span>
               {(['all', 'has_topic', 'no_topic'] as CatFilter[]).map((f) => (
@@ -819,11 +862,29 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
                       >
                         {st}
                       </span>
-                      {row.enrichment?.lastErrorCode && (
-                        <span style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}>
-                          {row.enrichment.lastErrorCode}
+                      {row.enrichment?.lastErrorCode || resolveEnrichmentFailureLabel(row.enrichment) ? (
+                        <span
+                          style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}
+                          title={
+                            resolveEnrichmentFailureLabel(row.enrichment)?.reviewHint ??
+                            row.enrichment?.lastErrorCode
+                          }
+                        >
+                          {(
+                            resolveEnrichmentFailureLabel(row.enrichment)?.shortLabel ??
+                            formatEnrichmentFailureMessage(row.enrichment) ??
+                            row.enrichment?.lastErrorCode ??
+                            ''
+                          ).slice(0, 48)}
+                          {(
+                            resolveEnrichmentFailureLabel(row.enrichment)?.label ??
+                            formatEnrichmentFailureMessage(row.enrichment) ??
+                            ''
+                          ).length > 48
+                            ? '…'
+                            : ''}
                         </span>
-                      )}
+                      ) : null}
                       {cat?.primaryName ? (
                         <span
                           style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--accent)', maxWidth: 120 }}
@@ -1005,7 +1066,9 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
                       </div>
                       {enrich.lastErrorCode && (
                         <div className="er-fetch" style={{ marginTop: 4 }}>
-                          {errorCodeHint[enrich.lastErrorCode] ?? enrich.lastErrorCode}
+                          {formatEnrichmentFailureMessage(enrich) ??
+                            ENRICHMENT_ERROR_HINTS[enrich.lastErrorCode] ??
+                            enrich.lastErrorCode}
                         </div>
                       )}
                       {enrich.skipReason && (
@@ -1033,7 +1096,10 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
                           </span>
                           {enrich.aiAt ? ` · ${formatTime(enrich.aiAt)}` : ''}
                           <div className="er-fetch" style={{ marginTop: 2 }}>
-                            {enrich.aiError ?? aiStatusHint[enrich.aiStatus] ?? enrich.aiStatus}
+                            {enrich.aiError ??
+                              describeAiFailure(enrich.aiStatus, enrich.aiError) ??
+                              AI_STATUS_HINTS[enrich.aiStatus] ??
+                              enrich.aiStatus}
                           </div>
                         </div>
                       ) : null}
@@ -1073,7 +1139,10 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
                   empty={
                     !enrich?.summary?.trim() && !enrich?.aiKeyPoints?.length
                       ? enrich?.status === 'ok' && enrich.aiStatus && enrich.aiStatus !== 'ok'
-                        ? enrich.aiError || aiStatusHint[enrich.aiStatus] || 'No AI summary'
+                        ? enrich.aiError ||
+                          describeAiFailure(enrich.aiStatus, enrich.aiError) ||
+                          AI_STATUS_HINTS[enrich.aiStatus] ||
+                          'No AI summary'
                         : enrich?.status === 'ok' && enrich.aiStatus === 'ok'
                           ? 'AI ran but returned no summary (tags or title only)'
                           : enrich?.status === 'ok'

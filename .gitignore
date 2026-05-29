@@ -56,6 +56,9 @@ coverage/
 *.temp
 .cache/
 
+# Playwright fetch profile (logged-in sessions; never commit)
+.fetch-test-browser/
+
 # CLI experiment outputs (local eval runs)
 data/experiments/
 scripts/categorize/experiments/

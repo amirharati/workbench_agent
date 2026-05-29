@@ -1,3 +1,20 @@
+export {
+  describeEnrichmentError,
+  describeAiFailure,
+  formatEnrichmentFailureMessage,
+  ENRICHMENT_ERROR_HINTS,
+  AI_STATUS_HINTS,
+} from './errorMessages';
+export {
+  resolveEnrichmentFailureLabel,
+  isEnrichmentFailure,
+  countFailuresByCategory,
+  formatFailureCategoryBreakdown,
+  failureFieldsFromEnrichment,
+  FAILURE_CATEGORY_LABELS,
+  FAILURE_CATEGORY_REVIEW_HINTS,
+} from './failureLabels';
+export type { EnrichmentFailureLabel, FailureCategory, FailureStage } from './failureLabels';
 export * from './types';
 export * from './eligibility';
 export { getPlacementNotes } from './itemText';

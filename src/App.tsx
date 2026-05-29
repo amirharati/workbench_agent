@@ -16,11 +16,14 @@ import {
   Workspace,
   Item,
   Project,
-  UpdateItemOptions
+  UpdateItemOptions,
+  normalizeBookmarkUrl,
 } from './lib/db';
 import { getActiveItems, moveItemToTrash } from './lib/itemQuickAccess';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
+import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from './lib/tabUrlCapture';
+import { resolveTabSessionForUrl } from './lib/enrichment/tabSessionExtract';
 import {
   runSingleLinkDigest,
   type SingleLinkDigestResult,
@@ -280,12 +283,14 @@ function App() {
 
   const startSingleLinkDigest = (
     itemId: string,
-    opts?: { forceEnrich?: boolean }
+    opts?: { forceEnrich?: boolean; preferTabSession?: boolean; tabId?: number }
   ): Promise<SingleLinkDigestResult> => {
     setDigestItemId(itemId);
     setDigestStatus('Starting digest…');
     return runSingleLinkDigest(itemId, {
       forceEnrich: opts?.forceEnrich,
+      preferTabSession: opts?.preferTabSession,
+      tabId: opts?.tabId,
       onProgress: (p) => {
         setDigestStatus(p.label);
         showStatus(p.label, 12_000);
@@ -311,20 +316,19 @@ function App() {
   };
 
   const handleSaveCurrentTab = async (collectionId?: string) => {
-    const tabs = await chrome.tabs.query({ currentWindow: true, active: true });
-    const tab = tabs[0];
-    if (tab && tab.url && tab.url.startsWith('http')) {
+    const ctx = await getActiveTabBookmarkContext();
+    if (ctx?.url.startsWith('http')) {
       const collectionIds = collectionId ? [collectionId] : [];
       try {
         const result = await addItemWithMerge({
-          url: tab.url,
-          title: tab.title || 'Untitled',
-          favicon: tab.favIconUrl,
+          url: ctx.url,
+          title: ctx.title || 'Untitled',
+          favicon: ctx.favIconUrl,
           tags: [],
           source: 'tab',
           collectionIds,
         });
-        
+
         if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
           showStatus('Already saved in this collection — digesting…', 4000);
         } else if (result.merged && result.addedToCollections.length > 0) {
@@ -334,7 +338,10 @@ function App() {
         }
 
         await loadData();
-        startSingleLinkDigest(result.itemId);
+        startSingleLinkDigest(result.itemId, {
+          preferTabSession: true,
+          tabId: ctx.tabId,
+        });
       } catch (error) {
         showStatus(toStatusMessage(error, 'Could not save tab'));
       }
@@ -485,17 +492,34 @@ function App() {
     collectionIds: string[];
   }) => {
     try {
+      let saveUrl = (data.url || '').trim();
+      let tabId: number | undefined;
+      let source: Item['source'] = 'manual';
+      let title = data.title;
+
+      const ctx = await getActiveTabBookmarkContext();
+      if (ctx && saveUrl) {
+        tabId = ctx.tabId;
+        saveUrl = await resolveTabBookmarkUrl(ctx.tabId, saveUrl);
+        if (!title.trim() || title.trim() === data.url?.trim()) {
+          title = ctx.title || title;
+        }
+        if (normalizeBookmarkUrl(saveUrl) === normalizeBookmarkUrl(ctx.url)) {
+          source = 'tab';
+        }
+      }
+
       const result = await addItemWithMerge({
-        url: data.url || '',
-        title: data.title,
+        url: saveUrl,
+        title,
         tags: [],
-        source: data.url ? 'manual' : 'manual',
+        source,
         collectionIds: data.collectionIds,
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
       });
       await loadData();
-      
-      if (data.url && /^https?:\/\//i.test(data.url)) {
+
+      if (saveUrl && /^https?:\/\//i.test(saveUrl)) {
         if (result.updatedPlacementNotes && result.addedToCollections.length === 0) {
           showStatus('Notes saved — digesting…', 4000);
         } else if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
@@ -505,7 +529,7 @@ function App() {
         } else {
           showStatus('Bookmark added — digesting…', 4000);
         }
-        startSingleLinkDigest(result.itemId);
+        startSingleLinkDigest(result.itemId, { preferTabSession: true, tabId });
       } else {
         showStatus('Note added');
       }
@@ -786,7 +810,15 @@ function App() {
             digestItemId={digestItemId}
             digestStatus={digestStatus}
             onRunDigest={async (itemId, opts) => {
-              const r = await startSingleLinkDigest(itemId, opts);
+              const item = items.find((i) => i.id === itemId);
+              const tabSession = item?.url
+                ? await resolveTabSessionForUrl(item.url, opts?.tabId)
+                : { preferTabSession: false as const };
+              const r = await startSingleLinkDigest(itemId, {
+                ...opts,
+                preferTabSession: opts?.preferTabSession ?? tabSession.preferTabSession,
+                tabId: opts?.tabId ?? tabSession.tabId,
+              });
               return {
                 message: r.message,
                 failed: r.enrich.status === 'failed',

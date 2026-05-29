@@ -37,7 +37,29 @@ chrome.runtime.onInstalled.addListener((details) => {
   console.log("Tab Manager AI:", details.reason);
 });
 // Listen for focus-tab messages (must be at top level, not inside onInstalled)
-chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'resolve-short-url' && typeof message.url === 'string') {
+    (async () => {
+      try {
+        for (const method of ['HEAD', 'GET']) {
+          try {
+            const res = await fetch(message.url, { method, redirect: 'follow' });
+            if (res.url && res.url !== message.url && !res.url.includes('://t.co/')) {
+              sendResponse({ url: res.url });
+              return;
+            }
+          } catch {
+            /* try GET */
+          }
+        }
+        sendResponse({ url: null });
+      } catch (e) {
+        sendResponse({ url: null, error: String(e) });
+      }
+    })();
+    return true;
+  }
+
   if (message?.type === 'focus-tab' && typeof message.tabId === 'number') {
     // Fire and forget - don't send response back to avoid waking up the dashboard
     (async () => {

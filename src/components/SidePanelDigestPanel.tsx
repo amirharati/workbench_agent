@@ -20,7 +20,7 @@ interface SidePanelDigestPanelProps {
   onOpenInApp?: () => void;
   onRunDigest?: (
     itemId: string,
-    opts?: { forceEnrich?: boolean }
+    opts?: { forceEnrich?: boolean; preferTabSession?: boolean; tabId?: number }
   ) => Promise<{ message: string; failed: boolean }>;
 }
 
@@ -37,7 +37,7 @@ function SidePanelDigestActions({
   onFeedback: CategoryReviewFeedback;
   onRunDigest?: (
     itemId: string,
-    opts?: { forceEnrich?: boolean }
+    opts?: { forceEnrich?: boolean; preferTabSession?: boolean; tabId?: number }
   ) => Promise<{ message: string; failed: boolean }>;
 }) {
   const [running, setRunning] = useState(false);

@@ -243,6 +243,7 @@ export function buildAllDataModelFields(
     { key: 'fetchedAt', label: 'fetchedAt' },
     { key: 'attempts', label: 'attempts' },
     { key: 'lastErrorCode', label: 'lastErrorCode' },
+    { key: 'lastErrorDetail', label: 'lastErrorDetail' },
     { key: 'nextRetryAt', label: 'nextRetryAt' },
     { key: 'contentHash', label: 'contentHash' },
     { key: 'textHash', label: 'textHash' },

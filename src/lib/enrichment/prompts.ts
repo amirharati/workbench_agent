@@ -25,8 +25,8 @@ const JSON_SHAPE_V2 = `{
 const JSON_RULES_V2 = `- Return ONLY valid JSON (no markdown fences)
 - summary: factual digest of the MAIN content the user bookmarked — not page chrome
 - keyPoints: 0-6 short bullets with concrete entities, claims, or topics (empty array if none)
-- improvedTitle: omit " | Medium", " - Reddit", etc.; empty string only if truly unknown
-- tags: 3-8 lowercase topic tags about subject matter; include proper nouns when useful
+- improvedTitle: omit " | Medium", " - Reddit", etc.; always provide a specific headline when Current title is generic (site name, Untitled, login, bare subreddit)
+- tags: 3-8 lowercase topic tags about subject matter; include proper nouns when useful; omit platform names (x, reddit, youtube, github) — those are added automatically from the URL
 - IGNORE login forms, cookie banners, CAPTCHA, and password fields — do not summarize or tag those UI elements
 - If the page mixes login chrome WITH product/docs/marketing copy, extract ONLY the substantive copy (what the site/product does)
 - NEVER use tags like cookies, privacy, login, sign in, consent, authentication, newsletter unless the article is ABOUT that topic
@@ -76,14 +76,15 @@ Source type: article or web page. Input may include login forms plus marketing c
 - keyPoints: 3-6 bullets — main ideas, tools, people, methods, or conclusions
 - Login landing with product description: summarize the product/service, not the form
 - Pure 404 with no topic: all-empty JSON
-- improvedTitle: headline without publisher suffix; infer from URL if title is generic (Welcome, Sign in)
+- improvedTitle: headline without publisher suffix; infer from content/URL when title is generic (Welcome, Sign in, site name only)
 - tags: subject-matter only — never cookies/login/privacy UI`,
 
   generic: `${PROMPT_V2_BASE}
 
-Source type: generic web page (may include link shorteners or social landing pages).
+Source type: generic web page (may include link shorteners, social landing pages, or forum feeds).
 - summary: 3-5 sentences; if content looks like a social post, preserve the core line
-- keyPoints: 2-5 bullets when substance exists; else []
+- FEED/LISTING pages (forum index, category hub, news home, subreddit feed): summary = overview of themes across visible items; keyPoints = one bullet PER distinct item/topic (up to 8), not just the first
+- keyPoints: 2-8 bullets when substance exists; else []
 - improvedTitle: cleaned page title
 - tags: relevant searchable topics`,
 };
@@ -97,9 +98,22 @@ export function buildExtractUserContent(
   url: string,
   title: string | undefined,
   body: string,
-  hints?: EnrichmentAIHints
+  hints?: EnrichmentAIHints,
+  options?: { listingPage?: boolean; weakCurrentTitle?: boolean }
 ): string {
   const parts = [`URL: ${url}`, `Current title: ${title?.trim() || '(none)'}`];
+
+  if (options?.weakCurrentTitle) {
+    parts.push(
+      'Current title is generic or uninformative — improvedTitle MUST be a specific, searchable headline for this bookmark (do not leave empty).'
+    );
+  }
+
+  if (options?.listingPage) {
+    parts.push(
+      'Page type: multi-item LISTING/FEED (portal, forum, category, or hub). Summarize the page as a collection: overview in summary; keyPoints = one bullet per distinct listed item/topic (up to 8), not only the first.'
+    );
+  }
 
   if (hints?.channel?.trim()) {
     parts.push(`Channel: ${hints.channel.trim()}`);

@@ -1,9 +1,12 @@
 import {
   deleteItem,
   getAllItems,
+  getBookmarkOpenUrl,
   updateItem,
   type Item,
 } from './db';
+
+export { getBookmarkOpenUrl };
 
 export function isActiveItem(item: Item): boolean {
   return item.deletedAt == null;

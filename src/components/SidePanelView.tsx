@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Save, RefreshCw, Pin, Star } from 'lucide-react';
 import { Collection, Item, Project, normalizeBookmarkUrl } from '../lib/db';
+import { resolveTabBookmarkUrl } from '../lib/tabUrlCapture';
 import { favoriteItem, pinItem, unfavoriteItem, unpinItem } from '../lib/itemQuickAccess';
 import { Panel, Input, ButtonGhost, ButtonPrimary, Divider } from '../styles/primitives';
 import { isValidHttpUrl } from '../lib/utils';
@@ -23,7 +24,7 @@ interface SidePanelViewProps {
   digestStatus?: string;
   onRunDigest?: (
     itemId: string,
-    opts?: { forceEnrich?: boolean }
+    opts?: { forceEnrich?: boolean; preferTabSession?: boolean; tabId?: number }
   ) => Promise<{ message: string; failed: boolean }>;
 }
 
@@ -279,6 +280,18 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     const placementForCollection = matchingPlacements.find((p) => p.collectionId === collectionId);
 
     if (placementForCollection) {
+      const formUrl = url.trim();
+      const sameResource =
+        !formUrl ||
+        normalizeBookmarkUrl(formUrl) ===
+          normalizeBookmarkUrl(placementForCollection.item.url || '');
+      if (!sameResource) {
+        if (selectedExistingItemId !== null || selectedPlacementCollectionId !== null) {
+          setSelectedExistingItemId(null);
+          setSelectedPlacementCollectionId(null);
+        }
+        return;
+      }
       if (
         selectedExistingItemId !== placementForCollection.item.id ||
         selectedPlacementCollectionId !== placementForCollection.collectionId
@@ -296,6 +309,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     matchingPlacements,
     collectionId,
     forceNewCopyMode,
+    url,
     selectedExistingItemId,
     selectedPlacementCollectionId,
     selectExistingItemForEdit,
@@ -414,11 +428,15 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     if (prefillInFlightRef.current) return;
     prefillInFlightRef.current = true;
     try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       const tab = tabs[0];
-      if (!tab) return;
-      const tabUrl = (tab.url || '').trim();
+      if (!tab?.id) return;
       const tabTitle = (tab.title || '').trim();
+      const rawTabUrl = (tab.url || '').trim();
+      const tabUrl =
+        rawTabUrl && /^https?:\/\//i.test(rawTabUrl)
+          ? await resolveTabBookmarkUrl(tab.id, rawTabUrl)
+          : rawTabUrl;
       const tabChanged =
         !!tabUrl &&
         isValidHttpUrl(tabUrl) &&

@@ -3,14 +3,19 @@ import {
   cleanXMarkdown,
   detectFetchFailure,
   explainFetchFailure,
+  explainHardFetchFailure,
+  explainSoftFetchSuspect,
   isFetchBodyUsable,
   stripProviderWrapper,
-  titleFromBlockedPage,
 } from './fetchQuality.mjs';
 import { htmlToMarkdown } from './htmlExtract.mjs';
 import { classifySourceKind } from './parse.mjs';
 import { fetchViaBrowserTab } from './tabBrowser.mjs';
 import { browserFetchHeaders, fetchXStatusFromTwitterCdn } from './xCdn.mjs';
+import { isRedditHost, redditBlockedResult, resolveFetchUrl } from './urlPolicy.mjs';
+import { fetchXThreadFromFx, parseXStatusUser } from './xThread.mjs';
+
+const REDDIT_SKIP_PROVIDERS = new Set(['local', 'jina', 'markdown-new']);
 
 const TIMEOUT_MS = 25_000;
 
@@ -35,6 +40,7 @@ function withTimeout(ms) {
 }
 
 export async function fetchLocal(url) {
+  if (isRedditHost(url)) return redditBlockedResult('local');
   const { signal, clear } = withTimeout(TIMEOUT_MS);
   try {
     if (classifySourceKind(url) === 'x') {
@@ -70,7 +76,7 @@ export async function fetchLocal(url) {
     return {
       ok: true,
       id: 'local',
-      fetchSourceId: 'local',
+      fetchSourceId: parsed.mode === 'page' ? 'local-page' : 'local',
       markdown,
       title: parsed.title,
       rawBytes: markdown.length,
@@ -89,6 +95,7 @@ export async function fetchTab(url) {
 }
 
 export async function fetchJina(url) {
+  if (isRedditHost(url)) return redditBlockedResult('jina');
   const { signal, clear } = withTimeout(TIMEOUT_MS);
   try {
     const res = await fetch(`https://r.jina.ai/${url}`, {
@@ -122,6 +129,7 @@ export async function fetchJina(url) {
 }
 
 export async function fetchMarkdownNew(url) {
+  if (isRedditHost(url)) return redditBlockedResult('markdown-new');
   const { signal, clear } = withTimeout(TIMEOUT_MS);
   try {
     const res = await fetch(`https://markdown.new/${encodeURIComponent(url)}`, {
@@ -151,7 +159,7 @@ export async function fetchMarkdownNew(url) {
   }
 }
 
-/** X/Twitter syndication via fxtwitter (CLI-only experiment). */
+/** X/Twitter syndication via FxTwitter /2/thread (author self-reply chain). */
 export async function fetchSyndication(url) {
   let parsed;
   try {
@@ -165,49 +173,32 @@ export async function fetchSyndication(url) {
     return { ok: false, id: 'syndication', errorCode: 'excluded', error: 'not an X/Twitter URL' };
   }
 
-  const parts = parsed.pathname.split('/').filter(Boolean);
-  const statusIdx = parts.findIndex((p) => p === 'status');
-  if (statusIdx < 0 || !parts[statusIdx + 1]) {
+  const ids = parseXStatusUser(url);
+  if (!ids) {
     return { ok: false, id: 'syndication', errorCode: 'parse_empty', error: 'no status id in URL' };
   }
 
-  const user = parts[statusIdx - 1] || 'i';
-  const statusId = parts[statusIdx + 1];
-  const apiUrl = `https://api.fxtwitter.com/${user}/status/${statusId}`;
-
   const { signal, clear } = withTimeout(TIMEOUT_MS);
   try {
-    const res = await fetch(apiUrl, { signal, headers: { Accept: 'application/json' } });
-    if (!res.ok) {
-      return { ok: false, id: 'syndication', errorCode: 'provider_error', status: res.status };
-    }
-    const payload = await res.json();
-    const tweet = payload?.tweet;
-    if (!tweet?.text) {
-      return { ok: false, id: 'syndication', errorCode: 'parse_empty' };
-    }
-
-    const author = tweet.author?.screen_name || user;
-    const lines = [
-      `# @${author}`,
-      '',
-      tweet.text.trim(),
-    ];
-    if (tweet.quote?.text) {
-      lines.push('', `> Quote from @${tweet.quote.author?.screen_name || 'unknown'}:`, `> ${tweet.quote.text.trim()}`);
-    }
-    if (Array.isArray(tweet.media?.photos) && tweet.media.photos.length) {
-      lines.push('', `(${tweet.media.photos.length} photo(s) attached)`);
+    const result = await fetchXThreadFromFx(ids.statusId, { signal, fallbackUser: ids.user });
+    if (!result.ok) {
+      return {
+        ok: false,
+        id: 'syndication',
+        errorCode: result.errorCode,
+        status: result.status,
+        error: result.error,
+      };
     }
 
-    const markdown = lines.join('\n');
     return {
       ok: true,
       id: 'syndication',
-      fetchSourceId: 'syndication',
-      markdown,
-      title: `@${author}: ${tweet.text.trim().slice(0, 80)}`,
-      rawBytes: markdown.length,
+      fetchSourceId: result.fetchSourceId,
+      markdown: result.markdown,
+      title: result.title,
+      rawBytes: result.rawBytes,
+      partCount: result.partCount,
     };
   } catch (e) {
     const code = e?.name === 'AbortError' ? 'timeout' : 'network';
@@ -217,14 +208,13 @@ export async function fetchSyndication(url) {
   }
 }
 
-function resultUsable(result) {
+function resultUsable(result, ctx = {}) {
   if (!result.ok || !result.markdown?.trim()) return false;
-  if (titleFromBlockedPage(result.title)) return false;
-  if (detectFetchFailure(result.markdown)) return false;
-  return isFetchBodyUsable(result.markdown);
+  if (explainHardFetchFailure(result.markdown, ctx)) return false;
+  return isFetchBodyUsable(result.markdown, undefined, ctx);
 }
 
-export function diagnoseResult(result) {
+export function diagnoseResult(result, ctx = {}) {
   if (!result.ok) {
     return {
       usable: false,
@@ -233,51 +223,94 @@ export function diagnoseResult(result) {
       bytes: result.rawBytes ?? 0,
     };
   }
-  const failure = explainFetchFailure(result.markdown);
-  if (failure) {
+  if (!result.markdown?.trim()) {
+    return { usable: false, reason: 'parse_empty', detail: 'empty body', bytes: result.rawBytes ?? 0 };
+  }
+  const qualityCtx = { url: ctx.url, title: result.title ?? ctx.title };
+  const hard = explainHardFetchFailure(result.markdown, qualityCtx);
+  if (hard) {
     return {
       usable: false,
-      reason: failure.code,
-      blockedBy: failure.detail,
+      reason: hard.code,
+      blockedBy: hard.detail,
+      tier: hard.tier,
       bytes: result.rawBytes ?? result.markdown.length,
       detail: result.markdown.slice(0, 300),
     };
   }
-  if (titleFromBlockedPage(result.title)) {
-    return { usable: false, reason: 'weak_title', bytes: result.markdown.length, detail: result.title };
+  const soft = explainSoftFetchSuspect(result.markdown, qualityCtx);
+  if (!isFetchBodyUsable(result.markdown, undefined, qualityCtx)) {
+    return {
+      usable: false,
+      reason: 'too_short',
+      suspect: soft?.code,
+      suspectDetail: soft?.detail,
+      bytes: result.markdown.length,
+      detail: result.markdown.slice(0, 300),
+    };
   }
-  if (!isFetchBodyUsable(result.markdown)) {
-    return { usable: false, reason: 'too_short', bytes: result.markdown.length, detail: result.markdown.slice(0, 300) };
+  if (soft) {
+    return {
+      usable: true,
+      reason: 'ok',
+      suspect: soft.code,
+      suspectDetail: soft.detail,
+      tier: soft.tier,
+      bytes: result.markdown.length,
+    };
   }
   return { usable: true, reason: 'ok', bytes: result.markdown.length };
 }
 
-export async function fetchAllProviders(url) {
+export async function fetchAllProviders(rawUrl) {
+  const { url } = await resolveFetchUrl(rawUrl);
+  const ctx = { url };
   const names = providerNamesForUrl(url);
   const attempts = [];
   for (const name of names) {
+    if (isRedditHost(url) && REDDIT_SKIP_PROVIDERS.has(name)) {
+      const blocked = redditBlockedResult(name);
+      attempts.push({ ...blocked, diagnosis: diagnoseResult(blocked, ctx) });
+      continue;
+    }
     const result = await PROVIDERS[name](url);
-    attempts.push({ ...result, diagnosis: diagnoseResult(result) });
+    attempts.push({ ...result, diagnosis: diagnoseResult(result, ctx) });
   }
 
   const winner =
-    attempts.find((a) => resultUsable(a)) ??
+    attempts.find((a) => resultUsable(a, ctx)) ??
     attempts.find((a) => a.ok && a.markdown) ??
     attempts[attempts.length - 1];
 
   return {
     winner,
     attempts,
-    ok: resultUsable(winner),
+    ok: resultUsable(winner, ctx),
+    url,
+    resolvedFrom: url !== rawUrl ? rawUrl : null,
   };
 }
 
-export async function fetchHybrid(url) {
+export async function fetchHybrid(rawUrl) {
+  const { url, resolvedFrom } = await resolveFetchUrl(rawUrl);
+  const ctx = { url };
+
+  if (isRedditHost(url)) {
+    const blocked = redditBlockedResult('hybrid');
+    const diagnosis = diagnoseResult(blocked, ctx);
+    return {
+      winner: blocked,
+      attempts: [{ ...blocked, diagnosis }],
+      ok: false,
+      url,
+      resolvedFrom,
+    };
+  }
+
   const isX = classifySourceKind(url) === 'x';
   const chain = [
-    fetchLocal,
+    ...(isX ? [fetchSyndication, fetchLocal] : [fetchLocal]),
     ...(includeTabProvider ? [fetchTab] : []),
-    ...(isX ? [fetchSyndication] : []),
     fetchJina,
     fetchMarkdownNew,
   ];
@@ -287,14 +320,14 @@ export async function fetchHybrid(url) {
 
   for (const run of chain) {
     const result = await run(url);
-    attempts.push({ ...result, diagnosis: diagnoseResult(result) });
+    attempts.push({ ...result, diagnosis: diagnoseResult(result, ctx) });
     last = result;
-    if (resultUsable(result)) {
-      return { winner: result, attempts, ok: true };
+    if (resultUsable(result, ctx)) {
+      return { winner: result, attempts, ok: true, url, resolvedFrom };
     }
   }
 
-  return { winner: last, attempts, ok: false };
+  return { winner: last, attempts, ok: false, url, resolvedFrom };
 }
 
 export const PROVIDERS = {

@@ -10,6 +10,7 @@ export type EnrichmentErrorCode =
   | 'excluded'
   | 'parse_empty'
   | 'auth_required'
+  | 'bot_blocked'
   | 'timeout'
   | 'rate_limited'
   | 'network'
@@ -41,6 +42,8 @@ export interface ItemEnrichment {
   fetchedAt?: number;
   attempts: number;
   lastErrorCode?: EnrichmentErrorCode;
+  /** Human-readable detail for lastErrorCode (HTTP status, provider message, gate reason). */
+  lastErrorDetail?: string;
   nextRetryAt?: number;
   contentHash?: string;
   textHash?: string;
@@ -73,6 +76,9 @@ export interface ItemEnrichment {
   pendingFetchReview?: boolean;
   pendingFetchReviewReason?: EnrichmentErrorCode;
   reviewRawRef?: string;
+  /** Structured failure — for bulk review filters (derived on read if missing). */
+  failureStage?: 'fetch' | 'ai' | 'embed';
+  failureCategory?: string;
   updated_at: number;
 }
 

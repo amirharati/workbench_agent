@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Item } from '../../lib/db';
 import { Clock } from 'lucide-react';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
-import { getActiveItems } from '../../lib/itemQuickAccess';
+import { getActiveItems, getBookmarkOpenUrl } from '../../lib/itemQuickAccess';
 import { QuickAccessItemList } from './QuickAccessItemList';
 
 interface RecentTabProps {
@@ -47,7 +47,8 @@ export const RecentTab: React.FC<RecentTabProps> = ({ items: itemsProp, onItemCl
       emptyHint="Recently updated bookmarks and notes appear here."
       onItemClick={onItemClick}
       onOpenInNewTab={(item) => {
-        if (item.url) chrome.tabs.create({ url: item.url });
+        const openUrl = getBookmarkOpenUrl(item);
+        if (openUrl) chrome.tabs.create({ url: openUrl });
       }}
     />
   );

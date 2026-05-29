@@ -1,32 +1,10 @@
-import { Readability } from '@mozilla/readability';
-import TurndownService from 'turndown';
 import { classifySourceKind } from '../eligibility';
+import { describeHttpFetchError, httpStatusToErrorCode } from '../errorMessages';
+import { htmlToMarkdown } from '../htmlExtract';
+import { isShortLinkHost, tcoUnresolvedError } from '../urlPolicy';
 import { stripProviderWrapper } from '../fetchQuality';
 import type { FetchProvider } from './types';
 import { browserFetchHeaders, fetchXStatusFromTwitterCdn } from './xCdn';
-
-const turndown = new TurndownService({
-  headingStyle: 'atx',
-  codeBlockStyle: 'fenced',
-});
-
-function htmlToMarkdown(html: string, url: string): { title?: string; markdown: string } | null {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const base = doc.createElement('base');
-  base.href = url;
-  doc.head.appendChild(base);
-
-  const article = new Readability(doc).parse();
-  if (!article?.content?.trim()) return null;
-
-  const markdown = turndown.turndown(article.content).trim();
-  if (!markdown) return null;
-
-  return {
-    title: article.title?.trim() || undefined,
-    markdown,
-  };
-}
 
 export const localProvider: FetchProvider = {
   id: 'local',
@@ -46,6 +24,14 @@ export const localProvider: FetchProvider = {
         }
       }
 
+      if (isShortLinkHost(url)) {
+        return {
+          ok: false,
+          errorCode: 'parse_empty',
+          error: tcoUnresolvedError(url),
+        };
+      }
+
       const res = await fetch(url, {
         method: 'GET',
         credentials: 'include',
@@ -55,13 +41,22 @@ export const localProvider: FetchProvider = {
       });
 
       if (!res.ok) {
-        return { ok: false, errorCode: res.status === 429 ? 'rate_limited' : 'provider_error' };
+        const errorCode = httpStatusToErrorCode(res.status);
+        return {
+          ok: false,
+          errorCode,
+          error: describeHttpFetchError(res.status, 'local'),
+        };
       }
 
       const html = await res.text();
       const parsed = htmlToMarkdown(html, url);
       if (!parsed) {
-        return { ok: false, errorCode: 'parse_empty' };
+        return {
+          ok: false,
+          errorCode: 'parse_empty',
+          error: 'Page HTML contained too little readable text to summarize',
+        };
       }
 
       const markdown = stripProviderWrapper(parsed.markdown);
@@ -70,13 +65,14 @@ export const localProvider: FetchProvider = {
         markdown,
         title: parsed.title,
         rawBytesApprox: new TextEncoder().encode(markdown).length,
-        fetchSourceId: 'local',
+        fetchSourceId: parsed.mode === 'page' ? 'local-page' : 'local',
       };
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
-        return { ok: false, errorCode: 'timeout' };
+        return { ok: false, errorCode: 'timeout', error: 'Local fetch timed out' };
       }
-      return { ok: false, errorCode: 'network' };
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, errorCode: 'network', error: msg || 'Network error during local fetch' };
     }
   },
 };

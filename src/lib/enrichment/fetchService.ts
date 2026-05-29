@@ -5,17 +5,28 @@ import {
   classifySourceKind,
   getLocalTextBundle,
   hashText,
+  shouldUpgradeBookmarkTitle,
   titleLooksWeak,
 } from './eligibility';
+import { ensurePlatformTagOnExtract, mergePlatformTag } from './platformTags';
+import { failureFieldsFromEnrichment } from './failureLabels';
 import { extractEnrichmentWithAI, type EnrichmentAIExtract } from './aiExtract';
-import { detectFetchFailure, stripProviderWrapper } from './fetchQuality';
+import {
+  describeEnrichmentError,
+  formatEnrichmentFailureMessage,
+} from './errorMessages';
+import {
+  explainHardFetchFailure,
+  explainSoftFetchSuspect,
+  stripProviderWrapper,
+} from './fetchQuality';
 import { hybridProvider } from './providers/hybrid';
 import { jinaProvider } from './providers/jina';
 import { noopProvider } from './providers/noop';
-import type { FetchProvider } from './providers/types';
+import type { FetchProvider, FetchProviderResult } from './providers/types';
+import { fetchFromOpenTab, findTabForUrl, openEphemeralTabAndExtract } from './tabSessionExtract';
 import {
   parseFetchedContent,
-  snippetIsUseful,
 } from './parse';
 import { deleteRawBody, loadRawBody, writeRawBody, writeReviewRawBody } from './rawBodyStore';
 import {
@@ -28,6 +39,7 @@ import {
 import type {
   EnrichBatchOptions,
   EnrichBatchResult,
+  EnrichmentAIStatus,
   EnrichmentErrorCode,
   EnrichmentResult,
   ItemEnrichment,
@@ -89,6 +101,13 @@ function buildDiskDump(opts: {
   return `<!-- enrichment-meta\n${JSON.stringify(header, null, 2)}\n-->\n\n${body}`;
 }
 
+function annotateFailureFields(record: ItemEnrichment): ItemEnrichment {
+  if (record.status !== 'failed') {
+    return { ...record, failureStage: undefined, failureCategory: undefined };
+  }
+  return { ...record, ...failureFieldsFromEnrichment(record) };
+}
+
 async function applyItemTier2Updates(
   item: Item,
   parsedTitle: string | undefined,
@@ -100,12 +119,7 @@ async function applyItemTier2Updates(
   const meta = { ...(item.metadata || {}) };
 
   const titleCandidate = ai?.improvedTitle?.trim() || parsedTitle?.trim();
-  if (
-    titleCandidate &&
-    titleLooksWeak(item.title, item.url) &&
-    titleCandidate.length > (item.title || '').length &&
-    titleCandidate !== item.url
-  ) {
+  if (titleCandidate && shouldUpgradeBookmarkTitle(item.title, titleCandidate, item.url)) {
     updates.title = titleCandidate;
     applied.push('title');
   }
@@ -125,11 +139,18 @@ async function applyItemTier2Updates(
     }
   }
 
-  if (sourceKind === 'x' && !meta.platform) {
+  const platformMerge = mergePlatformTag(updates.tags ?? item.tags, item.url, ai?.tags);
+  if (platformMerge.added) {
+    updates.tags = platformMerge.tags;
+    applied.push('tags');
+  }
+  if (platformMerge.platform && !meta.platform) {
+    meta.platform = platformMerge.platform;
+    applied.push('metadata.platform');
+  } else if (sourceKind === 'x' && !meta.platform) {
     meta.platform = 'x';
     applied.push('metadata.platform');
-  }
-  if (sourceKind === 'video' && !meta.platform) {
+  } else if (sourceKind === 'video' && !meta.platform) {
     try {
       const host = new URL(item.url).hostname;
       if (host.includes('youtube') || host.includes('youtu.be')) meta.platform = 'youtube';
@@ -182,6 +203,175 @@ function hasValuablePriorEnrichment(existing?: ItemEnrichment | null): boolean {
   return (existing.snippet?.trim().length ?? 0) >= ENRICHMENT_DEFAULTS.minUsefulSnippetChars;
 }
 
+function errorCodeAfterAiFailure(
+  softCode: EnrichmentErrorCode | undefined,
+  aiStatus: EnrichmentAIStatus
+): EnrichmentErrorCode {
+  if (
+    softCode &&
+    (aiStatus === 'empty_response' || aiStatus === 'content_too_short')
+  ) {
+    return softCode;
+  }
+  if (aiStatus === 'empty_response' || aiStatus === 'content_too_short') {
+    return 'parse_empty';
+  }
+  return 'parse_empty';
+}
+
+async function tabSessionFetchResult(
+  url: string,
+  mode: 'active' | 'any',
+  tabId?: number
+): Promise<{ result: FetchProviderResult | null; error?: FetchProviderResult }> {
+  const tab = await fetchFromOpenTab(url, mode, tabId);
+  if (!tab.ok || !tab.markdown?.trim()) {
+    return {
+      result: null,
+      error: {
+        ok: false,
+        errorCode: tab.errorCode ?? 'parse_empty',
+        error: tab.error ?? 'Could not read content from the open tab',
+        fetchSourceId: 'tab-session',
+      },
+    };
+  }
+  const markdown = tab.markdown.trim();
+  return {
+    result: {
+      ok: true,
+      markdown,
+      title: tab.title,
+      fetchSourceId: tab.fetchSourceId,
+      rawBytesApprox: new TextEncoder().encode(markdown).length,
+    },
+  };
+}
+
+async function tryOpenTabFetch(
+  url: string,
+  tabId?: number,
+  options?: { allowEphemeral?: boolean; signal?: AbortSignal }
+): Promise<{ result: FetchProviderResult | null; error?: FetchProviderResult }> {
+  const tried = new Set<number>();
+  let lastError: FetchProviderResult | undefined;
+
+  const attempt = async (id: number): Promise<FetchProviderResult | null> => {
+    if (tried.has(id)) return null;
+    tried.add(id);
+    const tab = await tabSessionFetchResult(url, 'any', id);
+    if (tab.error) lastError = tab.error;
+    return tab.result ?? null;
+  };
+
+  if (typeof tabId === 'number') {
+    const direct = await attempt(tabId);
+    if (direct) return { result: direct };
+  }
+
+  const active = await findTabForUrl(url, 'active');
+  if (active?.id) {
+    const fromActive = await attempt(active.id);
+    if (fromActive) return { result: fromActive };
+  }
+
+  const any = await findTabForUrl(url, 'any');
+  if (any?.id) {
+    const fromAny = await attempt(any.id);
+    if (fromAny) return { result: fromAny };
+  }
+
+  if (options?.allowEphemeral) {
+    const ephemeral = await openEphemeralTabAndExtract(url, options.signal);
+    if (!ephemeral.ok || !ephemeral.markdown?.trim()) {
+      lastError = {
+        ok: false,
+        errorCode: ephemeral.errorCode ?? 'parse_empty',
+        error: ephemeral.error ?? 'Could not read content from background tab',
+        fetchSourceId: 'tab-session',
+      };
+    } else {
+      const markdown = ephemeral.markdown.trim();
+      return {
+        result: {
+          ok: true,
+          markdown,
+          title: ephemeral.title,
+          fetchSourceId: ephemeral.fetchSourceId,
+          rawBytesApprox: new TextEncoder().encode(markdown).length,
+        },
+      };
+    }
+  }
+
+  return { result: null, error: lastError };
+}
+
+function headlessWarrantsEphemeralTab(
+  headless: FetchProviderResult,
+  url: string,
+  cleanMarkdown?: string
+): boolean {
+  if (headless.errorCode === 'bot_blocked' || headless.errorCode === 'auth_required') {
+    return true;
+  }
+  if (cleanMarkdown) {
+    const hard = explainHardFetchFailure(cleanMarkdown, { url, title: headless.title });
+    if (hard?.code === 'bot_blocked' || hard?.code === 'auth_required') return true;
+  }
+  return false;
+}
+
+async function resolveItemFetch(
+  item: Item,
+  pending: ItemEnrichment,
+  sourceKind: ReturnType<typeof classifySourceKind>,
+  options?: {
+    force?: boolean;
+    signal?: AbortSignal;
+    preferTabSession?: boolean;
+    tabId?: number;
+  }
+): Promise<FetchProviderResult> {
+  const tabAttempt = await tryOpenTabFetch(item.url, options?.tabId, {
+    signal: options?.signal,
+  });
+  let tabSessionError = tabAttempt.error;
+  if (tabAttempt.result) return tabAttempt.result;
+
+  const headless = await activeProvider.fetchUrl({
+    url: item.url,
+    normalizedUrl: pending.normalizedUrl,
+    hints: { sourceKind, force: options?.force },
+    signal: options?.signal,
+  });
+
+  if (headless.ok && headless.markdown) {
+    const clean = stripProviderWrapper(headless.markdown);
+    const hard = explainHardFetchFailure(clean, { url: item.url, title: headless.title });
+    if (!hard) return headless;
+  }
+
+  const headlessClean =
+    headless.ok && headless.markdown ? stripProviderWrapper(headless.markdown) : undefined;
+  const tabRetry = await tryOpenTabFetch(item.url, options?.tabId, {
+    allowEphemeral: headlessWarrantsEphemeralTab(headless, item.url, headlessClean),
+    signal: options?.signal,
+  });
+  tabSessionError = tabSessionError ?? tabRetry.error;
+  if (tabRetry.result) return tabRetry.result;
+
+  if (
+    tabSessionError &&
+    (typeof options?.tabId === 'number' || item.source === 'tab' || options?.preferTabSession) &&
+    classifySourceKind(item.url) === 'x'
+  ) {
+    return tabSessionError;
+  }
+
+  return headless;
+}
+
 async function preservePriorOnSuspiciousFetch(
   item: Item,
   existing: ItemEnrichment,
@@ -217,7 +407,15 @@ async function preservePriorOnSuspiciousFetch(
 
 export async function enrichOne(
   itemId: string,
-  options?: { force?: boolean; signal?: AbortSignal; refetchCompare?: boolean }
+  options?: {
+    force?: boolean;
+    signal?: AbortSignal;
+    refetchCompare?: boolean;
+    /** Use the open browser tab when URL matches (side-panel save, auth pages). */
+    preferTabSession?: boolean;
+    /** Tab captured at save time — avoids side-panel active-tab lookup issues. */
+    tabId?: number;
+  }
 ): Promise<EnrichmentResult> {
   const item = await getItem(itemId);
   if (!item?.url) {
@@ -269,16 +467,17 @@ export async function enrichOne(
   const signal = controller.signal;
 
   try {
-    const fetchResult = await activeProvider.fetchUrl({
-      url: item.url,
-      normalizedUrl: pending.normalizedUrl,
-      hints: { sourceKind, force: options?.force },
+    const fetchResult = await resolveItemFetch(item, pending, sourceKind, {
+      force: options?.force,
       signal,
+      preferTabSession: options?.preferTabSession,
+      tabId: options?.tabId,
     });
     clearTimeout(timeout);
 
     if (!fetchResult.ok || !fetchResult.markdown) {
       const errorCode = fetchResult.errorCode ?? 'provider_error';
+      const lastErrorDetail = fetchResult.error?.trim() || undefined;
       if (existing && hasValuablePriorEnrichment(existing)) {
         return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode);
       }
@@ -290,12 +489,19 @@ export async function enrichOne(
         ...pending,
         status: 'failed',
         lastErrorCode: errorCode,
-        nextRetryAt,
+        lastErrorDetail,
+        fetchSourceId: fetchResult.fetchSourceId,
         fetchedAt: now,
         updated_at: now,
+        nextRetryAt,
       };
-      await putEnrichment(failed);
-      return { itemId, status: 'failed', errorCode, message: errorCode };
+      await putEnrichment(annotateFailureFields(failed));
+      return {
+        itemId,
+        status: 'failed',
+        errorCode,
+        message: describeEnrichmentError(errorCode, lastErrorDetail),
+      };
     }
 
     if (
@@ -318,14 +524,19 @@ export async function enrichOne(
         fetchedAt: now,
         updated_at: now,
       };
-      await putEnrichment(failed);
+      await putEnrichment(annotateFailureFields(failed));
       return { itemId, status: 'failed', errorCode: 'oversized' };
     }
 
     const rawMarkdown = fetchResult.markdown;
     const cleanMarkdown = stripProviderWrapper(rawMarkdown);
+    const qualityCtx = { url: item.url, title: fetchResult.title };
 
-    const authOrEmpty = detectFetchFailure(cleanMarkdown);
+    const hardFailure = explainHardFetchFailure(cleanMarkdown, qualityCtx);
+    const softSuspect = hardFailure
+      ? undefined
+      : explainSoftFetchSuspect(cleanMarkdown, qualityCtx);
+
     const localBundle = getLocalTextBundle(item);
     const parsed = parseFetchedContent(
       cleanMarkdown,
@@ -334,13 +545,13 @@ export async function enrichOne(
     );
 
     let status: ItemEnrichment['status'] = 'ok';
-    let lastErrorCode = authOrEmpty;
+    let lastErrorCode: EnrichmentErrorCode | undefined;
+    let lastErrorDetail: string | undefined;
 
-    if (authOrEmpty) {
+    if (hardFailure) {
       status = 'failed';
-    } else if (!snippetIsUseful(parsed.snippet, localBundle)) {
-      status = 'failed';
-      lastErrorCode = 'parse_empty';
+      lastErrorCode = hardFailure.code;
+      lastErrorDetail = hardFailure.detail;
     }
 
     if (status === 'failed' && existing && hasValuablePriorEnrichment(existing)) {
@@ -356,8 +567,8 @@ export async function enrichOne(
     const textHash = hashText(localBundle);
     const contentHash = hashText(cleanMarkdown);
     const pageUnchanged =
+      !hardFailure &&
       !options?.force &&
-      status === 'ok' &&
       existing?.status === 'ok' &&
       !!existing.contentHash &&
       existing.contentHash === contentHash;
@@ -386,7 +597,7 @@ export async function enrichOne(
     let aiOutcome: Awaited<ReturnType<typeof extractEnrichmentWithAI>> | undefined;
     let aiExtract: EnrichmentAIExtract | undefined;
     const needsAiExtract =
-      status === 'ok' && (!pageUnchanged || existing.aiStatus !== 'ok');
+      !hardFailure && (!pageUnchanged || existing?.aiStatus !== 'ok');
     if (needsAiExtract) {
       aiOutcome = await extractEnrichmentWithAI(
         parsed.snippet || cleanMarkdown,
@@ -406,7 +617,44 @@ export async function enrichOne(
       if (aiExtract?.improvedTitle) {
         parsed.title = aiExtract.improvedTitle;
       }
+
+      if (aiOutcome.status === 'ok') {
+        status = 'ok';
+        lastErrorCode = undefined;
+      } else if (aiOutcome.status === 'not_configured') {
+        status = 'ok';
+        lastErrorCode = undefined;
+      } else if (
+        aiOutcome.status === 'content_too_short' ||
+        aiOutcome.status === 'empty_response'
+      ) {
+        const fallbackText = (parsed.snippet || cleanMarkdown || localBundle || item.title || '')
+          .trim()
+          .slice(0, ENRICHMENT_DEFAULTS.snippetMaxChars);
+        if (fallbackText.length >= 8) {
+          status = 'ok';
+          lastErrorCode = undefined;
+          parsed.snippet = fallbackText;
+          if (!aiExtract?.summary && item.title?.trim()) {
+            aiExtract = { summary: item.title.trim().slice(0, 500) };
+          }
+        } else {
+          status = 'failed';
+          lastErrorCode = errorCodeAfterAiFailure(softSuspect?.code, aiOutcome.status);
+          lastErrorDetail =
+            aiOutcome.error?.trim() ||
+            (softSuspect ? softSuspect.detail : undefined);
+        }
+      } else {
+        status = 'failed';
+        lastErrorCode = errorCodeAfterAiFailure(softSuspect?.code, aiOutcome.status);
+        lastErrorDetail =
+          aiOutcome.error?.trim() ||
+          (softSuspect ? softSuspect.detail : undefined);
+      }
     }
+
+    aiExtract = ensurePlatformTagOnExtract(aiExtract, item.url);
 
     let rawRef: string | undefined;
     let rawBytes: number | undefined;
@@ -445,6 +693,7 @@ export async function enrichOne(
       fetchedAt: now,
       attempts,
       lastErrorCode,
+      lastErrorDetail,
       nextRetryAt:
         status === 'failed' && attempts < ENRICHMENT_DEFAULTS.maxAttempts
           ? now + ENRICHMENT_DEFAULTS.backoffBaseMs * Math.pow(2, attempts - 1)
@@ -473,13 +722,19 @@ export async function enrichOne(
       reviewRawRef: undefined,
       updated_at: now,
     };
-    await putEnrichment(record);
+    await putEnrichment(annotateFailureFields(record));
+
+    const failureMessage =
+      status === 'failed'
+        ? formatEnrichmentFailureMessage(record) ??
+          describeEnrichmentError(lastErrorCode, lastErrorDetail)
+        : undefined;
 
     return {
       itemId,
       status,
       errorCode: lastErrorCode,
-      message: status === 'ok' ? undefined : lastErrorCode,
+      message: failureMessage,
     };
   } catch (e) {
     clearTimeout(timeout);
@@ -492,12 +747,21 @@ export async function enrichOne(
       ...pending,
       status: 'failed',
       lastErrorCode: errorCode,
+      lastErrorDetail:
+        errorCode === 'timeout'
+          ? 'Request timed out before the page finished loading'
+          : 'Network error during fetch',
       fetchedAt: Date.now(),
       updated_at: Date.now(),
       nextRetryAt: Date.now() + ENRICHMENT_DEFAULTS.backoffBaseMs,
     };
-    await putEnrichment(failed);
-    return { itemId, status: 'failed', errorCode };
+    await putEnrichment(annotateFailureFields(failed));
+    return {
+      itemId,
+      status: 'failed',
+      errorCode,
+      message: describeEnrichmentError(errorCode, failed.lastErrorDetail),
+    };
   }
 }
 

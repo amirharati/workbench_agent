@@ -10,6 +10,7 @@
     "fetch-test": "node scripts/enrich-fetch/fetch-test.mjs",
     "fetch-experiment": "node scripts/enrich-fetch/run-experiment.mjs",
     "fetch-ai-eval": "node scripts/enrich-fetch/run-ai-eval.mjs",
+    "fetch-judge": "node scripts/enrich-fetch/run-fetch-judge.mjs",
     "categorize": "node scripts/categorize/run-categorize.mjs",
     "classify-incremental": "node scripts/categorize/run-classify-incremental.mjs",
     "discover-incremental": "node scripts/categorize/run-discover-incremental.mjs",

@@ -59,6 +59,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **Doc embedding step (Task 04 — shared pipeline stage):** Incremental backfill of `ai_item_signals.embedding` from **title + AI summary** (`buildSearchEmbedText`, `embedBackfillPlan.ts`) — same queue in app (`EmbedBackfillBlock`) and CLI (`npm run embed-incremental`). Powers hybrid search, similar-items, and related-links; **reuse for categorize shortlist/centroids deferred to V2+** (see AI — V3).
 - **V2-A product UX (Task 05):** **05.1–05.7 + D-40** shipped — Home, search, enrichment read, category review, digest, import/batch, shell polish. Spec: [`temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 - **V2-B quick access (Task 05.B — 2026-05-27):** Pins, favorites, trash on `Item` (DB v8: `pinnedAt`, `favoriteAt`, `deletedAt`); utility tabs; Home card; context menu + side panel; soft delete. Spec: [`temp/TASK-05.B-pins-favorites-trash.md`](temp/TASK-05.B-pins-favorites-trash.md). **Adjacent same session:** Help v1, Home vertical split (not D-01–03).
+- **V2 polish bundle (Task 05.C — 2026-05-27):** Pin sort-to-top; Home classify-queue batch + confirm modal + progress UI; batch cancel (enrich); taxonomy `notifyDataChanged`; Help v2 + shortcuts; AI vs Collections labels. Follow-on: digest browse on Home, `processAll` Home batches. Spec: [`temp/TASK-05.C-v2-polish-bundle.md`](temp/TASK-05.C-v2-polish-bundle.md).
 
 ---
 
@@ -117,7 +118,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [ ] **Bulk import polish** — Persist **cover / image URL** and **import provenance** on `Item.metadata` (not only placement notes); optional **CSV folder path → multiple collections**; commit **progress** + cancel for huge files; surface invalid/skipped rows in UI.
 - [ ] **Bookmark enrichment (X-first + generic links)** — Background or explicit action: for **X/Twitter-shaped** bookmarks (and to a lesser degree normal URLs), optionally **fetch** / resolve **threads, quotes, outbound links** to a configurable depth; fill **missing summary**, **keywords**, structured fields for **AI context**—with clear **CORS/host permission**, **rate limits**, **auth walls**, and **fallback when fetch fails** (complex; likely staged: metadata-only → optional fetch).
 - [ ] **Multi-collection / share-item UX** if still desired (dashboard backlog “B4”).
-- [x] **Pinned / favorites / trash** — **05.B shipped:** `pinnedAt`, `favoriteAt`, `deletedAt` on `Item` (v8); Quick Access tabs; Home card; soft delete. Stretch open: sort pinned to top, 30-day auto-purge.
+- [x] **Pinned / favorites / trash** — **05.B + 05.C:** fields + UX; pin sort-to-top (05.C). Open: 30-day auto-purge, project-scoped quick-access filters (design).
 
 **AI (phased — see Near-term roadmap)**
 
@@ -152,7 +153,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ### V2-A — UX / UI (umbrella — **TASK-05**)
 
-**Policy:** Track deferred work: [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md). **End of V2 gate:** **D-35** backup/export scale.
+**Policy:** **Open V2 index:** [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md) (expanded — Tier A–F). **End of V2 gate:** **D-35** backup/export scale.
 
 | Subtask | Status | Focus |
 |---------|--------|--------|
@@ -166,7 +167,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 | **05.6 import/batch** | **done** | Import confirm + report; Home batch |
 | **05.7 shell polish** | **done** | Layout, scope chips, Ctrl+W |
 | **05.B pins/favs/trash** | **done** | D-01…D-03; v8 schema; live backup on writes |
-| **05.C polish bundle** | **ready** | Pin sort, Home classify batch + cancel, Help, hygiene — [`TASK-05.C`](temp/TASK-05.C-v2-polish-bundle.md) |
+| **05.C polish bundle** | **done** | Pin sort, classify batch + confirm/progress, Help, hygiene — [`TASK-05.C`](temp/TASK-05.C-v2-polish-bundle.md) |
 | 05.8 Advanced gate | **deferred** | Dev hub on Bookmarks toolbar |
 
 Workflow checklist (product, no new schema first):
@@ -174,10 +175,10 @@ Workflow checklist (product, no new schema first):
 - [x] **W5 Search** — 05.2
 - [x] **W1 Daily library** — 05.3–05.4 + **D-40** presentation; D-41 search clicks optional
 - [x] **W6 User signals (MVP)** — accept/reject in Inspector (05.4); Change category / un-accept deferred
-- [x] **W7 Shell (Phase 2)** — 05.7; stretch: auto-collapse nav, shortcut sheet
+- [x] **W7 Shell (Phase 2)** — 05.7; Help shortcuts (05.C); nav auto-collapse on browse **cancelled** (manual chevron only)
 - [x] **W2 Single digest** — 05.5 (hash-aware digest, side panel panel, toasts); auth fetch → **D-25**
 - [x] **W3 Import post-processing** — 05.6 (opt-in pipeline, confirm panel, report)
-- [x] **W4 Batch maintenance (MVP)** — 05.6 Home **Process not enriched**; per-item via 05.5 Inspector
+- [x] **W4 Batch maintenance** — 05.6 Home **Process not enriched**; **05.C** classify-queue batch, confirm modal, cancel (enrich), progress UI; per-item via 05.5 Inspector. Open: classify mid-batch cancel, unified orchestrator
 
 ### V2-B — Data model cleanup
 
@@ -264,4 +265,4 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ---
 
-*Last updated: 2026-05-27 — **05.B done.** **Next (agent-friendly):** [`TASK-05.C`](temp/TASK-05.C-v2-polish-bundle.md) polish bundle. **End-of-V2 gate: D-35.** Deferred: 05.8, D-41, D-26+W6, D-25, V2-C fetch. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*
+*Last updated: 2026-05-27 — **05.B + 05.C done.** **Next:** V2-C backend; **end-of-V2: D-35** backup scale. **Decision pass later:** D-26+W6, D-25, D-41, D-04/D-05. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*

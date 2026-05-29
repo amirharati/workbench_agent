@@ -8,6 +8,7 @@ import {
   checkEligibility,
   type EnrichmentResult,
 } from '../enrichment';
+import { findTabForUrl, resolveTabSessionForUrl } from '../enrichment/tabSessionExtract';
 import { needsClassifyForDigest } from './digestClassifyPolicy';
 
 export type SingleLinkDigestPhase = 'check' | 'enrich' | 'extract' | 'classify' | 'done';
@@ -38,7 +39,7 @@ function buildUserMessage(input: {
 
   if (enrich.status === 'failed') {
     const detail = enrich.message || enrich.errorCode || 'fetch failed';
-    return `Digest failed: ${detail}`;
+    return `Bookmark saved — summary failed: ${detail}`;
   }
 
   if (enrich.skipped) {
@@ -121,6 +122,10 @@ export async function resolveEnrichProgressLabel(
     return 'Using saved notes — extracting with AI…';
   }
 
+  if (item.url && (await findTabForUrl(item.url, 'any'))) {
+    return 'Reading open browser tab…';
+  }
+
   if (existing?.contentHash || existing?.fetchedAt) {
     return 'Fetching page to compare with saved content…';
   }
@@ -139,6 +144,8 @@ export async function runSingleLinkDigest(
     skipClassify?: boolean;
     onProgress?: (update: SingleLinkDigestProgress) => void;
     signal?: AbortSignal;
+    preferTabSession?: boolean;
+    tabId?: number;
   }
 ): Promise<SingleLinkDigestResult> {
   if (inFlight.has(itemId)) {
@@ -164,9 +171,15 @@ export async function runSingleLinkDigest(
 
   try {
     report('check', await resolveEnrichProgressLabel(itemId, { force: options?.forceEnrich }));
+    const tabSession = await resolveTabSessionForUrl(
+      (await getItem(itemId))?.url ?? '',
+      options?.tabId
+    );
     const enrich = await enrichOne(itemId, {
       force: options?.forceEnrich,
       signal: options?.signal,
+      preferTabSession: options?.preferTabSession ?? tabSession.preferTabSession,
+      tabId: options?.tabId ?? tabSession.tabId,
     });
 
     if (enrich.skipped) {

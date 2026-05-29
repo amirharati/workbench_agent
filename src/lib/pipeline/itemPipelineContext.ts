@@ -6,6 +6,14 @@ import { hasSpecificPrimaryTopic } from '../categorization/categorizationFairGam
 import { linkCountsForCategories, primaryLeafIdFromLinks, resolveEffectiveClassifyState } from '../categorization/counts';
 import { isGeneralLeafId } from '../categorization/taxonomyCatalog';
 import type { AiCategory, AiItemCategoryLink, AiItemSignal, ClassifyState } from '../categorization/types';
+import { formatEnrichmentFailureMessage } from '../enrichment/errorMessages';
+import {
+  countFailuresByCategory,
+  formatFailureCategoryBreakdown,
+  isEnrichmentFailure,
+  resolveEnrichmentFailureLabel,
+  type FailureCategoryCounts,
+} from '../enrichment/failureLabels';
 import type { PipelineBadge } from './pipelineBadge';
 import { resolvePipelineBadge } from './pipelineBadge';
 
@@ -34,6 +42,9 @@ export interface ProcessingDigest {
   notEnriched: number;
   pendingClassify: number;
   healthy: boolean;
+  /** Breakdown of enrich_failed by category slug (auth, bot, ai_empty, …). */
+  enrichFailedByCategory?: FailureCategoryCounts;
+  enrichFailedBreakdown?: string;
 }
 
 export type PipelineQueueKind =
@@ -54,7 +65,7 @@ export const PIPELINE_QUEUE_LABELS: Record<PipelineQueueKind, string> = {
 export const PIPELINE_QUEUE_HINTS: Record<PipelineQueueKind, string> = {
   suggested_categories: 'AI-suggested categories awaiting accept or reject',
   manual_review: 'Flagged for manual category review',
-  enrich_failed: 'Fetch or AI step failed — use Retry digest in Inspector',
+  enrich_failed: 'Fetch or AI step failed — filter by error type in Dev Hub review',
   pending_classify:
     'Bookmarks waiting on AI categories — includes discover retries and general/Other, not only fresh items',
   not_enriched: 'No enrichment yet — use Process not enriched to fetch and summarize',
@@ -119,12 +130,7 @@ function computePipelineQueues(
       continue;
     }
 
-    if (
-      enrichment.status === 'failed' ||
-      enrichment.aiStatus === 'api_error' ||
-      enrichment.aiStatus === 'parse_failed' ||
-      signal?.signalStatus === 'embed_failed'
-    ) {
+    if (isEnrichmentFailure(enrichment, signal?.signalStatus === 'embed_failed')) {
       enrichFailed.push(item.id);
     }
 
@@ -295,8 +301,15 @@ export function hasPartialPipelineData(ctx: ItemPipelineContext | null | undefin
 export function formatPipelineStageHint(ctx: ItemPipelineContext): string | undefined {
   const parts: string[] = [];
   const e = ctx.enrichment;
-  if (e?.status === 'failed') {
-    parts.push(e.lastErrorCode ? `Fetch failed (${e.lastErrorCode})` : 'Fetch failed');
+  const failureLabel = resolveEnrichmentFailureLabel(
+    e,
+    ctx.signal?.signalStatus === 'embed_failed'
+  );
+  if (failureLabel) {
+    parts.push(failureLabel.detail ? `${failureLabel.label} — ${failureLabel.detail}` : failureLabel.label);
+  } else if (e?.status === 'failed') {
+    const detail = formatEnrichmentFailureMessage(e);
+    parts.push(detail ?? (e.lastErrorCode ? `Fetch failed (${e.lastErrorCode})` : 'Fetch failed'));
   } else if (e?.status === 'pending') {
     parts.push('Fetch in progress…');
   } else if (e?.aiStatus && e.aiStatus !== 'ok' && e.aiStatus !== 'not_configured') {
@@ -361,6 +374,21 @@ export async function loadPipelineBadgeMap(itemIds: string[]): Promise<Map<strin
 
 export async function loadProcessingDigest(): Promise<ProcessingDigest> {
   const q = await loadPipelineQueueData();
+  const db = await getDB();
+  const enrichments = db.objectStoreNames.contains('item_enrichment')
+    ? await db.getAll('item_enrichment')
+    : [];
+  const signals = db.objectStoreNames.contains('ai_item_signals')
+    ? await db.getAll('ai_item_signals')
+    : [];
+  const failedIds = new Set(q.enrichFailed);
+  const embedFailedIds = new Set(
+    signals.filter((s) => s.signalStatus === 'embed_failed').map((s) => s.itemId)
+  );
+  const failedEnrichments = enrichments.filter((e) => failedIds.has(e.itemId));
+  const enrichFailedByCategory = countFailuresByCategory(failedEnrichments, embedFailedIds);
+  const enrichFailedBreakdown = formatFailureCategoryBreakdown(enrichFailedByCategory);
+
   const digest: ProcessingDigest = {
     manualReview: q.manualReview.length,
     suggestedCategories: q.suggestedCategories.length,
@@ -372,6 +400,8 @@ export async function loadProcessingDigest(): Promise<ProcessingDigest> {
       q.suggestedCategories.length === 0 &&
       q.enrichFailed.length === 0 &&
       q.pendingClassify.length === 0,
+    enrichFailedByCategory,
+    enrichFailedBreakdown: enrichFailedBreakdown || undefined,
   };
   return digest;
 }

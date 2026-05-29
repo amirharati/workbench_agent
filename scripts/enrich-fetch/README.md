@@ -50,6 +50,31 @@ Pick URLs only:
 node scripts/enrich-fetch/pick-urls.mjs /path/to/latest.json --max 24 --per-host 2
 ```
 
+Mixed corpus (random + Reddit/Medium/X/GitHub quotas):
+
+```bash
+node scripts/enrich-fetch/pick-corpus.mjs /path/to/latest.json --total 500 --seed 42
+npm run fetch-experiment -- --no-tab --with-syndication --max 500 data/experiments/enrich-fetch/urls-corpus-500.txt
+```
+
+## LLM fetch judge (dev-only)
+
+Mechanical `usable` can miss cookie walls and false positives. **URL-level** judge: infer expected content from URL, compare all providers, report what went wrong.
+
+```bash
+npm run fetch-judge -- --experiment data/experiments/enrich-fetch/2026-05-28T15-35-48
+npm run fetch-judge -- --experiment ... --scope url --max 50   # default scope
+npm run fetch-judge -- --experiment ... --scope attempt --mode edge  # per-provider
+```
+
+- `--scope url` (default) — one judgment per URL: expected content vs actual fetches, best provider, `whatWentWrong`
+- `--scope attempt` — per-provider attempt (legacy / deep dive)
+- `--max N` / `--concurrency N`
+
+Requires `OPENROUTER_API_KEY`. Output: `judge-<experiment>-<ts>/` with `judge-results.jsonl`, `JUDGE.md`.
+
+**Master report:** [`docs/temp/D10-FETCH-FINDINGS-REPORT.md`](../../docs/temp/D10-FETCH-FINDINGS-REPORT.md) synthesizes D10.1 + judge for the full D10 program.
+
 ## Providers
 
 | Provider | What it does |

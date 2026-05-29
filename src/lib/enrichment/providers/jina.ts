@@ -1,5 +1,6 @@
 import type { EnrichmentErrorCode } from '../types';
 import { classifySourceKind } from '../eligibility';
+import { describeHttpFetchError, httpStatusToErrorCode } from '../errorMessages';
 import { cleanXMarkdown, detectFetchFailure, stripProviderWrapper } from '../fetchQuality';
 import type { FetchProvider } from './types';
 
@@ -17,10 +18,16 @@ export const jinaProvider: FetchProvider = {
       });
 
       if (res.status === 429) {
-        return { ok: false, errorCode: 'rate_limited' };
+        return { ok: false, errorCode: 'rate_limited', error: describeHttpFetchError(429, 'Jina') };
       }
       if (!res.ok) {
-        return { ok: false, errorCode: 'provider_error' };
+        const bodyPreview = await res.text().catch(() => '');
+        const errorCode = httpStatusToErrorCode(res.status);
+        return {
+          ok: false,
+          errorCode,
+          error: describeHttpFetchError(res.status, 'Jina', bodyPreview),
+        };
       }
 
       let text = stripProviderWrapper(await res.text());
@@ -37,13 +44,13 @@ export const jinaProvider: FetchProvider = {
       };
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
-        return { ok: false, errorCode: 'timeout' };
+        return { ok: false, errorCode: 'timeout', error: 'Jina fetch timed out' };
       }
-      const msg = String(e);
+      const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-        return { ok: false, errorCode: 'network' };
+        return { ok: false, errorCode: 'network', error: 'Network error reaching Jina reader' };
       }
-      return { ok: false, errorCode: 'network' };
+      return { ok: false, errorCode: 'network', error: msg || 'Jina fetch failed' };
     }
   },
 };
