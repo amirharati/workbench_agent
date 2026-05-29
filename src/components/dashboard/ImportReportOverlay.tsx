@@ -95,6 +95,15 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
     { label: 'Committed', value: stats.total, color: 'var(--text)' },
     { label: 'Created', value: report.created, color: 'var(--accent)' },
     { label: 'Merged', value: report.merged, color: 'var(--text-muted)' },
+    ...(report.skippedPreviouslyTrashed
+      ? [
+          {
+            label: 'Withheld (trashed)',
+            value: report.skippedPreviouslyTrashed,
+            color: 'var(--er-warn, #d29922)',
+          },
+        ]
+      : []),
     { label: 'Classified', value: stats.classified, color: STATUS_COLORS.classified },
     { label: 'Summarized', value: stats.enriched, color: STATUS_COLORS.enriched },
     { label: 'Unchanged', value: stats.unchanged, color: STATUS_COLORS.unchanged },
@@ -183,6 +192,38 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
               </div>
             ))}
           </div>
+          {(report.skippedTrashedItems?.length ?? 0) > 0 ? (
+            <div
+              style={{
+                marginTop: 12,
+                padding: '10px 12px',
+                borderRadius: 6,
+                border: '1px solid color-mix(in srgb, var(--er-warn, #d29922) 40%, var(--border))',
+                background: 'color-mix(in srgb, var(--er-warn, #d29922) 8%, transparent)',
+                maxHeight: 160,
+                overflow: 'auto',
+              }}
+            >
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
+                Not imported — previously trashed ({report.skippedTrashedItems!.length})
+              </div>
+              {report.skippedTrashedItems!.slice(0, 50).map((row) => (
+                <div
+                  key={row.url}
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--text-muted)',
+                    padding: '4px 0',
+                    borderTop: '1px solid var(--border)',
+                  }}
+                >
+                  <div style={{ fontWeight: 500, color: 'var(--text)' }}>{row.title || row.url}</div>
+                  <div style={{ wordBreak: 'break-all' }}>{row.url}</div>
+                  <div style={{ color: 'var(--er-warn, #d29922)' }}>{row.reason}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>

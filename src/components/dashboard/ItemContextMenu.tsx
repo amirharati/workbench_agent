@@ -190,7 +190,9 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
             return;
           }
           if (!window.confirm(`Move "${item.title || 'Untitled'}" to trash?`)) return;
-          void runQuickAccess(() => moveItemToTrash(item.id));
+          void runQuickAccess(() =>
+            moveItemToTrash(item.id, { reason: 'Moved to trash', reasonCode: 'context_menu' })
+          );
         },
         icon: '🗑️',
         danger: true,

@@ -1,5 +1,11 @@
 import React from 'react';
-import { bulkImportBookmarks, ensureProjectUnsortedCollection, type BulkImportAffectedItem, type Collection, type Project } from '../../lib/db';
+import { bulkImportBookmarks, ensureProjectUnsortedCollection, normalizeBookmarkUrl, type BulkImportAffectedItem, type BulkImportSkippedTrashedItem, type Collection, type Project } from '../../lib/db';
+import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
+import {
+  getTrashHistoryMap,
+  matchRowsAgainstTrashHistory,
+  type TrashHistoryEntry,
+} from '../../lib/trashHistory';
 import { runBatchDigest, formatBatchDigestProgress, buildImportReport, type BatchDigestResult, type ImportReport } from '../../lib/pipeline';
 import { useToast } from '../ToastContainer';
 import { EnrichmentPanel } from './EnrichmentPanel';
@@ -28,6 +34,16 @@ interface ImportCandidate {
 
 type AutoDetectedFormat = 'json' | 'csv' | 'html' | 'unknown';
 
+const SKIP_TRASHED_IMPORT_KEY = 'workbench-import-skip-previously-trashed';
+
+function readSkipTrashedImportPref(): boolean {
+  try {
+    return localStorage.getItem(SKIP_TRASHED_IMPORT_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
 const sectionStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
   borderRadius: 8,
@@ -53,6 +69,11 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   const [processing, setProcessing] = React.useState(false);
   const [processProgress, setProcessProgress] = React.useState('');
   const [processNewImports, setProcessNewImports] = React.useState(true);
+  const [skipPreviouslyTrashed, setSkipPreviouslyTrashed] = React.useState(readSkipTrashedImportPref);
+  const [trashHistoryMap, setTrashHistoryMap] = React.useState<Map<string, TrashHistoryEntry>>(
+    () => new Map()
+  );
+  const [showTrashedImportPreview, setShowTrashedImportPreview] = React.useState(false);
   const [pipelineConfirm, setPipelineConfirm] = React.useState<{
     importSummary: string;
     items: BulkImportAffectedItem[];
@@ -68,6 +89,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     created: number;
     merged: number;
     skipped: number;
+    skippedPreviouslyTrashed: number;
+    skippedTrashedItems: BulkImportSkippedTrashedItem[];
     items: BulkImportAffectedItem[];
   } | null>(null);
   const [importReport, setImportReport] = React.useState<ImportReport | null>(null);
@@ -85,6 +108,17 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [processing]);
+
+  const reloadTrashHistory = React.useCallback(async () => {
+    setTrashHistoryMap(await getTrashHistoryMap());
+  }, []);
+
+  React.useEffect(() => {
+    void reloadTrashHistory();
+    return subscribeToDataChanges(() => {
+      void reloadTrashHistory();
+    });
+  }, [reloadTrashHistory]);
 
   const filteredPipelineItems = React.useMemo(() => {
     if (!pipelineConfirm) return [];
@@ -693,6 +727,11 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     }
   };
 
+  const trashedImportMatches = React.useMemo(
+    () => matchRowsAgainstTrashHistory(rows, trashHistoryMap),
+    [rows, trashHistoryMap]
+  );
+
   const stats = React.useMemo(() => {
     const valid = rows.filter((row) => isHttpUrl(row.url)).length;
     const invalid = rows.length - valid;
@@ -744,7 +783,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           source: row.importSource || row.source || 'import',
           favicon: undefined,
         })),
-        targetCollectionId
+        targetCollectionId,
+        { skipPreviouslyTrashed }
       );
 
       const targetLabel =
@@ -754,13 +794,19 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           ? `${projects.find((p) => p.id === selectedProjectId)?.name || 'selected project'} / Unsorted`
           : 'Default / Unsorted';
 
-      const importSummary = `Imported to ${targetLabel}: created ${result.created}, merged ${result.merged}, skipped ${result.skipped}.`;
+      const withheldPart =
+        result.skippedPreviouslyTrashed > 0
+          ? `, withheld ${result.skippedPreviouslyTrashed} previously trashed`
+          : '';
+      const importSummary = `Imported to ${targetLabel}: created ${result.created}, merged ${result.merged}, skipped ${result.skipped}${withheldPart}.`;
       const commitMeta = {
         importSummary,
         targetLabel,
         created: result.created,
         merged: result.merged,
         skipped: result.skipped,
+        skippedPreviouslyTrashed: result.skippedPreviouslyTrashed,
+        skippedTrashedItems: result.skippedTrashedItems,
         items: result.affectedItems,
       };
       setCommitMessage(importSummary);
@@ -1019,6 +1065,95 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         </div>
       ) : null}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 6,
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-muted)',
+            cursor: committing || processing ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={skipPreviouslyTrashed}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setSkipPreviouslyTrashed(checked);
+              try {
+                localStorage.setItem(SKIP_TRASHED_IMPORT_KEY, checked ? 'true' : 'false');
+              } catch {
+                /* ignore */
+              }
+            }}
+            disabled={committing || processing}
+            style={{ marginTop: 2 }}
+          />
+          <span>
+            <strong style={{ color: 'var(--text)' }}>Skip links you previously trashed</strong>
+            <br />
+            Uses a persistent discard list (by URL) so dead or unwanted bookmarks do not come back on
+            re-import. Restore from Trash clears the block for that URL.
+            {trashedImportMatches.length > 0 ? (
+              <>
+                {' '}
+                <strong style={{ color: 'var(--er-warn, #d29922)' }}>
+                  {trashedImportMatches.length} link{trashedImportMatches.length === 1 ? '' : 's'} in this
+                  file match.
+                </strong>
+              </>
+            ) : null}
+          </span>
+        </label>
+        {skipPreviouslyTrashed && trashedImportMatches.length > 0 ? (
+          <div style={{ marginLeft: 22 }}>
+            <button
+              type="button"
+              onClick={() => setShowTrashedImportPreview((v) => !v)}
+              style={{
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--accent)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {showTrashedImportPreview ? 'Hide' : 'Show'} withheld links ({trashedImportMatches.length})
+            </button>
+            {showTrashedImportPreview ? (
+              <div
+                style={{
+                  marginTop: 8,
+                  maxHeight: 180,
+                  overflow: 'auto',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  background: 'var(--bg)',
+                }}
+              >
+                {trashedImportMatches.slice(0, 100).map((match) => (
+                  <div
+                    key={normalizeBookmarkUrl(match.url)}
+                    style={{
+                      padding: '8px 10px',
+                      borderBottom: '1px solid var(--border)',
+                      fontSize: 'var(--text-xs)',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: 'var(--text)' }}>
+                      {match.title || match.url}
+                    </div>
+                    <div style={{ color: 'var(--text-faint)', wordBreak: 'break-all' }}>{match.url}</div>
+                    <div style={{ color: 'var(--er-warn, #d29922)', marginTop: 2 }}>{match.reason}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <label
           style={{
             display: 'flex',

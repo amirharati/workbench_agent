@@ -3,7 +3,196 @@ import { getDB } from '../db';
 import type { AiCategory } from '../categorization/types';
 import { linkCountsForCategories } from '../categorization/counts';
 import { isGeneralLeafId } from '../categorization/taxonomyCatalog';
+import { deleteEnrichmentForItem, getEnrichment } from './fetchService';
+import { putEnrichment } from './storage';
+import { deleteRawBody, reviewRawRefForItem } from './rawBodyStore';
+
 const COUNTABLE_STATUSES = new Set(['suggested', 'accepted']);
+
+export type PipelineStageClear = 'fetch' | 'ai' | 'embed' | 'classify' | 'all';
+
+export type ClearItemPipelineStageResult = {
+  stage: PipelineStageClear;
+  itemIds: string[];
+};
+
+async function deleteReviewRawBody(itemId: string): Promise<void> {
+  const dir = await (async () => {
+    try {
+      const { getBackupDirectoryHandle, hasWritableBackupFolder } = await import('../backupFolder');
+      if (!(await hasWritableBackupFolder())) return null;
+      const root = await getBackupDirectoryHandle();
+      if (!root) return null;
+      return root.getDirectoryHandle('enrichment-cache');
+    } catch {
+      return null;
+    }
+  })();
+  if (!dir) return;
+  try {
+    await dir.removeEntry(reviewRawRefForItem(itemId));
+  } catch {
+    /* may not exist */
+  }
+}
+
+async function removeCategoryLinksForItems(idSet: Set<string>): Promise<number> {
+  const db = await getDB();
+  if (!db.objectStoreNames.contains('ai_item_category_links')) return 0;
+  const all = await db.getAll('ai_item_category_links');
+  const tx = db.transaction(['ai_item_category_links'], 'readwrite');
+  let removed = 0;
+  for (const row of all) {
+    if (!idSet.has(row.itemId)) continue;
+    await tx.objectStore('ai_item_category_links').delete(row.id);
+    removed++;
+  }
+  await tx.done;
+  return removed;
+}
+
+async function resetCategoryCountsFromLinks(): Promise<void> {
+  const db = await getDB();
+  if (!db.objectStoreNames.contains('ai_categories')) return;
+  const categories = await db.getAll('ai_categories');
+  const links = db.objectStoreNames.contains('ai_item_category_links')
+    ? await db.getAll('ai_item_category_links')
+    : [];
+  const counts = linkCountsForCategories(categories, links);
+  const tx = db.transaction(['ai_categories'], 'readwrite');
+  for (const cat of categories) {
+    const c = counts.get(cat.id);
+    const next: AiCategory = {
+      ...cat,
+      itemCount: c?.itemCount ?? 0,
+      primaryItemCount: c?.primaryItemCount ?? 0,
+      secondaryItemCount: c?.secondaryItemCount ?? 0,
+      updated_at: Date.now(),
+    };
+    await tx.objectStore('ai_categories').put(next);
+  }
+  await tx.done;
+}
+
+async function clearClassifyForItems(idSet: Set<string>): Promise<void> {
+  const db = await getDB();
+  await removeCategoryLinksForItems(idSet);
+  await resetCategoryCountsFromLinks();
+
+  if (!db.objectStoreNames.contains('ai_item_signals')) return;
+  const now = Date.now();
+  for (const itemId of idSet) {
+    const prev = await db.get('ai_item_signals', itemId);
+    if (!prev) continue;
+    await db.put('ai_item_signals', {
+      ...prev,
+      itemId,
+      classifyState: 'pending_classify',
+      classifyTextHash: '',
+      discoverState: 'none',
+      isNovelty: false,
+      classifyRetryCount: 0,
+      lastClassifySkipReason: undefined,
+      lastClassifiedAt: undefined,
+      llmReview: undefined,
+      lastProcessedAt: now,
+    });
+  }
+}
+
+async function clearEmbedForItems(idSet: Set<string>): Promise<void> {
+  const db = await getDB();
+  if (!db.objectStoreNames.contains('ai_item_signals')) return;
+  const now = Date.now();
+  for (const itemId of idSet) {
+    const prev = await db.get('ai_item_signals', itemId);
+    if (!prev) continue;
+    await db.put('ai_item_signals', {
+      ...prev,
+      itemId,
+      embedding: [],
+      textHash: '',
+      signalStatus: 'insufficient_enrichment',
+      lastProcessedAt: now,
+    });
+  }
+}
+
+async function clearAiForItems(idSet: Set<string>): Promise<void> {
+  const now = Date.now();
+  for (const itemId of idSet) {
+    const existing = await getEnrichment(itemId);
+    if (!existing) continue;
+    await putEnrichment({
+      ...existing,
+      summary: undefined,
+      aiTags: undefined,
+      aiKeyPoints: undefined,
+      aiStatus: undefined,
+      aiError: undefined,
+      aiAt: undefined,
+      failureStage: undefined,
+      failureCategory: undefined,
+      updated_at: now,
+    });
+  }
+  await clearEmbedForItems(idSet);
+}
+
+async function clearFetchForItems(idSet: Set<string>): Promise<void> {
+  for (const itemId of idSet) {
+    await deleteReviewRawBody(itemId);
+    await deleteEnrichmentForItem(itemId);
+  }
+  await clearClassifyForItems(idSet);
+  const db = await getDB();
+  if (db.objectStoreNames.contains('ai_item_signals')) {
+    for (const itemId of idSet) {
+      try {
+        await db.delete('ai_item_signals', itemId);
+      } catch {
+        /* ok */
+      }
+    }
+  }
+}
+
+/**
+ * Delete stored pipeline data for one stage (not undo — clears so you can re-run from scratch).
+ * Inspector / debug use only.
+ */
+export async function clearItemPipelineStage(
+  itemIds: string[],
+  stage: PipelineStageClear
+): Promise<ClearItemPipelineStageResult> {
+  const ids = [...new Set(itemIds.filter(Boolean))];
+  if (!ids.length) return { stage, itemIds: [] };
+  const idSet = new Set(ids);
+
+  switch (stage) {
+    case 'all':
+      await clearPipelineData({ itemIds: ids });
+      break;
+    case 'classify':
+      await clearClassifyForItems(idSet);
+      notifyDataChanged('categorization.update');
+      break;
+    case 'embed':
+      await clearEmbedForItems(idSet);
+      notifyDataChanged('enrichment.update');
+      break;
+    case 'ai':
+      await clearAiForItems(idSet);
+      notifyDataChanged('enrichment.update');
+      break;
+    case 'fetch':
+      await clearFetchForItems(idSet);
+      notifyDataChanged('pipeline.clear');
+      break;
+  }
+
+  return { stage, itemIds: ids };
+}
 
 export type ClearPipelineDataOptions = {
   /** If set, only these bookmarks; otherwise entire library. */
@@ -42,6 +231,8 @@ export async function clearPipelineData(
     const tx = db.transaction(['item_enrichment'], 'readwrite');
     for (const row of all) {
       if (idFilter && !idFilter.has(row.itemId)) continue;
+      await deleteReviewRawBody(row.itemId);
+      await deleteRawBody(row.itemId);
       await tx.objectStore('item_enrichment').delete(row.itemId);
       enrichmentsRemoved++;
     }

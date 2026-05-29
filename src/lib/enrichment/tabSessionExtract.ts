@@ -1,7 +1,12 @@
 import { normalizeBookmarkUrl } from '../db';
 import { needsLiveTabHref } from '../tabUrlCapture';
 import type { EnrichmentErrorCode } from './types';
-import { canonicalizeXStatusUrl, isRedditHost, prefersBrowserTabFetch } from './urlPolicy';
+import { canonicalizeXStatusUrl, isFileUrl, isRedditHost, prefersBrowserTabFetch } from './urlPolicy';
+import {
+  resolveEnrichmentFailureLabel,
+  type FailureCategory,
+} from './failureLabels';
+import type { PipelineBadgeKind } from '../pipeline/pipelineBadge';
 
 const EPHEMERAL_TAB_LOAD_MS = 45_000;
 const EPHEMERAL_POST_LOAD_MS = 2_000;
@@ -17,6 +22,40 @@ export type TabExtractResult = {
 
 /** Match aiExtract minimum — reject error-shell snippets that slip through DOM scrape. */
 export const MIN_TAB_SESSION_MARKDOWN_CHARS = 80;
+
+function isEphemeralTabUrl(url: string): boolean {
+  const t = url.trim();
+  return /^https?:\/\//i.test(t) || isFileUrl(t);
+}
+
+const TAB_SESSION_FAILURE_CATEGORIES = new Set<FailureCategory>([
+  'auth',
+  'bot',
+  'parse',
+  'ai_short',
+  'ai_empty',
+]);
+
+/** Whether Inspector should offer explicit browser-tab fetch (vs generic re-digest). */
+export function shouldOfferTabSessionFetch(
+  url: string,
+  enrichment?: Parameters<typeof resolveEnrichmentFailureLabel>[0],
+  badgeKind?: PipelineBadgeKind | null
+): boolean {
+  if (!url.trim()) return false;
+  if (isFileUrl(url) || prefersBrowserTabFetch(url)) {
+    return badgeKind === 'failed' || badgeKind === 'not_processed';
+  }
+  if (badgeKind !== 'failed') return false;
+  const label = resolveEnrichmentFailureLabel(enrichment ?? undefined);
+  if (!label) {
+    return (
+      enrichment?.lastErrorCode === 'bot_blocked' ||
+      enrichment?.lastErrorCode === 'auth_required'
+    );
+  }
+  return TAB_SESSION_FAILURE_CATEGORIES.has(label.category);
+}
 
 function redditPathKey(url: string): string | null {
   try {
@@ -279,8 +318,8 @@ export async function openEphemeralTabAndExtract(
   }
 
   const target = url.trim();
-  if (!/^https?:\/\//i.test(target)) {
-    return fail('Only http(s) URLs can be fetched in a browser tab', 'excluded');
+  if (!isEphemeralTabUrl(target)) {
+    return fail('Only http(s) or local file URLs can be fetched in a browser tab', 'excluded');
   }
 
   let tabId: number | undefined;

@@ -31,6 +31,13 @@ export interface ImportReport {
   created: number;
   merged: number;
   skipped: number;
+  skippedPreviouslyTrashed?: number;
+  skippedTrashedItems?: Array<{
+    url: string;
+    title: string;
+    reason: string;
+    trashedAt: number;
+  }>;
   pipelineRan: boolean;
   pipelineMessage?: string;
   batchStats?: Pick<BatchDigestResult, 'enriched' | 'skipped' | 'failed' | 'classified' | 'classifyError'>;
@@ -145,6 +152,8 @@ export async function buildImportReport(input: {
   created: number;
   merged: number;
   skipped: number;
+  skippedPreviouslyTrashed?: number;
+  skippedTrashedItems?: ImportReport['skippedTrashedItems'];
   items: BulkImportAffectedItem[];
   processedIds?: Set<string>;
   batchResult?: BatchDigestResult;
@@ -189,6 +198,8 @@ export async function buildImportReport(input: {
     created: input.created,
     merged: input.merged,
     skipped: input.skipped,
+    skippedPreviouslyTrashed: input.skippedPreviouslyTrashed,
+    skippedTrashedItems: input.skippedTrashedItems,
     pipelineRan,
     pipelineMessage: input.batchResult?.message,
     batchStats: input.batchResult

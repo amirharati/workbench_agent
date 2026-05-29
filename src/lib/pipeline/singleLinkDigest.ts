@@ -42,6 +42,10 @@ function buildUserMessage(input: {
     return `Bookmark saved — summary failed: ${detail}`;
   }
 
+  if (enrich.message === 'fetch_only') {
+    return 'Page fetched — run Re-run AI when ready';
+  }
+
   if (enrich.skipped) {
     const skip = enrich.message?.trim();
     if (skip === 'content_unchanged') {
@@ -142,10 +146,14 @@ export async function runSingleLinkDigest(
   options?: {
     forceEnrich?: boolean;
     skipClassify?: boolean;
+    /** Fetch only — skip AI extract (Re-fetch). */
+    skipAi?: boolean;
     onProgress?: (update: SingleLinkDigestProgress) => void;
     signal?: AbortSignal;
     preferTabSession?: boolean;
     tabId?: number;
+    /** Skip headless — browser tab extract only (Inspector “Fetch in browser”). */
+    tabSessionOnly?: boolean;
   }
 ): Promise<SingleLinkDigestResult> {
   if (inFlight.has(itemId)) {
@@ -177,9 +185,11 @@ export async function runSingleLinkDigest(
     );
     const enrich = await enrichOne(itemId, {
       force: options?.forceEnrich,
+      skipAi: options?.skipAi,
       signal: options?.signal,
       preferTabSession: options?.preferTabSession ?? tabSession.preferTabSession,
       tabId: options?.tabId ?? tabSession.tabId,
+      tabSessionOnly: options?.tabSessionOnly,
     });
 
     if (enrich.skipped) {
@@ -194,7 +204,11 @@ export async function runSingleLinkDigest(
         report('check', `Skipped fetch (${skip})`);
       }
     } else if (enrich.status === 'ok') {
-      report('extract', formatDigestProgressLabel('extract'));
+      if (options?.skipAi) {
+        report('done', 'Fetch complete');
+      } else {
+        report('extract', formatDigestProgressLabel('extract'));
+      }
     } else if (enrich.status === 'failed') {
       report('enrich', 'Fetch or extract failed');
     }

@@ -19,6 +19,7 @@ import { SHELL_LAYOUT_DEFAULTS, type ShellLayoutState } from '../../../lib/shell
 import { SettingsView } from '../SettingsView';
 import { AiCategoriesView } from '../AiCategoriesView';
 import { ImportStudioView } from '../ImportStudioView';
+import { PipelineHubView } from '../PipelineHubView';
 import { EnrichmentPanel } from '../EnrichmentPanel';
 import { TabCommanderView } from '../TabCommanderView';
 import { ProjectDashboard } from '../ProjectDashboard';
@@ -684,6 +685,20 @@ export const MainContent: React.FC<MainContentProps> = ({
             collections={collections}
             onBack={() => onSelectView?.('bookmarks')}
             onImported={onRefresh}
+          />
+        );
+      case 'pipeline':
+        return (
+          <PipelineHubView
+            items={items}
+            collections={collections}
+            projects={projects}
+            scopeProjectId={scopeProjectId}
+            scopeCollectionId={scopeCollectionId}
+            onOpenItem={onOpenItemFromSearch ?? onOpenItem}
+            onClearProjectScope={onClearProjectScope}
+            onClearCollectionScope={onClearCollectionScope}
+            onResetScope={onResetScope}
           />
         );
       case 'projects':
@@ -2904,7 +2919,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     }}>
       {/* Wrapper header is only shown for views that don't render their own header. */}
       {!(activeView === 'projects' && selectedProjectId !== null) &&
-        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings', 'ai-categories', 'import-studio', 'help'].includes(
+        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings', 'ai-categories', 'import-studio', 'pipeline', 'help'].includes(
           activeView
         ) && (
           <div style={{ 

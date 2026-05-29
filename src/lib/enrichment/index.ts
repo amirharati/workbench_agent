@@ -51,14 +51,18 @@ export type {
 export * from './parse';
 export {
   clearPipelineData,
+  clearItemPipelineStage,
   syncClassifySignalsFromLinks,
   type ClearPipelineDataOptions,
   type ClearPipelineDataResult,
+  type ClearItemPipelineStageResult,
+  type PipelineStageClear,
 } from './pipelineReset';
 export {
   enrichOne,
   enrichBatch,
   reextractAI,
+  isSnippetTooShortForAI,
   checkEligibility,
   checkUrlEligibility,
   getEnrichmentState,

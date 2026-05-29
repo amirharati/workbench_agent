@@ -18,6 +18,7 @@ import {
 import {
   explainHardFetchFailure,
   explainSoftFetchSuspect,
+  isFetchBodyUsable,
   stripProviderWrapper,
 } from './fetchQuality';
 import { hybridProvider } from './providers/hybrid';
@@ -25,7 +26,8 @@ import { jinaProvider } from './providers/jina';
 import { noopProvider } from './providers/noop';
 import type { FetchProvider, FetchProviderResult } from './providers/types';
 import { fetchFromOpenTab, findTabForUrl, openEphemeralTabAndExtract } from './tabSessionExtract';
-import { isFileUrl } from './urlPolicy';
+import { isFileUrl, prefersBrowserTabFetch } from './urlPolicy';
+import { needsLiveTabHref } from '../tabUrlCapture';
 import {
   parseFetchedContent,
 } from './parse';
@@ -221,6 +223,14 @@ function hasValuablePriorEnrichment(existing?: ItemEnrichment | null): boolean {
   return (existing.snippet?.trim().length ?? 0) >= ENRICHMENT_DEFAULTS.minUsefulSnippetChars;
 }
 
+/** True when cached fetch text exists but is below the normal AI extract minimum. */
+export function isSnippetTooShortForAI(
+  enrichment?: Pick<ItemEnrichment, 'snippet'> | null
+): boolean {
+  const len = enrichment?.snippet?.trim().length ?? 0;
+  return len > 0 && len < ENRICHMENT_DEFAULTS.minUsefulSnippetChars;
+}
+
 function errorCodeAfterAiFailure(
   softCode: EnrichmentErrorCode | undefined,
   aiStatus: EnrichmentAIStatus
@@ -325,20 +335,41 @@ async function tryOpenTabFetch(
   return { result: null, error: lastError };
 }
 
-function headlessWarrantsEphemeralTab(
+/** Headless failed or body unusable — retry via open tab / ephemeral background tab. */
+function shouldRetryWithBrowserTab(
   headless: FetchProviderResult,
   url: string,
   cleanMarkdown?: string
 ): boolean {
-  if (isFileUrl(url)) return true;
-  if (headless.errorCode === 'bot_blocked' || headless.errorCode === 'auth_required') {
+  if (isFileUrl(url) || prefersBrowserTabFetch(url) || needsLiveTabHref(url)) return true;
+
+  if (!headless.ok) {
+    const code = headless.errorCode;
+    return code === 'bot_blocked' || code === 'auth_required' || code === 'parse_empty';
+  }
+
+  if (!cleanMarkdown?.trim()) return true;
+
+  const qualityCtx = { url, title: headless.title };
+  if (explainHardFetchFailure(cleanMarkdown, qualityCtx)) return true;
+  if (explainSoftFetchSuspect(cleanMarkdown, qualityCtx)) return true;
+  if (!isFetchBodyUsable(cleanMarkdown, ENRICHMENT_DEFAULTS.minUsefulSnippetChars, qualityCtx)) {
     return true;
   }
-  if (cleanMarkdown) {
-    const hard = explainHardFetchFailure(cleanMarkdown, { url, title: headless.title });
-    if (hard?.code === 'bot_blocked' || hard?.code === 'auth_required') return true;
-  }
+
   return false;
+}
+
+function headlessResultIsGoodEnough(
+  headless: FetchProviderResult,
+  url: string,
+  cleanMarkdown: string
+): boolean {
+  if (!headless.ok || !cleanMarkdown.trim()) return false;
+  const qualityCtx = { url, title: headless.title };
+  if (explainHardFetchFailure(cleanMarkdown, qualityCtx)) return false;
+  if (explainSoftFetchSuspect(cleanMarkdown, qualityCtx)) return false;
+  return isFetchBodyUsable(cleanMarkdown, ENRICHMENT_DEFAULTS.minUsefulSnippetChars, qualityCtx);
 }
 
 async function resolveItemFetch(
@@ -350,8 +381,25 @@ async function resolveItemFetch(
     signal?: AbortSignal;
     preferTabSession?: boolean;
     tabId?: number;
+    /** Skip headless — open/match tab (incl. ephemeral) only. */
+    tabSessionOnly?: boolean;
   }
 ): Promise<FetchProviderResult> {
+  if (options?.tabSessionOnly) {
+    const tabOnly = await tryOpenTabFetch(item.url, options?.tabId, {
+      allowEphemeral: true,
+      signal: options?.signal,
+    });
+    if (tabOnly.result) return tabOnly.result;
+    if (tabOnly.error) return tabOnly.error;
+    return {
+      ok: false,
+      errorCode: 'parse_empty',
+      error: 'Could not read page in browser tab',
+      fetchSourceId: 'tab-session',
+    };
+  }
+
   const tabAttempt = await tryOpenTabFetch(item.url, options?.tabId, {
     signal: options?.signal,
   });
@@ -367,14 +415,13 @@ async function resolveItemFetch(
 
   if (headless.ok && headless.markdown) {
     const clean = stripProviderWrapper(headless.markdown);
-    const hard = explainHardFetchFailure(clean, { url: item.url, title: headless.title });
-    if (!hard) return headless;
+    if (headlessResultIsGoodEnough(headless, item.url, clean)) return headless;
   }
 
   const headlessClean =
     headless.ok && headless.markdown ? stripProviderWrapper(headless.markdown) : undefined;
   const tabRetry = await tryOpenTabFetch(item.url, options?.tabId, {
-    allowEphemeral: headlessWarrantsEphemeralTab(headless, item.url, headlessClean),
+    allowEphemeral: shouldRetryWithBrowserTab(headless, item.url, headlessClean),
     signal: options?.signal,
   });
   tabSessionError = tabSessionError ?? tabRetry.error;
@@ -434,6 +481,10 @@ export async function enrichOne(
     preferTabSession?: boolean;
     /** Tab captured at save time — avoids side-panel active-tab lookup issues. */
     tabId?: number;
+    /** Browser tab only (skip headless). Used by Inspector “Fetch in browser”. */
+    tabSessionOnly?: boolean;
+    /** Fetch and parse only — preserve existing AI fields; no extractEnrichmentWithAI. */
+    skipAi?: boolean;
   }
 ): Promise<EnrichmentResult> {
   const item = await getItem(itemId);
@@ -491,6 +542,7 @@ export async function enrichOne(
       signal,
       preferTabSession: options?.preferTabSession,
       tabId: options?.tabId,
+      tabSessionOnly: options?.tabSessionOnly,
     });
     clearTimeout(timeout);
 
@@ -600,7 +652,9 @@ export async function enrichOne(
     let aiOutcome: Awaited<ReturnType<typeof extractEnrichmentWithAI>> | undefined;
     let aiExtract: EnrichmentAIExtract | undefined;
     const needsAiExtract =
-      !hardFailure && (!pageUnchanged || existing?.aiStatus !== 'ok');
+      !options?.skipAi &&
+      !hardFailure &&
+      (!pageUnchanged || existing?.aiStatus !== 'ok');
     if (needsAiExtract) {
       aiOutcome = await extractEnrichmentWithAI(
         parsed.snippet || cleanMarkdown,
@@ -659,6 +713,11 @@ export async function enrichOne(
 
     aiExtract = ensurePlatformTagOnExtract(aiExtract, item.url);
 
+    if (options?.skipAi && !hardFailure) {
+      status = 'ok';
+      lastErrorCode = undefined;
+    }
+
     let rawRef: string | undefined;
     let rawBytes: number | undefined;
     let hasRawBody = false;
@@ -667,7 +726,7 @@ export async function enrichOne(
       url: item.url,
       fetchSourceId: fetchResult.fetchSourceId,
       providerId: activeProvider.id,
-      ai: aiExtract ?? null,
+      ai: options?.skipAi ? null : (aiExtract ?? null),
       markdown: rawMarkdown,
       cleanMarkdown,
     });
@@ -709,18 +768,18 @@ export async function enrichOne(
       contentHash,
       textHash,
       snippet: parsed.snippet,
-      summary: aiExtract?.summary,
+      summary: options?.skipAi ? existing?.summary : aiExtract?.summary,
       fetchedTitle: parsed.title,
       sourceKind,
       quotedText: parsed.quotedText,
       quotedAuthor: parsed.quotedAuthor,
       channel: parsed.channel,
       description: parsed.description,
-      aiTags: aiExtract?.tags,
-      aiKeyPoints: aiExtract?.keyPoints,
-      aiStatus: aiOutcome?.status,
-      aiError: aiOutcome?.error,
-      aiAt: aiOutcome?.at,
+      aiTags: options?.skipAi ? existing?.aiTags : aiExtract?.tags,
+      aiKeyPoints: options?.skipAi ? existing?.aiKeyPoints : aiExtract?.keyPoints,
+      aiStatus: options?.skipAi ? existing?.aiStatus : aiOutcome?.status,
+      aiError: options?.skipAi ? existing?.aiError : aiOutcome?.error,
+      aiAt: options?.skipAi ? existing?.aiAt : aiOutcome?.at,
       rawRef,
       rawBytes,
       hasRawBody,
@@ -742,7 +801,12 @@ export async function enrichOne(
       itemId,
       status,
       errorCode: lastErrorCode,
-      message: failureMessage,
+      message:
+        status === 'failed'
+          ? failureMessage
+          : options?.skipAi
+            ? 'fetch_only'
+            : undefined,
     };
   } catch (e) {
     clearTimeout(timeout);
@@ -774,7 +838,10 @@ export async function enrichOne(
 }
 
 /** Re-run AI extraction from cached snippet — no network fetch. */
-export async function reextractAI(itemId: string): Promise<EnrichmentResult> {
+export async function reextractAI(
+  itemId: string,
+  options?: { force?: boolean }
+): Promise<EnrichmentResult> {
   const item = await getItem(itemId);
   if (!item?.url) {
     return { itemId, status: 'failed', errorCode: 'excluded', message: 'no_item' };
@@ -791,12 +858,21 @@ export async function reextractAI(itemId: string): Promise<EnrichmentResult> {
   }
 
   const snippet = existing.snippet?.trim() || '';
-  if (snippet.length < ENRICHMENT_DEFAULTS.minUsefulSnippetChars) {
+  if (!options?.force && snippet.length < ENRICHMENT_DEFAULTS.minUsefulSnippetChars) {
     return {
       itemId,
       status: 'ok',
       skipped: true,
       message: 'snippet_too_short',
+    };
+  }
+
+  if (!snippet.length) {
+    return {
+      itemId,
+      status: 'ok',
+      skipped: true,
+      message: 'snippet_empty',
     };
   }
 
@@ -807,6 +883,7 @@ export async function reextractAI(itemId: string): Promise<EnrichmentResult> {
     existing.fetchedTitle || item.title,
     {
       sourceKind,
+      forceShort: options?.force === true,
       hints: {
         quotedText: existing.quotedText,
         quotedAuthor: existing.quotedAuthor,
@@ -930,6 +1007,7 @@ export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<Enr
           force: options.force,
           signal: options.signal,
           refetchCompare: options.refetchCompare,
+          skipAi: options.skipAi,
         });
         if (options.collectItemResults) itemResults.push(result);
         if (result.skipped || result.status === 'skipped') skipped++;

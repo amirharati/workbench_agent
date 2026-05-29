@@ -2,11 +2,20 @@ import {
   deleteItem,
   getAllItems,
   getBookmarkOpenUrl,
+  getItem,
   updateItem,
   type Item,
 } from './db';
+import {
+  clearTrashHistoryForItem,
+  markTrashHistoryPurged,
+  recordTrashHistory,
+  type TrashReasonCode,
+  type TrashRecordInput,
+} from './trashHistory';
 
 export { getBookmarkOpenUrl };
+export type { TrashReasonCode, TrashRecordInput };
 
 export function isActiveItem(item: Item): boolean {
   return item.deletedAt == null;
@@ -70,21 +79,67 @@ export async function unfavoriteItem(id: string): Promise<void> {
   await updateItem(id, { favoriteAt: undefined });
 }
 
-export async function moveItemToTrash(id: string): Promise<void> {
-  await updateItem(id, { deletedAt: Date.now() });
+const defaultTrashRecord = (): TrashRecordInput => ({
+  reason: 'Moved to trash',
+  reasonCode: 'manual',
+});
+
+export type MoveToTrashOptions = Partial<TrashRecordInput> & {
+  reasonsById?: Record<string, TrashRecordInput>;
+};
+
+export async function moveItemToTrash(
+  id: string,
+  options?: TrashRecordInput
+): Promise<void> {
+  const item = await getItem(id);
+  const now = Date.now();
+  await updateItem(id, { deletedAt: now });
+  if (item) {
+    await recordTrashHistory(item, options ?? defaultTrashRecord());
+  }
+}
+
+export async function moveItemsToTrash(
+  ids: string[],
+  options?: MoveToTrashOptions
+): Promise<number> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const now = Date.now();
+  for (const id of unique) {
+    const item = await getItem(id);
+    await updateItem(id, { deletedAt: now });
+    if (!item) continue;
+    const record =
+      options?.reasonsById?.[id] ??
+      (options?.reason
+        ? { reason: options.reason, reasonCode: options.reasonCode }
+        : defaultTrashRecord());
+    await recordTrashHistory(item, record);
+  }
+  return unique.length;
 }
 
 export async function restoreItemFromTrash(id: string): Promise<void> {
+  const item = await getItem(id);
   await updateItem(id, { deletedAt: undefined });
+  if (item) {
+    await clearTrashHistoryForItem(item);
+  }
 }
 
 export async function permanentlyDeleteItem(id: string): Promise<void> {
+  const item = await getItem(id);
+  if (item) {
+    await markTrashHistoryPurged(item);
+  }
   await deleteItem(id);
 }
 
 export async function emptyTrash(): Promise<number> {
   const trashed = await getTrashedItems();
   for (const item of trashed) {
+    await markTrashHistoryPurged(item);
     await deleteItem(item.id);
   }
   return trashed.length;

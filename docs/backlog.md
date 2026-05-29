@@ -68,7 +68,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [ ] **Error handling**: consistent try/catch on async paths (`App.tsx`, dashboard handlers, Chrome APIs); user-visible errors vs silent `console.error`.
 - [ ] **DB transactions**: multi-step deletes (`deleteCollection`, `deleteProject`, bulk moves) reviewed for atomicity in `db.ts`.
 - [ ] **Input validation**: URLs, IDs, text limits; centralize validation helpers (extend existing `src/lib/utils.ts` patterns as needed).
-- [ ] **🔴 D-35 — Backup / export scale (end of V2 — important)** — Live backup rewrites **full** `latest.json` on every debounced change (`exportDB()`, pretty JSON, all stores incl. embeddings). Fine at personal scale; **must** spike and improve **before closing V2 iteration**: export size/time on real library, compact JSON, incremental/delta, chunked writes, blob offload, Settings size/duration warning. Tracker: [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md) **D-35**; design: [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md#end-of-v2-backup--export-scale). Raised from 05.B return.
+- [ ] **V2.1 — SQLite WASM + OPFS** — Post-V2 #1: migrate off IndexedDB; local default; `.sqlite` backup API. **V2.2+:** optional BYO cloud (Turso), sharing. Not a V2-close gate. Briefs: [`temp/TASK-V2.1-sqlite-wasm-storage.md`](temp/TASK-V2.1-sqlite-wasm-storage.md), [`temp/TASK-POST-V2-D35-storage-backup.md`](temp/TASK-POST-V2-D35-storage-backup.md).
 - [ ] **Very large bookmark libraries (scale spike)** — Broader than D-35 alone: UI list virtualization, paged reads, bulk-import memory — assess **5k–50k+** paths; ties to backup coordinator and `db.ts`.
 
 ---
@@ -153,7 +153,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ### V2-A — UX / UI (umbrella — **TASK-05**)
 
-**Policy:** **Open V2 index:** [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md) (expanded — Tier A–F). **End of V2 gate:** **D-35** backup/export scale.
+**Policy:** **Open V2 index:** [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md). **Finish V2:** [`temp/TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md). **Post-V2 #1:** **D-35** storage/backup (big change).
 
 | Subtask | Status | Focus |
 |---------|--------|--------|
@@ -186,7 +186,7 @@ Workflow checklist (product, no new schema first):
 - [ ] **Notes strategy (D-04)** — First-class `notes` store vs URL-empty `items`; one UI path; migration/export rules documented.
 - [ ] **Schema / import debt (D-05)** — Reconcile backup normalization, multi-collection merge semantics, validation.
 - [ ] **AI layer presentation** — Document and UI-label: `projects`/`collections` (manual) vs `ai_categories` (semantic); no forced DAG in V2-B (DAG → V3).
-- [ ] **🔴 D-35 — Backup/export scale** — **End of V2** — see Reliability & data + [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md#end-of-v2-backup--export-scale).
+- [ ] **D-35 — Storage & backup** — **Post-V2** (big change) — see [`temp/TASK-POST-V2-D35-storage-backup.md`](temp/TASK-POST-V2-D35-storage-backup.md).
 
 ### V2-C — V1 backend refinement (after V2-A usable baseline)
 
@@ -245,20 +245,22 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 - Animations, responsive polish, heavy styling refactors.
 - Relationship graphs (notes ↔ bookmarks ↔ projects).
 - **`HttpBackupSink` / BYO server** — same coordinator + JSON payload; optional auth — after file‑based backup ships (see [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md)).
-- **⏸ D-45 — Local folder library:** Scan a folder of PDFs/papers/books → preview map → import as `file://` bookmarks + optional batch digest. Builds on shipped single-file `file://` save (2026-05-28). Brief: [`docs/temp/TASK-V2C-D45-local-folder-library.md`](temp/TASK-V2C-D45-local-folder-library.md).
+- **⏸ D-45 — Local folder library (tracked):** Scan a folder tree (PDFs/papers/books) → preview map → import as `file://` bookmarks + optional batch digest (Import Studio or new tab). **Foundation shipped:** single-file `file://` save + tab digest (D10, 2026-05-28). **Not shipped:** directory picker, recursive scan, folder→collection mapping, PDF full-text (`pdf.js`). Brief: [`docs/temp/TASK-V2C-D45-local-folder-library.md`](temp/TASK-V2C-D45-local-folder-library.md). Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md) Tier D.
 - Chrome Web Store / multi-browser—out of scope until explicitly chosen.
 
 ---
 
 ## Suggested order (adjust freely)
 
-**Active product thread:** **V1 closed** → **V2-A + 05.B done** → **V2-C** backend → **close V2 with D-35** backup scale → **V3** scale AI.
+**Active product thread:** **V1 closed** → **V2-A + 05.B + D-10 done** → **finish V2** (pipeline/search UX, dogfood) → **post-V2: D-35 big backup/storage** → **V3** scale AI.
 
 **Parallel / hygiene (pick as needed):**
 
-1. **🔴 D-35** backup/export scale — **before end of V2**.
-2. V2-C fetch / in-tab fetch / embed hooks.
+1. **Finish V2** — [`temp/TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md) (pipeline UX, search, dogfood; **not** D-35).
+2. **Post-V2 #1: V2.1** SQLite WASM + OPFS — [`temp/TASK-V2.1-sqlite-wasm-storage.md`](temp/TASK-V2.1-sqlite-wasm-storage.md). **V2.2+:** cloud/sharing.
+3. **D-45** local folder library — after V2 or parallel if urgent.
 3. Notes strategy (D-04) + import provenance (D-05).
+4. Optional: D10.4b headless (GitHub blobs, pick-best) — not a V2 gate.
 4. Scheduled backup rotation (`chrome.alarms`) when integrity work cycles back.
 5. Collection detach/share UI if multi-project workflows matter.
 
@@ -266,4 +268,4 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ---
 
-*Last updated: 2026-05-27 — **05.B + 05.C done.** **Next:** V2-C backend; **end-of-V2: D-35** backup scale. **Decision pass later:** D-26+W6, D-25, D-41, D-04/D-05. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*
+*Last updated: 2026-05-29 — **D-35 deferred post-V2** (big change). **Finish V2:** [`TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md). Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*

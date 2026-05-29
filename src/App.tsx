@@ -402,7 +402,7 @@ function App() {
         showStatus(`Removed from collection (still in ${result.remainingPlacements} other${result.remainingPlacements > 1 ? 's' : ''})`);
       }
     } else {
-      await moveItemToTrash(id);
+      await moveItemToTrash(id, { reason: 'Moved to trash', reasonCode: 'app_delete' });
       showStatus('Moved to trash');
     }
     await loadData();

@@ -2,7 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
+import { resolveEnrichmentFailureLabel } from '../../lib/enrichment/failureLabels';
+import { shouldOfferTabSessionFetch } from '../../lib/enrichment/tabSessionExtract';
 import { resolvePipelineBadge, type PipelineBadge } from '../../lib/pipeline';
+import { formatPipelineStageHint } from '../../lib/pipeline/itemPipelineContext';
 import { ItemPipelineBadge, EnrichmentContent } from './PipelineDisplayBlocks';
 import { ItemSimilarSection } from './SearchDiscoveryBlocks';
 import { usePipelineProgress } from './PipelineProgressProvider';
@@ -97,13 +100,17 @@ function SearchHistorySection({
   );
 }
 
-function InspectorDigestAction({
+function InspectorDigestActions({
   itemId,
+  itemUrl,
   badge,
+  enrichment,
   onDone,
 }: {
   itemId: string;
+  itemUrl?: string;
   badge: PipelineBadge | null;
+  enrichment?: import('../../lib/enrichment/types').ItemEnrichment;
   onDone: () => void;
 }) {
   const pipeline = usePipelineProgress();
@@ -118,6 +125,10 @@ function InspectorDigestAction({
 
   if (!show) return null;
 
+  const showTabFetch =
+    !!itemUrl &&
+    shouldOfferTabSessionFetch(itemUrl, enrichment ?? null, badge?.kind ?? null);
+
   const label =
     badge?.kind === 'failed'
       ? 'Retry digest'
@@ -127,12 +138,13 @@ function InspectorDigestAction({
           ? 'Re-digest'
           : 'Run digest';
 
-  const run = async () => {
+  const run = async (tabSessionOnly?: boolean) => {
     if (running) return;
     try {
       await pipeline.runSingle(itemId, {
-        title: label,
-        forceEnrich: badge?.kind === 'failed',
+        title: tabSessionOnly ? 'Fetch in browser' : label,
+        forceEnrich: badge?.kind === 'failed' || tabSessionOnly === true,
+        tabSessionOnly,
       });
       onDone();
     } catch {
@@ -141,25 +153,47 @@ function InspectorDigestAction({
   };
 
   return (
-    <button
-      type="button"
-      onClick={() => void run()}
-      disabled={running}
-      style={{
-        alignSelf: 'flex-start',
-        padding: '4px 10px',
-        borderRadius: 'var(--radius-sm)',
-        border: '1px solid var(--border)',
-        background: 'var(--bg-glass)',
-        color: 'var(--text)',
-        fontSize: 'var(--text-xs)',
-        fontWeight: 600,
-        cursor: running ? 'wait' : 'pointer',
-        opacity: running ? 0.7 : 1,
-      }}
-    >
-      {running ? 'Digesting…' : label}
-    </button>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+      <button
+        type="button"
+        onClick={() => void run()}
+        disabled={running}
+        style={{
+          padding: '4px 10px',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--border)',
+          background: 'var(--bg-glass)',
+          color: 'var(--text)',
+          fontSize: 'var(--text-xs)',
+          fontWeight: 600,
+          cursor: running ? 'wait' : 'pointer',
+          opacity: running ? 0.7 : 1,
+        }}
+      >
+        {running ? 'Digesting…' : label}
+      </button>
+      {showTabFetch ? (
+        <button
+          type="button"
+          onClick={() => void run(true)}
+          disabled={running}
+          title="Open in Chrome and read the page (skips headless fetch)"
+          style={{
+            padding: '4px 10px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border)',
+            background: 'transparent',
+            color: 'var(--text-muted)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            cursor: running ? 'wait' : 'pointer',
+            opacity: running ? 0.7 : 1,
+          }}
+        >
+          Fetch in browser
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -181,6 +215,10 @@ function ItemInspectorBody({
   const { context, loading, reload } = useItemPipelineContext(item.id);
   const [summaryOpen, setSummaryOpen] = useState(!enrichmentPrimaryInItemTab);
   const badge = context ? resolvePipelineBadge(context) : null;
+  const failureLabel = context?.enrichment
+    ? resolveEnrichmentFailureLabel(context.enrichment)
+    : null;
+  const stageHint = context ? formatPipelineStageHint(context) : undefined;
 
   useEffect(() => {
     setSummaryOpen(!enrichmentPrimaryInItemTab);
@@ -217,12 +255,27 @@ function ItemInspectorBody({
           {badge && <ItemPipelineBadge badge={badge} />}
         </div>
         {item.url && (
-          <InspectorDigestAction
+          <InspectorDigestActions
             itemId={item.id}
+            itemUrl={item.url}
             badge={badge}
+            enrichment={context?.enrichment}
             onDone={() => void reload()}
           />
         )}
+        {stageHint ? (
+          <p
+            style={{
+              margin: '4px 0 0',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-faint)',
+              lineHeight: 1.45,
+            }}
+          >
+            {stageHint}
+            {failureLabel?.reviewHint ? ` — ${failureLabel.reviewHint}` : ''}
+          </p>
+        ) : null}
         {item.url && (
           <a
             href={item.url}

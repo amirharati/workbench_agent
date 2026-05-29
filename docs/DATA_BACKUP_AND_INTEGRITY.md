@@ -75,7 +75,7 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
    - **Today:** every `notifyDataChanged` debounce runs **`exportDB()`** and rewrites **`latest.json`** with the **full** database snapshot (pretty-printed JSON: items, enrichment, AI stores, embeddings in `ai_item_signals`, etc.).
    - **Works well** for personal-scale libraries (roughly hundreds of items; on the order of tens of MB per file with pipeline data).
    - **Does not scale** cleanly to very large libraries (thousands+ items, large embedding payloads): long writes, sync-folder churn, memory spikes, conflict recovery cost.
-   - **Tracked as D-35** — decision + implementation scheduled **by end of V2 iteration** (before treating V2 as “closed”). See [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md) and backlog *Very large bookmark libraries*.
+   - **Tracked as D-35** — **post-V2** big change (master 2026-05-29: not a V2-close gate). See [`temp/TASK-POST-V2-D35-storage-backup.md`](temp/TASK-POST-V2-D35-storage-backup.md) and [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).
    - **Direction (TBD after spike):** compact JSON, incremental/delta export, chunked or streaming writes, optional separation of heavy blobs from main JSON, export duration/size surfaced in Settings.
 
 ---
@@ -88,7 +88,7 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 |----------|----------------|
 | What syncs on pin/fav/trash/import/pipeline? | Same path as all DB writes: `notifyDataChanged` → debounced full export → `latest.json`. New `Item` fields (`pinnedAt`, `favoriteAt`, `deletedAt`) are included automatically. |
 | What does *not* sync? | Ephemeral UI: open tabs, shell/home split prefs, font scale, search history (localStorage). |
-| What must improve before V2 close? | **Avoid rewriting the entire pretty JSON file on every small edit** once libraries or embedding payload size grow. Spike real export size/time on a representative library; pick one MVP improvement (e.g. compact JSON + size warning, or delta layer). |
+| What must improve before V2 close? | **Nothing** — V2 closes with current backup at today's scale. **Post-V2:** big storage/backup epic (SQLite and/or multi-file dump — not small patches). |
 
 **ID:** **D-35** in deferred tracker. Aligns with backlog reliability item *Very large bookmark libraries*.
 

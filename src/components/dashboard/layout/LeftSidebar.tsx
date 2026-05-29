@@ -16,6 +16,7 @@ import {
   Search,
   Tags,
   HelpCircle,
+  Workflow,
 } from 'lucide-react';
 import { DashboardView } from './DashboardLayout';
 import type { Collection, Item, Project } from '../../../lib/db';
@@ -98,6 +99,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       title: 'Tools',
       items: [
         { icon: Search, label: 'Search', id: 'search' },
+        { icon: Workflow, label: 'Enrichment Hub', id: 'pipeline' },
         { icon: Upload, label: 'Import Studio', id: 'import-studio' },
         { icon: Tags, label: 'AI Categories', id: 'ai-categories' },
         { icon: Terminal, label: 'Tab Commander', id: 'tab-commander' },

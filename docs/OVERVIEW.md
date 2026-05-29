@@ -95,7 +95,7 @@ Chrome MV3 extension
 - AI pipeline hardening V1.1 (Task 03): incremental classify-by-hash, quality gate tiers, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks toolbar: Results / Enrich / Categories), queue reconcilers, `pending_discover` for no-topic outcomes.
 - Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion; CLI eval; dev `SearchDevPanel` for R&D.
 - **Doc embedding step (Task 04):** `embedBackfillPlan` + `embed-incremental` CLI; vectors in `ai_item_signals`.
-- **V2 product UX (Task 05):** **V2-A + 05.B + 05.C shipped** (quick access, polish bundle: classify batch, pin sort, Help). **05.8** + **D-41** deferred. **Top:** V2-C. **End of V2:** **D-35** backup/export scale ([`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md#end-of-v2-backup--export-scale)).
+- **V2 product UX (Task 05):** **V2-A + 05.B + 05.C + D-10 shipped.** **Finishing V2:** [`TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md). **Post-V2 #1:** D-35 storage/backup big change.
 
 ---
 
@@ -110,15 +110,15 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Area | Status |
 |------|--------|
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
-| **V2 — Product (active)** | **05.1–05.7, 05.B, 05.C shipped.** **Next:** V2-C; **D-35** before V2 close. Deferred: D-26+W6, D-25, 05.8, D-41 ([`V2-DEFERRED-TRACKER`](temp/V2-DEFERRED-TRACKER.md)). |
+| **V2 — Product (active)** | **05.1–05.7, 05.B, 05.C, D-10 shipped.** **Finishing V2:** [`TASK-V2-CLOSE`](temp/TASK-V2-CLOSE.md). **Post-V2:** **V2.1** SQLite WASM local default → **V2.2+** optional cloud/sharing. |
 | **AI Categorization (V1)** | Backend shipped. Product: browse taxonomy (Tools), accept/reject suggestions (Inspector), digest queues (Home). |
 | **Search** | Product hybrid search shipped (**05.2**); dev score breakdown in `SearchDevPanel`. |
-| **Enrichment** | Read (**05.3**) + single-link run/rerun (**05.5**); batch/maintenance → **05.6** / V2-C. |
+| **Enrichment / fetch** | **D-10 shipped:** headless hardening, X threads, tab-session + `file://` single-file. **D-45 tracked:** bulk folder scan for local PDFs/papers (not implemented). |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | **Shipped (05.B + 05.C):** pin/fav/trash; pin sort-to-top; batch classify from Home. Open: 30-day purge, per-project quick-access filters. |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
-| **Backup / sync** | Live debounced `latest.json` on all DB writes (incl. pin/fav/trash). **D-35 (end of V2):** full snapshot rewrite does not scale — must improve before closing V2. Scheduled rotation + runtime re-check still pending. |
-| **Bulk bookmark import** | **Commit path shipped** (batch merge/dedupe). **Next:** import polish (cover, provenance, folder→collection), scale/backup posture for huge libraries, enrichment + AI categorization (see [`BACKLOG.md`](BACKLOG.md)). |
+| **Storage / backup** | **V2:** IndexedDB + `latest.json` (unchanged). **V2.1:** SQLite WASM + OPFS. **V2.2+:** optional BYO cloud (Turso), sharing. |
+| **Bulk bookmark import** | **Commit path shipped** (batch merge/dedupe). **Next:** import polish (**D-38**), **local folder library (D-45)**, provenance (**D-05**), scale/backup (**D-35**). |
 
 ---
 
@@ -134,4 +134,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-05-27 — V1 closed. V2-A: 05.1–05.5 shipped. Next: D-40 / 05.6 / D-25. [`BACKLOG.md`](BACKLOG.md), [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*
+*Last updated: 2026-05-29 — Finishing V2 without D-35. Post-V2: storage/backup big change. [`TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md).*

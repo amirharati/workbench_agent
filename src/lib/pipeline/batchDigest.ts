@@ -83,9 +83,12 @@ function buildBatchMessage(input: {
   classifyError?: string;
   remaining?: number;
   total: number;
+  fetchOnly?: boolean;
 }): string {
   const parts: string[] = [];
-  if (input.enriched > 0) parts.push(`${input.enriched} fetched & summarized`);
+  if (input.enriched > 0) {
+    parts.push(input.fetchOnly ? `${input.enriched} fetched` : `${input.enriched} fetched & summarized`);
+  }
   if (input.skipped > 0) {
     parts.push(
       input.skipped === input.total && input.enriched === 0 && input.failed === 0
@@ -110,7 +113,7 @@ export function formatBatchDigestProgress(update: BatchDigestProgress): string {
     case 'classify':
       return `Step 2/2 — Classify: ${update.current}/${update.total}`;
     case 'done':
-      return 'Pipeline complete';
+      return 'Enrichment complete';
     default:
       return update.label;
   }
@@ -134,6 +137,12 @@ export async function runBatchDigest(
     collectItemResults?: boolean;
     /** Re-fetch and compare content hash (import pipeline / merged bookmarks). */
     refetchCompare?: boolean;
+    /** Force network re-fetch even when content hash unchanged. */
+    forceEnrich?: boolean;
+    /** Fetch only — skip AI extract during enrich phase. */
+    skipAi?: boolean;
+    /** Re-run classify LLM even when text hash matches prior classification. */
+    forceReclassify?: boolean;
   }
 ): Promise<BatchDigestResult> {
   const uniqueIds = [...new Set(itemIds.filter(Boolean))];
@@ -177,7 +186,8 @@ export async function runBatchDigest(
       mode: 'full',
       itemIds: uniqueIds,
       maxItems: maxEnrich,
-      force: false,
+      force: options?.forceEnrich === true,
+      skipAi: options?.skipAi === true,
       signal: options?.signal,
       collectItemResults: options?.collectItemResults,
       refetchCompare: options?.refetchCompare,
@@ -215,6 +225,7 @@ export async function runBatchDigest(
         itemIds: uniqueIds,
         maxItems: maxClassify,
         autoDiscover: false,
+        forceReclassify: options?.forceReclassify === true,
         onProgress: (p) => {
           options?.onProgress?.({
             phase: 'classify',
@@ -267,6 +278,7 @@ export async function runBatchDigest(
             classifyError,
             remaining,
             total: uniqueIds.length,
+            fetchOnly: doEnrich && !doClassify && options?.skipAi === true,
           });
 
   return {

@@ -109,6 +109,8 @@ export interface EnrichBatchOptions {
   collectItemResults?: boolean;
   /** Re-fetch saved URLs and compare content hash (import / digest refresh). */
   refetchCompare?: boolean;
+  /** Fetch and parse only — do not run AI extract (Enrichment Hub per-step actions). */
+  skipAi?: boolean;
 }
 
 export interface EnrichBatchProgress {

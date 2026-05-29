@@ -9,11 +9,13 @@ import type {
   AiItemSignal,
   AiTaxonomyState,
 } from './categorization/types';
+import type { TrashHistoryEntry } from './trashHistory';
+import { getTrashHistoryMap, recordTrashHistory } from './trashHistory';
 
 export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
 
 const DB_NAME = 'personal-tools-db';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 // The default project for orphan items (items without a specific project)
 const DEFAULT_PROJECT_ID = 'project_default';
@@ -191,6 +193,11 @@ interface TabManagerDB extends DBSchema {
   ai_taxonomy_state: {
     key: string;
     value: AiTaxonomyState;
+  };
+  trash_history: {
+    key: string;
+    value: TrashHistoryEntry;
+    indexes: { 'by-trashed': number };
   };
 }
 
@@ -662,6 +669,37 @@ export const getDB = () => {
 
         if (!db.objectStoreNames.contains('ai_taxonomy_state')) {
           db.createObjectStore('ai_taxonomy_state', { keyPath: 'id' });
+        }
+
+        // Trash discard registry (v9) — survives permanent delete for import filtering
+        if (!db.objectStoreNames.contains('trash_history')) {
+          const store = db.createObjectStore('trash_history', { keyPath: 'normalizedUrl' });
+          store.createIndex('by-trashed', 'trashedAt');
+        } else {
+          const store = transaction.objectStore('trash_history');
+          if (!store.indexNames.contains('by-trashed')) {
+            store.createIndex('by-trashed', 'trashedAt');
+          }
+        }
+
+        if (oldVersion < 9 && db.objectStoreNames.contains('trash_history') && db.objectStoreNames.contains('items')) {
+          const trashStore = transaction.objectStore('trash_history');
+          const items: Item[] = await transaction.objectStore('items').getAll();
+          for (const item of items) {
+            if (!item.deletedAt || !item.url || !isHttpUrl(item.url)) continue;
+            const normalizedUrl = normalizeBookmarkUrl(item.url);
+            const existing = await trashStore.get(normalizedUrl);
+            if (existing) continue;
+            await trashStore.put({
+              normalizedUrl,
+              url: item.url,
+              title: item.title || item.url,
+              reason: 'Previously in trash (migrated)',
+              reasonCode: 'manual',
+              itemId: item.id,
+              trashedAt: item.deletedAt,
+            } satisfies TrashHistoryEntry);
+          }
         }
 
         // ---- v7: hierarchy fields on legacy flat categories ----
@@ -1217,6 +1255,10 @@ export const removeItemFromCollection = async (
       deletedAt: now,
       updated_at: now,
     });
+    await recordTrashHistory(item, {
+      reason: 'Removed from last collection',
+      reasonCode: 'remove_last_collection',
+    });
     notifyDataChanged('item.update');
     return { removed: true, itemDeleted: false, itemTrashed: true, remainingPlacements: 0 };
   }
@@ -1566,10 +1608,24 @@ export interface BulkImportAffectedItem {
   outcome: 'created' | 'merged';
 }
 
+export interface BulkImportSkippedTrashedItem {
+  url: string;
+  title: string;
+  reason: string;
+  trashedAt: number;
+}
+
+export interface BulkImportOptions {
+  /** Skip URLs recorded in trash history (user discarded them earlier). */
+  skipPreviouslyTrashed?: boolean;
+}
+
 export interface BulkImportResult {
   created: number;
   merged: number;
   skipped: number;
+  skippedPreviouslyTrashed: number;
+  skippedTrashedItems: BulkImportSkippedTrashedItem[];
   /** Item ids created in this import (for AI queue). */
   createdItemIds: string[];
   /** Item ids written in this import (created + merged into existing). */
@@ -1584,7 +1640,8 @@ export interface BulkImportResult {
  */
 export const bulkImportBookmarks = async (
   candidates: ImportCandidate[],
-  collectionId: string
+  collectionId: string,
+  options?: BulkImportOptions
 ): Promise<BulkImportResult> => {
   const db = await getDB();
   const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(db);
@@ -1593,6 +1650,8 @@ export const bulkImportBookmarks = async (
   let created = 0;
   let merged = 0;
   let skipped = 0;
+  let skippedPreviouslyTrashed = 0;
+  const skippedTrashedItems: BulkImportSkippedTrashedItem[] = [];
   const createdItemIds: string[] = [];
   const affectedItemIds: string[] = [];
   const affectedItems: BulkImportAffectedItem[] = [];
@@ -1633,11 +1692,27 @@ export const bulkImportBookmarks = async (
     existingByNormalizedUrl.set(normalizeBookmarkUrl(item.url), item);
   }
 
+  const trashHistoryMap =
+    options?.skipPreviouslyTrashed === true ? await getTrashHistoryMap() : null;
+
   const tx = db.transaction(['items'], 'readwrite');
   const itemsStore = tx.objectStore('items');
 
   for (const [normalizedUrl, dupes] of byUrl) {
     const best = pickBestCandidate(dupes);
+
+    if (trashHistoryMap?.has(normalizedUrl)) {
+      const entry = trashHistoryMap.get(normalizedUrl)!;
+      skippedPreviouslyTrashed += 1;
+      skippedTrashedItems.push({
+        url: best.url,
+        title: best.title || best.url,
+        reason: entry.reason,
+        trashedAt: entry.trashedAt,
+      });
+      continue;
+    }
+
     const existing = existingByNormalizedUrl.get(normalizedUrl);
     const incomingNotes = best.notes || best.description;
 
@@ -1745,7 +1820,16 @@ export const bulkImportBookmarks = async (
     }
   }
 
-  return { created, merged, skipped, createdItemIds, affectedItemIds, affectedItems };
+  return {
+    created,
+    merged,
+    skipped,
+    skippedPreviouslyTrashed,
+    skippedTrashedItems,
+    createdItemIds,
+    affectedItemIds,
+    affectedItems,
+  };
 };
 
 export const exportDB = async () => {
@@ -1766,6 +1850,7 @@ export const exportDB = async () => {
     let ai_item_category_links: AiItemCategoryLink[] = [];
     let ai_item_signals: AiItemSignal[] = [];
     let ai_taxonomy_state: AiTaxonomyState[] = [];
+    let trash_history: TrashHistoryEntry[] = [];
     try {
       if (db.objectStoreNames.contains('ai_categories')) {
         ai_categories = await db.getAll('ai_categories');
@@ -1774,6 +1859,9 @@ export const exportDB = async () => {
       }
       if (db.objectStoreNames.contains('ai_taxonomy_state')) {
         ai_taxonomy_state = await db.getAll('ai_taxonomy_state');
+      }
+      if (db.objectStoreNames.contains('trash_history')) {
+        trash_history = await db.getAll('trash_history');
       }
     } catch {
       /* v5 backup restore */
@@ -1804,6 +1892,7 @@ export const exportDB = async () => {
         ai_item_category_links,
         ai_item_signals,
         ai_taxonomy_state,
+        trash_history,
       },
       null,
       2
@@ -1849,6 +1938,9 @@ export const verifyBackup = (
       : 0,
     ai_taxonomy_state: Array.isArray(data.ai_taxonomy_state)
       ? (data.ai_taxonomy_state as unknown[]).length
+      : 0,
+    trash_history: Array.isArray(data.trash_history)
+      ? (data.trash_history as unknown[]).length
       : 0,
     pipelineExportCounts:
       data._pipelineExportCounts && typeof data._pipelineExportCounts === 'object'
@@ -1920,7 +2012,8 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
       | 'ai_categories'
       | 'ai_item_category_links'
       | 'ai_item_signals'
-      | 'ai_taxonomy_state';
+      | 'ai_taxonomy_state'
+      | 'trash_history';
     const storeNames: ImportStore[] = (
       [
         'projects',
@@ -1933,6 +2026,7 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
         'ai_item_category_links',
         'ai_item_signals',
         'ai_taxonomy_state',
+        'trash_history',
       ] as ImportStore[]
     ).filter((name) => db.objectStoreNames.contains(name));
 
@@ -2001,6 +2095,12 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
           const metaStore = tx.objectStore('ai_taxonomy_state');
           await Promise.all(
             (data.ai_taxonomy_state as AiTaxonomyState[]).map((row) => metaStore.put(row))
+          );
+        }
+        if (data.trash_history && db.objectStoreNames.contains('trash_history')) {
+          const trashStore = tx.objectStore('trash_history');
+          await Promise.all(
+            (data.trash_history as TrashHistoryEntry[]).map((row) => trashStore.put(row))
           );
         }
       

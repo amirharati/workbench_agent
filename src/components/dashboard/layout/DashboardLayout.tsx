@@ -45,6 +45,7 @@ export type DashboardView =
   | 'tab-commander'
   | 'ai-categories'
   | 'import-studio'
+  | 'pipeline'
   | 'bookmarks'
   | 'notes'
   | 'collections'
@@ -65,7 +66,7 @@ export interface ItemTab {
   }[];
 }
 
-const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander', 'ai-categories', 'import-studio', 'help']);
+const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander', 'ai-categories', 'import-studio', 'pipeline', 'help']);
 const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search']);
 
 interface DashboardLayoutProps {
@@ -711,6 +712,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onClearPipelineBrowse={handleClearPipelineBrowse}
                 onBatchProcessQueue={handleBatchProcessQueue}
                 onSelectView={handleSelectView}
+                onOpenItemFromSearch={handleOpenItemTab}
+                onClearProjectScope={handleClearProjectScope}
+                onClearCollectionScope={handleClearCollectionScope}
+                onResetScope={handleResetScope}
               />
             </div>
           ) : isFullMiddleView ? (

@@ -38,6 +38,8 @@ export type ExtractEnrichmentOptions = {
   /** CLI / tests — skip chrome.storage lookup */
   settings?: AISettings;
   promptVariant?: PromptVariant;
+  /** Bypass minimum text length gates (inspector "run anyway"). */
+  forceShort?: boolean;
 };
 
 const SUMMARY_MAX = 3000;
@@ -107,7 +109,8 @@ export async function extractEnrichmentWithAI(
   const listingPage = isLikelyListingUrl(url) || looksLikeListingMarkdown(markdown);
   const effectiveKind = listingPage ? 'generic' : sourceKind;
   const rawBody = markdown.trim().slice(0, 12_000);
-  if (rawBody.length < 80) {
+  const minChars = options?.forceShort ? 1 : 80;
+  if (rawBody.length < minChars) {
     return {
       status: 'content_too_short',
       error: 'Fetched text too short for AI extraction.',
@@ -116,7 +119,7 @@ export async function extractEnrichmentWithAI(
   }
 
   const prepared = prepareExtractInput(title, rawBody, effectiveKind);
-  if (prepared.shouldSkip) {
+  if (prepared.shouldSkip && !options?.forceShort) {
     return {
       status: 'empty_response',
       error: prepared.skipReason ?? 'No substantive text after removing login/cookie chrome.',
@@ -124,8 +127,8 @@ export async function extractEnrichmentWithAI(
     };
   }
 
-  const body = prepared.body;
-  if (body.length < 80) {
+  const body = prepared.shouldSkip ? rawBody : prepared.body;
+  if (body.length < minChars) {
     return {
       status: 'content_too_short',
       error: 'Fetched text too short after chrome strip.',

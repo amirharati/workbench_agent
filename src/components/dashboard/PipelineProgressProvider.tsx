@@ -13,6 +13,16 @@ import {
   type BatchDigestResult,
   type SingleLinkDigestResult,
 } from '../../lib/pipeline';
+import { reextractAI, embedIncrementalBatch, type EnrichmentResult } from '../../lib/enrichment';
+import {
+  buildClassifyReportRows,
+  buildPipelineReportRows,
+  formatPipelineReportSummary,
+  pipelineReportStats,
+  resolveBatchReportAction,
+  type PipelineReportRow,
+} from '../../lib/pipeline/pipelineBatchReport';
+import { PipelineBatchReportPanel } from './PipelineBatchReportPanel';
 
 type SummaryTone = 'success' | 'error' | 'info';
 
@@ -33,6 +43,7 @@ type ModalState =
       title: string;
       summary: string;
       tone: SummaryTone;
+      reportRows?: PipelineReportRow[];
     };
 
 export interface RunBatchWithProgressOptions {
@@ -45,12 +56,27 @@ export interface RunBatchWithProgressOptions {
   refetchCompare?: boolean;
   /** Show Cancel and wire AbortSignal (enrich phase only). */
   cancellable?: boolean;
-}
+  /** Collect per-item enrich outcomes for the results report. */
+  collectItemResults?: boolean;
+  /** itemId → display title for the results report. */
+  itemLabels?: Record<string, string>;
+    /** Force network re-fetch even when content hash unchanged. */
+    forceEnrich?: boolean;
+    /** Fetch only — skip AI extract during enrich phase. */
+    skipAi?: boolean;
+    /** Re-run classify LLM even when text hash unchanged (Re-digest). */
+    forceReclassify?: boolean;
+  }
 
 export interface RunSingleWithProgressOptions {
   title?: string;
   forceEnrich?: boolean;
   skipClassify?: boolean;
+  /** Fetch only — skip AI extract (Re-fetch in inspector). */
+  skipAi?: boolean;
+  tabSessionOnly?: boolean;
+  /** Display title for the results report. */
+  itemLabel?: string;
 }
 
 interface PipelineProgressContextValue {
@@ -65,6 +91,18 @@ interface PipelineProgressContextValue {
     itemId: string,
     options?: RunSingleWithProgressOptions
   ) => Promise<SingleLinkDigestResult>;
+  runReextract: (
+    itemId: string,
+    options?: { title?: string; itemLabel?: string; force?: boolean }
+  ) => Promise<EnrichmentResult>;
+  runReextractBatch: (
+    itemIds: string[],
+    options?: { title?: string; itemLabels?: Record<string, string>; force?: boolean }
+  ) => Promise<EnrichmentResult[]>;
+  runEmbedBatch: (
+    itemIds: string[],
+    options?: { title?: string }
+  ) => Promise<{ embedded: number; skipped: number; failed: number }>;
   closeModal: () => void;
 }
 
@@ -133,6 +171,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           maxClassify: options?.maxClassify,
           processAll: options?.processAll,
           refetchCompare: options?.refetchCompare,
+          forceEnrich: options?.forceEnrich,
+          skipAi: options?.skipAi,
+          forceReclassify: options?.forceReclassify,
+          collectItemResults: options?.collectItemResults,
           signal: controller?.signal,
           onProgress: (p) => {
             setModal((prev) =>
@@ -148,12 +190,30 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           },
         });
 
-        const summary =
-          result.enrichCancelled || controller?.signal.aborted
-            ? 'Cancelled'
+        const cancelled = result.enrichCancelled || controller?.signal.aborted;
+        const itemLabels = options?.itemLabels ?? {};
+        const batchAction = resolveBatchReportAction(options);
+        let reportRows: PipelineReportRow[] | undefined;
+        if (!cancelled) {
+          if (result.itemEnrichResults?.length) {
+            reportRows = buildPipelineReportRows(result.itemEnrichResults, itemLabels, {
+              action: batchAction,
+            });
+          } else if (
+            batchAction === 'batch_classify' &&
+            result.classifySummary &&
+            itemIds.length > 0
+          ) {
+            reportRows = buildClassifyReportRows(itemIds, itemLabels, result.classifySummary);
+          }
+        }
+        const summary = cancelled
+          ? 'Cancelled'
+          : reportRows?.length
+            ? formatPipelineReportSummary(pipelineReportStats(reportRows))
             : result.message;
         const tone: SummaryTone =
-          result.enrichCancelled || controller?.signal.aborted
+          cancelled
             ? 'info'
             : result.classifyError || result.failed > 0 || (result.classifySummary?.llmErrors ?? 0) > 0
               ? 'error'
@@ -166,9 +226,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         setModal({
           open: true,
           phase: 'done',
-          title,
+          title: cancelled ? title : `${title} — complete`,
           summary,
           tone,
+          reportRows,
         });
         await onRefresh?.();
         return result;
@@ -231,6 +292,8 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         const result = await runSingleLinkDigest(itemId, {
           forceEnrich: options?.forceEnrich,
           skipClassify: options?.skipClassify,
+          skipAi: options?.skipAi,
+          tabSessionOnly: options?.tabSessionOnly,
           onProgress: (p) => {
             setModal((prev) =>
               prev.open && prev.phase === 'running'
@@ -240,14 +303,21 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           },
         });
 
+        const reportAction =
+          options?.skipAi || options?.skipClassify ? 'fetch' : 'full_digest';
+        const reportRows = buildPipelineReportRows([result.enrich], {
+          [itemId]: options?.itemLabel ?? itemId,
+        }, { action: reportAction });
+        const stats = pipelineReportStats(reportRows);
         const tone: SummaryTone =
           result.enrich.status === 'failed' ? 'error' : 'success';
         setModal({
           open: true,
           phase: 'done',
-          title,
-          summary: result.message,
+          title: `${title} — complete`,
+          summary: result.message || formatPipelineReportSummary(stats),
           tone,
+          reportRows,
         });
         await onRefresh?.();
         return result;
@@ -269,9 +339,224 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
     [onRefresh]
   );
 
+  const runReextract = useCallback(
+    async (
+      itemId: string,
+      options?: { title?: string; itemLabel?: string; force?: boolean }
+    ) => {
+      const title =
+        options?.title ?? (options?.force ? 'Run AI anyway' : 'Re-run AI');
+
+      setIsRunning(true);
+      setIsCancellable(false);
+      setModal({
+        open: true,
+        phase: 'running',
+        title,
+        progressLabel: 'Extracting summary…',
+        current: 0,
+        total: 1,
+        cancellable: false,
+      });
+
+      try {
+        const result = await reextractAI(itemId, { force: options?.force });
+        const reportRows = buildPipelineReportRows([result], {
+          [itemId]: options?.itemLabel ?? itemId,
+        }, { action: 'ai_extract' });
+        const stats = pipelineReportStats(reportRows);
+        const tone: SummaryTone = result.status === 'failed' ? 'error' : 'success';
+        setModal({
+          open: true,
+          phase: 'done',
+          title: `${title} — complete`,
+          summary: formatPipelineReportSummary(stats),
+          tone,
+          reportRows,
+        });
+        await onRefresh?.();
+        return result;
+      } catch (e) {
+        const summary = e instanceof Error ? e.message : 'Re-run AI failed';
+        setModal({
+          open: true,
+          phase: 'done',
+          title,
+          summary,
+          tone: 'error',
+        });
+        throw e;
+      } finally {
+        setIsRunning(false);
+        setIsCancellable(false);
+      }
+    },
+    [onRefresh]
+  );
+
+  const runReextractBatch = useCallback(
+    async (
+      itemIds: string[],
+      options?: { title?: string; itemLabels?: Record<string, string>; force?: boolean }
+    ): Promise<EnrichmentResult[]> => {
+      const uniqueIds = [...new Set(itemIds.filter(Boolean))];
+      const title =
+        options?.title ??
+        (options?.force
+          ? `Run AI anyway (${uniqueIds.length})`
+          : `Re-run AI (${uniqueIds.length})`);
+      const itemLabels = options?.itemLabels ?? {};
+
+      setIsRunning(true);
+      setIsCancellable(false);
+      setModal({
+        open: true,
+        phase: 'running',
+        title,
+        progressLabel: 'Starting…',
+        current: 0,
+        total: uniqueIds.length,
+        cancellable: false,
+      });
+
+      const results: EnrichmentResult[] = [];
+      try {
+        for (let i = 0; i < uniqueIds.length; i++) {
+          const itemId = uniqueIds[i];
+          setModal((prev) =>
+            prev.open && prev.phase === 'running'
+              ? {
+                  ...prev,
+                  progressLabel: `Re-running AI ${i + 1}/${uniqueIds.length}…`,
+                  current: i,
+                  total: uniqueIds.length,
+                }
+              : prev
+          );
+          results.push(await reextractAI(itemId, { force: options?.force }));
+        }
+
+        const reportRows = buildPipelineReportRows(results, itemLabels, { action: 'ai_extract' });
+        const stats = pipelineReportStats(reportRows);
+        const tone: SummaryTone = stats.failed > 0 ? 'error' : 'success';
+        setModal({
+          open: true,
+          phase: 'done',
+          title: `${title} — complete`,
+          summary: formatPipelineReportSummary(stats),
+          tone,
+          reportRows,
+        });
+        await onRefresh?.();
+        return results;
+      } catch (e) {
+        const summary = e instanceof Error ? e.message : 'Re-run AI failed';
+        setModal({
+          open: true,
+          phase: 'done',
+          title,
+          summary,
+          tone: 'error',
+        });
+        throw e;
+      } finally {
+        setIsRunning(false);
+        setIsCancellable(false);
+      }
+    },
+    [onRefresh]
+  );
+
+  const runEmbedBatch = useCallback(
+    async (
+      itemIds: string[],
+      options?: { title?: string }
+    ): Promise<{ embedded: number; skipped: number; failed: number }> => {
+      const uniqueIds = [...new Set(itemIds.filter(Boolean))];
+      const title = options?.title ?? `Re-embed (${uniqueIds.length})`;
+
+      setIsRunning(true);
+      setIsCancellable(false);
+      setModal({
+        open: true,
+        phase: 'running',
+        title,
+        progressLabel: 'Embedding search vectors…',
+        current: 0,
+        total: uniqueIds.length,
+        cancellable: false,
+      });
+
+      try {
+        const summary = await embedIncrementalBatch({
+          itemIds: uniqueIds,
+          onProgress: (p) => {
+            setModal((prev) =>
+              prev.open && prev.phase === 'running'
+                ? {
+                    ...prev,
+                    progressLabel:
+                      p.phase === 'prepare'
+                        ? 'Preparing embed batch…'
+                        : `Embedding batch ${p.batchIndex}/${p.batchTotal}…`,
+                    current: p.embeddedSoFar,
+                    total: uniqueIds.length,
+                  }
+                : prev
+            );
+          },
+        });
+
+        const embedded = summary.embedded;
+        const skipped =
+          summary.skippedHash + summary.skippedIneligible + summary.skippedNoKey;
+        const failed = summary.embedFailed;
+        const parts: string[] = [];
+        if (embedded > 0) parts.push(`${embedded} embedded`);
+        if (skipped > 0) parts.push(`${skipped} skipped`);
+        if (failed > 0) parts.push(`${failed} failed`);
+        const summaryText = parts.length ? parts.join(' · ') : 'No changes';
+
+        setModal({
+          open: true,
+          phase: 'done',
+          title: `${title} — complete`,
+          summary: summaryText,
+          tone: failed > 0 ? 'error' : embedded > 0 ? 'success' : 'info',
+        });
+        await onRefresh?.();
+        return { embedded, skipped, failed };
+      } catch (e) {
+        const summary = e instanceof Error ? e.message : 'Re-embed failed';
+        setModal({
+          open: true,
+          phase: 'done',
+          title,
+          summary,
+          tone: 'error',
+        });
+        throw e;
+      } finally {
+        setIsRunning(false);
+        setIsCancellable(false);
+      }
+    },
+    [onRefresh]
+  );
+
   return (
     <PipelineProgressContext.Provider
-      value={{ isRunning, isCancellable, cancel, runBatch, runSingle, closeModal }}
+      value={{
+        isRunning,
+        isCancellable,
+        cancel,
+        runBatch,
+        runSingle,
+        runReextract,
+        runReextractBatch,
+        runEmbedBatch,
+        closeModal,
+      }}
     >
       {children}
       {modal.open ? (
@@ -321,7 +606,7 @@ function PipelineProgressModal({
       <div
         style={{
           width: '100%',
-          maxWidth: 420,
+          maxWidth: modal.phase === 'done' && modal.reportRows?.length ? 640 : 420,
           background: 'var(--bg-panel)',
           color: 'var(--text)',
           borderRadius: 12,
@@ -424,22 +709,26 @@ function PipelineProgressModal({
           </>
         ) : (
           <>
-            <p
-              style={{
-                margin: '0 0 16px',
-                fontSize: 'var(--text-sm)',
-                lineHeight: 1.55,
-                color:
-                  modal.tone === 'error'
-                    ? '#ef4444'
-                    : modal.tone === 'info'
-                      ? 'var(--text-muted)'
-                      : 'var(--text)',
-              }}
-            >
-              {modal.summary}
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            {modal.reportRows?.length ? (
+              <PipelineBatchReportPanel rows={modal.reportRows} summary={modal.summary} />
+            ) : (
+              <p
+                style={{
+                  margin: '0 0 16px',
+                  fontSize: 'var(--text-sm)',
+                  lineHeight: 1.55,
+                  color:
+                    modal.tone === 'error'
+                      ? '#ef4444'
+                      : modal.tone === 'info'
+                        ? 'var(--text-muted)'
+                        : 'var(--text)',
+                }}
+              >
+                {modal.summary}
+              </p>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
               <button
                 type="button"
                 onClick={onClose}

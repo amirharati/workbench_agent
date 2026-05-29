@@ -17,6 +17,7 @@ import {
   Layers,
   GripHorizontal,
   Zap,
+  Workflow,
 } from 'lucide-react';
 
 function modKeyLabel(): string {
@@ -233,6 +234,11 @@ export const HelpView: React.FC = () => {
             icon={<Search size={16} />}
             title="Search"
             desc="Full library search with filters. You can also search from Home or open search in a Home tab."
+          />
+          <FeatureRow
+            icon={<Workflow size={16} />}
+            title="Enrichment Hub"
+            desc="Fetch, AI, embed, and classify — inspect items, filter by issue type, and run bulk or per-step actions."
           />
           <FeatureRow
             icon={<Upload size={16} />}
