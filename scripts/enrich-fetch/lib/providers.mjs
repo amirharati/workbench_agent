@@ -180,7 +180,12 @@ export async function fetchSyndication(url) {
 
   const { signal, clear } = withTimeout(TIMEOUT_MS);
   try {
-    const result = await fetchXThreadFromFx(ids.statusId, { signal, fallbackUser: ids.user });
+    const result = await fetchXThreadFromFx(ids.statusId, {
+      signal,
+      fallbackUser: ids.user,
+      bookmarkUrl: url,
+      linkFollow: true,
+    });
     if (!result.ok) {
       return {
         ok: false,

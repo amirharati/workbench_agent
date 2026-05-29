@@ -374,6 +374,20 @@
     return match ? '@' + match[1] : cleanText(userEl.innerText || userEl.textContent);
   }
 
+  /** Main tweet text plus embedded quote tweet when present in the same article card. */
+  function tweetBodyFromArticle(article) {
+    var textEls = article.querySelectorAll('[data-testid="tweetText"]');
+    if (!textEls.length) return '';
+    var main = cleanText(textEls[0].innerText || textEls[0].textContent);
+    if (!main || isXErrorShell(main)) return '';
+    if (textEls.length < 2) return main;
+    var quoted = cleanText(
+      textEls[textEls.length - 1].innerText || textEls[textEls.length - 1].textContent
+    );
+    if (!quoted || quoted === main || isXErrorShell(quoted)) return main;
+    return main + '\n\n> Quote:\n> ' + quoted.replace(/\n/g, '\n> ');
+  }
+
   function extractXFromTexts(texts, handlesHint) {
     if (!texts.length) return null;
 
@@ -419,9 +433,8 @@
     var handles = [];
     for (var i = 0; i < articles.length; i++) {
       var article = articles[i];
-      var textEl = article.querySelector('[data-testid="tweetText"]');
-      var text = cleanText(textEl && (textEl.innerText || textEl.textContent));
-      if (!text || isXErrorShell(text)) continue;
+      var text = tweetBodyFromArticle(article);
+      if (!text) continue;
       texts.push(text);
       handles.push(handleFromArticle(article));
     }

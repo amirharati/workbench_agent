@@ -123,6 +123,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const prefillInFlightRef = useRef(false);
   const lastPrefilledRef = useRef<{ url: string; title: string }>({ url: '', title: '' });
   const activeTabUrlRef = useRef('');
+  /** Last item title mirrored into the form — used to apply digest tier2 upgrades without clobbering edits. */
+  const syncedItemTitleRef = useRef('');
 
   const themedSelectStyle: React.CSSProperties = {
     width: '100%',
@@ -225,7 +227,9 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const selectExistingItemForEdit = useCallback((item: Item, placementCollectionId?: string) => {
     setForceNewCopyMode(false);
     setSelectedExistingItemId(item.id);
-    setTitle(item.title || '');
+    const itemTitle = item.title || '';
+    syncedItemTitleRef.current = itemTitle;
+    setTitle(itemTitle);
     setUrl(item.url || '');
 
     const targetCollectionId = placementCollectionId || item.collectionIds?.[0];
@@ -315,6 +319,35 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     selectExistingItemForEdit,
   ]);
 
+  // Reflect DB title changes (digest / tier2) in the form without waiting for a tab switch.
+  useEffect(() => {
+    if (forceNewCopyMode) return;
+    const id = pipelineItemId;
+    if (!id) return;
+    const live = items.find((i) => i.id === id);
+    if (!live) return;
+    const formUrl = url.trim();
+    if (
+      formUrl &&
+      live.url &&
+      normalizeBookmarkUrl(formUrl) !== normalizeBookmarkUrl(live.url)
+    ) {
+      return;
+    }
+
+    const liveTitle = (live.title || '').trim();
+    const synced = syncedItemTitleRef.current;
+    if (liveTitle === synced) return;
+
+    syncedItemTitleRef.current = liveTitle;
+    setTitle((current) => {
+      const cur = current.trim();
+      if (cur !== synced && cur !== '') return current;
+      return liveTitle;
+    });
+    lastPrefilledRef.current.title = liveTitle;
+  }, [items, pipelineItemId, url, forceNewCopyMode]);
+
   const resetForm = () => {
     setTitle('');
     setUrl('');
@@ -323,6 +356,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     setSelectedExistingItemId(null);
     setSelectedPlacementCollectionId(null);
     setForceNewCopyMode(false);
+    syncedItemTitleRef.current = '';
   };
 
   const createProjectInline = async () => {

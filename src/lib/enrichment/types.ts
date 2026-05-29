@@ -136,6 +136,8 @@ export const ENRICHMENT_DEFAULTS = {
   concurrency: 2,
   timeoutMs: 25_000,
   maxAttempts: 4,
+  /** Truncate fetched markdown above this before AI / storage (PDFs, huge pages). */
+  maxFetchMarkdownChars: 150_000,
   maxResponseBytes: 2_000_000,
   richLocalMinChars: 400,
   minUsefulSnippetChars: 80,

@@ -1,28 +1,46 @@
-const FX_THREAD_API = 'https://api.fxtwitter.com/2/thread';
+import { appendXLinkFollowBodies } from './xLinkFollow';
 
-type FxTweet = {
+const FX_THREAD_API = 'https://api.fxtwitter.com/2/thread';
+const FX_STATUS_V2_API = 'https://api.fxtwitter.com/2/status';
+
+export type FxTweet = {
+  id?: string;
   text?: string;
   author?: { screen_name?: string };
-  quote?: { text?: string; author?: { screen_name?: string } };
+  replying_to?: string | null;
+  replying_to_status?: string | null;
+  quote?: FxTweet;
+  /** Populated when quoted tweet is expanded to a multi-part thread. */
+  quoteExpanded?: string;
   media?: { photos?: unknown[] };
 };
+
+const MAX_ROOT_WALK_HOPS = 20;
+const MAX_QUOTE_THREAD_EXPANDS = 2;
+
+function formatQuoteBlock(tweet: FxTweet): string {
+  if (tweet.quoteExpanded?.trim()) {
+    return `\n\n${tweet.quoteExpanded.trim()}`;
+  }
+  const q = tweet.quote;
+  if (!q?.text?.trim()) return '';
+  return [
+    '',
+    `> Quote from @${q.author?.screen_name || 'unknown'}:`,
+    `> ${q.text.trim()}`,
+  ].join('\n');
+}
 
 function formatTweetBody(tweet: FxTweet): string {
   const lines: string[] = [];
   const text = tweet?.text?.trim();
   if (!text) return '';
   lines.push(text);
-  if (tweet.quote?.text?.trim()) {
-    lines.push(
-      '',
-      `> Quote from @${tweet.quote.author?.screen_name || 'unknown'}:`,
-      `> ${tweet.quote.text.trim()}`
-    );
-  }
+  lines.push(formatQuoteBlock(tweet));
   if (Array.isArray(tweet.media?.photos) && tweet.media.photos.length) {
     lines.push('', `(${tweet.media.photos.length} photo(s) attached)`);
   }
-  return lines.join('\n');
+  return lines.join('\n').trim();
 }
 
 /** Merge FxTwitter thread[] into enrichment markdown. */
@@ -56,6 +74,110 @@ export function parseXStatusUser(url: string): { user: string; statusId: string 
   }
 }
 
+async function fetchFxStatusTweet(
+  statusId: string,
+  screenName: string,
+  signal?: AbortSignal
+): Promise<FxTweet | null> {
+  try {
+    const res = await fetch(`${FX_STATUS_V2_API}/${statusId}`, {
+      signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const payload = (await res.json()) as { status?: FxTweet };
+      if (payload?.status?.id) return payload.status;
+    }
+  } catch {
+    /* try v1 */
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.fxtwitter.com/${encodeURIComponent(screenName)}/status/${statusId}`,
+      { signal, headers: { Accept: 'application/json' } }
+    );
+    if (!res.ok) return null;
+    const payload = (await res.json()) as { tweet?: FxTweet };
+    return payload?.tweet ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Walk up author self-replies to the root status before /2/thread. */
+export async function resolveAuthorThreadRootId(
+  startId: string,
+  bookmarkUser: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const authorKey = bookmarkUser.replace(/^@/, '').toLowerCase();
+  let currentId = startId;
+  const seen = new Set<string>([currentId]);
+
+  for (let hop = 0; hop < MAX_ROOT_WALK_HOPS; hop++) {
+    const tweet = await fetchFxStatusTweet(currentId, bookmarkUser, signal);
+    if (!tweet) break;
+
+    const parentId = tweet.replying_to_status
+      ? String(tweet.replying_to_status)
+      : null;
+    if (!parentId || seen.has(parentId)) break;
+
+    const parentUser = (tweet.replying_to || '').replace(/^@/, '').toLowerCase();
+    if (parentUser && parentUser !== authorKey) break;
+
+    seen.add(parentId);
+    currentId = parentId;
+  }
+
+  return currentId;
+}
+
+async function fetchThreadArray(
+  statusId: string,
+  signal?: AbortSignal
+): Promise<FxTweet[] | null> {
+  const res = await fetch(`${FX_THREAD_API}/${statusId}`, {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) return null;
+  const payload = (await res.json()) as { thread?: FxTweet[] };
+  const thread = payload?.thread;
+  if (!Array.isArray(thread) || !thread.length) return null;
+  return thread;
+}
+
+/** Expand quoted tweets that point at multi-part threads (or fill missing quote text). */
+async function enrichQuotedTweets(
+  thread: FxTweet[],
+  signal?: AbortSignal
+): Promise<void> {
+  let expanded = 0;
+  for (const tweet of thread) {
+    if (expanded >= MAX_QUOTE_THREAD_EXPANDS) break;
+    const quote = tweet.quote;
+    const quoteId = quote?.id;
+    if (!quoteId) continue;
+
+    const quotedThread = await fetchThreadArray(quoteId, signal);
+    if (!quotedThread?.length) continue;
+
+    const qUser = quote.author?.screen_name || quotedThread[0].author?.screen_name || 'i';
+
+    if (quotedThread.length > 1) {
+      const md = threadToMarkdown(quotedThread, qUser);
+      if (md) {
+        tweet.quoteExpanded = `### Quoted thread from @${qUser} (${quotedThread.length} parts)\n\n${md}`;
+        expanded++;
+      }
+    } else if (!quote.text?.trim() && quotedThread[0]?.text?.trim()) {
+      tweet.quote = { ...quote, text: quotedThread[0].text };
+    }
+  }
+}
+
 export type FxThreadFetchResult =
   | {
       ok: true;
@@ -63,39 +185,55 @@ export type FxThreadFetchResult =
       title: string;
       rawBytesApprox: number;
       partCount: number;
-      fetchSourceId: 'syndication' | 'syndication-thread';
+      fetchSourceId: 'syndication' | 'syndication-thread' | 'syndication-expanded';
+      rootStatusId?: string;
+      linkFollowCount?: number;
     }
   | { ok: false; errorCode: 'rate_limited' | 'provider_error' | 'parse_empty' | 'network' | 'timeout' };
 
-/** Fetch author self-reply chain via FxTwitter v2 /2/thread/{statusId}. */
+/**
+ * Full X fetch: root walk → author thread → quote expand → link follow (depth 1).
+ */
 export async function fetchXThreadFromFx(
   statusId: string,
-  options: { signal?: AbortSignal; fallbackUser?: string } = {}
+  options: {
+    signal?: AbortSignal;
+    fallbackUser?: string;
+    bookmarkUrl?: string;
+    linkFollow?: boolean;
+  } = {}
 ): Promise<FxThreadFetchResult> {
-  const { signal, fallbackUser = 'i' } = options;
+  const { signal, fallbackUser = 'i', bookmarkUrl, linkFollow = true } = options;
 
   try {
-    const res = await fetch(`${FX_THREAD_API}/${statusId}`, {
-      signal,
-      headers: { Accept: 'application/json' },
-    });
-
-    if (res.status === 429) return { ok: false, errorCode: 'rate_limited' };
-    if (!res.ok) return { ok: false, errorCode: 'provider_error' };
-
-    const payload = (await res.json()) as { thread?: FxTweet[] };
-    const thread = payload?.thread;
-    if (!Array.isArray(thread) || !thread.length || !thread[0]?.text?.trim()) {
+    const rootId = await resolveAuthorThreadRootId(statusId, fallbackUser, signal);
+    const thread = await fetchThreadArray(rootId, signal);
+    if (!thread?.length || !thread[0]?.text?.trim()) {
       return { ok: false, errorCode: 'parse_empty' };
     }
 
-    const markdown = threadToMarkdown(thread, fallbackUser);
+    await enrichQuotedTweets(thread, signal);
+
+    let markdown = threadToMarkdown(thread, fallbackUser);
     if (!markdown) return { ok: false, errorCode: 'parse_empty' };
+
+    let linkFollowCount = 0;
+    if (linkFollow && bookmarkUrl) {
+      const beforeLen = markdown.length;
+      markdown = await appendXLinkFollowBodies(markdown, bookmarkUrl, signal);
+      if (markdown.length > beforeLen) {
+        linkFollowCount = extractLinkFollowCount(markdown, beforeLen);
+      }
+    }
 
     const author = thread[0].author?.screen_name || fallbackUser;
     const firstText = thread[0].text!.trim();
     const partCount = thread.length;
-    const fetchSourceId = partCount > 1 ? 'syndication-thread' : 'syndication';
+    let fetchSourceId: 'syndication' | 'syndication-thread' | 'syndication-expanded' =
+      partCount > 1 ? 'syndication-thread' : 'syndication';
+    if (linkFollowCount > 0 || thread.some((t) => t.quoteExpanded)) {
+      fetchSourceId = 'syndication-expanded';
+    }
 
     return {
       ok: true,
@@ -107,6 +245,8 @@ export async function fetchXThreadFromFx(
       rawBytesApprox: new TextEncoder().encode(markdown).length,
       partCount,
       fetchSourceId,
+      rootStatusId: rootId !== statusId ? rootId : undefined,
+      linkFollowCount: linkFollowCount || undefined,
     };
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') {
@@ -114,4 +254,9 @@ export async function fetchXThreadFromFx(
     }
     return { ok: false, errorCode: 'network' };
   }
+}
+
+function extractLinkFollowCount(full: string, bodyStartLen: number): number {
+  const tail = full.slice(bodyStartLen);
+  return (tail.match(/^## Linked:/gm) || []).length;
 }

@@ -98,6 +98,11 @@ export function titleLooksWeak(title: string, url: string): boolean {
 
   if (titleMatchesUrlSlug(t, url)) return true;
 
+  if (classifySourceKind(url) === 'x') {
+    if (t.length > 100) return true;
+    if (t.includes('\n')) return true;
+  }
+
   const withoutSuffix = stripSiteSuffix(t);
   if (withoutSuffix !== t && withoutSuffix.length < 12) return true;
   if (SITE_SUFFIX_RE.test(t) && withoutSuffix.length < 18) return true;
@@ -140,6 +145,10 @@ export function shouldUpgradeBookmarkTitle(
   }
 
   if (titleMatchesUrlSlug(current, url) && candidateCore.length >= 14) {
+    return true;
+  }
+
+  if (classifySourceKind(url) === 'x' && current.length > 80) {
     return true;
   }
 
@@ -203,27 +212,17 @@ export function checkEligibility(
     return { eligible: false, reason: 'backoff', sourceKind };
   }
 
-  if (!force && localLen >= ENRICHMENT_DEFAULTS.richLocalMinChars && !weakTitle) {
-    const xThin =
-      sourceKind === 'x' &&
-      localLen < ENRICHMENT_DEFAULTS.richLocalMinChars * 2 &&
-      !localBundle.includes('\n\n');
-    if (!xThin && !hasPriorFetch) {
-      return {
-        eligible: true,
-        skipFetch: true,
-        skipReason: 'skipped_sufficient_local',
-        sourceKind,
-      };
-    }
-  }
+  const priorSkippedLocalOnly =
+    enrichment?.status === 'skipped' &&
+    enrichment.skipReason === 'skipped_sufficient_local';
 
   if (
     !force &&
-    !hasPriorFetch &&
-    sourceKind === 'x' &&
-    localLen >= 200 &&
-    (localBundle.includes('http') || localBundle.length >= 280)
+    sourceKind !== 'x' &&
+    !priorSkippedLocalOnly &&
+    localLen >= ENRICHMENT_DEFAULTS.richLocalMinChars &&
+    !weakTitle &&
+    !hasPriorFetch
   ) {
     return {
       eligible: true,

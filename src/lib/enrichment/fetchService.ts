@@ -197,6 +197,23 @@ async function persistSkipped(
   return { itemId: item.id, status: 'skipped', skipped: true, message: skipReason };
 }
 
+/** Cap huge PDFs / pages — same idea as X link-follow (10k/link), but higher for direct bookmarks. */
+function truncateFetchedMarkdown(
+  markdown: string,
+  maxChars: number = ENRICHMENT_DEFAULTS.maxFetchMarkdownChars
+): { markdown: string; truncated: boolean; originalChars: number } {
+  const originalChars = markdown.length;
+  if (originalChars <= maxChars) {
+    return { markdown, truncated: false, originalChars };
+  }
+  const suffix = `\n\n---\n\n[Content truncated for enrichment — ${originalChars.toLocaleString()} characters in source, using first ${maxChars.toLocaleString()}.]`;
+  return {
+    markdown: markdown.slice(0, maxChars) + suffix,
+    truncated: true,
+    originalChars,
+  };
+}
+
 function hasValuablePriorEnrichment(existing?: ItemEnrichment | null): boolean {
   if (!existing || existing.status !== 'ok') return false;
   if (existing.aiStatus === 'ok' && existing.summary?.trim()) return true;
@@ -467,7 +484,7 @@ export async function enrichOne(
   const signal = controller.signal;
 
   try {
-    const fetchResult = await resolveItemFetch(item, pending, sourceKind, {
+    let fetchResult = await resolveItemFetch(item, pending, sourceKind, {
       force: options?.force,
       signal,
       preferTabSession: options?.preferTabSession,
@@ -504,31 +521,15 @@ export async function enrichOne(
       };
     }
 
-    if (
-      fetchResult.rawBytesApprox &&
-      fetchResult.rawBytesApprox > ENRICHMENT_DEFAULTS.maxResponseBytes
-    ) {
-      if (existing && hasValuablePriorEnrichment(existing)) {
-        return preservePriorOnSuspiciousFetch(
-          item,
-          existing,
-          pending,
-          'oversized',
-          fetchResult.markdown
-        );
-      }
-      const failed: ItemEnrichment = {
-        ...pending,
-        status: 'failed',
-        lastErrorCode: 'oversized',
-        fetchedAt: now,
-        updated_at: now,
-      };
-      await putEnrichment(annotateFailureFields(failed));
-      return { itemId, status: 'failed', errorCode: 'oversized' };
-    }
+    let rawMarkdown = fetchResult.markdown ?? '';
+    const truncated = truncateFetchedMarkdown(rawMarkdown);
+    rawMarkdown = truncated.markdown;
+    fetchResult = {
+      ...fetchResult,
+      markdown: rawMarkdown,
+      rawBytesApprox: new TextEncoder().encode(rawMarkdown).length,
+    };
 
-    const rawMarkdown = fetchResult.markdown;
     const cleanMarkdown = stripProviderWrapper(rawMarkdown);
     const qualityCtx = { url: item.url, title: fetchResult.title };
 
@@ -682,6 +683,11 @@ export async function enrichOne(
     if (status === 'ok') {
       tier2Applied = await applyItemTier2Updates(item, parsed.title, sourceKind, aiExtract);
       if (tier2Applied.length === 0) tier2Applied = undefined;
+    }
+
+    if (truncated.truncated && status === 'ok') {
+      const note = `Fetched body truncated (${truncated.originalChars.toLocaleString()} → ${ENRICHMENT_DEFAULTS.maxFetchMarkdownChars.toLocaleString()} chars)`;
+      lastErrorDetail = lastErrorDetail ? `${lastErrorDetail}; ${note}` : note;
     }
 
     const record: ItemEnrichment = {

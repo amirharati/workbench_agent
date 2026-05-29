@@ -33,6 +33,8 @@ export const syndicationProvider: FetchProvider = {
     const result = await fetchXThreadFromFx(ids.statusId, {
       signal,
       fallbackUser: ids.user,
+      bookmarkUrl: url,
+      linkFollow: true,
     });
 
     if (!result.ok) {
