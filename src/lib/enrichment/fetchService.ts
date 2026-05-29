@@ -25,6 +25,7 @@ import { jinaProvider } from './providers/jina';
 import { noopProvider } from './providers/noop';
 import type { FetchProvider, FetchProviderResult } from './providers/types';
 import { fetchFromOpenTab, findTabForUrl, openEphemeralTabAndExtract } from './tabSessionExtract';
+import { isFileUrl } from './urlPolicy';
 import {
   parseFetchedContent,
 } from './parse';
@@ -329,6 +330,7 @@ function headlessWarrantsEphemeralTab(
   url: string,
   cleanMarkdown?: string
 ): boolean {
+  if (isFileUrl(url)) return true;
   if (headless.errorCode === 'bot_blocked' || headless.errorCode === 'auth_required') {
     return true;
   }

@@ -5,7 +5,7 @@ import type { SearchResult } from '../../lib/search';
 import type { LibrarySearchState } from '../../hooks/useLibrarySearch';
 import type { SearchFilters } from '../../lib/search';
 import { SearchRelatedPanel } from './SearchDiscoveryBlocks';
-import { isValidHttpUrl } from '../../lib/utils';
+import { isValidBookmarkUrl } from '../../lib/utils';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
 import { ItemContextMenu } from './ItemContextMenu';
@@ -464,7 +464,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                     </div>
                   )}
                 </div>
-                {row.url && isValidHttpUrl(row.url) && (
+                {row.url && isValidBookmarkUrl(row.url) && (
                   <a
                     href={row.url}
                     target="_blank"

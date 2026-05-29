@@ -317,7 +317,7 @@ function App() {
 
   const handleSaveCurrentTab = async (collectionId?: string) => {
     const ctx = await getActiveTabBookmarkContext();
-    if (ctx?.url.startsWith('http')) {
+    if (ctx?.url && (/^https?:\/\//i.test(ctx.url) || /^file:\/\//i.test(ctx.url))) {
       const collectionIds = collectionId ? [collectionId] : [];
       try {
         const result = await addItemWithMerge({

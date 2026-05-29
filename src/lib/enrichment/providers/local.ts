@@ -1,7 +1,7 @@
 import { classifySourceKind } from '../eligibility';
 import { describeHttpFetchError, httpStatusToErrorCode } from '../errorMessages';
 import { htmlToMarkdown } from '../htmlExtract';
-import { isShortLinkHost, tcoUnresolvedError } from '../urlPolicy';
+import { isFileUrl, isShortLinkHost, tcoUnresolvedError } from '../urlPolicy';
 import { stripProviderWrapper } from '../fetchQuality';
 import type { FetchProvider } from './types';
 import { browserFetchHeaders, fetchXStatusFromTwitterCdn } from './xCdn';
@@ -30,6 +30,16 @@ export const localProvider: FetchProvider = {
           errorCode: 'parse_empty',
           error: tcoUnresolvedError(url),
         };
+      }
+
+      if (isFileUrl(url)) {
+        if (/\.pdf$/i.test(url)) {
+          return {
+            ok: false,
+            errorCode: 'auth_required',
+            error: 'Local PDF — open in Chrome tab for extraction',
+          };
+        }
       }
 
       const res = await fetch(url, {

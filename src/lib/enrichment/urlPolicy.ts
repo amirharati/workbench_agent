@@ -114,9 +114,13 @@ export function isRedditHost(url: string): boolean {
   return host === 'reddit.com' || host.endsWith('.reddit.com');
 }
 
+export function isFileUrl(url: string): boolean {
+  return /^file:\/\//i.test(url.trim());
+}
+
 /** Hosts / URLs where headless usually fails — prefer opening a real browser tab. */
 export function prefersBrowserTabFetch(url: string): boolean {
-  return isRedditHost(url);
+  return isFileUrl(url) || isRedditHost(url);
 }
 
 /** Subreddit feed (/r/name) — one listing URL signal among many. */

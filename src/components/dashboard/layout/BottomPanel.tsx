@@ -467,7 +467,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
   const handleOpenHere = async (e: React.MouseEvent, url: string | undefined) => {
     e.stopPropagation();
-    if (!url || !url.startsWith('http')) return;
+    if (!url || (!/^https?:\/\//i.test(url) && !/^file:\/\//i.test(url))) return;
     try {
       // Open in the same window as the dashboard, so we don't jump to another OS desktop/Space.
       const currentWindow = await chrome.windows.getCurrent();
@@ -513,7 +513,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     if (selectedTabIds.length > 0) {
       const tabs = selectedTabIds
         .map((id) => allTabs.find((t) => t.id === id))
-        .filter((t): t is chrome.tabs.Tab => Boolean(t && t.url && t.url.startsWith('http')))
+        .filter((t): t is chrome.tabs.Tab =>
+          Boolean(
+            t &&
+              t.url &&
+              (/^https?:\/\//i.test(t.url) || /^file:\/\//i.test(t.url))
+          )
+        )
         .map((t) => ({ url: t.url!, title: t.title || undefined, favIconUrl: t.favIconUrl || undefined }));
       return [{ id: crypto.randomUUID(), name: 'Selected tabs', tabs }];
     }
@@ -523,7 +529,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       id: crypto.randomUUID(),
       name: windowLabelById.get(w.windowId) || `Window ${w.windowId}`,
       tabs: w.tabs
-        .filter((t) => t.url && t.url.startsWith('http'))
+        .filter(
+          (t) =>
+            t.url && (/^https?:\/\//i.test(t.url) || /^file:\/\//i.test(t.url))
+        )
         .map((t) => ({ url: t.url!, title: t.title || undefined, favIconUrl: t.favIconUrl || undefined })),
     }));
   };

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Collection, Item, Project } from '../../lib/db';
-import { isValidHttpUrl } from '../../lib/utils';
+import { isValidBookmarkUrl } from '../../lib/utils';
 import { Input, ButtonGhost } from '../../styles/primitives';
 import { X } from 'lucide-react';
 
@@ -134,8 +134,8 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
       setError('Title is required');
       return;
     }
-    if (url.trim() && !isValidHttpUrl(url.trim())) {
-      setError('URL must be a valid http:// or https:// URL');
+    if (url.trim() && !isValidBookmarkUrl(url.trim())) {
+      setError('URL must be http(s) or a local file (file://)');
       return;
     }
     setIsSaving(true);

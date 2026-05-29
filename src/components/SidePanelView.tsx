@@ -4,7 +4,7 @@ import { Collection, Item, Project, normalizeBookmarkUrl } from '../lib/db';
 import { resolveTabBookmarkUrl } from '../lib/tabUrlCapture';
 import { favoriteItem, pinItem, unfavoriteItem, unpinItem } from '../lib/itemQuickAccess';
 import { Panel, Input, ButtonGhost, ButtonPrimary, Divider } from '../styles/primitives';
-import { isValidHttpUrl } from '../lib/utils';
+import { isValidBookmarkUrl } from '../lib/utils';
 import { SidePanelDigestPanel } from './SidePanelDigestPanel';
 
 interface SidePanelViewProps {
@@ -163,7 +163,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const scopedCollections = useMemo(() => collectionsForProject(projectId), [collections, projectId]);
   const matchingItems = useMemo(() => {
     const trimmed = url.trim();
-    if (!trimmed || !isValidHttpUrl(trimmed)) return [];
+    if (!trimmed || !isValidBookmarkUrl(trimmed)) return [];
     const target = normalizeBookmarkUrl(trimmed);
     return items
       .filter((item) => item.url && normalizeBookmarkUrl(item.url) === target)
@@ -213,7 +213,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   }, [digestItemId, selectedExistingItemId, matchingItems]);
 
   const showPipelinePanel =
-    !!pipelineItemId && !!url.trim() && isValidHttpUrl(url.trim());
+    !!pipelineItemId && !!url.trim() && isValidBookmarkUrl(url.trim());
 
   // Auto-set collection when project changes, but not in new copy mode (user must pick explicitly)
   useEffect(() => {
@@ -411,8 +411,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       setError('Bookmark requires a URL');
       return;
     }
-    if (trimmedUrl && !isValidHttpUrl(trimmedUrl)) {
-      setError('URL must start with http:// or https://');
+    if (trimmedUrl && !isValidBookmarkUrl(trimmedUrl)) {
+      setError('URL must be http(s) or a local file (file://)');
       return;
     }
 
@@ -468,12 +468,12 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       const tabTitle = (tab.title || '').trim();
       const rawTabUrl = (tab.url || '').trim();
       const tabUrl =
-        rawTabUrl && /^https?:\/\//i.test(rawTabUrl)
+        rawTabUrl && (/^https?:\/\//i.test(rawTabUrl) || /^file:\/\//i.test(rawTabUrl))
           ? await resolveTabBookmarkUrl(tab.id, rawTabUrl)
           : rawTabUrl;
       const tabChanged =
         !!tabUrl &&
-        isValidHttpUrl(tabUrl) &&
+        isValidBookmarkUrl(tabUrl) &&
         normalizeBookmarkUrl(tabUrl) !== normalizeBookmarkUrl(activeTabUrlRef.current);
 
       if (tabChanged) {

@@ -176,7 +176,7 @@ export function checkEligibility(
   }
 
   const protocol = parsed.protocol.toLowerCase();
-  if (protocol !== 'http:' && protocol !== 'https:') {
+  if (protocol !== 'http:' && protocol !== 'https:' && protocol !== 'file:') {
     return { eligible: false, reason: 'excluded_non_http' };
   }
 

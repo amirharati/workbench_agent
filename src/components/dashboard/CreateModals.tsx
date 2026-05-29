@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import type { Collection, Project } from '../../lib/db';
 import { Input, ButtonGhost } from '../../styles/primitives';
-import { isValidHttpUrl } from '../../lib/utils';
+import { isValidBookmarkUrl } from '../../lib/utils';
 
 const MODAL_Z = 2147483647;
 
@@ -489,8 +489,8 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
       setError('Title is required');
       return;
     }
-    if (url.trim() && !isValidHttpUrl(url.trim())) {
-      setError('URL must be a valid http:// or https:// URL');
+    if (url.trim() && !isValidBookmarkUrl(url.trim())) {
+      setError('URL must be http(s) or a local file (file://)');
       return;
     }
     if (!collectionId) {

@@ -515,8 +515,35 @@
     return { ok: true, title: title || document.title, markdown: markdown };
   }
 
+  function extractLocalFile() {
+    if (location.protocol !== 'file:') return null;
+    var pathName = '';
+    try {
+      pathName = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
+    } catch (e) {
+      pathName = (location.pathname.split('/').pop() || '').replace(/%20/g, ' ');
+    }
+    var title = cleanText(document.title) || pathName || 'Local file';
+    var body = cleanText(document.body && (document.body.innerText || document.body.textContent));
+    if (body.length >= MIN_MARKDOWN_CHARS) {
+      var md = (title ? '# ' + title + '\n\n' : '') + body.slice(0, 12000);
+      return { ok: true, title: title, markdown: md };
+    }
+    var note =
+      pathName && /\.pdf$/i.test(pathName)
+        ? '(Local PDF — Chrome viewer exposes little text; summary may use the filename and any visible text.)'
+        : '(Local file — little readable text in the tab; summary may use the title.)';
+    return {
+      ok: true,
+      title: title,
+      markdown: '# ' + title + '\n\n' + note,
+    };
+  }
+
   function runExtract() {
     try {
+      var localFile = extractLocalFile();
+      if (localFile) return localFile;
       if (isXHost()) return extractX();
       if (isGmailHost()) return extractGmail();
       var listing = extractListingPage();

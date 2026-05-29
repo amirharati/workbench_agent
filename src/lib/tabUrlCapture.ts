@@ -34,7 +34,10 @@ export async function resolveTabBookmarkUrl(
       target: { tabId },
       func: () => window.location.href,
     });
-    if (typeof result === 'string' && /^https?:\/\//i.test(result.trim())) {
+    if (
+      typeof result === 'string' &&
+      (/^https?:\/\//i.test(result.trim()) || /^file:\/\//i.test(result.trim()))
+    ) {
       return result.trim();
     }
   } catch {
@@ -54,7 +57,9 @@ export async function getActiveTabBookmarkContext(): Promise<ActiveTabBookmarkCo
   if (typeof chrome === 'undefined' || !chrome.tabs?.query) return null;
 
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab?.id || !tab.url?.startsWith('http')) return null;
+  if (!tab?.id || !tab.url) return null;
+  const raw = tab.url.trim();
+  if (!/^https?:\/\//i.test(raw) && !/^file:\/\//i.test(raw)) return null;
 
   const url = await resolveTabBookmarkUrl(tab.id, tab.url);
   return {

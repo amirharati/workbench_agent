@@ -245,6 +245,7 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 - Animations, responsive polish, heavy styling refactors.
 - Relationship graphs (notes ↔ bookmarks ↔ projects).
 - **`HttpBackupSink` / BYO server** — same coordinator + JSON payload; optional auth — after file‑based backup ships (see [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md)).
+- **⏸ D-45 — Local folder library:** Scan a folder of PDFs/papers/books → preview map → import as `file://` bookmarks + optional batch digest. Builds on shipped single-file `file://` save (2026-05-28). Brief: [`docs/temp/TASK-V2C-D45-local-folder-library.md`](temp/TASK-V2C-D45-local-folder-library.md).
 - Chrome Web Store / multi-browser—out of scope until explicitly chosen.
 
 ---

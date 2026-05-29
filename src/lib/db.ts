@@ -203,6 +203,10 @@ const ensureIncludes = (arr: string[], value: string) => (arr.includes(value) ? 
 const nowTs = () => Date.now();
 
 const isHttpUrl = (url: string) => /^https?:\/\//i.test(url.trim());
+const isBookmarkUrl = (url: string) => {
+  const t = url.trim();
+  return /^https?:\/\//i.test(t) || /^file:\/\//i.test(t);
+};
 
 /** Open the bookmark — `url` is stored faithfully; `urlRaw` only for pre-fix legacy rows. */
 export function getBookmarkOpenUrl(item: Pick<Item, 'url' | 'urlRaw'>): string {
@@ -239,10 +243,10 @@ const findItemByNormalizedUrl = async (
   db: IDBPDatabase<TabManagerDB>,
   normalizedUrl: string
 ): Promise<Item | undefined> => {
-  if (!normalizedUrl || !isHttpUrl(normalizedUrl)) return undefined;
+  if (!normalizedUrl || !isBookmarkUrl(normalizedUrl)) return undefined;
   const all = await db.getAll('items');
   return all.find((it) => {
-    if (!isHttpUrl(it.url)) return false;
+    if (!it.url || !isBookmarkUrl(it.url)) return false;
     return normalizeBookmarkUrl(it.url) === normalizedUrl;
   });
 };
@@ -258,12 +262,12 @@ const assertNoBookmarkDuplicateInCollections = async (
   collectionIds: string[],
   excludeItemId?: string
 ) => {
-  if (!isHttpUrl(url)) return;
+  if (!isBookmarkUrl(url)) return;
   const normalized = normalizeBookmarkUrl(url);
   const all = await db.getAll('items');
   const duplicate = all.find((it) => {
     if (excludeItemId && it.id === excludeItemId) return false;
-    if (!isHttpUrl(it.url)) return false;
+    if (!it.url || !isBookmarkUrl(it.url)) return false;
     return normalizeBookmarkUrl(it.url) === normalized && hasSharedCollection(it.collectionIds || [], collectionIds);
   });
   if (duplicate) {
@@ -1030,7 +1034,7 @@ export const addItemWithMerge = async (
     : [defaultUnsortedCollectionId];
   
   // For non-URL items (notes), create directly
-  if (!item.url || !isHttpUrl(item.url)) {
+  if (!item.url?.trim() || !isBookmarkUrl(item.url)) {
     const id = crypto.randomUUID();
     const placements: Record<string, ItemPlacement> = {};
     for (const cid of collectionIds) {

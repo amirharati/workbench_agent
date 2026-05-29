@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Item } from '../../lib/db';
-import { getDomain, isValidHttpUrl, formatDateTime } from '../../lib/utils';
+import { getDomain, isValidBookmarkUrl, formatDateTime } from '../../lib/utils';
 import { ExternalLink } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { ItemContextMenu } from './ItemContextMenu';
@@ -162,7 +162,7 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
                           {item.title || 'Untitled'}
                         </span>
                       </div>
-                      {item.url && isValidHttpUrl(item.url) && (
+                      {item.url && isValidBookmarkUrl(item.url) && (
                         <div
                           style={{
                             fontSize: '0.85rem',

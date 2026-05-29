@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Item, Collection, Project, Workspace } from '../../lib/db';
-import { getDomain, formatDateTime, isValidHttpUrl } from '../../lib/utils';
+import { getDomain, formatDateTime, isValidBookmarkUrl } from '../../lib/utils';
 import type { TabBarTab } from './TabBar';
 import { CollectionsSpace } from './CollectionsSpace';
 import { AddItemTab } from './AddItemTab';
@@ -504,7 +504,7 @@ export const TabContent: React.FC<TabContentProps> = ({
             )}
           </h2>
           <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {effectiveItem.url && isValidHttpUrl(effectiveItem.url) ? (
+            {effectiveItem.url && isValidBookmarkUrl(effectiveItem.url) ? (
               <a
                 href={effectiveItem.url}
                 onClick={(e) => {
@@ -777,7 +777,7 @@ export const TabContent: React.FC<TabContentProps> = ({
       </div>
 
       {/* URL (if no notes, show URL as content) */}
-      {!effectiveItem.notes && effectiveItem.url && isValidHttpUrl(effectiveItem.url) && (
+      {!effectiveItem.notes && effectiveItem.url && isValidBookmarkUrl(effectiveItem.url) && (
         <div style={{ marginTop: '1rem' }}>
           <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>URL</h3>
           <a

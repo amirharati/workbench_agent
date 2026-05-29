@@ -32,6 +32,10 @@ function hostsLooselyMatchForTabSession(tabUrl: string, bookmarkUrl: string): bo
     const tab = new URL(tabUrl.trim());
     const bookmark = new URL(bookmarkUrl.trim());
 
+    if (tab.protocol === 'file:' || bookmark.protocol === 'file:') {
+      return normalizeBookmarkUrl(tab.href) === normalizeBookmarkUrl(bookmark.href);
+    }
+
     const tabReddit = redditPathKey(tab.href);
     const bookmarkReddit = redditPathKey(bookmark.href);
     if (tabReddit && bookmarkReddit) return tabReddit === bookmarkReddit;
@@ -63,7 +67,7 @@ function urlsMatchForTabSession(a: string, b: string): boolean {
 
 function isScriptableUrl(url: string | undefined): url is string {
   if (!url) return false;
-  return /^https?:\/\//i.test(url);
+  return /^https?:\/\//i.test(url) || /^file:\/\//i.test(url);
 }
 
 function tabMatchesUrl(tab: chrome.tabs.Tab, url: string): boolean {

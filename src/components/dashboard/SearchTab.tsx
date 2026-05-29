@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { Item, Collection } from '../../lib/db';
-import { getDomain, isValidHttpUrl } from '../../lib/utils';
+import { getDomain, isValidBookmarkUrl } from '../../lib/utils';
 import { Input } from '../../styles/primitives';
 import { Search, X, ExternalLink } from 'lucide-react';
 import { TabScrollShell } from './TabScrollShell';
@@ -232,7 +232,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
                   <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: '0.25rem' }}>
                     {item.title || 'Untitled'}
                   </div>
-                  {item.url && isValidHttpUrl(item.url) && (
+                  {item.url && isValidBookmarkUrl(item.url) && (
                     <div
                       style={{
                         fontSize: '0.85rem',

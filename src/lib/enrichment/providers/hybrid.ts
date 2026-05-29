@@ -1,6 +1,6 @@
 import { classifySourceKind } from '../eligibility';
 import { explainHardFetchFailure, isFetchBodyUsable, type FetchQualityContext } from '../fetchQuality';
-import { isRedditHost, isShortLinkHost, resolveFetchUrl, tcoUnresolvedError } from '../urlPolicy';
+import { isFileUrl, isRedditHost, isShortLinkHost, resolveFetchUrl, tcoUnresolvedError } from '../urlPolicy';
 import { jinaProvider } from './jina';
 import { localProvider } from './local';
 import { syndicationProvider } from './syndication';
@@ -39,6 +39,15 @@ export const hybridProvider: FetchProvider = {
         ok: false,
         errorCode: 'provider_error',
         error: tcoUnresolvedError(input.url),
+        fetchSourceId: 'hybrid',
+      };
+    }
+
+    if (isFileUrl(resolvedUrl)) {
+      return {
+        ok: false,
+        errorCode: 'auth_required',
+        error: 'Local file — reading from your open browser tab',
         fetchSourceId: 'hybrid',
       };
     }

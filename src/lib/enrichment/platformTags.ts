@@ -1,4 +1,5 @@
 import {
+  isFileUrl,
   isRedditHost,
   isXHost,
   normalizeHost,
@@ -27,6 +28,7 @@ const TAG_ALIASES: Record<string, readonly string[]> = {
   hackernews: ['hackernews', 'hacker news', 'hn'],
   vimeo: ['vimeo'],
   twitch: ['twitch'],
+  'local-file': ['local-file', 'local file'],
 };
 
 function hostIncludes(host: string, fragment: string): boolean {
@@ -36,6 +38,7 @@ function hostIncludes(host: string, fragment: string): boolean {
 /** Known platform id + default tag from bookmark URL. */
 export function platformHintFromUrl(url: string): PlatformHint | null {
   if (!url?.trim()) return null;
+  if (isFileUrl(url)) return { platform: 'local-file', tag: 'local-file' };
   const host = normalizeHost(url);
   if (!host) return null;
 
