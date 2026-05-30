@@ -1,5 +1,26 @@
 // Background service worker
 
+const OFFSCREEN_URL = 'offscreen.html';
+let offscreenCreating = null;
+
+async function ensureOffscreenDocument() {
+  if (offscreenCreating) return offscreenCreating;
+  offscreenCreating = (async () => {
+    const exists = await chrome.offscreen.hasDocument();
+    if (exists) return;
+    await chrome.offscreen.createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['WORKERS'],
+      justification: 'Shared SQLite database worker with OPFS persistence',
+    });
+  })();
+  try {
+    await offscreenCreating;
+  } finally {
+    offscreenCreating = null;
+  }
+}
+
 // Keep side panel disabled by default; enable it only for the tab where
 // the user explicitly clicks the extension action.
 let sidePanelEnabledTabId = null;
@@ -38,6 +59,28 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 // Listen for focus-tab messages (must be at top level, not inside onInstalled)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.target === 'db-owner') {
+    return false;
+  }
+
+  if (message?.target === 'db-rpc') {
+    (async () => {
+      try {
+        await ensureOffscreenDocument();
+        const response = await chrome.runtime.sendMessage({
+          target: 'db-owner',
+          id: message.id,
+          method: message.method,
+          args: message.args ?? [],
+        });
+        sendResponse(response ?? { ok: false, error: 'No response from DB owner' });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e) });
+      }
+    })();
+    return true;
+  }
+
   if (message?.type === 'resolve-short-url' && typeof message.url === 'string') {
     (async () => {
       try {

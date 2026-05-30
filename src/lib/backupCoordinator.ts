@@ -29,10 +29,10 @@
  *     server-side conflict detection.
  */
 
-import { exportDB, importDB, verifyBackup } from './db';
+import { exportDB, importDB, verifyBackup, reloadFromFolderDatabase } from './db';
 import { subscribeToDataChanges, DataChangeReason } from './dataChangeNotifier';
 import { BackupSink, BackupKind, BackupWriteResult } from './backupSinks';
-import { readJsonFromBackupFolder } from './backupFolder';
+import { readJsonFromBackupFolder, WORKBENCH_META_FILE, LEGACY_LATEST_JSON } from './backupFolder';
 import {
   wrapExport,
   parseBackupText,
@@ -42,7 +42,21 @@ import {
 import { revisionTracker } from './revisionTracker';
 
 const DEFAULT_DEBOUNCE_MS = 1500;
-const LATEST_FILENAME = 'latest.json';
+/** Meta sidecar for live folder DB — not full JSON export on every edit. */
+const LIVE_META_FILENAME = WORKBENCH_META_FILE;
+const LEGACY_LATEST_FILENAME = LEGACY_LATEST_JSON;
+
+async function readConflictMetaFromFolder(): Promise<{
+  ok: boolean;
+  json?: string;
+  error?: string;
+  notFound?: boolean;
+}> {
+  const meta = await readJsonFromBackupFolder(LIVE_META_FILENAME);
+  if (meta.ok && meta.json) return meta;
+  if (!meta.notFound) return meta;
+  return readJsonFromBackupFolder(LEGACY_LATEST_FILENAME);
+}
 
 export interface BackupSinkOutcome {
   sinkId: string;
@@ -126,12 +140,25 @@ class BackupCoordinatorImpl {
   };
   private statusListeners = new Set<StatusListener>();
   private dataUnsub: (() => void) | null = null;
+  /** When false, live debounced JSON/sqlite snapshots are disabled (folder live DB). */
+  private liveBackupEnabled = true;
+
+  setLiveBackupEnabled(enabled: boolean): void {
+    this.liveBackupEnabled = enabled;
+    if (!enabled && this.debounceTimer != null) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+      this.publishStatus({ livePending: false });
+    }
+  }
 
   /** One-time wiring; safe to call multiple times. */
   start(): void {
     if (this.dataUnsub) return;
     this.dataUnsub = subscribeToDataChanges((event) => {
-      this.scheduleLive(event.reason);
+      if (this.liveBackupEnabled) {
+        this.scheduleLive(event.reason);
+      }
     });
   }
 
@@ -269,7 +296,7 @@ class BackupCoordinatorImpl {
       });
     }
 
-    const read = await readJsonFromBackupFolder(LATEST_FILENAME);
+    const read = await readConflictMetaFromFolder();
     if (!read.ok) {
       if (read.notFound) {
         return this.recordConflict({
@@ -278,7 +305,7 @@ class BackupCoordinatorImpl {
           remote: null,
           localRevision,
           localDeviceId,
-          message: 'No latest.json in backup folder yet; next save will create it.',
+          message: 'No workbench.meta.json yet; next save will create it.',
           checkedAt: Date.now(),
         });
       }
@@ -288,7 +315,7 @@ class BackupCoordinatorImpl {
         remote: null,
         localRevision,
         localDeviceId,
-        message: `Could not read latest.json: ${read.error ?? 'unknown error'}`,
+        message: `Could not read folder meta: ${read.error ?? 'unknown error'}`,
         checkedAt: Date.now(),
       });
     }
@@ -421,19 +448,19 @@ class BackupCoordinatorImpl {
   async loadFromRemote(): Promise<{ ok: boolean; safetyRef?: string; error?: string }> {
     if (!this.hasAnySink()) return { ok: false, error: 'No backup folder configured.' };
 
-    // 1. Read remote first; abort if unreadable so we don't trash local needlessly.
-    const read = await readJsonFromBackupFolder(LATEST_FILENAME);
+    // 1. Read remote meta first; abort if unreadable so we don't trash local needlessly.
+    const read = await readConflictMetaFromFolder();
     if (!read.ok || !read.json) {
-      return { ok: false, error: read.error ?? 'No latest.json in folder.' };
+      return { ok: false, error: read.error ?? 'No workbench.meta.json in folder.' };
     }
     const verification = verifyBackup(read.json);
     if (!verification.valid) {
-      return { ok: false, error: `Remote latest.json is invalid: ${verification.error}` };
+      return { ok: false, error: `Remote meta file is invalid: ${verification.error}` };
     }
 
     // 2. Safety snapshot of CURRENT local DB into the folder.
     const safetyName = buildSafetyFilename(new Date());
-    const localJson = await this.buildEnvelopedExport('manual'); // best-effort envelope
+    const localJson = await this.buildEnvelopedExport('manual');
     const sinks = Array.from(this.sinks.values());
     let safetyRef: string | undefined;
     for (const sink of sinks) {
@@ -441,28 +468,34 @@ class BackupCoordinatorImpl {
       if (r.ok) safetyRef = r.ref ?? safetyName;
     }
     if (!safetyRef) {
-      // We failed to write the safety net. Refuse to import; user must retry.
       return {
         ok: false,
         error: 'Could not write safety snapshot to backup folder; aborting to avoid data loss.',
       };
     }
 
-    // 3. Now import remote. importDB updates revisionTracker on its own.
-    //    Suppress the legacy "browser download" pre-import safety since we
-    //    just wrote a folder-side one.
-    const ok = await importDB(read.json, false);
+    // 3. Adopt remote: reload workbench.sqlite when live folder mode, else JSON import.
+    let ok = false;
+    if (!this.liveBackupEnabled) {
+      ok = await reloadFromFolderDatabase();
+      if (ok && verification.envelope) {
+        revisionTracker.setLocalRevision(verification.envelope.revision);
+        revisionTracker.setLastSeenRemote(verification.envelope);
+      }
+    } else {
+      ok = await importDB(read.json, false);
+    }
     if (!ok) {
       return { ok: false, error: 'Import failed; safety snapshot was preserved.' };
     }
 
-    // 4. Refresh latest.json with the just-imported state so its envelope
-    //    advertises this device as the current writer (otherwise our next
-    //    mutation would silently bump our revision past remote and trigger
-    //    a fresh conflict on other devices). importDB already set our
-    //    localRevision = remote.revision; this re-stamps the writer.
     this.publishStatus({ pausedReason: null, conflict: null });
-    await this.runLive('startup');
+    if (this.liveBackupEnabled) {
+      await this.runLive('startup');
+    } else {
+      const { flushLiveDatabaseNow } = await import('./storage/sqlite/folderPersistence');
+      await flushLiveDatabaseNow();
+    }
 
     return { ok: true, safetyRef };
   }
@@ -474,6 +507,11 @@ class BackupCoordinatorImpl {
   async forcePushLocal(): Promise<{ ok: boolean; error?: string }> {
     if (!this.hasAnySink()) return { ok: false, error: 'No backup folder configured.' };
     this.publishStatus({ pausedReason: null, conflict: null });
+    if (!this.liveBackupEnabled) {
+      const { flushLiveDatabaseNow } = await import('./storage/sqlite/folderPersistence');
+      const res = await flushLiveDatabaseNow();
+      return res.ok ? { ok: true } : { ok: false, error: res.error };
+    }
     const summary = await this.runOnce({
       kind: 'live',
       reason: 'force-push',

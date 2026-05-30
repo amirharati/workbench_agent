@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { resolve } from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -7,21 +8,30 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: {
-    // MV3: one JS file per page — avoids "Failed to fetch dynamically imported module"
-    // when an old hashed chunk is gone after rebuild but the extension wasn't reloaded.
     rollupOptions: {
-      output: {
-        inlineDynamicImports: true,
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        offscreen: resolve(__dirname, 'offscreen.html'),
       },
     },
   },
+  worker: {
+    format: 'es',
+  },
   optimizeDeps: {
     // Only pre-bundle the main app — ignore temp/ sample HTML (sidepanels, etc.)
-    entries: ['index.html'],
+    entries: ['index.html', 'offscreen.html'],
+    // SQLite WASM needs to be excluded from pre-bundling
+    exclude: ['@sqlite.org/sqlite-wasm'],
   },
   server: {
     fs: {
       deny: ['**/temp/**', '**/test_metamask_example/**', '**/ui_mocks/**'],
+    },
+    // Headers required for OPFS in SQLite WASM (dev server only)
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
 })

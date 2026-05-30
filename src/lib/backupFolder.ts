@@ -9,10 +9,37 @@
  * revisions, or conflict resolution; those live in higher layers so the same
  * file system primitives can later be reused by other sinks/scripts.
  */
-import { exportDB } from './db';
+import { exportSqliteBytes } from './db';
 import { getMetaDB } from './metaDb';
 
 const HANDLE_KEY = 'backup-directory';
+
+/** Canonical live database file in the user backup folder. */
+export const WORKBENCH_DB_FILE = 'workbench.sqlite';
+/** Envelope sidecar for conflict detection (revision / deviceId only). */
+export const WORKBENCH_META_FILE = 'workbench.meta.json';
+/** Legacy filenames — read for migration only. */
+export const LEGACY_LATEST_JSON = 'latest.json';
+export const LEGACY_LATEST_SQLITE = 'latest.sqlite';
+
+/** Thrown when the app is used without a configured, writable backup folder. */
+export class BackupFolderRequiredError extends Error {
+  constructor(
+    message = 'Choose a backup folder before using Workbench. Your data lives in workbench.sqlite in that folder.'
+  ) {
+    super(message);
+    this.name = 'BackupFolderRequiredError';
+  }
+}
+
+/** Fail fast if no backup folder is configured (required for all domain data). */
+export async function requireWritableBackupFolder(): Promise<FileSystemDirectoryHandle> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle || !(await hasWritableBackupFolder())) {
+    throw new BackupFolderRequiredError();
+  }
+  return handle;
+}
 
 // --- handle persistence -----------------------------------------------------
 
@@ -82,6 +109,23 @@ async function ensureReadWritePermission(
   }
 }
 
+async function readBinaryWithHandle(
+  handle: FileSystemDirectoryHandle,
+  filename: string
+): Promise<{ ok: boolean; data?: Uint8Array; error?: string; notFound?: boolean }> {
+  try {
+    const fileHandle = await handle.getFileHandle(filename);
+    const file = await fileHandle.getFile();
+    const buffer = await file.arrayBuffer();
+    return { ok: true, data: new Uint8Array(buffer) };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'NotFoundError') {
+      return { ok: false, notFound: true };
+    }
+    return { ok: false, error: String(e) };
+  }
+}
+
 async function readJsonWithHandle(
   handle: FileSystemDirectoryHandle,
   filename: string
@@ -115,6 +159,23 @@ async function writeJsonWithHandle(
   }
 }
 
+async function writeBinaryWithHandle(
+  handle: FileSystemDirectoryHandle,
+  filename: string,
+  data: Uint8Array
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const fileHandle = await handle.getFileHandle(filename, { create: true });
+    const writable = await fileHandle.createWritable();
+    // Write using ArrayBuffer to satisfy TypeScript
+    await writable.write(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
+    await writable.close();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 // --- public read/write ------------------------------------------------------
 
 export async function writeJsonToBackupFolder(
@@ -126,6 +187,21 @@ export async function writeJsonToBackupFolder(
   const perm = await ensureReadWritePermission(handle);
   if (!perm.ok) return perm;
   return writeJsonWithHandle(handle, filename, json);
+}
+
+/**
+ * Write binary data to the configured backup folder.
+ * Used for SQLite database backups.
+ */
+export async function writeBinaryToBackupFolder(
+  filename: string,
+  data: Uint8Array
+): Promise<{ ok: boolean; error?: string }> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) return { ok: false, error: 'No backup folder configured' };
+  const perm = await ensureReadWritePermission(handle);
+  if (!perm.ok) return perm;
+  return writeBinaryWithHandle(handle, filename, data);
 }
 
 /**
@@ -143,15 +219,21 @@ export async function readJsonFromBackupFolder(
   return readJsonWithHandle(handle, filename);
 }
 
+/** Read a binary file from the configured backup folder. */
+export async function readBinaryFromBackupFolder(
+  filename: string
+): Promise<{ ok: boolean; data?: Uint8Array; error?: string; notFound?: boolean }> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) return { ok: false, error: 'No backup folder configured' };
+  const perm = await ensureReadWritePermission(handle);
+  if (!perm.ok) return { ok: false, error: perm.error };
+  return readBinaryWithHandle(handle, filename);
+}
+
 // --- onboarding pickup ------------------------------------------------------
 
 /**
- * Directory picker + persist handle + initial latest.json (canonical export).
- *
- * NOTE: This still writes a *flat* (legacy) export when bootstrapping a fresh
- * folder. The first live/manual write driven by BackupCoordinator will
- * upgrade it to the enveloped format. This avoids a chicken-and-egg with
- * revisionTracker which may not be loaded yet at picker time.
+ * Directory picker + persist handle + initial workbench.sqlite in folder.
  */
 export async function pickAndPersistBackupFolder(): Promise<{
   ok: boolean;
@@ -166,22 +248,40 @@ export async function pickAndPersistBackupFolder(): Promise<{
     const perm = await ensureReadWritePermission(handle);
     if (!perm.ok) return perm;
 
-    const existing = await readJsonWithHandle(handle, 'latest.json');
-
-    if (existing.ok && existing.json) {
-      await setBackupDirectoryHandle(handle);
-      return { ok: true, existingBackupJson: existing.json };
-    }
-
-    if (!existing.notFound && existing.error) {
-      return { ok: false, error: existing.error };
-    }
-
-    // No existing backup file: initialize folder with current DB state.
-    const json = await exportDB();
-    const write = await writeJsonWithHandle(handle, 'latest.json', json);
-    if (!write.ok) return { ok: false, error: write.error ?? 'Could not write to folder' };
     await setBackupDirectoryHandle(handle);
+
+    const { purgeLegacyLocalDomainStorage } = await import('./storage/legacyStorageCleanup');
+    await purgeLegacyLocalDomainStorage();
+
+    const existingDb = await readBinaryWithHandle(handle, WORKBENCH_DB_FILE);
+    if (existingDb.ok && existingDb.data && existingDb.data.byteLength > 16) {
+      return { ok: true };
+    }
+
+    const legacyJson = await readJsonWithHandle(handle, LEGACY_LATEST_JSON);
+    if (legacyJson.ok && legacyJson.json) {
+      return { ok: true, existingBackupJson: legacyJson.json };
+    }
+
+    const legacyDb = await readBinaryWithHandle(handle, LEGACY_LATEST_SQLITE);
+    if (legacyDb.ok && legacyDb.data && legacyDb.data.byteLength > 16) {
+      await writeBinaryWithHandle(handle, WORKBENCH_DB_FILE, legacyDb.data);
+      return { ok: true };
+    }
+
+    if (
+      (!existingDb.notFound && existingDb.error) ||
+      (!legacyJson.notFound && legacyJson.error)
+    ) {
+      return { ok: false, error: existingDb.error ?? legacyJson.error };
+    }
+
+    const bytes = await exportSqliteBytes();
+    if (!bytes || bytes.byteLength < 16) {
+      return { ok: false, error: 'Could not export database bytes' };
+    }
+    const write = await writeBinaryWithHandle(handle, WORKBENCH_DB_FILE, bytes);
+    if (!write.ok) return { ok: false, error: write.error ?? 'Could not write to folder' };
     return { ok: true };
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') {

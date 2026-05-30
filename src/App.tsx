@@ -18,6 +18,7 @@ import {
   Project,
   UpdateItemOptions,
   normalizeBookmarkUrl,
+  reloadDB,
 } from './lib/db';
 import { getActiveItems, moveItemToTrash } from './lib/itemQuickAccess';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
@@ -26,11 +27,11 @@ import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from './lib/tabUrl
 import { resolveTabSessionForUrl } from './lib/enrichment/tabSessionExtract';
 import {
   runSingleLinkDigest,
+  isAnyDigestInFlight,
   type SingleLinkDigestResult,
 } from './lib/pipeline/singleLinkDigest';
 import { BackupOnboardingModal } from './components/BackupOnboardingModal';
 import {
-  shouldShowBackupOnboarding,
   setBackupFolderOnboarding,
   requestBackupOnboardingOpen,
 } from './lib/backupOnboarding';
@@ -38,10 +39,13 @@ import {
   pickAndPersistBackupFolder,
   hasWritableBackupFolder,
   getBackupFolderName,
+  readBinaryFromBackupFolder,
+  WORKBENCH_DB_FILE,
 } from './lib/backupFolder';
-import { DATA_CHANGED_BROADCAST_CHANNEL } from './lib/dataChangeNotifier';
+import { DATA_CHANGED_BROADCAST_CHANNEL, subscribeToDataChanges } from './lib/dataChangeNotifier';
+import { ensureDbWorker, mirrorNow, dbRpc } from './lib/storage/dbClient';
 import { backupCoordinator, BackupStatusSnapshot } from './lib/backupCoordinator';
-import { FileSystemBackupSink } from './lib/backupSinks';
+import { ManualFolderBackupSink } from './lib/backupSinks';
 import { revisionTracker } from './lib/revisionTracker';
 import { loadAISettings, saveAISettings } from './lib/ai/settings';
 import type { AISettings } from './lib/ai/types';
@@ -63,6 +67,7 @@ function App() {
   const [digestItemId, setDigestItemId] = useState<string | null>(null);
   const [digestStatus, setDigestStatus] = useState('');
   const [showBackupOnboarding, setShowBackupOnboarding] = useState(false);
+  const [folderGateResolved, setFolderGateResolved] = useState(false);
   const [backupFolderReady, setBackupFolderReady] = useState(false);
   const [backupFolderName, setBackupFolderName] = useState<string | null>(null);
   const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot>(() =>
@@ -71,13 +76,19 @@ function App() {
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
 
   const syncFileSystemSink = async () => {
+    backupCoordinator.removeSink('file-system-sqlite');
+    backupCoordinator.removeSink('file-system');
+    backupCoordinator.removeSink('file-system-manual');
+    backupCoordinator.setLiveBackupEnabled(false);
+
     const ready = await hasWritableBackupFolder();
     if (ready) {
-      // Idempotent: re-adding the same sink just replaces it with a fresh
-      // instance, which is what we want after a folder change.
-      backupCoordinator.addSink(new FileSystemBackupSink('latest.json'));
-    } else {
-      backupCoordinator.removeSink('file-system');
+      backupCoordinator.addSink(new ManualFolderBackupSink());
+      try {
+        await ensureDbWorker();
+      } catch (e) {
+        console.error('DB worker failed to start:', e);
+      }
     }
   };
 
@@ -87,11 +98,16 @@ function App() {
       const name = await getBackupFolderName();
       setBackupFolderReady(ready);
       setBackupFolderName(name);
+      setShowBackupOnboarding(!ready);
       await syncFileSystemSink();
     } catch {
       setBackupFolderReady(false);
       setBackupFolderName(null);
+      setShowBackupOnboarding(true);
+      backupCoordinator.removeSink('file-system-manual');
+      backupCoordinator.removeSink('file-system-sqlite');
       backupCoordinator.removeSink('file-system');
+      backupCoordinator.setLiveBackupEnabled(false);
     }
   };
 
@@ -105,23 +121,21 @@ function App() {
     try {
       const info = await backupCoordinator.checkForConflict();
       if (info.kind === 'remote-newer-same-device') {
-        // Safe path: same deviceId means it's literally our install (e.g.
-        // another window/profile wrote it). Adopt it; safety snapshot first.
         const res = await backupCoordinator.loadFromRemote();
         if (res.ok) {
           await loadData();
           showStatus(
             res.safetyRef
-              ? `Loaded newer remote backup. Local saved as ${res.safetyRef}.`
-              : 'Loaded newer remote backup.'
+              ? `Loaded newer folder database. Local saved as ${res.safetyRef}.`
+              : 'Loaded newer folder database.'
           );
         } else {
-          showStatus(`Could not adopt newer remote backup: ${res.error}`);
+          showStatus(`Could not adopt newer folder database: ${res.error}`);
         }
       } else if (info.kind === 'local-newer-same-device') {
         // We have unflushed edits; coordinator will write them via debounce
         // on the next mutation, but we can also nudge a flush right now.
-        await backupCoordinator.flush('startup');
+        await mirrorNow(true);
       }
       // 'remote-newer-different-device' and 'diverged-different-device'
       // are blocking; the coordinator already paused itself and the banner
@@ -160,18 +174,33 @@ function App() {
     let cancelled = false;
     (async () => {
       try {
-        const show = await shouldShowBackupOnboarding();
-        if (!cancelled && show) setShowBackupOnboarding(true);
-        if (cancelled) return;
-        // Wait for revision tracker to be loaded before doing the conflict
-        // check (it reads tracker state synchronously).
+        // Ensure backup system is ready before load/conflict (effect 1 may still be racing).
         await revisionTracker.load();
         if (cancelled) return;
+        await revisionTracker.start();
+        backupCoordinator.start();
+
         await refreshBackupFolderStatus();
+        if (cancelled) return;
+
+        const ready = await hasWritableBackupFolder();
+        if (!ready) {
+          if (!cancelled) setShowBackupOnboarding(true);
+          if (!cancelled) setFolderGateResolved(true);
+          return;
+        }
+
+        setShowBackupOnboarding(false);
+        if (!cancelled) setFolderGateResolved(true);
+        const { purgeLegacyLocalDomainStorage } = await import('./lib/storage/legacyStorageCleanup');
+        await purgeLegacyLocalDomainStorage();
+        await loadData();
         if (cancelled) return;
         await runStartupConflictCheck();
       } catch (e) {
         console.error('Backup onboarding check failed:', e);
+        if (!cancelled) setFolderGateResolved(true);
+        if (!cancelled) setShowBackupOnboarding(true);
       }
     })();
     return () => {
@@ -218,44 +247,53 @@ function App() {
 
   // Load data
   const loadData = async () => {
-    const allProjects = await getAllProjects();
-    setProjects(allProjects);
-    const allCollections = await getAllCollections();
-    setCollections(allCollections);
-    const allWorkspaces = await getAllWorkspaces();
-    setWorkspaces(allWorkspaces);
-    const allItems = await getActiveItems();
-    setItems(allItems.sort((a, b) => b.created_at - a.created_at));
+    try {
+      if (!(await hasWritableBackupFolder())) return;
+
+      const allProjects = await getAllProjects();
+      setProjects(allProjects);
+      const allCollections = await getAllCollections();
+      setCollections(allCollections);
+      const allWorkspaces = await getAllWorkspaces();
+      setWorkspaces(allWorkspaces);
+      const allItems = await getActiveItems();
+      setItems(allItems.sort((a, b) => b.created_at - a.created_at));
+    } catch (e) {
+      console.error('loadData failed:', e);
+    }
   };
 
   const loadDataRef = useRef(loadData);
   loadDataRef.current = loadData;
 
-  /** Side panel and new tab are different documents — same IndexedDB, separate React state. */
+  const reloadFromPeer = async () => {
+    // Never close SQLite mid-digest — it surfaces as a fake "network/CORS" error.
+    if (isAnyDigestInFlight()) {
+      await loadDataRef.current();
+      return;
+    }
+    await reloadDB();
+    await loadDataRef.current();
+  };
+
+  /** Side panel and dashboard are different documents — reload DB on peer writes only. */
   useEffect(() => {
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(DATA_CHANGED_BROADCAST_CHANNEL);
       bc.onmessage = () => {
-        void loadDataRef.current();
+        void reloadFromPeer();
       };
     } catch {
       bc = null;
     }
-    const refresh = () => {
-      if (document.visibilityState === 'visible') void loadDataRef.current();
-    };
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
+    const unsubDb = subscribeToDataChanges(() => {
+      void loadDataRef.current();
+    });
     return () => {
       bc?.close();
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', refresh);
+      unsubDb();
     };
-  }, []);
-
-  useEffect(() => {
-    loadData();
   }, []);
 
   useEffect(() => {
@@ -582,6 +620,13 @@ function App() {
     }
   };
 
+  const bootstrapWorkerFromFolder = async (): Promise<void> => {
+    const primary = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
+    if (primary.ok && primary.data && primary.data.byteLength > 16) {
+      await dbRpc('bootstrapFromFolderBytes', [primary.data]);
+    }
+  };
+
   const handleChooseBackupFolder = async () => {
     // Forget what we knew about the OLD folder's remote BEFORE the picker
     // runs, so that importDB (called below if an existing latest.json is
@@ -601,14 +646,19 @@ function App() {
       } else {
         const imported = await importDB(res.existingBackupJson, true);
         if (imported) {
+          await reloadDB();
+          await mirrorNow(true);
           await loadData();
-          showStatus('Folder linked. Existing latest.json was loaded and replaced current DB data.');
+          showStatus('Folder linked. Legacy latest.json imported into workbench.sqlite.');
         } else {
           showStatus('Folder linked, but loading existing latest.json failed. Current DB was kept.');
         }
       }
     } else {
-      showStatus('Backup folder saved. No existing latest.json found, so a new one was created from current DB.');
+      await bootstrapWorkerFromFolder();
+      await reloadDB();
+      await mirrorNow(true);
+      showStatus('Backup folder saved. Live database is workbench.sqlite in that folder.');
     }
     await setBackupFolderOnboarding('done');
     setShowBackupOnboarding(false);
@@ -642,8 +692,8 @@ function App() {
       await loadData();
       showStatus(
         res.safetyRef
-          ? `Loaded remote latest.json. Local saved as ${res.safetyRef}.`
-          : 'Loaded remote latest.json.'
+          ? `Loaded remote workbench.sqlite. Local saved as ${res.safetyRef}.`
+          : 'Loaded remote workbench.sqlite.'
       );
     } else {
       showStatus(`Could not load remote: ${res.error ?? 'Unknown error'}`);
@@ -653,13 +703,17 @@ function App() {
   const handleResolveConflictKeepLocal = async () => {
     const res = await backupCoordinator.forcePushLocal();
     if (res.ok) {
-      showStatus('Kept local data; latest.json overwritten.');
+      showStatus('Kept local data; workbench.sqlite updated.');
     } else {
       showStatus(`Could not overwrite remote: ${res.error ?? 'Unknown error'}`);
     }
   };
 
   const handleOpenFullPage = async () => {
+    // Push side-panel writes to latest.json before opening a separate document.
+    if (backupCoordinator.hasAnySink()) {
+      await mirrorNow(true);
+    }
     const dashboardTab = await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
     // Keep side panel available on normal tabs, but close/disable it on the
     // full dashboard tab so the page has full focus.
@@ -723,6 +777,14 @@ function App() {
 
   // Side Panel View
   if (isSidePanel) {
+    if (!folderGateResolved) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          Loading…
+        </div>
+      );
+    }
+
     return (
       <div
         style={{
@@ -744,7 +806,7 @@ function App() {
           ['--accent-weak' as string]: 'rgba(0, 120, 215, 0.15)',
         }}
       >
-        {showBackupOnboarding ? (
+        {showBackupOnboarding || !backupFolderReady ? (
           <div
             style={{
               margin: '0.75rem',
@@ -758,7 +820,8 @@ function App() {
             }}
           >
             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', lineHeight: 1.4 }}>
-              Backup setup is required. Open full-page setup to choose a backup folder.
+              Choose a data folder in full-page setup before saving bookmarks. Your live database is{' '}
+              <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> in that folder.
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
@@ -780,7 +843,7 @@ function App() {
             </div>
           </div>
         ) : null}
-        {!showBackupOnboarding ? (
+        {!showBackupOnboarding && backupFolderReady ? (
           <SidePanelView
             projects={projects}
             collections={collections}
@@ -831,14 +894,36 @@ function App() {
   }
 
   // Full Page View
+  if (!folderGateResolved) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'system-ui, sans-serif',
+          color: 'var(--text-muted, #6b7280)',
+        }}
+      >
+        Loading…
+      </div>
+    );
+  }
+
+  if (!backupFolderReady) {
+    return (
+      <BackupOnboardingModal
+        open
+        allowSkip={false}
+        onComplete={handleChooseBackupFolder}
+      />
+    );
+  }
+
   return (
     <>
-    <BackupOnboardingModal
-      open={showBackupOnboarding}
-      allowSkip={false}
-      onComplete={handleChooseBackupFolder}
-    />
-    <DashboardLayout 
+    <DashboardLayout
       windows={currentWindows}
       projects={projects}
       collections={collections}

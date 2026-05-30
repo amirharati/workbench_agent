@@ -20,7 +20,7 @@ interface BackupOnboardingModalProps {
 export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
   open,
   compact,
-  allowSkip = true,
+  allowSkip = false,
   onChooseInFullPage,
   onComplete,
   onSkip,
@@ -104,11 +104,12 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
             </div>
             <div>
               <h2 id="backup-onboarding-title" style={{ margin: 0, fontSize: compact ? '1rem' : '1.125rem', fontWeight: 700 }}>
-                Choose a backup folder
+                Choose your data folder
               </h2>
               <p style={{ margin: '8px 0 0', opacity: 0.85, lineHeight: 1.5 }}>
-                Pick a folder on this computer—ideally inside Dropbox, iCloud Drive, or another sync service—so your data can be
-                mirrored as regular files. You can change this later when automated backup settings ship.
+                Workbench stores your live database as <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> in a
+                folder you pick—ideally inside Dropbox, iCloud Drive, or another sync service. The app cannot run without
+                this folder.
               </p>
             </div>
           </div>
@@ -137,7 +138,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
         <ol style={{ margin: '0 0 16px', paddingLeft: '1.25rem', lineHeight: 1.6, opacity: 0.9 }}>
           <li>{onChooseInFullPage ? 'Click "Open full page setup" below.' : 'Click "Choose folder" below.'}</li>
           <li>Select or create a folder (e.g. your synced Dropbox folder).</li>
-          <li>We save <code style={{ fontSize: '0.9em' }}>latest.json</code> there as an initial snapshot.</li>
+          <li>We create <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> there as your live database.</li>
         </ol>
 
         {error ? (

@@ -95,7 +95,7 @@ Chrome MV3 extension
 - AI pipeline hardening V1.1 (Task 03): incremental classify-by-hash, quality gate tiers, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks toolbar: Results / Enrich / Categories), queue reconcilers, `pending_discover` for no-topic outcomes.
 - Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion; CLI eval; dev `SearchDevPanel` for R&D.
 - **Doc embedding step (Task 04):** `embedBackfillPlan` + `embed-incremental` CLI; vectors in `ai_item_signals`.
-- **V2 product UX (Task 05):** **V2-A + 05.B + 05.C + D-10 shipped.** **Finishing V2:** [`TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md). **Post-V2 #1:** D-35 storage/backup big change.
+- **V2 product UX (Task 05):** **V2 closed 2026-05-29** ([`TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md)). **Active:** [`TASK-POST-V2.md`](temp/TASK-POST-V2.md) — **V2.1** SQLite WASM → V3 planning → workflow/polish on new DB.
 
 ---
 
@@ -110,14 +110,14 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Area | Status |
 |------|--------|
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
-| **V2 — Product (active)** | **05.1–05.7, 05.B, 05.C, D-10 shipped.** **Finishing V2:** [`TASK-V2-CLOSE`](temp/TASK-V2-CLOSE.md). **Post-V2:** **V2.1** SQLite WASM local default → **V2.2+** optional cloud/sharing. |
+| **V2 — Product** | ✅ **Closed** 2026-05-29. **Storage shipped** (V2.1 + V2.1.1). **Active:** V3 product epics on single-device SQL — [`TASK-POST-V2`](temp/TASK-POST-V2.md). |
 | **AI Categorization (V1)** | Backend shipped. Product: browse taxonomy (Tools), accept/reject suggestions (Inspector), digest queues (Home). |
 | **Search** | Product hybrid search shipped (**05.2**); dev score breakdown in `SearchDevPanel`. |
 | **Enrichment / fetch** | **D-10 shipped:** headless hardening, X threads, tab-session + `file://` single-file. **D-45 tracked:** bulk folder scan for local PDFs/papers (not implemented). |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | **Shipped (05.B + 05.C):** pin/fav/trash; pin sort-to-top; batch classify from Home. Open: 30-day purge, per-project quick-access filters. |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
-| **Storage / backup** | **V2:** IndexedDB + `latest.json` (unchanged). **V2.1:** SQLite WASM + OPFS. **V2.2+:** optional BYO cloud (Turso), sharing. |
+| **Storage / backup** | **Shipped:** SQLite WASM + OPFS worker + folder mirror (`workbench.sqlite`). **V3/V4:** single-device. **Later (deferred):** multi-device = per-device replicas + app merge — [`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md), [`BACKLOG.md`](backlog.md). |
 | **Bulk bookmark import** | **Commit path shipped** (batch merge/dedupe). **Next:** import polish (**D-38**), **local folder library (D-45)**, provenance (**D-05**), scale/backup (**D-35**). |
 
 ---
@@ -134,4 +134,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-05-29 — Finishing V2 without D-35. Post-V2: storage/backup big change. [`TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md).*
+*Last updated: 2026-05-29 — **V2.1 + V2.1.1 storage shipped.** V3/V4 single-device.*

@@ -18,10 +18,11 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 
 ## Principles
 
-1. **IndexedDB remains the runtime source of truth** while the extension is installed and loaded.
-2. **Canonical snapshot format** is the existing JSON from `exportDB()` / consumed by `importDB()` + `verifyBackup()` — one pipeline for manual export, auto backup, and any future provider.
-3. **Backup is snapshot export**, not a live second database. Cross‑machine consistency via shared folders (e.g. Dropbox) is **transport + redundancy**, not ACID sync — **accepted limitation** to avoid heavy merge logic now.
-4. **Defense in depth:** manual export (existing) + live backup + scheduled rotated backups + import verification.
+1. **V2 (superseded for domain data):** IndexedDB was runtime source of truth; live backup debounced full JSON → `latest.json`.
+2. **V2.1 + V2.1.1 (shipped — [`temp/TASK-V2.1-sqlite-wasm-storage.md`](temp/TASK-V2.1-sqlite-wasm-storage.md), [`temp/TASK-V2.1.1-opfs-db-worker.md`](temp/TASK-V2.1.1-opfs-db-worker.md)):** **SQLite WASM on OPFS** in a **single DB worker** (offscreen document). **Mandatory backup folder.** **Live truth = OPFS**; **`workbench.sqlite`** in the user folder is a **debounced mirror** (3s after last edit, max once per 60s unless forced). **`workbench.meta.json`** sidecar carries revision/deviceId. **JSON export/import retained.** **Fetch raw bodies** unchanged in `enrichment-cache/`.
+3. **Canonical interchange format (V2 + V2.1):** JSON from `exportDB()` / `importDB()` + `verifyBackup()` — for manual export, migration, and cross-version import.
+4. **Backup is snapshot export**, not a live second database. Cross‑machine consistency via shared folders (e.g. Dropbox) is **transport + redundancy** on a **single device** — **not** multi-writer sync. **V2.2:** per-device replicas + app sync layer ([`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md)).
+5. **Defense in depth:** manual export + occasional **`manual-*.sqlite` / `manual-*.json`** snapshots + scheduled rotation (pending) + import verification. No full JSON rewrite on every edit when folder live mode is active.
 
 ---
 
@@ -29,27 +30,36 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 
 ### Shipped
 
-1. **Live backup (debounced auto-save)**
-   - DB write paths emit `notifyDataChanged(...)` from `db.ts`.
-   - `BackupCoordinator` listens and writes debounced live snapshots to `latest.json` (current debounce: ~1.5s).
-   - Writes are coalesced while in-flight to avoid concurrent file writes.
+0. **V2.1.1 runtime storage (2026-05-29)**
+   - Domain data in **SQLite WASM on OPFS** inside one **DB worker** (`src/lib/storage/dbWorker/`, `src/offscreen/offscreen.ts`).
+   - **All UI tabs** use RPC (`dbClient` → service worker → offscreen → worker). Tab-side `RemoteIdbCompatStore` is a read cache only.
+   - **Backup folder required:** blocking onboarding until chosen.
+   - **Bootstrap:** if OPFS empty and folder has `workbench.sqlite` → import into OPFS once.
+   - **Mirror:** worker `mirrorToFolder.ts` — 3s debounce, 60s min interval; scheduled after mutating RPCs.
+   - Meta in IDB: `metaDb.ts` (folder handle, revision kv). Legacy domain IDB/localStorage purged on startup.
+
+1. **Live persistence (folder mirror)**
+   - Mutations commit to OPFS immediately in worker.
+   - Debounced export → **`workbench.sqlite`** + **`workbench.meta.json`** (offscreen writes bytes from worker).
+   - Legacy **`latest.sqlite`** / **`latest.json`** read for migration only — not rewritten on every edit.
+   - Live JSON backup **disabled**; manual snapshots on demand.
 
 2. **Manual backup**
-   - "Backup now" writes `manual-YYYY-MM-DD_HHMMSS.json`.
-   - Manual backup also refreshes `latest.json`.
+   - "Backup now" writes `manual-YYYY-MM-DD_HHMMSS.json` **and** matching `manual-*.sqlite` via `ManualFolderBackupSink`.
+   - Does **not** replace the live `workbench.sqlite` except via explicit conflict resolution.
 
 3. **Envelope metadata for sync decisions**
-   - `latest.json` now uses a backup envelope:
+   - **`workbench.meta.json`** (or legacy `latest.json`) uses a backup envelope:
      - `format`, `schemaVersion`, `exportedAt`, `revision`, `deviceId`, `writerKind`, `data`.
    - Existing legacy flat JSON backups are still readable; parser is backward-compatible.
    - Time uses UTC milliseconds (`Date.now()`). We assume host clocks are reasonably accurate.
 
 4. **Cross-device conflict detection + write pause**
-   - Startup/folder-check reads remote `latest.json` envelope and compares it with local revision/device state.
+   - Startup/folder-check reads remote **`workbench.meta.json`** (fallback: legacy `latest.json`) and compares with local revision/device state.
    - If remote is newer from another device (or both sides diverged), auto-writes are paused and user must resolve.
    - Resolution actions in UI:
-     - **Load remote** (safe path): writes `safety-before-import-...json` to the same folder first, then imports remote.
-     - **Keep local**: force-pushes local state to `latest.json`.
+     - **Load remote** (safe path): writes `safety-before-import-...` snapshot first, then reloads **`workbench.sqlite`**.
+     - **Keep local**: force-flushes local state to **`workbench.sqlite`**.
 
 5. **Swappable architecture in place**
    - `BackupCoordinator` + `BackupSink` + `FileSystemBackupSink` implemented.
@@ -71,12 +81,9 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 4. **Import merge mode**
    - Replace mode works; merge remains disabled placeholder.
 
-5. **Export / live-backup scale (end of V2 — important)**
-   - **Today:** every `notifyDataChanged` debounce runs **`exportDB()`** and rewrites **`latest.json`** with the **full** database snapshot (pretty-printed JSON: items, enrichment, AI stores, embeddings in `ai_item_signals`, etc.).
-   - **Works well** for personal-scale libraries (roughly hundreds of items; on the order of tens of MB per file with pipeline data).
-   - **Does not scale** cleanly to very large libraries (thousands+ items, large embedding payloads): long writes, sync-folder churn, memory spikes, conflict recovery cost.
-   - **Tracked as D-35** — **post-V2** big change (master 2026-05-29: not a V2-close gate). See [`temp/TASK-POST-V2-D35-storage-backup.md`](temp/TASK-POST-V2-D35-storage-backup.md) and [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).
-   - **Direction (TBD after spike):** compact JSON, incremental/delta export, chunked or streaming writes, optional separation of heavy blobs from main JSON, export duration/size surfaced in Settings.
+5. **Export / live-backup scale (end of V2 — largely addressed in folder mode)**
+   - **Folder mode:** mutations flush **SQLite bytes only** (~800ms debounce) — no full JSON rewrite per edit. Manual JSON/SQL snapshots are on demand.
+   - **No-folder path removed** — folder is required at app start.
 
 ---
 
@@ -86,7 +93,7 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 
 | Question | Current answer |
 |----------|----------------|
-| What syncs on pin/fav/trash/import/pipeline? | Same path as all DB writes: `notifyDataChanged` → debounced full export → `latest.json`. New `Item` fields (`pinnedAt`, `favoriteAt`, `deletedAt`) are included automatically. |
+| What syncs on pin/fav/trash/import/pipeline? | Worker commit to OPFS → debounced **`workbench.sqlite`** mirror (folder required). |
 | What does *not* sync? | Ephemeral UI: open tabs, shell/home split prefs, font scale, search history (localStorage). |
 | What must improve before V2 close? | **Nothing** — V2 closes with current backup at today's scale. **Post-V2:** big storage/backup epic (SQLite and/or multi-file dump — not small patches). |
 
@@ -96,11 +103,20 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 
 ## Backup modes (target shape)
 
-### 1) Live backup (auto-save on change)
+### 1) Live persistence (auto-save on change)
 
-- Local writes trigger debounced export.
-- Current target file is `latest.json` in the selected folder.
-- Debouncing avoids hammering disk/sync when many edits arrive quickly.
+- Worker commits to OPFS on each mutation; schedules folder mirror (3s debounce, 60s min interval).
+- **`workbench.meta.json`** holds revision metadata only (not full data).
+- **`mirrorNow(true)`** bypasses debounce (folder pick, conflict resolution, manual trigger from code).
+
+**Truth direction (single device):**
+
+| Situation | Direction |
+|-----------|-----------|
+| Normal edits | OPFS → folder mirror |
+| Startup, empty OPFS | folder → OPFS bootstrap |
+| Conflict “Load remote” | folder → `forceImportFromFolderBytes` → OPFS |
+| Uninstall extension | OPFS lost; folder replica is recovery |
 
 ### 2) Scheduled backup (rotation) — pending
 
@@ -119,10 +135,12 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 
 - User picks a folder once (IDEAL: sync‑enabled folder such as Dropbox). Extension stores **`FileSystemDirectoryHandle`** in IndexedDB where supported.
 - **Dropbox/iCloud** are implementation‑transparent: we write normal files; the OS client syncs them. No Dropbox API in this phase.
+- **Single device:** flat `workbench.sqlite` in that folder is correct.
+- **Multi-device (V2.2):** each machine must write **its own replica** (`devices/{deviceId}/…`); sync layer merges — see [`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md).
 - **Caveats (explicit):**
   - Sync delay and OS-level conflict copies can occur (Dropbox/iCloud behavior).
-  - No automatic merge across divergent edits.
-  - If remote is newer from another device, writes are paused and user must resolve to avoid silent overwrite.
+  - No automatic merge across divergent edits on one shared sqlite file.
+  - If remote meta is newer, startup conflict UI applies; remote-newer loads folder into OPFS.
 
 ---
 
@@ -149,9 +167,18 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 
 ## Future extensions (out of scope until chosen)
 
-- HTTP / BYO server: same JSON blob, `fetch` with optional auth headers.
+### Multi-device sync — master design (deferred)
+
+**Not V3/V4** — single-device folder mirror is sufficient for near-term product work. When multi-device is needed later:
+
+- **Do not** share one live `workbench.sqlite` across machines.
+- **Do** use **one replica per `deviceId`** under a sync root; app-level merge; same pattern for Dropbox, Turso blobs, HTTP, mobile.
+- Full brief: [`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md). Backlog: [`backlog.md`](backlog.md) § Multi-device sync.
+
+- **V2.2 sync layer** — per-device replicas, merge, backends ([`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md)).
+- HTTP / BYO server: same snapshot blob, `fetch` with optional auth headers.
 - More automatic pull/re-check policies while app is open.
-- Per‑user filenames when multi‑user mode exists (`workbench-{profileId}-latest.json`).
+- Mirror tmp+replace; Settings mirror status UI.
 
 ---
 
@@ -162,7 +189,10 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 - `src/lib/revisionTracker.ts` — device/revision/last-seen-remote bookkeeping.
 - `src/lib/backupEnvelope.ts` — envelope schema + legacy-compatible parser.
 - `src/lib/backupCoordinator.ts` — debounced live/manual orchestration + conflict checks/resolution helpers.
-- `src/lib/backupSinks.ts` — sink interface + file-system sink.
+- `src/lib/backupSinks.ts` — sink interface + `FileSystemSqliteBackupSink` (json + sqlite bytes).
+- `src/lib/storage/dbWorker/` — worker, `mirrorToFolder.ts`, OPFS connection.
+- `src/lib/storage/dbClient/` — tab RPC client, `RemoteIdbCompatStore`.
+- `src/offscreen/offscreen.ts` — DB owner, bootstrap from folder, mirror write.
 - `src/lib/backupFolder.ts` — folder handle persistence + read/write helpers.
 - `src/lib/metaDb.ts` — meta DB (`handles` + `kv` stores).
 - `src/App.tsx` — startup conflict checks, backup sink registration, handlers.
@@ -178,4 +208,4 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 
 ---
 
-*Last updated: 2026-05-03 — backup UI moved to Settings view*
+*Last updated: 2026-05-29 — V2.1.1 OPFS worker + folder mirror; V2.2 per-device sync direction*

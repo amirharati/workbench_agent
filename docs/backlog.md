@@ -60,6 +60,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - **V2-A product UX (Task 05):** **05.1–05.7 + D-40** shipped — Home, search, enrichment read, category review, digest, import/batch, shell polish. Spec: [`temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 - **V2-B quick access (Task 05.B — 2026-05-27):** Pins, favorites, trash on `Item` (DB v8: `pinnedAt`, `favoriteAt`, `deletedAt`); utility tabs; Home card; context menu + side panel; soft delete. Spec: [`temp/TASK-05.B-pins-favorites-trash.md`](temp/TASK-05.B-pins-favorites-trash.md). **Adjacent same session:** Help v1, Home vertical split (not D-01–03).
 - **V2 polish bundle (Task 05.C — 2026-05-27):** Pin sort-to-top; Home classify-queue batch + confirm modal + progress UI; batch cancel (enrich); taxonomy `notifyDataChanged`; Help v2 + shortcuts; AI vs Collections labels. Follow-on: digest browse on Home, `processAll` Home batches. Spec: [`temp/TASK-05.C-v2-polish-bundle.md`](temp/TASK-05.C-v2-polish-bundle.md).
+- **V2.1 + V2.1.1 storage (2026-05-29):** SQLite WASM schema + JSON bridge; **single DB worker on OPFS**; mandatory backup folder; debounced mirror to `workbench.sqlite` + `workbench.meta.json`; bootstrap folder → OPFS on startup. Specs: [`temp/TASK-V2.1-sqlite-wasm-storage.md`](temp/TASK-V2.1-sqlite-wasm-storage.md), [`temp/TASK-V2.1.1-opfs-db-worker.md`](temp/TASK-V2.1.1-opfs-db-worker.md). Design: [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md).
 
 ---
 
@@ -68,7 +69,6 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 - [ ] **Error handling**: consistent try/catch on async paths (`App.tsx`, dashboard handlers, Chrome APIs); user-visible errors vs silent `console.error`.
 - [ ] **DB transactions**: multi-step deletes (`deleteCollection`, `deleteProject`, bulk moves) reviewed for atomicity in `db.ts`.
 - [ ] **Input validation**: URLs, IDs, text limits; centralize validation helpers (extend existing `src/lib/utils.ts` patterns as needed).
-- [ ] **V2.1 — SQLite WASM + OPFS** — Post-V2 #1: migrate off IndexedDB; local default; `.sqlite` backup API. **V2.2+:** optional BYO cloud (Turso), sharing. Not a V2-close gate. Briefs: [`temp/TASK-V2.1-sqlite-wasm-storage.md`](temp/TASK-V2.1-sqlite-wasm-storage.md), [`temp/TASK-POST-V2-D35-storage-backup.md`](temp/TASK-POST-V2-D35-storage-backup.md).
 - [ ] **Very large bookmark libraries (scale spike)** — Broader than D-35 alone: UI list virtualization, paged reads, bulk-import memory — assess **5k–50k+** paths; ties to backup coordinator and `db.ts`.
 
 ---
@@ -153,7 +153,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ### V2-A — UX / UI (umbrella — **TASK-05**)
 
-**Policy:** **Open V2 index:** [`temp/V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md). **Finish V2:** [`temp/TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md). **Post-V2 #1:** **D-35** storage/backup (big change).
+**Policy:** **V2 closed** 2026-05-29 ([`temp/TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md)). **Active:** [`temp/TASK-POST-V2.md`](temp/TASK-POST-V2.md). **Shipped:** V2.1 + V2.1.1 storage. **Next:** V2.2 sync or V3 planning. Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).
 
 | Subtask | Status | Focus |
 |---------|--------|--------|
@@ -186,7 +186,7 @@ Workflow checklist (product, no new schema first):
 - [ ] **Notes strategy (D-04)** — First-class `notes` store vs URL-empty `items`; one UI path; migration/export rules documented.
 - [ ] **Schema / import debt (D-05)** — Reconcile backup normalization, multi-collection merge semantics, validation.
 - [ ] **AI layer presentation** — Document and UI-label: `projects`/`collections` (manual) vs `ai_categories` (semantic); no forced DAG in V2-B (DAG → V3).
-- [ ] **D-35 — Storage & backup** — **Post-V2** (big change) — see [`temp/TASK-POST-V2-D35-storage-backup.md`](temp/TASK-POST-V2-D35-storage-backup.md).
+- [ ] **D-35 — Storage & backup** — **V2.1 + V2.1.1 shipped** (single-device). Optional polish: mirror tmp+replace, Settings sync status, `.sqlite` import UI. Umbrella: [`temp/TASK-POST-V2-D35-storage-backup.md`](temp/TASK-POST-V2-D35-storage-backup.md).
 
 ### V2-C — V1 backend refinement (after V2-A usable baseline)
 
@@ -212,7 +212,7 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 - [ ] **Optional cloud upgrade path:** Same **`Embedder` / `Retriever` / `Indexer`** interfaces with backends that call **hosted embedding + ANN + rerank** APIs (user-supplied API keys first — matches existing LLM pattern). Use for: heavy global semantic search, large batch re-embed, GPU-heavy jobs — **explicit opt-in + budgets + privacy mode** (what text leaves device: snippet-only vs full).
 - [ ] **Pay-per-task / ephemeral compute:** If first-party billing or “no user API key” is required, expect a **minimal orchestration endpoint** (short-lived tokens, quotas) — pure browser-to-GPU without any gate is unrealistic for abuse/cost reasons. Document “tiny proxy vs BYO key” tradeoff.
-- [ ] **Sync / multi-device (if ever):** Treat cloud index as **optional replica**; local DB remains source of truth unless product explicitly chooses otherwise.
+- [ ] **Sync / multi-device (if ever):** Treat cloud index as **optional replica**; local DB remains source of truth unless product explicitly chooses otherwise. **Master design (deferred, not V3/V4):** per-device replicas + app merge layer — see **Multi-device sync (master design)** below and [`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md).
 
 - [ ] **V3 — taxonomy data-model upgrade (concept hierarchy / DAG):** Capture discussion decisions explicitly so we do not lose context. **Why deferred:** ship value first with V1 tag/collection suggestions and review/apply UX, then harden taxonomy. **Semantics split:** `projects/collections` remain manual workflow containers; AI taxonomy is a separate semantic layer. **Graph shape:** one **shared** concept DAG for the library (not per-item DAG), concept nodes support multiple parents (`parentIds[]`) for cases like `computer -> coding -> c++` while still allowing cross-branch links. **Candidate schema:** `ConceptNode { id, name, slug, parentIds[], synonyms[]?, createdBy }`, plus item↔concept links with `{ source: manual|ai, confidence, status: suggested|accepted|rejected, timestamps }`. **Rules:** prevent cycles on writes, keep aliases/synonyms mapped to canonical concepts, never auto-delete manual mappings during recategorization. **Migration path from V1:** keep existing `tags` and project/collection mappings; add a staged migration that maps stable/high-frequency tags to concepts and preserves provenance for rollback/audit. **Entry points after V2 exists:** optional post-import categorization, subset categorization (selected links / collection / project), and batched global recategorization.
 
@@ -241,6 +241,38 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ## ⏸ Deferred / polish
 
+### Multi-device sync — master design (deferred; not V3/V4)
+
+**Status:** Direction locked **2026-05-29**; **not scheduled** for V3 or V4 (single-device is enough). Full brief: [`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md). Umbrella: [`temp/TASK-POST-V2-D35-storage-backup.md`](temp/TASK-POST-V2-D35-storage-backup.md).
+
+**Problem:** Two machines must not both write one shared `workbench.sqlite` (Dropbox/iCloud/Turso) — SQLite is not a multi-writer sync file.
+
+**Approach (when we ever need it):**
+
+| Layer | Rule |
+|-------|------|
+| **Live truth (each device)** | OPFS in single DB worker — same as V2.1.1 |
+| **Portable replica (each device)** | One snapshot per `deviceId`, not one shared live DB |
+| **Shared backend** | Transport only — sync folder, Dropbox API, Turso blobs, HTTP BYO |
+| **Sync layer (app)** | Read all device replicas → merge (single-user, few devices) → import into local OPFS → each device writes **only its** replica again |
+| **Not doing** | One shared cloud SQL DB all clients write to live |
+
+**Target sync-root layout:**
+
+```text
+{sync-root}/devices/{deviceId}/workbench.sqlite
+{sync-root}/devices/{deviceId}/workbench.meta.json
+{sync-root}/devices/{deviceId}/enrichment-cache/…   # policy TBD
+```
+
+**Backends (same model for all):** Dropbox/iCloud folder, Dropbox API, Turso as blob store, HTTP BYO, future mobile app — per-device subfolders; merge in app, not OS “conflicted copy” semantics.
+
+**Hooks already shipped:** `deviceId`, `revision`, `workbench.meta.json`, `backupCoordinator` conflict kinds, worker `forceImportFromFolderBytes`.
+
+**V3/V4 scope:** Stay single-device; use folder mirror + manual export. Revisit multi-device only when product explicitly needs laptop + phone (etc.).
+
+---
+
 - **Chrome new-tab chrome**: Persistent footer / browser chrome on extension new-tab override is not fixable in-repo; future option: hosted dashboard (`https://`) + extension bridge if “chrome-free” full-page is required.
 - Animations, responsive polish, heavy styling refactors.
 - Relationship graphs (notes ↔ bookmarks ↔ projects).
@@ -252,20 +284,20 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ## Suggested order (adjust freely)
 
-**Active product thread:** **V1 closed** → **V2-A + 05.B + D-10 done** → **finish V2** (pipeline/search UX, dogfood) → **post-V2: D-35 big backup/storage** → **V3** scale AI.
+**Active product thread:** **V1 closed** → **V2 closed** → **V2.1 + V2.1.1 shipped** → **V3/V4 single-device** → product epics.
 
-**Parallel / hygiene (pick as needed):**
+**Post-V2 (active):** [`temp/TASK-POST-V2.md`](temp/TASK-POST-V2.md)
 
-1. **Finish V2** — [`temp/TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md) (pipeline UX, search, dogfood; **not** D-35).
-2. **Post-V2 #1: V2.1** SQLite WASM + OPFS — [`temp/TASK-V2.1-sqlite-wasm-storage.md`](temp/TASK-V2.1-sqlite-wasm-storage.md). **V2.2+:** cloud/sharing.
-3. **D-45** local folder library — after V2 or parallel if urgent.
-3. Notes strategy (D-04) + import provenance (D-05).
-4. Optional: D10.4b headless (GitHub blobs, pick-best) — not a V2 gate.
-4. Scheduled backup rotation (`chrome.alarms`) when integrity work cycles back.
-5. Collection detach/share UI if multi-project workflows matter.
+1. **V2.2 sync** — per-device replicas ([`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md)) — **deferred** (not V3/V4).
+2. **V3 planning** — review tracker; product epics on single-device SQL layer.
+3. **D-45** local folder library — when ready.
+5. Notes strategy (D-04) + import provenance (D-05).
+6. Optional: D10.4b headless — not a V2 gate.
+7. Scheduled backup rotation (`chrome.alarms`) with storage epic.
+8. Collection detach/share UI if multi-project workflows matter.
 
 **Adjacent UX (no task id):** Help v1, Home vertical split (shipped with 05.B session — optional polish later).
 
 ---
 
-*Last updated: 2026-05-29 — **D-35 deferred post-V2** (big change). **Finish V2:** [`TASK-V2-CLOSE.md`](temp/TASK-V2-CLOSE.md). Tracker: [`V2-DEFERRED-TRACKER.md`](temp/V2-DEFERRED-TRACKER.md).*
+*Last updated: 2026-05-29 — **V2.1 + V2.1.1 shipped.** V3/V4 single-device; multi-device sync deferred.*

@@ -811,19 +811,25 @@ export async function enrichOne(
     };
   } catch (e) {
     clearTimeout(timeout);
-    const errorCode =
-      e instanceof DOMException && e.name === 'AbortError' ? 'timeout' : 'network';
+    console.error('[enrichOne] unexpected error:', e);
+    const isAbort = e instanceof DOMException && e.name === 'AbortError';
+    const rawMsg = e instanceof Error ? e.message.trim() : String(e).trim();
+    const errorCode: EnrichmentErrorCode = isAbort
+      ? 'timeout'
+      : /SQLITE|database|Db is closed/i.test(rawMsg)
+        ? 'provider_error'
+        : 'network';
     if (existing && hasValuablePriorEnrichment(existing)) {
       return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode);
     }
+    const lastErrorDetail = isAbort
+      ? 'Request timed out before the page finished loading'
+      : rawMsg || 'Unexpected error during fetch or save';
     const failed: ItemEnrichment = {
       ...pending,
       status: 'failed',
       lastErrorCode: errorCode,
-      lastErrorDetail:
-        errorCode === 'timeout'
-          ? 'Request timed out before the page finished loading'
-          : 'Network error during fetch',
+      lastErrorDetail,
       fetchedAt: Date.now(),
       updated_at: Date.now(),
       nextRetryAt: Date.now() + ENRICHMENT_DEFAULTS.backoffBaseMs,
@@ -833,7 +839,7 @@ export async function enrichOne(
       itemId,
       status: 'failed',
       errorCode,
-      message: describeEnrichmentError(errorCode, failed.lastErrorDetail),
+      message: describeEnrichmentError(errorCode, lastErrorDetail),
     };
   }
 }

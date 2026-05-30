@@ -29,6 +29,15 @@ export interface SingleLinkDigestResult {
 
 const inFlight = new Set<string>();
 
+/** True while fetch/AI digest is running — avoid closing SQLite underneath it. */
+export function isAnyDigestInFlight(): boolean {
+  return inFlight.size > 0;
+}
+
+export function isDigestInFlight(itemId: string): boolean {
+  return inFlight.has(itemId);
+}
+
 function buildUserMessage(input: {
   enrich: EnrichmentResult;
   classifyAttempted: boolean;

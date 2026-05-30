@@ -1,19 +1,19 @@
 /**
  * Backup folder onboarding flags (chrome.storage.local).
- * Fresh installs start as `pending`.
- * We intentionally force setup for safety: any non-`done` state is treated as pending.
+ * Fresh installs start as `pending`. A backup folder is mandatory — no skip path.
  */
 import { hasWritableBackupFolder } from './backupFolder';
 
-export type BackupFolderOnboardingState = 'pending' | 'done' | 'skipped';
+export type BackupFolderOnboardingState = 'pending' | 'done';
 
 const STORAGE_KEY = 'backupFolderOnboarding';
 const FORCE_OPEN_KEY = 'backupFolderOnboardingForceOpen';
 
 export async function getBackupFolderOnboarding(): Promise<BackupFolderOnboardingState> {
   const r = await chrome.storage.local.get(STORAGE_KEY);
-  const v = r[STORAGE_KEY] as BackupFolderOnboardingState | undefined;
-  return v ?? 'pending';
+  const v = r[STORAGE_KEY] as BackupFolderOnboardingState | 'skipped' | undefined;
+  if (v === 'done') return 'done';
+  return 'pending';
 }
 
 export async function setBackupFolderOnboarding(state: BackupFolderOnboardingState): Promise<void> {
@@ -33,14 +33,13 @@ export async function consumeBackupOnboardingOpenRequest(): Promise<boolean> {
   return shouldForce;
 }
 
-/** Whether to show the onboarding modal (blocking until pick or skip). */
+/** Whether to block the app until the user picks a backup folder. */
 export async function shouldShowBackupOnboarding(): Promise<boolean> {
   const forced = await consumeBackupOnboardingOpenRequest();
   if (forced) return true;
 
-  const state = await getBackupFolderOnboarding();
-  if (state !== 'done') return true;
+  if (!(await hasWritableBackupFolder())) return true;
 
-  const ok = await hasWritableBackupFolder();
-  return !ok;
+  const state = await getBackupFolderOnboarding();
+  return state !== 'done';
 }

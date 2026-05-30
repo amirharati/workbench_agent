@@ -6,13 +6,6 @@
  */
 
 import { getIdbCompatStore, IdbCompatStore } from './storage/sqlite/store';
-import {
-  ensureDbWorker,
-  getRemoteStore,
-  isDbWorkerProcess,
-  mirrorNow,
-  resetRemoteStore,
-} from './storage/dbClient';
 import { notifyDataChanged } from './dataChangeNotifier';
 import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
 import { revisionTracker } from './revisionTracker';
@@ -263,88 +256,42 @@ async function ensureDefaultCollectionForProject(store: IdbCompatStore, projectI
   return id;
 }
 
-export const getDB = async (): Promise<IdbCompatStore> => {
+export const getDB = async () => {
   const { requireWritableBackupFolder } = await import('./backupFolder');
   await requireWritableBackupFolder();
-  if (isDbWorkerProcess()) {
-    if (!storePromise) {
-      storePromise = (async () => {
-        const store = await getIdbCompatStore();
-        await ensureDefaultProjectAndCollection(store);
-        return store;
-      })();
-    }
-    return storePromise;
-  }
-  await ensureDbWorker();
   if (!storePromise) {
     storePromise = (async () => {
-      const store = getRemoteStore();
-      await store.hydrate();
-      await ensureDefaultProjectAndCollection(store as unknown as IdbCompatStore);
-      return store as unknown as IdbCompatStore;
+      const store = await getIdbCompatStore();
+      await ensureDefaultProjectAndCollection(store);
+      return store;
     })();
   }
   return storePromise;
 };
 
-/** Refresh tab cache from the shared OPFS DB worker. */
+/** Re-read SQLite after another tab wrote to the backup folder. */
 export const reloadDB = async (): Promise<IdbCompatStore> => {
   const { requireWritableBackupFolder } = await import('./backupFolder');
+  const { resetStoreSingletons } = await import('./storage/sqlite/store');
   await requireWritableBackupFolder();
-  if (isDbWorkerProcess()) {
-    const { resetStoreSingletons } = await import('./storage/sqlite/store');
-    storePromise = null;
-    resetStoreSingletons();
-    return getDB();
-  }
   storePromise = null;
-  resetRemoteStore();
-  await ensureDbWorker();
-  const store = getRemoteStore();
-  await store.hydrate(true);
-  await ensureDefaultProjectAndCollection(store as unknown as IdbCompatStore);
-  storePromise = Promise.resolve(store as unknown as IdbCompatStore);
-  return store as unknown as IdbCompatStore;
+  resetStoreSingletons();
+  const { reloadConnectionFromFolderBytes } = await import('./storage/sqlite/connection');
+  await reloadConnectionFromFolderBytes();
+  return getDB();
 };
 
-/** Reload worker OPFS from folder workbench.sqlite and refresh tab cache. */
+/** Reload canonical workbench.sqlite from the backup folder into memory. */
 export const reloadFromFolderDatabase = async (): Promise<boolean> => {
   try {
-    const {
-      hasWritableBackupFolder,
-      readBinaryFromBackupFolder,
-      WORKBENCH_DB_FILE,
-    } = await import('./backupFolder');
+    const { hasWritableBackupFolder } = await import('./backupFolder');
     if (!(await hasWritableBackupFolder())) return false;
-
-    const primary = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
-    if (!primary.ok || !primary.data || primary.data.byteLength < 16) {
-      return false;
-    }
-
-    const { dbRpc } = await import('./storage/dbClient');
-    const result = await dbRpc<{ imported: boolean; reason?: string }>(
-      'forceImportFromFolderBytes',
-      [primary.data]
-    );
-    if (!result?.imported) return false;
-
     await reloadDB();
     return true;
   } catch (e) {
     console.error('reloadFromFolderDatabase failed:', e);
     return false;
   }
-};
-
-/** Force an immediate folder mirror (OPFS → workbench.sqlite). */
-export const flushFolderMirror = async (): Promise<{ ok: boolean; error?: string }> => {
-  if (isDbWorkerProcess()) {
-    const { mirrorNow: workerMirror } = await import('./storage/dbWorker/mirrorToFolder');
-    return workerMirror(true);
-  }
-  return mirrorNow(true);
 };
 
 export async function ensureProjectUnsortedCollection(projectId: string): Promise<string> {
@@ -914,16 +861,6 @@ export const bulkImportBookmarks = async (
   collectionId: string,
   options?: BulkImportOptions
 ): Promise<BulkImportResult> => {
-  if (!isDbWorkerProcess()) {
-    const { dbRpc } = await import('./storage/dbClient');
-    const result = await dbRpc<BulkImportResult>('bulkImportBookmarks', [
-      candidates,
-      collectionId,
-      options,
-    ]);
-    await reloadDB();
-    return result;
-  }
   const store = await getDB();
   const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(store);
   const targetCollection = collectionId || defaultUnsortedCollectionId;
@@ -1194,28 +1131,6 @@ export const verifyBackup = (
 };
 
 export const importDB = async (jsonString: string, createBackupFirst: boolean = true) => {
-  if (!isDbWorkerProcess()) {
-    if (createBackupFirst) {
-      try {
-        const backup = await exportDB();
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const blob = new Blob([backup], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `backup-before-import-${timestamp}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        console.log('Backup created before import');
-      } catch (backupError) {
-        console.error('Failed to create backup before import:', backupError);
-      }
-    }
-    const { dbRpc } = await import('./storage/dbClient');
-    const ok = await dbRpc<boolean>('importDB', [jsonString, false]);
-    if (ok) await reloadDB();
-    return ok;
-  }
   const store = await getDB();
 
   if (createBackupFirst) {
@@ -1358,13 +1273,9 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
  */
 export const exportSqliteBytes = async (): Promise<Uint8Array | null> => {
   try {
-    if (isDbWorkerProcess()) {
-      const { getConnection } = await import('./storage/sqlite/connection');
-      const conn = await getConnection();
-      return conn.exportDatabase();
-    }
-    const { dbRpc } = await import('./storage/dbClient');
-    return (await dbRpc<Uint8Array | null>('exportSqliteBytes', [])) ?? null;
+    const { getConnection } = await import('./storage/sqlite/connection');
+    const conn = await getConnection();
+    return conn.exportDatabase();
   } catch (e) {
     console.error('Failed to export SQLite bytes:', e);
     return null;

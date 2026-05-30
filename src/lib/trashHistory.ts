@@ -51,9 +51,9 @@ export async function recordTrashHistory(
   const normalizedUrl = bookmarkNormalizedUrl(item);
   if (!normalizedUrl) return;
 
-  const db = await getDB();
+  const store = await getDB();
   const now = Date.now();
-  await db.put('trash_history', {
+  store.putTrashEntry({
     normalizedUrl,
     url: item.url.trim(),
     title: item.title || item.url.trim(),
@@ -72,8 +72,8 @@ export async function clearTrashHistoryForItem(
 ): Promise<void> {
   const normalizedUrl = bookmarkNormalizedUrl(item);
   if (!normalizedUrl) return;
-  const db = await getDB();
-  await db.delete('trash_history', normalizedUrl);
+  const store = await getDB();
+  store.deleteTrashEntry(normalizedUrl);
   notifyDataChanged('item.update');
 }
 
@@ -85,11 +85,11 @@ export async function markTrashHistoryPurged(
   const normalizedUrl = bookmarkNormalizedUrl(item);
   if (!normalizedUrl) return;
 
-  const db = await getDB();
+  const store = await getDB();
   const now = Date.now();
-  const existing = await db.get('trash_history', normalizedUrl);
+  const existing = store.getTrashEntry(normalizedUrl);
   if (existing) {
-    await db.put('trash_history', {
+    store.putTrashEntry({
       ...existing,
       url: item.url.trim(),
       title: item.title || item.url.trim(),
@@ -97,7 +97,7 @@ export async function markTrashHistoryPurged(
       purgedAt: now,
     });
   } else {
-    await db.put('trash_history', {
+    store.putTrashEntry({
       normalizedUrl,
       url: item.url.trim(),
       title: item.title || item.url.trim(),
@@ -112,10 +112,8 @@ export async function markTrashHistoryPurged(
 }
 
 export async function getAllTrashHistory(): Promise<TrashHistoryEntry[]> {
-  const db = await getDB();
-  if (!db.objectStoreNames.contains('trash_history')) return [];
-  const rows = await db.getAll('trash_history');
-  return rows.sort((a, b) => b.trashedAt - a.trashedAt);
+  const store = await getDB();
+  return store.getAllTrashHistory();
 }
 
 export async function getTrashHistoryMap(): Promise<Map<string, TrashHistoryEntry>> {

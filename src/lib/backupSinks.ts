@@ -18,7 +18,9 @@ import {
   hasWritableBackupFolder,
   getBackupFolderName,
   writeJsonToBackupFolder,
+  writeBinaryToBackupFolder,
 } from './backupFolder';
+import { exportSqliteBytes } from './db';
 
 export type BackupKind = 'live' | 'manual' | 'scheduled';
 
@@ -79,6 +81,102 @@ export class FileSystemBackupSink implements BackupSink {
     if (!filename || filename.includes('/') || filename.includes('\\')) {
       return { ok: false, error: `Invalid filename: ${filename}` };
     }
+    const res = await writeJsonToBackupFolder(filename, json);
+    return { ok: res.ok, ref: res.ok ? filename : undefined, error: res.error };
+  }
+}
+
+/**
+ * Manual snapshot sink — occasional `manual-*.sqlite` + `manual-*.json` only.
+ * Live DB is `workbench.sqlite` (folderPersistence), not rewritten here on every edit.
+ */
+export class ManualFolderBackupSink implements BackupSink {
+  readonly id = 'file-system-manual';
+
+  async describe(): Promise<BackupSinkInfo> {
+    const ready = await hasWritableBackupFolder();
+    const label = ready ? await getBackupFolderName() : null;
+    return { id: this.id, label, ready };
+  }
+
+  async writeLatest(_json: string, _kind: BackupKind): Promise<BackupWriteResult> {
+    return { ok: true, ref: 'workbench.sqlite (live)' };
+  }
+
+  async writeNamed(filename: string, json: string, _kind: BackupKind): Promise<BackupWriteResult> {
+    if (!filename || filename.includes('/') || filename.includes('\\')) {
+      return { ok: false, error: `Invalid filename: ${filename}` };
+    }
+    const sqliteFilename = filename.replace(/\.json$/, '.sqlite');
+    const sqliteBytes = await exportSqliteBytes();
+    if (sqliteBytes) {
+      const sqliteRes = await writeBinaryToBackupFolder(sqliteFilename, sqliteBytes);
+      if (!sqliteRes.ok) {
+        console.warn('[Manual backup] Failed to write sqlite snapshot:', sqliteRes.error);
+      }
+    }
+    const res = await writeJsonToBackupFolder(filename, json);
+    return { ok: res.ok, ref: res.ok ? `${sqliteFilename} + ${filename}` : undefined, error: res.error };
+  }
+}
+
+/**
+ * @deprecated Live backup sink — replaced by workbench.sqlite + folderPersistence.
+ */
+export class FileSystemSqliteBackupSink implements BackupSink {
+  readonly id = 'file-system-sqlite';
+  private readonly latestSqliteFilename: string;
+  private readonly latestJsonFilename: string;
+
+  constructor(
+    latestSqliteFilename: string = 'latest.sqlite',
+    latestJsonFilename: string = 'latest.json'
+  ) {
+    this.latestSqliteFilename = latestSqliteFilename;
+    this.latestJsonFilename = latestJsonFilename;
+  }
+
+  async describe(): Promise<BackupSinkInfo> {
+    const ready = await hasWritableBackupFolder();
+    const label = ready ? await getBackupFolderName() : null;
+    return { id: this.id, label, ready };
+  }
+
+  async writeLatest(json: string, _kind: BackupKind): Promise<BackupWriteResult> {
+    // Write SQLite bytes first
+    const sqliteBytes = await exportSqliteBytes();
+    if (sqliteBytes) {
+      const sqliteRes = await writeBinaryToBackupFolder(this.latestSqliteFilename, sqliteBytes);
+      if (!sqliteRes.ok) {
+        console.warn('[SQLite Backup] Failed to write latest.sqlite:', sqliteRes.error);
+      }
+    }
+
+    // Also write JSON for compatibility
+    const jsonRes = await writeJsonToBackupFolder(this.latestJsonFilename, json);
+    return { 
+      ok: jsonRes.ok, 
+      ref: jsonRes.ok ? `${this.latestSqliteFilename} + ${this.latestJsonFilename}` : undefined, 
+      error: jsonRes.error 
+    };
+  }
+
+  async writeNamed(filename: string, json: string, _kind: BackupKind): Promise<BackupWriteResult> {
+    if (!filename || filename.includes('/') || filename.includes('\\')) {
+      return { ok: false, error: `Invalid filename: ${filename}` };
+    }
+
+    // For named backups, write both SQLite and JSON versions
+    const sqliteFilename = filename.replace(/\.json$/, '.sqlite');
+    const sqliteBytes = await exportSqliteBytes();
+    if (sqliteBytes) {
+      const sqliteRes = await writeBinaryToBackupFolder(sqliteFilename, sqliteBytes);
+      if (!sqliteRes.ok) {
+        console.warn('[SQLite Backup] Failed to write named sqlite:', sqliteRes.error);
+      }
+    }
+
+    // Write JSON version
     const res = await writeJsonToBackupFolder(filename, json);
     return { ok: res.ok, ref: res.ok ? filename : undefined, error: res.error };
   }

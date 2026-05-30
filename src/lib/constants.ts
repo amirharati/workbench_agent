@@ -8,7 +8,8 @@ export const UI_CONSTANTS = {
 } as const;
 
 export const DB_CONSTANTS = {
-  NAME: 'personal-tools-db',
+  /** Legacy IndexedDB domain database (purged on startup). */
+  LEGACY_NAME: 'personal-tools-db',
   VERSION: 3,
 } as const;
 
