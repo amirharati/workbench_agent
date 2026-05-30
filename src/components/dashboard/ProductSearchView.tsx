@@ -339,6 +339,11 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             : ''}
           {' · '}
           {state.result.mode === 'hybrid' ? 'hybrid' : 'text only'}
+          {hasResults && (
+            <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
+              Click to inspect · Double-click or Enter to open in tab
+            </span>
+          )}
         </div>
       )}
 
@@ -475,6 +480,29 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                   >
                     <ExternalLink size={14} />
                   </a>
+                )}
+                {isSelected && item && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenItem(item);
+                    }}
+                    style={{
+                      flexShrink: 0,
+                      marginTop: 2,
+                      padding: '4px 10px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg-glass)',
+                      color: 'var(--text)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Open tab
+                  </button>
                 )}
               </div>
             </div>

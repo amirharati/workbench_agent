@@ -18,6 +18,7 @@ interface InspectorTabProps {
   currentQuery?: string;
   recentQueries?: string[];
   onRerunSearch?: (query: string) => void;
+  onOpenItemInTab?: (item: Item) => void;
 }
 
 function SearchHistorySection({
@@ -96,6 +97,104 @@ function SearchHistorySection({
           })}
         </div>
       )}
+    </section>
+  );
+}
+
+function SearchInspectorChrome({
+  recentQueries,
+  currentQuery,
+  onRerunSearch,
+  activeItem,
+  onOpenItemInTab,
+  compact,
+}: {
+  recentQueries: string[];
+  currentQuery?: string;
+  onRerunSearch?: (query: string) => void;
+  activeItem?: Item | null;
+  onOpenItemInTab?: (item: Item) => void;
+  compact?: boolean;
+}) {
+  const trimmedQuery = currentQuery?.trim() ?? '';
+
+  return (
+    <section
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: compact ? 8 : 10,
+        paddingBottom: compact ? 8 : 10,
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
+      {trimmedQuery ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div
+            style={{
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: 0.4,
+            }}
+          >
+            Active search
+          </div>
+          <button
+            type="button"
+            onClick={() => onRerunSearch?.(trimmedQuery)}
+            title={`Rerun: ${trimmedQuery}`}
+            style={{
+              all: 'unset',
+              cursor: onRerunSearch ? 'pointer' : 'default',
+              padding: '6px 8px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--accent-weak)',
+              border: '1px solid var(--accent)',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text)',
+              lineHeight: 1.4,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {trimmedQuery.length > 56 ? `${trimmedQuery.slice(0, 56)}…` : trimmedQuery}
+          </button>
+        </div>
+      ) : null}
+
+      <SearchHistorySection
+        recentQueries={recentQueries}
+        currentQuery={currentQuery}
+        onRerunSearch={onRerunSearch}
+        compact={compact}
+      />
+
+      {activeItem && onOpenItemInTab ? (
+        <button
+          type="button"
+          onClick={() => onOpenItemInTab(activeItem)}
+          style={{
+            padding: '6px 10px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-glass)',
+            color: 'var(--text)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            cursor: 'pointer',
+            alignSelf: 'flex-start',
+          }}
+        >
+          Open in tab
+        </button>
+      ) : null}
+
+      <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.5 }}>
+        Click a result to inspect here. Double-click or press Enter to open in tab.
+      </p>
     </section>
   );
 }
@@ -204,6 +303,7 @@ function ItemInspectorBody({
   recentQueries,
   currentQuery,
   onRerunSearch,
+  onOpenItemInTab,
 }: {
   item: Item;
   isSearchSurface: boolean;
@@ -211,6 +311,7 @@ function ItemInspectorBody({
   recentQueries: string[];
   currentQuery?: string;
   onRerunSearch?: (query: string) => void;
+  onOpenItemInTab?: (item: Item) => void;
 }) {
   const { context, loading, reload } = useItemPipelineContext(item.id);
   const [summaryOpen, setSummaryOpen] = useState(!enrichmentPrimaryInItemTab);
@@ -238,6 +339,17 @@ function ItemInspectorBody({
       }}
       className="scrollbar"
     >
+      {isSearchSurface && (
+        <SearchInspectorChrome
+          recentQueries={recentQueries}
+          currentQuery={currentQuery}
+          onRerunSearch={onRerunSearch}
+          activeItem={item}
+          onOpenItemInTab={onOpenItemInTab}
+          compact
+        />
+      )}
+
       <div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
           <div
@@ -413,18 +525,6 @@ function ItemInspectorBody({
         <span>Added: {new Date(item.created_at).toLocaleDateString()}</span>
         <span>Updated: {new Date(item.updated_at).toLocaleDateString()}</span>
       </div>
-
-      {isSearchSurface && (
-        <>
-          <div style={{ borderTop: '1px solid var(--border)' }} />
-          <SearchHistorySection
-            recentQueries={recentQueries}
-            currentQuery={currentQuery}
-            onRerunSearch={onRerunSearch}
-            compact
-          />
-        </>
-      )}
     </div>
   );
 }
@@ -436,6 +536,7 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
   currentQuery,
   recentQueries = [],
   onRerunSearch,
+  onOpenItemInTab,
 }) => {
   if (!activeItem && !isSearchSurface) {
     return (
@@ -463,10 +564,11 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
           height: '100%',
         }}
       >
-        <SearchHistorySection
+        <SearchInspectorChrome
           recentQueries={recentQueries}
           currentQuery={currentQuery}
           onRerunSearch={onRerunSearch}
+          onOpenItemInTab={undefined}
         />
       </div>
     );
@@ -480,6 +582,7 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
       recentQueries={recentQueries}
       currentQuery={currentQuery}
       onRerunSearch={onRerunSearch}
+      onOpenItemInTab={onOpenItemInTab}
     />
   );
 };

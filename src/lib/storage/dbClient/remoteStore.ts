@@ -37,6 +37,11 @@ export class RemoteIdbCompatStore {
     this.snapshot = data;
   }
 
+  /** Wait for queued write RPCs to finish (used before cross-tab hydrate). */
+  async drainWrites(): Promise<void> {
+    await this.chain;
+  }
+
   getRevision(): number {
     return this.revision;
   }
@@ -49,7 +54,11 @@ export class RemoteIdbCompatStore {
     const next = this.chain.then(() => rpc<T>('storeInvoke', [method, args]));
     this.chain = next.then(
       () => undefined,
-      () => undefined
+      (err) => {
+        console.error('[RemoteStore] write RPC failed, re-hydrating from worker:', err);
+        void this.hydrate(true);
+        return undefined;
+      }
     );
     return next;
   }
@@ -447,8 +456,7 @@ export class RemoteIdbCompatStore {
   }
 
   clearAllTables() {
-    void this.enqueue('clearAllTables', []);
-    void this.hydrate(true);
+    void this.enqueue('clearAllTables', []).then(() => this.hydrate(true));
   }
 
   withTransaction<T>(_fn: () => T): T {

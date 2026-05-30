@@ -81,6 +81,24 @@ class RevisionTrackerImpl {
     }
   }
 
+  /**
+   * Re-read revision (and lastSeenRemote) from meta kv.
+   * Required in the DB worker: the UI tab bumps revision; worker memory goes stale after first load().
+   */
+  async refreshFromStorage(): Promise<void> {
+    await this.load();
+    const [storedRevision, storedRemote] = await Promise.all([
+      kvGet<number>(KV_LOCAL_REVISION),
+      kvGet<RemoteSnapshotInfo>(KV_LAST_SEEN_REMOTE),
+    ]);
+    if (typeof storedRevision === 'number' && Number.isFinite(storedRevision)) {
+      this.localRevision = storedRevision;
+    }
+    if (storedRemote && typeof storedRemote === 'object') {
+      this.lastSeenRemote = storedRemote;
+    }
+  }
+
   private async doLoad(): Promise<void> {
     const [storedDeviceId, storedRevision, storedRemote] = await Promise.all([
       kvGet<string>(KV_DEVICE_ID),

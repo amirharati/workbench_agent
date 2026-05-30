@@ -29,10 +29,16 @@
  *     server-side conflict detection.
  */
 
-import { exportDB, importDB, verifyBackup, reloadFromFolderDatabase } from './db';
+import { exportDB, importDB, verifyBackup, reloadFromFolderDatabase, reloadDB, exportSqliteBytes } from './db';
+import { countRestoreSummaryStats } from './itemQuickAccess';
 import { subscribeToDataChanges, DataChangeReason } from './dataChangeNotifier';
 import { BackupSink, BackupKind, BackupWriteResult } from './backupSinks';
-import { readJsonFromBackupFolder, WORKBENCH_META_FILE, LEGACY_LATEST_JSON } from './backupFolder';
+import {
+  readJsonFromBackupFolder,
+  writeBinaryAtomicallyToBackupFolder,
+  WORKBENCH_META_FILE,
+  LEGACY_LATEST_JSON,
+} from './backupFolder';
 import {
   wrapExport,
   parseBackupText,
@@ -40,6 +46,7 @@ import {
   BackupWriterKind,
 } from './backupEnvelope';
 import { revisionTracker } from './revisionTracker';
+import { normalizeBinaryPayload, encodeBinaryForRpc } from './binaryPayload';
 
 const DEFAULT_DEBOUNCE_MS = 1500;
 /** Meta sidecar for live folder DB — not full JSON export on every edit. */
@@ -97,6 +104,65 @@ export interface BackupConflictInfo {
   message: string;
   /** When the check was performed (UTC ms). */
   checkedAt: number;
+}
+
+export interface SqliteImportStats {
+  projects: number;
+  collections: number;
+  /** Active rows in `items` (bookmarks + note items). */
+  items: number;
+  bookmarks: number;
+  notes: number;
+  workspaces: number;
+}
+
+export interface SqliteImportResult {
+  ok: boolean;
+  error?: string;
+  safetyRef?: string;
+  stats?: SqliteImportStats;
+  /** Import skipped — backup matches live database byte-for-byte. */
+  unchanged?: boolean;
+  /** Live DB has edits not present in the backup file. */
+  liveNewer?: boolean;
+  /** Forward-compat notes from verifyBackup (JSON path). */
+  warnings?: string[];
+}
+
+export type ImportReplaceOptions = {
+  /** Proceed even when live content is newer than the backup. */
+  forceOlder?: boolean;
+};
+
+/** Result from Settings “Restore from backup” (.sqlite or .json). */
+export type RestoreBackupResult = SqliteImportResult & {
+  format?: 'sqlite' | 'json';
+  cancelled?: boolean;
+};
+
+export function isSqliteBackupFile(file: File): boolean {
+  return /\.sqlite$/i.test(file.name);
+}
+
+function statsFromStore(store: {
+  getAllProjects: () => unknown[];
+  getAllCollections: () => unknown[];
+  getAllItems: () => import('./db').Item[];
+  getAllNotes: () => unknown[];
+  getAllWorkspaces: () => unknown[];
+}): SqliteImportStats {
+  const { bookmarks, notes, items } = countRestoreSummaryStats(
+    store.getAllItems(),
+    store.getAllNotes().length
+  );
+  return {
+    projects: store.getAllProjects().length,
+    collections: store.getAllCollections().length,
+    items,
+    bookmarks,
+    notes,
+    workspaces: store.getAllWorkspaces().length,
+  };
 }
 
 export interface BackupStatusSnapshot {
@@ -244,16 +310,71 @@ class BackupCoordinatorImpl {
   }
 
   /**
-   * Manual backup — uses the standard naming `manual-YYYY-MM-DD_HHMMSS.json`
-   * AND refreshes `latest.json` so the canonical snapshot stays current.
+   * Manual backup — refresh live mirror, then write `manual-YYYY-MM-DD_HHMMSS.sqlite`.
    */
   async manualBackup(): Promise<BackupRunSummary | null> {
+    if (this.status.pausedReason) return null;
+    const at = Date.now();
+    const summary: BackupRunSummary = {
+      kind: 'manual',
+      reason: 'manual',
+      at,
+      outcomes: [],
+      ok: false,
+    };
+
+    this.inFlight = true;
+    this.publishStatus({ inFlight: true });
+    try {
+      const { mirrorNow } = await import('./storage/dbClient');
+      const mirror = await mirrorNow(true);
+      if (!mirror.ok) {
+        const err = mirror.error ?? 'Mirror failed';
+        summary.outcomes.push({ sinkId: 'folder-mirror', result: { ok: false, error: err } });
+        this.publishStatus({ lastErrorAt: at, lastError: err });
+        return summary;
+      }
+
+      const bytes = await exportSqliteBytes();
+      if (!bytes || bytes.byteLength < 16) {
+        const err = 'Export produced empty database';
+        summary.outcomes.push({ sinkId: 'folder-mirror', result: { ok: false, error: err } });
+        this.publishStatus({ lastErrorAt: at, lastError: err });
+        return summary;
+      }
+
+      const filename = buildManualSqliteFilename(new Date());
+      const res = await writeBinaryAtomicallyToBackupFolder(filename, bytes);
+      summary.outcomes.push({
+        sinkId: 'folder-mirror',
+        result: { ok: res.ok, ref: res.ok ? filename : undefined, error: res.error },
+      });
+      summary.ok = res.ok;
+      if (res.ok) {
+        this.publishStatus({ lastManualOkAt: at });
+      } else {
+        this.publishStatus({ lastErrorAt: at, lastError: res.error ?? 'Manual backup failed' });
+      }
+      return summary;
+    } catch (e) {
+      const err = String(e);
+      summary.outcomes.push({ sinkId: 'coordinator', result: { ok: false, error: err } });
+      this.publishStatus({ lastErrorAt: at, lastError: err });
+      return summary;
+    } finally {
+      this.inFlight = false;
+      this.publishStatus({ inFlight: false });
+    }
+  }
+
+  /** Portable JSON snapshot — `manual-YYYY-MM-DD_HHMMSS.json` (optional export format). */
+  async exportJsonSnapshot(): Promise<BackupRunSummary | null> {
     if (this.status.pausedReason) return null;
     const filename = buildManualFilename(new Date());
     return this.runOnce({
       kind: 'manual',
       reason: 'manual',
-      target: { mode: 'named-and-latest', filename },
+      target: { mode: 'named-only', filename },
     });
   }
 
@@ -330,7 +451,7 @@ class BackupCoordinatorImpl {
         remote: null,
         localRevision,
         localDeviceId,
-        message: 'latest.json could not be parsed as JSON.',
+        message: 'workbench.meta.json could not be parsed as JSON.',
         checkedAt: Date.now(),
       });
     }
@@ -459,20 +580,14 @@ class BackupCoordinatorImpl {
     }
 
     // 2. Safety snapshot of CURRENT local DB into the folder.
-    const safetyName = buildSafetyFilename(new Date());
-    const localJson = await this.buildEnvelopedExport('manual');
-    const sinks = Array.from(this.sinks.values());
-    let safetyRef: string | undefined;
-    for (const sink of sinks) {
-      const r = await this.safeCall(() => sink.writeNamed(safetyName, localJson, 'manual'));
-      if (r.ok) safetyRef = r.ref ?? safetyName;
-    }
-    if (!safetyRef) {
+    const safety = await this.writeSafetySnapshotBeforeImport();
+    if (!safety.ok || !safety.ref) {
       return {
         ok: false,
-        error: 'Could not write safety snapshot to backup folder; aborting to avoid data loss.',
+        error: safety.error ?? 'Could not write safety snapshot to backup folder; aborting to avoid data loss.',
       };
     }
+    const safetyRef = safety.ref;
 
     // 3. Adopt remote: reload workbench.sqlite when live folder mode, else JSON import.
     let ok = false;
@@ -498,6 +613,147 @@ class BackupCoordinatorImpl {
     }
 
     return { ok: true, safetyRef };
+  }
+
+  /**
+   * Replace OPFS database from arbitrary `.sqlite` bytes (e.g. copied
+   * workbench.sqlite). Writes a safety snapshot to the backup folder first.
+   */
+  async importSqliteBytes(
+    bytes: Uint8Array,
+    options: ImportReplaceOptions = {}
+  ): Promise<SqliteImportResult> {
+    if (!this.hasAnySink()) {
+      return { ok: false, error: 'No backup folder configured.' };
+    }
+    const { hasWritableBackupFolder } = await import('./backupFolder');
+    if (!(await hasWritableBackupFolder())) {
+      return {
+        ok: false,
+        error: 'Backup folder is not writable. Re-choose the folder in Settings.',
+      };
+    }
+    const payload = normalizeBinaryPayload(bytes);
+    if (!payload || payload.byteLength < 16) {
+      return { ok: false, error: 'File is empty or too small to be a SQLite database.' };
+    }
+
+    await this.prepareForDestructiveImport();
+
+    const liveBytes = await exportSqliteBytes();
+    if (liveBytes && liveBytes.byteLength >= 16) {
+      const { bytesEqual } = await import('./storage/importFingerprint');
+      if (bytesEqual(liveBytes, payload)) {
+        const store = await reloadDB();
+        return {
+          ok: true,
+          unchanged: true,
+          stats: statsFromStore(store),
+        };
+      }
+    }
+
+    if (!options.forceOlder) {
+      const newer = await this.detectLiveNewerThanImport(payload, 'sqlite');
+      if (newer) return newer;
+    }
+
+    const safety = await this.writeSafetySnapshotBeforeImport();
+    if (!safety.ok || !safety.ref) {
+      return {
+        ok: false,
+        error:
+          safety.error ??
+          'Could not write safety snapshot to backup folder; aborting to avoid data loss.',
+      };
+    }
+    const safetyRef = safety.ref;
+
+    const { dbRpc } = await import('./storage/dbClient');
+    const result = await dbRpc<{ imported: boolean; reason?: string }>(
+      'forceImportFromFolderBytes',
+      [encodeBinaryForRpc(payload)]
+    );
+    if (!result?.imported) {
+      return {
+        ok: false,
+        error:
+          result?.reason === 'empty'
+            ? 'File is empty or invalid.'
+            : 'Import failed; safety snapshot was preserved.',
+        safetyRef,
+      };
+    }
+
+    const store = await reloadDB();
+    const { flushLiveDatabaseNow } = await import('./storage/sqlite/folderPersistence');
+    await flushLiveDatabaseNow();
+
+    this.publishStatus({ pausedReason: null, conflict: null });
+
+    const stats: SqliteImportStats = statsFromStore(store);
+
+    return { ok: true, safetyRef, stats };
+  }
+
+  /** Replace DB from enveloped JSON backup (folder safety snapshot first). */
+  async importJsonBackup(
+    jsonString: string,
+    options: ImportReplaceOptions = {}
+  ): Promise<SqliteImportResult> {
+    if (!this.hasAnySink()) {
+      return { ok: false, error: 'No backup folder configured.' };
+    }
+    const { hasWritableBackupFolder } = await import('./backupFolder');
+    if (!(await hasWritableBackupFolder())) {
+      return {
+        ok: false,
+        error: 'Backup folder is not writable. Re-choose the folder in Settings.',
+      };
+    }
+    const verification = verifyBackup(jsonString);
+    if (!verification.valid) {
+      return { ok: false, error: verification.error ?? 'Invalid backup file' };
+    }
+
+    await this.prepareForDestructiveImport();
+
+    if (!options.forceOlder) {
+      const parsed = parseBackupText(jsonString);
+      const newer = await this.detectLiveNewerThanImport(parsed.data, 'json');
+      if (newer) return newer;
+    }
+
+    const safety = await this.writeSafetySnapshotBeforeImport();
+    if (!safety.ok || !safety.ref) {
+      return {
+        ok: false,
+        error:
+          safety.error ??
+          'Could not write safety snapshot to backup folder; aborting to avoid data loss.',
+      };
+    }
+
+    const ok = await importDB(jsonString, false);
+    if (!ok) {
+      return {
+        ok: false,
+        error: 'Import failed; safety snapshot was preserved.',
+        safetyRef: safety.ref,
+      };
+    }
+
+    const store = await reloadDB();
+    const { flushLiveDatabaseNow } = await import('./storage/sqlite/folderPersistence');
+    await flushLiveDatabaseNow();
+    this.publishStatus({ pausedReason: null, conflict: null });
+
+    return {
+      ok: true,
+      safetyRef: safety.ref,
+      stats: statsFromStore(store),
+      warnings: verification.warnings,
+    };
   }
 
   /**
@@ -640,9 +896,105 @@ class BackupCoordinatorImpl {
     });
   }
 
-  private async safeCall(fn: () => Promise<BackupWriteResult>): Promise<BackupWriteResult> {
+  /**
+   * Save current local DB before a destructive import.
+   * Prefers `.sqlite` bytes (fast, matches live model); falls back to enveloped JSON.
+   */
+  private async prepareForDestructiveImport(): Promise<void> {
+    const { commitPendingDbWrites } = await import('./db');
+    await commitPendingDbWrites();
+    const { mirrorNow } = await import('./storage/dbClient');
+    await mirrorNow(true);
+  }
+
+  private async detectLiveNewerThanImport(
+    incoming: Uint8Array | unknown,
+    kind: 'sqlite' | 'json'
+  ): Promise<SqliteImportResult | null> {
+    const {
+      fingerprintFromBackupData,
+      fingerprintFromStore,
+      fingerprintSqliteBytes,
+      isLiveNewerThanBackup,
+    } = await import('./storage/importFingerprint');
+    const { dbRpc } = await import('./storage/dbClient');
+
+    let incomingFp;
+    if (kind === 'sqlite') {
+      incomingFp = await dbRpc<Awaited<ReturnType<typeof fingerprintSqliteBytes>>>(
+        'inspectImportBytes',
+        [encodeBinaryForRpc(incoming as Uint8Array)]
+      );
+    } else {
+      incomingFp = fingerprintFromBackupData(incoming);
+    }
+
+    const liveSnapshot = await dbRpc<{
+      items: ReturnType<import('./storage/sqlite/store').IdbCompatStore['getAllItems']>;
+      notes: ReturnType<import('./storage/sqlite/store').IdbCompatStore['getAllNotes']>;
+    }>('hydrate', []);
+    const liveFp = fingerprintFromStore({
+      getAllItems: () => liveSnapshot.items,
+      getAllNotes: () => liveSnapshot.notes,
+    });
+
+    if (!isLiveNewerThanBackup(liveFp, incomingFp)) {
+      return null;
+    }
+
+    const when =
+      liveFp.maxUpdatedAt > 0
+        ? new Date(liveFp.maxUpdatedAt).toLocaleString()
+        : 'recently';
+    return {
+      ok: false,
+      liveNewer: true,
+      error:
+        `Your live database has changes not in this backup (latest edit ${when}). ` +
+        'Restoring will discard those edits. Confirm to continue, or cancel and use Backup now first.',
+    };
+  }
+
+  private async writeSafetySnapshotBeforeImport(): Promise<{
+    ok: boolean;
+    ref?: string;
+    error?: string;
+  }> {
+    const {
+      writeBinaryAtomicallyToBackupFolder,
+      writeBinaryToBackupFolder,
+      writeJsonAtomicallyToBackupFolder,
+      writeJsonToBackupFolder,
+    } = await import('./backupFolder');
+
+    const sqliteName = buildSafetySqliteFilename(new Date());
+    const sqliteBytes = await exportSqliteBytes();
+    if (sqliteBytes && sqliteBytes.byteLength >= 16) {
+      let sqliteRes = await writeBinaryAtomicallyToBackupFolder(sqliteName, sqliteBytes);
+      if (!sqliteRes.ok) {
+        sqliteRes = await writeBinaryToBackupFolder(sqliteName, sqliteBytes);
+      }
+      if (sqliteRes.ok) {
+        return { ok: true, ref: sqliteName };
+      }
+    }
+
     try {
-      return await fn();
+      const jsonName = buildSafetyFilename(new Date());
+      const localJson = await this.buildEnvelopedExport('manual');
+      let jsonRes = await writeJsonAtomicallyToBackupFolder(jsonName, localJson);
+      if (!jsonRes.ok) {
+        jsonRes = await writeJsonToBackupFolder(jsonName, localJson);
+      }
+      if (jsonRes.ok) {
+        return { ok: true, ref: jsonName };
+      }
+      return {
+        ok: false,
+        error:
+          jsonRes.error ??
+          (sqliteBytes ? 'SQLite and JSON safety writes failed' : 'JSON safety write failed'),
+      };
     } catch (e) {
       return { ok: false, error: String(e) };
     }
@@ -703,9 +1055,19 @@ export function buildManualFilename(now: Date): string {
   return `manual-${stampLocal(now)}.json`;
 }
 
+/** Filename: `manual-2026-05-02_215700.sqlite` (local time, sortable). */
+export function buildManualSqliteFilename(now: Date): string {
+  return `manual-${stampLocal(now)}.sqlite`;
+}
+
 /** Filename: `safety-before-import-2026-05-02_215700.json`. */
 export function buildSafetyFilename(now: Date): string {
   return `safety-before-import-${stampLocal(now)}.json`;
+}
+
+/** Filename: `safety-before-import-2026-05-02_215700.sqlite`. */
+export function buildSafetySqliteFilename(now: Date): string {
+  return `safety-before-import-${stampLocal(now)}.sqlite`;
 }
 
 function stampLocal(now: Date): string {

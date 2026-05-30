@@ -21,6 +21,55 @@ export function isActiveItem(item: Item): boolean {
   return item.deletedAt == null;
 }
 
+/** URL-backed rows — Bookmarks view (annotation text on items stays here, not Notes tab). */
+export function countBookmarkItems(items: Item[]): number {
+  return items.filter((item) => isActiveItem(item) && !!item.url?.trim()).length;
+}
+
+/** URL-less note items (Notes tab) plus optional standalone `notes` table rows. */
+export function countNoteItems(items: Item[], standaloneNotesCount = 0): number {
+  const noteItems = items.filter(
+    (item) => isActiveItem(item) && !item.url?.trim()
+  ).length;
+  return noteItems + standaloneNotesCount;
+}
+
+export function countRestoreSummaryStats(
+  items: Item[],
+  standaloneNotesCount = 0
+): { bookmarks: number; notes: number; items: number } {
+  const active = items.filter(isActiveItem);
+  const bookmarks = active.filter((item) => !!item.url?.trim()).length;
+  const notes = active.filter((item) => !item.url?.trim()).length + standaloneNotesCount;
+  return { bookmarks, notes, items: active.length };
+}
+
+/** User-facing restore summary, e.g. "412 bookmarks/notes" or "408 bookmarks/notes (4 notes)". */
+export function formatBookmarksNotesSummary(stats: {
+  bookmarks: number;
+  notes: number;
+}): string {
+  const total = stats.bookmarks + stats.notes;
+  if (stats.notes === 0) return `${total} bookmarks/notes`;
+  return `${total} bookmarks/notes (${stats.notes} notes)`;
+}
+
+/** Full restore line: bookmarks/notes, projects, collections, workspaces. */
+export function formatRestoreSummary(stats: {
+  bookmarks: number;
+  notes: number;
+  projects: number;
+  collections: number;
+  workspaces: number;
+}): string {
+  return [
+    formatBookmarksNotesSummary(stats),
+    `${stats.projects} projects`,
+    `${stats.collections} collections`,
+    `${stats.workspaces} workspaces`,
+  ].join(', ');
+}
+
 /**
  * Collection/browse list order: pinned first (newest pin wins), then recency.
  * Apply after project/collection/search filters so scope stays upstream.

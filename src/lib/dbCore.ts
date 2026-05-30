@@ -8,6 +8,7 @@
 import { getIdbCompatStore, IdbCompatStore } from './storage/sqlite/store';
 import { notifyDataChanged } from './dataChangeNotifier';
 import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
+import { collectBackupVerifyWarnings } from './backupVerify';
 import { revisionTracker } from './revisionTracker';
 import type { ItemEnrichment } from './enrichment/types';
 import type {
@@ -203,6 +204,11 @@ const assertNoBookmarkDuplicateInCollections = (
 
 let storePromise: Promise<IdbCompatStore> | null = null;
 
+/** Drop cached store promise so the next getDB() reopens after import/reload. */
+export function resetDbStoreCache(): void {
+  storePromise = null;
+}
+
 async function ensureDefaultProjectAndCollection(store: IdbCompatStore) {
   const now = nowTs();
   
@@ -273,9 +279,13 @@ export const getDB = async () => {
 export const reloadDB = async (): Promise<IdbCompatStore> => {
   const { requireWritableBackupFolder } = await import('./backupFolder');
   const { resetStoreSingletons } = await import('./storage/sqlite/store');
+  const { isDbWorkerProcess } = await import('./storage/dbWorker/env');
   await requireWritableBackupFolder();
   storePromise = null;
   resetStoreSingletons();
+  if (isDbWorkerProcess()) {
+    return getDB();
+  }
   const { reloadConnectionFromFolderBytes } = await import('./storage/sqlite/connection');
   await reloadConnectionFromFolderBytes();
   return getDB();
@@ -1095,7 +1105,13 @@ export const exportDB = async () => {
 
 export const verifyBackup = (
   jsonString: string
-): { valid: boolean; error?: string; stats?: any; envelope?: BackupEnvelopeMeta | null } => {
+): {
+  valid: boolean;
+  error?: string;
+  stats?: any;
+  envelope?: BackupEnvelopeMeta | null;
+  warnings?: string[];
+} => {
   let parsed: { envelope: BackupEnvelopeMeta | null; data: unknown };
   try {
     parsed = parseBackupText(jsonString);
@@ -1127,7 +1143,14 @@ export const verifyBackup = (
     return { valid: false, error: 'Backup appears to be empty', envelope: parsed.envelope };
   }
 
-  return { valid: true, stats, envelope: parsed.envelope };
+  const warnings = collectBackupVerifyWarnings(data);
+  if (warnings.length > 0) {
+    for (const w of warnings) {
+      console.warn('[verifyBackup]', w);
+    }
+  }
+
+  return { valid: true, stats, envelope: parsed.envelope, warnings: warnings.length ? warnings : undefined };
 };
 
 export const importDB = async (jsonString: string, createBackupFirst: boolean = true) => {

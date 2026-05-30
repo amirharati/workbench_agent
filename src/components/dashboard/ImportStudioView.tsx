@@ -831,7 +831,9 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         await openImportReport(commitMeta, new Set());
       }
     } catch (e) {
-      setCommitError(e instanceof Error ? e.message : 'Import commit failed.');
+      const msg = e instanceof Error ? e.message : 'Import commit failed.';
+      setCommitError(msg);
+      addToast({ type: 'error', message: msg });
     } finally {
       setCommitting(false);
     }

@@ -8,6 +8,11 @@ async function ensureOffscreenDocument() {
   offscreenCreating = (async () => {
     const exists = await chrome.offscreen.hasDocument();
     if (exists) return;
+    try {
+      await chrome.runtime.sendMessage({ type: 'db-owner-lost' });
+    } catch {
+      // no listeners yet
+    }
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_URL,
       reasons: ['WORKERS'],

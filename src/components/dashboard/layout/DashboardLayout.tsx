@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
 import { Workspace, Collection, Item, Project, UpdateItemOptions, getItem } from '../../../lib/db';
-import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
+import type { BackupStatusSnapshot, RestoreBackupResult } from '../../../lib/backupCoordinator';
+import type { DbWorkerStatus } from '../../../lib/storage/dbClient';
 import type { AISettings } from '../../../lib/ai/types';
 import { ensurePendingClassifySignals } from '../../../lib/categorization';
 import { type GlobalTabState, loadGlobalTabState, saveGlobalTabState, GlobalTabSystem, type GlobalTabSearch } from '../GlobalTabSystem';
@@ -14,7 +15,7 @@ import { ToastProvider, useToast } from '../../ToastContainer';
 import { PipelineProgressProvider, usePipelineProgress } from '../PipelineProgressProvider';
 import { PipelineBatchConfirmModal } from '../PipelineBatchConfirmModal';
 import { CommandPalette } from '../CommandPalette';
-import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID } from '../../../hooks/useLibrarySearch';
+import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID, loadLastSearchQuery } from '../../../hooks/useLibrarySearch';
 import {
   loadItemIdsForCategory,
   loadItemIdsForPipelineQueue,
@@ -103,13 +104,15 @@ interface DashboardLayoutProps {
   onRefresh?: () => Promise<void>;
   onChooseBackupFolder?: () => Promise<void>;
   onSetAsBrowserHome?: () => Promise<void>;
-  onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
+  onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<RestoreBackupResult>;
   onManualBackup?: () => Promise<void>;
+  onExportJsonSnapshot?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
   onResolveConflictKeepLocal?: () => Promise<void>;
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
   backupStatus?: BackupStatusSnapshot;
+  folderMirrorStatus?: DbWorkerStatus | null;
   aiSettings?: AISettings;
   onSaveAISettings?: (settings: AISettings) => Promise<void>;
   onTestAI?: (
@@ -148,11 +151,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   onSetAsBrowserHome,
   onRestoreBackupFile,
   onManualBackup,
+  onExportJsonSnapshot,
   onResolveConflictLoadRemote,
   onResolveConflictKeepLocal,
   backupFolderReady,
   backupFolderName,
   backupStatus,
+  folderMirrorStatus,
   aiSettings,
   onSaveAISettings,
   onTestAI,
@@ -191,6 +196,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     itemIds: string[];
   } | null>(null);
   const [globalTabState, setGlobalTabState] = useState<GlobalTabState>(() => loadGlobalTabState());
+  const prevSearchViewRef = useRef(false);
   const handleGlobalTabStateChange = (next: GlobalTabState) => {
     setGlobalTabState(next);
     saveGlobalTabState(next);
@@ -259,19 +265,18 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   const openLibrarySearchInTab = useCallback(
     (query?: string) => {
-      const trimmed = query?.trim();
-      if (trimmed) {
-        librarySearch.setQuery(trimmed);
-        void librarySearch.runSearch(trimmed);
+      const q = (query ?? librarySearch.state.query).trim();
+      if (q) {
+        librarySearch.setQuery(q);
+        void librarySearch.runSearch(q);
       }
 
       setGlobalTabState((prev) => {
         const withoutSearch = prev.tabs.filter((t) => t.kind !== 'search');
-        const tabQuery = trimmed || librarySearch.state.query || '';
         const searchTab: GlobalTabSearch = {
           kind: 'search',
           id: LIBRARY_SEARCH_TAB_ID,
-          query: tabQuery,
+          query: q,
         };
         const next = {
           ...prev,
@@ -286,6 +291,42 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     },
     [librarySearch]
   );
+
+  useEffect(() => {
+    const onSearchView = activeView === 'search';
+    const enteredSearchView = onSearchView && !prevSearchViewRef.current;
+    prevSearchViewRef.current = onSearchView;
+    if (!onSearchView) return;
+
+    const searchTab = globalTabState.tabs.find(
+      (t): t is GlobalTabSearch => t.kind === 'search' && t.id === LIBRARY_SEARCH_TAB_ID
+    );
+    const tabQuery = searchTab?.query?.trim() ?? '';
+    const fallback = loadLastSearchQuery() || librarySearch.state.recentQueries[0]?.trim() || '';
+    const targetQuery = tabQuery || fallback;
+    if (!targetQuery) return;
+
+    const current = librarySearch.state.query.trim();
+    const needsRestore = current === '' || enteredSearchView;
+
+    if (needsRestore && current !== targetQuery) {
+      librarySearch.setQuery(targetQuery);
+      void librarySearch.runSearch(targetQuery);
+      return;
+    }
+
+    if (current === targetQuery && !librarySearch.state.result && !librarySearch.state.loading) {
+      void librarySearch.runSearch(targetQuery);
+    }
+  }, [
+    activeView,
+    globalTabState.tabs,
+    librarySearch,
+    librarySearch.state.query,
+    librarySearch.state.result,
+    librarySearch.state.loading,
+    librarySearch.state.recentQueries,
+  ]);
 
   useEffect(() => {
     const q = librarySearch.state.query.trim();
@@ -742,11 +783,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onSetAsBrowserHome={onSetAsBrowserHome}
                 onRestoreBackupFile={onRestoreBackupFile}
                 onManualBackup={onManualBackup}
+                onExportJsonSnapshot={onExportJsonSnapshot}
                 onResolveConflictLoadRemote={onResolveConflictLoadRemote}
                 onResolveConflictKeepLocal={onResolveConflictKeepLocal}
                 backupFolderReady={backupFolderReady}
                 backupFolderName={backupFolderName}
                 backupStatus={backupStatus}
+                folderMirrorStatus={folderMirrorStatus}
                 aiSettings={aiSettings}
                 onSaveAISettings={onSaveAISettings}
                 onTestAI={onTestAI}
@@ -790,11 +833,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onSetAsBrowserHome={onSetAsBrowserHome}
               onRestoreBackupFile={onRestoreBackupFile}
               onManualBackup={onManualBackup}
+              onExportJsonSnapshot={onExportJsonSnapshot}
               onResolveConflictLoadRemote={onResolveConflictLoadRemote}
               onResolveConflictKeepLocal={onResolveConflictKeepLocal}
               backupFolderReady={backupFolderReady}
               backupFolderName={backupFolderName}
               backupStatus={backupStatus}
+              folderMirrorStatus={folderMirrorStatus}
               aiSettings={aiSettings}
               onSaveAISettings={onSaveAISettings}
               onTestAI={onTestAI}
@@ -860,11 +905,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                   onSetAsBrowserHome={onSetAsBrowserHome}
                   onRestoreBackupFile={onRestoreBackupFile}
                   onManualBackup={onManualBackup}
+                  onExportJsonSnapshot={onExportJsonSnapshot}
                   onResolveConflictLoadRemote={onResolveConflictLoadRemote}
                   onResolveConflictKeepLocal={onResolveConflictKeepLocal}
                   backupFolderReady={backupFolderReady}
                   backupFolderName={backupFolderName}
                   backupStatus={backupStatus}
+                  folderMirrorStatus={folderMirrorStatus}
                   aiSettings={aiSettings}
                   onSaveAISettings={onSaveAISettings}
                   onTestAI={onTestAI}
@@ -954,6 +1001,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
             recentQueries={librarySearch.state.recentQueries}
             currentSearchQuery={librarySearch.state.query}
             onRerunSearch={handleRerunSearch}
+            onOpenItemInTab={isSearchSurface ? handleOpenItemTab : undefined}
             onTestAI={onTestAI}
           />
         )}

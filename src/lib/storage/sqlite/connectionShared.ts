@@ -125,14 +125,15 @@ export function ensureDefaultData(database: Database): void {
 export function createConnectionFromDatabase(
   database: Database,
   storageMode: SqliteStorageMode,
-  onClose?: () => void
+  onClose?: () => void,
+  resolveDatabase: () => Database = () => database
 ): SqliteConnection {
   const exec = (sql: string, bind?: unknown[]): void => {
-    database.exec({ sql, bind: bind as Parameters<Database['exec']>[0]['bind'] });
+    resolveDatabase().exec({ sql, bind: bind as Parameters<Database['exec']>[0]['bind'] });
   };
 
   const selectAll = <T>(sql: string, bind?: unknown[]): T[] => {
-    const result = database.exec({
+    const result = resolveDatabase().exec({
       sql,
       bind: bind as Parameters<Database['exec']>[0]['bind'],
       returnValue: 'resultRows',
@@ -156,30 +157,31 @@ export function createConnectionFromDatabase(
     fn: (ctx: TransactionContext) => T,
     _mode?: TransactionMode
   ): T => {
+    const live = resolveDatabase();
     const savepoint = txnDepth > 0 ? `sp_${txnDepth}` : null;
     if (savepoint) {
-      database.exec(`SAVEPOINT ${savepoint};`);
+      live.exec(`SAVEPOINT ${savepoint};`);
     } else {
-      database.exec('BEGIN IMMEDIATE;');
+      live.exec('BEGIN IMMEDIATE;');
     }
     txnDepth += 1;
     try {
       const result = fn(transactionCtx);
       txnDepth -= 1;
       if (savepoint) {
-        database.exec(`RELEASE ${savepoint};`);
+        live.exec(`RELEASE ${savepoint};`);
       } else {
-        database.exec('COMMIT;');
+        live.exec('COMMIT;');
       }
       return result;
     } catch (e) {
       txnDepth = Math.max(0, txnDepth - 1);
       try {
         if (savepoint) {
-          database.exec(`ROLLBACK TO ${savepoint};`);
-          database.exec(`RELEASE ${savepoint};`);
+          live.exec(`ROLLBACK TO ${savepoint};`);
+          live.exec(`RELEASE ${savepoint};`);
         } else {
-          database.exec('ROLLBACK;');
+          live.exec('ROLLBACK;');
         }
       } catch {
         // ignore rollback errors
@@ -190,7 +192,7 @@ export function createConnectionFromDatabase(
 
   const exportDatabase = async (): Promise<Uint8Array> => {
     const s3 = await initSqlite3();
-    return s3.capi.sqlite3_js_db_export(database);
+    return s3.capi.sqlite3_js_db_export(resolveDatabase());
   };
 
   const importDatabase = async (_data: Uint8Array): Promise<void> => {
@@ -207,7 +209,7 @@ export function createConnectionFromDatabase(
     exportDatabase,
     importDatabase,
     close: () => {
-      database.close();
+      resolveDatabase().close();
       onClose?.();
     },
   };

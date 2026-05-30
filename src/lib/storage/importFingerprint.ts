@@ -1,0 +1,88 @@
+/**
+ * Compare live DB content vs an incoming backup before destructive import.
+ */
+
+import {
+  createConnectionFromDatabase,
+  deserializeFromBytes,
+  initSqlite3,
+} from './sqlite/connectionShared';
+import { normalizeSqliteFileBytes } from './sqlite/folderPersistence';
+import { SqliteStore, type IdbCompatStore } from './sqlite/store';
+import type { Item, Note } from '../db';
+
+export type DbContentFingerprint = {
+  maxUpdatedAt: number;
+  itemCount: number;
+  notesRowCount: number;
+  itemsWithNotes: number;
+};
+
+export function fingerprintFromStore(
+  store: Pick<IdbCompatStore, 'getAllItems' | 'getAllNotes'>
+): DbContentFingerprint {
+  const items = store.getAllItems();
+  const notes = store.getAllNotes();
+  let maxUpdatedAt = 0;
+  for (const item of items) {
+    maxUpdatedAt = Math.max(maxUpdatedAt, item.updated_at ?? 0);
+  }
+  for (const note of notes) {
+    maxUpdatedAt = Math.max(maxUpdatedAt, note.updated_at ?? 0);
+  }
+  const itemsWithNotes = items.filter((item) => {
+    if (item.notes?.trim()) return true;
+    return Object.values(item.placements || {}).some((p) => !!p.notes?.trim());
+  }).length;
+  return {
+    maxUpdatedAt,
+    itemCount: items.length,
+    notesRowCount: notes.length,
+    itemsWithNotes,
+  };
+}
+
+export function fingerprintFromBackupData(data: unknown): DbContentFingerprint {
+  const record = data as { items?: Item[]; notes?: Note[] } | null;
+  const items = Array.isArray(record?.items) ? record.items : [];
+  const notes = Array.isArray(record?.notes) ? record.notes : [];
+  return fingerprintFromStore({
+    getAllItems: () => items,
+    getAllNotes: () => notes,
+  });
+}
+
+export async function fingerprintSqliteBytes(bytes: Uint8Array): Promise<DbContentFingerprint> {
+  const s3 = await initSqlite3();
+  const tempDb = deserializeFromBytes(s3, normalizeSqliteFileBytes(bytes));
+  try {
+    const conn = createConnectionFromDatabase(tempDb, 'memory');
+    const store = new SqliteStore(conn);
+    return fingerprintFromStore(store);
+  } finally {
+    try {
+      tempDb.close();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function isLiveNewerThanBackup(
+  live: DbContentFingerprint,
+  incoming: DbContentFingerprint
+): boolean {
+  if (live.maxUpdatedAt > incoming.maxUpdatedAt) return true;
+  if (live.itemCount > incoming.itemCount) return true;
+  if (live.itemsWithNotes > incoming.itemsWithNotes) return true;
+  if (live.notesRowCount > incoming.notesRowCount) return true;
+  return false;
+}
+
+export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  for (let i = 0; i < a.byteLength; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}

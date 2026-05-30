@@ -25,6 +25,7 @@ interface RightPanelProps {
   recentQueries?: string[];
   currentSearchQuery?: string;
   onRerunSearch?: (query: string) => void;
+  onOpenItemInTab?: (item: Item) => void;
   onTestAI?: (
     settings: AISettings,
     prompt: string
@@ -48,6 +49,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   recentQueries,
   currentSearchQuery,
   onRerunSearch,
+  onOpenItemInTab,
   onTestAI,
 }) => {
   const [hoverExpanded, setHoverExpanded] = useState(false);
@@ -171,6 +173,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 currentQuery={currentSearchQuery}
                 recentQueries={recentQueries}
                 onRerunSearch={onRerunSearch}
+                onOpenItemInTab={onOpenItemInTab}
               />
             ) : (
               <AskTab

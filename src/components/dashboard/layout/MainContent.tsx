@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Workspace, Item, Collection, Project, deleteProject, ALL_PROJECTS_ID, UpdateItemOptions } from '../../../lib/db';
-import type { BackupStatusSnapshot } from '../../../lib/backupCoordinator';
+import type { BackupStatusSnapshot, RestoreBackupResult } from '../../../lib/backupCoordinator';
+import type { DbWorkerStatus } from '../../../lib/storage/dbClient';
 import type { AISettings } from '../../../lib/ai/types';
 import { buildBookmarkGroundingPrompt, type BookmarkAISource } from '../../../lib/ai/bookmarkContext';
 import { formatDateTime } from '../../../lib/utils';
@@ -65,13 +66,15 @@ interface MainContentProps {
   onRefresh?: () => Promise<void>;
   onChooseBackupFolder?: () => Promise<void>;
   onSetAsBrowserHome?: () => Promise<void>;
-  onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
+  onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<RestoreBackupResult>;
   onManualBackup?: () => Promise<void>;
+  onExportJsonSnapshot?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
   onResolveConflictKeepLocal?: () => Promise<void>;
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
   backupStatus?: BackupStatusSnapshot;
+  folderMirrorStatus?: DbWorkerStatus | null;
   aiSettings?: AISettings;
   onSaveAISettings?: (settings: AISettings) => Promise<void>;
   onTestAI?: (
@@ -133,11 +136,13 @@ export const MainContent: React.FC<MainContentProps> = ({
   onSetAsBrowserHome,
   onRestoreBackupFile,
   onManualBackup,
+  onExportJsonSnapshot,
   onResolveConflictLoadRemote,
   onResolveConflictKeepLocal,
   backupFolderReady,
   backupFolderName,
   backupStatus,
+  folderMirrorStatus,
   aiSettings,
   onSaveAISettings,
   onTestAI,
@@ -646,7 +651,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onRunSearch={librarySearch.runSearch}
             onOpenItem={onOpenItemFromSearch ?? (() => {})}
             showOpenInTab
-            onOpenInTab={() => onLibrarySearchInTab?.()}
+            onOpenInTab={() => onLibrarySearchInTab?.(librarySearch.state.query)}
           />
         );
       case 'settings':
@@ -658,9 +663,11 @@ export const MainContent: React.FC<MainContentProps> = ({
             onChooseBackupFolder={onChooseBackupFolder}
             onRestoreBackupFile={onRestoreBackupFile}
             onManualBackup={onManualBackup}
+            onExportJsonSnapshot={onExportJsonSnapshot}
             onResolveConflictLoadRemote={onResolveConflictLoadRemote}
             onResolveConflictKeepLocal={onResolveConflictKeepLocal}
             backupStatus={backupStatus}
+            folderMirrorStatus={folderMirrorStatus}
             aiSettings={aiSettings}
             onSaveAISettings={onSaveAISettings}
             onTestAI={onTestAI}

@@ -21,7 +21,7 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 1. **V2 (superseded for domain data):** IndexedDB was runtime source of truth; live backup debounced full JSON → `latest.json`.
 2. **V2.1 + V2.1.1 (shipped — [`temp/TASK-V2.1-sqlite-wasm-storage.md`](temp/TASK-V2.1-sqlite-wasm-storage.md), [`temp/TASK-V2.1.1-opfs-db-worker.md`](temp/TASK-V2.1.1-opfs-db-worker.md)):** **SQLite WASM on OPFS** in a **single DB worker** (offscreen document). **Mandatory backup folder.** **Live truth = OPFS**; **`workbench.sqlite`** in the user folder is a **debounced mirror** (3s after last edit, max once per 60s unless forced). **`workbench.meta.json`** sidecar carries revision/deviceId. **JSON export/import retained.** **Fetch raw bodies** unchanged in `enrichment-cache/`.
 3. **Canonical interchange format (V2 + V2.1):** JSON from `exportDB()` / `importDB()` + `verifyBackup()` — for manual export, migration, and cross-version import.
-4. **Backup is snapshot export**, not a live second database. Cross‑machine consistency via shared folders (e.g. Dropbox) is **transport + redundancy** on a **single device** — **not** multi-writer sync. **V2.2:** per-device replicas + app sync layer ([`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md)).
+4. **Backup is snapshot export**, not a live second database. Cross‑machine consistency via shared folders (e.g. Dropbox) is **transport + redundancy** on a **single device** — **not** multi-writer sync. **V4:** per-device replicas + app sync layer ([`temp/TASK-V4-sync-replicas.md`](temp/TASK-V4-sync-replicas.md)).
 5. **Defense in depth:** manual export + occasional **`manual-*.sqlite` / `manual-*.json`** snapshots + scheduled rotation (pending) + import verification. No full JSON rewrite on every edit when folder live mode is active.
 
 ---
@@ -136,7 +136,7 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 - User picks a folder once (IDEAL: sync‑enabled folder such as Dropbox). Extension stores **`FileSystemDirectoryHandle`** in IndexedDB where supported.
 - **Dropbox/iCloud** are implementation‑transparent: we write normal files; the OS client syncs them. No Dropbox API in this phase.
 - **Single device:** flat `workbench.sqlite` in that folder is correct.
-- **Multi-device (V2.2):** each machine must write **its own replica** (`devices/{deviceId}/…`); sync layer merges — see [`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md).
+- **Multi-device (V4):** each machine must write **its own replica** (`devices/{deviceId}/…`); sync layer merges — see [`temp/TASK-V4-sync-replicas.md`](temp/TASK-V4-sync-replicas.md).
 - **Caveats (explicit):**
   - Sync delay and OS-level conflict copies can occur (Dropbox/iCloud behavior).
   - No automatic merge across divergent edits on one shared sqlite file.
@@ -173,12 +173,12 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 
 - **Do not** share one live `workbench.sqlite` across machines.
 - **Do** use **one replica per `deviceId`** under a sync root; app-level merge; same pattern for Dropbox, Turso blobs, HTTP, mobile.
-- Full brief: [`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md). Backlog: [`backlog.md`](backlog.md) § Multi-device sync.
+- Full brief: [`temp/TASK-V4-sync-replicas.md`](temp/TASK-V4-sync-replicas.md). Backlog: [`backlog.md`](backlog.md) § Multi-device sync.
 
-- **V2.2 sync layer** — per-device replicas, merge, backends ([`temp/TASK-V2.2-sync-replicas.md`](temp/TASK-V2.2-sync-replicas.md)).
+- **V4 sync layer** — per-device replicas, merge, backends ([`temp/TASK-V4-sync-replicas.md`](temp/TASK-V4-sync-replicas.md)).
 - HTTP / BYO server: same snapshot blob, `fetch` with optional auth headers.
 - More automatic pull/re-check policies while app is open.
-- Mirror tmp+replace; Settings mirror status UI.
+- Scheduled snapshot rotation (D-36; V2.2 slice D deferred).
 
 ---
 
@@ -208,4 +208,4 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 
 ---
 
-*Last updated: 2026-05-29 — V2.1.1 OPFS worker + folder mirror; V2.2 per-device sync direction*
+*Last updated: 2026-05-30 — V2.2 restore + atomic mirror shipped; multi-device sync → V4*

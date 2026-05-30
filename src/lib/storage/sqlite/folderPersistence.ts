@@ -16,8 +16,8 @@ import {
   LEGACY_LATEST_SQLITE,
   hasWritableBackupFolder,
   readBinaryFromBackupFolder,
-  writeBinaryToBackupFolder,
-  writeJsonToBackupFolder,
+  writeBinaryAtomicallyToBackupFolder,
+  writeJsonAtomicallyToBackupFolder,
 } from '../../backupFolder';
 import { revisionTracker } from '../../revisionTracker';
 
@@ -62,7 +62,7 @@ export async function flushLiveDatabaseToFolder(): Promise<{ ok: boolean; error?
       return { ok: false, error: 'Export produced empty database' };
     }
 
-    const binRes = await writeBinaryToBackupFolder(WORKBENCH_DB_FILE, bytes);
+    const binRes = await writeBinaryAtomicallyToBackupFolder(WORKBENCH_DB_FILE, bytes);
     if (!binRes.ok) return binRes;
 
     await revisionTracker.load();
@@ -74,7 +74,7 @@ export async function flushLiveDatabaseToFolder(): Promise<{ ok: boolean; error?
         writerKind: 'live',
       }
     );
-    const metaRes = await writeJsonToBackupFolder(WORKBENCH_META_FILE, metaJson);
+    const metaRes = await writeJsonAtomicallyToBackupFolder(WORKBENCH_META_FILE, metaJson);
     if (!metaRes.ok) {
       console.warn('[FolderDB] workbench.sqlite saved but meta write failed:', metaRes.error);
     }

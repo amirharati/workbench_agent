@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FolderOpen, HardDrive, X } from 'lucide-react';
-import { pickAndPersistBackupFolder } from '../lib/backupFolder';
+import type { PickBackupFolderResult } from '../lib/backupFolder';
 
 interface BackupOnboardingModalProps {
   open: boolean;
@@ -13,7 +13,8 @@ interface BackupOnboardingModalProps {
    * If provided, primary action opens full-page setup instead of invoking picker here.
    */
   onChooseInFullPage?: () => void;
-  onComplete: () => void;
+  /** Folder picker + worker bootstrap (single code path — do not pick twice). */
+  onChooseFolder: () => Promise<PickBackupFolderResult>;
   onSkip?: () => void;
 }
 
@@ -22,7 +23,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
   compact,
   allowSkip = false,
   onChooseInFullPage,
-  onComplete,
+  onChooseFolder,
   onSkip,
 }) => {
   const [busy, setBusy] = useState(false);
@@ -38,16 +39,15 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
     setBusy(true);
     setError(null);
     try {
-      const r = await pickAndPersistBackupFolder();
-      if (r.ok) {
-        onComplete();
-        return;
-      }
+      const r = await onChooseFolder();
+      if (r.ok) return;
       if (r.error === 'cancelled') {
         setError(null);
         return;
       }
       setError(r.error ?? 'Something went wrong');
+    } catch (e) {
+      setError(String(e));
     } finally {
       setBusy(false);
     }
@@ -186,7 +186,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
             }}
           >
             <FolderOpen size={18} aria-hidden />
-            {onChooseInFullPage ? 'Open full page setup' : busy ? 'Opening picker…' : 'Choose folder'}
+            {onChooseInFullPage ? 'Open full page setup' : busy ? 'Setting up…' : 'Choose folder'}
           </button>
         </div>
       </div>

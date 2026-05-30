@@ -1,8 +1,9 @@
 /**
- * Database Layer - SQLite WASM (folder-backed)
+ * Database Layer - SQLite WASM (OPFS live + folder mirror)
  *
- * Domain data lives in `{backupFolder}/workbench.sqlite` only.
- * Legacy IDB / localStorage / OPFS copies are purged on startup.
+ * Live DB: OPFS in single DB worker (`storage/dbWorker`). Debounced mirror:
+ * `{backupFolder}/workbench.sqlite` + `workbench.meta.json`.
+ * Legacy IDB / localStorage domain copies purged on startup (`legacyStorageCleanup`).
  */
 
 import { getIdbCompatStore, IdbCompatStore } from './storage/sqlite/store';
@@ -14,7 +15,10 @@ import {
   resetRemoteStore,
 } from './storage/dbClient';
 import { notifyDataChanged } from './dataChangeNotifier';
+import { countRestoreSummaryStats } from './itemQuickAccess';
+import { normalizeBinaryPayload } from './binaryPayload';
 import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
+import { collectBackupVerifyWarnings } from './backupVerify';
 import { revisionTracker } from './revisionTracker';
 import type { ItemEnrichment } from './enrichment/types';
 import type {
@@ -209,6 +213,75 @@ const assertNoBookmarkDuplicateInCollections = (
 // ============================================================================
 
 let storePromise: Promise<IdbCompatStore> | null = null;
+/** Serializes getDB vs reloadDB so callers cannot receive a stale store mid-reload. */
+let dbLifecycle: Promise<void> = Promise.resolve();
+
+async function initTabStore(): Promise<IdbCompatStore> {
+  const { isTransientDbRpcError } = await import('./storage/dbClient');
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await ensureDbWorker();
+      const store = getRemoteStore();
+      await store.hydrate(true);
+      await ensureDefaultProjectAndCollection(store as unknown as IdbCompatStore);
+      return store as unknown as IdbCompatStore;
+    } catch (e) {
+      lastError = e;
+      if (!isTransientDbRpcError(e) || attempt >= 3) throw e;
+      resetRemoteStore();
+      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
+export const getDB = async (): Promise<IdbCompatStore> => {
+  const { requireWritableBackupFolder } = await import('./backupFolder');
+  await requireWritableBackupFolder();
+  if (isDbWorkerProcess()) {
+    if (!storePromise) {
+      storePromise = (async () => {
+        const store = await getIdbCompatStore();
+        await ensureDefaultProjectAndCollection(store);
+        return store;
+      })();
+    }
+    return storePromise;
+  }
+  await dbLifecycle;
+  if (!storePromise) {
+    storePromise = initTabStore().catch((e) => {
+      storePromise = null;
+      throw e;
+    });
+  }
+  return storePromise;
+};
+
+/** Refresh tab cache from the shared OPFS DB worker. */
+export const reloadDB = async (): Promise<IdbCompatStore> => {
+  const { requireWritableBackupFolder } = await import('./backupFolder');
+  await requireWritableBackupFolder();
+  if (isDbWorkerProcess()) {
+    const { resetStoreSingletons } = await import('./storage/sqlite/store');
+    storePromise = null;
+    resetStoreSingletons();
+    return getDB();
+  }
+  const reloadOp = dbLifecycle.then(async () => {
+    storePromise = null;
+    resetRemoteStore();
+    const store = await initTabStore();
+    storePromise = Promise.resolve(store);
+    return store;
+  });
+  dbLifecycle = reloadOp.then(
+    () => undefined,
+    () => undefined
+  );
+  return reloadOp;
+};
 
 async function ensureDefaultProjectAndCollection(store: IdbCompatStore) {
   const now = nowTs();
@@ -263,51 +336,6 @@ async function ensureDefaultCollectionForProject(store: IdbCompatStore, projectI
   return id;
 }
 
-export const getDB = async (): Promise<IdbCompatStore> => {
-  const { requireWritableBackupFolder } = await import('./backupFolder');
-  await requireWritableBackupFolder();
-  if (isDbWorkerProcess()) {
-    if (!storePromise) {
-      storePromise = (async () => {
-        const store = await getIdbCompatStore();
-        await ensureDefaultProjectAndCollection(store);
-        return store;
-      })();
-    }
-    return storePromise;
-  }
-  await ensureDbWorker();
-  if (!storePromise) {
-    storePromise = (async () => {
-      const store = getRemoteStore();
-      await store.hydrate();
-      await ensureDefaultProjectAndCollection(store as unknown as IdbCompatStore);
-      return store as unknown as IdbCompatStore;
-    })();
-  }
-  return storePromise;
-};
-
-/** Refresh tab cache from the shared OPFS DB worker. */
-export const reloadDB = async (): Promise<IdbCompatStore> => {
-  const { requireWritableBackupFolder } = await import('./backupFolder');
-  await requireWritableBackupFolder();
-  if (isDbWorkerProcess()) {
-    const { resetStoreSingletons } = await import('./storage/sqlite/store');
-    storePromise = null;
-    resetStoreSingletons();
-    return getDB();
-  }
-  storePromise = null;
-  resetRemoteStore();
-  await ensureDbWorker();
-  const store = getRemoteStore();
-  await store.hydrate(true);
-  await ensureDefaultProjectAndCollection(store as unknown as IdbCompatStore);
-  storePromise = Promise.resolve(store as unknown as IdbCompatStore);
-  return store as unknown as IdbCompatStore;
-};
-
 /** Reload worker OPFS from folder workbench.sqlite and refresh tab cache. */
 export const reloadFromFolderDatabase = async (): Promise<boolean> => {
   try {
@@ -324,9 +352,10 @@ export const reloadFromFolderDatabase = async (): Promise<boolean> => {
     }
 
     const { dbRpc } = await import('./storage/dbClient');
+    const { encodeBinaryForRpc } = await import('./binaryPayload');
     const result = await dbRpc<{ imported: boolean; reason?: string }>(
       'forceImportFromFolderBytes',
-      [primary.data]
+      [encodeBinaryForRpc(primary.data)]
     );
     if (!result?.imported) return false;
 
@@ -794,8 +823,16 @@ export const updateItem = async (
 
   assertNoBookmarkDuplicateInCollections(store, next.url || '', next.collectionIds, id);
   store.putItem(next);
+  await commitPendingDbWrites();
   notifyDataChanged('item.update');
 };
+
+/** Wait until queued tab→worker writes have been applied in the DB worker. */
+export async function commitPendingDbWrites(): Promise<void> {
+  if (isDbWorkerProcess()) return;
+  const { getRemoteStore } = await import('./storage/dbClient/remoteStore');
+  await getRemoteStore().drainWrites();
+}
 
 // ============================================================================
 // Snapshots
@@ -1158,7 +1195,13 @@ export const exportDB = async () => {
 
 export const verifyBackup = (
   jsonString: string
-): { valid: boolean; error?: string; stats?: any; envelope?: BackupEnvelopeMeta | null } => {
+): {
+  valid: boolean;
+  error?: string;
+  stats?: any;
+  envelope?: BackupEnvelopeMeta | null;
+  warnings?: string[];
+} => {
   let parsed: { envelope: BackupEnvelopeMeta | null; data: unknown };
   try {
     parsed = parseBackupText(jsonString);
@@ -1171,11 +1214,15 @@ export const verifyBackup = (
     return { valid: false, error: 'Invalid JSON format' };
   }
 
+  const backupItems = Array.isArray(data.items) ? (data.items as Item[]) : [];
+  const standaloneNotes = Array.isArray(data.notes) ? (data.notes as unknown[]).length : 0;
+  const { bookmarks, notes, items } = countRestoreSummaryStats(backupItems, standaloneNotes);
   const stats = {
     projects: Array.isArray(data.projects) ? (data.projects as unknown[]).length : 0,
     collections: Array.isArray(data.collections) ? (data.collections as unknown[]).length : 0,
-    items: Array.isArray(data.items) ? (data.items as unknown[]).length : 0,
-    notes: Array.isArray(data.notes) ? (data.notes as unknown[]).length : 0,
+    items,
+    bookmarks,
+    notes,
     workspaces: Array.isArray(data.workspaces) ? (data.workspaces as unknown[]).length : 0,
     item_enrichment: Array.isArray(data.item_enrichment) ? (data.item_enrichment as unknown[]).length : 0,
     ai_categories: Array.isArray(data.ai_categories) ? (data.ai_categories as unknown[]).length : 0,
@@ -1190,7 +1237,14 @@ export const verifyBackup = (
     return { valid: false, error: 'Backup appears to be empty', envelope: parsed.envelope };
   }
 
-  return { valid: true, stats, envelope: parsed.envelope };
+  const warnings = collectBackupVerifyWarnings(data);
+  if (warnings.length > 0) {
+    for (const w of warnings) {
+      console.warn('[verifyBackup]', w);
+    }
+  }
+
+  return { valid: true, stats, envelope: parsed.envelope, warnings: warnings.length ? warnings : undefined };
 };
 
 export const importDB = async (jsonString: string, createBackupFirst: boolean = true) => {
@@ -1358,13 +1412,16 @@ export const importDB = async (jsonString: string, createBackupFirst: boolean = 
  */
 export const exportSqliteBytes = async (): Promise<Uint8Array | null> => {
   try {
+    let raw: unknown;
     if (isDbWorkerProcess()) {
       const { getConnection } = await import('./storage/sqlite/connection');
       const conn = await getConnection();
-      return conn.exportDatabase();
+      raw = await conn.exportDatabase();
+    } else {
+      const { dbRpc } = await import('./storage/dbClient');
+      raw = await dbRpc<unknown>('exportSqliteBytes', []);
     }
-    const { dbRpc } = await import('./storage/dbClient');
-    return (await dbRpc<Uint8Array | null>('exportSqliteBytes', [])) ?? null;
+    return normalizeBinaryPayload(raw);
   } catch (e) {
     console.error('Failed to export SQLite bytes:', e);
     return null;

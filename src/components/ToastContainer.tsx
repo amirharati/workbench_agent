@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { registerUserNotify } from '../lib/userNotify';
 import { Toast, ToastData, ToastType } from './Toast';
 
 interface AddToastOptions {
@@ -36,6 +37,11 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  useEffect(() => {
+    registerUserNotify((opts) => addToast(opts));
+    return () => registerUserNotify(null);
+  }, [addToast]);
 
   return (
     <ToastContext.Provider value={{ addToast }}>

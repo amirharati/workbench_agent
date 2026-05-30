@@ -6,6 +6,7 @@
 import type { SqliteConnection, SqliteConfig, SqliteStorageMode } from './types';
 import { DEFAULT_CONFIG } from './types';
 import { normalizeSqliteFileBytes } from './folderPersistence';
+import { resetConnectionInit } from './connectionProvider';
 import {
   createConnectionFromDatabase,
   deserializeFromBytes,
@@ -20,6 +21,8 @@ import {
 let db: Database | null = null;
 let storageMode: SqliteStorageMode = 'opfs';
 let initPromise: Promise<SqliteConnection> | null = null;
+/** Bumped on import/reset so in-flight OPFS opens cannot overwrite a imported DB. */
+let openGeneration = 0;
 let opfsDbCtor: (new (filename: string) => Database) | null = null;
 let opfsDbUsesLeadingSlash = true;
 let opfsInitPromise: Promise<(new (filename: string) => Database) | null> | null = null;
@@ -32,6 +35,15 @@ type SqliteWithOpfsInstall = Sqlite3Static & {
   }) => Promise<{ OpfsSAHPoolDb?: new (filename: string) => Database }>;
 };
 
+function bumpOpenGeneration(): void {
+  openGeneration += 1;
+}
+
+function resolveLiveDb(): Database {
+  if (!db) throw new Error('SQLite database is not open');
+  return db;
+}
+
 function isDatabaseEmpty(database: Database): boolean {
   try {
     const rows = database.exec({
@@ -43,6 +55,29 @@ function isDatabaseEmpty(database: Database): boolean {
     return (rows[0]?.c ?? 0) === 0;
   } catch {
     return true;
+  }
+}
+
+function databaseHasDomainData(database: Database): boolean {
+  try {
+    const count = (sql: string) => {
+      const rows = database.exec({
+        sql,
+        returnValue: 'resultRows',
+        rowMode: 'object',
+      }) as { c: number }[];
+      return rows[0]?.c ?? 0;
+    };
+    if (count('SELECT COUNT(*) AS c FROM items;') > 0) return true;
+    if (count('SELECT COUNT(*) AS c FROM notes;') > 0) return true;
+    if (count('SELECT COUNT(*) AS c FROM workspaces;') > 0) return true;
+    if (count('SELECT COUNT(*) AS c FROM item_enrichment;') > 0) return true;
+    if (count("SELECT COUNT(*) AS c FROM projects WHERE id != 'project_default';") > 0) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -106,15 +141,40 @@ async function openWorkerDatabase(config: SqliteConfig): Promise<{ database: Dat
   return { database, mode: 'memory' };
 }
 
+function connectionFromCurrentDb(): SqliteConnection {
+  return createConnectionFromDatabase(
+    resolveLiveDb(),
+    storageMode,
+    () => {
+      db = null;
+      initPromise = null;
+    },
+    resolveLiveDb
+  );
+}
+
 export async function openOpfsConnection(
   config: SqliteConfig = DEFAULT_CONFIG
 ): Promise<SqliteConnection> {
   if (initPromise) return initPromise;
 
+  const gen = openGeneration;
   initPromise = (async () => {
     try {
       if (!db) {
         const opened = await openWorkerDatabase(config);
+        if (gen !== openGeneration) {
+          try {
+            opened.database.close();
+          } catch {
+            // ignore stale OPFS open discarded after import
+          }
+          if (db) {
+            return connectionFromCurrentDb();
+          }
+          initPromise = null;
+          return openOpfsConnection(config);
+        }
         db = opened.database;
         storageMode = opened.mode;
         if (isDatabaseEmpty(db)) {
@@ -125,12 +185,15 @@ export async function openOpfsConnection(
           ensureDefaultData(db);
         }
       }
-      return createConnectionFromDatabase(db, storageMode, () => {
-        db = null;
-        initPromise = null;
-      });
+      const deadline = Date.now() + 3000;
+      while (!db && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return connectionFromCurrentDb();
     } catch (e) {
-      initPromise = null;
+      if (gen === openGeneration) {
+        initPromise = null;
+      }
       throw e;
     }
   })();
@@ -140,35 +203,37 @@ export async function openOpfsConnection(
 
 /** Import folder bytes into the worker DB (deserialize — works without OPFS). */
 export async function importFolderBytesIntoOpfs(bytes: Uint8Array): Promise<void> {
+  bumpOpenGeneration();
   const s3 = await initSqlite3();
+  const imported = deserializeFromBytes(s3, normalizeSqliteFileBytes(bytes));
   if (db) {
     try {
       db.close();
     } catch {
       // ignore
     }
-    db = null;
   }
   initPromise = null;
+  resetConnectionInit();
   resetTxnDepth();
-  db = deserializeFromBytes(s3, normalizeSqliteFileBytes(bytes));
+  db = imported;
   storageMode = 'memory';
   initSchema(db, DEFAULT_CONFIG.schemaVersion);
   ensureDefaultData(db);
-  initPromise = Promise.resolve(
-    createConnectionFromDatabase(db, storageMode, () => {
-      db = null;
-      initPromise = null;
-    })
-  );
+  initPromise = Promise.resolve(connectionFromCurrentDb());
 }
 
 export async function exportOpfsDatabaseBytes(): Promise<Uint8Array> {
+  if (db) {
+    const s3 = await initSqlite3();
+    return s3.capi.sqlite3_js_db_export(db);
+  }
   const conn = await openOpfsConnection();
   return conn.exportDatabase();
 }
 
 export async function resetOpfsConnection(): Promise<void> {
+  bumpOpenGeneration();
   if (db) {
     db.close();
     db = null;
@@ -178,6 +243,7 @@ export async function resetOpfsConnection(): Promise<void> {
   opfsInitPromise = null;
   opfsDbUsesLeadingSlash = true;
   resetTxnDepth();
+  resetConnectionInit();
   storageMode = 'opfs';
 }
 
@@ -186,19 +252,13 @@ export function getOpfsDatabaseSync(): Database | null {
 }
 
 export async function workerDatabaseHasDomainData(): Promise<boolean> {
-  try {
-    const conn = await openOpfsConnection();
-    const count = (sql: string) =>
-      conn.selectAll<{ c: number }>(sql)[0]?.c ?? 0;
-    if (count('SELECT COUNT(*) AS c FROM items;') > 0) return true;
-    if (count('SELECT COUNT(*) AS c FROM notes;') > 0) return true;
-    if (count('SELECT COUNT(*) AS c FROM workspaces;') > 0) return true;
-    if (count('SELECT COUNT(*) AS c FROM item_enrichment;') > 0) return true;
-    if (count("SELECT COUNT(*) AS c FROM projects WHERE id != 'project_default';") > 0) {
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
+  const live = getOpfsDatabaseSync();
+  if (!live) return false;
+  return databaseHasDomainData(live);
+}
+
+export function workerDatabaseHasDomainDataSync(): boolean {
+  const live = getOpfsDatabaseSync();
+  if (!live) return false;
+  return databaseHasDomainData(live);
 }

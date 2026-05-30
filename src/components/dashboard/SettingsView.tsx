@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import type { BackupStatusSnapshot } from '../../lib/backupCoordinator';
+import type { BackupStatusSnapshot, RestoreBackupResult } from '../../lib/backupCoordinator';
+import type { DbWorkerStatus } from '../../lib/storage/dbClient';
 import type { AISettings } from '../../lib/ai/types';
+import { formatRestoreSummary } from '../../lib/itemQuickAccess';
 import { EnrichmentPanel } from './EnrichmentPanel';
 import { CategorizationSetupSection } from './CategorizationPanel';
+import { useToast } from '../ToastContainer';
 
 type FontScalePreset = 'small' | 'normal' | 'large';
 const FONT_SCALE_VALUES: Record<FontScalePreset, string> = {
@@ -16,11 +19,13 @@ interface SettingsViewProps {
   backupFolderName?: string | null;
   onSetAsBrowserHome?: () => Promise<void>;
   onChooseBackupFolder?: () => Promise<void>;
-  onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<void>;
+  onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<RestoreBackupResult>;
   onManualBackup?: () => Promise<void>;
+  onExportJsonSnapshot?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
   onResolveConflictKeepLocal?: () => Promise<void>;
   backupStatus?: BackupStatusSnapshot;
+  folderMirrorStatus?: DbWorkerStatus | null;
   aiSettings?: AISettings;
   onSaveAISettings?: (settings: AISettings) => Promise<void>;
   onTestAI?: (
@@ -64,9 +69,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onChooseBackupFolder,
   onRestoreBackupFile,
   onManualBackup,
+  onExportJsonSnapshot,
   onResolveConflictLoadRemote,
   onResolveConflictKeepLocal,
   backupStatus,
+  folderMirrorStatus,
   aiSettings,
   onSaveAISettings,
   onTestAI,
@@ -86,6 +93,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const [restoreMode, setRestoreMode] = React.useState<'replace' | 'merge'>('replace');
+  const [restoringBackup, setRestoringBackup] = React.useState(false);
+  const [exportingJson, setExportingJson] = React.useState(false);
+  const { addToast } = useToast();
   const [, forceTick] = React.useState(0);
   const [resolving, setResolving] = React.useState<null | 'remote' | 'local'>(null);
   const [aiForm, setAiForm] = React.useState<AISettings | null>(aiSettings ?? null);
@@ -114,21 +124,65 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleRestoreInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !onRestoreBackupFile) return;
-    await onRestoreBackupFile(file, restoreMode);
     e.target.value = '';
+    if (!file || !onRestoreBackupFile) return;
+    if (restoreMode === 'merge') {
+      addToast({ type: 'info', message: 'Merge import is coming soon. Please use Replace for now.' });
+      return;
+    }
+    setRestoringBackup(true);
+    try {
+      const result = await onRestoreBackupFile(file, restoreMode);
+      if (result.cancelled) return;
+      if (result.ok && result.unchanged) {
+        addToast({
+          type: 'info',
+          message: 'That backup matches your live database — nothing was changed.',
+        });
+      } else if (result.ok && result.stats) {
+        const s = result.stats;
+        const safetyNote = result.safetyRef ? ` Saved ${result.safetyRef} first.` : '';
+        const label = result.format === 'sqlite' ? 'Database' : 'Backup';
+        addToast({
+          type: 'success',
+          message: `${label} restored: ${formatRestoreSummary(s)}.${safetyNote}`,
+        });
+        if (result.warnings?.length) {
+          addToast({
+            type: 'info',
+            message: `Backup notes: ${result.warnings[0]}${result.warnings.length > 1 ? ` (+${result.warnings.length - 1} more in console)` : ''}`,
+          });
+        }
+      } else {
+        addToast({ type: 'error', message: result.error ?? 'Restore failed' });
+      }
+    } finally {
+      setRestoringBackup(false);
+    }
   };
 
-  const liveOk = backupStatus?.lastLiveOkAt ?? null;
   const manualOk = backupStatus?.lastManualOkAt ?? null;
   const errorAt = backupStatus?.lastErrorAt ?? null;
   const errorMsg = backupStatus?.lastError ?? null;
-  const livePending = backupStatus?.livePending ?? false;
   const inFlight = backupStatus?.inFlight ?? false;
+  const mirrorAt = folderMirrorStatus?.lastMirrorAt ?? 0;
+  const mirrorPending = folderMirrorStatus?.mirrorPending ?? false;
+  const mirrorError = folderMirrorStatus?.lastMirrorError ?? null;
   const conflict = backupStatus?.conflict ?? null;
   const conflictBlocking = !!conflict?.blocking;
   const manualDisabled = !backupFolderReady || inFlight || conflictBlocking;
+  const jsonExportDisabled = manualDisabled || exportingJson;
   const aiDisabled = !aiForm || isSavingAI || isTestingAI;
+
+  const handleExportJson = async () => {
+    if (!onExportJsonSnapshot) return;
+    setExportingJson(true);
+    try {
+      await onExportJsonSnapshot();
+    } finally {
+      setExportingJson(false);
+    }
+  };
 
   const handleLoadRemote = async () => {
     if (!onResolveConflictLoadRemote) return;
@@ -193,7 +247,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <div style={{ maxWidth: 900, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#111827' }}>Settings</h1>
       <p style={{ marginTop: '0.5rem', color: '#6b7280' }}>
-        Backup is required for safe usage. Configure your folder below, then you can restore from a backup file any time.
+        Backup is required for safe usage. Configure your folder below, then restore from{' '}
+        <code>workbench.sqlite</code> or <code>latest.json</code> any time.
       </p>
 
       {/* Appearance section */}
@@ -643,8 +698,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
               {conflict.remote && (
                 <div>
-                  <strong>Folder latest.json:</strong> revision <code>{conflict.remote.revision}</code>{' '}
-                  · {shortDevice(conflict.remote.deviceId)} · written{' '}
+                  <strong>Folder meta (<code>workbench.meta.json</code>):</strong> revision{' '}
+                  <code>{conflict.remote.revision}</code> · {shortDevice(conflict.remote.deviceId)} · written{' '}
                   {formatRelative(conflict.remote.exportedAt)}{' '}
                   <span style={{ color: '#9ca3af' }}>({formatAbsolute(conflict.remote.exportedAt)})</span>
                 </div>
@@ -665,7 +720,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   fontSize: '0.85rem',
                   fontWeight: 600,
                 }}
-                title="Adopt the folder's latest.json. Your current local data will first be saved as safety-before-import-…json in the same folder."
+                title="Load workbench.sqlite from the folder. Your current local data is first saved as safety-before-import-… in the same folder."
               >
                 {resolving === 'remote' ? 'Loading…' : 'Load remote (saves local first)'}
               </button>
@@ -683,7 +738,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   fontSize: '0.85rem',
                   fontWeight: 600,
                 }}
-                title="Overwrite the folder's latest.json with this device's data. The previous remote file is replaced."
+                title="Overwrite the folder's workbench.sqlite with this device's OPFS database."
               >
                 {resolving === 'local' ? 'Overwriting…' : 'Keep local (overwrite remote)'}
               </button>
@@ -708,18 +763,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }}
           >
             <div>
-              <strong>Auto backup (live):</strong>{' '}
-              {liveOk ? (
+              <strong>Live mirror (<code>workbench.sqlite</code>):</strong>{' '}
+              {mirrorAt > 0 ? (
                 <>
-                  last write {formatRelative(liveOk)}{' '}
-                  <span style={{ color: '#6b7280' }}>({formatAbsolute(liveOk)})</span>
+                  last write {formatRelative(mirrorAt)}{' '}
+                  <span style={{ color: '#6b7280' }}>({formatAbsolute(mirrorAt)})</span>
                 </>
               ) : (
                 <span style={{ color: '#6b7280' }}>none yet</span>
               )}
-              {livePending && (
+              {mirrorPending && (
                 <span style={{ marginLeft: '0.5rem', color: '#2563eb', fontWeight: 600 }}>
-                  · saving soon…
+                  · mirroring soon…
                 </span>
               )}
               {inFlight && (
@@ -733,8 +788,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </span>
               )}
             </div>
+            {mirrorError && (
+              <div style={{ color: '#b91c1c' }}>
+                <strong>Last mirror error:</strong> {mirrorError}
+              </div>
+            )}
             <div>
-              <strong>Manual backup:</strong>{' '}
+              <strong>Manual snapshot:</strong>{' '}
               {manualOk ? (
                 <>
                   last write {formatRelative(manualOk)}{' '}
@@ -746,7 +806,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             {errorAt && errorMsg && (
               <div style={{ color: '#b91c1c' }}>
-                <strong>Last error:</strong> {errorMsg}{' '}
+                <strong>Last backup error:</strong> {errorMsg}{' '}
                 <span style={{ color: '#9ca3af' }}>({formatRelative(errorAt)})</span>
               </div>
             )}
@@ -765,15 +825,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }}
         >
           <div><strong>What happens when you choose a folder:</strong></div>
-          <div>1) If <code>latest.json</code> already exists there, the app loads it and replaces current DB data.</div>
-          <div>2) If no <code>latest.json</code> exists, the app creates it from your current DB data.</div>
-          <div>3) The app never auto-overwrites another backup filename in that folder.</div>
+          <div>
+            1) If <code>workbench.sqlite</code> already exists there, the app loads it into browser storage (OPFS).
+          </div>
+          <div>
+            2) If the folder is empty, the app creates <code>workbench.sqlite</code> from your current data on first save.
+          </div>
+          <div>3) Legacy <code>latest.json</code> in the folder can still be restored via Settings.</div>
           <div style={{ marginTop: '0.4rem' }}>
             <strong>How backups are written:</strong>
           </div>
-          <div>· <strong>Auto:</strong> after any change, <code>latest.json</code> is refreshed (debounced, ~1.5s).</div>
-          <div>· <strong>Manual:</strong> click "Backup now" to also write <code>manual-YYYY-MM-DD_HHMMSS.json</code>.</div>
-          <div>· <strong>Sync safety:</strong> if the folder's <code>latest.json</code> was written by another device, the app pauses writes and asks you to decide; on "Load remote" your current local data is first saved as <code>safety-before-import-…json</code>.</div>
+          <div>
+            · <strong>Live mirror:</strong> after edits, <code>workbench.sqlite</code> +{' '}
+            <code>workbench.meta.json</code> refresh in the folder (debounced ~3s, min interval 60s).
+          </div>
+          <div>
+            · <strong>Backup now:</strong> writes <code>manual-YYYY-MM-DD_HHMMSS.sqlite</code> (after refreshing the live mirror).
+          </div>
+          <div>
+            · <strong>Export JSON:</strong> optional portable snapshot as <code>manual-…json</code> (human-readable; restore via Settings).
+          </div>
+          <div>
+            · <strong>Sync safety:</strong> if folder meta was written by another device, writes pause until you choose Load remote or Keep local; Load remote saves local first as <code>safety-before-import-…</code>.
+          </div>
           <div>· <strong>Scheduled rotations</strong> (e.g. daily snapshots) are coming next.</div>
         </div>
 
@@ -806,7 +880,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 ? 'Resolve the sync conflict above first'
                 : inFlight
                 ? 'A backup is already running'
-                : 'Write manual-YYYY-MM-DD_HHMMSS.json (and refresh latest.json)'
+                : 'Refresh live mirror, then write manual-YYYY-MM-DD_HHMMSS.sqlite'
             }
             style={{
               padding: '0.5rem 0.75rem',
@@ -821,6 +895,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }}
           >
             {inFlight ? 'Backing up…' : 'Backup now'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportJson}
+            disabled={jsonExportDisabled || !onExportJsonSnapshot}
+            title={
+              !backupFolderReady
+                ? 'Configure a backup folder first'
+                : conflictBlocking
+                ? 'Resolve the sync conflict above first'
+                : 'Write a portable manual-YYYY-MM-DD_HHMMSS.json snapshot'
+            }
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: 8,
+              border: '1px solid #6366f1',
+              background: jsonExportDisabled ? '#c7d2fe' : '#6366f1',
+              color: '#fff',
+              cursor: jsonExportDisabled ? 'not-allowed' : 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              opacity: jsonExportDisabled ? 0.7 : 1,
+            }}
+          >
+            {exportingJson ? 'Exporting…' : 'Export JSON snapshot'}
           </button>
 
           <select
@@ -845,21 +945,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               padding: '0.5rem 0.75rem',
               borderRadius: 8,
               border: '1px solid #d1d5db',
-              background: '#fff',
-              color: '#374151',
-              cursor: 'pointer',
+              background: restoringBackup ? '#f3f4f6' : '#fff',
+              color: restoringBackup ? '#9ca3af' : '#374151',
+              cursor: restoringBackup || !backupFolderReady ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem',
               fontWeight: 500,
+              opacity: !backupFolderReady ? 0.7 : 1,
             }}
-            title={restoreMode === 'merge' ? 'Merge mode is not implemented yet' : 'Load backup file'}
+            title={
+              !backupFolderReady
+                ? 'Configure a backup folder first (needed for safety snapshot)'
+                : 'Restore from workbench.sqlite or latest.json — replaces current data after saving a safety snapshot'
+            }
           >
-            Restore from backup file
+            {restoringBackup ? 'Restoring…' : 'Restore from backup…'}
             <input
               type="file"
-              accept=".json"
+              accept=".sqlite,.json,application/json,application/x-sqlite3,application/vnd.sqlite3"
               style={{ display: 'none' }}
               onChange={handleRestoreInput}
-              disabled={restoreMode === 'merge'}
+              disabled={restoringBackup || !backupFolderReady || !onRestoreBackupFile || restoreMode === 'merge'}
             />
           </label>
         </div>

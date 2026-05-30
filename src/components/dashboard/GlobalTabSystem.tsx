@@ -223,6 +223,47 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   }, [bottomLayout]);
 
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
+  const prevActiveTabIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const switchedToSearch =
+      activeTabId === LIBRARY_SEARCH_TAB_ID &&
+      prevActiveTabIdRef.current !== LIBRARY_SEARCH_TAB_ID;
+
+    if (!librarySearch || activeTab?.kind !== 'search') {
+      prevActiveTabIdRef.current = activeTabId;
+      return;
+    }
+
+    const tabQuery = activeTab.query?.trim() ?? '';
+    if (!tabQuery) {
+      prevActiveTabIdRef.current = activeTabId;
+      return;
+    }
+
+    const current = librarySearch.state.query.trim();
+    const needsRestore = current === '' || (switchedToSearch && current !== tabQuery);
+
+    if (!needsRestore) {
+      if (current === tabQuery && !librarySearch.state.result && !librarySearch.state.loading) {
+        void librarySearch.runSearch(tabQuery);
+      }
+      prevActiveTabIdRef.current = activeTabId;
+      return;
+    }
+
+    librarySearch.setQuery(tabQuery);
+    void librarySearch.runSearch(tabQuery);
+    prevActiveTabIdRef.current = activeTabId;
+  }, [
+    activeTabId,
+    activeTab,
+    librarySearch,
+    librarySearch?.state.query,
+    librarySearch?.state.result,
+    librarySearch?.state.loading,
+  ]);
+
   const [resolvedItem, setResolvedItem] = useState<Item | null>(null);
 
   useEffect(() => {

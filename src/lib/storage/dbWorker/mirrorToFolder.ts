@@ -3,15 +3,19 @@
  */
 
 import { revisionTracker } from '../../revisionTracker';
+import { normalizeBinaryPayload } from '../../binaryPayload';
 
 const DEBOUNCE_MS = 3000;
-const MIN_INTERVAL_MS = 60_000;
+/** Min time between automatic folder writes (forced mirrorNow bypasses this). */
+const MIN_INTERVAL_MS = 15_000;
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastMirrorAt = 0;
 let lastMirroredRevision = -1;
+let lastMirrorError: string | null = null;
 let mirrorInFlight = false;
 let pendingForce = false;
+const mirrorWaiters: Array<(result: { ok: boolean; error?: string }) => void> = [];
 
 export type MirrorExportFn = () => Promise<Uint8Array>;
 export type MirrorWriteFn = (
@@ -33,12 +37,22 @@ export function configureFolderMirror(opts: {
   getRevisionFn = opts.getRevision;
 }
 
-export function scheduleFolderMirror(): void {
+function scheduleFolderMirrorAfter(delayMs: number): void {
+  const delay = Math.max(0, Math.ceil(delayMs));
   if (debounceTimer != null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
     void runFolderMirror(false);
-  }, DEBOUNCE_MS);
+  }, delay);
+}
+
+export function scheduleFolderMirror(): void {
+  scheduleFolderMirrorAfter(DEBOUNCE_MS);
+}
+
+function notifyMirrorWaiters(result: { ok: boolean; error?: string }): void {
+  const waiters = mirrorWaiters.splice(0);
+  for (const resolve of waiters) resolve(result);
 }
 
 export async function mirrorNow(force = false): Promise<{ ok: boolean; error?: string }> {
@@ -55,12 +69,18 @@ async function runFolderMirror(force: boolean): Promise<{ ok: boolean; error?: s
     return { ok: false, error: 'Mirror not configured' };
   }
   if (mirrorInFlight) {
+    if (force) {
+      pendingForce = true;
+      return new Promise((resolve) => {
+        mirrorWaiters.push(resolve);
+      });
+    }
     scheduleFolderMirror();
     return { ok: true };
   }
 
-  // Tab bumps revision in meta kv; reload so mirror metadata matches folder sidecar.
-  await revisionTracker.load();
+  // Tab bumps revision in meta kv; worker must re-read (separate JS heap).
+  await revisionTracker.refreshFromStorage();
   const revision = revisionTracker.getLocalRevisionSync();
   if (!force && revision === lastMirroredRevision) {
     return { ok: true };
@@ -68,27 +88,51 @@ async function runFolderMirror(force: boolean): Promise<{ ok: boolean; error?: s
 
   const now = Date.now();
   if (!force && now - lastMirrorAt < MIN_INTERVAL_MS) {
-    scheduleFolderMirror();
+    // Edits coalesce in OPFS immediately; folder write waits out the min interval,
+    // then flushes the latest revision even if the user stopped editing.
+    const remaining = lastMirrorAt + MIN_INTERVAL_MS - now;
+    scheduleFolderMirrorAfter(Math.max(DEBOUNCE_MS, remaining));
     return { ok: true };
   }
 
   mirrorInFlight = true;
   pendingForce = false;
+  let result: { ok: boolean; error?: string } = { ok: true };
   try {
-    const bytes = await exportFn();
+    const raw = await exportFn();
+    const bytes = normalizeBinaryPayload(raw);
     if (!bytes || bytes.byteLength < 16) {
-      return { ok: false, error: 'Export produced empty database' };
+      result = { ok: false, error: 'Export produced empty database' };
+      lastMirrorError = result.error ?? 'Export produced empty database';
+      return result;
     }
     const res = await writeFn(bytes, revision);
     if (res.ok) {
       lastMirrorAt = Date.now();
       lastMirroredRevision = revision;
+      lastMirrorError = null;
+      result = res;
+    } else {
+      lastMirrorError = res.error ?? 'Mirror write failed';
+      result = res;
+      if (revision !== lastMirroredRevision) {
+        scheduleFolderMirrorAfter(DEBOUNCE_MS);
+      }
     }
-    return res;
+    return result;
   } catch (e) {
-    return { ok: false, error: String(e) };
+    lastMirrorError = String(e);
+    result = { ok: false, error: String(e) };
+    return result;
   } finally {
     mirrorInFlight = false;
+    if (pendingForce) {
+      pendingForce = false;
+      const forced = await runFolderMirror(true);
+      notifyMirrorWaiters(forced);
+    } else {
+      notifyMirrorWaiters(result);
+    }
   }
 }
 
@@ -96,10 +140,12 @@ export function getMirrorStatus(): {
   lastMirrorAt: number;
   lastMirroredRevision: number;
   pending: boolean;
+  lastMirrorError: string | null;
 } {
   return {
     lastMirrorAt,
     lastMirroredRevision,
-    pending: debounceTimer != null || mirrorInFlight,
+    pending: debounceTimer != null || mirrorInFlight || mirrorWaiters.length > 0,
+    lastMirrorError,
   };
 }

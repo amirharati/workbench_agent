@@ -9,7 +9,7 @@
  * revisions, or conflict resolution; those live in higher layers so the same
  * file system primitives can later be reused by other sinks/scripts.
  */
-import { exportSqliteBytes } from './db';
+import { normalizeBinaryPayload } from './binaryPayload';
 import { getMetaDB } from './metaDb';
 
 const HANDLE_KEY = 'backup-directory';
@@ -159,21 +159,133 @@ async function writeJsonWithHandle(
   }
 }
 
+
 async function writeBinaryWithHandle(
   handle: FileSystemDirectoryHandle,
   filename: string,
-  data: Uint8Array
+  data: Uint8Array | ArrayBuffer
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    const bytes = normalizeBinaryPayload(data);
+    if (!bytes || bytes.byteLength === 0) {
+      return { ok: false, error: 'No binary data to write' };
+    }
     const fileHandle = await handle.getFileHandle(filename, { create: true });
     const writable = await fileHandle.createWritable();
-    // Write using ArrayBuffer to satisfy TypeScript
-    await writable.write(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
+    // Copy so FileSystemWritableFileStream gets a plain ArrayBuffer-backed view.
+    await writable.write(new Uint8Array(bytes));
     await writable.close();
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
+}
+
+const ATOMIC_TEMP_SUFFIX = '.tmp';
+
+async function removeEntryIfExists(
+  handle: FileSystemDirectoryHandle,
+  filename: string
+): Promise<void> {
+  try {
+    await handle.removeEntry(filename, { recursive: false });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'NotFoundError') return;
+    throw e;
+  }
+}
+
+/** Write to `filename.tmp` first, then swap into place (Slice C). */
+async function replaceFileAtomically(
+  handle: FileSystemDirectoryHandle,
+  filename: string,
+  writeTemp: (tmpFilename: string) => Promise<{ ok: boolean; error?: string }>,
+  finalizeFromTemp: (
+    tmpHandle: FileSystemFileHandle,
+    tmpFilename: string
+  ) => Promise<{ ok: boolean; error?: string }>
+): Promise<{ ok: boolean; error?: string }> {
+  const tmpFilename = `${filename}${ATOMIC_TEMP_SUFFIX}`;
+  try {
+    await removeEntryIfExists(handle, tmpFilename);
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+
+  const tmpRes = await writeTemp(tmpFilename);
+  if (!tmpRes.ok) return tmpRes;
+
+  try {
+    const tmpHandle = await handle.getFileHandle(tmpFilename);
+    const moveFn = (tmpHandle as FileSystemFileHandle & { move?: (name: string) => Promise<void> }).move;
+    if (typeof moveFn === 'function') {
+      try {
+        await removeEntryIfExists(handle, filename);
+      } catch (e) {
+        return { ok: false, error: String(e) };
+      }
+      await moveFn.call(tmpHandle, filename);
+      return { ok: true };
+    }
+
+    const finalRes = await finalizeFromTemp(tmpHandle, tmpFilename);
+    if (!finalRes.ok) return finalRes;
+    try {
+      await removeEntryIfExists(handle, tmpFilename);
+    } catch {
+      /* best-effort cleanup */
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+async function writeBinaryAtomicallyWithHandle(
+  handle: FileSystemDirectoryHandle,
+  filename: string,
+  data: Uint8Array | ArrayBuffer
+): Promise<{ ok: boolean; error?: string }> {
+  return replaceFileAtomically(
+    handle,
+    filename,
+    (tmpFilename) => writeBinaryWithHandle(handle, tmpFilename, data),
+    async (tmpHandle, tmpFilename) => {
+      const file = await tmpHandle.getFile();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const res = await writeBinaryWithHandle(handle, filename, bytes);
+      if (!res.ok) return res;
+      try {
+        await removeEntryIfExists(handle, tmpFilename);
+      } catch {
+        /* ignore */
+      }
+      return { ok: true };
+    }
+  );
+}
+
+async function writeJsonAtomicallyWithHandle(
+  handle: FileSystemDirectoryHandle,
+  filename: string,
+  json: string
+): Promise<{ ok: boolean; error?: string }> {
+  return replaceFileAtomically(
+    handle,
+    filename,
+    (tmpFilename) => writeJsonWithHandle(handle, tmpFilename, json),
+    async (tmpHandle, tmpFilename) => {
+      const text = await tmpHandle.getFile().then((f) => f.text());
+      const res = await writeJsonWithHandle(handle, filename, text);
+      if (!res.ok) return res;
+      try {
+        await removeEntryIfExists(handle, tmpFilename);
+      } catch {
+        /* ignore */
+      }
+      return { ok: true };
+    }
+  );
 }
 
 // --- public read/write ------------------------------------------------------
@@ -195,13 +307,37 @@ export async function writeJsonToBackupFolder(
  */
 export async function writeBinaryToBackupFolder(
   filename: string,
-  data: Uint8Array
+  data: Uint8Array | ArrayBuffer
 ): Promise<{ ok: boolean; error?: string }> {
   const handle = await getBackupDirectoryHandle();
   if (!handle) return { ok: false, error: 'No backup folder configured' };
   const perm = await ensureReadWritePermission(handle);
   if (!perm.ok) return perm;
   return writeBinaryWithHandle(handle, filename, data);
+}
+
+/** Atomic replace — used for live mirror and manual sqlite snapshots. */
+export async function writeBinaryAtomicallyToBackupFolder(
+  filename: string,
+  data: Uint8Array | ArrayBuffer
+): Promise<{ ok: boolean; error?: string }> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) return { ok: false, error: 'No backup folder configured' };
+  const perm = await ensureReadWritePermission(handle);
+  if (!perm.ok) return perm;
+  return writeBinaryAtomicallyWithHandle(handle, filename, data);
+}
+
+/** Atomic replace — used for workbench.meta.json sidecar writes. */
+export async function writeJsonAtomicallyToBackupFolder(
+  filename: string,
+  json: string
+): Promise<{ ok: boolean; error?: string }> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) return { ok: false, error: 'No backup folder configured' };
+  const perm = await ensureReadWritePermission(handle);
+  if (!perm.ok) return perm;
+  return writeJsonAtomicallyWithHandle(handle, filename, json);
 }
 
 /**
@@ -232,14 +368,21 @@ export async function readBinaryFromBackupFolder(
 
 // --- onboarding pickup ------------------------------------------------------
 
-/**
- * Directory picker + persist handle + initial workbench.sqlite in folder.
- */
-export async function pickAndPersistBackupFolder(): Promise<{
+export type PickBackupFolderResult = {
   ok: boolean;
   error?: string;
+  /** Legacy latest.json found in folder — caller should import. */
   existingBackupJson?: string;
-}> {
+  /** Empty folder linked; caller should start worker + mirror to create workbench.sqlite. */
+  freshFolder?: boolean;
+};
+
+/**
+ * Directory picker + persist handle. Does not start the DB worker.
+ * For an empty folder, returns `freshFolder: true` — the worker mirror creates
+ * `workbench.sqlite` (avoid exporting bytes from the UI tab before worker boot).
+ */
+export async function pickAndPersistBackupFolder(): Promise<PickBackupFolderResult> {
   if (typeof window.showDirectoryPicker !== 'function') {
     return { ok: false, error: 'Folder picker is not supported in this context' };
   }
@@ -276,13 +419,7 @@ export async function pickAndPersistBackupFolder(): Promise<{
       return { ok: false, error: existingDb.error ?? legacyJson.error };
     }
 
-    const bytes = await exportSqliteBytes();
-    if (!bytes || bytes.byteLength < 16) {
-      return { ok: false, error: 'Could not export database bytes' };
-    }
-    const write = await writeBinaryWithHandle(handle, WORKBENCH_DB_FILE, bytes);
-    if (!write.ok) return { ok: false, error: write.error ?? 'Could not write to folder' };
-    return { ok: true };
+    return { ok: true, freshFolder: true };
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') {
       return { ok: false, error: 'cancelled' };

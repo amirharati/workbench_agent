@@ -3,7 +3,9 @@ import { setStorageBackend } from '../sqlite/connectionProvider';
 import { subscribeToDataChanges } from '../../dataChangeNotifier';
 import { revisionTracker } from '../../revisionTracker';
 import { scheduleFolderMirror, mirrorNow, configureFolderMirror, getMirrorStatus } from './mirrorToFolder';
-import { exportOpfsDatabaseBytes, importFolderBytesIntoOpfs, openOpfsConnection, workerDatabaseHasDomainData } from '../sqlite/connectionOpfs';
+import { exportOpfsDatabaseBytes, importFolderBytesIntoOpfs, openOpfsConnection, workerDatabaseHasDomainDataSync } from '../sqlite/connectionOpfs';
+import { decodeBinaryFromRpc } from '../../binaryPayload';
+import { fingerprintSqliteBytes, fingerprintFromStore, isLiveNewerThanBackup } from '../importFingerprint';
 import { resetStoreSingletons, getIdbCompatStore } from '../sqlite/store';
 import * as dbCore from '../../dbCore';
 
@@ -19,6 +21,17 @@ const workerScope = self as unknown as {
 };
 
 let mirrorConfigured = false;
+let pendingMirrorWrite: ((result: { ok: boolean; error?: string }) => void) | null = null;
+/** Serialize RPC handlers so import/mutate/hydrate cannot interleave. */
+let rpcChain: Promise<void> = Promise.resolve();
+
+const MIRROR_WRITE_TIMEOUT_MS = 120_000;
+
+const IMPORT_METHODS = new Set([
+  'bootstrapFromFolderBytes',
+  'forceImportFromFolderBytes',
+  'importDB',
+]);
 
 const MUTATING_STORE_METHODS = new Set([
   'put',
@@ -79,12 +92,26 @@ async function hydrateSnapshot(): Promise<Record<string, unknown>> {
   };
 }
 
+async function reloadWorkerStoreAfterImport(): Promise<void> {
+  dbCore.resetDbStoreCache();
+  resetStoreSingletons();
+  await dbCore.getDB();
+}
+
+async function mirrorAfterImport(context: string): Promise<{ ok: boolean; error?: string }> {
+  const mirror = await mirrorNow(true);
+  if (!mirror.ok) {
+    console.warn(`[DB worker] post-import mirror failed (${context}):`, mirror.error);
+  }
+  return mirror;
+}
+
 async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
   switch (method) {
     case 'ping':
       return 'pong';
     case 'getStatus': {
-      await revisionTracker.load();
+      await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
       const conn = await openOpfsConnection();
       return {
@@ -94,36 +121,47 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         lastMirrorAt: mirror.lastMirrorAt,
         lastMirroredRevision: mirror.lastMirroredRevision,
         mirrorPending: mirror.pending,
+        lastMirrorError: mirror.lastMirrorError,
       };
     }
     case 'mirrorNow':
       return mirrorNow(Boolean((args[0] as { force?: boolean } | undefined)?.force));
     case 'bootstrapFromFolderBytes': {
-      const bytes = args[0] as Uint8Array;
-      if (await workerDatabaseHasDomainData()) {
-        return { imported: false, reason: 'already-has-data' };
-      }
-      if (!bytes || bytes.byteLength < 16) {
-        await dbCore.getDB();
+      const payload = decodeBinaryFromRpc(args[0]);
+      if (!payload || payload.byteLength < 16) {
         return { imported: false, reason: 'empty' };
       }
+      if (workerDatabaseHasDomainDataSync()) {
+        const folderFp = await fingerprintSqliteBytes(payload);
+        const store = await getIdbCompatStore();
+        const liveFp = fingerprintFromStore(store);
+        if (!isLiveNewerThanBackup(folderFp, liveFp)) {
+          return { imported: false, reason: 'already-has-data' };
+        }
+      }
       resetStoreSingletons();
-      await importFolderBytesIntoOpfs(bytes);
-      resetStoreSingletons();
-      await dbCore.getDB();
-      scheduleFolderMirror();
-      return { imported: true };
+      await importFolderBytesIntoOpfs(payload);
+      await reloadWorkerStoreAfterImport();
+      const mirror = await mirrorAfterImport('bootstrap');
+      return { imported: true, mirrorOk: mirror.ok, mirrorError: mirror.error ?? null };
     }
     case 'forceImportFromFolderBytes': {
-      const bytes = args[0] as Uint8Array;
-      if (!bytes || bytes.byteLength < 16) {
+      const payload = decodeBinaryFromRpc(args[0]);
+      if (!payload || payload.byteLength < 16) {
         return { imported: false, reason: 'empty' };
       }
       resetStoreSingletons();
-      await importFolderBytesIntoOpfs(bytes);
-      resetStoreSingletons();
-      await dbCore.getDB();
-      return { imported: true };
+      await importFolderBytesIntoOpfs(payload);
+      await reloadWorkerStoreAfterImport();
+      const mirror = await mirrorAfterImport('forceImport');
+      return { imported: true, mirrorOk: mirror.ok, mirrorError: mirror.error ?? null };
+    }
+    case 'inspectImportBytes': {
+      const payload = decodeBinaryFromRpc(args[0]);
+      if (!payload || payload.byteLength < 16) {
+        return { maxUpdatedAt: 0, itemCount: 0, notesRowCount: 0, itemsWithNotes: 0 };
+      }
+      return fingerprintSqliteBytes(payload);
     }
     case 'hydrate':
       return hydrateSnapshot();
@@ -145,7 +183,9 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       return dbCore.exportSqliteBytes();
     case 'importDB': {
       const imported = await dbCore.importDB(args[0] as string, args[1] as boolean);
-      scheduleFolderMirror();
+      if (imported) {
+        await mirrorAfterImport('importDB');
+      }
       return imported;
     }
     case 'bulkImportBookmarks': {
@@ -165,27 +205,58 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
   }
 }
 
-workerScope.onmessage = async (event: MessageEvent<RpcRequest>) => {
-  const { id, method, args } = event.data;
-  try {
-    const result = await handleMethod(method, args ?? []);
-    const response: RpcResponse = { id, ok: true, result };
-    workerScope.postMessage(response);
-    if (method !== 'ping' && method !== 'getStatus' && method !== 'hydrate') {
-      workerScope.postMessage({ type: 'data-changed', revision: revisionTracker.getLocalRevisionSync() });
+workerScope.onmessage = async (event: MessageEvent<RpcRequest | { type: string; ok?: boolean; error?: string }>) => {
+  const data = event.data;
+  if (data && typeof data === 'object' && 'type' in data && data.type === 'mirror-ack') {
+    if (pendingMirrorWrite) {
+      pendingMirrorWrite({ ok: Boolean(data.ok), error: data.error });
+      pendingMirrorWrite = null;
     }
-  } catch (e) {
-    const response: RpcResponse = { id, ok: false, error: String(e) };
-    workerScope.postMessage(response);
+    return;
   }
+
+  const { id, method, args } = event.data as RpcRequest;
+  const run = rpcChain.then(async () => {
+    try {
+      const result = await handleMethod(method, args ?? []);
+      const response: RpcResponse = { id, ok: true, result };
+      workerScope.postMessage(response);
+      if (
+        method !== 'ping' &&
+        method !== 'getStatus' &&
+        method !== 'hydrate' &&
+        !IMPORT_METHODS.has(method)
+      ) {
+        workerScope.postMessage({ type: 'data-changed', revision: revisionTracker.getLocalRevisionSync() });
+      }
+    } catch (e) {
+      const response: RpcResponse = { id, ok: false, error: String(e) };
+      workerScope.postMessage(response);
+    }
+  });
+  rpcChain = run.then(
+    () => undefined,
+    () => undefined
+  );
 };
 
 configureFolderMirror({
   exportDatabase: exportOpfsDatabaseBytes,
-  writeToFolder: async (bytes, revision) => {
-    workerScope.postMessage({ type: 'mirror-bytes', bytes, revision });
-    return { ok: true };
-  },
+  writeToFolder: (bytes, revision) =>
+    new Promise((resolve) => {
+      if (pendingMirrorWrite) {
+        resolve({ ok: false, error: 'Previous mirror write still pending' });
+        return;
+      }
+      pendingMirrorWrite = resolve;
+      workerScope.postMessage({ type: 'mirror-bytes', bytes, revision });
+      setTimeout(() => {
+        if (pendingMirrorWrite === resolve) {
+          pendingMirrorWrite = null;
+          resolve({ ok: false, error: 'Mirror write timeout' });
+        }
+      }, MIRROR_WRITE_TIMEOUT_MS);
+    }),
   getRevision: () => revisionTracker.getLocalRevisionSync(),
 });
 

@@ -9,6 +9,7 @@ import {
 
 export const LIBRARY_SEARCH_TAB_ID = 'product-search';
 export const LIBRARY_SEARCH_HISTORY_KEY = 'workbench-search-history';
+export const LIBRARY_SEARCH_LAST_QUERY_KEY = 'workbench-search-last-query';
 const MAX_HISTORY = 20;
 
 export interface LibrarySearchState {
@@ -38,6 +39,22 @@ function loadRecentQueries(): string[] {
 function saveRecentQueries(queries: string[]): void {
   try {
     localStorage.setItem(LIBRARY_SEARCH_HISTORY_KEY, JSON.stringify(queries.slice(0, MAX_HISTORY)));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+export function loadLastSearchQuery(): string {
+  try {
+    return localStorage.getItem(LIBRARY_SEARCH_LAST_QUERY_KEY)?.trim() ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function saveLastSearchQuery(query: string): void {
+  try {
+    localStorage.setItem(LIBRARY_SEARCH_LAST_QUERY_KEY, query);
   } catch {
     /* ignore quota errors */
   }
@@ -107,6 +124,7 @@ export function useLibrarySearch(onError?: (message: string) => void) {
                 ...p.recentQueries.filter((q) => q.toLowerCase() !== trimmed.toLowerCase()),
               ].slice(0, MAX_HISTORY);
               saveRecentQueries(nextHistory);
+              saveLastSearchQuery(trimmed);
               return {
                 ...p,
                 loading: false,

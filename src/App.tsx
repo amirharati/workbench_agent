@@ -20,7 +20,7 @@ import {
   normalizeBookmarkUrl,
   reloadDB,
 } from './lib/db';
-import { getActiveItems, moveItemToTrash } from './lib/itemQuickAccess';
+import { getActiveItems, moveItemToTrash, formatRestoreSummary } from './lib/itemQuickAccess';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
 import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from './lib/tabUrlCapture';
@@ -37,19 +37,22 @@ import {
 } from './lib/backupOnboarding';
 import {
   pickAndPersistBackupFolder,
+  type PickBackupFolderResult,
   hasWritableBackupFolder,
   getBackupFolderName,
   readBinaryFromBackupFolder,
   WORKBENCH_DB_FILE,
 } from './lib/backupFolder';
 import { DATA_CHANGED_BROADCAST_CHANNEL, subscribeToDataChanges } from './lib/dataChangeNotifier';
-import { ensureDbWorker, mirrorNow, dbRpc } from './lib/storage/dbClient';
-import { backupCoordinator, BackupStatusSnapshot } from './lib/backupCoordinator';
+import { ensureDbWorker, mirrorNow, dbRpc, getDbWorkerStatus, type DbWorkerStatus } from './lib/storage/dbClient';
+import { backupCoordinator, BackupStatusSnapshot, isSqliteBackupFile, type RestoreBackupResult } from './lib/backupCoordinator';
 import { ManualFolderBackupSink } from './lib/backupSinks';
 import { revisionTracker } from './lib/revisionTracker';
 import { loadAISettings, saveAISettings } from './lib/ai/settings';
 import type { AISettings } from './lib/ai/types';
 import { runAITestPrompt } from './lib/ai/client';
+import { notifyUser } from './lib/userNotify';
+import { isTransientDbRpcError } from './lib/storage/dbClient';
 
 export interface WindowGroup {
   windowId: number;
@@ -73,6 +76,7 @@ function App() {
   const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot>(() =>
     backupCoordinator.getStatus()
   );
+  const [folderMirrorStatus, setFolderMirrorStatus] = useState<DbWorkerStatus | null>(null);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
 
   const syncFileSystemSink = async () => {
@@ -88,6 +92,10 @@ function App() {
         await ensureDbWorker();
       } catch (e) {
         console.error('DB worker failed to start:', e);
+        notifyUser({
+          type: 'error',
+          message: `Database worker failed to start: ${e instanceof Error ? e.message : String(e)}`,
+        });
       }
     }
   };
@@ -142,6 +150,10 @@ function App() {
       // will show via subscribeStatus.
     } catch (e) {
       console.error('Startup conflict check failed:', e);
+      notifyUser({
+        type: 'error',
+        message: `Backup conflict check failed: ${e instanceof Error ? e.message : String(e)}`,
+      });
     }
   };
 
@@ -158,6 +170,10 @@ function App() {
         backupCoordinator.start();
       } catch (e) {
         console.error('Backup system bootstrap failed:', e);
+        notifyUser({
+          type: 'error',
+          message: `Backup system failed to start: ${e instanceof Error ? e.message : String(e)}`,
+        });
       }
     })();
     const unsub = backupCoordinator.subscribeStatus(setBackupStatus);
@@ -169,6 +185,29 @@ function App() {
       // invoke is fine — start() is idempotent.
     };
   }, []);
+
+  useEffect(() => {
+    if (!backupFolderReady) {
+      setFolderMirrorStatus(null);
+      return;
+    }
+    let cancelled = false;
+    const refreshMirrorStatus = async () => {
+      try {
+        await ensureDbWorker();
+        const status = await getDbWorkerStatus();
+        if (!cancelled) setFolderMirrorStatus(status);
+      } catch {
+        /* worker may still be starting */
+      }
+    };
+    void refreshMirrorStatus();
+    const id = window.setInterval(() => void refreshMirrorStatus(), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [backupFolderReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,6 +238,10 @@ function App() {
         await runStartupConflictCheck();
       } catch (e) {
         console.error('Backup onboarding check failed:', e);
+        notifyUser({
+          type: 'error',
+          message: `Startup failed: ${e instanceof Error ? e.message : String(e)}`,
+        });
         if (!cancelled) setFolderGateResolved(true);
         if (!cancelled) setShowBackupOnboarding(true);
       }
@@ -247,19 +290,39 @@ function App() {
 
   // Load data
   const loadData = async () => {
-    try {
-      if (!(await hasWritableBackupFolder())) return;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        if (!(await hasWritableBackupFolder())) return;
 
-      const allProjects = await getAllProjects();
-      setProjects(allProjects);
-      const allCollections = await getAllCollections();
-      setCollections(allCollections);
-      const allWorkspaces = await getAllWorkspaces();
-      setWorkspaces(allWorkspaces);
-      const allItems = await getActiveItems();
-      setItems(allItems.sort((a, b) => b.created_at - a.created_at));
-    } catch (e) {
-      console.error('loadData failed:', e);
+        const allProjects = await getAllProjects();
+        setProjects(allProjects);
+        const allCollections = await getAllCollections();
+        setCollections(allCollections);
+        const allWorkspaces = await getAllWorkspaces();
+        setWorkspaces(allWorkspaces);
+        const allItems = await getActiveItems();
+        setItems(allItems.sort((a, b) => b.created_at - a.created_at));
+        return;
+      } catch (e) {
+        lastError = e;
+        if (!isTransientDbRpcError(e) || attempt >= 3) {
+          console.error('loadData failed:', e);
+          notifyUser({
+            type: 'error',
+            message: `Could not load library data: ${e instanceof Error ? e.message : String(e)}`,
+          });
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      }
+    }
+    if (lastError) {
+      console.error('loadData failed:', lastError);
+      notifyUser({
+        type: 'error',
+        message: `Could not load library data: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+      });
     }
   };
 
@@ -577,57 +640,98 @@ function App() {
     }
   };
 
-  const handleImportFile = async (file: File, mode: 'replace' | 'merge' = 'replace') => {
+  const handleRestoreBackupFile = async (
+    file: File,
+    mode: 'replace' | 'merge' = 'replace'
+  ): Promise<RestoreBackupResult> => {
     if (mode === 'merge') {
-      showStatus('Merge import is coming soon. Please use Replace for now.');
-      return;
+      return { ok: false, error: 'Merge import is coming soon. Please use Replace for now.' };
     }
-    
+
+    const safetyNote =
+      'Your current database will first be saved as safety-before-import-… in your backup folder.';
+
+    const runReplaceImport = async (
+      importFn: (forceOlder: boolean) => Promise<RestoreBackupResult>
+    ): Promise<RestoreBackupResult> => {
+      const first = await importFn(false);
+      if (first.ok || first.cancelled) return first;
+      if (!first.liveNewer) return first;
+      const proceed = window.confirm(
+        `${first.error ?? 'Your live database is newer than this backup.'}\n\nReplace anyway?`
+      );
+      if (!proceed) {
+        return { ok: false, cancelled: true, liveNewer: true };
+      }
+      return importFn(true);
+    };
+
+    if (isSqliteBackupFile(file)) {
+      const confirmMessage =
+        `This will replace all current data with the selected SQLite backup (${file.name}).\n\n` +
+        `${safetyNote}\n\nContinue?`;
+      if (!window.confirm(confirmMessage)) {
+        return { ok: false, cancelled: true };
+      }
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        return runReplaceImport(async (forceOlder) => {
+          const result = await backupCoordinator.importSqliteBytes(bytes, { forceOlder });
+          if (result.ok) {
+            await loadData();
+          }
+          return { ...result, format: 'sqlite' as const };
+        });
+      } catch (error) {
+        console.error('SQLite restore error:', error);
+        return { ok: false, error: String(error) };
+      }
+    }
+
+    if (!/\.json$/i.test(file.name)) {
+      return { ok: false, error: 'Choose a .sqlite or .json backup file.' };
+    }
+
     try {
-    const text = await file.text();
-      
-      // Verify backup before importing
+      const text = await file.text();
       const verification = verifyBackup(text);
       if (!verification.valid) {
-        showStatus(`Invalid backup file: ${verification.error}`);
-        return;
+        return { ok: false, error: verification.error ?? 'Invalid backup file' };
       }
-      
-      // Show stats and confirm
+
       const stats = verification.stats;
-      const confirmMessage = `This will replace all current data with:\n` +
-        `- ${stats.projects} projects\n` +
-        `- ${stats.collections} collections\n` +
-        `- ${stats.items} bookmarks\n` +
-        `- ${stats.notes} notes\n` +
-        `- ${stats.workspaces} workspaces\n\n` +
-        `A backup will be created automatically. Continue?`;
-      
+      const confirmMessage =
+        `This will replace all current data with:\n` +
+        `${formatRestoreSummary(stats)}\n\n` +
+        `${safetyNote}\n\nContinue?`;
+
       if (!window.confirm(confirmMessage)) {
-        return;
+        return { ok: false, cancelled: true };
       }
-      
-      const success = await importDB(text, true); // true = create backup first
-      if (success) {
-        showStatus('Data restored! Backup created before import.');
-    await loadData();
-      } else {
-        showStatus('Import failed. Your original data is safe.');
-      }
+
+      return runReplaceImport(async (forceOlder) => {
+        const result = await backupCoordinator.importJsonBackup(text, { forceOlder });
+        if (result.ok) {
+          await loadData();
+          return { ...result, format: 'json' as const };
+        }
+        return { ok: false, error: result.error ?? 'Import failed. Your original data is safe.' };
+      });
     } catch (error) {
-      console.error('Import error:', error);
-      showStatus('Failed to read backup file');
+      console.error('JSON restore error:', error);
+      return { ok: false, error: 'Failed to read backup file' };
     }
   };
 
   const bootstrapWorkerFromFolder = async (): Promise<void> => {
     const primary = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
     if (primary.ok && primary.data && primary.data.byteLength > 16) {
-      await dbRpc('bootstrapFromFolderBytes', [primary.data]);
+      const { encodeBinaryForRpc } = await import('./lib/binaryPayload');
+      await dbRpc('bootstrapFromFolderBytes', [encodeBinaryForRpc(primary.data)]);
     }
   };
 
-  const handleChooseBackupFolder = async () => {
+  const handleChooseBackupFolder = async (): Promise<PickBackupFolderResult> => {
     // Forget what we knew about the OLD folder's remote BEFORE the picker
     // runs, so that importDB (called below if an existing latest.json is
     // found) can populate lastSeenRemote with the NEW folder's envelope.
@@ -637,7 +741,7 @@ function App() {
       if (res.error !== 'cancelled') {
         showStatus(`Backup setup failed: ${res.error ?? 'Unknown error'}`);
       }
-      return;
+      return res;
     }
     if (res.existingBackupJson) {
       const verification = verifyBackup(res.existingBackupJson);
@@ -655,15 +759,28 @@ function App() {
         }
       }
     } else {
-      await bootstrapWorkerFromFolder();
-      await reloadDB();
-      await mirrorNow(true);
-      showStatus('Backup folder saved. Live database is workbench.sqlite in that folder.');
+      try {
+        await ensureDbWorker();
+        await bootstrapWorkerFromFolder();
+        await reloadDB();
+        const mirror = await mirrorNow(true);
+        if (!mirror.ok) {
+          showStatus(`Backup folder linked, but could not write workbench.sqlite: ${mirror.error ?? 'unknown error'}`);
+          return { ok: false, error: mirror.error ?? 'Could not write workbench.sqlite' };
+        }
+        await loadData();
+        showStatus('Backup folder saved. Live database is workbench.sqlite in that folder.');
+      } catch (e) {
+        const msg = String(e);
+        showStatus(`Backup setup failed: ${msg}`);
+        return { ok: false, error: msg };
+      }
     }
     await setBackupFolderOnboarding('done');
     setShowBackupOnboarding(false);
     await refreshBackupFolderStatus();
     await runStartupConflictCheck();
+    return { ok: true };
   };
 
   const handleManualBackup = async () => {
@@ -679,10 +796,35 @@ function App() {
     if (summary.ok) {
       const ref = summary.outcomes.find((o) => o.result.ok)?.result.ref;
       showStatus(ref ? `Manual backup written: ${ref}` : 'Manual backup written.');
+      try {
+        setFolderMirrorStatus(await getDbWorkerStatus());
+      } catch {
+        /* ignore */
+      }
     } else {
       const firstError =
         summary.outcomes.find((o) => !o.result.ok)?.result.error ?? 'Unknown error';
       showStatus(`Manual backup failed: ${firstError}`);
+    }
+  };
+
+  const handleExportJsonSnapshot = async () => {
+    if (!backupCoordinator.hasAnySink()) {
+      showStatus('Configure a backup folder first.');
+      return;
+    }
+    const summary = await backupCoordinator.exportJsonSnapshot();
+    if (!summary) {
+      showStatus('JSON export is paused while a conflict is unresolved.');
+      return;
+    }
+    if (summary.ok) {
+      const ref = summary.outcomes.find((o) => o.result.ok)?.result.ref;
+      showStatus(ref ? `JSON snapshot written: ${ref}` : 'JSON snapshot written.');
+    } else {
+      const firstError =
+        summary.outcomes.find((o) => !o.result.ok)?.result.error ?? 'Unknown error';
+      showStatus(`JSON export failed: ${firstError}`);
     }
   };
 
@@ -916,7 +1058,7 @@ function App() {
       <BackupOnboardingModal
         open
         allowSkip={false}
-        onComplete={handleChooseBackupFolder}
+        onChooseFolder={handleChooseBackupFolder}
       />
     );
   }
@@ -941,10 +1083,14 @@ function App() {
       onCloseTab={handleCloseTab}
       onCloseWindow={handleCloseWindow}
       onRefresh={loadData}
-      onChooseBackupFolder={handleChooseBackupFolder}
+      onChooseBackupFolder={async () => {
+        await handleChooseBackupFolder();
+      }}
       onSetAsBrowserHome={handleSetAsBrowserHome}
-      onRestoreBackupFile={handleImportFile}
+      onRestoreBackupFile={handleRestoreBackupFile}
       onManualBackup={handleManualBackup}
+      onExportJsonSnapshot={handleExportJsonSnapshot}
+      folderMirrorStatus={folderMirrorStatus}
       onResolveConflictLoadRemote={handleResolveConflictLoadRemote}
       onResolveConflictKeepLocal={handleResolveConflictKeepLocal}
       backupFolderReady={backupFolderReady}
