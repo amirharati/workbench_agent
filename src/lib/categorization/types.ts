@@ -278,6 +278,10 @@ export interface DiscoverBatchResult {
   taxonomyLeafCount: number;
   taxonomyVersion: number;
   shouldReclassify: boolean;
+  /** Stuck bookmarks included in this discover run (for follow-up classify). */
+  sampledItemIds?: string[];
+  /** Subset of sampled items queued for reclassify after discover. */
+  reclassifyItemIds?: string[];
   batchErrors?: string[];
   summary?: DiscoverRunSummary;
 }
@@ -299,6 +303,7 @@ export interface ClassifyIncrementalOptions {
   /** Include manual_review bucket items (CLI-style controlled retry). */
   retryManualReview?: boolean;
   onProgress?: (update: ClassifyProgressUpdate) => void;
+  signal?: AbortSignal;
 }
 
 /** Counts for a Results list scope (e.g. AI-ready bookmarks in review). */

@@ -226,6 +226,7 @@ export async function runBatchDigest(
         maxItems: maxClassify,
         autoDiscover: false,
         forceReclassify: options?.forceReclassify === true,
+        signal: options?.signal,
         onProgress: (p) => {
           options?.onProgress?.({
             phase: 'classify',
@@ -239,7 +240,9 @@ export async function runBatchDigest(
       classified = classifyResult.summary.classifiedSpecific + classifyResult.summary.classifiedGeneral;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Classification failed';
-      if (/missing api key/i.test(msg)) {
+      if (msg === 'Cancelled') {
+        classifyError = 'classification cancelled';
+      } else if (/missing api key/i.test(msg)) {
         classifyError = 'classification skipped (no AI key)';
       } else if (/no taxonomy loaded/i.test(msg)) {
         classifyError = 'classification skipped (import taxonomy in Settings)';

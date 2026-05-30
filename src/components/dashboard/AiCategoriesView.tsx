@@ -9,6 +9,8 @@ import {
 
 interface AiCategoriesViewProps {
   onBrowseCategory?: (categoryId: string, name: string) => void;
+  /** When nested inside Enrichment Hub — hide page chrome. */
+  embedded?: boolean;
 }
 
 const RELOAD_REASONS = new Set([
@@ -18,7 +20,7 @@ const RELOAD_REASONS = new Set([
   'pipeline.clear',
 ]);
 
-export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCategory }) => {
+export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCategory, embedded = false }) => {
   const [taxonomy, setTaxonomy] = useState<Awaited<ReturnType<typeof getTaxonomyTreeWithCounts>> | null>(
     null
   );
@@ -66,49 +68,89 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
     <div
       className="scrollbar"
       style={{
-        height: '100%',
-        overflow: 'auto',
-        padding: '20px 24px 32px',
-        maxWidth: 900,
-        margin: '0 auto',
+        height: embedded ? 'auto' : '100%',
+        overflow: embedded ? 'visible' : 'auto',
+        padding: embedded ? 0 : '20px 24px 32px',
+        maxWidth: embedded ? 'none' : 900,
+        margin: embedded ? 0 : '0 auto',
       }}
     >
-      <header style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--text)' }}>
-              AI Categories
-            </h1>
-            <p style={{ margin: '8px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              AI categories are semantic tags assigned by the pipeline.{' '}
-              <strong style={{ fontWeight: 600, color: 'var(--text)' }}>Collections</strong> are your manual folders.
-              Counts include suggested and accepted links.
-            </p>
+      {!embedded ? (
+        <header style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--text)' }}>
+                AI Categories
+              </h1>
+              <p style={{ margin: '8px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                AI categories are semantic tags assigned by enrichment.{' '}
+                <strong style={{ fontWeight: 600, color: 'var(--text)' }}>Collections</strong> are your manual folders.
+                Counts include suggested and accepted links.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={reload}
+              disabled={loading}
+              title="Refresh counts"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-panel)',
+                color: 'var(--text-muted)',
+                fontSize: 'var(--text-xs)',
+                cursor: loading ? 'wait' : 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
           </div>
+        </header>
+      ) : (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5, flex: 1 }}>
+            Browse AI-assigned topics library-wide. Counts include suggested and accepted links. Use{' '}
+            <strong style={{ color: 'var(--text)' }}>Browse</strong> to filter bookmarks by topic.
+          </p>
           <button
             type="button"
             onClick={reload}
             disabled={loading}
             title="Refresh counts"
             style={{
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              padding: '6px 12px',
-              borderRadius: 'var(--radius-sm)',
+              padding: '4px 10px',
+              borderRadius: 6,
               border: '1px solid var(--border)',
-              background: 'var(--bg-panel)',
+              background: 'var(--bg-glass)',
               color: 'var(--text-muted)',
               fontSize: 'var(--text-xs)',
               cursor: loading ? 'wait' : 'pointer',
               flexShrink: 0,
             }}
           >
-            <RefreshCw size={14} />
+            <RefreshCw size={13} />
             Refresh
           </button>
         </div>
-      </header>
+      )}
 
       {data && (
         <div

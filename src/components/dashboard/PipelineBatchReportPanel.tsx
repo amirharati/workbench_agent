@@ -131,6 +131,19 @@ export const PipelineBatchReportPanel: React.FC<PipelineBatchReportPanelProps> =
                   {row.title}
                 </div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>
+                  {row.subtitle && row.subtitle !== row.title ? (
+                    <div
+                      style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        marginBottom: 2,
+                      }}
+                      title={row.subtitle}
+                    >
+                      {row.subtitle}
+                    </div>
+                  ) : null}
                   {row.detail}
                 </div>
               </div>

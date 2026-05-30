@@ -10,19 +10,52 @@ import {
   runBatchDigest,
   runSingleLinkDigest,
   formatBatchDigestProgress,
+  loadItemIdsForPipelineQueue,
   type BatchDigestResult,
   type SingleLinkDigestResult,
 } from '../../lib/pipeline';
 import { reextractAI, embedIncrementalBatch, type EnrichmentResult } from '../../lib/enrichment';
 import {
+  classifyIncremental,
+  discoverBatch,
+  type ClassifyProgressUpdate,
+} from '../../lib/categorization';
+import { emptyTopicClassifySummary } from '../../lib/categorization/classifyPolicy';
+import {
   buildClassifyReportRows,
+  buildClassifyOutcomeReportRows,
   buildPipelineReportRows,
+  formatClassifyBatchSummary,
   formatPipelineReportSummary,
   pipelineReportStats,
   resolveBatchReportAction,
   type PipelineReportRow,
 } from '../../lib/pipeline/pipelineBatchReport';
+import {
+  loadHubQueueSnapshot,
+  type HubQueueOutcome,
+} from '../../lib/pipeline/queueOutcomeSnapshot';
+import type { TopicClassifySummary } from '../../lib/categorization/types';
 import { PipelineBatchReportPanel } from './PipelineBatchReportPanel';
+import { QueueOutcomePanel } from './QueueOutcomePanel';
+
+function formatClassifyRunSummary(s: TopicClassifySummary, itemCount?: number): string {
+  const parts = [
+    `${s.processed} LLM call${s.processed === 1 ? '' : 's'}`,
+    `${s.classifiedSpecific} specific`,
+    `${s.classifiedGeneral} general/Other`,
+    `${s.pendingDiscover} need discover`,
+  ];
+  if (s.skippedHash > 0) {
+    parts.push(`${s.skippedHash} unchanged (skipped, no LLM)`);
+  }
+  if (itemCount != null && itemCount !== s.processed) {
+    parts.unshift(`${itemCount} selected`);
+  } else if (s.totalConsidered > s.processed && !itemCount) {
+    parts.push(`${s.totalConsidered} checked in scope`);
+  }
+  return parts.join(' · ');
+}
 
 type SummaryTone = 'success' | 'error' | 'info';
 
@@ -44,6 +77,7 @@ type ModalState =
       summary: string;
       tone: SummaryTone;
       reportRows?: PipelineReportRow[];
+      queueOutcome?: HubQueueOutcome;
     };
 
 export interface RunBatchWithProgressOptions {
@@ -79,6 +113,35 @@ export interface RunSingleWithProgressOptions {
   itemLabel?: string;
 }
 
+export interface RunDiscoverOptions {
+  title?: string;
+  itemIds?: string[];
+  maxBatches?: number;
+  stuckOnly?: boolean;
+  /** Run classify on discover sample only (not entire classify queue). */
+  andClassify?: boolean;
+  forceReclassify?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface RunDiscoverResult {
+  discover: Awaited<ReturnType<typeof discoverBatch>>;
+  classifySummary?: Awaited<ReturnType<typeof classifyIncremental>>['summary'];
+}
+
+export interface RunClassifyOptions {
+  title?: string;
+  itemIds?: string[];
+  forceReclassify?: boolean;
+  retryManualReview?: boolean;
+  maxItems?: number;
+  itemLabels?: Record<string, string>;
+  /** Per-bookmark result table when itemIds are set (default true). */
+  itemReport?: boolean;
+  /** After manual retry, show per-bookmark result rows (default true when retryManualReview). */
+  manualRetryReport?: boolean;
+}
+
 interface PipelineProgressContextValue {
   isRunning: boolean;
   isCancellable: boolean;
@@ -103,6 +166,8 @@ interface PipelineProgressContextValue {
     itemIds: string[],
     options?: { title?: string }
   ) => Promise<{ embedded: number; skipped: number; failed: number }>;
+  runDiscover: (options?: RunDiscoverOptions) => Promise<RunDiscoverResult>;
+  runClassify: (options?: RunClassifyOptions) => Promise<Awaited<ReturnType<typeof classifyIncremental>>>;
   closeModal: () => void;
 }
 
@@ -139,6 +204,17 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
+    setModal((prev) =>
+      prev.open && prev.phase === 'running'
+        ? {
+            open: true,
+            phase: 'done',
+            title: `${prev.title} — cancelled`,
+            summary: 'Cancelled — partial progress may have been saved.',
+            tone: 'info',
+          }
+        : prev
+    );
   }, []);
 
   const runBatch = useCallback(
@@ -190,7 +266,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           },
         });
 
-        const cancelled = result.enrichCancelled || controller?.signal.aborted;
+        const cancelled = result.enrichCancelled || controller?.signal.aborted || result.classifyError === 'classification cancelled';
         const itemLabels = options?.itemLabels ?? {};
         const batchAction = resolveBatchReportAction(options);
         let reportRows: PipelineReportRow[] | undefined;
@@ -544,6 +620,344 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
     [onRefresh]
   );
 
+  const runDiscover = useCallback(
+    async (options?: RunDiscoverOptions): Promise<RunDiscoverResult> => {
+      const andClassify = options?.andClassify === true;
+      const title =
+        options?.title ??
+        (andClassify ? 'Discover + classify' : 'Discover taxonomy gap-fill');
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setIsRunning(true);
+      setIsCancellable(true);
+      setModal({
+        open: true,
+        phase: 'running',
+        title,
+        progressLabel: 'Preparing discover…',
+        current: 0,
+        total: 1,
+        cancellable: true,
+      });
+
+      const onProgress = (u: ClassifyProgressUpdate) => {
+        setModal((prev) =>
+          prev.open && prev.phase === 'running'
+            ? {
+                ...prev,
+                progressLabel: u.label,
+                current: u.current,
+                total: Math.max(u.total, 1),
+              }
+            : prev
+        );
+      };
+
+      try {
+        const beforeQueue = await loadHubQueueSnapshot();
+
+        const discover = await discoverBatch({
+          itemIds: options?.itemIds,
+          stuckOnly: options?.stuckOnly !== false,
+          maxBatches: options?.maxBatches,
+          sampleBatchSize: 16,
+          enforceBulkRunCap: false,
+          onProgress,
+          signal: controller.signal,
+        });
+
+        const s = discover.summary;
+        let classifySummary: RunDiscoverResult['classifySummary'];
+        let summaryParts: string[] = [];
+
+        if (discover.newParents || discover.newLeaves) {
+          summaryParts.push(
+            `+${discover.newParents} parents · +${discover.newLeaves} topics · ${s?.itemsSampled ?? discover.itemsSampled} processed`
+          );
+        } else {
+          summaryParts.push(
+            `${discover.itemsSampled} processed`
+          );
+          if (discover.llmErrors) summaryParts.push(`${discover.llmErrors} LLM error(s)`);
+          else if ((s?.stuckPool ?? 0) < 3 && !options?.itemIds?.length) summaryParts.push('need ≥3 items');
+          else summaryParts.push('0 new topics proposed');
+        }
+
+        const reclassifyIds = discover.reclassifyItemIds ?? [];
+        const sampledIds = discover.sampledItemIds ?? [];
+        const classifyIds =
+          andClassify && sampledIds.length > 0
+            ? sampledIds
+            : andClassify && reclassifyIds.length > 0
+              ? reclassifyIds
+              : [];
+
+        if (andClassify && classifyIds.length > 0) {
+          setModal((prev) =>
+            prev.open && prev.phase === 'running'
+              ? {
+                  ...prev,
+                  progressLabel: `Classifying ${classifyIds.length} processed bookmark(s)…`,
+                }
+              : prev
+          );
+          const classifyResult = await classifyIncremental({
+            itemIds: classifyIds,
+            maxItems: classifyIds.length,
+            forceReclassify: options?.forceReclassify,
+            autoDiscover: false,
+            onProgress,
+            signal: controller.signal,
+          });
+          classifySummary = classifyResult.summary;
+          summaryParts.push(formatClassifyRunSummary(classifyResult.summary, classifyIds.length));
+        } else if (andClassify) {
+          summaryParts.push('Classify skipped — no sampled bookmarks needed reclassify');
+        }
+
+        const afterQueue = await loadHubQueueSnapshot();
+        let reportRows: PipelineReportRow[] | undefined;
+        if (andClassify && classifyIds.length > 0) {
+          reportRows = await buildClassifyOutcomeReportRows(classifyIds, {});
+        }
+
+        const queueOutcome: HubQueueOutcome = {
+          action: andClassify ? 'discover_classify' : 'discover',
+          before: beforeQueue,
+          after: afterQueue,
+          itemsRun: discover.itemsSampled,
+          discover: {
+            newLeaves: discover.newLeaves,
+            newParents: discover.newParents,
+            itemsSampled: discover.itemsSampled,
+            itemsMarkedForReclassify: s?.itemsMarkedForReclassify ?? 0,
+          },
+          batch: classifySummary
+            ? {
+                processed: classifySummary.processed,
+                classifiedSpecific: classifySummary.classifiedSpecific,
+                classifiedGeneral: classifySummary.classifiedGeneral,
+                pendingDiscover: classifySummary.pendingDiscover,
+                skippedHash: classifySummary.skippedHash,
+                skippedManualReview: classifySummary.skippedManualReview,
+                llmErrors: classifySummary.llmErrors,
+                unassigned: classifySummary.unassigned,
+              }
+            : undefined,
+        };
+
+        const tone: SummaryTone =
+          discover.llmErrors && !discover.newLeaves
+            ? 'error'
+            : discover.newLeaves > 0 || (classifySummary?.classifiedSpecific ?? 0) > 0
+              ? 'success'
+              : 'info';
+
+        setModal({
+          open: true,
+          phase: 'done',
+          title: `${title} — complete`,
+          summary: summaryParts.join(' · '),
+          tone,
+          reportRows,
+          queueOutcome,
+        });
+        await onRefresh?.();
+        return { discover, classifySummary };
+      } catch (e) {
+        const cancelled = controller.signal.aborted || (e instanceof Error && e.message === 'Cancelled');
+        const summary = cancelled
+          ? 'Cancelled — partial progress may have been saved.'
+          : e instanceof Error
+            ? e.message
+            : 'Discover failed';
+        setModal({
+          open: true,
+          phase: 'done',
+          title: cancelled ? `${title} — cancelled` : title,
+          summary,
+          tone: cancelled ? 'info' : 'error',
+        });
+        if (!cancelled) throw e;
+        return {
+          discover: {
+            newParents: 0,
+            newLeaves: 0,
+            itemsSampled: 0,
+            discoverBatches: 0,
+            proposedParents: 0,
+            proposedLeaves: 0,
+            llmErrors: 0,
+            taxonomyLeafCount: 0,
+            taxonomyVersion: 0,
+            shouldReclassify: false,
+            sampledItemIds: [],
+            reclassifyItemIds: [],
+            summary: {
+              totalConsidered: 0,
+              eligiblePool: 0,
+              stuckPool: 0,
+              skippedIneligible: 0,
+              skippedNotStuck: 0,
+              skippedManualReview: 0,
+              skippedTooShort: 0,
+              itemsSampled: 0,
+              discoverBatches: 0,
+              newParents: 0,
+              newLeaves: 0,
+              proposedParentsRaw: 0,
+              proposedLeavesRaw: 0,
+              duplicateLeavesSkipped: 0,
+              llmErrors: 0,
+              itemsMarkedForReclassify: 0,
+              failureBuckets: {},
+              stuckKindBreakdown: { pending_discover: 0, general: 0, unassigned: 0, manual_review: 0 },
+            },
+          },
+        };
+      } finally {
+        setIsRunning(false);
+        setIsCancellable(false);
+        abortRef.current = null;
+      }
+    },
+    [onRefresh]
+  );
+
+  const runClassify = useCallback(
+    async (options?: RunClassifyOptions) => {
+      const title = options?.title ?? 'Classify';
+      let itemIds = options?.itemIds;
+      if (!options?.retryManualReview && !itemIds?.length) {
+        itemIds = await loadItemIdsForPipelineQueue('pending_classify');
+      }
+      const maxItems =
+        options?.maxItems ??
+        (itemIds?.length ? itemIds.length : 200);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setIsRunning(true);
+      setIsCancellable(true);
+      setModal({
+        open: true,
+        phase: 'running',
+        title,
+        progressLabel: itemIds?.length
+          ? `Preparing classify for ${Math.min(itemIds.length, maxItems)} bookmark(s)…`
+          : 'Preparing classify…',
+        current: 0,
+        total: 1,
+        cancellable: true,
+      });
+
+      try {
+        const beforeQueue = await loadHubQueueSnapshot();
+        const itemsRun = options?.itemIds?.length
+          ? Math.min(options.itemIds.length, maxItems)
+          : maxItems;
+
+        const result = await classifyIncremental({
+          itemIds,
+          maxItems,
+          forceReclassify: options?.forceReclassify,
+          retryManualReview: options?.retryManualReview,
+          autoDiscover: false,
+          signal: controller.signal,
+          onProgress: (u) => {
+            setModal((prev) =>
+              prev.open && prev.phase === 'running'
+                ? {
+                    ...prev,
+                    progressLabel: u.label,
+                    current: u.current,
+                    total: Math.max(u.total, 1),
+                  }
+                : prev
+            );
+          },
+        });
+
+        const s = result.summary;
+        let summary = '';
+        let reportRows: PipelineReportRow[] | undefined;
+
+        const reportIds = options?.itemIds?.slice(0, maxItems);
+        const wantReport =
+          reportIds?.length &&
+          (options?.itemReport !== false ||
+            (options?.retryManualReview && options?.manualRetryReport !== false));
+
+        if (wantReport && reportIds) {
+          reportRows = await buildClassifyOutcomeReportRows(
+            reportIds,
+            options?.itemLabels ?? {}
+          );
+          summary = formatClassifyBatchSummary(reportRows, reportIds.length);
+        } else {
+          summary = formatClassifyRunSummary(s, itemsRun);
+        }
+
+        const afterQueue = await loadHubQueueSnapshot();
+        const queueOutcome: HubQueueOutcome = {
+          action: options?.retryManualReview ? 'retry_manual' : 'classify_pending',
+          before: beforeQueue,
+          after: afterQueue,
+          itemsRun: reportIds?.length ?? s.processed,
+          batch: {
+            processed: s.processed,
+            classifiedSpecific: s.classifiedSpecific,
+            classifiedGeneral: s.classifiedGeneral,
+            pendingDiscover: s.pendingDiscover,
+            skippedHash: s.skippedHash,
+            skippedManualReview: s.skippedManualReview,
+            llmErrors: s.llmErrors,
+            unassigned: s.unassigned,
+          },
+        };
+
+        const tone: SummaryTone =
+          s.llmErrors > 0 ? 'error' : s.classifiedSpecific > 0 ? 'success' : 'info';
+
+        setModal({
+          open: true,
+          phase: 'done',
+          title: `${title} — complete`,
+          summary,
+          tone,
+          reportRows,
+          queueOutcome,
+        });
+        await onRefresh?.();
+        return result;
+      } catch (e) {
+        const cancelled = controller.signal.aborted || (e instanceof Error && e.message === 'Cancelled');
+        const summary = cancelled
+          ? 'Cancelled — partial progress may have been saved.'
+          : e instanceof Error
+            ? e.message
+            : 'Classify failed';
+        setModal({
+          open: true,
+          phase: 'done',
+          title: cancelled ? `${title} — cancelled` : title,
+          summary,
+          tone: cancelled ? 'info' : 'error',
+        });
+        if (!cancelled) throw e;
+        return { summary: emptyTopicClassifySummary(), categories: [] };
+      } finally {
+        setIsRunning(false);
+        setIsCancellable(false);
+        abortRef.current = null;
+      }
+    },
+    [onRefresh]
+  );
+
   return (
     <PipelineProgressContext.Provider
       value={{
@@ -555,6 +969,8 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         runReextract,
         runReextractBatch,
         runEmbedBatch,
+        runDiscover,
+        runClassify,
         closeModal,
       }}
     >
@@ -606,13 +1022,20 @@ function PipelineProgressModal({
       <div
         style={{
           width: '100%',
-          maxWidth: modal.phase === 'done' && modal.reportRows?.length ? 640 : 420,
+          maxWidth:
+            modal.phase === 'done' && (modal.reportRows?.length || modal.queueOutcome)
+              ? 580
+              : 420,
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
           background: 'var(--bg-panel)',
           color: 'var(--text)',
           borderRadius: 12,
           border: '1px solid var(--border)',
           boxShadow: 'var(--shadow-lg)',
           padding: '20px 22px',
+          overflow: 'hidden',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -623,6 +1046,7 @@ function PipelineProgressModal({
             justifyContent: 'space-between',
             gap: 12,
             marginBottom: 14,
+            flexShrink: 0,
           }}
         >
           <h2
@@ -708,10 +1132,25 @@ function PipelineProgressModal({
             ) : null}
           </>
         ) : (
-          <>
+          <div style={{ overflowY: 'auto', paddingRight: 4 }}>
+            {modal.queueOutcome ? <QueueOutcomePanel outcome={modal.queueOutcome} /> : null}
             {modal.reportRows?.length ? (
-              <PipelineBatchReportPanel rows={modal.reportRows} summary={modal.summary} />
-            ) : (
+              <div style={{ marginBottom: 12 }}>
+                <div
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 600,
+                    color: 'var(--text-faint)',
+                    marginBottom: 8,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  This batch — per bookmark
+                </div>
+                <PipelineBatchReportPanel rows={modal.reportRows} />
+              </div>
+            ) : !modal.queueOutcome ? (
               <p
                 style={{
                   margin: '0 0 16px',
@@ -727,7 +1166,7 @@ function PipelineProgressModal({
               >
                 {modal.summary}
               </p>
-            )}
+            ) : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
               <button
                 type="button"
@@ -746,7 +1185,7 @@ function PipelineProgressModal({
                 Close
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

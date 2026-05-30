@@ -535,7 +535,7 @@ export async function loadEnrichmentHubData(
   };
 }
 
-async function loadEmbedFailedIds(): Promise<Set<string>> {
+export async function loadEmbedFailedIds(): Promise<Set<string>> {
   const db = await getDB();
   if (!db.objectStoreNames.contains('ai_item_signals')) return new Set();
   const signals = await db.getAll('ai_item_signals');

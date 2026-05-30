@@ -378,7 +378,7 @@ export async function callDiscoveryBatch(
   parents: Array<{ id: string; name: string; description?: string }>,
   leavesSoFar: AiCategory[],
   batchItems: DiscoverSampleItem[],
-  opts: { maxNewParents: number; maxNewLeaves: number; gapFillMode?: boolean }
+  opts: { maxNewParents: number; maxNewLeaves: number; gapFillMode?: boolean; signal?: AbortSignal }
 ): Promise<{ ok: boolean; data?: DiscoveryBatchResponse; error?: string }> {
   try {
     const gapFill = opts.gapFillMode === true;
@@ -386,6 +386,7 @@ export async function callDiscoveryBatch(
       aiSettingsForBatchJob(settings, 4500),
       {
         taskType: 'general',
+        signal: opts.signal,
         messages: [
           {
             role: 'system',
@@ -411,12 +412,14 @@ export async function callDiscoveryBatch(
         ],
       }
     );
+    if (opts.signal?.aborted) throw new Error('Cancelled');
     const parsed = JSON.parse(stripFences(response.text)) as DiscoveryBatchResponse;
     if (!parsed || typeof parsed !== 'object') {
       return { ok: false, error: 'Failed to parse discovery JSON' };
     }
     return { ok: true, data: parsed };
   } catch (e) {
+    if (opts.signal?.aborted || (e instanceof Error && e.message === 'Cancelled')) throw new Error('Cancelled');
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }

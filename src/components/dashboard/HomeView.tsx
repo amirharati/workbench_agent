@@ -8,7 +8,8 @@ import { ItemContextMenu } from './ItemContextMenu';
 import { Resizer } from './Resizer';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { useHomePipelineStats } from '../../hooks/useHomePipelineStats';
-import type { PipelineQueueKind, ProcessingDigest } from '../../lib/pipeline';
+import type { PipelineQueueKind, ProcessingDigest, PipelineMaintenanceSnapshot } from '../../lib/pipeline';
+import { MIN_DISCOVER_POOL } from '../../lib/categorization/discoverPolicy';
 import { loadItemIdsForCategory, loadItemIdsForPipelineQueue, PIPELINE_QUEUE_LABELS, PIPELINE_QUEUE_HINTS } from '../../lib/pipeline';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
@@ -34,6 +35,7 @@ interface HomeViewProps {
   onOpenItemFromSearch?: (item: Item) => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
+  onOpenPipelineHub?: () => void;
   batchRunning?: boolean;
   batchCancellable?: boolean;
   onCancelBatch?: () => void;
@@ -47,13 +49,14 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const topPctRef = useRef(topPct);
   topPctRef.current = topPct;
   const {
     digest,
+    maintenance,
     categories,
     loading: pipelineLoading,
     classifyRunnable,
@@ -404,10 +407,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
             ) : digest ? (
               <ProcessingDigestBody
                 digest={digest}
+                maintenance={maintenance}
                 classifyRunnable={classifyRunnable}
                 classifyRunnableLoading={classifyRunnableLoading}
                 onBrowsePipelineQueue={(kind) => void openPipelineBrowseTab(kind)}
                 onBatchProcessQueue={onBatchProcessQueue}
+                onOpenPipelineHub={onOpenPipelineHub}
                 batchRunning={batchRunning}
                 batchCancellable={batchCancellable}
                 onCancelBatch={onCancelBatch}
@@ -648,10 +653,12 @@ const digestCalloutStyle: React.CSSProperties = {
 
 interface ProcessingDigestBodyProps {
   digest: ProcessingDigest;
+  maintenance?: PipelineMaintenanceSnapshot | null;
   classifyRunnable?: number | null;
   classifyRunnableLoading?: boolean;
   onBrowsePipelineQueue?: (kind: PipelineQueueKind) => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
+  onOpenPipelineHub?: () => void;
   batchRunning: boolean;
   batchCancellable?: boolean;
   onCancelBatch?: () => void;
@@ -675,10 +682,12 @@ const ACTIONABLE_DIGEST_LINES: Array<{
 
 const ProcessingDigestBody: React.FC<ProcessingDigestBodyProps> = ({
   digest,
+  maintenance,
   classifyRunnable = null,
   classifyRunnableLoading = false,
   onBrowsePipelineQueue,
   onBatchProcessQueue,
+  onOpenPipelineHub,
   batchRunning,
   batchCancellable,
   onCancelBatch,
@@ -773,6 +782,47 @@ const ProcessingDigestBody: React.FC<ProcessingDigestBodyProps> = ({
                 ? `Review & classify (${runnableCount} AI-ready)`
                 : `Review classify queue (${queueTotal})`}
         </button>
+      ) : null}
+
+      {maintenance &&
+      onOpenPipelineHub &&
+      (maintenance.discoverPool.stuckPool >= MIN_DISCOVER_POOL ||
+        maintenance.queue.pendingDiscover > 0) ? (
+        <div
+          style={{
+            ...digestCalloutStyle,
+            borderLeft: '3px solid var(--er-warn, #d29922)',
+            paddingLeft: 10,
+          }}
+        >
+          <strong style={{ color: 'var(--text)' }}>{maintenance.discoverPool.stuckPool}</strong> bookmarks
+          stuck on General/Other or unassigned
+          {maintenance.queue.pendingDiscover > 0 ? (
+            <>
+              {' '}
+              (<strong style={{ color: 'var(--text)' }}>{maintenance.queue.pendingDiscover}</strong> pending
+              discover)
+            </>
+          ) : null}
+          . Discover can propose new taxonomy topics — you choose when to run it (uses AI).{' '}
+          <button
+            type="button"
+            onClick={onOpenPipelineHub}
+            style={{
+              marginTop: 6,
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--er-warn, #d29922)',
+              background: 'color-mix(in srgb, var(--er-warn, #d29922) 15%, transparent)',
+              color: 'var(--text)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Open Enrichment Hub → Discover
+          </button>
+        </div>
       ) : null}
 
       {digest.notEnriched > 0 && (

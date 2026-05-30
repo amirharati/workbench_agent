@@ -17,7 +17,6 @@ import { ScopeChipsBar } from '../ScopeChipsBar';
 import { type GlobalTabState } from '../GlobalTabSystem';
 import { SHELL_LAYOUT_DEFAULTS, type ShellLayoutState } from '../../../lib/shell/shellLayoutState';
 import { SettingsView } from '../SettingsView';
-import { AiCategoriesView } from '../AiCategoriesView';
 import { ImportStudioView } from '../ImportStudioView';
 import { PipelineHubView } from '../PipelineHubView';
 import { EnrichmentPanel } from '../EnrichmentPanel';
@@ -98,6 +97,7 @@ interface MainContentProps {
   pipelineBrowse?: PipelineBrowseFilter | null;
   onClearPipelineBrowse?: () => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
+  onOpenPipelineHub?: () => void;
   batchRunning?: boolean;
   batchCancellable?: boolean;
   onCancelBatch?: () => void;
@@ -159,6 +159,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   pipelineBrowse,
   onClearPipelineBrowse,
   onBatchProcessQueue,
+  onOpenPipelineHub,
   batchRunning,
   batchCancellable,
   onCancelBatch,
@@ -613,6 +614,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             statusBar={statusBar}
             onBrowseCategory={onBrowseCategory}
             onBatchProcessQueue={onBatchProcessQueue}
+            onOpenPipelineHub={onOpenPipelineHub}
             batchRunning={batchRunning}
             batchCancellable={batchCancellable}
             onCancelBatch={onCancelBatch}
@@ -677,7 +679,20 @@ export const MainContent: React.FC<MainContentProps> = ({
           />
         );
       case 'ai-categories':
-        return <AiCategoriesView onBrowseCategory={onBrowseCategory} />;
+        return (
+          <PipelineHubView
+            items={items}
+            collections={collections}
+            projects={projects}
+            scopeProjectId={scopeProjectId}
+            scopeCollectionId={scopeCollectionId}
+            onOpenItem={onOpenItemFromSearch ?? onOpenItem}
+            onBrowseCategory={onBrowseCategory}
+            onClearProjectScope={onClearProjectScope}
+            onClearCollectionScope={onClearCollectionScope}
+            onResetScope={onResetScope}
+          />
+        );
       case 'import-studio':
         return (
           <ImportStudioView
@@ -696,6 +711,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
             onOpenItem={onOpenItemFromSearch ?? onOpenItem}
+            onBrowseCategory={onBrowseCategory}
             onClearProjectScope={onClearProjectScope}
             onClearCollectionScope={onClearCollectionScope}
             onResetScope={onResetScope}

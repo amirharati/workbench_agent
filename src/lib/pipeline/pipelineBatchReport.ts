@@ -1,4 +1,5 @@
-import type { TopicClassifySummary } from '../categorization/types';
+import type { TopicClassifySummary, AiItemCategoryLink, AiItemSignal, ClassifyState } from '../categorization/types';
+import { getDB } from '../db';
 import type { EnrichmentResult } from '../enrichment';
 
 export type PipelineReportOutcome =
@@ -23,6 +24,8 @@ export type PipelineReportAction =
 export interface PipelineReportRow {
   itemId: string;
   title: string;
+  /** Bookmark URL when available (shown under title). */
+  subtitle?: string;
   outcome: PipelineReportOutcome;
   detail: string;
 }
@@ -178,6 +181,189 @@ export function buildClassifyReportRows(
     outcome,
     detail,
   }));
+}
+
+const COUNTABLE_LINK_STATUSES = new Set(['suggested', 'accepted']);
+
+function itemDisplayLabel(item: { id: string; title?: string; url?: string }): string {
+  const title = item.title?.trim();
+  if (title) return title;
+  const url = item.url?.trim();
+  if (url) return url;
+  return item.id;
+}
+
+async function hydrateItemMeta(
+  itemIds: string[],
+  partial: Record<string, string>
+): Promise<{ labels: Record<string, string>; urls: Record<string, string> }> {
+  const labels = { ...partial };
+  const urls: Record<string, string> = {};
+  const db = await getDB();
+  for (const id of itemIds) {
+    const item = await db.get('items', id);
+    if (!item) continue;
+    if (!labels[id]?.trim()) labels[id] = itemDisplayLabel(item);
+    const url = item.url?.trim();
+    if (url) urls[id] = url;
+  }
+  return { labels, urls };
+}
+
+function formatTopicLabel(
+  categoryId: string,
+  catById: Map<string, { name: string; parentId?: string | null }>,
+  parentNameById: Map<string, string>
+): string {
+  const leaf = catById.get(categoryId);
+  if (!leaf) return categoryId;
+  const parentName = leaf.parentId ? parentNameById.get(leaf.parentId) : undefined;
+  return parentName ? `${parentName} › ${leaf.name}` : leaf.name;
+}
+
+/** Primary topic id from links, falling back to last LLM classify decision. */
+function resolvePrimaryCategoryId(
+  itemId: string,
+  primaryByItem: Map<string, string>,
+  linksByItem: Map<string, AiItemCategoryLink[]>,
+  sig?: AiItemSignal
+): string | undefined {
+  const linked = primaryByItem.get(itemId);
+  if (linked) return linked;
+
+  const itemLinks = linksByItem.get(itemId) ?? [];
+  const anyPrimary = itemLinks.find((l) => l.source === 'ai' && l.isPrimary);
+  if (anyPrimary) return anyPrimary.categoryId;
+
+  const fromReview = sig?.llmReview?.categoryIds?.[0];
+  if (fromReview) return fromReview;
+
+  const best = itemLinks
+    .filter((l) => l.source === 'ai')
+    .sort((a, b) => b.score - a.score)[0];
+  return best?.categoryId;
+}
+
+function classifiedTopicDetail(
+  categoryId: string | undefined,
+  catById: Map<string, { name: string; parentId?: string | null }>,
+  parentNameById: Map<string, string>,
+  sig?: AiItemSignal
+): string {
+  if (categoryId) {
+    return `Topic: ${formatTopicLabel(categoryId, catById, parentNameById)}`;
+  }
+  const reviewIds = sig?.llmReview?.categoryIds?.filter(Boolean) ?? [];
+  if (reviewIds.length) {
+    const labels = reviewIds.map((id) => formatTopicLabel(id, catById, parentNameById));
+    return `Topic: ${labels.join(', ')}`;
+  }
+  const llmReason = sig?.llmReview?.reason?.trim();
+  if (llmReason) return `Classified — ${llmReason.slice(0, 160)}`;
+  return 'Classified — topic name missing from database';
+}
+
+/** Per-bookmark outcomes after classify (reads current DB state). */
+export async function buildClassifyOutcomeReportRows(
+  itemIds: string[],
+  itemLabels: Record<string, string> = {}
+): Promise<PipelineReportRow[]> {
+  if (!itemIds.length) return [];
+
+  const db = await getDB();
+  const { labels, urls } = await hydrateItemMeta(itemIds, itemLabels);
+  const categories = db.objectStoreNames.contains('ai_categories')
+    ? await db.getAll('ai_categories')
+    : [];
+  const catById = new Map(categories.map((c) => [c.id, c]));
+  const parentNameById = new Map(
+    categories.filter((c) => c.kind === 'parent').map((c) => [c.id, c.name])
+  );
+  const primaryByItem = new Map<string, string>();
+  const linksByItem = new Map<string, AiItemCategoryLink[]>();
+  if (db.objectStoreNames.contains('ai_item_category_links')) {
+    for (const id of itemIds) {
+      const itemLinks = await db.getAllFromIndex('ai_item_category_links', 'by-item', id);
+      if (!itemLinks.length) continue;
+      linksByItem.set(id, itemLinks);
+      for (const l of itemLinks) {
+        if (l.source === 'ai' && l.isPrimary && COUNTABLE_LINK_STATUSES.has(l.status)) {
+          primaryByItem.set(l.itemId, l.categoryId);
+        }
+      }
+    }
+  }
+
+  const rows: PipelineReportRow[] = [];
+  for (const itemId of itemIds) {
+    const sig = db.objectStoreNames.contains('ai_item_signals')
+      ? await db.get('ai_item_signals', itemId)
+      : undefined;
+    const st = sig?.classifyState as ClassifyState | undefined;
+    const primaryId = resolvePrimaryCategoryId(itemId, primaryByItem, linksByItem, sig);
+    const reason = sig?.lastClassifySkipReason?.trim();
+
+    let outcome: PipelineReportOutcome = 'skipped';
+    let detail = reason || 'Updated';
+
+    if (st === 'classified') {
+      outcome = 'classified';
+      detail = classifiedTopicDetail(primaryId, catById, parentNameById, sig);
+    } else if (st === 'classified_general') {
+      outcome = 'skipped';
+      detail = primaryId
+        ? classifiedTopicDetail(primaryId, catById, parentNameById, sig)
+        : reason || 'General / Other';
+    } else if (st === 'manual_review') {
+      outcome = 'review';
+      detail = reason || 'Still in manual review';
+    } else if (st === 'pending_discover') {
+      outcome = 'review';
+      detail = reason || 'No topic match — needs discover';
+    } else if (st === 'pending_classify') {
+      outcome = 'skipped';
+      detail = reason || 'Back in classify queue';
+    } else if (st === 'skipped' || st === 'ineligible') {
+      outcome = 'skipped';
+      detail = reason || st;
+    }
+
+    rows.push({
+      itemId,
+      title: labels[itemId]?.trim() || itemId,
+      subtitle: urls[itemId],
+      outcome,
+      detail,
+    });
+  }
+  return rows;
+}
+
+export async function buildRetryManualReportRows(
+  itemIds: string[],
+  itemLabels: Record<string, string> = {}
+): Promise<PipelineReportRow[]> {
+  return buildClassifyOutcomeReportRows(itemIds, itemLabels);
+}
+
+export function formatClassifyBatchSummary(
+  rows: PipelineReportRow[],
+  retriedCount: number
+): string {
+  return formatManualRetrySummary(rows, retriedCount);
+}
+
+export function formatManualRetrySummary(
+  rows: PipelineReportRow[],
+  retriedCount: number
+): string {
+  const stats = pipelineReportStats(rows);
+  const parts: string[] = [`${retriedCount} retried`];
+  if (stats.classified > 0) parts.push(`${stats.classified} got a specific topic`);
+  if (stats.review > 0) parts.push(`${stats.review} still need review`);
+  if (stats.skipped > 0) parts.push(`${stats.skipped} other outcome`);
+  if (stats.failed > 0) parts.push(`${stats.failed} failed`);
+  return parts.join(' · ');
 }
 
 export function pipelineReportStats(rows: PipelineReportRow[]) {

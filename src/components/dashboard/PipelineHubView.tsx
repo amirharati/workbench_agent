@@ -32,9 +32,15 @@ import {
   type RowStatusHelp,
 } from '../../lib/pipeline/pipelineHubQueries';
 import { itemMatchesScope } from '../../lib/shell/itemScope';
+import { loadNavigationState, patchNavigationState } from '../../lib/shell/navigationState';
+import { buildDisplayListWithRecentHolds } from '../../lib/pipeline/recentListHolds';
 import { ScopeChipsBar } from './ScopeChipsBar';
 import { PipelineItemInspectorPanel } from './PipelineItemInspectorPanel';
+import { PipelineHubCategoriesLane } from './PipelineHubCategoriesLane';
 import { usePipelineProgress } from './PipelineProgressProvider';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
+
+type HubLane = 'enrichment' | 'categories';
 
 interface PipelineHubViewProps {
   items: Item[];
@@ -43,6 +49,7 @@ interface PipelineHubViewProps {
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   onOpenItem?: (item: Item) => void;
+  onBrowseCategory?: (categoryId: string, name: string) => void;
   onClearProjectScope?: () => void;
   onClearCollectionScope?: () => void;
   onResetScope?: () => void;
@@ -154,34 +161,6 @@ function FilterChip({
 
 const PAGE_SIZE = 80;
 
-function buildDisplayListWithRecentHolds(
-  filteredRows: EnrichmentHubRow[],
-  displayOrderIds: string[] | null,
-  recentUpdateIds: ReadonlySet<string>,
-  scopedRows: EnrichmentHubRow[],
-  allRows: EnrichmentHubRow[]
-): EnrichmentHubRow[] {
-  if (recentUpdateIds.size === 0) return filteredRows;
-
-  const freshById = new Map<string, EnrichmentHubRow>();
-  for (const row of allRows) freshById.set(row.item.id, row);
-  for (const row of scopedRows) freshById.set(row.item.id, row);
-  for (const row of filteredRows) freshById.set(row.item.id, row);
-
-  const filteredIds = new Set(filteredRows.map((r) => r.item.id));
-  let order = displayOrderIds ?? filteredRows.map((r) => r.item.id);
-  for (const row of filteredRows) {
-    if (!order.includes(row.item.id)) order = [...order, row.item.id];
-  }
-
-  return order
-    .map((id) => freshById.get(id))
-    .filter((row): row is EnrichmentHubRow => {
-      if (!row) return false;
-      return filteredIds.has(row.item.id) || recentUpdateIds.has(row.item.id);
-    });
-}
-
 function debounceFn<T extends (...args: never[]) => void>(fn: T, ms: number): T {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return ((...args: Parameters<T>) => {
@@ -288,22 +267,31 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
   onOpenItem,
+  onBrowseCategory,
   onClearProjectScope,
   onClearCollectionScope,
   onResetScope,
 }) => {
+  const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
+  const [hubLane, setHubLane] = useState<HubLane>(hubSaved.hubLane);
   const [rows, setRows] = useState<EnrichmentHubRow[]>([]);
   const [counts, setCounts] = useState<Awaited<ReturnType<typeof loadEnrichmentHubData>>['counts'] | null>(
     null
   );
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<EnrichmentHubFilter>('all');
-  const [failureCategoryFilter, setFailureCategoryFilter] = useState<FailureCategoryFilter>('all');
-  const [failureStageFilter, setFailureStageFilter] = useState<FailureStageFilter>('all');
-  const [trashSuggestionsOnly, setTrashSuggestionsOnly] = useState(false);
-  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<EnrichmentHubFilter>(
+    hubSaved.enrichmentStatusFilter as EnrichmentHubFilter
+  );
+  const [failureCategoryFilter, setFailureCategoryFilter] = useState<FailureCategoryFilter>(
+    hubSaved.enrichmentFailureCategory as FailureCategoryFilter
+  );
+  const [failureStageFilter, setFailureStageFilter] = useState<FailureStageFilter>(
+    hubSaved.enrichmentFailureStage as FailureStageFilter
+  );
+  const [trashSuggestionsOnly, setTrashSuggestionsOnly] = useState(hubSaved.enrichmentTrashSuggestionsOnly);
+  const [search, setSearch] = useState(hubSaved.enrichmentSearch);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectState, setInspectState] = useState<{ ids: string[]; index: number } | null>(null);
   /** Preserve list order + show rows that left the filter after hub actions until filters change. */
@@ -312,6 +300,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const recentUpdateIdSet = useMemo(() => new Set(recentUpdateIds), [recentUpdateIds]);
   const [statusHelpItemId, setStatusHelpItemId] = useState<string | null>(null);
   const [showStatusGuide, setShowStatusGuide] = useState(false);
+  const [trashConfirmIds, setTrashConfirmIds] = useState<string[] | null>(null);
   const [frozenRows, setFrozenRows] = useState<EnrichmentHubRow[] | null>(null);
   const [pageLimit, setPageLimit] = useState(PAGE_SIZE);
   const wasProcessingRef = useRef(false);
@@ -325,6 +314,26 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const itemsRef = useRef(items);
   itemsRef.current = items;
   isRunningRef.current = pipeline.isRunning;
+
+  useEffect(() => {
+    patchNavigationState({
+      pipelineHub: {
+        hubLane,
+        enrichmentStatusFilter: statusFilter,
+        enrichmentSearch: search,
+        enrichmentTrashSuggestionsOnly: trashSuggestionsOnly,
+        enrichmentFailureCategory: failureCategoryFilter,
+        enrichmentFailureStage: failureStageFilter,
+      },
+    });
+  }, [
+    hubLane,
+    statusFilter,
+    search,
+    trashSuggestionsOnly,
+    failureCategoryFilter,
+    failureStageFilter,
+  ]);
 
   const isProcessing = pipeline.isRunning;
 
@@ -394,6 +403,20 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       setDisplayOrderIds(ctx.order);
     },
     [collections, scopeCollectionId, scopeProjectId]
+  );
+
+  const applyHoldForIds = useCallback(
+    (ids: string[]) => {
+      if (!ids.length) return;
+      const order = tableRowsForListRef.current.map((r) => r.item.id);
+      void (async () => {
+        const freshRows = await reload({ silent: true });
+        if (freshRows?.length) {
+          applyRecentHolds({ order, targets: ids }, freshRows, hubFilters);
+        }
+      })();
+    },
+    [reload, applyRecentHolds, hubFilters]
   );
 
   const debouncedReload = useMemo(
@@ -708,11 +731,13 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const handleMoveSelectedToTrash = async (idsOverride?: string[]) => {
     const ids = idsOverride ?? getOrderedSelectedIds();
     if (!ids.length || pipeline.isRunning) return;
-    const msg =
-      ids.length === 1
-        ? 'Move this bookmark to trash? Restore later from Home → Trash.'
-        : `Move ${ids.length} bookmarks to trash? Restore later from Home → Trash.`;
-    if (!window.confirm(msg)) return;
+    setTrashConfirmIds(ids);
+  };
+
+  const executeMoveToTrash = async () => {
+    const ids = trashConfirmIds;
+    if (!ids?.length) return;
+    setTrashConfirmIds(null);
     const rowById = new Map(scopedRows.map((r) => [r.item.id, r]));
     const reasonsById: Record<string, { reason: string; reasonCode: 'trash_suggestion' | 'hub_bulk' }> = {};
     for (const id of ids) {
@@ -760,7 +785,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               Enrichment Hub
             </h1>
             <p style={{ margin: '6px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-              Fetch, AI, embed, and classify — queues, filters, and bulk actions
+              {hubLane === 'enrichment'
+                ? 'Fetch, AI, embed, and classify — queues, filters, and bulk actions'
+                : 'Classify queue, topic assignment, and taxonomy overview'}
             </p>
           </div>
           <button
@@ -788,6 +815,78 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         </div>
       </header>
 
+      {(onClearProjectScope || onClearCollectionScope || onResetScope) && (
+        <div style={{ marginBottom: 12 }}>
+          <ScopeChipsBar
+            scopeProjectId={scopeProjectId}
+            scopeCollectionId={scopeCollectionId}
+            projects={projects}
+            collections={collections}
+            itemCount={scopedCounts.total}
+            onClearProject={onClearProjectScope ?? (() => {})}
+            onClearCollection={onClearCollectionScope ?? (() => {})}
+            onResetScope={onResetScope ?? (() => {})}
+          />
+        </div>
+      )}
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 4,
+          marginBottom: 16,
+          borderBottom: '1px solid var(--border)',
+          paddingBottom: 0,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setHubLane('enrichment')}
+          style={{
+            padding: '8px 14px',
+            border: 'none',
+            borderBottom: hubLane === 'enrichment' ? '2px solid var(--accent)' : '2px solid transparent',
+            background: 'transparent',
+            color: hubLane === 'enrichment' ? 'var(--text)' : 'var(--text-muted)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: hubLane === 'enrichment' ? 600 : 500,
+            cursor: 'pointer',
+            marginBottom: -1,
+          }}
+        >
+          Enrichment
+        </button>
+        <button
+          type="button"
+          onClick={() => setHubLane('categories')}
+          style={{
+            padding: '8px 14px',
+            border: 'none',
+            borderBottom: hubLane === 'categories' ? '2px solid var(--accent)' : '2px solid transparent',
+            background: 'transparent',
+            color: hubLane === 'categories' ? 'var(--text)' : 'var(--text-muted)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: hubLane === 'categories' ? 600 : 500,
+            cursor: 'pointer',
+            marginBottom: -1,
+          }}
+        >
+          Categories & taxonomy
+        </button>
+      </div>
+
+      {hubLane === 'categories' ? (
+        <PipelineHubCategoriesLane
+          collections={collections}
+          scopeProjectId={scopeProjectId}
+          scopeCollectionId={scopeCollectionId}
+          onOpenItem={onOpenItem}
+          onBrowseCategory={onBrowseCategory}
+        />
+      ) : null}
+
+      {hubLane === 'enrichment' ? (
+        <>
       {showStatusGuide ? (
         <div
           style={{
@@ -828,21 +927,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           </div>
         </div>
       ) : null}
-
-      {(onClearProjectScope || onClearCollectionScope || onResetScope) && (
-        <div style={{ marginBottom: 12 }}>
-          <ScopeChipsBar
-            scopeProjectId={scopeProjectId}
-            scopeCollectionId={scopeCollectionId}
-            projects={projects}
-            collections={collections}
-            itemCount={scopedCounts.total}
-            onClearProject={onClearProjectScope ?? (() => {})}
-            onClearCollection={onClearCollectionScope ?? (() => {})}
-            onResetScope={onResetScope ?? (() => {})}
-          />
-        </div>
-      )}
 
       {/* Summary row */}
       <div
@@ -1037,52 +1121,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           </button>
         </div>
       ) : null}
-
-      {/* Lane tabs */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 4,
-          marginBottom: 16,
-          borderBottom: '1px solid var(--border)',
-          paddingBottom: 0,
-        }}
-      >
-        <button
-          type="button"
-          style={{
-            padding: '8px 14px',
-            border: 'none',
-            borderBottom: '2px solid var(--accent)',
-            background: 'transparent',
-            color: 'var(--text)',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 600,
-            cursor: 'default',
-            marginBottom: -1,
-          }}
-        >
-          Enrichment
-        </button>
-        <button
-          type="button"
-          disabled
-          title="Coming in Slice 2"
-          style={{
-            padding: '8px 14px',
-            border: 'none',
-            borderBottom: '2px solid transparent',
-            background: 'transparent',
-            color: 'var(--text-faint)',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 500,
-            cursor: 'not-allowed',
-            marginBottom: -1,
-          }}
-        >
-          Categories — coming soon
-        </button>
-      </div>
 
       {/* Filters */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12, alignItems: 'center' }}>
@@ -1607,7 +1645,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                       }
                       onClose={closeInspect}
                       onOpenInTab={onOpenItem ? () => onOpenItem(item) : undefined}
-                      onActionComplete={() => void reload({ silent: true })}
+                      onActionComplete={() =>
+                        applyHoldForIds(inspectState.ids.slice(inspectState.index, inspectState.index + 1))
+                      }
                     />
                   </div>
                 ) : null}
@@ -1652,6 +1692,21 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           <> · {counts.failed} enrich failures in library</>
         ) : null}
       </div>
+        </>
+      ) : null}
+
+      {trashConfirmIds && trashConfirmIds.length > 0 ? (
+        <HubActionConfirmModal
+          title={
+            trashConfirmIds.length === 1 ? 'Move bookmark to trash?' : `Move ${trashConfirmIds.length} bookmarks to trash?`
+          }
+          description="You can restore items later from Home → Trash."
+          confirmLabel={trashConfirmIds.length === 1 ? 'Move to trash' : `Move ${trashConfirmIds.length} to trash`}
+          confirmVariant="danger"
+          onConfirm={() => void executeMoveToTrash()}
+          onCancel={() => setTrashConfirmIds(null)}
+        />
+      ) : null}
     </div>
   );
 };

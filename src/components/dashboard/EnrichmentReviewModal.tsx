@@ -258,6 +258,8 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
           const reasonInfo = describeClassifyQueueStatus({
             classifyState: effectiveSt,
             signal: rawSignal,
+            enrichment: row.enrichment,
+            hasSignal: !!rawSignal,
             eligibleNow: eligibility.eligible,
             eligibilityReasonNow: eligibility.reason,
             hasPrimaryTopic: !!primaryName,

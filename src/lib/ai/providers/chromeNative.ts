@@ -37,7 +37,8 @@ interface LanguageModelApi {
 const withTimeout = async <T>(
   promise: Promise<T>,
   timeoutMs: number,
-  timeoutMessage: string
+  timeoutMessage: string,
+  signal?: AbortSignal
 ): Promise<T> => {
   let timerId: number | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -46,10 +47,25 @@ const withTimeout = async <T>(
     }, timeoutMs);
   });
 
+  let abortListener: (() => void) | null = null;
+  const abortPromise = new Promise<never>((_, reject) => {
+    if (signal) {
+      if (signal.aborted) {
+        reject(new AIClientError('timeout', 'Request was aborted.'));
+      } else {
+        abortListener = () => reject(new AIClientError('timeout', 'Request was aborted.'));
+        signal.addEventListener('abort', abortListener);
+      }
+    }
+  });
+
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    return await Promise.race([promise, timeoutPromise, abortPromise]);
   } finally {
     if (timerId !== null) window.clearTimeout(timerId);
+    if (signal && abortListener) {
+      signal.removeEventListener('abort', abortListener);
+    }
   }
 };
 
@@ -119,7 +135,8 @@ export const runChromeNativeCompletion = async (
     await withTimeout(
       languageModel.availability(createOptions),
       timeoutMs,
-      `Chrome native AI availability check timed out after ${timeoutMs}ms.`
+      `Chrome native AI availability check timed out after ${timeoutMs}ms.`,
+      request.signal
     );
   }
 
@@ -128,14 +145,16 @@ export const runChromeNativeCompletion = async (
   const session = await withTimeout(
     languageModel.create(createOptions),
     timeoutMs,
-    `Chrome native AI session initialization timed out after ${timeoutMs}ms.`
+    `Chrome native AI session initialization timed out after ${timeoutMs}ms.`,
+    request.signal
   );
 
   try {
     const text = await withTimeout(
       session.prompt(prompt),
       timeoutMs,
-      `Chrome native AI response timed out after ${timeoutMs}ms.`
+      `Chrome native AI response timed out after ${timeoutMs}ms.`,
+      request.signal
     );
     const output = String(text || '').trim();
     if (!output) {

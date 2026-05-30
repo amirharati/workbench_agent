@@ -27,6 +27,7 @@ export interface AIMessage {
 export interface AICompletionRequest {
   messages: AIMessage[];
   taskType?: AITaskType;
+  signal?: AbortSignal;
 }
 
 export interface AIUsage {

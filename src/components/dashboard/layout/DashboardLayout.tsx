@@ -27,6 +27,11 @@ import {
   patchShellLayout,
   type ShellLayoutState,
 } from '../../../lib/shell/shellLayoutState';
+import {
+  loadNavigationState,
+  patchNavigationState,
+  type PersistedDashboardView,
+} from '../../../lib/shell/navigationState';
 import { getItemPrimaryScope } from '../../../lib/shell/itemScope';
 import { Resizer } from '../Resizer';
 import { TabPaneFrame, TabScrollShell } from '../TabScrollShell';
@@ -66,7 +71,7 @@ export interface ItemTab {
   }[];
 }
 
-const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander', 'ai-categories', 'import-studio', 'pipeline', 'help']);
+const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander', 'import-studio', 'pipeline', 'help']);
 const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search']);
 
 interface DashboardLayoutProps {
@@ -175,9 +180,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     <StatusBar messages={statusMessages} onDismiss={dismissStatusMessage} />
   );
 
-  const [activeView, setActiveView] = useState<DashboardView>('home');
-  const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>('all');
-  const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>('all');
+  const initialNav = loadNavigationState();
+  const [activeView, setActiveView] = useState<DashboardView>(() => initialNav.activeView as DashboardView);
+  const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>(() => initialNav.scopeProjectId);
+  const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>(() => initialNav.scopeCollectionId);
   const [categoryBrowse, setCategoryBrowse] = useState<CategoryBrowseFilter | null>(null);
   const [pipelineBrowse, setPipelineBrowse] = useState<PipelineBrowseFilter | null>(null);
   const [batchConfirm, setBatchConfirm] = useState<{
@@ -342,12 +348,40 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   }, [onDeleteBookmark, addToast]);
 
   const handleSelectView = (view: DashboardView) => {
+    if (view === 'ai-categories') {
+      patchNavigationState({
+        activeView: 'pipeline',
+        pipelineHub: { hubLane: 'categories', categoriesSubTab: 'taxonomy' },
+      });
+      setActiveView('pipeline');
+      setPipelineBrowse(null);
+      setCategoryBrowse(null);
+      return;
+    }
     setActiveView(view);
+    patchNavigationState({ activeView: view as PersistedDashboardView });
     if (view !== 'bookmarks') {
       setPipelineBrowse(null);
       setCategoryBrowse(null);
     }
   };
+
+  const handleOpenPipelineHub = useCallback(
+    (opts?: { filter?: string }) => {
+      patchNavigationState({
+        activeView: 'pipeline',
+        pipelineHub: {
+          hubLane: 'categories',
+          categoriesSubTab: 'queue',
+          ...(opts?.filter ? { categoriesFilter: opts.filter } : {}),
+        },
+      });
+      setActiveView('pipeline');
+      setPipelineBrowse(null);
+      setCategoryBrowse(null);
+    },
+    []
+  );
 
   const handleCancelBatch = useCallback(() => {
     pipeline.cancel();
@@ -402,7 +436,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
           enrich: kind !== 'pending_classify',
           classify: kind === 'pending_classify' ? true : undefined,
           processAll: true,
-          cancellable: kind === 'not_enriched',
+          cancellable: true,
         });
       } catch {
         // Summary shown in modal
@@ -414,11 +448,17 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const handleSelectProjectScope = (projectId: string | 'all') => {
     setScopeProjectId(projectId);
     setScopeCollectionId('all');
+    patchNavigationState({ scopeProjectId: projectId, scopeCollectionId: 'all' });
   };
 
   const handleSelectCollectionScope = (collectionId: string, projectId?: string) => {
     setScopeCollectionId(collectionId);
+    const nextProjectId = projectId ?? scopeProjectId;
     if (projectId) setScopeProjectId(projectId);
+    patchNavigationState({
+      scopeProjectId: nextProjectId,
+      scopeCollectionId: collectionId,
+    });
   };
 
   const handleDeleteProjectFromSidebar = async (projectId: string) => {
@@ -606,6 +646,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       const target = getItemPrimaryScope(item, collections);
       setScopeProjectId(target.projectId);
       setScopeCollectionId(target.collectionId);
+      patchNavigationState({
+        scopeProjectId: target.projectId,
+        scopeCollectionId: target.collectionId,
+      });
     },
     [collections]
   );
@@ -613,15 +657,18 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const handleClearProjectScope = useCallback(() => {
     setScopeProjectId('all');
     setScopeCollectionId('all');
+    patchNavigationState({ scopeProjectId: 'all', scopeCollectionId: 'all' });
   }, []);
 
   const handleClearCollectionScope = useCallback(() => {
     setScopeCollectionId('all');
+    patchNavigationState({ scopeCollectionId: 'all' });
   }, []);
 
   const handleResetScope = useCallback(() => {
     setScopeProjectId('all');
     setScopeCollectionId('all');
+    patchNavigationState({ scopeProjectId: 'all', scopeCollectionId: 'all' });
   }, []);
 
   const isFullPageView = FULL_PAGE_VIEWS.has(activeView);
@@ -711,6 +758,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 pipelineBrowse={pipelineBrowse}
                 onClearPipelineBrowse={handleClearPipelineBrowse}
                 onBatchProcessQueue={handleBatchProcessQueue}
+                onOpenPipelineHub={() => handleOpenPipelineHub({ filter: 'needs_attention' })}
                 onSelectView={handleSelectView}
                 onOpenItemFromSearch={handleOpenItemTab}
                 onClearProjectScope={handleClearProjectScope}
@@ -766,6 +814,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               pipelineBrowse={pipelineBrowse}
               onClearPipelineBrowse={handleClearPipelineBrowse}
               onBatchProcessQueue={handleBatchProcessQueue}
+              onOpenPipelineHub={() => handleOpenPipelineHub({ filter: 'needs_attention' })}
               batchRunning={pipeline.isRunning}
               batchCancellable={pipeline.isCancellable}
               onCancelBatch={handleCancelBatch}

@@ -8,6 +8,10 @@ import {
   type CategoryOverviewTile,
   type ProcessingDigest,
 } from '../lib/pipeline/itemPipelineContext';
+import {
+  loadPipelineMaintenanceSnapshot,
+  type PipelineMaintenanceSnapshot,
+} from '../lib/pipeline/pipelineMaintenanceSnapshot';
 
 const RELOAD_REASONS = new Set([
   'categorization.review',
@@ -19,6 +23,7 @@ const RELOAD_REASONS = new Set([
 
 export function useHomePipelineStats() {
   const [digest, setDigest] = useState<ProcessingDigest | null>(null);
+  const [maintenance, setMaintenance] = useState<PipelineMaintenanceSnapshot | null>(null);
   const [categories, setCategories] = useState<CategoryOverviewTile[]>([]);
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
@@ -28,11 +33,16 @@ export function useHomePipelineStats() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void Promise.all([loadProcessingDigest(), loadLibraryCategoryOverview(8)])
-      .then(([d, c]) => {
+    void Promise.all([
+      loadProcessingDigest(),
+      loadLibraryCategoryOverview(8),
+      loadPipelineMaintenanceSnapshot(),
+    ])
+      .then(([d, c, m]) => {
         if (cancelled) return;
         setDigest(d);
         setCategories(c);
+        setMaintenance(m);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -78,5 +88,5 @@ export function useHomePipelineStats() {
     };
   }, [digest?.pendingClassify, revision]);
 
-  return { digest, categories, loading, classifyRunnable, classifyRunnableLoading };
+  return { digest, maintenance, categories, loading, classifyRunnable, classifyRunnableLoading };
 }

@@ -40,6 +40,7 @@ export type ExtractEnrichmentOptions = {
   promptVariant?: PromptVariant;
   /** Bypass minimum text length gates (inspector "run anyway"). */
   forceShort?: boolean;
+  signal?: AbortSignal;
 };
 
 const SUMMARY_MAX = 3000;
@@ -144,6 +145,7 @@ export async function extractEnrichmentWithAI(
       { ...settings, maxOutputTokens },
       {
         taskType: 'summarize',
+        signal: options?.signal,
         messages: [
           { role: 'system', content: getSystemPrompt(variant, effectiveKind) },
           {

@@ -65,7 +65,7 @@ export const PIPELINE_QUEUE_LABELS: Record<PipelineQueueKind, string> = {
 export const PIPELINE_QUEUE_HINTS: Record<PipelineQueueKind, string> = {
   suggested_categories: 'AI-suggested categories awaiting accept or reject',
   manual_review: 'Flagged for manual category review',
-  enrich_failed: 'Fetch or AI step failed — filter by error type in Dev Hub review',
+  enrich_failed: 'Fetch or AI step failed — filter by error type in Enrichment Hub',
   pending_classify:
     'Bookmarks waiting on AI categories — includes discover retries and general/Other, not only fresh items',
   not_enriched: 'No enrichment yet — use Process not enriched to fetch and summarize',

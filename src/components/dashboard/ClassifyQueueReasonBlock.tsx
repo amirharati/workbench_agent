@@ -39,6 +39,10 @@ export function ClassifyQueueReasonBlock({
   const info = describeClassifyQueueStatus(input);
 
   const canAct = !!itemId && !!info.actionId && !loading;
+  const isForceReclassify = info.actionId === 'force_reclassify';
+  const actionAccent = isForceReclassify ? '#a371f7' : 'var(--accent)';
+  const actionBg = isForceReclassify ? '#a371f7' : 'var(--accent-weak)';
+  const actionColor = isForceReclassify ? '#fff' : 'var(--text)';
 
   const handleAction = () => {
     if (!itemId || !info.actionId || loading) return;
@@ -109,10 +113,10 @@ export function ClassifyQueueReasonBlock({
             padding: '6px 12px',
             fontSize: 'var(--dev-fs-sm)',
             fontWeight: 600,
-            border: '1px solid var(--accent)',
+            border: `1px solid ${actionAccent}`,
             borderRadius: 6,
-            background: 'var(--accent-weak)',
-            color: 'var(--text)',
+            background: actionBg,
+            color: actionColor,
             cursor: loading ? 'wait' : 'pointer',
             opacity: loading ? 0.7 : 1,
           }}

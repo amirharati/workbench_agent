@@ -247,8 +247,8 @@ export const HelpView: React.FC = () => {
           />
           <FeatureRow
             icon={<Tags size={16} />}
-            title="AI Categories"
-            desc="Semantic tags from the pipeline — not the same as Collections (manual folders). Review assignments and browse by topic."
+            title="Categories (in Enrichment Hub)"
+            desc="Semantic tags from enrichment — not the same as Collections (manual folders). Browse taxonomy, run discover, and review assignments in Enrichment Hub → Categories."
           />
           <FeatureRow
             icon={<Terminal size={16} />}

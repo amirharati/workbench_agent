@@ -14,7 +14,6 @@ import {
   Trash2,
   Home,
   Search,
-  Tags,
   HelpCircle,
   Workflow,
 } from 'lucide-react';
@@ -101,7 +100,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         { icon: Search, label: 'Search', id: 'search' },
         { icon: Workflow, label: 'Enrichment Hub', id: 'pipeline' },
         { icon: Upload, label: 'Import Studio', id: 'import-studio' },
-        { icon: Tags, label: 'AI Categories', id: 'ai-categories' },
         { icon: Terminal, label: 'Tab Commander', id: 'tab-commander' },
         { icon: Settings, label: 'Settings', id: 'settings' },
       ],

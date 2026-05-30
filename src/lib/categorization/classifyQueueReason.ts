@@ -1,5 +1,7 @@
 import type { ClassifyState, ClassifyInputQualityTier, AiSignalStatus, LlmReviewSnapshot } from './types';
 import { MAX_CLASSIFY_RETRIES } from './classifyPolicy';
+import { resolveClassifyQueueBlocker } from './classifyQueueBlocker';
+import type { ItemEnrichment } from '../enrichment/types';
 
 export type ClassifyQueueReasonInput = {
   classifyState?: ClassifyState;
@@ -15,6 +17,8 @@ export type ClassifyQueueReasonInput = {
   eligibleNow?: boolean;
   eligibilityReasonNow?: string;
   hasPrimaryTopic?: boolean;
+  enrichment?: ItemEnrichment;
+  hasSignal?: boolean;
 };
 
 export type ClassifyQueueActionId =
@@ -223,14 +227,34 @@ export function describeClassifyQueueStatus(input: ClassifyQueueReasonInput): Cl
         actionId: 'classify_item',
       };
     }
+    const blocker = resolveClassifyQueueBlocker({
+      item: { id: '', url: '', title: '', collectionIds: [], tags: [], created_at: 0, updated_at: 0, source: 'manual' },
+      enrichment: input.enrichment,
+      classifyState: st,
+      hasSignal: input.hasSignal ?? !!sig,
+      eligible: input.eligibleNow ?? false,
+      eligibilityReason: input.eligibilityReasonNow ?? sig?.eligibilityReason,
+    });
     return {
-      stateLabel,
-      primaryReason: input.hasPrimaryTopic
-        ? 'Waiting for classify (has link but state out of sync)'
-        : 'AI ready — waiting for classify',
-      detail: sig?.inputQualityTier ? `Input quality: ${sig.inputQualityTier}` : undefined,
-      suggestedAction: 'Run Classify pending',
-      actionId: 'classify_item',
+      stateLabel: blocker.stateLabel,
+      primaryReason: blocker.detail,
+      detail: blocker.hint,
+      suggestedAction:
+        blocker.code === 'ready_for_classify' || blocker.code === 'reclassify_queued'
+          ? st === 'pending_reclassify'
+            ? 'Force reclassify'
+            : 'Run Classify pending'
+          : blocker.code === 'not_enriched'
+            ? 'Run digest or re-fetch'
+            : blocker.code === 'no_ai_summary'
+              ? 'Re-run AI extract'
+              : 'Improve text then classify',
+      actionId:
+        blocker.code === 'ready_for_classify' || blocker.code === 'reclassify_queued'
+          ? st === 'pending_reclassify'
+            ? 'force_reclassify'
+            : 'classify_item'
+          : undefined,
     };
   }
 

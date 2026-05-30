@@ -32,6 +32,7 @@ import { DEFAULT_EMBEDDING_MODEL } from '../../lib/categorization/service';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { usePipelineProgress } from './PipelineProgressProvider';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 interface PipelineItemInspectorPanelProps {
   item: Item;
@@ -217,6 +218,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [embedBusy, setEmbedBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
+  const [pendingClearStage, setPendingClearStage] = useState<PipelineStageClear | null>(null);
 
   const enrich = enrichment ?? context?.enrichment;
   const failureLabel = enrich ? resolveEnrichmentFailureLabel(enrich, embedFailed) : null;
@@ -270,17 +272,18 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
     ai: 'AI summary and tags',
     embed: 'search embedding vector',
     classify: 'category links and classify state',
-    all: 'all pipeline data for this bookmark',
+    all: 'all enrichment data for this bookmark',
   };
 
   const runClearStage = async (stage: PipelineStageClear) => {
     if (running || clearBusy) return;
-    const label = STAGE_CLEAR_LABELS[stage];
-    const prompt =
-      targetIds.length > 1
-        ? `Clear ${label} for ${targetIds.length} selected items?\n\nThis deletes stored data so you can re-run that step from scratch. It is not an undo — previous values are not restored.`
-        : `Clear ${label} for this bookmark?\n\nThis deletes stored data so you can re-run that step from scratch. It is not an undo — previous values are not restored.`;
-    if (!window.confirm(prompt)) return;
+    setPendingClearStage(stage);
+  };
+
+  const executeClearStage = async () => {
+    const stage = pendingClearStage;
+    if (!stage || running || clearBusy) return;
+    setPendingClearStage(null);
     setClearBusy(true);
     setLocalMessage(null);
     try {
@@ -290,7 +293,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
         setRawError('');
       }
       const stageName =
-        stage === 'all' ? 'All pipeline data' : stage.charAt(0).toUpperCase() + stage.slice(1);
+        stage === 'all' ? 'All enrichment data' : stage.charAt(0).toUpperCase() + stage.slice(1);
       setLocalMessage(`${stageName} cleared${countSuffix}. Re-run the step when ready.`);
       afterAction();
     } catch (e) {
@@ -484,6 +487,22 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
   const snippetLen = enrich?.snippet?.trim().length ?? 0;
 
   return (
+    <>
+      {pendingClearStage ? (
+        <HubActionConfirmModal
+          title={`Clear ${STAGE_CLEAR_LABELS[pendingClearStage]}?`}
+          description={
+            targetIds.length > 1
+              ? `This deletes stored data for ${targetIds.length} selected items so you can re-run that step from scratch.`
+              : 'This deletes stored data so you can re-run that step from scratch.'
+          }
+          warning="This is not an undo — previous values are not restored."
+          confirmLabel="Clear data"
+          confirmVariant="danger"
+          onConfirm={() => void executeClearStage()}
+          onCancel={() => setPendingClearStage(null)}
+        />
+      ) : null}
     <div
       style={{
         borderBottom: '1px solid var(--border)',
@@ -906,5 +925,6 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
         </div>
       </div>
     </div>
+    </>
   );
 };

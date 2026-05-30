@@ -2,6 +2,7 @@ import { runAICompletion } from '../ai/client';
 import { aiSettingsForBatchJob } from '../ai/settings';
 import type { AISettings } from '../ai/types';
 import { normalizeTag } from './naming';
+import { LLM_BATCH_RETRY_ROUNDS, LLM_SINGLE_FALLBACK_CAP } from './llmBatchRetry';
 import { chunk, MAX_CLASSIFY_PREVIEW, parseReviewJson } from './parseReview';
 import {
   buildGroupedLeafCatalog,
@@ -156,7 +157,8 @@ export async function callTopicExtractBatch(
   settings: AISettings,
   categories: AiCategory[],
   batchItems: ClassifyBatchItem[],
-  parents: Array<{ id: string; name: string; description?: string }> = []
+  parents: Array<{ id: string; name: string; description?: string }> = [],
+  signal?: AbortSignal
 ): Promise<{ ok: boolean; rows?: Record<string, unknown>[]; error?: string }> {
   const topicCatalog = buildGroupedLeafCatalog(categories, parents);
   const prompt = buildTopicExtractPrompt(topicCatalog, batchItems);
@@ -165,6 +167,7 @@ export async function callTopicExtractBatch(
       aiSettingsForBatchJob(settings, 4000),
       {
         taskType: 'general',
+        signal,
         messages: [
           {
             role: 'system',
@@ -175,31 +178,111 @@ export async function callTopicExtractBatch(
         ],
       }
     );
+    if (signal?.aborted) throw new Error('Cancelled');
     const rows = parseReviewJson(response.text);
     if (!rows.length) return { ok: false, error: 'Empty or unparseable model response' };
     return { ok: true, rows };
   } catch (e) {
+    if (signal?.aborted || (e instanceof Error && e.message === 'Cancelled')) throw new Error('Cancelled');
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
-export async function retryMissingTopicExtract(
-  settings: AISettings,
-  categories: AiCategory[],
-  missing: ClassifyBatchItem[],
+export interface TopicExtractBatchRetryResult {
+  decisions: Map<string, TopicExtractDecision>;
+  unresolvedItemIds: string[];
+  lastError?: string;
+}
+
+function pendingTopicExtractItems(
+  batchItems: ClassifyBatchItem[],
+  decisions: Map<string, TopicExtractDecision>
+): ClassifyBatchItem[] {
+  return batchItems.filter((item) => !decisions.has(item.itemId));
+}
+
+function absorbTopicExtractRows(
+  rows: Record<string, unknown>[] | undefined,
   categoryIds: Set<string>,
   leafById: Map<string, { id: string; parentId?: string | null }>,
-  parents: Array<{ id: string; name: string; description?: string }>
-): Promise<TopicExtractDecision[]> {
-  const recovered: TopicExtractDecision[] = [];
-  for (const item of missing) {
-    const one = await callTopicExtractBatch(settings, categories, [item], parents);
-    if (one.ok && one.rows?.length) {
-      const d = topicRowToDecision(one.rows[0], categoryIds, leafById);
-      if (d) recovered.push(d);
+  decisions: Map<string, TopicExtractDecision>
+): void {
+  if (!rows?.length) return;
+  for (const row of rows) {
+    const d = topicRowToDecision(row, categoryIds, leafById);
+    if (d) decisions.set(d.itemId, d);
+  }
+}
+
+/** Classify a batch with re-chunked retries; singles only for stubborn leftovers. */
+export async function resolveTopicExtractBatchWithRetry(
+  settings: AISettings,
+  categories: AiCategory[],
+  batchItems: ClassifyBatchItem[],
+  categoryIds: Set<string>,
+  leafById: Map<string, { id: string; parentId?: string | null }>,
+  parents: Array<{ id: string; name: string; description?: string }>,
+  batchSize: number,
+  signal?: AbortSignal,
+  onProgress?: (msg: string) => void
+): Promise<TopicExtractBatchRetryResult> {
+  const decisions = new Map<string, TopicExtractDecision>();
+  let lastError: string | undefined;
+  if (!batchItems.length) {
+    return { decisions, unresolvedItemIds: [] };
+  }
+
+  const runBatch = async (items: ClassifyBatchItem[]): Promise<ClassifyBatchItem[]> => {
+    if (signal?.aborted) throw new Error('Cancelled');
+    const resp = await callTopicExtractBatch(settings, categories, items, parents, signal);
+    if (resp.ok && resp.rows?.length) {
+      absorbTopicExtractRows(resp.rows, categoryIds, leafById, decisions);
+    } else {
+      lastError = resp.error ?? lastError ?? 'Empty or unparseable model response';
+    }
+    return pendingTopicExtractItems(items, decisions);
+  };
+
+  let pending = await runBatch(batchItems);
+
+  for (let round = 1; round <= LLM_BATCH_RETRY_ROUNDS && pending.length > 0; round++) {
+    if (signal?.aborted) throw new Error('Cancelled');
+    onProgress?.(`Retry batch round ${round}/${LLM_BATCH_RETRY_ROUNDS} (${pending.length} items)…`);
+    const chunks = chunk(pending, batchSize);
+    const nextPending: ClassifyBatchItem[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkItems = chunks[i]!;
+      onProgress?.(
+        chunks.length > 1
+          ? `Retry batch ${round}.${i + 1} (${chunkItems.length} items)…`
+          : `Retry batch ${round} (${chunkItems.length} items)…`
+      );
+      nextPending.push(...(await runBatch(chunkItems)));
+    }
+    pending = nextPending;
+  }
+
+  if (pending.length > 1) {
+    onProgress?.(`Final batch retry (${pending.length} items)…`);
+    pending = await runBatch(pending);
+  }
+
+  if (pending.length > 0) {
+    const singles = pending.slice(0, LLM_SINGLE_FALLBACK_CAP);
+    onProgress?.(`Single-item retry for ${singles.length} stubborn item(s)…`);
+    for (let i = 0; i < singles.length; i++) {
+      if (signal?.aborted) throw new Error('Cancelled');
+      const item = singles[i]!;
+      onProgress?.(`Single retry ${i + 1}/${singles.length}…`);
+      pending = await runBatch([item]);
     }
   }
-  return recovered;
+
+  const unresolvedItemIds = batchItems
+    .map((item) => item.itemId)
+    .filter((itemId) => !decisions.has(itemId));
+
+  return { decisions, unresolvedItemIds, lastError };
 }
 
 export { chunk as chunkClassifyBatch };

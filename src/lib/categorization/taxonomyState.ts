@@ -46,7 +46,7 @@ export function shouldTriggerDiscover(
   eligibleTotal: number,
   state: AiTaxonomyState
 ): boolean {
-  if (state.bulkDiscoverRuns >= state.maxBulkDiscoverRuns) return false;
+  if (state.bulkModeActive && state.bulkDiscoverRuns >= state.maxBulkDiscoverRuns) return false;
   const threshold = effectiveDiscoverThreshold(state);
   if (pendingDiscover >= threshold) return true;
   if (

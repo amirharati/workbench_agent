@@ -6,29 +6,20 @@ import {
   getPipelineQueueFilterCounts,
   getTaxonomyTreeWithCounts,
   listPipelineQueueItems,
+  PIPELINE_QUEUE_FILTER_OPTIONS,
   type PipelineQueueFilter,
   type PipelineQueueItemRow,
   type TaxonomyParentRow,
 } from '../../lib/categorization/devQueries';
+import {
+  displayClassifyStateLabel,
+  resolveClassifyQueueBlocker,
+} from '../../lib/categorization/classifyQueueBlocker';
 import { ClassifyQueueReasonBlock } from './ClassifyQueueReasonBlock';
 import { SearchDevPanel } from './SearchDevPanel';
-import type { CategorizationQueueStats, ClassifyState } from '../../lib/categorization/types';
+import type { CategorizationQueueStats } from '../../lib/categorization/types';
 
 type DevTab = 'queue' | 'taxonomy' | 'search';
-
-const FILTER_OPTIONS: Array<{ id: PipelineQueueFilter; label: string; hint?: string }> = [
-  { id: 'needs_attention', label: 'Needs attention', hint: 'Not a specific topic yet' },
-  { id: 'pending_classify', label: 'Pending classify' },
-  { id: 'pending_reclassify', label: 'Pending reclassify' },
-  { id: 'pending_discover', label: 'Pending discover' },
-  { id: 'classified_general', label: 'General / Other' },
-  { id: 'manual_review', label: 'Manual review' },
-  { id: 'ineligible', label: 'Ineligible' },
-  { id: 'no_signal', label: 'No signal', hint: 'AI ok but no classify signal' },
-  { id: 'classified', label: 'Classified (specific)' },
-  { id: 'skipped', label: 'Skipped' },
-  { id: 'all', label: 'All bookmarks' },
-];
 
 const stateColor: Record<string, string> = {
   pending_classify: '#58a6ff',
@@ -43,9 +34,16 @@ const stateColor: Record<string, string> = {
   none: 'var(--text-faint)',
 };
 
-function stateLabel(st?: ClassifyState): string {
-  if (!st) return 'no signal';
-  return st.replace(/_/g, ' ');
+function rowStateLabel(row: PipelineQueueItemRow): string {
+  const blocker = resolveClassifyQueueBlocker({
+    item: row.item,
+    enrichment: row.enrichment,
+    classifyState: row.classifyState,
+    hasSignal: row.hasSignal,
+    eligible: row.eligible,
+    eligibilityReason: row.eligibilityReason,
+  });
+  return displayClassifyStateLabel(row.classifyState, blocker);
 }
 
 function chipStyle(active: boolean): React.CSSProperties {
@@ -169,6 +167,8 @@ function QueueTable({
                   <ClassifyQueueReasonBlock
                     compact
                     classifyState={st}
+                    enrichment={row.enrichment}
+                    hasSignal={row.hasSignal}
                     signal={{
                       eligibilityReason: row.eligibilityReason,
                       lastClassifySkipReason: row.lastClassifySkipReason,
@@ -182,7 +182,7 @@ function QueueTable({
                 </td>
                 <td style={{ padding: '6px 8px' }}>
                   <span style={{ color: stateColor[st ?? 'none'] ?? 'var(--text-muted)' }}>
-                    {stateLabel(st)}
+                    {rowStateLabel(row)}
                   </span>
                 </td>
                 <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>
@@ -535,7 +535,7 @@ export function PipelineDevView({ onClose, embedded = false }: PipelineDevViewPr
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-              {FILTER_OPTIONS.map((opt) => (
+              {PIPELINE_QUEUE_FILTER_OPTIONS.map((opt) => (
                 <button
                   key={opt.id}
                   type="button"

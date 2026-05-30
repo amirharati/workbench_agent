@@ -62,6 +62,15 @@ export const runOpenRouterCompletion = async (
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), settings.timeoutMs);
 
+  const abortListener = () => controller.abort();
+  if (request.signal) {
+    if (request.signal.aborted) {
+      controller.abort();
+    } else {
+      request.signal.addEventListener('abort', abortListener);
+    }
+  }
+
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -117,10 +126,13 @@ export const runOpenRouterCompletion = async (
   } catch (error) {
     if (error instanceof AIClientError) throw error;
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new AIClientError('timeout', `AI request timed out after ${settings.timeoutMs}ms.`);
+      throw new AIClientError('timeout', `AI request timed out or was aborted.`);
     }
     throw new AIClientError('network', 'Network error while calling AI provider.');
   } finally {
     window.clearTimeout(timeout);
+    if (request.signal) {
+      request.signal.removeEventListener('abort', abortListener);
+    }
   }
 };

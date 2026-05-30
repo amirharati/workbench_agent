@@ -662,6 +662,7 @@ export async function enrichOne(
         parsed.title || item.title,
         {
           sourceKind,
+          signal: options?.signal,
           hints: {
             quotedText: parsed.quotedText,
             quotedAuthor: parsed.quotedAuthor,

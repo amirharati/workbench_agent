@@ -3,6 +3,8 @@ import { isGeneralLeafId } from './taxonomyCatalog';
 import type { DiscoverSampleItem } from './discoverTaxonomy';
 import type { AISettings } from '../ai/types';
 import { callDiscoveryBatch } from './discoverTaxonomy';
+import { chunk } from './parseReview';
+import { LLM_BATCH_RETRY_ROUNDS, LLM_SINGLE_FALLBACK_CAP } from './llmBatchRetry';
 
 export const MIN_DISCOVER_POOL = 3;
 export const DEFAULT_DISCOVER_BATCH_SIZE = 32;
@@ -114,22 +116,28 @@ export function shouldMarkReclassifyAfterDiscover(
   );
 }
 
-/** Call discover LLM; on batch parse failure retry each item individually. */
+/** Call discover LLM; on batch failure re-chunk retries before single-item fallback. */
 export async function callDiscoveryBatchWithRetry(
   settings: AISettings,
   parents: Array<{ id: string; name: string; description?: string }>,
   leavesSoFar: AiCategory[],
   batchItems: DiscoverSampleItem[],
-  opts: { maxNewParents: number; maxNewLeaves: number; gapFillMode?: boolean }
+  opts: {
+    maxNewParents: number;
+    maxNewLeaves: number;
+    gapFillMode?: boolean;
+    signal?: AbortSignal;
+    onProgress?: (msg: string) => void;
+    batchSize?: number;
+  }
 ): Promise<{
   ok: boolean;
   data?: import('./discoverTaxonomy').DiscoveryBatchResponse;
   error?: string;
   singleErrors?: number;
 }> {
-  const resp = await callDiscoveryBatch(settings, parents, leavesSoFar, batchItems, opts);
-  if (resp.ok || batchItems.length <= 1) {
-    return resp.ok ? resp : { ok: false, error: resp.error, singleErrors: batchItems.length };
+  if (!batchItems.length) {
+    return { ok: false, error: 'Empty discover batch' };
   }
 
   const merged: import('./discoverTaxonomy').DiscoveryBatchResponse = {
@@ -137,19 +145,83 @@ export async function callDiscoveryBatchWithRetry(
     newLeaves: [],
     itemResults: [],
   };
+  const batchSize = Math.max(1, opts.batchSize ?? batchItems.length);
+  let lastError: string | undefined;
   let singleErrors = 0;
-  for (const single of batchItems) {
-    const one = await callDiscoveryBatch(settings, parents, leavesSoFar, [single], opts);
-    if (!one.ok || !one.data) {
-      singleErrors++;
-      continue;
+
+  const absorb = (data?: import('./discoverTaxonomy').DiscoveryBatchResponse) => {
+    if (!data) return;
+    merged.newParents!.push(...(data.newParents ?? []));
+    merged.newLeaves!.push(...(data.newLeaves ?? []));
+    merged.itemResults!.push(...(data.itemResults ?? []));
+  };
+
+  const runBatch = async (items: DiscoverSampleItem[]): Promise<boolean> => {
+    if (opts.signal?.aborted) throw new Error('Cancelled');
+    const resp = await callDiscoveryBatch(settings, parents, leavesSoFar, items, opts);
+    if (resp.ok && resp.data) {
+      absorb(resp.data);
+      return true;
     }
-    merged.newParents!.push(...(one.data.newParents ?? []));
-    merged.newLeaves!.push(...(one.data.newLeaves ?? []));
-    merged.itemResults!.push(...(one.data.itemResults ?? []));
+    lastError = resp.error ?? lastError;
+    return false;
+  };
+
+  let pending = [...batchItems];
+  if (await runBatch(pending)) {
+    return { ok: true, data: merged };
   }
-  if (!merged.itemResults!.length && singleErrors === batchItems.length) {
-    return { ok: false, error: resp.error, singleErrors };
+  if (pending.length <= 1) {
+    return { ok: false, error: lastError, singleErrors: pending.length };
   }
-  return { ok: true, data: merged, singleErrors };
+
+  for (let round = 1; round <= LLM_BATCH_RETRY_ROUNDS && pending.length > 1; round++) {
+    opts.onProgress?.(`Retry batch round ${round}/${LLM_BATCH_RETRY_ROUNDS} (${pending.length} items)…`);
+    const chunks = chunk(pending, batchSize);
+    const nextPending: DiscoverSampleItem[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkItems = chunks[i]!;
+      opts.onProgress?.(
+        chunks.length > 1
+          ? `Retry batch ${round}.${i + 1} (${chunkItems.length} items)…`
+          : `Retry batch ${round} (${chunkItems.length} items)…`
+      );
+      if (await runBatch(chunkItems)) continue;
+      nextPending.push(...chunkItems);
+    }
+    pending = nextPending;
+    if (!pending.length) {
+      return { ok: true, data: merged };
+    }
+  }
+
+  if (pending.length > 1) {
+    opts.onProgress?.(`Final batch retry (${pending.length} items)…`);
+    if (await runBatch(pending)) {
+      return { ok: true, data: merged };
+    }
+  }
+
+  if (pending.length > 0) {
+    const singles = pending.slice(0, LLM_SINGLE_FALLBACK_CAP);
+    opts.onProgress?.(`Single-item retry for ${singles.length} stubborn item(s)…`);
+    for (let i = 0; i < singles.length; i++) {
+      if (opts.signal?.aborted) throw new Error('Cancelled');
+      opts.onProgress?.(`Single retry ${i + 1}/${singles.length}…`);
+      if (!(await runBatch([singles[i]!]))) singleErrors++;
+    }
+  }
+
+  const gotResults =
+    (merged.newParents?.length ?? 0) > 0 ||
+    (merged.newLeaves?.length ?? 0) > 0 ||
+    (merged.itemResults?.length ?? 0) > 0;
+
+  if (!gotResults && singleErrors >= batchItems.length) {
+    return { ok: false, error: lastError, singleErrors };
+  }
+  if (!gotResults) {
+    return { ok: false, error: lastError, singleErrors };
+  }
+  return { ok: true, data: merged, singleErrors: singleErrors || undefined };
 }
