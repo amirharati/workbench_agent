@@ -159,8 +159,8 @@ export const DEFAULT_TAXONOMY_STATE: AiTaxonomyState = {
   bulkModeActive: false,
   bulkDiscoverRuns: 0,
   maxBulkDiscoverRuns: 3,
-  maxNewLeavesPerDiscover: 20,
-  maxNewParentsPerDiscover: 5,
+  maxNewLeavesPerDiscover: 8,
+  maxNewParentsPerDiscover: 2,
   unassignedThresholdPercent: 15,
   updated_at: 0,
 };

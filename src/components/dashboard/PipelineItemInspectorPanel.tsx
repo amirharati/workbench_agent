@@ -395,6 +395,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
         enrich: false,
         classify: true,
         processAll: true,
+        forceReclassify: true,
         collectItemResults: true,
         itemLabels,
       });
@@ -480,7 +481,14 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           ? 'var(--er-warn, #d29922)'
           : 'var(--text-faint)';
 
-  const classifyLabel = context?.primaryCategoryName ?? context?.classifyState?.replace(/_/g, ' ') ?? '—';
+  const classifyLabel =
+    context?.primaryCategoryName ??
+    context?.suggestedLinks.find((l) => l.isPrimary)?.name ??
+    context?.suggestedLinks[0]?.name ??
+    (context?.classifyState === 'classified' && !context?.acceptedLinks.length && !context?.suggestedLinks.length
+      ? 'classified (no topic stored)'
+      : context?.classifyState?.replace(/_/g, ' ')) ??
+    '—';
 
   const aiShortGated =
     enrich?.aiStatus === 'content_too_short' || isSnippetTooShortForAI(enrich);
@@ -832,6 +840,21 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
                     {l.isPrimary ? ' ★' : ''}
                   </span>
                 ))}
+              </div>
+            ) : context?.suggestedLinks.length ? (
+              <div style={{ color: 'var(--text-muted)' }}>
+                <span style={{ color: 'var(--text-faint)' }}>AI suggested: </span>
+                {context.suggestedLinks.map((l) => (
+                  <span key={l.categoryId} style={{ marginRight: 6 }}>
+                    {l.name}
+                    {l.isPrimary ? ' ★' : ''}
+                  </span>
+                ))}
+                <span style={{ color: 'var(--text-faint)' }}> (accept in Categories hub)</span>
+              </div>
+            ) : context?.classifyState === 'classified' ? (
+              <div style={{ color: 'var(--er-warn, #d29922)' }}>
+                Classified state but no category stored — run Classify again (or Clear categories).
               </div>
             ) : (
               <div style={{ color: 'var(--text-faint)' }}>No accepted category</div>

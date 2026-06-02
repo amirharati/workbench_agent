@@ -9,6 +9,8 @@ import {
   type EnrichBatchResult,
   type ItemEnrichment,
 } from '../../lib/enrichment';
+import { buildPipelineRunExport } from '../../lib/pipeline/pipelineRunAnalysis';
+import { persistPipelineRunExport, downloadPipelineRunBundle } from '../../lib/pipeline/pipelineRunStore';
 import { EnrichmentReviewModal } from './EnrichmentReviewModal';
 
 type Props = {
@@ -192,6 +194,7 @@ export const EnrichmentTestModal: React.FC<Props> = ({
         itemIds: ids,
         maxItems: ids.length,
         force: true,
+        collectItemResults: true,
         signal: abortRef.current.signal,
         onProgress: (p) => {
           setProgress({
@@ -204,6 +207,21 @@ export const EnrichmentTestModal: React.FC<Props> = ({
       });
       setResult(res);
       setLastRunIds(ids);
+      if (res.itemResults?.length) {
+        try {
+          const exported = await buildPipelineRunExport({
+            itemIds: ids,
+            runId: res.runId,
+            kind: 'batch_enrich',
+            enrichResults: res.itemResults,
+            includeClassify: false,
+          });
+          const saved = await persistPipelineRunExport(exported);
+          if (!saved.ok) downloadPipelineRunBundle(exported);
+        } catch {
+          /* non-fatal */
+        }
+      }
       await refreshStatuses();
       setReviewOpen(true);
       onComplete?.();

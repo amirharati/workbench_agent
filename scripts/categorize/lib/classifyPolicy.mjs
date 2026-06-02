@@ -6,9 +6,8 @@ export function isGeneralLeafId(id) {
   return typeof id === 'string' && /-general$/.test(id);
 }
 
-export function hasSpecificPrimaryTopic(primaryCategoryId, classifyState) {
-  if (primaryCategoryId && !isGeneralLeafId(primaryCategoryId)) return true;
-  return classifyState === 'classified';
+export function hasSpecificPrimaryTopic(primaryCategoryId, _classifyState) {
+  return Boolean(primaryCategoryId && !isGeneralLeafId(primaryCategoryId));
 }
 
 export function shouldSkipClassify(input) {

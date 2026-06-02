@@ -1,6 +1,6 @@
 import { notifyDataChanged } from '../dataChangeNotifier';
 import { getDB } from '../db';
-import type { AiCategory } from '../categorization/types';
+import type { AiCategory, AiItemSignal } from '../categorization/types';
 import { linkCountsForCategories } from '../categorization/counts';
 import { isGeneralLeafId } from '../categorization/taxonomyCatalog';
 import { deleteEnrichmentForItem, getEnrichment } from './fetchService';
@@ -328,12 +328,15 @@ export async function syncClassifySignalsFromLinks(itemIds?: string[]): Promise<
 
   let updated = 0;
   const now = Date.now();
+  const tx = db.transaction(['ai_item_signals'], 'readwrite');
+  const store = tx.objectStore('ai_item_signals');
+
   for (const [itemId, categoryId] of primaryByItem) {
-    const prev = await db.get('ai_item_signals', itemId);
+    const prev = (await store.get(itemId)) as AiItemSignal | undefined;
     const isGeneral = isGeneralLeafId(categoryId);
     const classifyState = isGeneral ? 'classified_general' : 'classified';
     if (prev?.classifyState === classifyState) continue;
-    await db.put('ai_item_signals', {
+    await store.put({
       ...prev,
       itemId,
       textHash: prev?.textHash ?? '',
@@ -350,6 +353,7 @@ export async function syncClassifySignalsFromLinks(itemIds?: string[]): Promise<
     });
     updated++;
   }
+  await tx.done;
   if (updated > 0) notifyDataChanged('categorization.update');
   return updated;
 }

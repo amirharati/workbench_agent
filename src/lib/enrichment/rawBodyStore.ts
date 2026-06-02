@@ -5,6 +5,10 @@ import {
 
 const CACHE_DIR = 'enrichment-cache';
 
+type DirectoryWithEntries = FileSystemDirectoryHandle & {
+  entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
+};
+
 async function getCacheDirectory(): Promise<FileSystemDirectoryHandle | null> {
   if (!(await hasWritableBackupFolder())) return null;
   const root = await getBackupDirectoryHandle();
@@ -96,4 +100,24 @@ export async function deleteRawBody(itemId: string): Promise<void> {
   } catch {
     /* file may not exist */
   }
+}
+
+/** Remove every file in backup-folder enrichment-cache (testing reset). */
+export async function purgeAllEnrichmentCacheFiles(): Promise<number> {
+  const root = await getCacheDirectory();
+  if (!root) return 0;
+  let removed = 0;
+  try {
+    for await (const [name] of (root as DirectoryWithEntries).entries()) {
+      try {
+        await root.removeEntry(name, { recursive: true });
+        removed++;
+      } catch {
+        /* skip */
+      }
+    }
+  } catch {
+    return removed;
+  }
+  return removed;
 }

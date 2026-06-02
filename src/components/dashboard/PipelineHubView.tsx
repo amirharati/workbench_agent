@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   ExternalLink,
   Eye,
   HelpCircle,
@@ -16,6 +17,7 @@ import {
   type FailureCategory,
   type FailureStage,
 } from '../../lib/enrichment/failureLabels';
+import { getCategorizationQueueStats } from '../../lib/categorization/classifyTopicExtract';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import { moveItemsToTrash } from '../../lib/itemQuickAccess';
 import {
@@ -66,7 +68,7 @@ const FAILURE_STAGE_LABELS: Record<FailureStage, string> = {
 
 const STATUS_FILTER_LABELS: Record<EnrichmentHubFilter, string> = {
   all: 'All bookmarks',
-  ok: 'Enriched',
+  ok: 'Fully enriched',
   failed: 'Failed',
   not_enriched: 'Not enriched',
   pending_fetch_review: 'Fetch review',
@@ -281,6 +283,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   );
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [taxonomyLeafCount, setTaxonomyLeafCount] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<EnrichmentHubFilter>(
     hubSaved.enrichmentStatusFilter as EnrichmentHubFilter
   );
@@ -345,9 +348,13 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       else setRefreshing(true);
     }
     try {
-      const data = await loadEnrichmentHubData(itemsRef.current);
+      const [data, queueStats] = await Promise.all([
+        loadEnrichmentHubData(itemsRef.current),
+        getCategorizationQueueStats().catch(() => null),
+      ]);
       setRows(data.rows);
       setCounts(data.counts);
+      setTaxonomyLeafCount(queueStats?.leafCount ?? 0);
       return data.rows;
     } finally {
       setInitialLoading(false);
@@ -814,6 +821,30 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           </button>
         </div>
       </header>
+
+      {taxonomyLeafCount === 0 && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '10px 14px',
+            borderRadius: 8,
+            background: '#fef9c3',
+            border: '1px solid #fde047',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontSize: 'var(--text-sm)',
+            color: '#713f12',
+          }}
+        >
+          <AlertTriangle size={16} style={{ flexShrink: 0, color: '#d97706' }} />
+          <span>
+            <strong>Taxonomy not loaded — classify cannot run.</strong>{' '}
+            Go to <strong>Settings → Fetch enrichment → Import seed taxonomy</strong> to load topics,
+            then run classify from here or Import Studio.
+          </span>
+        </div>
+      )}
 
       {(onClearProjectScope || onClearCollectionScope || onResetScope) && (
         <div style={{ marginBottom: 12 }}>

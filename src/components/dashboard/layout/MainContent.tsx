@@ -69,6 +69,7 @@ interface MainContentProps {
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<RestoreBackupResult>;
   onManualBackup?: () => Promise<void>;
   onExportJsonSnapshot?: () => Promise<void>;
+  onExportPipelineAnalysis?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
   onResolveConflictKeepLocal?: () => Promise<void>;
   backupFolderReady?: boolean;
@@ -137,6 +138,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   onRestoreBackupFile,
   onManualBackup,
   onExportJsonSnapshot,
+  onExportPipelineAnalysis,
   onResolveConflictLoadRemote,
   onResolveConflictKeepLocal,
   backupFolderReady,
@@ -664,6 +666,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onRestoreBackupFile={onRestoreBackupFile}
             onManualBackup={onManualBackup}
             onExportJsonSnapshot={onExportJsonSnapshot}
+            onExportPipelineAnalysis={onExportPipelineAnalysis}
             onResolveConflictLoadRemote={onResolveConflictLoadRemote}
             onResolveConflictKeepLocal={onResolveConflictKeepLocal}
             backupStatus={backupStatus}

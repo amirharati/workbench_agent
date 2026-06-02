@@ -1,21 +1,17 @@
-import { classifyIncremental } from '../categorization';
 import type { TopicClassifySummary } from '../categorization/types';
-import { notifyDataChanged } from '../dataChangeNotifier';
-import { enrichBatch, type EnrichmentResult } from '../enrichment';
+import type { EnrichmentResult } from '../enrichment';
+import type { PipelineReportAction } from './pipelineBatchReport';
+import {
+  runItemPipeline,
+  formatItemPipelineProgress,
+  PIPELINE_DEFAULTS,
+  type ItemPipelineProgress,
+} from './itemPipeline';
 
-export const BATCH_DIGEST_DEFAULTS = {
-  maxEnrich: 50,
-  maxClassify: 25,
-} as const;
+export const BATCH_DIGEST_DEFAULTS = PIPELINE_DEFAULTS;
 
-export type BatchDigestPhase = 'enrich' | 'classify' | 'done';
-
-export interface BatchDigestProgress {
-  phase: BatchDigestPhase;
-  label: string;
-  current: number;
-  total: number;
-}
+export type BatchDigestPhase = ItemPipelineProgress['phase'];
+export type BatchDigestProgress = ItemPipelineProgress;
 
 export interface BatchDigestResult {
   enriched: number;
@@ -25,9 +21,13 @@ export interface BatchDigestResult {
   classifySummary?: TopicClassifySummary;
   enrichCancelled?: boolean;
   classifyError?: string;
+  embedError?: string;
+  embedded?: number;
+  embedFailed?: number;
   remaining?: number;
   message: string;
   itemEnrichResults?: EnrichmentResult[];
+  pipelineDebugSavedTo?: string;
 }
 
 export function formatClassifyBatchMessage(
@@ -59,9 +59,7 @@ export function formatClassifyBatchMessage(
   }
 
   if (summary.pendingDiscover > 0) {
-    parts.push(
-      `${summary.pendingDiscover} still need discover — stay in classify queue until discover runs`
-    );
+    parts.push(`${summary.pendingDiscover} still unmatched after discover`);
   }
 
   if (summary.llmErrors > 0) {
@@ -75,54 +73,11 @@ export function formatClassifyBatchMessage(
   return parts.join(' · ');
 }
 
-function buildBatchMessage(input: {
-  enriched: number;
-  skipped: number;
-  failed: number;
-  classified: number;
-  classifyError?: string;
-  remaining?: number;
-  total: number;
-  fetchOnly?: boolean;
-}): string {
-  const parts: string[] = [];
-  if (input.enriched > 0) {
-    parts.push(input.fetchOnly ? `${input.enriched} fetched` : `${input.enriched} fetched & summarized`);
-  }
-  if (input.skipped > 0) {
-    parts.push(
-      input.skipped === input.total && input.enriched === 0 && input.failed === 0
-        ? `${input.skipped} unchanged (no re-fetch needed)`
-        : `${input.skipped} unchanged`
-    );
-  }
-  if (input.failed > 0) parts.push(`${input.failed} failed`);
-  if (input.classified > 0) parts.push(`${input.classified} classified`);
-  if (input.classifyError) parts.push(input.classifyError);
-  if (input.remaining && input.remaining > 0) {
-    parts.push(`${input.remaining} more remain`);
-  }
-  if (parts.length === 0) return `Checked ${input.total} — already up to date`;
-  return parts.join(' · ');
-}
-
 export function formatBatchDigestProgress(update: BatchDigestProgress): string {
-  switch (update.phase) {
-    case 'enrich':
-      return `Step 1/2 — Fetch & AI extract: ${update.current}/${update.total}`;
-    case 'classify':
-      return `Step 2/2 — Classify: ${update.current}/${update.total}`;
-    case 'done':
-      return 'Enrichment complete';
-    default:
-      return update.label;
-  }
+  return formatItemPipelineProgress(update);
 }
 
-/**
- * Run enrich → classify for a scoped set of bookmark ids.
- * Reuses enrichBatch + classifyIncremental (hash-aware skip, no force by default).
- */
+/** @deprecated Use runItemPipeline — kept as alias for existing callers. */
 export async function runBatchDigest(
   itemIds: string[],
   options?: {
@@ -130,170 +85,36 @@ export async function runBatchDigest(
     classify?: boolean;
     maxEnrich?: number;
     maxClassify?: number;
-    /** When true, process all ids in one enrich pass (Import Studio post-commit). */
     processAll?: boolean;
     onProgress?: (update: BatchDigestProgress) => void;
     signal?: AbortSignal;
     collectItemResults?: boolean;
-    /** Re-fetch and compare content hash (import pipeline / merged bookmarks). */
     refetchCompare?: boolean;
-    /** Force network re-fetch even when content hash unchanged. */
     forceEnrich?: boolean;
-    /** Fetch only — skip AI extract during enrich phase. */
     skipAi?: boolean;
-    /** Re-run classify LLM even when text hash matches prior classification. */
     forceReclassify?: boolean;
+    pipelineRunAction?: PipelineReportAction;
   }
 ): Promise<BatchDigestResult> {
-  const uniqueIds = [...new Set(itemIds.filter(Boolean))];
-  if (uniqueIds.length === 0) {
-    return {
-      enriched: 0,
-      skipped: 0,
-      failed: 0,
-      classified: 0,
-      message: 'No items to process',
-    };
-  }
-
-  const doEnrich = options?.enrich !== false;
-  const doClassify = options?.classify !== false;
-  const maxEnrich =
-    options?.processAll === true
-      ? uniqueIds.length
-      : (options?.maxEnrich ?? BATCH_DIGEST_DEFAULTS.maxEnrich);
-  const maxClassify =
-    options?.processAll === true
-      ? uniqueIds.length
-      : (options?.maxClassify ?? BATCH_DIGEST_DEFAULTS.maxClassify);
-  const remaining =
-    options?.processAll === true
-      ? 0
-      : doEnrich && doClassify
-        ? Math.max(0, uniqueIds.length - maxEnrich)
-        : doClassify
-          ? Math.max(0, uniqueIds.length - maxClassify)
-          : Math.max(0, uniqueIds.length - maxEnrich);
-
-  let enriched = 0;
-  let skipped = 0;
-  let failed = 0;
-  let enrichCancelled = false;
-  let itemEnrichResults: EnrichmentResult[] | undefined;
-
-  if (doEnrich) {
-    const enrichResult = await enrichBatch({
-      mode: 'full',
-      itemIds: uniqueIds,
-      maxItems: maxEnrich,
-      force: options?.forceEnrich === true,
-      skipAi: options?.skipAi === true,
-      signal: options?.signal,
-      collectItemResults: options?.collectItemResults,
-      refetchCompare: options?.refetchCompare,
-      onProgress: (p) => {
-        const current = p.processed + p.skipped + p.failed;
-        options?.onProgress?.({
-          phase: 'enrich',
-          label: 'Fetching and extracting…',
-          current,
-          total: p.total,
-        });
-      },
-    });
-    enriched = enrichResult.processed;
-    skipped = enrichResult.skipped;
-    failed = enrichResult.failed;
-    enrichCancelled = !!enrichResult.cancelled;
-    itemEnrichResults = enrichResult.itemResults;
-    notifyDataChanged('enrichment.update');
-  }
-
-  let classified = 0;
-  let classifyError: string | undefined;
-  let classifySummary: TopicClassifySummary | undefined;
-
-  if (doClassify && !options?.signal?.aborted && !enrichCancelled) {
-    options?.onProgress?.({
-      phase: 'classify',
-      label: 'Classifying…',
-      current: 0,
-      total: Math.min(uniqueIds.length, maxClassify),
-    });
-    try {
-      const classifyResult = await classifyIncremental({
-        itemIds: uniqueIds,
-        maxItems: maxClassify,
-        autoDiscover: false,
-        forceReclassify: options?.forceReclassify === true,
-        signal: options?.signal,
-        onProgress: (p) => {
-          options?.onProgress?.({
-            phase: 'classify',
-            label: p.label || 'Classifying…',
-            current: p.current,
-            total: p.total,
-          });
-        },
-      });
-      classifySummary = classifyResult.summary;
-      classified = classifyResult.summary.classifiedSpecific + classifyResult.summary.classifiedGeneral;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Classification failed';
-      if (msg === 'Cancelled') {
-        classifyError = 'classification cancelled';
-      } else if (/missing api key/i.test(msg)) {
-        classifyError = 'classification skipped (no AI key)';
-      } else if (/no taxonomy loaded/i.test(msg)) {
-        classifyError = 'classification skipped (import taxonomy in Settings)';
-      } else {
-        classifyError = msg;
-      }
-    }
-    notifyDataChanged('categorization.update');
-  }
-
-  options?.onProgress?.({
-    phase: 'done',
-    label: 'Batch complete',
-    current: 1,
-    total: 1,
+  const result = await runItemPipeline({
+    itemIds,
+    enrich: options?.enrich,
+    classify: options?.classify,
+    maxEnrich: options?.maxEnrich,
+    maxClassify: options?.maxClassify,
+    processAll: options?.processAll,
+    onProgress: options?.onProgress,
+    signal: options?.signal,
+    collectItemResults: options?.collectItemResults,
+    refetchCompare: options?.refetchCompare,
+    forceEnrich: options?.forceEnrich,
+    skipAi: options?.skipAi,
+    forceClassify: options?.forceReclassify !== false,
+    pipelineRunAction: options?.pipelineRunAction,
   });
 
-  const message =
-    doClassify && !doEnrich && classifySummary
-      ? formatClassifyBatchMessage(uniqueIds.length, classifySummary)
-      : doClassify && classifySummary && doEnrich
-        ? `${buildBatchMessage({
-            enriched,
-            skipped,
-            failed,
-            classified,
-            classifyError,
-            remaining,
-            total: uniqueIds.length,
-          })} · ${formatClassifyBatchMessage(uniqueIds.length, classifySummary)}`
-        : buildBatchMessage({
-            enriched,
-            skipped,
-            failed,
-            classified,
-            classifyError,
-            remaining,
-            total: uniqueIds.length,
-            fetchOnly: doEnrich && !doClassify && options?.skipAi === true,
-          });
-
   return {
-    enriched,
-    skipped,
-    failed,
-    classified,
-    classifySummary,
-    enrichCancelled,
-    classifyError,
-    remaining: remaining > 0 ? remaining : undefined,
-    message,
-    itemEnrichResults,
+    ...result,
+    embedError: result.embedMessage?.includes('failed') ? result.embedMessage : undefined,
   };
 }

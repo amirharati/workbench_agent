@@ -16,6 +16,7 @@ import {
 } from '../enrichment/failureLabels';
 import type { PipelineBadge } from './pipelineBadge';
 import { resolvePipelineBadge } from './pipelineBadge';
+import { formatPipelineMissingSteps, resolvePipelineStage } from './pipelineStage';
 
 const COUNTABLE_LINK_STATUSES = new Set(['suggested', 'accepted']);
 
@@ -329,6 +330,11 @@ export function formatPipelineStageHint(ctx: ItemPipelineContext): string | unde
   ) {
     parts.push('Ready to classify');
   }
+  const stage = resolvePipelineStage(ctx);
+  const missingHint = formatPipelineMissingSteps(stage.missing);
+  if (missingHint && stage.level === 'summarized') {
+    parts.push(missingHint);
+  }
   return parts.length ? parts.join(' · ') : undefined;
 }
 
@@ -339,13 +345,51 @@ export async function loadItemPipelineContext(itemId: string): Promise<ItemPipel
 
   const stores = await loadPipelineStores(db);
 
-  return buildContextForItem(
+  let ctx = buildContextForItem(
     item,
     stores.enrichByItem,
     stores.signalByItem,
     stores.linksByItem,
     stores.categoryById
   );
+
+  const orphan =
+    (ctx.classifyState === 'classified' || ctx.classifyState === 'classified_general') &&
+    !ctx.primaryCategoryId &&
+    ctx.suggestedLinks.length === 0 &&
+    ctx.acceptedLinks.length === 0;
+
+  if (orphan && db.objectStoreNames.contains('ai_item_signals')) {
+    const now = Date.now();
+    await db.put('ai_item_signals', {
+      ...ctx.signal,
+      itemId: ctx.item.id,
+      textHash: ctx.signal?.textHash ?? '',
+      classifyTextHash: ctx.signal?.classifyTextHash ?? '',
+      embeddingModel: ctx.signal?.embeddingModel ?? '',
+      embedding: ctx.signal?.embedding ?? [],
+      derivedTags: ctx.signal?.derivedTags ?? [],
+      signalStatus: ctx.signal?.signalStatus ?? 'ok',
+      classifyState: 'pending_classify',
+      discoverState: 'none',
+      isNovelty: false,
+      classifyRetryCount: 0,
+      lastClassifySkipReason: 'Re-queued — classified without stored category',
+      lastProcessedAt: now,
+      llmReview: undefined,
+      lastClassifiedAt: undefined,
+    });
+    const refreshed = await loadPipelineStores(db);
+    ctx = buildContextForItem(
+      item,
+      refreshed.enrichByItem,
+      refreshed.signalByItem,
+      refreshed.linksByItem,
+      refreshed.categoryById
+    );
+  }
+
+  return ctx;
 }
 
 export async function loadPipelineBadgeMap(itemIds: string[]): Promise<Map<string, PipelineBadge>> {

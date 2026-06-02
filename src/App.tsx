@@ -53,6 +53,8 @@ import type { AISettings } from './lib/ai/types';
 import { runAITestPrompt } from './lib/ai/client';
 import { notifyUser } from './lib/userNotify';
 import { isTransientDbRpcError } from './lib/storage/dbClient';
+import { buildPipelineSnapshotExport } from './lib/pipeline/pipelineRunAnalysis';
+import { saveAndDownloadPipelineRun } from './lib/pipeline/pipelineRunStore';
 
 export interface WindowGroup {
   windowId: number;
@@ -235,6 +237,24 @@ function App() {
         await purgeLegacyLocalDomainStorage();
         await loadData();
         if (cancelled) return;
+        // Guarantee taxonomy is loaded on every startup — classify cannot run without leaves.
+        // This is NOT optional: if it fails we log loudly but never silently skip.
+        {
+          const { ensureSeedTaxonomy } = await import('./lib/categorization/classifyTopicExtract');
+          try {
+            await ensureSeedTaxonomy();
+          } catch (e) {
+            console.error('[startup] ensureSeedTaxonomy failed — classify will be blocked:', e);
+            // Retry once after a short yield in case of a transient DB init race.
+            await new Promise((r) => setTimeout(r, 1500));
+            try {
+              await ensureSeedTaxonomy();
+              console.info('[startup] ensureSeedTaxonomy succeeded on retry');
+            } catch (e2) {
+              console.error('[startup] ensureSeedTaxonomy retry also failed:', e2);
+            }
+          }
+        }
         await runStartupConflictCheck();
       } catch (e) {
         console.error('Backup onboarding check failed:', e);
@@ -828,6 +848,27 @@ function App() {
     }
   };
 
+  const handleExportPipelineAnalysis = async () => {
+    try {
+      showStatus('Building pipeline analysis export…');
+      const exported = await buildPipelineSnapshotExport();
+      const saved = await saveAndDownloadPipelineRun(exported);
+      if (saved.ok && saved.folder) {
+        showStatus(
+          `Pipeline analysis: ${exported.results.length} bookmarks → ${saved.folder}/ (+ download)`
+        );
+      } else {
+        showStatus(
+          `Pipeline analysis downloaded (${exported.results.length} bookmarks). Configure backup folder to save under pipeline-runs/.`
+        );
+      }
+    } catch (e) {
+      showStatus(
+        `Pipeline analysis export failed: ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
+  };
+
   const handleResolveConflictLoadRemote = async () => {
     const res = await backupCoordinator.loadFromRemote();
     if (res.ok) {
@@ -1090,6 +1131,7 @@ function App() {
       onRestoreBackupFile={handleRestoreBackupFile}
       onManualBackup={handleManualBackup}
       onExportJsonSnapshot={handleExportJsonSnapshot}
+      onExportPipelineAnalysis={handleExportPipelineAnalysis}
       folderMirrorStatus={folderMirrorStatus}
       onResolveConflictLoadRemote={handleResolveConflictLoadRemote}
       onResolveConflictKeepLocal={handleResolveConflictKeepLocal}

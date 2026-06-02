@@ -1027,11 +1027,13 @@ export const bulkImportBookmarks = async (
     notifyDataChanged('item.update');
   }
   
-  if (createdItemIds.length > 0) {
+  if (affectedItemIds.length > 0) {
     try {
       const { markItemsPendingClassify, noteBulkImport } = await import('./categorization/classifyTopicExtract');
-      await markItemsPendingClassify(createdItemIds);
-      await noteBulkImport(createdItemIds.length);
+      await markItemsPendingClassify(affectedItemIds);
+      if (createdItemIds.length > 0) {
+        await noteBulkImport(createdItemIds.length);
+      }
     } catch (e) {
       console.warn('Bulk import: could not queue categorization', e);
     }
@@ -1069,10 +1071,14 @@ export const exportDB = async () => {
   const ai_taxonomy_state_row = store.getTaxonomyState();
   const ai_taxonomy_state = ai_taxonomy_state_row ? [ai_taxonomy_state_row] : [];
   const trash_history = store.getAllTrashHistory();
+  const pipeline_debug = store.getAllPipelineDebug();
+  const includePipelineDebug = pipeline_debug.length > 0;
 
   const pipelineExportCounts = {
     exportedAt: Date.now(),
     item_enrichment: item_enrichment.length,
+    pipeline_debug: pipeline_debug.length,
+    pipeline_debugOnly: includePipelineDebug,
     ai_categories: ai_categories.length,
     ai_categories_parents: ai_categories.filter((c) => c.kind === 'parent').length,
     ai_categories_leaves: ai_categories.filter((c) => c.kind === 'leaf').length,
@@ -1092,6 +1098,7 @@ export const exportDB = async () => {
       snapshots,
       workspaces,
       item_enrichment,
+      ...(includePipelineDebug ? { pipeline_debug, _debugOnly: { pipeline_debug: true } } : {}),
       ai_categories,
       ai_item_category_links,
       ai_item_signals,

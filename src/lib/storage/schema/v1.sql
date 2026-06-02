@@ -156,6 +156,15 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_status ON item_enrichment(status);
 CREATE INDEX IF NOT EXISTS idx_enrichment_updated ON item_enrichment(updated_at);
 CREATE INDEX IF NOT EXISTS idx_enrichment_normalized_url ON item_enrichment(normalized_url);
 
+-- Debug-only per-item pipeline timings (purge with clearAllPipelineDebug / Settings).
+CREATE TABLE IF NOT EXISTS pipeline_debug (
+  item_id TEXT PRIMARY KEY,
+  captured_at INTEGER NOT NULL,
+  payload TEXT NOT NULL,
+  FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pipeline_debug_captured ON pipeline_debug(captured_at);
+
 -- ============================================================================
 -- AI Categorization
 -- ============================================================================

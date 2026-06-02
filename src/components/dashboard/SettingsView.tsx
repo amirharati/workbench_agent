@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import type { BackupStatusSnapshot, RestoreBackupResult } from '../../lib/backupCoordinator';
 import type { DbWorkerStatus } from '../../lib/storage/dbClient';
 import type { AISettings } from '../../lib/ai/types';
+import { clearAllLibraryData } from '../../lib/db';
 import { formatRestoreSummary } from '../../lib/itemQuickAccess';
 import { EnrichmentPanel } from './EnrichmentPanel';
+import { PipelineDebugSection } from './PipelineDebugSection';
 import { CategorizationSetupSection } from './CategorizationPanel';
 import { useToast } from '../ToastContainer';
 
@@ -22,6 +24,7 @@ interface SettingsViewProps {
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<RestoreBackupResult>;
   onManualBackup?: () => Promise<void>;
   onExportJsonSnapshot?: () => Promise<void>;
+  onExportPipelineAnalysis?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
   onResolveConflictKeepLocal?: () => Promise<void>;
   backupStatus?: BackupStatusSnapshot;
@@ -70,6 +73,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onRestoreBackupFile,
   onManualBackup,
   onExportJsonSnapshot,
+  onExportPipelineAnalysis,
   onResolveConflictLoadRemote,
   onResolveConflictKeepLocal,
   backupStatus,
@@ -95,6 +99,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [restoreMode, setRestoreMode] = React.useState<'replace' | 'merge'>('replace');
   const [restoringBackup, setRestoringBackup] = React.useState(false);
   const [exportingJson, setExportingJson] = React.useState(false);
+  const [exportingPipeline, setExportingPipeline] = React.useState(false);
   const { addToast } = useToast();
   const [, forceTick] = React.useState(0);
   const [resolving, setResolving] = React.useState<null | 'remote' | 'local'>(null);
@@ -110,6 +115,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [aiRequestedModel, setAiRequestedModel] = React.useState('');
   const [aiModelMismatch, setAiModelMismatch] = React.useState(false);
   const [aiError, setAiError] = React.useState<string | null>(null);
+  const [clearLibraryConfirm, setClearLibraryConfirm] = React.useState('');
+  const [clearingLibrary, setClearingLibrary] = React.useState(false);
 
   React.useEffect(() => {
     if (aiSettings) setAiForm(aiSettings);
@@ -181,6 +188,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       await onExportJsonSnapshot();
     } finally {
       setExportingJson(false);
+    }
+  };
+
+  const handleExportPipelineAnalysis = async () => {
+    if (!onExportPipelineAnalysis) return;
+    setExportingPipeline(true);
+    try {
+      await onExportPipelineAnalysis();
+    } finally {
+      setExportingPipeline(false);
     }
   };
 
@@ -627,13 +644,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       >
         <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Fetch enrichment</div>
         <p style={{ margin: 0, fontSize: '0.85rem', color: '#4b5563', lineHeight: 1.5 }}>
-          Opens a full-page picker: all bookmark URLs, checkboxes, then run fetch (r.jina.ai). Configure backup
-          folder below for <code>enrichment-cache/</code> on disk.
+          Dev tools for fetch + classify. After a batch run, analysis is auto-saved under{' '}
+          <code>pipeline-runs/</code> in your backup folder (or download from the completion dialog).
+          For ~400 items use Pipeline Hub batch with <strong>process all</strong> scope.
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           <EnrichmentPanel />
+          <button
+            type="button"
+            onClick={handleExportPipelineAnalysis}
+            disabled={!onExportPipelineAnalysis || exportingPipeline}
+            title="Dump current enrich + classify state for all bookmarks (CLI-comparable JSONL)"
+            style={{
+              padding: '2px 10px',
+              height: 24,
+              borderRadius: 4,
+              border: '1px solid #6366f1',
+              background: exportingPipeline ? '#c7d2fe' : '#eef2ff',
+              color: '#4338ca',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              cursor: !onExportPipelineAnalysis || exportingPipeline ? 'not-allowed' : 'pointer',
+              opacity: !onExportPipelineAnalysis ? 0.6 : 1,
+            }}
+          >
+            {exportingPipeline ? 'Exporting…' : 'Export pipeline analysis'}
+          </button>
         </div>
         <CategorizationSetupSection />
+        <PipelineDebugSection />
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {!backupFolderReady && (
             <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
@@ -967,6 +1006,115 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               disabled={restoringBackup || !backupFolderReady || !onRestoreBackupFile || restoreMode === 'merge'}
             />
           </label>
+        </div>
+
+        <div
+          style={{
+            marginTop: '0.75rem',
+            paddingTop: '0.75rem',
+            borderTop: '1px solid #fecaca',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+          }}
+        >
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#991b1b' }}>
+            Testing — clear library
+          </div>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: '#7f1d1d', lineHeight: 1.45 }}>
+            Deletes all bookmarks, notes, enrichment, categories, and pipeline state from browser
+            storage and overwrites <code>workbench.sqlite</code> in your backup folder with an empty
+            library (default project + Unsorted only). Use this instead of uninstalling the
+            extension when re-testing imports.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={clearLibraryConfirm}
+              onChange={(e) => setClearLibraryConfirm(e.target.value)}
+              placeholder="Type DELETE to confirm"
+              autoComplete="off"
+              disabled={clearingLibrary || !backupFolderReady}
+              style={{
+                padding: '0.45rem 0.6rem',
+                borderRadius: 8,
+                border: '1px solid #fca5a5',
+                fontSize: '0.85rem',
+                minWidth: 180,
+              }}
+            />
+            <button
+              type="button"
+              disabled={
+                clearingLibrary ||
+                !backupFolderReady ||
+                clearLibraryConfirm.trim() !== 'DELETE'
+              }
+              onClick={async () => {
+                if (
+                  !window.confirm(
+                    'Delete the entire library?\n\nAll bookmarks, enrichment, and categories will be removed. The backup folder sqlite file will be replaced.\n\nThis cannot be undone.'
+                  )
+                ) {
+                  return;
+                }
+                setClearingLibrary(true);
+                try {
+    const result = await clearAllLibraryData();
+                  if (!result.ok) {
+                    throw new Error(result.error ?? 'Clear failed');
+                  }
+                  // Re-import seed taxonomy immediately so classify is ready on next run.
+                  try {
+                    const { importSeedTaxonomy } = await import('../../lib/categorization/classifyTopicExtract');
+                    await importSeedTaxonomy(false);
+                  } catch {
+                    // non-fatal
+                  }
+                  setClearLibraryConfirm('');
+                  const bits: string[] = ['Library cleared — import from scratch.'];
+                  if (result.enrichmentCacheFilesRemoved) {
+                    bits.push(`${result.enrichmentCacheFilesRemoved} cache file(s) removed`);
+                  }
+                  if (result.pipelineArtifactEntriesRemoved) {
+                    bits.push(`${result.pipelineArtifactEntriesRemoved} pipeline debug file(s) removed`);
+                  }
+                  addToast({ type: 'success', message: bits.join(' · ') });
+                } catch (e) {
+                  addToast({
+                    type: 'error',
+                    message: e instanceof Error ? e.message : 'Failed to clear library',
+                  });
+                } finally {
+                  setClearingLibrary(false);
+                }
+              }}
+              style={{
+                padding: '0.5rem 0.75rem',
+                borderRadius: 8,
+                border: '1px solid #b91c1c',
+                background: clearingLibrary ? '#fecaca' : '#dc2626',
+                color: '#fff',
+                cursor:
+                  clearingLibrary || !backupFolderReady || clearLibraryConfirm.trim() !== 'DELETE'
+                    ? 'not-allowed'
+                    : 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                opacity:
+                  clearingLibrary || !backupFolderReady || clearLibraryConfirm.trim() !== 'DELETE'
+                    ? 0.65
+                    : 1,
+              }}
+            >
+              {clearingLibrary ? 'Clearing…' : 'Clear all library data'}
+            </button>
+          </div>
+          {!backupFolderReady && (
+            <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
+              Choose a backup folder first so the empty database can be mirrored to disk.
+            </span>
+          )}
         </div>
       </div>
     </div>

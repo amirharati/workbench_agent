@@ -83,8 +83,11 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
     if (message?.type === 'db-data-changed') {
       void import('./remoteStore').then(({ getRemoteStore }) => {
         const store = getRemoteStore();
-        if (typeof message.revision === 'number') store.setRevision(message.revision);
-        void store.drainWrites().then(() => store.hydrate(true));
+        const remoteRev = typeof message.revision === 'number' ? message.revision : undefined;
+        void store.drainWrites().then(() => {
+          if (store.hasWritesInFlight()) return;
+          void store.hydrateIfBehind(remoteRev);
+        });
       });
     }
   });

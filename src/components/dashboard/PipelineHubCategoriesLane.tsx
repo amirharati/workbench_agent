@@ -9,6 +9,7 @@ import {
   Tags,
 } from 'lucide-react';
 import type { Collection, Item } from '../../lib/db';
+import { refreshPipelineCacheFromWorker } from '../../lib/db';
 import { ensurePendingClassifySignals } from '../../lib/categorization';
 import {
   countPipelineQueueFilters,
@@ -18,6 +19,7 @@ import {
   type PipelineQueueFilter,
   type PipelineQueueItemRow,
 } from '../../lib/categorization/devQueries';
+import { invalidatePipelineCatalog } from '../../lib/pipeline/pipelineCatalog';
 import {
   displayClassifyStateLabel,
   resolveClassifyQueueBlocker,
@@ -311,6 +313,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
       processingHoldRef.current = null;
       void (async () => {
         await ensurePendingClassifySignals({ force: true });
+        await refreshPipelineCacheFromWorker();
+        invalidatePipelineCatalog();
         const fresh = await reload({ silent: true });
         if (holdCtx && fresh?.length) {
           applyRecentHolds(holdCtx, fresh);

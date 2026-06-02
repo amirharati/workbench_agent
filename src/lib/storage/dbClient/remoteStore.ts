@@ -1,4 +1,5 @@
 import type { IdbCompatStore, SqliteStore } from '../sqlite/store';
+import type { BatchMutateResult, DbMutation } from '../dbMutations';
 
 async function rpc<T>(method: string, args: unknown[]): Promise<T> {
   const { dbRpc } = await import('./index');
@@ -29,12 +30,21 @@ export class RemoteIdbCompatStore {
   objectStoreNames = { contains: (_name: string) => true };
   private snapshot: HydrateSnapshot | null = null;
   private chain = Promise.resolve();
+  /** Last worker revision this tab's cache is consistent with. */
   private revision = 0;
+  private writesInFlight = 0;
 
   async hydrate(force = false): Promise<void> {
     if (this.snapshot && !force) return;
     const data = (await rpc<HydrateSnapshot>('hydrate', [])) as HydrateSnapshot;
     this.snapshot = data;
+    try {
+      const { getDbWorkerStatus } = await import('./index');
+      const status = await getDbWorkerStatus();
+      this.setRevision(status.revision);
+    } catch {
+      /* revision sync is best-effort */
+    }
   }
 
   /** Wait for queued write RPCs to finish (used before cross-tab hydrate). */
@@ -47,20 +57,130 @@ export class RemoteIdbCompatStore {
   }
 
   setRevision(revision: number): void {
-    this.revision = revision;
+    if (Number.isFinite(revision)) {
+      this.revision = Math.max(this.revision, revision);
+    }
+  }
+
+  /** Merge selected tables from worker SQLite into the tab read cache (lightweight vs full hydrate). */
+  async refreshTablesFromWorker(storeNames: readonly string[]): Promise<void> {
+    if (!storeNames.length) return;
+    await this.drainWrites();
+    const partial = await rpc<Record<string, unknown>>('refreshTables', [storeNames]);
+    if (!this.snapshot) {
+      await this.hydrate(true);
+      return;
+    }
+    for (const name of storeNames) {
+      const rows = partial[name];
+      if (rows === undefined) continue;
+      switch (name) {
+        case 'items':
+          this.snapshot.items = rows as HydrateSnapshot['items'];
+          break;
+        case 'item_enrichment':
+          this.snapshot.enrichment = rows as HydrateSnapshot['enrichment'];
+          break;
+        case 'ai_item_signals':
+          this.snapshot.signals = rows as HydrateSnapshot['signals'];
+          break;
+        case 'ai_item_category_links':
+          this.snapshot.links = rows as HydrateSnapshot['links'];
+          break;
+        case 'ai_categories':
+          this.snapshot.categories = rows as HydrateSnapshot['categories'];
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  /** Full reload only when worker revision is ahead of this tab's cache. */
+  async hydrateIfBehind(remoteRevision?: number): Promise<boolean> {
+    await this.drainWrites();
+    const target =
+      typeof remoteRevision === 'number'
+        ? remoteRevision
+        : (await import('./index').then((m) => m.getDbWorkerStatus())).revision;
+    if (target > this.revision) {
+      await this.hydrate(true);
+      return true;
+    }
+    this.setRevision(target);
+    return false;
   }
 
   private enqueue<T>(method: string, args: unknown[]): Promise<T> {
-    const next = this.chain.then(() => rpc<T>('storeInvoke', [method, args]));
+    this.writesInFlight += 1;
+    const next = this.chain.then(async () => {
+      try {
+        return await rpc<T>('storeInvoke', [method, args]);
+      } finally {
+        this.writesInFlight = Math.max(0, this.writesInFlight - 1);
+      }
+    });
     this.chain = next.then(
       () => undefined,
       (err) => {
-        console.error('[RemoteStore] write RPC failed, re-hydrating from worker:', err);
-        void this.hydrate(true);
+        this.writesInFlight = Math.max(0, this.writesInFlight - 1);
+        console.error('[RemoteStore] write RPC failed:', err);
         return undefined;
       }
     );
     return next;
+  }
+
+  private static readonly BATCH_MUTATE_CHUNK = 80;
+
+  private applyMutationsToSnapshot(ops: DbMutation[]): void {
+    for (const op of ops) {
+      if (op.kind === 'put') this.patchGenericPut(op.storeName, op.value);
+      else this.patchGenericDelete(op.storeName, op.key);
+    }
+  }
+
+  private async enqueueBatchMutate(ops: DbMutation[]): Promise<BatchMutateResult> {
+    if (ops.length === 0) {
+      return Promise.resolve({ applied: 0, revision: this.revision });
+    }
+    this.writesInFlight += 1;
+    try {
+      let last: BatchMutateResult = { applied: 0, revision: this.revision };
+      for (let i = 0; i < ops.length; i += RemoteIdbCompatStore.BATCH_MUTATE_CHUNK) {
+        last = await this.enqueueBatchMutateOnce(
+          ops.slice(i, i + RemoteIdbCompatStore.BATCH_MUTATE_CHUNK)
+        );
+      }
+      return last;
+    } finally {
+      this.writesInFlight = Math.max(0, this.writesInFlight - 1);
+    }
+  }
+
+  private enqueueBatchMutateOnce(ops: DbMutation[]): Promise<BatchMutateResult> {
+    if (ops.length === 0) {
+      return Promise.resolve({ applied: 0, revision: this.revision });
+    }
+    const next = this.chain.then(async () => {
+      const result = await rpc<BatchMutateResult>('batchMutate', [ops]);
+      if (typeof result.revision === 'number') {
+        this.setRevision(result.revision);
+      }
+      return result;
+    });
+    this.chain = next.then(
+      () => undefined,
+      (err) => {
+        console.error('[RemoteStore] batchMutate failed:', err);
+        return undefined;
+      }
+    );
+    return next;
+  }
+
+  hasWritesInFlight(): boolean {
+    return this.writesInFlight > 0;
   }
 
   private read<T>(pick: (s: HydrateSnapshot) => T): T {
@@ -112,8 +232,15 @@ export class RemoteIdbCompatStore {
         return;
       case 'ai_item_category_links': {
         const link = value as Parameters<IdbCompatStore['putLink']>[0];
-        const i = s.links.findIndex((l) => l.itemId === link.itemId && l.categoryId === link.categoryId);
-        if (i >= 0) s.links[i] = link;
+        const byId = s.links.findIndex((l) => l.id === link.id);
+        if (byId >= 0) {
+          s.links[byId] = link;
+          return;
+        }
+        const byPair = s.links.findIndex(
+          (l) => l.itemId === link.itemId && l.categoryId === link.categoryId
+        );
+        if (byPair >= 0) s.links[byPair] = link;
         else s.links.push(link);
         return;
       }
@@ -239,16 +366,26 @@ export class RemoteIdbCompatStore {
 
   transaction(_storeNames: string | string[], _mode?: string) {
     const self = this;
+    const buffer: DbMutation[] = [];
+    let donePromise: Promise<void> | null = null;
+
+    const flush = async (): Promise<void> => {
+      if (buffer.length === 0) return;
+      const ops = buffer.splice(0, buffer.length);
+      await self.enqueueBatchMutate(ops);
+      self.applyMutationsToSnapshot(ops);
+    };
+
     return {
       objectStore: (name: string) => ({
         getAll: () => Promise.resolve(self.getAll(name)),
         get: (key: string) => Promise.resolve(self.get(name, key)),
         put: (value: unknown) => {
-          self.put(name, value);
+          buffer.push({ kind: 'put', storeName: name, value });
           return Promise.resolve();
         },
         delete: (key: string) => {
-          self.delete(name, key);
+          buffer.push({ kind: 'delete', storeName: name, key });
           return Promise.resolve();
         },
         getAllFromIndex: (indexName: string, value: unknown) =>
@@ -271,7 +408,12 @@ export class RemoteIdbCompatStore {
           },
         }),
       }),
-      done: Promise.resolve(),
+      get done() {
+        if (!donePromise) {
+          donePromise = flush();
+        }
+        return donePromise;
+      },
     };
   }
 
@@ -375,6 +517,16 @@ export class RemoteIdbCompatStore {
     });
   }
 
+  getAllPipelineDebug() {
+    throw new Error('getAllPipelineDebug is worker-only — use pipelineDebug.getAllPipelineDebugRecords()');
+  }
+  putPipelineDebug(record: { itemId: string; capturedAt: number; payload: unknown }) {
+    this.write('putPipelineDebug', [record]);
+  }
+  clearAllPipelineDebug() {
+    throw new Error('clearAllPipelineDebug is worker-only — use pipelineDebug.purgeAllPipelineDebug()');
+  }
+
   getAllCategories() { return this.read((s) => s.categories); }
   getCategory(id: string) { return this.read((s) => s.categories.find((c) => c.id === id)); }
   putCategory(category: Parameters<IdbCompatStore['putCategory']>[0]) {
@@ -397,8 +549,15 @@ export class RemoteIdbCompatStore {
   }
   putLink(link: Parameters<IdbCompatStore['putLink']>[0]) {
     this.write('putLink', [link], (s) => {
-      const i = s.links.findIndex((l) => l.itemId === link.itemId && l.categoryId === link.categoryId);
-      if (i >= 0) s.links[i] = link;
+      const byId = s.links.findIndex((l) => l.id === link.id);
+      if (byId >= 0) {
+        s.links[byId] = link;
+        return;
+      }
+      const byPair = s.links.findIndex(
+        (l) => l.itemId === link.itemId && l.categoryId === link.categoryId
+      );
+      if (byPair >= 0) s.links[byPair] = link;
       else s.links.push(link);
     });
   }

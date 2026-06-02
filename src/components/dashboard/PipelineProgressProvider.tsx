@@ -7,12 +7,15 @@ import React, {
 } from 'react';
 import { X } from 'lucide-react';
 import {
+  runItemPipeline,
   runBatchDigest,
   runSingleLinkDigest,
-  formatBatchDigestProgress,
+  formatItemPipelineProgress,
+  pipelineProgressBar,
   loadItemIdsForPipelineQueue,
   type BatchDigestResult,
   type SingleLinkDigestResult,
+  type ItemPipelineProgress,
 } from '../../lib/pipeline';
 import { reextractAI, embedIncrementalBatch, type EnrichmentResult } from '../../lib/enrichment';
 import {
@@ -31,6 +34,11 @@ import {
   resolveBatchReportAction,
   type PipelineReportRow,
 } from '../../lib/pipeline/pipelineBatchReport';
+import {
+  buildPipelineRunExport,
+  type PipelineRunExport,
+} from '../../lib/pipeline/pipelineRunAnalysis';
+import { downloadPipelineRunBundle } from '../../lib/pipeline/pipelineRunStore';
 import {
   loadHubQueueSnapshot,
   type HubQueueOutcome,
@@ -78,6 +86,8 @@ type ModalState =
       tone: SummaryTone;
       reportRows?: PipelineReportRow[];
       queueOutcome?: HubQueueOutcome;
+      analysisExport?: PipelineRunExport;
+      analysisSavedTo?: string;
     };
 
 export interface RunBatchWithProgressOptions {
@@ -188,6 +198,23 @@ interface PipelineProgressProviderProps {
   onRefresh?: () => void | Promise<void>;
 }
 
+function applyPipelineProgress(
+  setModal: React.Dispatch<React.SetStateAction<ModalState>>,
+  update: ItemPipelineProgress
+) {
+  const bar = pipelineProgressBar(update);
+  setModal((prev) =>
+    prev.open && prev.phase === 'running'
+      ? {
+          ...prev,
+          progressLabel: formatItemPipelineProgress(update),
+          current: bar.current,
+          total: bar.total,
+        }
+      : prev
+  );
+}
+
 export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> = ({
   children,
   onRefresh,
@@ -235,10 +262,11 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         title,
         progressLabel: 'Starting…',
         current: 0,
-        total: itemIds.length,
+        total: 4,
         cancellable,
       });
 
+      const startedAt = Date.now();
       try {
         const result = await runBatchDigest(itemIds, {
           enrich: options?.enrich,
@@ -252,18 +280,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           forceReclassify: options?.forceReclassify,
           collectItemResults: options?.collectItemResults,
           signal: controller?.signal,
-          onProgress: (p) => {
-            setModal((prev) =>
-              prev.open && prev.phase === 'running'
-                ? {
-                    ...prev,
-                    progressLabel: formatBatchDigestProgress(p),
-                    current: p.current,
-                    total: p.total,
-                  }
-                : prev
-            );
-          },
+          onProgress: (p) => applyPipelineProgress(setModal, p),
         });
 
         const cancelled = result.enrichCancelled || controller?.signal.aborted || result.classifyError === 'classification cancelled';
@@ -308,6 +325,33 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           reportRows,
         });
         await onRefresh?.();
+
+        if (result.pipelineDebugSavedTo && itemIds.length > 0 && !cancelled) {
+          setModal((prev) =>
+            prev.open && prev.phase === 'done'
+              ? { ...prev, analysisSavedTo: result.pipelineDebugSavedTo }
+              : prev
+          );
+          void buildPipelineRunExport({
+            itemIds,
+            startedAt,
+            finishedAt: Date.now(),
+            action: batchAction,
+            batch: result,
+            enrichResults: result.itemEnrichResults,
+            reportRows,
+            itemLabels: options?.itemLabels,
+            includeClassify: options?.classify !== false,
+            cancelled,
+          })
+            .then((analysisExport) => {
+              setModal((prev) =>
+                prev.open && prev.phase === 'done' ? { ...prev, analysisExport } : prev
+              );
+            })
+            .catch((e) => console.warn('[pipeline] run export for download failed:', e));
+        }
+
         return result;
       } catch (e) {
         if (controller?.signal.aborted) {
@@ -360,7 +404,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         title,
         progressLabel: 'Starting…',
         current: 0,
-        total: 1,
+        total: 4,
         cancellable: false,
       });
 
@@ -370,13 +414,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           skipClassify: options?.skipClassify,
           skipAi: options?.skipAi,
           tabSessionOnly: options?.tabSessionOnly,
-          onProgress: (p) => {
-            setModal((prev) =>
-              prev.open && prev.phase === 'running'
-                ? { ...prev, progressLabel: p.label }
-                : prev
-            );
-          },
+          onProgress: (p) => applyPipelineProgress(setModal, p),
         });
 
         const reportAction =
@@ -860,28 +898,32 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           ? Math.min(options.itemIds.length, maxItems)
           : maxItems;
 
-        const result = await classifyIncremental({
-          itemIds,
-          maxItems,
-          forceReclassify: options?.forceReclassify,
+        const ids = itemIds ?? [];
+        const result = await runItemPipeline({
+          itemIds: ids,
+          enrich: false,
+          classify: true,
+          maxClassify: maxItems,
+          processAll: Boolean(ids.length),
+          forceClassify: options?.forceReclassify !== false,
           retryManualReview: options?.retryManualReview,
-          autoDiscover: false,
+          pipelineRunAction: 'batch_classify',
+          // Skip slow discover pass for small interactive classify (≤5 items).
+          // Discover is taxonomy expansion — only useful for large bulk batches.
+          skipDiscover: ids.length <= 5,
           signal: controller.signal,
-          onProgress: (u) => {
-            setModal((prev) =>
-              prev.open && prev.phase === 'running'
-                ? {
-                    ...prev,
-                    progressLabel: u.label,
-                    current: u.current,
-                    total: Math.max(u.total, 1),
-                  }
-                : prev
-            );
-          },
+          onProgress: (p) => applyPipelineProgress(setModal, p),
         });
 
-        const s = result.summary;
+        if (result.pipelineDebugSavedTo) {
+          setModal((prev) =>
+            prev.open && prev.phase === 'done'
+              ? { ...prev, analysisSavedTo: result.pipelineDebugSavedTo }
+              : prev
+          );
+        }
+
+        const s = result.classifySummary ?? emptyTopicClassifySummary();
         let summary = '';
         let reportRows: PipelineReportRow[] | undefined;
 
@@ -932,7 +974,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           queueOutcome,
         });
         await onRefresh?.();
-        return result;
+        return { summary: s, categories: [] as import('../../lib/categorization/types').AiCategory[] };
       } catch (e) {
         const cancelled = controller.signal.aborted || (e instanceof Error && e.message === 'Cancelled');
         const summary = cancelled
@@ -1167,7 +1209,25 @@ function PipelineProgressModal({
                 {modal.summary}
               </p>
             ) : null}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+              {modal.analysisExport ? (
+                <button
+                  type="button"
+                  onClick={() => downloadPipelineRunBundle(modal.analysisExport!)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)',
+                    background: 'transparent',
+                    color: 'var(--text)',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Download analysis JSON
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onClose}
@@ -1185,6 +1245,32 @@ function PipelineProgressModal({
                 Close
               </button>
             </div>
+            {modal.analysisSavedTo ? (
+              <p
+                style={{
+                  margin: '10px 0 0',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--text-muted)',
+                  lineHeight: 1.45,
+                }}
+              >
+                Analysis saved to{' '}
+                <code style={{ fontSize: '0.95em' }}>{modal.analysisSavedTo}/</code> in your backup
+                folder (<code>results.jsonl</code>, <code>summary.json</code>, <code>analysis.md</code>).
+              </p>
+            ) : modal.analysisExport ? (
+              <p
+                style={{
+                  margin: '10px 0 0',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--text-muted)',
+                  lineHeight: 1.45,
+                }}
+              >
+                Configure a backup folder to auto-save run artifacts under{' '}
+                <code>pipeline-runs/</code>.
+              </p>
+            ) : null}
           </div>
         )}
       </div>

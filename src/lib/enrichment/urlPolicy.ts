@@ -123,6 +123,27 @@ export function prefersBrowserTabFetch(url: string): boolean {
   return isFileUrl(url) || isRedditHost(url);
 }
 
+/** Gmail, Docs, Drive, Outlook, file:// — tab session before headless. */
+export function prefersBrowserTabFirst(url: string): boolean {
+  if (prefersBrowserTabFetch(url)) return true;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  if (/mail\.google\.com|outlook\.(live|office)\.com|outlook\.office365\.com/i.test(trimmed)) {
+    return true;
+  }
+  try {
+    const host = new URL(trimmed).hostname.replace(/^www\./, '').toLowerCase();
+    return host.includes('docs.google.com') || host.includes('drive.google.com');
+  } catch {
+    return false;
+  }
+}
+
+/** After tab paths fail, headless will not help for these hosts. */
+export function skipHeadlessAfterTabMiss(url: string): boolean {
+  return prefersBrowserTabFirst(url);
+}
+
 /** Subreddit feed (/r/name) — one listing URL signal among many. */
 export function isRedditListingUrl(url: string): boolean {
   if (!isRedditHost(url)) return false;

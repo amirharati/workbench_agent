@@ -136,6 +136,12 @@ interface EnrichmentRow {
   updated_at: number;
 }
 
+interface PipelineDebugRow {
+  item_id: string;
+  captured_at: number;
+  payload: string;
+}
+
 interface CategoryRow {
   id: string;
   name: string;
@@ -867,6 +873,31 @@ export class SqliteStore {
     this.conn.exec('DELETE FROM item_enrichment WHERE item_id = ?', [itemId]);
   }
 
+  getAllPipelineDebug(): Array<{ itemId: string; capturedAt: number; payload: unknown }> {
+    const rows = this.conn.selectAll<PipelineDebugRow>('SELECT * FROM pipeline_debug ORDER BY captured_at');
+    return rows.map((row) => ({
+      itemId: row.item_id,
+      capturedAt: row.captured_at,
+      payload: parseJson(row.payload, {}),
+    }));
+  }
+
+  putPipelineDebug(record: { itemId: string; capturedAt: number; payload: unknown }): void {
+    this.conn.exec(
+      `INSERT OR REPLACE INTO pipeline_debug (item_id, captured_at, payload) VALUES (?, ?, ?)`,
+      [record.itemId, record.capturedAt, toJson(record.payload)]
+    );
+  }
+
+  clearAllPipelineDebug(): number {
+    const before = this.conn.selectOne<{ n: number }>(
+      'SELECT COUNT(*) as n FROM pipeline_debug',
+      []
+    )?.n ?? 0;
+    this.conn.exec('DELETE FROM pipeline_debug');
+    return before;
+  }
+
   // --- AI Categories ---
   getAllCategories(): AiCategory[] {
     const rows = this.conn.selectAll<CategoryRow>('SELECT * FROM ai_categories');
@@ -1022,6 +1053,7 @@ export class SqliteStore {
     this.conn.exec('DELETE FROM ai_item_category_links');
     this.conn.exec('DELETE FROM ai_categories');
     this.conn.exec('DELETE FROM item_enrichment');
+    this.conn.exec('DELETE FROM pipeline_debug');
     this.conn.exec('DELETE FROM workspaces');
     this.conn.exec('DELETE FROM snapshots');
     this.conn.exec('DELETE FROM notes');
@@ -1074,6 +1106,7 @@ export class IdbCompatStore {
         return state ? [state] : [];
       }
       case 'trash_history': return this.store.getAllTrashHistory();
+      case 'pipeline_debug': return this.store.getAllPipelineDebug();
       default: return [];
     }
   }
@@ -1109,6 +1142,7 @@ export class IdbCompatStore {
       case 'ai_item_signals': this.store.putSignal(value); break;
       case 'ai_taxonomy_state': this.store.putTaxonomyState(value); break;
       case 'trash_history': this.store.putTrashEntry(value); break;
+      case 'pipeline_debug': this.store.putPipelineDebug(value); break;
     }
   }
 
@@ -1214,6 +1248,12 @@ export class IdbCompatStore {
   getEnrichment(itemId: string) { return this.store.getEnrichment(itemId); }
   putEnrichment(enrichment: ItemEnrichment) { this.store.putEnrichment(enrichment); }
   deleteEnrichment(itemId: string) { this.store.deleteEnrichment(itemId); }
+
+  getAllPipelineDebug() { return this.store.getAllPipelineDebug(); }
+  putPipelineDebug(record: { itemId: string; capturedAt: number; payload: unknown }) {
+    this.store.putPipelineDebug(record);
+  }
+  clearAllPipelineDebug() { return this.store.clearAllPipelineDebug(); }
   
   getAllCategories() { return this.store.getAllCategories(); }
   getCategory(id: string) { return this.store.getCategory(id); }

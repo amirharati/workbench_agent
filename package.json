@@ -18,7 +18,9 @@
     "search-eval": "tsx scripts/search/run-search-eval.mts",
     "embed-incremental": "tsx scripts/search/run-embed-incremental.mts",
     "search-similar": "tsx scripts/search/run-search-similar.mts",
-    "check-openrouter-key": "node scripts/check-openrouter-key.mjs"
+    "check-openrouter-key": "node scripts/check-openrouter-key.mjs",
+    "pipeline-analyze": "node scripts/pipeline/analyze-app-run.mjs",
+    "pipeline-compare": "node scripts/pipeline/compare-runs.mjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

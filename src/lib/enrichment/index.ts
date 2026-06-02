@@ -79,3 +79,13 @@ export {
   getEnrichment,
   getAllEnrichments,
 } from './fetchService';
+export {
+  isPipelineDebugEnabled,
+  setPipelineDebugEnabled,
+  PIPELINE_DEBUG_DEFAULT_ENABLED,
+  getPipelineDebugCount,
+  purgeAllPipelineDebug,
+  getAllPipelineDebugRecords,
+  type PipelineDebugRecord,
+  type PipelineDebugPayload,
+} from './pipelineDebug';

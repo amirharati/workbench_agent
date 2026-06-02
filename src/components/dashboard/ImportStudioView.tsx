@@ -221,13 +221,16 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       const batch = await runBatchDigest(ids, {
         processAll: true,
         collectItemResults: true,
+        pipelineRunAction: 'full_digest',
         onProgress: (p) => {
           setProcessProgress(formatBatchDigestProgress(p));
         },
       });
       addToast({
         type: batch.failed > 0 ? 'error' : 'success',
-        message: batch.message,
+        message: batch.pipelineDebugSavedTo
+          ? `${batch.message} · debug: ${batch.pipelineDebugSavedTo}`
+          : batch.message,
       });
       if (onImported) {
         await onImported();
@@ -818,9 +821,38 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       }
 
       if (processNewImports && result.affectedItems.length > 0) {
-        setPipelineConfirm({ importSummary, items: result.affectedItems });
-        setPipelineSelectedIds(new Set(result.affectedItems.map((item) => item.itemId)));
+        // Auto-start pipeline immediately — no confirmation modal needed.
+        const ids = result.affectedItems.map((item) => item.itemId);
         setPipelineFilter('');
+        setPipelineConfirm(null);
+        setProcessing(true);
+        setProcessProgress(`Starting pipeline on ${ids.length} link${ids.length === 1 ? '' : 's'}…`);
+        try {
+          const batch = await runBatchDigest(ids, {
+            processAll: true,
+            collectItemResults: true,
+            pipelineRunAction: 'full_digest',
+            onProgress: (p) => {
+              setProcessProgress(formatBatchDigestProgress(p));
+            },
+          });
+          addToast({
+            type: batch.failed > 0 ? 'error' : 'success',
+            message: batch.pipelineDebugSavedTo
+              ? `${batch.message} · debug: ${batch.pipelineDebugSavedTo}`
+              : batch.message,
+          });
+          if (onImported) await onImported();
+          await openImportReport(commitMeta, new Set(ids), batch);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Post-import processing failed';
+          addToast({ type: 'error', message: msg });
+          setCommitError(msg);
+        } finally {
+          setProcessing(false);
+          setProcessProgress('');
+          setPipelineSelectedIds(new Set());
+        }
       } else if (processNewImports && result.affectedItems.length === 0) {
         addToast({
           type: 'info',

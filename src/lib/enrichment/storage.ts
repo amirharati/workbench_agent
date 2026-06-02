@@ -9,13 +9,17 @@ export async function getEnrichment(itemId: string): Promise<ItemEnrichment | un
   return db.get('item_enrichment', itemId);
 }
 
-export async function putEnrichment(record: ItemEnrichment): Promise<void> {
+export async function putEnrichment(
+  record: ItemEnrichment,
+  opts?: { deferPostProcess?: boolean }
+): Promise<void> {
   const db = await getDB();
   await db.put('item_enrichment', record);
   notifyDataChanged('enrichment.update');
+  if (opts?.deferPostProcess) return;
   if (record.aiStatus === 'ok') {
     await ensureItemEmbedding(record.itemId, record);
-    void markItemsPendingClassify([record.itemId]);
+    await markItemsPendingClassify([record.itemId]);
   }
 }
 

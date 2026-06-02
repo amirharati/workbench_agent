@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    /* Inlining CSS prevents the engine from blocking the first paint */
+    body { 
+      font-family: system-ui, sans-serif; 
+      padding: 15px; 
+      background-color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <h3>Test Panel</h3>
+  <p id="status">Loading baseline interface...</p>
+
+  <!-- Script is placed at the very bottom, executed asynchronously -->
+  <script async src="sidepanel.js"></script>
+</body>
+</html>

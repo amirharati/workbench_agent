@@ -7,6 +7,7 @@ import { exportOpfsDatabaseBytes, importFolderBytesIntoOpfs, openOpfsConnection,
 import { decodeBinaryFromRpc } from '../../binaryPayload';
 import { fingerprintSqliteBytes, fingerprintFromStore, isLiveNewerThanBackup } from '../importFingerprint';
 import { resetStoreSingletons, getIdbCompatStore } from '../sqlite/store';
+import type { DbMutation } from '../dbMutations';
 import * as dbCore from '../../dbCore';
 
 markDbWorkerProcess();
@@ -49,6 +50,8 @@ const MUTATING_STORE_METHODS = new Set([
   'deleteWorkspace',
   'putEnrichment',
   'deleteEnrichment',
+  'putPipelineDebug',
+  'clearAllPipelineDebug',
   'putCategory',
   'deleteCategory',
   'putLink',
@@ -165,6 +168,34 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     }
     case 'hydrate':
       return hydrateSnapshot();
+    case 'refreshTables': {
+      const storeNames = args[0] as string[];
+      if (!Array.isArray(storeNames) || !storeNames.length) return {};
+      const store = await getIdbCompatStore();
+      const out: Record<string, unknown> = {};
+      for (const name of storeNames) {
+        out[name] = store.getAll(name);
+      }
+      return out;
+    }
+    case 'batchMutate': {
+      const ops = args[0] as DbMutation[];
+      if (!Array.isArray(ops) || ops.length === 0) {
+        return { applied: 0, revision: revisionTracker.getLocalRevisionSync() };
+      }
+      const store = await getIdbCompatStore();
+      store.withTransaction(() => {
+        for (const op of ops) {
+          if (op.kind === 'put') store.put(op.storeName, op.value);
+          else store.delete(op.storeName, op.key);
+        }
+      });
+      scheduleFolderMirror();
+      return {
+        applied: ops.length,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
+    }
     case 'storeInvoke': {
       const storeMethod = args[0] as string;
       const storeArgs = (args[1] as unknown[]) ?? [];
@@ -176,6 +207,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const result = fn.apply(store, storeArgs);
       if (isMutatingStoreMethod(storeMethod)) {
         scheduleFolderMirror();
+        revisionTracker.recordSqliteMutation();
       }
       return result;
     }

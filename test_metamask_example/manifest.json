@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Fast Panel Test",
+  "version": "2.1.0",
+  "description": "Workbench open pattern + minimal panel HTML.",
+  "minimum_chrome_version": "115",
+  "permissions": ["sidePanel", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Open Fast Panel Test"
+  }
+}

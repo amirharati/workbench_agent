@@ -11,6 +11,10 @@ import {
   type FailureStage,
 } from '../enrichment/failureLabels';
 import type { ProcessingDigest } from './itemPipelineContext';
+import { resolvePipelineStageFromParts } from './pipelineStage';
+import type { AiItemSignal } from '../categorization/types';
+import { primaryLeafIdFromLinks } from '../categorization/counts';
+import type { AiItemCategoryLink } from '../categorization/types';
 
 export type EnrichmentHubFilter =
   | 'all'
@@ -45,7 +49,13 @@ export type EnrichmentHubRowMeta = {
 
 function buildStatusBadge(
   enrichment: ItemEnrichment | undefined,
-  failureLabel: ReturnType<typeof resolveEnrichmentFailureLabel>
+  failureLabel: ReturnType<typeof resolveEnrichmentFailureLabel>,
+  stageInput?: {
+    signal?: AiItemSignal;
+    primaryCategoryId?: string | null;
+    suggestedLinkCount?: number;
+    embedFailed?: boolean;
+  }
 ): { text: string; color: string } {
   if (failureLabel) {
     const color =
@@ -63,18 +73,31 @@ function buildStatusBadge(
   if (enrichment?.pendingFetchReview) {
     return { text: 'Fetch review', color: 'var(--er-warn, #d29922)' };
   }
-  const status = enrichment?.status ?? 'none';
-  if (status === 'ok' && enrichment?.aiStatus === 'ok') {
+
+  const stage = resolvePipelineStageFromParts({
+    enrichment,
+    embedFailed: stageInput?.embedFailed,
+    signal: stageInput?.signal,
+    primaryCategoryId: stageInput?.primaryCategoryId,
+    suggestedLinkCount: stageInput?.suggestedLinkCount,
+  });
+
+  if (stage.level === 'complete') {
     return { text: 'Enriched', color: 'var(--er-ok, #3fb950)' };
   }
+  if (stage.level === 'summarized') {
+    return { text: stage.label, color: 'var(--er-warn, #d29922)' };
+  }
+  if (stage.level === 'fetched') {
+    return { text: 'Fetched', color: 'var(--text-muted)' };
+  }
+
+  const status = enrichment?.status ?? 'none';
   if (status === 'skipped') {
     return { text: 'Skipped', color: 'var(--er-warn, #d29922)' };
   }
   if (!enrichment || status === 'none') {
     return { text: 'Not enriched', color: 'var(--text-faint)' };
-  }
-  if (status === 'ok') {
-    return { text: 'Fetched', color: 'var(--text-muted)' };
   }
   return { text: status, color: 'var(--text-muted)' };
 }
@@ -104,14 +127,27 @@ function computeRowFlags(
 
 function buildRowMetaFixed(
   enrichment: ItemEnrichment | undefined,
-  embedFailed: boolean
+  embedFailed: boolean,
+  stageInput?: {
+    signal?: AiItemSignal;
+    primaryCategoryId?: string | null;
+    suggestedLinkCount?: number;
+  }
 ): EnrichmentHubRowMeta {
   const failureLabel = enrichment
     ? resolveEnrichmentFailureLabel(enrichment, embedFailed)
     : null;
   const flags = computeRowFlags(enrichment, embedFailed);
+  const stage = resolvePipelineStageFromParts({
+    enrichment,
+    embedFailed,
+    signal: stageInput?.signal,
+    primaryCategoryId: stageInput?.primaryCategoryId,
+    suggestedLinkCount: stageInput?.suggestedLinkCount,
+  });
   return {
     ...flags,
+    ok: stage.level === 'complete',
     failureCategory: failureLabel?.category,
     failureStage: failureLabel?.stage,
     failureReason: failureLabel
@@ -119,8 +155,11 @@ function buildRowMetaFixed(
         ? `${FAILURE_CATEGORY_LABELS[failureLabel.category]} — ${failureLabel.detail}`
         : FAILURE_CATEGORY_LABELS[failureLabel.category]
       : undefined,
-    statusBadge: buildStatusBadge(enrichment, failureLabel),
-    nextStep: describeEnrichmentNextStep(enrichment, embedFailed),
+    statusBadge: buildStatusBadge(enrichment, failureLabel, {
+      ...stageInput,
+      embedFailed,
+    }),
+    nextStep: describeEnrichmentNextStep(enrichment, embedFailed, stage),
   };
 }
 
@@ -138,10 +177,11 @@ export type EnrichmentHubCounts = {
 
 export function describeEnrichmentNextStep(
   enrichment: ItemEnrichment | undefined,
-  embedFailed: boolean
+  embedFailed: boolean,
+  stage?: ReturnType<typeof resolvePipelineStageFromParts>
 ): string {
   if (embedFailed) {
-    return 'Embed failed — re-digest or re-classify may fix';
+    return 'Embed failed — run Re-embed';
   }
   if (!enrichment || enrichment.status === 'none') {
     return 'Not enriched — run digest';
@@ -169,8 +209,23 @@ export function describeEnrichmentNextStep(
   if (enrichment.aiStatus && enrichment.aiStatus !== 'ok' && enrichment.aiStatus !== 'not_configured') {
     return `AI — ${enrichment.aiStatus.replace(/_/g, ' ')}`;
   }
+  if (stage?.level === 'complete') {
+    return 'Fully enriched — fetch, summary, embed, and category';
+  }
+  if (stage?.level === 'summarized') {
+    if (stage.missing.includes('embed') && stage.missing.includes('classify')) {
+      return 'Summarized — run Classify and Re-embed';
+    }
+    if (stage.missing.includes('classify')) {
+      return 'Summarized — run Classify';
+    }
+    if (stage.missing.includes('embed')) {
+      return 'Summarized — run Re-embed';
+    }
+    return 'Summarized';
+  }
   if (enrichment.status === 'ok' && enrichment.aiStatus === 'ok') {
-    return 'Enriched';
+    return 'Summarized — finish classify and embed for full enrichment';
   }
   if (enrichment.status === 'ok') {
     return 'Fetched — AI summary pending';
@@ -218,11 +273,30 @@ export function describeRowStatusHelp(row: EnrichmentHubRow): RowStatusHelp {
   }
 
   const status = enrichment?.status ?? 'none';
-  if (status === 'ok' && enrichment?.aiStatus === 'ok') {
+  const stage = resolvePipelineStageFromParts({
+    enrichment,
+    embedFailed,
+  });
+  if (stage.level === 'complete') {
     return {
       badge: 'Enriched',
-      meaning: 'Fetch and AI summary both completed successfully.',
-      tryThis: 'No action needed. Use Re-run AI or Re-fetch only if you want to refresh content.',
+      meaning: 'Fetch, AI summary, search embed, and category are all stored.',
+      tryThis: 'No action required unless you want to refresh.',
+    };
+  }
+  if (stage.level === 'summarized') {
+    return {
+      badge: stage.label,
+      meaning: 'Fetch and AI summary succeeded, but the full pipeline is not finished yet.',
+      detail: stage.missing.length
+        ? `Missing: ${stage.missing.map((m) => (m === 'embed' ? 'search embed' : 'category')).join(', ')}`
+        : undefined,
+      tryThis:
+        stage.missing.includes('classify') && stage.missing.includes('embed')
+          ? 'Run Classify and Re-embed from Inspector.'
+          : stage.missing.includes('classify')
+            ? 'Run Classify from Inspector or Pipeline Hub.'
+            : 'Run Re-embed from Inspector.',
     };
   }
   if (status === 'skipped') {
@@ -263,8 +337,14 @@ export const ENRICHMENT_STATUS_GUIDE: Array<{
   {
     badge: 'Enriched',
     color: 'var(--er-ok, #3fb950)',
-    meaning: 'Fetch succeeded and AI summary is stored.',
+    meaning: 'Full pipeline: fetch + AI summary + search embed + category.',
     tryThis: 'No action required unless you want to refresh.',
+  },
+  {
+    badge: 'Summarized',
+    color: 'var(--er-warn, #d29922)',
+    meaning: 'Fetch and AI summary only — classify and/or embed still missing.',
+    tryThis: 'Run Classify and Re-embed to reach full Enriched.',
   },
   {
     badge: 'Not enriched',
@@ -466,24 +546,32 @@ export async function loadEnrichmentHubData(
   rows: EnrichmentHubRow[];
   counts: EnrichmentHubCounts;
 }> {
-  const [enrichments, signals] = await Promise.all([
+  const [enrichments, signals, links] = await Promise.all([
     getAllEnrichments(),
-    loadEmbedFailedIds(),
+    loadHubSignals(),
+    loadHubPrimaryLinks(),
   ]);
 
   const enrichMap = new Map(enrichments.map((e) => [e.itemId, e]));
+  const signalByItem = signals.byItem;
   const bookmarks = items
     .filter((i) => !!i.url?.trim() && i.deletedAt == null)
     .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
 
   const rows: EnrichmentHubRow[] = bookmarks.map((item) => {
     const enrichment = enrichMap.get(item.id);
-    const embedFailed = signals.has(item.id);
+    const signal = signalByItem.get(item.id);
+    const embedFailed = signal?.signalStatus === 'embed_failed';
+    const itemLinks = links.get(item.id) ?? [];
     return {
       item,
       enrichment,
       embedFailed,
-      meta: buildRowMetaFixed(enrichment, embedFailed),
+      meta: buildRowMetaFixed(enrichment, embedFailed, {
+        signal,
+        primaryCategoryId: primaryLeafIdFromLinks(itemLinks),
+        suggestedLinkCount: itemLinks.filter((l) => l.status === 'suggested').length,
+      }),
     };
   });
 
@@ -536,11 +624,39 @@ export async function loadEnrichmentHubData(
 }
 
 export async function loadEmbedFailedIds(): Promise<Set<string>> {
+  const { failedIds } = await loadHubSignals();
+  return failedIds;
+}
+
+async function loadHubPrimaryLinks(): Promise<Map<string, AiItemCategoryLink[]>> {
   const db = await getDB();
-  if (!db.objectStoreNames.contains('ai_item_signals')) return new Set();
+  const byItem = new Map<string, AiItemCategoryLink[]>();
+  if (!db.objectStoreNames.contains('ai_item_category_links')) return byItem;
+  const links = await db.getAll('ai_item_category_links');
+  for (const link of links) {
+    if (link.status !== 'suggested' && link.status !== 'accepted') continue;
+    const list = byItem.get(link.itemId) ?? [];
+    list.push(link);
+    byItem.set(link.itemId, list);
+  }
+  return byItem;
+}
+
+async function loadHubSignals(): Promise<{
+  byItem: Map<string, AiItemSignal>;
+  failedIds: Set<string>;
+}> {
+  const db = await getDB();
+  const byItem = new Map<string, AiItemSignal>();
+  const failedIds = new Set<string>();
+  if (!db.objectStoreNames.contains('ai_item_signals')) {
+    return { byItem, failedIds };
+  }
   const signals = await db.getAll('ai_item_signals');
-  return new Set(
-    signals.filter((s) => s.signalStatus === 'embed_failed').map((s) => s.itemId)
-  );
+  for (const s of signals) {
+    byItem.set(s.itemId, s);
+    if (s.signalStatus === 'embed_failed') failedIds.add(s.itemId);
+  }
+  return { byItem, failedIds };
 }
 

@@ -828,10 +828,35 @@ export const updateItem = async (
 };
 
 /** Wait until queued tab→worker writes have been applied in the DB worker. */
-export async function commitPendingDbWrites(): Promise<void> {
+export async function commitPendingDbWrites(opts?: {
+  /** Force full library reload from worker (import recovery, explicit refresh). */
+  hydrate?: boolean;
+  /** Reload only when worker revision is ahead of this tab's cache (cross-tab sync). */
+  sync?: boolean;
+}): Promise<void> {
   if (isDbWorkerProcess()) return;
   const { getRemoteStore } = await import('./storage/dbClient/remoteStore');
-  await getRemoteStore().drainWrites();
+  const store = getRemoteStore();
+  await store.drainWrites();
+  if (opts?.hydrate === true) {
+    await store.hydrate(true);
+  } else if (opts?.sync === true) {
+    await store.hydrateIfBehind();
+  }
+}
+
+const PIPELINE_CACHE_TABLES = [
+  'items',
+  'item_enrichment',
+  'ai_item_signals',
+  'ai_item_category_links',
+] as const;
+
+/** Sync pipeline-critical tables from worker before classify (read-your-writes). */
+export async function refreshPipelineCacheFromWorker(): Promise<void> {
+  if (isDbWorkerProcess()) return;
+  const { getRemoteStore } = await import('./storage/dbClient/remoteStore');
+  await getRemoteStore().refreshTablesFromWorker(PIPELINE_CACHE_TABLES);
 }
 
 // ============================================================================
@@ -1117,11 +1142,13 @@ export const bulkImportBookmarks = async (
     notifyDataChanged('item.update');
   }
   
-  if (createdItemIds.length > 0) {
+  if (affectedItemIds.length > 0) {
     try {
       const { markItemsPendingClassify, noteBulkImport } = await import('./categorization/classifyTopicExtract');
-      await markItemsPendingClassify(createdItemIds);
-      await noteBulkImport(createdItemIds.length);
+      await markItemsPendingClassify(affectedItemIds);
+      if (createdItemIds.length > 0) {
+        await noteBulkImport(createdItemIds.length);
+      }
     } catch (e) {
       console.warn('Bulk import: could not queue categorization', e);
     }
@@ -1159,10 +1186,15 @@ export const exportDB = async () => {
   const ai_taxonomy_state_row = store.getTaxonomyState();
   const ai_taxonomy_state = ai_taxonomy_state_row ? [ai_taxonomy_state_row] : [];
   const trash_history = store.getAllTrashHistory();
+  const { getAllPipelineDebugRecords } = await import('./enrichment/pipelineDebug');
+  const pipeline_debug = await getAllPipelineDebugRecords();
+  const includePipelineDebug = pipeline_debug.length > 0;
 
   const pipelineExportCounts = {
     exportedAt: Date.now(),
     item_enrichment: item_enrichment.length,
+    pipeline_debug: pipeline_debug.length,
+    pipeline_debugOnly: includePipelineDebug,
     ai_categories: ai_categories.length,
     ai_categories_parents: ai_categories.filter((c) => c.kind === 'parent').length,
     ai_categories_leaves: ai_categories.filter((c) => c.kind === 'leaf').length,
@@ -1182,6 +1214,7 @@ export const exportDB = async () => {
       snapshots,
       workspaces,
       item_enrichment,
+      ...(includePipelineDebug ? { pipeline_debug, _debugOnly: { pipeline_debug: true } } : {}),
       ai_categories,
       ai_item_category_links,
       ai_item_signals,
@@ -1425,5 +1458,65 @@ export const exportSqliteBytes = async (): Promise<Uint8Array | null> => {
   } catch (e) {
     console.error('Failed to export SQLite bytes:', e);
     return null;
+  }
+};
+
+export type ClearAllLibraryDataResult = {
+  ok: boolean;
+  error?: string;
+  enrichmentCacheFilesRemoved?: number;
+  pipelineArtifactEntriesRemoved?: number;
+};
+
+/**
+ * Wipe the library for a clean import test run: OPFS SQLite, folder mirror,
+ * enrichment disk cache, and pipeline debug artifacts. Re-creates default project/collection.
+ */
+export async function clearAllLibraryData(): Promise<ClearAllLibraryDataResult> {
+  try {
+    const { dbRpc } = await import('./storage/dbClient');
+    const { purgeAllEnrichmentCacheFiles } = await import('./enrichment/rawBodyStore');
+    const { purgePipelineRunArtifactsFromBackupFolder } = await import(
+      './pipeline/pipelineRunStore'
+    );
+
+    await dbRpc('storeInvoke', ['clearAllTables', []]);
+    await commitPendingDbWrites();
+
+    await reloadDB();
+    const store = await getDB();
+    await ensureDefaultProjectAndCollection(store as unknown as IdbCompatStore);
+    await commitPendingDbWrites();
+
+    const enrichmentCacheFilesRemoved = await purgeAllEnrichmentCacheFiles();
+    const pipelineArtifactEntriesRemoved = await purgePipelineRunArtifactsFromBackupFolder();
+
+    await flushFolderMirror();
+
+    await reloadDB();
+    await ensureDefaultProjectAndCollection((await getDB()) as unknown as IdbCompatStore);
+    await commitPendingDbWrites({ hydrate: true });
+
+    notifyDataChanged('item.update');
+    notifyDataChanged('enrichment.update');
+    notifyDataChanged('categorization.update');
+    notifyDataChanged('pipeline.clear');
+
+    try {
+      const { invalidatePipelineCatalog } = await import('./pipeline/pipelineCatalog');
+      invalidatePipelineCatalog();
+    } catch {
+      /* optional */
+    }
+
+    return {
+      ok: true,
+      enrichmentCacheFilesRemoved,
+      pipelineArtifactEntriesRemoved,
+    };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    console.error('[clearAllLibraryData] failed:', e);
+    return { ok: false, error };
   }
 };

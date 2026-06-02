@@ -111,6 +111,8 @@ export interface EnrichBatchOptions {
   refetchCompare?: boolean;
   /** Fetch and parse only — do not run AI extract (Enrichment Hub per-step actions). */
   skipAi?: boolean;
+  /** Batch mode: skip per-item embed/classify queue — run batch post-process instead. */
+  deferPostProcess?: boolean;
 }
 
 export interface EnrichBatchProgress {
@@ -135,8 +137,18 @@ export const ENRICHMENT_DEFAULTS = {
   snippetMaxChars: 12_000,
   smartCap: 50,
   fullCap: 200,
+  /** Parallel enrich workers (fetch + AI per item). */
   concurrency: 2,
+  /** @deprecated Use headlessTimeoutMs — kept for callers that read timeoutMs. */
   timeoutMs: 25_000,
+  /** Headless local/jina/syndication budget per item. */
+  headlessTimeoutMs: 25_000,
+  /** Open-tab scrape or ephemeral background tab (load can take ~45s). */
+  tabFetchTimeoutMs: 65_000,
+  /** Outer cap for the whole fetch phase inside enrichOne. */
+  fetchOverallTimeoutMs: 90_000,
+  /** Only one ephemeral background tab at a time (Chrome load stability). */
+  ephemeralMaxConcurrent: 1,
   maxAttempts: 4,
   /** Truncate fetched markdown above this before AI / storage (PDFs, huge pages). */
   maxFetchMarkdownChars: 150_000,

@@ -107,6 +107,7 @@ interface DashboardLayoutProps {
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<RestoreBackupResult>;
   onManualBackup?: () => Promise<void>;
   onExportJsonSnapshot?: () => Promise<void>;
+  onExportPipelineAnalysis?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
   onResolveConflictKeepLocal?: () => Promise<void>;
   backupFolderReady?: boolean;
@@ -152,6 +153,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   onRestoreBackupFile,
   onManualBackup,
   onExportJsonSnapshot,
+  onExportPipelineAnalysis,
   onResolveConflictLoadRemote,
   onResolveConflictKeepLocal,
   backupFolderReady,
@@ -784,6 +786,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onRestoreBackupFile={onRestoreBackupFile}
                 onManualBackup={onManualBackup}
                 onExportJsonSnapshot={onExportJsonSnapshot}
+                onExportPipelineAnalysis={onExportPipelineAnalysis}
                 onResolveConflictLoadRemote={onResolveConflictLoadRemote}
                 onResolveConflictKeepLocal={onResolveConflictKeepLocal}
                 backupFolderReady={backupFolderReady}
@@ -834,6 +837,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onRestoreBackupFile={onRestoreBackupFile}
               onManualBackup={onManualBackup}
               onExportJsonSnapshot={onExportJsonSnapshot}
+              onExportPipelineAnalysis={onExportPipelineAnalysis}
               onResolveConflictLoadRemote={onResolveConflictLoadRemote}
               onResolveConflictKeepLocal={onResolveConflictKeepLocal}
               backupFolderReady={backupFolderReady}
@@ -906,6 +910,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                   onRestoreBackupFile={onRestoreBackupFile}
                   onManualBackup={onManualBackup}
                   onExportJsonSnapshot={onExportJsonSnapshot}
+                onExportPipelineAnalysis={onExportPipelineAnalysis}
                   onResolveConflictLoadRemote={onResolveConflictLoadRemote}
                   onResolveConflictKeepLocal={onResolveConflictKeepLocal}
                   backupFolderReady={backupFolderReady}

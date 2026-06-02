@@ -25,9 +25,9 @@ import { hybridProvider } from './providers/hybrid';
 import { jinaProvider } from './providers/jina';
 import { noopProvider } from './providers/noop';
 import type { FetchProvider, FetchProviderResult } from './providers/types';
-import { fetchFromOpenTab, findTabForUrl, openEphemeralTabAndExtract } from './tabSessionExtract';
-import { isFileUrl, prefersBrowserTabFetch } from './urlPolicy';
-import { needsLiveTabHref } from '../tabUrlCapture';
+import { timedAbortSignal } from './fetchAbort';
+import { fetchFromOpenTab, findTabForUrl, openEphemeralTabAndExtract, resolveTabSessionForUrl } from './tabSessionExtract';
+import { prefersBrowserTabFirst, skipHeadlessAfterTabMiss } from './urlPolicy';
 import {
   parseFetchedContent,
 } from './parse';
@@ -48,6 +48,11 @@ import type {
   ItemEnrichment,
 } from './types';
 import { ENRICHMENT_DEFAULTS } from './types';
+import {
+  isPipelineDebugEnabled,
+  PipelineDebugCollector,
+  saveEnrichPipelineDebug,
+} from './pipelineDebug';
 
 let activeProvider: FetchProvider = hybridProvider;
 
@@ -335,13 +340,12 @@ async function tryOpenTabFetch(
   return { result: null, error: lastError };
 }
 
-/** Headless failed or body unusable — retry via open tab / ephemeral background tab. */
 function shouldRetryWithBrowserTab(
   headless: FetchProviderResult,
   url: string,
   cleanMarkdown?: string
 ): boolean {
-  if (isFileUrl(url) || prefersBrowserTabFetch(url) || needsLiveTabHref(url)) return true;
+  if (prefersBrowserTabFirst(url)) return true;
 
   if (!headless.ok) {
     const code = headless.errorCode;
@@ -383,59 +387,122 @@ async function resolveItemFetch(
     tabId?: number;
     /** Skip headless — open/match tab (incl. ephemeral) only. */
     tabSessionOnly?: boolean;
+    debug?: PipelineDebugCollector;
   }
 ): Promise<FetchProviderResult> {
-  if (options?.tabSessionOnly) {
-    const tabOnly = await tryOpenTabFetch(item.url, options?.tabId, {
-      allowEphemeral: true,
-      signal: options?.signal,
-    });
-    if (tabOnly.result) return tabOnly.result;
-    if (tabOnly.error) return tabOnly.error;
-    return {
-      ok: false,
-      errorCode: 'parse_empty',
-      error: 'Could not read page in browser tab',
-      fetchSourceId: 'tab-session',
-    };
-  }
+  const userSignal = options?.signal;
+  const overall = timedAbortSignal(ENRICHMENT_DEFAULTS.fetchOverallTimeoutMs, userSignal);
 
-  const tabAttempt = await tryOpenTabFetch(item.url, options?.tabId, {
-    signal: options?.signal,
+  const runTabFetch = async (allowEphemeral: boolean) => {
+    const tabPhase = timedAbortSignal(ENRICHMENT_DEFAULTS.tabFetchTimeoutMs, overall.signal);
+    try {
+      return await tryOpenTabFetch(item.url, options?.tabId, {
+        allowEphemeral,
+        signal: tabPhase.signal,
+      });
+    } finally {
+      tabPhase.dispose();
+    }
+  };
+
+  const runHeadless = async () => {
+    const headlessPhase = timedAbortSignal(ENRICHMENT_DEFAULTS.headlessTimeoutMs, overall.signal);
+    try {
+      return await activeProvider.fetchUrl({
+        url: item.url,
+        normalizedUrl: pending.normalizedUrl,
+        hints: { sourceKind, force: options?.force },
+        signal: headlessPhase.signal,
+      });
+    } finally {
+      headlessPhase.dispose();
+    }
+  };
+
+  const tabSessionEmptyError = (): FetchProviderResult => ({
+    ok: false,
+    errorCode: 'parse_empty',
+    error: 'Could not read page in browser tab',
+    fetchSourceId: 'tab-session',
   });
-  let tabSessionError = tabAttempt.error;
-  if (tabAttempt.result) return tabAttempt.result;
 
-  const headless = await activeProvider.fetchUrl({
-    url: item.url,
-    normalizedUrl: pending.normalizedUrl,
-    hints: { sourceKind, force: options?.force },
-    signal: options?.signal,
-  });
+  try {
+    const debug = options?.debug;
+    const tabFirst =
+      options?.tabSessionOnly ||
+      options?.preferTabSession ||
+      prefersBrowserTabFirst(item.url);
 
-  if (headless.ok && headless.markdown) {
-    const clean = stripProviderWrapper(headless.markdown);
-    if (headlessResultIsGoodEnough(headless, item.url, clean)) return headless;
+    if (options?.tabSessionOnly) {
+      debug?.phase('tab_session_only_start');
+      const tabOnly = await runTabFetch(true);
+      debug?.phase(
+        'tab_session_only',
+        !!tabOnly.result?.ok,
+        tabOnly.result?.fetchSourceId ?? tabOnly.error?.fetchSourceId
+      );
+      if (tabOnly.result) return tabOnly.result;
+      return tabOnly.error ?? tabSessionEmptyError();
+    }
+
+    if (tabFirst) {
+      debug?.phase('tab_first_start');
+      const tabAttempt = await runTabFetch(true);
+      debug?.phase(
+        'tab_first',
+        !!tabAttempt.result?.ok,
+        tabAttempt.result?.fetchSourceId ?? tabAttempt.error?.fetchSourceId
+      );
+      if (tabAttempt.result) return tabAttempt.result;
+      if (skipHeadlessAfterTabMiss(item.url)) {
+        return tabAttempt.error ?? tabSessionEmptyError();
+      }
+    } else {
+      debug?.phase('tab_quick_start');
+      const quickTab = await runTabFetch(false);
+      debug?.phase(
+        'tab_quick',
+        !!quickTab.result?.ok,
+        quickTab.result?.fetchSourceId ?? quickTab.error?.fetchSourceId
+      );
+      if (quickTab.result) return quickTab.result;
+    }
+
+    debug?.phase('headless_start');
+    const headless = await runHeadless();
+    debug?.phase('headless', headless.ok, headless.fetchSourceId);
+    if (headless.ok && headless.markdown) {
+      const clean = stripProviderWrapper(headless.markdown);
+      if (headlessResultIsGoodEnough(headless, item.url, clean)) return headless;
+    }
+
+    const headlessClean =
+      headless.ok && headless.markdown ? stripProviderWrapper(headless.markdown) : undefined;
+
+    if (!shouldRetryWithBrowserTab(headless, item.url, headlessClean)) {
+      return headless;
+    }
+
+    const tabRetry = await runTabFetch(true);
+    debug?.phase(
+      'tab_retry',
+      !!tabRetry.result?.ok,
+      tabRetry.result?.fetchSourceId ?? tabRetry.error?.fetchSourceId
+    );
+    if (tabRetry.result) return tabRetry.result;
+
+    if (
+      tabRetry.error &&
+      (typeof options?.tabId === 'number' || item.source === 'tab' || options?.preferTabSession) &&
+      classifySourceKind(item.url) === 'x'
+    ) {
+      return tabRetry.error;
+    }
+
+    return headless;
+  } finally {
+    overall.dispose();
   }
-
-  const headlessClean =
-    headless.ok && headless.markdown ? stripProviderWrapper(headless.markdown) : undefined;
-  const tabRetry = await tryOpenTabFetch(item.url, options?.tabId, {
-    allowEphemeral: shouldRetryWithBrowserTab(headless, item.url, headlessClean),
-    signal: options?.signal,
-  });
-  tabSessionError = tabSessionError ?? tabRetry.error;
-  if (tabRetry.result) return tabRetry.result;
-
-  if (
-    tabSessionError &&
-    (typeof options?.tabId === 'number' || item.source === 'tab' || options?.preferTabSession) &&
-    classifySourceKind(item.url) === 'x'
-  ) {
-    return tabSessionError;
-  }
-
-  return headless;
 }
 
 async function preservePriorOnSuspiciousFetch(
@@ -443,7 +510,8 @@ async function preservePriorOnSuspiciousFetch(
   existing: ItemEnrichment,
   pending: ItemEnrichment,
   reason: EnrichmentErrorCode,
-  suspiciousMarkdown?: string
+  suspiciousMarkdown?: string,
+  deferPostProcess = false
 ): Promise<EnrichmentResult> {
   const now = Date.now();
   let reviewRawRef: string | undefined;
@@ -454,15 +522,18 @@ async function preservePriorOnSuspiciousFetch(
     );
     if (review.ok && review.rawRef) reviewRawRef = review.rawRef;
   }
-  await putEnrichment({
-    ...existing,
-    attempts: pending.attempts,
-    lastErrorCode: reason,
-    pendingFetchReview: true,
-    pendingFetchReviewReason: reason,
-    reviewRawRef,
-    updated_at: now,
-  });
+  await putEnrichment(
+    {
+      ...existing,
+      attempts: pending.attempts,
+      lastErrorCode: reason,
+      pendingFetchReview: true,
+      pendingFetchReviewReason: reason,
+      reviewRawRef,
+      updated_at: now,
+    },
+    { deferPostProcess }
+  );
   return {
     itemId: item.id,
     status: 'ok',
@@ -485,8 +556,13 @@ export async function enrichOne(
     tabSessionOnly?: boolean;
     /** Fetch and parse only — preserve existing AI fields; no extractEnrichmentWithAI. */
     skipAi?: boolean;
+    /** Batch import: defer embed + classify queue until batch post-process. */
+    deferPostProcess?: boolean;
   }
 ): Promise<EnrichmentResult> {
+  const deferPostProcess = options?.deferPostProcess === true;
+  const saveEnrichment = (record: ItemEnrichment) =>
+    putEnrichment(record, { deferPostProcess });
   const item = await getItem(itemId);
   if (!item?.url) {
     return { itemId, status: 'failed', errorCode: 'excluded', message: 'no_item' };
@@ -525,32 +601,68 @@ export async function enrichOne(
     hasRawBody: false,
     updated_at: now,
   };
-  await putEnrichment(pending);
+  await saveEnrichment(pending);
 
-  const timeoutMs = ENRICHMENT_DEFAULTS.timeoutMs;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  if (options?.signal) {
-    if (options.signal.aborted) controller.abort();
-    else options.signal.addEventListener('abort', () => controller.abort(), { once: true });
-  }
-  const signal = controller.signal;
+  const debugEnabled = isPipelineDebugEnabled();
+  const runStart = debugEnabled ? Date.now() : 0;
+  const collector = debugEnabled ? new PipelineDebugCollector() : undefined;
+  let fetchMs = 0;
+  let aiMs = 0;
+  let debugOutcome:
+    | {
+        enrichStatus: string;
+        aiStatus?: string;
+        errorCode?: string;
+        fetchSourceId?: string;
+      }
+    | undefined;
+
+  const flushDebug = (): void => {
+    if (!debugEnabled || !debugOutcome || !item.url) return;
+    void saveEnrichPipelineDebug({
+      itemId: item.id,
+      url: item.url,
+      collector,
+      fetchMs,
+      aiMs,
+      totalMs: Date.now() - runStart,
+      fetchSourceId: debugOutcome.fetchSourceId,
+      enrichStatus: debugOutcome.enrichStatus,
+      aiStatus: debugOutcome.aiStatus,
+      errorCode: debugOutcome.errorCode,
+      attempts,
+      options: {
+        preferTabSession: options?.preferTabSession,
+        tabId: options?.tabId,
+        tabSessionOnly: options?.tabSessionOnly,
+        skipAi: options?.skipAi,
+      },
+    });
+  };
 
   try {
+    const fetchStart = Date.now();
     let fetchResult = await resolveItemFetch(item, pending, sourceKind, {
       force: options?.force,
-      signal,
+      signal: options?.signal,
       preferTabSession: options?.preferTabSession,
       tabId: options?.tabId,
       tabSessionOnly: options?.tabSessionOnly,
+      debug: collector,
     });
-    clearTimeout(timeout);
+    fetchMs = Date.now() - fetchStart;
 
     if (!fetchResult.ok || !fetchResult.markdown) {
       const errorCode = fetchResult.errorCode ?? 'provider_error';
       const lastErrorDetail = fetchResult.error?.trim() || undefined;
       if (existing && hasValuablePriorEnrichment(existing)) {
-        return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode);
+        debugOutcome = {
+          enrichStatus: 'ok',
+          errorCode,
+          fetchSourceId: fetchResult.fetchSourceId,
+        };
+        flushDebug();
+        return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode, undefined, deferPostProcess);
       }
       const nextRetryAt =
         attempts < ENRICHMENT_DEFAULTS.maxAttempts
@@ -566,7 +678,13 @@ export async function enrichOne(
         updated_at: now,
         nextRetryAt,
       };
-      await putEnrichment(annotateFailureFields(failed));
+      await saveEnrichment(annotateFailureFields(failed));
+      debugOutcome = {
+        enrichStatus: 'failed',
+        errorCode,
+        fetchSourceId: fetchResult.fetchSourceId,
+      };
+      flushDebug();
       return {
         itemId,
         status: 'failed',
@@ -610,12 +728,19 @@ export async function enrichOne(
     }
 
     if (status === 'failed' && existing && hasValuablePriorEnrichment(existing)) {
+      debugOutcome = {
+        enrichStatus: 'ok',
+        errorCode: lastErrorCode,
+        fetchSourceId: fetchResult.fetchSourceId,
+      };
+      flushDebug();
       return preservePriorOnSuspiciousFetch(
         item,
         existing,
         pending,
         lastErrorCode ?? 'parse_empty',
-        cleanMarkdown
+        cleanMarkdown,
+        deferPostProcess
       );
     }
 
@@ -629,7 +754,7 @@ export async function enrichOne(
       existing.contentHash === contentHash;
 
     if (pageUnchanged && existing.aiStatus === 'ok') {
-      await putEnrichment({
+      await saveEnrichment({
         ...existing,
         textHash,
         snippet: parsed.snippet ?? existing.snippet,
@@ -641,6 +766,12 @@ export async function enrichOne(
         reviewRawRef: undefined,
         updated_at: now,
       });
+      debugOutcome = {
+        enrichStatus: 'ok',
+        aiStatus: existing.aiStatus,
+        fetchSourceId: fetchResult.fetchSourceId,
+      };
+      flushDebug();
       return {
         itemId: item.id,
         status: 'ok',
@@ -656,6 +787,7 @@ export async function enrichOne(
       !hardFailure &&
       (!pageUnchanged || existing?.aiStatus !== 'ok');
     if (needsAiExtract) {
+      const aiStart = Date.now();
       aiOutcome = await extractEnrichmentWithAI(
         parsed.snippet || cleanMarkdown,
         item.url,
@@ -671,6 +803,7 @@ export async function enrichOne(
           },
         }
       );
+      aiMs = Date.now() - aiStart;
       aiExtract = aiOutcome.data;
       if (aiExtract?.improvedTitle) {
         parsed.title = aiExtract.improvedTitle;
@@ -790,7 +923,15 @@ export async function enrichOne(
       reviewRawRef: undefined,
       updated_at: now,
     };
-    await putEnrichment(annotateFailureFields(record));
+    await saveEnrichment(annotateFailureFields(record));
+
+    debugOutcome = {
+      enrichStatus: status,
+      aiStatus: options?.skipAi ? existing?.aiStatus : aiOutcome?.status,
+      errorCode: lastErrorCode,
+      fetchSourceId: fetchResult.fetchSourceId,
+    };
+    flushDebug();
 
     const failureMessage =
       status === 'failed'
@@ -810,7 +951,6 @@ export async function enrichOne(
             : undefined,
     };
   } catch (e) {
-    clearTimeout(timeout);
     console.error('[enrichOne] unexpected error:', e);
     const isAbort = e instanceof DOMException && e.name === 'AbortError';
     const rawMsg = e instanceof Error ? e.message.trim() : String(e).trim();
@@ -820,7 +960,9 @@ export async function enrichOne(
         ? 'provider_error'
         : 'network';
     if (existing && hasValuablePriorEnrichment(existing)) {
-      return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode);
+      debugOutcome = { enrichStatus: 'ok', errorCode };
+      flushDebug();
+      return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode, undefined, deferPostProcess);
     }
     const lastErrorDetail = isAbort
       ? 'Request timed out before the page finished loading'
@@ -834,7 +976,9 @@ export async function enrichOne(
       updated_at: Date.now(),
       nextRetryAt: Date.now() + ENRICHMENT_DEFAULTS.backoffBaseMs,
     };
-    await putEnrichment(annotateFailureFields(failed));
+    await saveEnrichment(annotateFailureFields(failed));
+    debugOutcome = { enrichStatus: 'failed', errorCode };
+    flushDebug();
     return {
       itemId,
       status: 'failed',
@@ -1010,11 +1154,15 @@ export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<Enr
       });
 
       try {
+        const tabSession = await resolveTabSessionForUrl(item.url);
         const result = await enrichOne(item.id, {
           force: options.force,
           signal: options.signal,
           refetchCompare: options.refetchCompare,
           skipAi: options.skipAi,
+          deferPostProcess: options.deferPostProcess,
+          preferTabSession: tabSession.preferTabSession,
+          tabId: tabSession.tabId,
         });
         if (options.collectItemResults) itemResults.push(result);
         if (result.skipped || result.status === 'skipped') skipped++;

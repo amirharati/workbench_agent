@@ -3,8 +3,6 @@ import { aiSettingsForBatchJob } from '../ai/settings';
 import type { AISettings } from '../ai/types';
 import {
   buildGeneralLeafDefinition,
-  buildGroupedLeafCatalog,
-  formatGroupedCatalogMarkdown,
   isGeneralLeafId,
 } from './taxonomyCatalog';
 import { normalizeTag, slugFromTerms } from './naming';
@@ -13,6 +11,46 @@ import type { AiCategory } from './types';
 
 function normalizeNameKey(name: string): string {
   return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Common suffixes that the LLM appends when proposing parentIds but that don't
+// match the actual parent id. Strip them before attempting to resolve.
+const PARENT_ID_STRIP_SUFFIXES = [
+  '-resources', '-education', '-tutorials', '-tools', '-platforms',
+  '-services', '-systems', '-applications', '-research', '-data',
+  '-courses', '-learning',
+];
+
+/**
+ * Try to resolve a proposed parentId that doesn't exactly match any known
+ * parent. Strips common suffixes and checks for prefix matches.
+ * Returns the resolved existing parentId, or null if nothing matches.
+ */
+export function resolvePartialParentId(
+  proposedId: string,
+  parentIds: Set<string>
+): string | null {
+  if (parentIds.has(proposedId)) return proposedId;
+  let base = proposedId.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+  // Strip known noise suffixes iteratively
+  let stripped = base;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const suf of PARENT_ID_STRIP_SUFFIXES) {
+      if (stripped.endsWith(suf)) {
+        stripped = stripped.slice(0, -suf.length);
+        changed = true;
+        break;
+      }
+    }
+  }
+  if (stripped !== base && parentIds.has(stripped)) return stripped;
+  // Prefix match: if any parentId starts with the stripped slug
+  for (const pid of parentIds) {
+    if (pid.startsWith(stripped) || stripped.startsWith(pid)) return pid;
+  }
+  return null;
 }
 
 function leafIdFromProposal(p: { name: string; canonicalTags?: string[] }, index: number): string {
@@ -66,6 +104,58 @@ export interface DiscoveryBatchResponse {
   }>;
 }
 
+/**
+ * Build the full catalog section showing every parent with its exact ID and
+ * all current leaves listed under it. The LLM sees exact IDs so it can reuse
+ * them verbatim in newLeaves[].parentId instead of inventing variations.
+ */
+function buildDiscoveryCatalogSection(
+  parents: Array<{ id: string; name: string; description?: string }>,
+  leavesSoFar: AiCategory[]
+): string {
+  const leavesByParent = new Map<string, AiCategory[]>();
+  for (const leaf of leavesSoFar) {
+    if (!leaf.assignable || leaf.kind !== 'leaf') continue;
+    const pid = leaf.parentId ?? '_ungrouped';
+    if (!leavesByParent.has(pid)) leavesByParent.set(pid, []);
+    leavesByParent.get(pid)!.push(leaf);
+  }
+
+  const lines: string[] = [
+    '## Existing taxonomy — use exact parentId strings below in newLeaves[]',
+    '',
+  ];
+
+  for (const parent of parents) {
+    const leaves = leavesByParent.get(parent.id) ?? [];
+    leaves.sort((a, b) => {
+      if ((a.isGeneralFallback ?? false) !== (b.isGeneralFallback ?? false))
+        return a.isGeneralFallback ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
+    lines.push(`**parentId: "${parent.id}"** — ${parent.name}`);
+    if (parent.description) lines.push(`  ${parent.description.slice(0, 120)}`);
+    for (const leaf of leaves) {
+      const fb = leaf.isGeneralFallback ? ' [general fallback]' : '';
+      lines.push(`  • ${leaf.name}${fb}`);
+    }
+    lines.push('');
+  }
+
+  // Orphaned leaves (parent not in the known parents list)
+  const knownParentIds = new Set(parents.map((p) => p.id));
+  for (const [pid, leaves] of leavesByParent) {
+    if (knownParentIds.has(pid) || pid === '_ungrouped') continue;
+    lines.push(`**parentId: "${pid}"** — (discovered domain)`);
+    for (const leaf of leaves) {
+      lines.push(`  • ${leaf.name}`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
+}
+
 function buildDiscoveryPrompt(
   parents: Array<{ id: string; name: string; description?: string }>,
   leavesSoFar: AiCategory[],
@@ -74,29 +164,28 @@ function buildDiscoveryPrompt(
   maxNewLeaves: number,
   gapFillMode = false
 ): string {
-  const grouped = buildGroupedLeafCatalog(leavesSoFar, parents);
-  const catalogMd = formatGroupedCatalogMarkdown(grouped);
+  const catalogSection = buildDiscoveryCatalogSection(parents, leavesSoFar);
   const stuckCount = batchItems.filter((i) => i.stuckKind && i.stuckKind !== 'manual_review').length;
   return [
     '## Task',
     gapFillMode
       ? '**Gap-fill:** These bookmarks did NOT get a specific topic from Classify (unassigned or stuck on *-general / Other). ' +
-          'Add **newLeaves[]** (and **newParents[]** if needed) so distinct clusters become assignable specific topics. ' +
+          'Add **newLeaves[]** (and **newParents[]** only if genuinely required) so distinct clusters become assignable specific topics. ' +
           'Reusing only *-general is NOT sufficient for stuck items.'
-      : 'Grow a personal bookmark taxonomy: reuse existing parents and leaves when they fit. ' +
-          'When bookmarks clearly belong to a **new top-level domain** not covered by any parent below, add `newParents` and put new leaves under that parent id.',
+      : 'Grow a personal bookmark taxonomy: reuse existing parentIds and leaves when they fit. ' +
+          'Only add newParents[] when a cluster clearly belongs to a top-level domain absent from the list below.',
     stuckCount > 0
       ? `\n**${stuckCount}/${batchItems.length} items in this batch are stuck** (see stuckKind) — prioritize new atomic leaves for them.`
       : '',
     '',
-    catalogMd,
+    catalogSection,
     '',
     '## Rules',
     DISCOVER_CATALOG_RULES.map((r) => `- ${r}`).join('\n'),
     ...(gapFillMode
       ? [
           '- When stuckKind is general or pending_discover, you MUST add matching entries in newLeaves[] (not only itemResults).',
-          '- Each new leaf: unique name vs catalog, valid parentId, 2–5 word atomic topic.',
+          '- Each new leaf: unique name vs catalog, valid parentId from the list above, 2–5 word atomic topic.',
         ]
       : []),
     `- Propose at most ${maxNewParents} new parents in newParents[]`,
@@ -128,7 +217,7 @@ function buildDiscoveryPrompt(
       newLeaves: [
         {
           id: 'slug unique in batch',
-          parentId: 'existing or new parent id from newParents',
+          parentId: 'exact parentId string from taxonomy above OR id from newParents',
           name: 'atomic topic',
           description: 'one sentence',
           canonicalTags: ['tag1'],
@@ -239,15 +328,34 @@ export function mergeDiscoveryLeaves(
   const cap = maxNewPerBatch > 0 ? maxNewPerBatch : proposals.length;
 
   for (const p of proposals.slice(0, cap)) {
-    if (!p?.name || !parentIds.has(p.parentId)) continue;
-    if (p.name.includes('/')) continue;
+    if (!p?.name) continue;
+    // Sanitize slash-separated names (e.g. "Speech Recognition / ASR") instead of dropping them.
+    const cleanName = p.name.replace(/\s*\/\s*/g, ' & ').trim();
+    if (!cleanName) continue;
     if (isGeneralLeafId(p.id ?? '')) continue;
-    const key = normalizeNameKey(p.name);
+    const key = normalizeNameKey(cleanName);
     if (byKey.has(key)) continue;
+
+    // Task A: resolve partial/mangled parentId before dropping the proposal.
+    let resolvedParentId = p.parentId;
+    if (!parentIds.has(resolvedParentId)) {
+      const recovered = resolvePartialParentId(resolvedParentId, parentIds);
+      if (recovered) {
+        console.warn(
+          `[discoverTaxonomy] leaf "${cleanName}" parentId "${resolvedParentId}" resolved to "${recovered}"`
+        );
+        resolvedParentId = recovered;
+      } else {
+        console.warn(
+          `[discoverTaxonomy] leaf "${cleanName}" dropped — unknown parentId "${p.parentId}" (no recovery found)`
+        );
+        continue;
+      }
+    }
 
     let id = typeof p.id === 'string' ? p.id.trim().replace(/[^a-z0-9-]/g, '-') : '';
     if (!id || categories.some((l) => l.id === id)) {
-      id = leafIdFromProposal(p, categories.length + added.length);
+      id = leafIdFromProposal({ ...p, name: cleanName }, categories.length + added.length);
     }
 
     const tags = (p.canonicalTags ?? [])
@@ -256,15 +364,15 @@ export function mergeDiscoveryLeaves(
       .slice(0, 6);
 
     const parentName =
-      categories.find((c) => c.kind === 'parent' && c.id === p.parentId)?.name ?? p.parentId;
+      categories.find((c) => c.kind === 'parent' && c.id === resolvedParentId)?.name ?? resolvedParentId;
 
     const leaf: AiCategory = {
       id,
-      name: p.name.trim().slice(0, 80),
+      name: cleanName.slice(0, 80),
       kind: 'leaf',
       status: 'ai_proposed',
       assignable: true,
-      parentId: p.parentId,
+      parentId: resolvedParentId,
       parentName,
       description: (p.description || '').trim().slice(0, 300),
       source: 'discovered',
@@ -425,10 +533,19 @@ export async function callDiscoveryBatch(
 }
 
 export const DISCOVER_CATALOG_RULES = [
-  'Parents are broad domains (e.g. Sports, News, Gaming). Leaves are atomic topics under one parent.',
-  'Add newParents when a cluster of items does not fit ANY existing parent — not when only a leaf is missing.',
-  'Each newParents entry needs a unique id slug; newLeaves under it must use that parentId.',
-  'Each existing leaf includes path and pathIds. itemResults must use leaf id from catalog, never a parent id.',
+  'Use the EXACT parentId strings listed in "Existing taxonomy" above — never invent a parentId ' +
+    'unless you also define that parent in newParents[].',
+  'Only add newParents[] when the batch contains a cluster that belongs to a TOP-LEVEL DOMAIN ' +
+    'with NO close match in the existing taxonomy. Deep learning, NLP, data science, statistics, ' +
+    'computer vision, reinforcement learning, cloud infra, DevOps, databases, and ML frameworks ' +
+    'all fit under existing parents — do NOT create new parents for sub-specialisations.',
+  'Prefer adding a new leaf under an existing parent over creating a new parent. Ask: ' +
+    '"Does this content broadly fit any existing parent listed above?" If yes, add a leaf there.',
+  'Each new leaf must be atomic (2–5 words), genuinely distinct from every existing leaf name, ' +
+    'and placed under the single most specific matching existing parent.',
+  'Require at least 2 items in the batch to justify a new leaf. Do not create leaves for singletons.',
+  'Each existing leaf includes its name under the parent. itemResults must use an exact leaf id ' +
+    'from the catalog — never a parent id.',
   'Reuse *-general leaves for in-domain items when no specific leaf fits; do not add duplicate General/Other leaves.',
   'NEVER skip or omit items solely because they are adult/erotic/pornographic — propose or assign under health-lifestyle or a fitting parent.',
   'Explicit adult video/tube → adult-erotic-content or new parent if needed. Sexuality wellness → sexuality-wellness-education.',

@@ -27,10 +27,21 @@ export function isFairGameForCategorization(input: {
   if (st === 'classified_general' || st === 'pending_discover') return true;
   if (st === 'pending_classify' || st === 'pending_reclassify') return true;
 
+  // Specific topic with a real primary link — done unless force reclassify.
   if (primaryId && !isGeneralLeafId(primaryId)) return false;
-  if (st === 'classified') return false;
+
+  // Orphan signal: classified but no primary link — allow reclassify.
+  if (st === 'classified') return true;
 
   return true;
+}
+
+/** Whether item has a specific (non-general) primary category assignment. */
+export function hasSpecificPrimaryTopic(
+  primaryCategoryId: string | null | undefined,
+  _classifyState?: ClassifyState
+): boolean {
+  return Boolean(primaryCategoryId && !isGeneralLeafId(primaryCategoryId));
 }
 
 /** Whether this item should enter the next classify batch. */
@@ -57,12 +68,4 @@ export function itemNeedsClassify(
     forceReclassify,
     retryManualReview,
   });
-}
-
-export function hasSpecificPrimaryTopic(
-  primaryCategoryId: string | null | undefined,
-  classifyState?: ClassifyState
-): boolean {
-  if (primaryCategoryId && !isGeneralLeafId(primaryCategoryId)) return true;
-  return classifyState === 'classified';
 }

@@ -85,6 +85,24 @@ export function discoverSamplePriority(stuckKind?: DiscoverStuckKind): number {
   return 4;
 }
 
+/** True when classify finished but the bookmark still has no primary category link. */
+export function itemNeedsDiscoverGapFill(input: {
+  eligible: boolean;
+  classifyState?: ClassifyState;
+  primaryCategoryId?: string | null;
+}): boolean {
+  if (!input.eligible) return false;
+  if (input.classifyState === 'ineligible' || input.classifyState === 'skipped') return false;
+  if (input.primaryCategoryId) return false;
+  return (
+    input.classifyState === 'pending_discover' ||
+    input.classifyState === 'pending_classify' ||
+    input.classifyState === 'pending_reclassify' ||
+    input.classifyState === 'manual_review' ||
+    input.classifyState === 'classified'
+  );
+}
+
 export function isDiscoverFairGame(input: {
   eligible: boolean;
   classifyState?: ClassifyState;

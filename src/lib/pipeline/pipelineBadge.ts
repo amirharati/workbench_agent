@@ -1,8 +1,9 @@
 import type { StatusBadgeVariant } from '../../components/StatusBadge';
 import { resolveEnrichmentFailureLabel } from '../enrichment/failureLabels';
 import type { ItemPipelineContext } from './itemPipelineContext';
+import { resolvePipelineStage } from './pipelineStage';
 
-export type PipelineBadgeKind = 'not_processed' | 'ready' | 'needs_review' | 'failed';
+export type PipelineBadgeKind = 'not_processed' | 'ready' | 'needs_review' | 'failed' | 'partial';
 
 export interface PipelineBadge {
   kind: PipelineBadgeKind;
@@ -18,7 +19,7 @@ export function shouldShowListPipelineBadge(
   badge: PipelineBadge | null | undefined
 ): badge is PipelineBadge {
   if (!badge) return false;
-  return badge.kind === 'failed' || badge.kind === 'needs_review';
+  return badge.kind === 'failed' || badge.kind === 'needs_review' || badge.kind === 'partial';
 }
 
 export function resolvePipelineBadge(ctx: ItemPipelineContext | null | undefined): PipelineBadge {
@@ -50,26 +51,30 @@ export function resolvePipelineBadge(ctx: ItemPipelineContext | null | undefined
     return { kind: 'needs_review', variant: 'warning', label: 'AI categories' };
   }
 
-  const aiOk = enrichment?.aiStatus === 'ok';
-  const embedOk = signal?.signalStatus === 'ok';
   if (
     classifyState === 'pending_classify' ||
     classifyState === 'pending_reclassify' ||
     classifyState === 'pending_discover' ||
-    (aiOk && !ctx.primaryCategoryId && classifyState !== 'classified_general')
+    // Orphan: signal says classified but no link exists yet — re-queue on next inspect
+    ((classifyState === 'classified' || classifyState === 'classified_general') &&
+      !hasSuggestedLinks &&
+      !ctx.primaryCategoryId)
   ) {
-    return { kind: 'not_processed', variant: 'info', label: 'Pending classify' };
+    return { kind: 'partial', variant: 'info', label: 'Pending classify' };
   }
 
-  const classified =
-    classifyState === 'classified' ||
-    (ctx.primaryCategoryId != null && classifyState !== 'classified_general');
+  const stage = resolvePipelineStage(ctx);
 
-  if (aiOk && (classified || embedOk)) {
-    return { kind: 'ready', variant: 'success', label: 'Ready' };
-  }
-  if (aiOk) {
+  if (stage.level === 'complete') {
     return { kind: 'ready', variant: 'success', label: 'Enriched' };
+  }
+
+  if (stage.level === 'summarized') {
+    return { kind: 'partial', variant: 'info', label: stage.label };
+  }
+
+  if (stage.level === 'fetched') {
+    return { kind: 'partial', variant: 'info', label: 'Fetched' };
   }
 
   if (!ctx.eligible || !enrichment || enrichment.status === 'none') {

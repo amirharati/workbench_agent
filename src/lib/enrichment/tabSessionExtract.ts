@@ -1,7 +1,14 @@
 import { normalizeBookmarkUrl } from '../db';
-import { needsLiveTabHref } from '../tabUrlCapture';
+import { needsLiveTabHref, resolveTabBookmarkUrl } from '../tabUrlCapture';
 import type { EnrichmentErrorCode } from './types';
-import { canonicalizeXStatusUrl, isFileUrl, isRedditHost, prefersBrowserTabFetch } from './urlPolicy';
+import { ENRICHMENT_DEFAULTS } from './types';
+import {
+  canonicalizeXStatusUrl,
+  isFileUrl,
+  isRedditHost,
+  prefersBrowserTabFetch,
+  prefersBrowserTabFirst,
+} from './urlPolicy';
 import {
   resolveEnrichmentFailureLabel,
   type FailureCategory,
@@ -10,6 +17,43 @@ import type { PipelineBadgeKind } from '../pipeline/pipelineBadge';
 
 const EPHEMERAL_TAB_LOAD_MS = 45_000;
 const EPHEMERAL_POST_LOAD_MS = 2_000;
+
+/** Serialize ephemeral background tabs — avoids Chrome load races under batch enrich. */
+class EphemeralTabSemaphore {
+  private active = 0;
+  private readonly queue: Array<() => void> = [];
+
+  constructor(private readonly max: number) {}
+
+  async acquire(): Promise<() => void> {
+    if (this.active < this.max) {
+      this.active++;
+      return () => this.release();
+    }
+    await new Promise<void>((resolve) => this.queue.push(resolve));
+    this.active++;
+    return () => this.release();
+  }
+
+  private release(): void {
+    this.active = Math.max(0, this.active - 1);
+    const next = this.queue.shift();
+    if (next) next();
+  }
+}
+
+const ephemeralTabSemaphore = new EphemeralTabSemaphore(
+  ENRICHMENT_DEFAULTS.ephemeralMaxConcurrent
+);
+
+export async function withEphemeralTabSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const release = await ephemeralTabSemaphore.acquire();
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
 
 export type TabExtractResult = {
   ok: boolean;
@@ -66,6 +110,49 @@ function redditPathKey(url: string): string | null {
   }
 }
 
+/** Stable id for Google Docs/Sheets/Drive and mail URLs — avoids matching the wrong open tab. */
+function googleWorkspaceResourceKey(url: string): string | null {
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+
+    if (host === 'docs.google.com') {
+      const doc = u.pathname.match(/\/document\/d\/([a-zA-Z0-9_-]+)/);
+      if (doc) return `gdoc:${doc[1]}`;
+      const sheet = u.pathname.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+      if (sheet) return `gsheet:${sheet[1]}`;
+      const slides = u.pathname.match(/\/presentation\/d\/([a-zA-Z0-9_-]+)/);
+      if (slides) return `gslides:${slides[1]}`;
+      return `gdocs-path:${u.pathname.replace(/\/+$/, '')}`;
+    }
+
+    if (host === 'drive.google.com') {
+      const file = u.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      if (file) return `gdrive:${file[1]}`;
+      const folder = u.pathname.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+      if (folder) return `gfolder:${folder[1]}`;
+      return `gdrive-path:${u.pathname.replace(/\/+$/, '')}`;
+    }
+
+    if (/^mail\.google\.com$/i.test(host) || /outlook\.(live|office)\.com$/i.test(host)) {
+      return `mail:${normalizeBookmarkUrl(u.href)}`;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function sameAuthWorkspaceHost(tabUrl: string, bookmarkUrl: string): boolean {
+  try {
+    const tabHost = new URL(tabUrl).hostname.replace(/^www\./, '').toLowerCase();
+    const bookmarkHost = new URL(bookmarkUrl).hostname.replace(/^www\./, '').toLowerCase();
+    return tabHost === bookmarkHost;
+  } catch {
+    return false;
+  }
+}
+
 function hostsLooselyMatchForTabSession(tabUrl: string, bookmarkUrl: string): boolean {
   try {
     const tab = new URL(tabUrl.trim());
@@ -84,7 +171,10 @@ function hostsLooselyMatchForTabSession(tabUrl: string, bookmarkUrl: string): bo
     if (tabHost !== bookmarkHost) return false;
 
     if (needsLiveTabHref(bookmarkUrl) || needsLiveTabHref(tabUrl)) {
-      return true;
+      const tabKey = googleWorkspaceResourceKey(tabUrl);
+      const bookmarkKey = googleWorkspaceResourceKey(bookmarkUrl);
+      if (tabKey && bookmarkKey) return tabKey === bookmarkKey;
+      return normalizeBookmarkUrl(tabUrl) === normalizeBookmarkUrl(bookmarkUrl);
     }
 
     return false;
@@ -113,6 +203,25 @@ function tabMatchesUrl(tab: chrome.tabs.Tab, url: string): boolean {
   return Boolean(tab.url && isScriptableUrl(tab.url) && urlsMatchForTabSession(tab.url, url));
 }
 
+async function tabMatchesUrlLive(tab: chrome.tabs.Tab, url: string): Promise<boolean> {
+  if (!tab.url || !isScriptableUrl(tab.url)) return false;
+  if (tabMatchesUrl(tab, url)) return true;
+  if (!needsLiveTabHref(url) || tab.id === undefined) return false;
+  if (!sameAuthWorkspaceHost(tab.url, url)) return false;
+  const live = await resolveTabBookmarkUrl(tab.id, url);
+  return urlsMatchForTabSession(live, url);
+}
+
+async function pickMatchingTab(
+  candidates: chrome.tabs.Tab[],
+  url: string
+): Promise<chrome.tabs.Tab | null> {
+  for (const tab of candidates) {
+    if (await tabMatchesUrlLive(tab, url)) return tab;
+  }
+  return null;
+}
+
 /** Prefer active tab in the focused window, then any open tab with the same URL. */
 export async function findTabForUrl(
   url: string,
@@ -122,18 +231,18 @@ export async function findTabForUrl(
 
   if (mode === 'active') {
     const [focused] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (focused && tabMatchesUrl(focused, url)) return focused;
+    if (focused && (await tabMatchesUrlLive(focused, url))) return focused;
 
     const [current] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (current && tabMatchesUrl(current, url)) return current;
+    if (current && (await tabMatchesUrlLive(current, url))) return current;
     return null;
   }
 
   const [focusedActive] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (focusedActive && tabMatchesUrl(focusedActive, url)) return focusedActive;
+  if (focusedActive && (await tabMatchesUrlLive(focusedActive, url))) return focusedActive;
 
   const tabs = await chrome.tabs.query({});
-  return tabs.find((tab) => tabMatchesUrl(tab, url)) ?? null;
+  return pickMatchingTab(tabs, url);
 }
 
 export async function extractFromTab(tabId: number): Promise<TabExtractResult> {
@@ -225,8 +334,10 @@ export async function fetchFromOpenTab(
   if (typeof tabId === 'number') {
     try {
       const tab = await chrome.tabs.get(tabId);
-      if (tab?.url && tabMatchesUrl(tab, url)) {
-        return fetchFromTabId(tabId);
+      if (tab?.url) {
+        if ((await tabMatchesUrlLive(tab, url)) || sameAuthWorkspaceHost(tab.url, url)) {
+          return fetchFromTabId(tabId);
+        }
       }
     } catch {
       /* fall through to lookup */
@@ -303,6 +414,13 @@ export async function openEphemeralTabAndExtract(
   url: string,
   signal?: AbortSignal
 ): Promise<TabExtractResult & { fetchSourceId: 'tab-session' }> {
+  return withEphemeralTabSlot(() => openEphemeralTabAndExtractInner(url, signal));
+}
+
+async function openEphemeralTabAndExtractInner(
+  url: string,
+  signal?: AbortSignal
+): Promise<TabExtractResult & { fetchSourceId: 'tab-session' }> {
   const fail = (
     error: string,
     errorCode: EnrichmentErrorCode = 'provider_error'
@@ -329,10 +447,10 @@ export async function openEphemeralTabAndExtract(
     if (tabId === undefined) return fail('Could not open a background browser tab');
 
     await waitForTabComplete(tabId, signal);
-    await delay(prefersBrowserTabFetch(target) ? EPHEMERAL_POST_LOAD_MS : 800, signal);
+    await delay(prefersBrowserTabFirst(target) ? EPHEMERAL_POST_LOAD_MS : 800, signal);
 
     let extracted = await extractFromTab(tabId);
-    if (!extracted.ok && prefersBrowserTabFetch(target) && extracted.errorCode === 'parse_empty') {
+    if (!extracted.ok && prefersBrowserTabFirst(target) && extracted.errorCode === 'parse_empty') {
       await delay(EPHEMERAL_POST_LOAD_MS, signal);
       extracted = await extractFromTab(tabId);
     }
@@ -357,7 +475,7 @@ export async function openEphemeralTabAndExtract(
 
 /** True when we should open a background tab if no existing tab matches. */
 export function shouldUseEphemeralTab(url: string): boolean {
-  return prefersBrowserTabFetch(url) || needsLiveTabHref(url);
+  return prefersBrowserTabFirst(url);
 }
 
 /** Resolve an open browser tab for tab-session fetch (active first, then any). */
@@ -368,7 +486,7 @@ export async function resolveTabSessionForUrl(
   if (typeof explicitTabId === 'number') {
     try {
       const tab = await chrome.tabs.get(explicitTabId);
-      if (tab?.url && tabMatchesUrl(tab, url)) {
+      if (tab?.url && ((await tabMatchesUrlLive(tab, url)) || sameAuthWorkspaceHost(tab.url, url))) {
         return { preferTabSession: true, tabId: explicitTabId };
       }
     } catch {

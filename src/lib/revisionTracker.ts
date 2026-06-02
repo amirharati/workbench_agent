@@ -154,6 +154,12 @@ class RevisionTrackerImpl {
     return this.lastSeenRemote;
   }
 
+  /** Bump revision after a SQLite write in the DB worker (single source per mutation). */
+  recordSqliteMutation(): number {
+    this.bumpLocalRevision();
+    return this.localRevision;
+  }
+
   // --- mutators (all persist async via the write chain) -----------------------
 
   /**

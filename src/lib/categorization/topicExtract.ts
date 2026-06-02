@@ -46,9 +46,10 @@ export function buildTopicExtractPrompt(
     'NEVER skip or reject links because they are adult/erotic/porn — assign adult-erotic-content or sexuality-wellness-education.',
     'Singularity/containers/HPC runtime → infra-hosting-general unless a specific infra leaf fits.',
     'Indie hackers / business ideas → product-gtm-general or propose one specific GTM leaf.',
-    'proposed: parentId one of quant-finance, machine-learning, ai-productivity, software-dev, product-gtm, personal-finance, health-lifestyle, infra-hosting, hardware.',
     'Do not invent topics from URL alone; use summary substance.',
-    'If no catalog leaf fits, return empty topicIds and a proposed leaf — do NOT skip valid articles, tutorials, or product pages.',
+    'Use judgment: if the item clearly belongs to a parent domain (e.g. ML, software, finance), pick the best existing leaf — specific if it fits, otherwise the parent\'s general leaf. Do NOT force-fit unrelated categories.',
+    'Leave topicIds empty (no proposed) only when the content genuinely does not fit any existing parent domain — it will go to discover.',
+    'Only propose a new leaf when a clear parent domain exists but has no leaf that even loosely covers the content.',
     'Use skip:true ONLY for empty/login/placeholder/captcha pages with no substantive content.',
     'Return one result object per item in items[] — same itemId, no omissions.',
   ];
