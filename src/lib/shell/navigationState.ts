@@ -12,12 +12,14 @@ export type PersistedDashboardView =
   | 'notes'
   | 'collections'
   | 'workspaces'
-  | 'help';
+  | 'help'
+  | 'trash';
 
 export type PipelineHubPersistedState = {
   hubLane: 'enrichment' | 'categories';
   categoriesSubTab: 'queue' | 'taxonomy';
   enrichmentStatusFilter: string;
+  enrichmentOutcomeLabel: string;
   enrichmentSearch: string;
   enrichmentTrashSuggestionsOnly: boolean;
   enrichmentFailureCategory: string;
@@ -39,6 +41,7 @@ export const PIPELINE_HUB_STATE_DEFAULT: PipelineHubPersistedState = {
   hubLane: 'enrichment',
   categoriesSubTab: 'queue',
   enrichmentStatusFilter: 'all',
+  enrichmentOutcomeLabel: 'all',
   enrichmentSearch: '',
   enrichmentTrashSuggestionsOnly: false,
   enrichmentFailureCategory: 'all',
@@ -67,6 +70,7 @@ const VALID_VIEWS = new Set<string>([
   'collections',
   'workspaces',
   'help',
+  'trash',
 ]);
 
 function normalizeView(raw: unknown): PersistedDashboardView {
@@ -82,6 +86,8 @@ function normalizePipelineHub(raw: Partial<PipelineHubPersistedState> | undefine
     categoriesSubTab: raw?.categoriesSubTab === 'taxonomy' ? 'taxonomy' : 'queue',
     enrichmentStatusFilter:
       typeof raw?.enrichmentStatusFilter === 'string' ? raw.enrichmentStatusFilter : base.enrichmentStatusFilter,
+    enrichmentOutcomeLabel:
+      typeof raw?.enrichmentOutcomeLabel === 'string' ? raw.enrichmentOutcomeLabel : 'all',
     enrichmentSearch: typeof raw?.enrichmentSearch === 'string' ? raw.enrichmentSearch : '',
     enrichmentTrashSuggestionsOnly: !!raw?.enrichmentTrashSuggestionsOnly,
     enrichmentFailureCategory:

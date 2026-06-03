@@ -27,11 +27,12 @@ import { emptyTopicClassifySummary } from '../../lib/categorization/classifyPoli
 import {
   buildClassifyReportRows,
   buildClassifyOutcomeReportRows,
-  buildPipelineReportRows,
+  buildEnrichOutcomeReportRows,
   formatClassifyBatchSummary,
-  formatPipelineReportSummary,
-  pipelineReportStats,
+  formatBatchDigestDoneSummary,
+  formatPipelineReportSummaryFromRows,
   resolveBatchReportAction,
+  resolveReportRowsSummaryTone,
   type PipelineReportRow,
 } from '../../lib/pipeline/pipelineBatchReport';
 import {
@@ -46,6 +47,7 @@ import {
 import type { TopicClassifySummary } from '../../lib/categorization/types';
 import { PipelineBatchReportPanel } from './PipelineBatchReportPanel';
 import { QueueOutcomePanel } from './QueueOutcomePanel';
+import { resolvePipelineSummaryTone } from '../../lib/pipeline/pipelineDictionary';
 
 function formatClassifyRunSummary(s: TopicClassifySummary, itemCount?: number): string {
   const parts = [
@@ -85,6 +87,8 @@ type ModalState =
       summary: string;
       tone: SummaryTone;
       reportRows?: PipelineReportRow[];
+      /** How many bookmarks the user selected for this batch (report list scope). */
+      reportScopeCount?: number;
       queueOutcome?: HubQueueOutcome;
       analysisExport?: PipelineRunExport;
       analysisSavedTo?: string;
@@ -110,6 +114,10 @@ export interface RunBatchWithProgressOptions {
     skipAi?: boolean;
     /** Re-run classify LLM even when text hash unchanged (Re-digest). */
     forceReclassify?: boolean;
+    /** Skip slow taxonomy discover passes (recommended for small Hub selections). */
+    skipDiscover?: boolean;
+    /** Also classify the global pending_classify backlog, not only itemIds. */
+    drainPendingClassifyQueue?: boolean;
   }
 
 export interface RunSingleWithProgressOptions {
@@ -268,6 +276,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
 
       const startedAt = Date.now();
       try {
+        const scopedSelection = itemIds.length > 0 && itemIds.length <= 25;
         const result = await runBatchDigest(itemIds, {
           enrich: options?.enrich,
           classify: options?.classify,
@@ -279,6 +288,9 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           skipAi: options?.skipAi,
           forceReclassify: options?.forceReclassify,
           collectItemResults: options?.collectItemResults,
+          skipDiscover:
+            options?.skipDiscover ?? (scopedSelection ? true : undefined),
+          drainPendingClassifyQueue: options?.drainPendingClassifyQueue,
           signal: controller?.signal,
           onProgress: (p) => applyPipelineProgress(setModal, p),
         });
@@ -286,35 +298,42 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         const cancelled = result.enrichCancelled || controller?.signal.aborted || result.classifyError === 'classification cancelled';
         const itemLabels = options?.itemLabels ?? {};
         const batchAction = resolveBatchReportAction(options);
+        const reportIds =
+          itemIds.length > 0
+            ? itemIds
+            : (result.itemEnrichResults?.map((r) => r.itemId) ?? []);
         let reportRows: PipelineReportRow[] | undefined;
-        if (!cancelled) {
-          if (result.itemEnrichResults?.length) {
-            reportRows = buildPipelineReportRows(result.itemEnrichResults, itemLabels, {
+        if (!cancelled && reportIds.length) {
+          const enrichRun = options?.enrich !== false;
+          if (enrichRun || batchAction === 'batch_full' || batchAction === 'full_digest') {
+            reportRows = await buildEnrichOutcomeReportRows(reportIds, itemLabels, {
               action: batchAction,
+              enrichResults: result.itemEnrichResults,
             });
-          } else if (
-            batchAction === 'batch_classify' &&
-            result.classifySummary &&
-            itemIds.length > 0
-          ) {
-            reportRows = buildClassifyReportRows(itemIds, itemLabels, result.classifySummary);
+          } else if (batchAction === 'batch_classify' && result.classifySummary) {
+            reportRows = buildClassifyReportRows(reportIds, itemLabels, result.classifySummary);
           }
         }
         const summary = cancelled
           ? 'Cancelled'
           : reportRows?.length
-            ? formatPipelineReportSummary(pipelineReportStats(reportRows))
+            ? formatBatchDigestDoneSummary({
+                selectedCount: itemIds.length,
+                reportRows,
+                pipelineMessage: result.message,
+                classifySummary: result.classifySummary,
+              })
             : result.message;
-        const tone: SummaryTone =
-          cancelled
-            ? 'info'
-            : result.classifyError || result.failed > 0 || (result.classifySummary?.llmErrors ?? 0) > 0
-              ? 'error'
-              : result.classified > 0 ||
-                  (result.classifySummary?.processed ?? 0) > 0 ||
-                  result.enriched > 0
-                ? 'success'
-                : 'info';
+        const tone: SummaryTone = cancelled
+          ? 'info'
+          : resolvePipelineSummaryTone({
+              enriched: result.enriched,
+              skipped: result.skipped,
+              failed: result.failed,
+              classified: result.classified,
+              classifyError: result.classifyError,
+              classifySummary: result.classifySummary,
+            });
 
         setModal({
           open: true,
@@ -323,6 +342,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           summary,
           tone,
           reportRows,
+          reportScopeCount: itemIds.length > 0 ? itemIds.length : undefined,
         });
         await onRefresh?.();
 
@@ -419,17 +439,17 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
 
         const reportAction =
           options?.skipAi || options?.skipClassify ? 'fetch' : 'full_digest';
-        const reportRows = buildPipelineReportRows([result.enrich], {
-          [itemId]: options?.itemLabel ?? itemId,
-        }, { action: reportAction });
-        const stats = pipelineReportStats(reportRows);
-        const tone: SummaryTone =
-          result.enrich.status === 'failed' ? 'error' : 'success';
+        const reportRows = await buildEnrichOutcomeReportRows(
+          [itemId],
+          { [itemId]: options?.itemLabel ?? itemId },
+          { action: reportAction, enrichResults: [result.enrich] }
+        );
+        const tone: SummaryTone = resolveReportRowsSummaryTone(reportRows);
         setModal({
           open: true,
           phase: 'done',
           title: `${title} — complete`,
-          summary: result.message || formatPipelineReportSummary(stats),
+          summary: formatPipelineReportSummaryFromRows(reportRows) || result.message,
           tone,
           reportRows,
         });
@@ -475,16 +495,17 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
 
       try {
         const result = await reextractAI(itemId, { force: options?.force });
-        const reportRows = buildPipelineReportRows([result], {
-          [itemId]: options?.itemLabel ?? itemId,
-        }, { action: 'ai_extract' });
-        const stats = pipelineReportStats(reportRows);
-        const tone: SummaryTone = result.status === 'failed' ? 'error' : 'success';
+        const reportRows = await buildEnrichOutcomeReportRows(
+          [itemId],
+          { [itemId]: options?.itemLabel ?? itemId },
+          { action: 'ai_extract', enrichResults: [result] }
+        );
+        const tone: SummaryTone = resolveReportRowsSummaryTone(reportRows);
         setModal({
           open: true,
           phase: 'done',
           title: `${title} — complete`,
-          summary: formatPipelineReportSummary(stats),
+          summary: formatPipelineReportSummaryFromRows(reportRows),
           tone,
           reportRows,
         });
@@ -550,14 +571,16 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           results.push(await reextractAI(itemId, { force: options?.force }));
         }
 
-        const reportRows = buildPipelineReportRows(results, itemLabels, { action: 'ai_extract' });
-        const stats = pipelineReportStats(reportRows);
-        const tone: SummaryTone = stats.failed > 0 ? 'error' : 'success';
+        const reportRows = await buildEnrichOutcomeReportRows(uniqueIds, itemLabels, {
+          action: 'ai_extract',
+          enrichResults: results,
+        });
+        const tone: SummaryTone = resolveReportRowsSummaryTone(reportRows);
         setModal({
           open: true,
           phase: 'done',
           title: `${title} — complete`,
-          summary: formatPipelineReportSummary(stats),
+          summary: formatPipelineReportSummaryFromRows(reportRows),
           tone,
           reportRows,
         });
@@ -1189,8 +1212,18 @@ function PipelineProgressModal({
                   }}
                 >
                   This batch — per bookmark
+                  {modal.reportScopeCount != null
+                    ? ` (${modal.reportScopeCount} selected)`
+                    : ''}
                 </div>
-                <PipelineBatchReportPanel rows={modal.reportRows} />
+                <PipelineBatchReportPanel
+                  rows={modal.reportRows}
+                  scopeLabel={
+                    modal.reportScopeCount != null
+                      ? `Outcomes for your ${modal.reportScopeCount} selected bookmark${modal.reportScopeCount === 1 ? '' : 's'} (same labels as the hub table).`
+                      : undefined
+                  }
+                />
               </div>
             ) : !modal.queueOutcome ? (
               <p

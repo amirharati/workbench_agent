@@ -23,8 +23,8 @@ import {
 import { getActiveItems, moveItemToTrash, formatRestoreSummary } from './lib/itemQuickAccess';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
+import { PipelineProgressProvider } from './components/dashboard/PipelineProgressProvider';
 import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from './lib/tabUrlCapture';
-import { resolveTabSessionForUrl } from './lib/enrichment/tabSessionExtract';
 import {
   runSingleLinkDigest,
   isAnyDigestInFlight,
@@ -370,10 +370,22 @@ function App() {
     } catch {
       bc = null;
     }
-    const unsubDb = subscribeToDataChanges(() => {
+    let loadDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsubDb = subscribeToDataChanges((event) => {
+      const delayMs =
+        event.reason === 'item.trash.bulk' ? 500 : event.reason === 'item.update' ? 200 : 0;
+      if (delayMs > 0) {
+        if (loadDebounceTimer) clearTimeout(loadDebounceTimer);
+        loadDebounceTimer = setTimeout(() => {
+          loadDebounceTimer = null;
+          void loadDataRef.current();
+        }, delayMs);
+        return;
+      }
       void loadDataRef.current();
     });
     return () => {
+      if (loadDebounceTimer) clearTimeout(loadDebounceTimer);
       bc?.close();
       unsubDb();
     };
@@ -1027,50 +1039,37 @@ function App() {
           </div>
         ) : null}
         {!showBackupOnboarding && backupFolderReady ? (
-          <SidePanelView
-            projects={projects}
-            collections={collections}
-            items={items}
-            onSaveTab={handleSaveCurrentTab}
-            onCreateItem={handleCreateItem}
-            onUpdateItem={async (id, data) => {
-              await handleUpdateBookmark(
-                id,
-                {
-                  title: data.title,
-                  url: data.url || '',
-                  notes: data.notes,
-                  collectionIds: data.collectionIds,
-                },
-                data.notesPlacementCollectionId
-                  ? { notesPlacementCollectionId: data.notesPlacementCollectionId }
-                  : undefined
-              );
-            }}
-            onDeleteItem={handleDeleteBookmark}
-            onCreateProject={handleCreateProject}
-            onCreateCollection={handleCreateCollection}
-            onOpenFullPage={handleOpenFullPage}
-            onSetAsBrowserHome={handleSetAsBrowserHome}
-            status={status}
-            digestItemId={digestItemId}
-            digestStatus={digestStatus}
-            onRunDigest={async (itemId, opts) => {
-              const item = items.find((i) => i.id === itemId);
-              const tabSession = item?.url
-                ? await resolveTabSessionForUrl(item.url, opts?.tabId)
-                : { preferTabSession: false as const };
-              const r = await startSingleLinkDigest(itemId, {
-                ...opts,
-                preferTabSession: opts?.preferTabSession ?? tabSession.preferTabSession,
-                tabId: opts?.tabId ?? tabSession.tabId,
-              });
-              return {
-                message: r.message,
-                failed: r.enrich.status === 'failed',
-              };
-            }}
-          />
+          <PipelineProgressProvider onRefresh={loadData}>
+            <SidePanelView
+              projects={projects}
+              collections={collections}
+              items={items}
+              onSaveTab={handleSaveCurrentTab}
+              onCreateItem={handleCreateItem}
+              onUpdateItem={async (id, data) => {
+                await handleUpdateBookmark(
+                  id,
+                  {
+                    title: data.title,
+                    url: data.url || '',
+                    notes: data.notes,
+                    collectionIds: data.collectionIds,
+                  },
+                  data.notesPlacementCollectionId
+                    ? { notesPlacementCollectionId: data.notesPlacementCollectionId }
+                    : undefined
+                );
+              }}
+              onDeleteItem={handleDeleteBookmark}
+              onCreateProject={handleCreateProject}
+              onCreateCollection={handleCreateCollection}
+              onOpenFullPage={handleOpenFullPage}
+              onSetAsBrowserHome={handleSetAsBrowserHome}
+              status={status}
+              digestItemId={digestItemId}
+              digestStatus={digestStatus}
+            />
+          </PipelineProgressProvider>
         ) : null}
       </div>
     );

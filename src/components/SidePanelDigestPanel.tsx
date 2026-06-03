@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useItemPipelineContext } from '../hooks/useItemPipelineContext';
-import { resolvePipelineBadge, type PipelineBadge } from '../lib/pipeline';
+import { resolvePipelineBadge } from '../lib/pipeline';
 import {
   formatPipelineStageHint,
   hasPartialPipelineData,
 } from '../lib/pipeline/itemPipelineContext';
+import { ItemDigestQuickActions } from './dashboard/ItemDigestQuickActions';
 import { EnrichmentContent, ItemPipelineBadge } from './dashboard/PipelineDisplayBlocks';
 import {
   CategoryChip,
@@ -18,109 +19,12 @@ interface SidePanelDigestPanelProps {
   itemId: string;
   statusLabel?: string;
   onOpenInApp?: () => void;
-  onRunDigest?: (
-    itemId: string,
-    opts?: { forceEnrich?: boolean; preferTabSession?: boolean; tabId?: number }
-  ) => Promise<{ message: string; failed: boolean }>;
-}
-
-function SidePanelDigestActions({
-  itemId,
-  badge,
-  onDone,
-  onFeedback,
-  onRunDigest,
-}: {
-  itemId: string;
-  badge: PipelineBadge | null;
-  onDone: () => void;
-  onFeedback: CategoryReviewFeedback;
-  onRunDigest?: (
-    itemId: string,
-    opts?: { forceEnrich?: boolean; preferTabSession?: boolean; tabId?: number }
-  ) => Promise<{ message: string; failed: boolean }>;
-}) {
-  const [running, setRunning] = useState(false);
-
-  const label =
-    badge?.kind === 'failed'
-      ? 'Retry digest'
-      : badge?.label === 'Pending classify'
-        ? 'Classify now'
-        : badge?.kind === 'ready'
-          ? 'Refresh'
-          : badge?.kind === 'not_processed'
-            ? 'Run digest'
-            : 'Refresh digest';
-
-  const run = async (forceEnrich?: boolean) => {
-    if (!onRunDigest) return;
-    setRunning(true);
-    try {
-      const result = await onRunDigest(itemId, {
-        forceEnrich: forceEnrich ?? badge?.kind === 'failed',
-      });
-      onFeedback(result.message, result.failed ? 'error' : 'success');
-      onDone();
-    } catch (e) {
-      onFeedback(e instanceof Error ? e.message : 'Digest failed', 'error');
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flexShrink: 0 }}>
-      <button
-        type="button"
-        onClick={() => void run()}
-        disabled={running}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '4px 10px',
-          borderRadius: 'var(--radius-sm)',
-          border: '1px solid var(--border)',
-          background: 'var(--bg-glass)',
-          color: 'var(--text)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 600,
-          cursor: running ? 'wait' : 'pointer',
-          opacity: running ? 0.7 : 1,
-        }}
-      >
-        <RefreshCw size={12} style={running ? { animation: 'spin 1s linear infinite' } : undefined} />
-        {running ? 'Working…' : label}
-      </button>
-      {badge?.kind === 'ready' ? (
-        <button
-          type="button"
-          onClick={() => void run(true)}
-          disabled={running}
-          style={{
-            padding: '4px 10px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border)',
-            background: 'transparent',
-            color: 'var(--text-muted)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 600,
-            cursor: running ? 'wait' : 'pointer',
-          }}
-        >
-          Re-fetch page
-        </button>
-      ) : null}
-    </div>
-  );
 }
 
 export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
   itemId,
   statusLabel,
   onOpenInApp,
-  onRunDigest,
 }) => {
   const { context, loading, reload } = useItemPipelineContext(itemId);
   const [summaryOpen, setSummaryOpen] = useState(true);
@@ -182,12 +86,13 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
         {badge ? <ItemPipelineBadge badge={badge} /> : null}
       </div>
 
-      <SidePanelDigestActions
+      <ItemDigestQuickActions
         itemId={itemId}
+        itemUrl={context?.item.url}
+        context={context}
         badge={badge}
+        enrichment={context?.enrichment}
         onDone={handleDigestDone}
-        onFeedback={onFeedback}
-        onRunDigest={onRunDigest}
       />
 
       {statusLabel ? (

@@ -17,7 +17,7 @@ export interface ImportReportRow {
   itemId: string;
   url: string;
   title: string;
-  outcome: 'created' | 'merged';
+  outcome: 'created' | 'merged' | 'restored';
   pipelineStatus: ImportReportPipelineStatus;
   detail: string;
   categoryName?: string;

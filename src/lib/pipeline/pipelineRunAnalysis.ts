@@ -10,7 +10,7 @@ import type { EnrichmentResult, ItemEnrichment } from '../enrichment/types';
 import type { BatchDigestResult } from './batchDigest';
 import {
   buildClassifyOutcomeReportRows,
-  buildPipelineReportRows,
+  resolveEnrichReportOutcome,
   type PipelineReportAction,
   type PipelineReportRow,
 } from './pipelineBatchReport';
@@ -379,12 +379,14 @@ export async function buildPipelineRunExport(input: {
       run = { outcome: report.outcome, detail: report.detail };
     } else if (enrichResultByItem.get(itemId)) {
       const runFromEnrich = enrichResultByItem.get(itemId)!;
-      const pseudoRows = buildPipelineReportRows([runFromEnrich], {
-        [itemId]: itemTitle(item),
-      }, { action: input.action });
-      if (pseudoRows[0]) {
-        run = { outcome: pseudoRows[0].outcome, detail: pseudoRows[0].detail };
-      }
+      const embedFailed = sig?.signalStatus === 'embed_failed';
+      const { outcome, detail } = resolveEnrichReportOutcome(
+        enrich,
+        Boolean(embedFailed),
+        input.action ?? 'full_digest',
+        runFromEnrich
+      );
+      run = { outcome, detail };
     }
 
     const classify: PipelineRunClassifyRecord | undefined =

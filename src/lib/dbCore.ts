@@ -841,7 +841,7 @@ export interface BulkImportAffectedItem {
   itemId: string;
   url: string;
   title: string;
-  outcome: 'created' | 'merged';
+  outcome: 'created' | 'merged' | 'restored';
 }
 
 export interface BulkImportSkippedTrashedItem {
@@ -858,6 +858,8 @@ export interface BulkImportOptions {
 export interface BulkImportResult {
   created: number;
   merged: number;
+  /** Merged rows that were in trash (`deletedAt`) and are active again after import. */
+  restoredFromTrash: number;
   skipped: number;
   skippedPreviouslyTrashed: number;
   skippedTrashedItems: BulkImportSkippedTrashedItem[];
@@ -877,6 +879,7 @@ export const bulkImportBookmarks = async (
   
   let created = 0;
   let merged = 0;
+  let restoredFromTrash = 0;
   let skipped = 0;
   let skippedPreviouslyTrashed = 0;
   const skippedTrashedItems: BulkImportSkippedTrashedItem[] = [];
@@ -938,7 +941,9 @@ export const bulkImportBookmarks = async (
       const incomingNotes = best.notes || best.description;
 
       if (existing) {
-        merged += 1;
+        const wasTrashed = existing.deletedAt != null;
+        if (wasTrashed) restoredFromTrash += 1;
+        else merged += 1;
 
         const placements = { ...(existing.placements || {}) };
         const existingPlacement = placements[targetCollection];
@@ -968,17 +973,21 @@ export const bulkImportBookmarks = async (
           favicon: hasBetterFavicon ? best.favicon : existing.favicon,
           collectionIds: mergedCollectionIds,
           placements,
+          deletedAt: undefined,
           updated_at: now,
         };
 
         store.putItem(updatedItem);
+        if (wasTrashed || store.getTrashEntry(normalizedUrl)) {
+          store.deleteTrashEntry(normalizedUrl);
+        }
         existingByNormalizedUrl.set(normalizedUrl, updatedItem);
         affectedItemIds.push(existing.id);
         affectedItems.push({
           itemId: existing.id,
           url: updatedItem.url,
           title: updatedItem.title || updatedItem.url,
-          outcome: 'merged',
+          outcome: wasTrashed ? 'restored' : 'merged',
         });
         continue;
       }
@@ -1042,6 +1051,7 @@ export const bulkImportBookmarks = async (
   return {
     created,
     merged,
+    restoredFromTrash,
     skipped,
     skippedPreviouslyTrashed,
     skippedTrashedItems,

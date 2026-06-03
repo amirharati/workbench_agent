@@ -131,7 +131,8 @@ export class RemoteIdbCompatStore {
     return next;
   }
 
-  private static readonly BATCH_MUTATE_CHUNK = 80;
+  /** Fewer round-trips for bulk trash / import (payload stays under worker message limits). */
+  private static readonly BATCH_MUTATE_CHUNK = 400;
 
   private applyMutationsToSnapshot(ops: DbMutation[]): void {
     for (const op of ops) {
@@ -181,6 +182,16 @@ export class RemoteIdbCompatStore {
 
   hasWritesInFlight(): boolean {
     return this.writesInFlight > 0;
+  }
+
+  /** Apply many puts/deletes in one (or few chunked) SQLite transactions + update tab cache. */
+  async batchMutate(ops: DbMutation[]): Promise<BatchMutateResult> {
+    if (ops.length === 0) {
+      return { applied: 0, revision: this.revision };
+    }
+    const result = await this.enqueueBatchMutate(ops);
+    this.applyMutationsToSnapshot(ops);
+    return result;
   }
 
   private read<T>(pick: (s: HydrateSnapshot) => T): T {

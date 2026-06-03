@@ -1,5 +1,5 @@
 import React from 'react';
-import { StatusBadge } from '../StatusBadge';
+import { StatusBadge, type StatusBadgeVariant } from '../StatusBadge';
 import {
   shouldShowListPipelineBadge,
   type PipelineBadge,
@@ -8,9 +8,14 @@ import {
 export const ENRICHMENT_EMPTY_MESSAGE =
   'Not enriched yet. Use Run digest in the Inspector, or Process not enriched on Home. Batch tools will move to Settings → Advanced.';
 
+function statusBadgeVariant(badge: PipelineBadge): StatusBadgeVariant {
+  if (badge.kind === 'verified') return 'verified';
+  return badge.variant;
+}
+
 export const ItemPipelineBadge: React.FC<{ badge?: PipelineBadge | null }> = ({ badge }) => {
   if (!badge) return null;
-  return <StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>;
+  return <StatusBadge variant={statusBadgeVariant(badge)}>{badge.label}</StatusBadge>;
 };
 
 /** Badge for list/search rows — hides Ready and Not processed. */

@@ -20,6 +20,7 @@ import { normalizeBinaryPayload } from './binaryPayload';
 import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
 import { collectBackupVerifyWarnings } from './backupVerify';
 import { revisionTracker } from './revisionTracker';
+import type { DbMutation } from './storage/dbMutations';
 import type { ItemEnrichment } from './enrichment/types';
 import type {
   AiCategory,
@@ -827,7 +828,24 @@ export const updateItem = async (
   notifyDataChanged('item.update');
 };
 
+/** One (or few chunked) worker transactions — use for bulk trash, imports, etc. */
+export async function applyBatchMutations(ops: DbMutation[]): Promise<void> {
+  if (!ops.length) return;
+  if (isDbWorkerProcess()) {
+    const store = await getDB();
+    store.withTransaction(() => {
+      for (const op of ops) {
+        if (op.kind === 'put') store.put(op.storeName, op.value);
+        else store.delete(op.storeName, op.key);
+      }
+    });
+    return;
+  }
+  await getRemoteStore().batchMutate(ops);
+}
+
 /** Wait until queued tab→worker writes have been applied in the DB worker. */
+
 export async function commitPendingDbWrites(opts?: {
   /** Force full library reload from worker (import recovery, explicit refresh). */
   hydrate?: boolean;
@@ -946,7 +964,7 @@ export interface BulkImportAffectedItem {
   itemId: string;
   url: string;
   title: string;
-  outcome: 'created' | 'merged';
+  outcome: 'created' | 'merged' | 'restored';
 }
 
 export interface BulkImportSkippedTrashedItem {
@@ -963,6 +981,7 @@ export interface BulkImportOptions {
 export interface BulkImportResult {
   created: number;
   merged: number;
+  restoredFromTrash: number;
   skipped: number;
   skippedPreviouslyTrashed: number;
   skippedTrashedItems: BulkImportSkippedTrashedItem[];
@@ -992,6 +1011,7 @@ export const bulkImportBookmarks = async (
   
   let created = 0;
   let merged = 0;
+  let restoredFromTrash = 0;
   let skipped = 0;
   let skippedPreviouslyTrashed = 0;
   const skippedTrashedItems: BulkImportSkippedTrashedItem[] = [];
@@ -1053,7 +1073,9 @@ export const bulkImportBookmarks = async (
       const incomingNotes = best.notes || best.description;
 
       if (existing) {
-        merged += 1;
+        const wasTrashed = existing.deletedAt != null;
+        if (wasTrashed) restoredFromTrash += 1;
+        else merged += 1;
 
         const placements = { ...(existing.placements || {}) };
         const existingPlacement = placements[targetCollection];
@@ -1083,17 +1105,21 @@ export const bulkImportBookmarks = async (
           favicon: hasBetterFavicon ? best.favicon : existing.favicon,
           collectionIds: mergedCollectionIds,
           placements,
+          deletedAt: undefined,
           updated_at: now,
         };
 
         store.putItem(updatedItem);
+        if (wasTrashed || store.getTrashEntry(normalizedUrl)) {
+          store.deleteTrashEntry(normalizedUrl);
+        }
         existingByNormalizedUrl.set(normalizedUrl, updatedItem);
         affectedItemIds.push(existing.id);
         affectedItems.push({
           itemId: existing.id,
           url: updatedItem.url,
           title: updatedItem.title || updatedItem.url,
-          outcome: 'merged',
+          outcome: wasTrashed ? 'restored' : 'merged',
         });
         continue;
       }
@@ -1157,6 +1183,7 @@ export const bulkImportBookmarks = async (
   return {
     created,
     merged,
+    restoredFromTrash,
     skipped,
     skippedPreviouslyTrashed,
     skippedTrashedItems,

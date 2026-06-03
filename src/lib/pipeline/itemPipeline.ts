@@ -16,8 +16,10 @@ import { commitPendingDbWrites, refreshPipelineCacheFromWorker } from '../db';
 import {
   enrichBatch,
   enrichOne,
+  getEnrichment,
   type EnrichmentResult,
 } from '../enrichment';
+import { isEnrichmentFailure } from '../enrichment/failureLabels';
 import {
   formatEmbedBatchMessage,
   prepBatchPipelineItems,
@@ -30,6 +32,11 @@ import {
   persistPipelineRunExportIfEnabled,
 } from './pipelineRunStore';
 import { isPipelineDebugEnabled } from '../enrichment/pipelineDebug';
+import {
+  classifySkipTotal,
+  formatClassifySkipBreakdown,
+  isPipelineSkipMessage,
+} from './pipelineDictionary';
 
 export const PIPELINE_DEFAULTS = {
   maxEnrich: 50,
@@ -89,6 +96,12 @@ export interface RunItemPipelineOptions {
    * when the user just wants a quick category assignment.
    */
   skipDiscover?: boolean;
+  /**
+   * When true, classify also runs every bookmark in the global `pending_classify` queue,
+   * not only `itemIds`. Default false — Hub/Inspector selections must stay scoped.
+   * Use for explicit “drain classify backlog” maintenance (not re-digest N selected).
+   */
+  drainPendingClassifyQueue?: boolean;
   /** Label stored in pipeline-run-latest.json (default batch_full). */
   pipelineRunAction?: PipelineReportAction;
   signal?: AbortSignal;
@@ -153,14 +166,12 @@ async function runClassifyWithDiscover(
 
   await syncBeforeClassify(opts);
 
-  // Always drain the full pending_classify queue — not just the current batch.
-  // If a previous run was interrupted, those items stay in pending_classify but
-  // are not in the current batch's itemIds. Merging the queue here ensures every
-  // classify run finishes the job regardless of how many batches were imported.
-  const queuedIds = await loadItemIdsForPipelineQueue('pending_classify');
-  const mergedIds = queuedIds.length > 0
-    ? [...new Set([...itemIds, ...queuedIds])]
-    : itemIds;
+  const drainQueue = opts.drainPendingClassifyQueue === true;
+  const queuedIds = drainQueue ? await loadItemIdsForPipelineQueue('pending_classify') : [];
+  const mergedIds =
+    drainQueue && queuedIds.length > 0
+      ? [...new Set([...itemIds, ...queuedIds])]
+      : itemIds;
 
   const classifyDebugStart = Date.now();
   const classifyDebugMeta = {
@@ -169,7 +180,11 @@ async function runClassifyWithDiscover(
     mergedIds: mergedIds.length,
   };
 
-  report(opts, 'classify', 'Classifying…', 0, Math.max(1, mergedIds.length));
+  const classifyLabel =
+    drainQueue && queuedIds.length > 0
+      ? `Classifying ${itemIds.length} selected + ${queuedIds.length} queued…`
+      : `Classifying ${mergedIds.length} bookmark${mergedIds.length === 1 ? '' : 's'}…`;
+  report(opts, 'classify', classifyLabel, 0, Math.max(1, mergedIds.length));
   await yieldToUi();
 
   try {
@@ -472,33 +487,65 @@ function buildPipelineMessage(input: {
   classifyOnly?: boolean;
   classifySummary?: TopicClassifySummary;
 }): string {
+  const parts: string[] = [];
+
+  const appendClassifySummary = (s: TopicClassifySummary) => {
+    const categorized = s.classifiedSpecific + s.classifiedGeneral;
+    const classifySkipped = classifySkipTotal(s);
+    if (categorized > 0) parts.push(`${categorized} classified`);
+    if (classifySkipped > 0) {
+      const detail = formatClassifySkipBreakdown(s);
+      parts.push(
+        detail
+          ? `${classifySkipped} skipped (classify: ${detail})`
+          : `${classifySkipped} skipped (classify)`
+      );
+    }
+    if (s.llmErrors > 0) parts.push(`${s.llmErrors} failed (classify)`);
+    if (s.pendingDiscover > 0) parts.push(`${s.pendingDiscover} pending discover`);
+  };
+
   // Classify-only path (Hub "Classify pending" button).
   if (input.classifyOnly && input.classifySummary) {
-    const s = input.classifySummary;
-    const categorized = s.classifiedSpecific + s.classifiedGeneral;
-    const parts: string[] = [];
-    if (categorized > 0) parts.push(`${categorized} categorized`);
-    if (s.llmErrors > 0) parts.push(`${s.llmErrors} AI errors`);
-    if (input.classifyError) parts.push(input.classifyError);
+    appendClassifySummary(input.classifySummary);
+    if (input.classifyError) {
+      parts.push(
+        isPipelineSkipMessage(input.classifyError)
+          ? input.classifyError
+          : `Classify failed — ${input.classifyError}`
+      );
+    }
     return parts.length ? parts.join(' · ') : `${input.total} checked — already up to date`;
   }
 
-  // Full pipeline path (import / batch run).
-  const parts: string[] = [];
-
-  // Primary: what got done.
-  if (input.classified > 0) {
-    parts.push(`${input.classified} categorized`);
-  }
+  // Fetch / enrich stage (never lump skipped into failed).
   if (input.enriched > 0) {
-    parts.push(input.fetchOnly ? `${input.enriched} fetched` : `${input.enriched} fetched`);
+    parts.push(
+      input.fetchOnly ? `${input.enriched} fetched` : `${input.enriched} enriched`
+    );
+  }
+  if (input.skipped > 0) parts.push(`${input.skipped} skipped (fetch)`);
+  if (input.failed > 0) parts.push(`${input.failed} failed (fetch)`);
+
+  // Classify stage
+  if (input.classifyError) {
+    parts.push(
+      isPipelineSkipMessage(input.classifyError)
+        ? input.classifyError
+        : `Classify failed — ${input.classifyError}`
+    );
+  } else if (input.classifySummary) {
+    appendClassifySummary(input.classifySummary);
+  } else if (input.classified > 0) {
+    parts.push(`${input.classified} classified`);
   }
 
-  // Warnings: only surface failures and classify errors.
-  if (input.classifyError) parts.push(input.classifyError);
-  if (input.failed > 0) parts.push(`${input.failed} failed`);
+  if (input.embedMessage) parts.push(input.embedMessage);
+
+  if (input.discoverMessage) parts.push(input.discoverMessage);
+
   if (input.remaining && input.remaining > 0) {
-    parts.push(`${input.remaining} remaining`);
+    parts.push(`${input.remaining} remaining (not in this batch)`);
   }
 
   if (parts.length === 0) return `${input.total} checked — already up to date`;
@@ -588,7 +635,11 @@ export async function runItemPipeline(
         itemEnrichResults = [one];
         if (one.skipped) skipped = 1;
         else if (one.status === 'failed') failed = 1;
-        else enriched = 1;
+        else {
+          const stored = await getEnrichment(itemId);
+          if (stored && isEnrichmentFailure(stored)) failed = 1;
+          else enriched = 1;
+        }
       } catch {
         failed = 1;
         itemEnrichResults = [{ itemId, status: 'failed', message: 'enrich_failed' }];

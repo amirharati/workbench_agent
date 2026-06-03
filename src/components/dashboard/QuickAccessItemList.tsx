@@ -15,6 +15,8 @@ interface QuickAccessItemListProps {
   emptyHint: string;
   onItemClick?: (item: Item) => void;
   headerExtra?: React.ReactNode;
+  /** Shown under the title row (e.g. Trash page guidance). */
+  headerSubtitle?: string;
   renderRowActions?: (item: Item) => React.ReactNode;
   dateField?: (item: Item) => number;
   dateLabel?: string;
@@ -33,6 +35,7 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
   emptyHint,
   onItemClick,
   headerExtra,
+  headerSubtitle,
   renderRowActions,
   dateField,
   dateLabel = 'Updated',
@@ -73,19 +76,37 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
       <div
         style={{
           flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.5rem',
           padding: '1.25rem 1.25rem 0',
-          marginBottom: '1rem',
+          marginBottom: headerSubtitle ? '0.75rem' : '1rem',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {icon}
-          <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>{title}</h2>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.5rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {icon}
+            <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>{title}</h2>
+          </div>
+          {headerExtra}
         </div>
-        {headerExtra}
+        {headerSubtitle ? (
+          <p
+            style={{
+              margin: '0.65rem 0 0',
+              fontSize: 'var(--text-sm)',
+              lineHeight: 1.55,
+              color: 'var(--text-muted)',
+              maxWidth: 720,
+            }}
+          >
+            {headerSubtitle}
+          </p>
+        ) : null}
       </div>
 
       <TabScrollShell style={{ padding: '0 1.25rem 1.25rem' }}>

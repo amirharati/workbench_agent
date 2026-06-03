@@ -46,8 +46,9 @@
 | **V2.1 / V2.1.1** | SQLite + OPFS worker | shipped docs | **shipped** |
 | **V2.2** | Storage & backup polish | [`TASK-V2.2-storage-polish.md`](TASK-V2.2-storage-polish.md) | **closed** 2026-05-30 |
 | **V2.3** | Quick wins (non-pipeline) | [`TASK-V2.3-quick-wins.md`](TASK-V2.3-quick-wins.md) | **next** |
-| **V3** | Pipeline program | [`TASK-V3-program-breakdown.md`](TASK-V3-program-breakdown.md) · umbrella [`TASK-V3-pipeline-workflow.md`](TASK-V3-pipeline-workflow.md) | **main focus** |
+| **V3** | Pipeline program | [`TASK-V3-program-breakdown.md`](TASK-V3-program-breakdown.md) · umbrella [`TASK-V3-pipeline-workflow.md`](TASK-V3-pipeline-workflow.md) | **in progress** — A1/A6 done; A3 in progress; A4/C2/B4 partial |
 | **V3 tasks** | Per-session briefs | `TASK-V3-A1-…` / `TASK-V3-B1-…` / `TASK-V3-C1-…` | worker updates **task file only** |
+| **V3 handoff** | 2026-06-02 session | [`TASK-V3-A3-stage-aware-errors.md`](TASK-V3-A3-stage-aware-errors.md) § Worker session handoff | committed with pipeline UI wave |
 | **D-42** | Hub UI detail (V3 sub) | [`TASK-V2-pipeline-hub.md`](TASK-V2-pipeline-hub.md) | V3 |
 | **V4** | Multi-device sync | [`TASK-V4-sync-replicas.md`](TASK-V4-sync-replicas.md) | deferred |
 | **V2.2+ D-35** | Multi-device sync (deferred) | [`TASK-POST-V2-D35-storage-backup.md`](TASK-POST-V2-D35-storage-backup.md) | master design in [`backlog.md`](../backlog.md) |

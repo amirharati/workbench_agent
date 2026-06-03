@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, ExternalLink, Save } from 'lucide-react';
 import { Item, Collection } from '../lib/db';
+import { ExtensionPageUrlLink } from './dashboard/BookmarkUrlLink';
 
 interface BookmarkDetailPanelProps {
   item: Item;
@@ -58,14 +59,12 @@ export const BookmarkDetailPanel: React.FC<BookmarkDetailPanelProps> = ({
           <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600, lineHeight: 1.3 }}>
             {item.title}
           </h3>
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
+          <ExtensionPageUrlLink
+            url={item.url}
             style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}
           >
             {new URL(item.url).hostname} <ExternalLink size={10} />
-          </a>
+          </ExtensionPageUrlLink>
         </div>
         <button onClick={onClose} style={{ padding: '0.25rem', border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af' }}>
           <X size={18} />

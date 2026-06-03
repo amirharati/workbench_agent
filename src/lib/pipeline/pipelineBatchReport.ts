@@ -1,6 +1,18 @@
 import type { TopicClassifySummary, AiItemCategoryLink, AiItemSignal, ClassifyState } from '../categorization/types';
 import { getDB } from '../db';
 import type { EnrichmentResult } from '../enrichment';
+import { getAllEnrichments } from '../enrichment/storage';
+import {
+  FAILURE_CATEGORY_LABELS,
+  isEnrichmentFailure,
+  resolveEnrichmentFailureLabel,
+  type EnrichmentFailureLabel,
+} from '../enrichment/failureLabels';
+import { describeAiFailure, formatEnrichmentFailureMessage } from '../enrichment/errorMessages';
+import type { ItemEnrichment } from '../enrichment/types';
+import { primaryLeafIdFromLinks, verifiedPrimaryLeafIdFromLinks } from '../categorization/counts';
+import { resolvePipelineStatus, type PipelineBadge } from './pipelineBadge';
+import { hubStatusBadgeForEnrichment, type HubStatusStageInput } from './pipelineHubQueries';
 
 export type PipelineReportOutcome =
   | 'enriched'
@@ -28,10 +40,15 @@ export interface PipelineReportRow {
   subtitle?: string;
   outcome: PipelineReportOutcome;
   detail: string;
+  /** Hub table status chip — when set, summary and row badge use this instead of generic outcome. */
+  statusLabel?: string;
+  statusColor?: string;
 }
 
 export interface PipelineReportBuildOptions {
   action?: PipelineReportAction;
+  /** Inline enrich results (skip messages, etc.) merged with DB state when building rows. */
+  enrichResults?: EnrichmentResult[];
 }
 
 export const PIPELINE_REPORT_OUTCOME_LABELS: Record<PipelineReportOutcome, string> = {
@@ -42,7 +59,7 @@ export const PIPELINE_REPORT_OUTCOME_LABELS: Record<PipelineReportOutcome, strin
   unchanged: 'Unchanged',
   failed: 'Failed',
   skipped: 'Skipped',
-  review: 'Review needed',
+  review: 'Manual review',
 };
 
 export const PIPELINE_REPORT_OUTCOME_COLORS: Record<PipelineReportOutcome, string> = {
@@ -115,6 +132,132 @@ function enrichResultDetail(result: EnrichmentResult, action: PipelineReportActi
   return successDetail(action);
 }
 
+const AI_STATUS_MESSAGE = new Set([
+  'empty_response',
+  'content_too_short',
+  'api_error',
+  'parse_failed',
+  'not_configured',
+]);
+
+function failureReportDetail(
+  label: EnrichmentFailureLabel,
+  enrichment?: ItemEnrichment
+): string {
+  if (enrichment?.status === 'ok' && label.stage === 'ai') {
+    const hubLine = `Fetch OK · ${FAILURE_CATEGORY_LABELS[label.category]}`;
+    const parts = [hubLine];
+    if (label.detail) parts.push(label.detail);
+    if (label.reviewHint) parts.push(`What to try: ${label.reviewHint}`);
+    return parts.join(' — ');
+  }
+  if (label.detail) return `${label.label} — ${label.detail}`;
+  return label.reviewHint ? `${label.label} — ${label.reviewHint}` : label.label;
+}
+
+/** Honest outcome from stored enrichment (matches hub table badges). */
+export function resolveEnrichReportOutcome(
+  enrichment: ItemEnrichment | undefined,
+  embedFailed: boolean,
+  action: PipelineReportAction,
+  enrichResult?: EnrichmentResult
+): { outcome: PipelineReportOutcome; detail: string } {
+  if (enrichResult?.message?.startsWith('prior_kept_')) {
+    return { outcome: 'review', detail: enrichResultDetail(enrichResult, action) };
+  }
+
+  const failure = resolveEnrichmentFailureLabel(enrichment, embedFailed);
+  if (failure) {
+    return { outcome: 'failed', detail: failureReportDetail(failure, enrichment) };
+  }
+
+  if (enrichment?.pendingFetchReview) {
+    return {
+      outcome: 'review',
+      detail: 'Fetch review — prior summary kept until you confirm',
+    };
+  }
+
+  if (enrichResult) {
+    if (enrichResult.status === 'failed') {
+      return {
+        outcome: 'failed',
+        detail: enrichResultDetail(enrichResult, action),
+      };
+    }
+    if (enrichResult.skipped) {
+      return {
+        outcome: enrichResultOutcome(enrichResult, action),
+        detail: enrichResultDetail(enrichResult, action),
+      };
+    }
+    const msg = enrichResult.message?.trim();
+    if (enrichResult.status === 'ok' && msg && msg !== 'fetch_only') {
+      if (msg === 'content_unchanged') {
+        return { outcome: 'unchanged', detail: enrichResultDetail(enrichResult, action) };
+      }
+      if (AI_STATUS_MESSAGE.has(msg)) {
+        return {
+          outcome: 'failed',
+          detail: describeAiFailure(msg as ItemEnrichment['aiStatus'], enrichment?.aiError) ?? msg,
+        };
+      }
+    }
+  }
+
+  if (!enrichment || enrichment.status === 'none') {
+    return { outcome: 'skipped', detail: 'Not enriched yet' };
+  }
+  if (enrichment.status === 'skipped') {
+    return {
+      outcome: 'skipped',
+      detail: enrichment.skipReason?.replace(/_/g, ' ') ?? 'Skipped',
+    };
+  }
+  if (enrichment.status === 'failed') {
+    return {
+      outcome: 'failed',
+      detail: formatEnrichmentFailureMessage(enrichment) ?? 'Fetch failed',
+    };
+  }
+
+  if (isEnrichmentFailure(enrichment, embedFailed)) {
+    return { outcome: 'failed', detail: 'Pipeline step did not complete' };
+  }
+
+  const aiOk =
+    !enrichment.aiStatus ||
+    enrichment.aiStatus === 'ok' ||
+    enrichment.aiStatus === 'not_configured';
+  const hasSummary = Boolean(enrichment.summary?.trim());
+
+  if (enrichment.status === 'ok') {
+    if (action === 'fetch' || action === 'batch_enrich' || enrichResult?.message === 'fetch_only') {
+      return {
+        outcome: 'fetched',
+        detail: aiOk && hasSummary ? 'Page fetched' : 'Page fetched — AI summary not ready',
+      };
+    }
+    if (!aiOk) {
+      return {
+        outcome: 'failed',
+        detail:
+          describeAiFailure(enrichment.aiStatus!, enrichment.aiError) ??
+          'AI did not produce a usable summary',
+      };
+    }
+    if (!hasSummary && enrichment.aiStatus !== 'not_configured') {
+      return { outcome: 'failed', detail: 'Fetch OK — no AI summary stored' };
+    }
+    return {
+      outcome: successOutcome(action),
+      detail: successDetail(action),
+    };
+  }
+
+  return { outcome: 'skipped', detail: 'No change' };
+}
+
 function enrichResultOutcome(
   result: EnrichmentResult,
   action: PipelineReportAction
@@ -126,10 +269,130 @@ function enrichResultOutcome(
     if (skip === 'content_unchanged') return 'unchanged';
     return 'skipped';
   }
-  if (result.status === 'ok') return successOutcome(action);
+  if (result.status === 'ok') {
+    const msg = result.message?.trim();
+    if (msg && msg !== 'fetch_only' && AI_STATUS_MESSAGE.has(msg)) return 'failed';
+    return successOutcome(action);
+  }
   return 'skipped';
 }
 
+function outcomeFromPipelineBadge(
+  badge: PipelineBadge,
+  action: PipelineReportAction
+): PipelineReportOutcome {
+  if (badge.kind === 'verified' || badge.kind === 'ready') return successOutcome(action);
+  if (badge.kind === 'failed') return 'failed';
+  if (badge.kind === 'needs_review') return 'review';
+  if (badge.kind === 'partial') {
+    if (badge.label === 'Skipped') return 'skipped';
+    if (badge.label === 'Fetched' || badge.label.startsWith('Pending')) return 'fetched';
+    return 'fetched';
+  }
+  if (badge.kind === 'not_processed') return 'skipped';
+  return 'skipped';
+}
+
+async function loadReportHubStageInputs(
+  itemIds: string[]
+): Promise<Map<string, HubStatusStageInput>> {
+  const map = new Map<string, HubStatusStageInput>();
+  if (!itemIds.length) return map;
+
+  const db = await getDB();
+  const signals: AiItemSignal[] = db.objectStoreNames.contains('ai_item_signals')
+    ? (await db.getAll('ai_item_signals')).filter((s) => itemIds.includes(s.itemId))
+    : [];
+  const links: AiItemCategoryLink[] = db.objectStoreNames.contains('ai_item_category_links')
+    ? (await db.getAll('ai_item_category_links')).filter((l) => itemIds.includes(l.itemId))
+    : [];
+
+  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
+  const linksByItem = new Map<string, AiItemCategoryLink[]>();
+  for (const link of links) {
+    const list = linksByItem.get(link.itemId) ?? [];
+    list.push(link);
+    linksByItem.set(link.itemId, list);
+  }
+
+  for (const itemId of itemIds) {
+    const signal = signalByItem.get(itemId);
+    const itemLinks = linksByItem.get(itemId) ?? [];
+    map.set(itemId, {
+      signal,
+      primaryCategoryId: primaryLeafIdFromLinks(itemLinks),
+      verifiedPrimaryCategoryId: verifiedPrimaryLeafIdFromLinks(itemLinks),
+      suggestedLinkCount: itemLinks.filter((l) => l.status === 'suggested').length,
+    });
+  }
+  return map;
+}
+
+/** Prefer this after digest — reads DB so report matches hub table. */
+export async function buildEnrichOutcomeReportRows(
+  itemIds: string[],
+  itemLabels: Record<string, string> = {},
+  options?: PipelineReportBuildOptions
+): Promise<PipelineReportRow[]> {
+  const action = options?.action ?? 'full_digest';
+  if (!itemIds.length) return [];
+
+  const byResult = new Map((options?.enrichResults ?? []).map((r) => [r.itemId, r]));
+  const { labels, urls } = await hydrateItemMeta(itemIds, itemLabels);
+
+  const enrichments = await getAllEnrichments();
+  const enrichById = new Map(
+    enrichments.filter((e) => itemIds.includes(e.itemId)).map((e) => [e.itemId, e])
+  );
+
+  const db = await getDB();
+  const embedFailedIds = new Set<string>();
+  if (db.objectStoreNames.contains('ai_item_signals')) {
+    const signals = await db.getAll('ai_item_signals');
+    for (const s of signals) {
+      if (itemIds.includes(s.itemId) && s.signalStatus === 'embed_failed') {
+        embedFailedIds.add(s.itemId);
+      }
+    }
+  }
+
+  const stageByItem = await loadReportHubStageInputs(itemIds);
+
+  return itemIds.map((itemId) => {
+    const enrichment = enrichById.get(itemId);
+    const embedFailed = embedFailedIds.has(itemId);
+    const enrichResult = byResult.get(itemId);
+    const { detail } = resolveEnrichReportOutcome(
+      enrichment,
+      embedFailed,
+      action,
+      enrichResult
+    );
+    const stage = stageByItem.get(itemId);
+    const pipelineBadge = resolvePipelineStatus({
+      enrichment,
+      embedFailed,
+      signal: stage?.signal,
+      primaryCategoryId: stage?.primaryCategoryId ?? null,
+      verifiedPrimaryCategoryId: stage?.verifiedPrimaryCategoryId ?? null,
+      suggestedLinkCount: stage?.suggestedLinkCount ?? 0,
+      classifyState: stage?.signal?.classifyState,
+    });
+    const statusBadge = hubStatusBadgeForEnrichment(enrichment, embedFailed, stage);
+    const outcome = outcomeFromPipelineBadge(pipelineBadge, action);
+    return {
+      itemId,
+      title: labels[itemId]?.trim() || itemId,
+      subtitle: urls[itemId],
+      outcome,
+      detail,
+      statusLabel: statusBadge.text,
+      statusColor: statusBadge.color,
+    };
+  });
+}
+
+/** Sync fallback when DB is unavailable — less accurate for fetch-ok / AI-fail. */
 export function buildPipelineReportRows(
   results: EnrichmentResult[],
   itemLabels: Record<string, string>,
@@ -383,6 +646,71 @@ export function pipelineReportStats(rows: PipelineReportRow[]) {
   return stats;
 }
 
+/** Modal tone from per-item report rows (honest when fetch OK but AI failed). */
+export function resolveReportRowsSummaryTone(
+  rows: PipelineReportRow[]
+): 'success' | 'error' | 'info' {
+  const stats = pipelineReportStats(rows);
+  const successLabels = new Set(['Enriched', 'Verified']);
+  const successCount = rows.filter((r) => successLabels.has(reportRowDisplayLabel(r))).length;
+  const issueCount = rows.length - successCount - stats.skipped - stats.unchanged;
+
+  if (issueCount > 0 && successCount === 0) return 'error';
+  if (stats.failed > 0 || stats.review > 0) return 'info';
+  if (successCount > 0) return 'success';
+  return 'info';
+}
+
+export function reportRowDisplayLabel(row: PipelineReportRow): string {
+  return row.statusLabel ?? PIPELINE_REPORT_OUTCOME_LABELS[row.outcome];
+}
+
+export function pipelineReportStatusLabelCounts(rows: PipelineReportRow[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const label = reportRowDisplayLabel(row);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Done-modal summary for batch digest — scope + per-row outcomes. */
+export function formatBatchDigestDoneSummary(input: {
+  selectedCount: number;
+  reportRows: PipelineReportRow[];
+  pipelineMessage?: string;
+  classifySummary?: TopicClassifySummary;
+}): string {
+  const rowPart = formatPipelineReportSummaryFromRows(input.reportRows);
+  const parts: string[] = [];
+  if (input.selectedCount > 0) {
+    parts.push(
+      `Report covers ${input.selectedCount} selected bookmark${input.selectedCount === 1 ? '' : 's'}`
+    );
+  }
+  if (rowPart && rowPart !== 'No changes') parts.push(rowPart);
+  const cs = input.classifySummary;
+  if (cs && input.selectedCount > 0 && cs.totalConsidered > input.selectedCount) {
+    parts.push(
+      `Classify scanned ${cs.totalConsidered} in its run scope (not all listed below — use a fresh build if this surprises you)`
+    );
+  }
+  return parts.length ? parts.join(' · ') : input.pipelineMessage ?? 'Done';
+}
+
+/** Summary line grouped by hub status labels (matches enrichment table). */
+export function formatPipelineReportSummaryFromRows(rows: PipelineReportRow[]): string {
+  if (!rows.length) return 'No changes';
+  if (!rows.some((r) => r.statusLabel)) {
+    return formatPipelineReportSummary(pipelineReportStats(rows));
+  }
+  const counts = pipelineReportStatusLabelCounts(rows);
+  const parts = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, count]) => `${count} ${label}`);
+  return parts.length ? parts.join(' · ') : 'No changes';
+}
+
 export function formatPipelineReportSummary(stats: ReturnType<typeof pipelineReportStats>): string {
   const parts: string[] = [];
   if (stats.enriched > 0) parts.push(`${stats.enriched} enriched`);
@@ -392,7 +720,7 @@ export function formatPipelineReportSummary(stats: ReturnType<typeof pipelineRep
   if (stats.unchanged > 0) parts.push(`${stats.unchanged} unchanged`);
   if (stats.skipped > 0) parts.push(`${stats.skipped} skipped`);
   if (stats.failed > 0) parts.push(`${stats.failed} failed`);
-  if (stats.review > 0) parts.push(`${stats.review} need review`);
+  if (stats.review > 0) parts.push(`${stats.review} manual review`);
   return parts.length ? parts.join(' · ') : 'No changes';
 }
 

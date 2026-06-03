@@ -56,7 +56,8 @@ export type DashboardView =
   | 'notes'
   | 'collections'
   | 'workspaces'
-  | 'help';
+  | 'help'
+  | 'trash';
 
 export interface ItemTab {
   id: string;
@@ -72,7 +73,14 @@ export interface ItemTab {
   }[];
 }
 
-const FULL_PAGE_VIEWS = new Set<DashboardView>(['settings', 'tab-commander', 'import-studio', 'pipeline', 'help']);
+const FULL_PAGE_VIEWS = new Set<DashboardView>([
+  'settings',
+  'trash',
+  'tab-commander',
+  'import-studio',
+  'pipeline',
+  'help',
+]);
 const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search']);
 
 interface DashboardLayoutProps {

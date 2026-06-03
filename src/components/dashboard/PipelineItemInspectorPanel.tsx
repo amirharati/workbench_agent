@@ -33,6 +33,7 @@ import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { usePipelineProgress } from './PipelineProgressProvider';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
+import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
 
 interface PipelineItemInspectorPanelProps {
   item: Item;
@@ -371,6 +372,8 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           forceReclassify: true,
           cancellable: true,
           collectItemResults: true,
+          skipDiscover: targetIds.length <= 25,
+          drainPendingClassifyQueue: false,
           itemLabels,
         });
       } else {
@@ -397,6 +400,8 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
         processAll: true,
         forceReclassify: true,
         collectItemResults: true,
+        skipDiscover: targetIds.length <= 25,
+        drainPendingClassifyQueue: false,
         itemLabels,
       });
       afterAction();
@@ -573,18 +578,16 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
             {item.title || 'Untitled'}
           </div>
-          {item.url ? (
-            <div
-              style={{
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-muted)',
-                wordBreak: 'break-all',
-                marginTop: 2,
-              }}
-            >
-              {item.url}
-            </div>
-          ) : null}
+          <BookmarkUrlLink
+            item={item}
+            style={{
+              color: 'var(--text-muted)',
+              whiteSpace: 'normal',
+              wordBreak: 'break-all',
+              overflow: 'visible',
+              textOverflow: 'unset',
+            }}
+          />
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           {onOpenInTab ? (
@@ -902,15 +905,15 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               {item.url ? (
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  title={item.url}
+                  onClick={() => void openBookmarkInBrowser(item)}
                   style={{ ...actionBtnStyle, textDecoration: 'none' }}
                 >
                   <ExternalLink size={13} />
                   URL
-                </a>
+                </button>
               ) : null}
               <button
                 type="button"

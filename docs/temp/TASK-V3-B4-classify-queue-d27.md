@@ -2,7 +2,7 @@
 
 **Status:** **in progress** — reliability fixes landed; discover quality + UX still open  
 **Last session:** 2026-06-02 (worker) — see [**Session status**](#session-status--2026-06-02-end-of-worker-session) below  
-**Related:** [`TASK-V3-A5-import-pipeline-reliability.md`](TASK-V3-A5-import-pipeline-reliability.md), [`TASK-V3-B2-discover-ux-loop.md`](TASK-V3-B2-discover-ux-loop.md), [`TASK-V3-A3-stage-aware-errors.md`](TASK-V3-A3-stage-aware-errors.md), [`TASK-V3-pipeline-workflow.md`](TASK-V3-pipeline-workflow.md)
+**Related:** [`TASK-V3-A5b-import-scale.md`](TASK-V3-A5b-import-scale.md), [`TASK-V3-B2-discover-ux-loop.md`](TASK-V3-B2-discover-ux-loop.md), [`TASK-V3-A3-stage-aware-errors.md`](TASK-V3-A3-stage-aware-errors.md), [`TASK-V3-pipeline-workflow.md`](TASK-V3-pipeline-workflow.md)
 
 ---
 

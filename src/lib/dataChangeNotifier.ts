@@ -13,6 +13,7 @@
 export type DataChangeReason =
   | 'item.add'
   | 'item.update'
+  | 'item.trash.bulk'
   | 'item.delete'
   | 'project.add'
   | 'project.update'

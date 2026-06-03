@@ -1,53 +1,84 @@
 import React, { useMemo, useState } from 'react';
 import {
   PIPELINE_REPORT_OUTCOME_COLORS,
-  PIPELINE_REPORT_OUTCOME_LABELS,
+  pipelineReportStatusLabelCounts,
+  reportRowDisplayLabel,
   type PipelineReportOutcome,
   type PipelineReportRow,
   pipelineReportStats,
 } from '../../lib/pipeline/pipelineBatchReport';
+import { pipelineStatusColorForLabel } from '../../lib/pipeline/pipelineDictionary';
 
-type OutcomeFilter = 'all' | PipelineReportOutcome;
+type OutcomeFilter = 'all' | PipelineReportOutcome | `label:${string}`;
 
 interface PipelineBatchReportPanelProps {
   rows: PipelineReportRow[];
   summary?: string;
+  /** e.g. "Your 2 selected bookmarks" — clarifies list vs classify progress scope */
+  scopeLabel?: string;
 }
 
 export const PipelineBatchReportPanel: React.FC<PipelineBatchReportPanelProps> = ({
   rows,
   summary,
+  scopeLabel,
 }) => {
   const [filter, setFilter] = useState<OutcomeFilter>('all');
   const stats = useMemo(() => pipelineReportStats(rows), [rows]);
+  const useHubLabels = rows.some((r) => r.statusLabel);
 
   const filtered = useMemo(() => {
     if (filter === 'all') return rows;
+    if (useHubLabels && filter.startsWith('label:')) {
+      const label = filter.slice('label:'.length);
+      return rows.filter((r) => reportRowDisplayLabel(r) === label);
+    }
     return rows.filter((r) => r.outcome === filter);
-  }, [rows, filter]);
+  }, [rows, filter, useHubLabels]);
 
-  const statTiles: Array<{ key: OutcomeFilter; label: string; count: number; color: string }> = [
-    { key: 'all', label: 'Total', count: rows.length, color: 'var(--text)' },
-    { key: 'enriched', label: 'Enriched', count: stats.enriched, color: PIPELINE_REPORT_OUTCOME_COLORS.enriched },
-    { key: 'fetched', label: 'Fetched', count: stats.fetched, color: PIPELINE_REPORT_OUTCOME_COLORS.fetched },
-    { key: 'ai_updated', label: 'AI updated', count: stats.ai_updated, color: PIPELINE_REPORT_OUTCOME_COLORS.ai_updated },
-    { key: 'classified', label: 'Classified', count: stats.classified, color: PIPELINE_REPORT_OUTCOME_COLORS.classified },
-    { key: 'unchanged', label: 'Unchanged', count: stats.unchanged, color: PIPELINE_REPORT_OUTCOME_COLORS.unchanged },
-    { key: 'failed', label: 'Failed', count: stats.failed, color: PIPELINE_REPORT_OUTCOME_COLORS.failed },
-    { key: 'skipped', label: 'Skipped', count: stats.skipped, color: PIPELINE_REPORT_OUTCOME_COLORS.skipped },
-    { key: 'review', label: 'Review', count: stats.review, color: PIPELINE_REPORT_OUTCOME_COLORS.review },
-  ].filter((t) => t.key === 'all' || t.count > 0) as Array<{
-    key: OutcomeFilter;
-    label: string;
-    count: number;
-    color: string;
-  }>;
+  const statTiles = useMemo(() => {
+    if (useHubLabels) {
+      const counts = pipelineReportStatusLabelCounts(rows);
+      const sampleColor = (label: string) => {
+        const sample = rows.find((r) => reportRowDisplayLabel(r) === label);
+        return sample?.statusColor ?? pipelineStatusColorForLabel(label);
+      };
+      const labelTiles = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, count]) => ({
+          key: `label:${label}` as OutcomeFilter,
+          label,
+          count,
+          color: sampleColor(label),
+        }));
+      return [
+        { key: 'all' as OutcomeFilter, label: 'Total', count: rows.length, color: 'var(--text)' },
+        ...labelTiles,
+      ];
+    }
+    return [
+      { key: 'all' as OutcomeFilter, label: 'Total', count: rows.length, color: 'var(--text)' },
+      { key: 'enriched' as OutcomeFilter, label: 'Enriched', count: stats.enriched, color: PIPELINE_REPORT_OUTCOME_COLORS.enriched },
+      { key: 'fetched' as OutcomeFilter, label: 'Fetched', count: stats.fetched, color: PIPELINE_REPORT_OUTCOME_COLORS.fetched },
+      { key: 'ai_updated' as OutcomeFilter, label: 'AI updated', count: stats.ai_updated, color: PIPELINE_REPORT_OUTCOME_COLORS.ai_updated },
+      { key: 'classified' as OutcomeFilter, label: 'Classified', count: stats.classified, color: PIPELINE_REPORT_OUTCOME_COLORS.classified },
+      { key: 'unchanged' as OutcomeFilter, label: 'Unchanged', count: stats.unchanged, color: PIPELINE_REPORT_OUTCOME_COLORS.unchanged },
+      { key: 'failed' as OutcomeFilter, label: 'Failed', count: stats.failed, color: PIPELINE_REPORT_OUTCOME_COLORS.failed },
+      { key: 'skipped' as OutcomeFilter, label: 'Skipped', count: stats.skipped, color: PIPELINE_REPORT_OUTCOME_COLORS.skipped },
+      { key: 'review' as OutcomeFilter, label: 'Manual review', count: stats.review, color: PIPELINE_REPORT_OUTCOME_COLORS.review },
+    ].filter((t) => t.key === 'all' || t.count > 0);
+  }, [rows, stats, useHubLabels]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {summary ? (
         <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
           {summary}
+        </p>
+      ) : null}
+      {scopeLabel ? (
+        <p style={{ margin: summary ? '8px 0 0' : 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.5 }}>
+          {scopeLabel}
         </p>
       ) : null}
 
@@ -154,12 +185,16 @@ export const PipelineBatchReportPanel: React.FC<PipelineBatchReportPanelProps> =
                   borderRadius: 999,
                   fontSize: 10,
                   fontWeight: 700,
-                  background: `${PIPELINE_REPORT_OUTCOME_COLORS[row.outcome]}22`,
-                  color: PIPELINE_REPORT_OUTCOME_COLORS[row.outcome],
+                  background: `${row.statusColor ?? PIPELINE_REPORT_OUTCOME_COLORS[row.outcome]}22`,
+                  color: row.statusColor ?? PIPELINE_REPORT_OUTCOME_COLORS[row.outcome],
                   whiteSpace: 'nowrap',
+                  maxWidth: 200,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                 }}
+                title={reportRowDisplayLabel(row)}
               >
-                {PIPELINE_REPORT_OUTCOME_LABELS[row.outcome]}
+                {reportRowDisplayLabel(row)}
               </span>
             </div>
           ))

@@ -3,13 +3,13 @@ import { Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolveEnrichmentFailureLabel } from '../../lib/enrichment/failureLabels';
-import { shouldOfferTabSessionFetch } from '../../lib/enrichment/tabSessionExtract';
-import { resolvePipelineBadge, type PipelineBadge } from '../../lib/pipeline';
+import { resolvePipelineBadge } from '../../lib/pipeline';
 import { formatPipelineStageHint } from '../../lib/pipeline/itemPipelineContext';
 import { ItemPipelineBadge, EnrichmentContent } from './PipelineDisplayBlocks';
 import { ItemSimilarSection } from './SearchDiscoveryBlocks';
-import { usePipelineProgress } from './PipelineProgressProvider';
+import { ItemDigestQuickActions } from './ItemDigestQuickActions';
 import { CategoryChip, SuggestedCategoryRow } from '../shared/CategoryReviewRows';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 interface InspectorTabProps {
   activeItem: Item | null;
@@ -199,103 +199,6 @@ function SearchInspectorChrome({
   );
 }
 
-function InspectorDigestActions({
-  itemId,
-  itemUrl,
-  badge,
-  enrichment,
-  onDone,
-}: {
-  itemId: string;
-  itemUrl?: string;
-  badge: PipelineBadge | null;
-  enrichment?: import('../../lib/enrichment/types').ItemEnrichment;
-  onDone: () => void;
-}) {
-  const pipeline = usePipelineProgress();
-  const running = pipeline.isRunning;
-
-  const show =
-    badge &&
-    (badge.kind === 'failed' ||
-      badge.kind === 'not_processed' ||
-      badge.label === 'Pending classify' ||
-      badge.kind === 'ready');
-
-  if (!show) return null;
-
-  const showTabFetch =
-    !!itemUrl &&
-    shouldOfferTabSessionFetch(itemUrl, enrichment ?? null, badge?.kind ?? null);
-
-  const label =
-    badge?.kind === 'failed'
-      ? 'Retry digest'
-      : badge?.label === 'Pending classify'
-        ? 'Classify now'
-        : badge?.kind === 'ready'
-          ? 'Re-digest'
-          : 'Run digest';
-
-  const run = async (tabSessionOnly?: boolean) => {
-    if (running) return;
-    try {
-      await pipeline.runSingle(itemId, {
-        title: tabSessionOnly ? 'Fetch in browser' : label,
-        forceEnrich: badge?.kind === 'failed' || tabSessionOnly === true,
-        tabSessionOnly,
-      });
-      onDone();
-    } catch {
-      // Summary shown in modal
-    }
-  };
-
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-      <button
-        type="button"
-        onClick={() => void run()}
-        disabled={running}
-        style={{
-          padding: '4px 10px',
-          borderRadius: 'var(--radius-sm)',
-          border: '1px solid var(--border)',
-          background: 'var(--bg-glass)',
-          color: 'var(--text)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 600,
-          cursor: running ? 'wait' : 'pointer',
-          opacity: running ? 0.7 : 1,
-        }}
-      >
-        {running ? 'Digesting…' : label}
-      </button>
-      {showTabFetch ? (
-        <button
-          type="button"
-          onClick={() => void run(true)}
-          disabled={running}
-          title="Open in Chrome and read the page (skips headless fetch)"
-          style={{
-            padding: '4px 10px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border)',
-            background: 'transparent',
-            color: 'var(--text-muted)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 600,
-            cursor: running ? 'wait' : 'pointer',
-            opacity: running ? 0.7 : 1,
-          }}
-        >
-          Fetch in browser
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
 function ItemInspectorBody({
   item,
   isSearchSurface,
@@ -367,9 +270,10 @@ function ItemInspectorBody({
           {badge && <ItemPipelineBadge badge={badge} />}
         </div>
         {item.url && (
-          <InspectorDigestActions
+          <ItemDigestQuickActions
             itemId={item.id}
             itemUrl={item.url}
+            context={context}
             badge={badge}
             enrichment={context?.enrichment}
             onDone={() => void reload()}
@@ -389,10 +293,8 @@ function ItemInspectorBody({
           </p>
         ) : null}
         {item.url && (
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noreferrer"
+          <ExtensionPageUrlLink
+            url={item.url}
             style={{
               fontSize: 'var(--text-xs)',
               color: 'var(--text-faint)',
@@ -402,9 +304,7 @@ function ItemInspectorBody({
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}
-          >
-            {item.url}
-          </a>
+          />
         )}
       </div>
 

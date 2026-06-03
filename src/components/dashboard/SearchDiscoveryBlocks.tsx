@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { runAppFindSimilar, type FindSimilarResult } from '../../lib/search';
 import type { SearchRelatedFacets, SimilarItemResult, SearchResult } from '../../lib/search';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 const chipStyle: CSSProperties = {
   display: 'inline-flex',
@@ -70,15 +71,13 @@ function LinkRow({
         </div>
       </div>
       {url ? (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }}
-          aria-label="Open URL"
+        <ExtensionPageUrlLink
+          url={url}
+          style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2, display: 'inline-flex' }}
+          title="Open URL"
         >
           <ExternalLink size={14} />
-        </a>
+        </ExtensionPageUrlLink>
       ) : null}
     </div>
   );

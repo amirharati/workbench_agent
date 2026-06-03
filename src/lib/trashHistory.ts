@@ -1,4 +1,4 @@
-import { getDB, getItem, normalizeBookmarkUrl, type Item } from './db';
+import { commitPendingDbWrites, getDB, getItem, normalizeBookmarkUrl, type Item } from './db';
 import { notifyDataChanged } from './dataChangeNotifier';
 
 export type TrashReasonCode =
@@ -37,6 +37,25 @@ export interface TrashImportMatch {
 
 const isHttpUrl = (url: string) => /^https?:\/\//i.test(url.trim());
 
+export function buildTrashHistoryEntry(
+  item: Pick<Item, 'id' | 'url' | 'title'>,
+  record: TrashRecordInput,
+  now = Date.now()
+): TrashHistoryEntry | null {
+  const normalizedUrl = bookmarkNormalizedUrl(item);
+  if (!normalizedUrl) return null;
+  return {
+    normalizedUrl,
+    url: item.url.trim(),
+    title: item.title || item.url.trim(),
+    reason: record.reason.trim() || 'Moved to trash',
+    reasonCode: record.reasonCode ?? 'manual',
+    itemId: item.id,
+    trashedAt: now,
+    purgedAt: undefined,
+  };
+}
+
 function bookmarkNormalizedUrl(item: Pick<Item, 'url'>): string | null {
   const url = item.url?.trim();
   if (!url || !isHttpUrl(url)) return null;
@@ -46,24 +65,63 @@ function bookmarkNormalizedUrl(item: Pick<Item, 'url'>): string | null {
 /** Persist why a bookmark was trashed — survives permanent delete and empty trash. */
 export async function recordTrashHistory(
   item: Pick<Item, 'id' | 'url' | 'title'>,
-  input: TrashRecordInput
+  input: TrashRecordInput,
+  options?: { notify?: boolean }
 ): Promise<void> {
-  const normalizedUrl = bookmarkNormalizedUrl(item);
-  if (!normalizedUrl) return;
-
   const store = await getDB();
+  if (recordTrashHistoryEntries(store, [item], { defaultRecord: input }).written > 0) {
+    await commitPendingDbWrites();
+    if (options?.notify !== false) notifyDataChanged('item.update');
+  }
+}
+
+function resolveTrashRecord(
+  input: TrashRecordInput | undefined,
+  fallback: TrashRecordInput
+): TrashRecordInput {
+  return input ?? fallback;
+}
+
+/** In-memory store writes only — caller commits and notifies once. */
+export function recordTrashHistoryEntries(
+  store: Awaited<ReturnType<typeof getDB>>,
+  items: Array<Pick<Item, 'id' | 'url' | 'title'>>,
+  options: {
+    defaultRecord: TrashRecordInput;
+    recordsById?: Record<string, TrashRecordInput>;
+  }
+): { written: number } {
   const now = Date.now();
-  store.putTrashEntry({
-    normalizedUrl,
-    url: item.url.trim(),
-    title: item.title || item.url.trim(),
-    reason: input.reason.trim() || 'Moved to trash',
-    reasonCode: input.reasonCode ?? 'manual',
-    itemId: item.id,
-    trashedAt: now,
-    purgedAt: undefined,
-  });
-  notifyDataChanged('item.update');
+  let written = 0;
+  for (const item of items) {
+    const normalizedUrl = bookmarkNormalizedUrl(item);
+    if (!normalizedUrl) continue;
+    const record = resolveTrashRecord(options.recordsById?.[item.id], options.defaultRecord);
+    const entry = buildTrashHistoryEntry(item, record, now);
+    if (!entry) continue;
+    store.putTrashEntry(entry);
+    written += 1;
+  }
+  return { written };
+}
+
+/** Batch trash history — one commit/notify when used from moveItemsToTrash. */
+export async function recordTrashHistoryBatch(
+  items: Array<Pick<Item, 'id' | 'url' | 'title'>>,
+  options: {
+    defaultRecord: TrashRecordInput;
+    recordsById?: Record<string, TrashRecordInput>;
+    notify?: boolean;
+  }
+): Promise<number> {
+  if (!items.length) return 0;
+  const store = await getDB();
+  const { written } = recordTrashHistoryEntries(store, items, options);
+  if (written > 0) {
+    await commitPendingDbWrites();
+    if (options.notify !== false) notifyDataChanged('item.update');
+  }
+  return written;
 }
 
 /** Drop discard record when user restores from trash. */

@@ -101,12 +101,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         { icon: Workflow, label: 'Enrichment Hub', id: 'pipeline' },
         { icon: Upload, label: 'Import Studio', id: 'import-studio' },
         { icon: Terminal, label: 'Tab Commander', id: 'tab-commander' },
-        { icon: Settings, label: 'Settings', id: 'settings' },
       ],
     },
   ];
 
   const isBookmarkItem = (item: Item) => !!item.url && item.url.trim().length > 0;
+
+  const trashedCount = items.filter((i) => i.deletedAt != null).length;
 
   const getCollectionItemCounts = (collectionId: string) => {
     let bookmarks = 0;
@@ -724,20 +725,30 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         ))}
       </nav>
 
-      {/* Help — pinned bottom */}
+      {/* Settings, Trash, Help — pinned bottom */}
       <div
         style={{
           flexShrink: 0,
           padding: 8,
           borderTop: '1px solid var(--border)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
         }}
       >
-        {(() => {
-          const isActive = activeView === 'help';
+        {(
+          [
+            { id: 'settings' as DashboardView, label: 'Settings', Icon: Settings },
+            { id: 'trash' as DashboardView, label: 'Trash', Icon: Trash2, badge: trashedCount },
+            { id: 'help' as DashboardView, label: 'Help', Icon: HelpCircle },
+          ] as Array<{ id: DashboardView; label: string; Icon: NavItem['icon']; badge?: number }>
+        ).map(({ id, label, Icon, badge }) => {
+          const isActive = activeView === id;
           return (
             <button
+              key={id}
               type="button"
-              onClick={() => onSelectView('help')}
+              onClick={() => onSelectView(id)}
               style={{
                 width: '100%',
                 display: 'flex',
@@ -754,17 +765,54 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 color: isActive ? 'var(--text)' : 'var(--text-muted)',
                 gap: 8,
               }}
-              title="Help"
+              title={label}
             >
-              <HelpCircle size={16} strokeWidth={isActive ? 2 : 1.5} style={{ flexShrink: 0 }} />
+              <Icon
+                size={16}
+                strokeWidth={isActive ? 2 : 1.5}
+                style={{
+                  flexShrink: 0,
+                  color: id === 'trash' && trashedCount > 0 ? '#ef4444' : undefined,
+                }}
+              />
               {!isCollapsed && (
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  Help
-                </span>
+                <>
+                  <span
+                    style={{
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      textAlign: 'left',
+                    }}
+                  >
+                    {label}
+                  </span>
+                  {badge != null && badge > 0 ? (
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        minWidth: 18,
+                        padding: '0 5px',
+                        height: 18,
+                        borderRadius: 9,
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        color: '#ef4444',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  ) : null}
+                </>
               )}
             </button>
           );
-        })()}
+        })}
       </div>
 
       {dialog && (

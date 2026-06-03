@@ -1,18 +1,23 @@
+import type { DbMutation } from './storage/dbMutations';
 import {
+  applyBatchMutations,
   deleteItem,
   getAllItems,
   getBookmarkOpenUrl,
+  getDB,
   getItem,
   updateItem,
   type Item,
 } from './db';
 import {
+  buildTrashHistoryEntry,
   clearTrashHistoryForItem,
   markTrashHistoryPurged,
   recordTrashHistory,
   type TrashReasonCode,
   type TrashRecordInput,
 } from './trashHistory';
+import { notifyDataChanged } from './dataChangeNotifier';
 
 export { getBookmarkOpenUrl };
 export type { TrashReasonCode, TrashRecordInput };
@@ -135,6 +140,8 @@ const defaultTrashRecord = (): TrashRecordInput => ({
 
 export type MoveToTrashOptions = Partial<TrashRecordInput> & {
   reasonsById?: Record<string, TrashRecordInput>;
+  /** When caller already has rows in memory (hub bulk trash), skip scanning the full library. */
+  knownItems?: Item[];
 };
 
 export async function moveItemToTrash(
@@ -154,19 +161,61 @@ export async function moveItemsToTrash(
   options?: MoveToTrashOptions
 ): Promise<number> {
   const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return 0;
+
+  const idSet = new Set(unique);
+  const store = await getDB();
   const now = Date.now();
+  const defaultRecord =
+    options?.reason || options?.reasonCode
+      ? {
+          reason: options.reason ?? 'Moved to trash',
+          reasonCode: options.reasonCode,
+        }
+      : defaultTrashRecord();
+
+  const itemsById = new Map<string, Item>();
+  if (options?.knownItems?.length) {
+    for (const item of options.knownItems) {
+      if (idSet.has(item.id)) itemsById.set(item.id, item);
+    }
+  }
+  if (itemsById.size < unique.length) {
+    for (const item of store.getAllItems()) {
+      if (idSet.has(item.id) && !itemsById.has(item.id)) {
+        itemsById.set(item.id, item);
+      }
+      if (itemsById.size >= unique.length) break;
+    }
+  }
+
+  const ops: DbMutation[] = [];
+  let trashedCount = 0;
   for (const id of unique) {
-    const item = await getItem(id);
-    await updateItem(id, { deletedAt: now });
-    if (!item) continue;
+    const item = itemsById.get(id);
+    if (!item || item.deletedAt != null) continue;
     const record =
       options?.reasonsById?.[id] ??
       (options?.reason
         ? { reason: options.reason, reasonCode: options.reasonCode }
-        : defaultTrashRecord());
-    await recordTrashHistory(item, record);
+        : defaultRecord);
+    trashedCount += 1;
+    ops.push({
+      kind: 'put',
+      storeName: 'items',
+      value: { ...item, deletedAt: now, updated_at: now },
+    });
+    const entry = buildTrashHistoryEntry(item, record, now);
+    if (entry) {
+      ops.push({ kind: 'put', storeName: 'trash_history', value: entry });
+    }
   }
-  return unique.length;
+
+  await applyBatchMutations(ops);
+  if (trashedCount > 0) {
+    notifyDataChanged(trashedCount >= 10 ? 'item.trash.bulk' : 'item.update');
+  }
+  return trashedCount;
 }
 
 export async function restoreItemFromTrash(id: string): Promise<void> {

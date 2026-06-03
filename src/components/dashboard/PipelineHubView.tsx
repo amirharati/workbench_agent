@@ -13,22 +13,21 @@ import {
 } from 'lucide-react';
 import type { Collection, Item, Project } from '../../lib/db';
 import {
-  FAILURE_CATEGORY_LABELS,
-  type FailureCategory,
-  type FailureStage,
-} from '../../lib/enrichment/failureLabels';
+  PIPELINE_STATE_COLORS,
+  pipelineStatusColorForLabel,
+} from '../../lib/pipeline/pipelineDictionary';
 import { getCategorizationQueueStats } from '../../lib/categorization/classifyTopicExtract';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import { moveItemsToTrash } from '../../lib/itemQuickAccess';
 import {
   applyEnrichmentHubFilters,
+  buildHubOutcomeChips,
   describeRowStatusHelp,
   enrichmentHubRowMatchesFilters,
   ENRICHMENT_STATUS_GUIDE,
   loadEnrichmentHubData,
   resolveTrashSuggestion,
   rowMatchesTrashSuggestion,
-  type EnrichmentHubFilter,
   type EnrichmentHubFilterState,
   type EnrichmentHubRow,
   type RowStatusHelp,
@@ -41,6 +40,8 @@ import { PipelineItemInspectorPanel } from './PipelineItemInspectorPanel';
 import { PipelineHubCategoriesLane } from './PipelineHubCategoriesLane';
 import { usePipelineProgress } from './PipelineProgressProvider';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
+import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
+import { getBookmarkOpenUrl } from '../../lib/itemQuickAccess';
 
 type HubLane = 'enrichment' | 'categories';
 
@@ -56,25 +57,6 @@ interface PipelineHubViewProps {
   onClearCollectionScope?: () => void;
   onResetScope?: () => void;
 }
-
-type FailureCategoryFilter = 'all' | FailureCategory;
-type FailureStageFilter = 'all' | FailureStage;
-
-const FAILURE_STAGE_LABELS: Record<FailureStage, string> = {
-  fetch: 'Fetch stage',
-  ai: 'AI stage',
-  embed: 'Embed stage',
-};
-
-const STATUS_FILTER_LABELS: Record<EnrichmentHubFilter, string> = {
-  all: 'All bookmarks',
-  ok: 'Fully enriched',
-  failed: 'Failed',
-  not_enriched: 'Not enriched',
-  pending_fetch_review: 'Fetch review',
-  skipped: 'Skipped',
-  embed_failed: 'Embed failed',
-};
 
 function formatTime(ts?: number): string {
   if (!ts) return '—';
@@ -106,23 +88,28 @@ function FilterChip({
   count,
   active,
   color = 'var(--text-muted)',
+  dimmed = false,
   onClick,
 }: {
   label: string;
   count?: number;
   active: boolean;
   color?: string;
+  dimmed?: boolean;
   onClick: () => void;
 }) {
   const tinted = color !== 'var(--text-muted)';
+  const isEmpty = count === 0;
 
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      title={isEmpty ? 'No bookmarks in this status in current scope' : undefined}
       style={{
         ...chipBase,
+        opacity: dimmed && !active ? 0.5 : 1,
         border: active
           ? `2px solid ${color}`
           : tinted
@@ -231,25 +218,18 @@ function SummaryChip({
   label,
   count,
   active,
-  tone,
+  color,
+  dimmed,
   onClick,
 }: {
   label: string;
   count: number;
   active: boolean;
-  tone?: 'ok' | 'error' | 'warn' | 'info' | 'neutral';
+  color?: string;
+  dimmed?: boolean;
   onClick: () => void;
 }) {
-  const toneColor =
-    tone === 'ok'
-      ? 'var(--er-ok, #3fb950)'
-      : tone === 'error'
-        ? 'var(--error, #f85149)'
-        : tone === 'warn'
-          ? 'var(--er-warn, #d29922)'
-          : tone === 'info'
-            ? '#6366f1'
-            : 'var(--text-muted)';
+  const toneColor = color ?? pipelineStatusColorForLabel(label);
 
   return (
     <FilterChip
@@ -257,6 +237,7 @@ function SummaryChip({
       count={count}
       active={active}
       color={toneColor}
+      dimmed={dimmed}
       onClick={onClick}
     />
   );
@@ -284,14 +265,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [taxonomyLeafCount, setTaxonomyLeafCount] = useState<number | null>(null);
-  const [statusFilter, setStatusFilter] = useState<EnrichmentHubFilter>(
-    hubSaved.enrichmentStatusFilter as EnrichmentHubFilter
-  );
-  const [failureCategoryFilter, setFailureCategoryFilter] = useState<FailureCategoryFilter>(
-    hubSaved.enrichmentFailureCategory as FailureCategoryFilter
-  );
-  const [failureStageFilter, setFailureStageFilter] = useState<FailureStageFilter>(
-    hubSaved.enrichmentFailureStage as FailureStageFilter
+  const [outcomeLabel, setOutcomeLabel] = useState<string | 'all'>(
+    typeof hubSaved.enrichmentOutcomeLabel === 'string' ? hubSaved.enrichmentOutcomeLabel : 'all'
   );
   const [trashSuggestionsOnly, setTrashSuggestionsOnly] = useState(hubSaved.enrichmentTrashSuggestionsOnly);
   const [search, setSearch] = useState(hubSaved.enrichmentSearch);
@@ -310,6 +285,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const isRunningRef = useRef(pipeline.isRunning);
   const tableRowsForListRef = useRef<EnrichmentHubRow[]>([]);
   const processingHoldRef = useRef<{ order: string[]; targets: string[] } | null>(null);
+  /** After bulk trash, skip expensive hub reload until DB + parent items settle. */
+  const skipHubReloadUntilRef = useRef(0);
+  const validatedPersistedFilterRef = useRef(false);
   const selectedIdsRef = useRef(selectedIds);
   const inspectStateRef = useRef(inspectState);
   selectedIdsRef.current = selectedIds;
@@ -322,26 +300,18 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     patchNavigationState({
       pipelineHub: {
         hubLane,
-        enrichmentStatusFilter: statusFilter,
+        enrichmentOutcomeLabel: outcomeLabel,
         enrichmentSearch: search,
         enrichmentTrashSuggestionsOnly: trashSuggestionsOnly,
-        enrichmentFailureCategory: failureCategoryFilter,
-        enrichmentFailureStage: failureStageFilter,
       },
     });
-  }, [
-    hubLane,
-    statusFilter,
-    search,
-    trashSuggestionsOnly,
-    failureCategoryFilter,
-    failureStageFilter,
-  ]);
+  }, [hubLane, outcomeLabel, search, trashSuggestionsOnly]);
 
   const isProcessing = pipeline.isRunning;
 
-  const reload = useCallback(async (opts?: { silent?: boolean }) => {
+  const reload = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
     if (isRunningRef.current) return undefined;
+    if (!opts?.force && Date.now() < skipHubReloadUntilRef.current) return undefined;
     const silent = opts?.silent === true && rows.length > 0;
     if (!silent) {
       if (rows.length === 0) setInitialLoading(true);
@@ -364,24 +334,33 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
   const hubFilters = useMemo<EnrichmentHubFilterState>(
     () => ({
+      outcomeLabel,
       search,
-      statusFilter,
-      failureStageFilter,
-      failureCategoryFilter,
+      trashSuggestionsOnly,
     }),
-    [search, statusFilter, failureStageFilter, failureCategoryFilter]
+    [outcomeLabel, search, trashSuggestionsOnly]
   );
 
   const filterSessionKey = useMemo(
     () =>
       JSON.stringify({
-        ...hubFilters,
+        outcomeLabel,
+        search,
         trashSuggestionsOnly,
         scopeProjectId,
         scopeCollectionId,
       }),
-    [hubFilters, trashSuggestionsOnly, scopeProjectId, scopeCollectionId]
+    [outcomeLabel, search, trashSuggestionsOnly, scopeProjectId, scopeCollectionId]
   );
+
+  const clearOutcomeFilter = useCallback(() => {
+    setOutcomeLabel('all');
+  }, []);
+
+  const clearHubFilters = useCallback(() => {
+    clearOutcomeFilter();
+    setTrashSuggestionsOnly(false);
+  }, [clearOutcomeFilter]);
 
   const applyRecentHolds = useCallback(
     (
@@ -427,13 +406,29 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   );
 
   const debouncedReload = useMemo(
-    () => debounceFn(() => void reload({ silent: true }), 500),
+    () =>
+      debounceFn(() => {
+        if (Date.now() < skipHubReloadUntilRef.current) return;
+        void reload({ silent: true });
+      }, 500),
     [reload]
   );
 
   useEffect(() => {
     void reload();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount only
+
+  /** Once after first load: clear persisted filter only if label no longer exists (not on every chip click). */
+  useEffect(() => {
+    if (initialLoading || validatedPersistedFilterRef.current) return;
+    validatedPersistedFilterRef.current = true;
+    if (outcomeLabel === 'all') return;
+    const scoped = rows.filter((row) =>
+      itemMatchesScope(row.item, scopeProjectId, scopeCollectionId, collections)
+    );
+    const hasMatch = scoped.some((r) => r.meta.statusBadge.text === outcomeLabel);
+    if (!hasMatch) setOutcomeLabel('all');
+  }, [initialLoading, rows, outcomeLabel, scopeProjectId, scopeCollectionId, collections]);
 
   useEffect(() => {
     debouncedReload();
@@ -497,30 +492,43 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     [tableRows, scopeProjectId, scopeCollectionId, collections]
   );
 
-  const filteredRows = useMemo(() => {
-    let list = applyEnrichmentHubFilters(scopedRows, hubFilters);
-    if (trashSuggestionsOnly) {
-      list = list.filter((r) => rowMatchesTrashSuggestion(r));
-    }
-    return list;
-  }, [scopedRows, hubFilters, trashSuggestionsOnly]);
+  /** Scope + search only — chip counts stay fixed when a status or trash filter is active. */
+  const rowsForStatusCounts = useMemo(
+    () => applyEnrichmentHubFilters(scopedRows, { outcomeLabel: 'all', search }),
+    [scopedRows, search]
+  );
+
+  const filteredRows = useMemo(
+    () => applyEnrichmentHubFilters(scopedRows, hubFilters),
+    [scopedRows, hubFilters]
+  );
 
   const trashSuggestionRows = useMemo(
     () => scopedRows.filter((r) => rowMatchesTrashSuggestion(r)),
     [scopedRows]
   );
 
-  const tableRowsForList = useMemo(
-    () =>
-      buildDisplayListWithRecentHolds(
-        filteredRows,
-        displayOrderIds,
-        recentUpdateIdSet,
-        scopedRows,
-        rows
-      ),
-    [filteredRows, displayOrderIds, recentUpdateIdSet, scopedRows, rows]
-  );
+  const statusFilterActive = outcomeLabel !== 'all' || trashSuggestionsOnly;
+
+  const tableRowsForList = useMemo(() => {
+    if (statusFilterActive) {
+      return filteredRows;
+    }
+    return buildDisplayListWithRecentHolds(
+      filteredRows,
+      displayOrderIds,
+      recentUpdateIdSet,
+      scopedRows,
+      rows
+    );
+  }, [
+    filteredRows,
+    displayOrderIds,
+    recentUpdateIdSet,
+    scopedRows,
+    rows,
+    statusFilterActive,
+  ]);
 
   tableRowsForListRef.current = tableRowsForList;
 
@@ -568,53 +576,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     });
   }, [filteredRows, inspectState?.ids, recentUpdateIds]);
 
-  const scopedCounts = useMemo(() => {
-    let ok = 0;
-    let failed = 0;
-    let notEnriched = 0;
-    let pendingFetchReview = 0;
-    let skipped = 0;
-    let embedFailed = 0;
-    for (const row of scopedRows) {
-      const m = row.meta;
-      if (m.ok) ok++;
-      if (m.failed) failed++;
-      if (m.notEnriched) notEnriched++;
-      if (m.pendingFetchReview) pendingFetchReview++;
-      if (m.skipped) skipped++;
-      if (m.embedFailedLane) embedFailed++;
-    }
-    return {
-      total: scopedRows.length,
-      ok,
-      failed,
-      notEnriched,
-      pendingFetchReview,
-      skipped,
-      embedFailed,
-    };
-  }, [scopedRows]);
-
-  const failureStageCounts = useMemo(() => {
-    const c: Partial<Record<FailureStage, number>> = {};
-    for (const row of scopedRows) {
-      const stage = row.meta.failureStage;
-      if (!stage) continue;
-      c[stage] = (c[stage] ?? 0) + 1;
-    }
-    return c;
-  }, [scopedRows]);
-
-  const failureCategoryCounts = useMemo(() => {
-    const c: Partial<Record<FailureCategory, number>> = {};
-    for (const row of scopedRows) {
-      const cat = row.meta.failureCategory;
-      if (!cat) continue;
-      if (failureStageFilter !== 'all' && row.meta.failureStage !== failureStageFilter) continue;
-      c[cat] = (c[cat] ?? 0) + 1;
-    }
-    return c;
-  }, [scopedRows, failureStageFilter]);
+  const statusBarChips = useMemo(() => buildHubOutcomeChips(rowsForStatusCounts), [rowsForStatusCounts]);
 
   const toggleSelect = (id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -728,6 +690,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         forceReclassify: true,
         cancellable: true,
         collectItemResults: true,
+        skipDiscover: true,
+        drainPendingClassifyQueue: false,
         itemLabels,
       });
     } catch {
@@ -741,24 +705,41 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     setTrashConfirmIds(ids);
   };
 
-  const executeMoveToTrash = async () => {
+  const executeMoveToTrash = () => {
     const ids = trashConfirmIds;
     if (!ids?.length) return;
+    const idSet = new Set(ids);
     setTrashConfirmIds(null);
+    setSelectedIds(new Set());
+    setInspectState(null);
+    setDisplayOrderIds(null);
+    setRecentUpdateIds([]);
+
+    // Instant table update — do not wait on worker batch + full hub re-query.
+    setRows((prev) => prev.filter((r) => !idSet.has(r.item.id)));
+    skipHubReloadUntilRef.current = Date.now() + 4000;
+    window.setTimeout(() => {
+      skipHubReloadUntilRef.current = 0;
+      if (!isRunningRef.current) void reload({ silent: true, force: true });
+    }, 4100);
+
     const rowById = new Map(scopedRows.map((r) => [r.item.id, r]));
     const reasonsById: Record<string, { reason: string; reasonCode: 'trash_suggestion' | 'hub_bulk' }> = {};
+    const knownItems: Item[] = [];
     for (const id of ids) {
       const row = rowById.get(id);
+      if (row) knownItems.push(row.item);
       const suggestion = row ? resolveTrashSuggestion(row) : null;
       reasonsById[id] = suggestion
         ? { reason: suggestion, reasonCode: 'trash_suggestion' }
         : { reason: 'Moved to trash from Enrichment Hub', reasonCode: 'hub_bulk' };
     }
-    await moveItemsToTrash(ids, { reasonsById });
-    setSelectedIds(new Set());
-    setInspectState(null);
-    setDisplayOrderIds(null);
-    setRecentUpdateIds([]);
+
+    void moveItemsToTrash(ids, { reasonsById, knownItems }).catch((err) => {
+      console.error('moveItemsToTrash failed:', err);
+      skipHubReloadUntilRef.current = 0;
+      void reload({ force: true });
+    });
   };
 
   const handleSelectAllTrashSuggestions = () => {
@@ -853,7 +834,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             scopeCollectionId={scopeCollectionId}
             projects={projects}
             collections={collections}
-            itemCount={scopedCounts.total}
+            itemCount={scopedRows.length}
             onClearProject={onClearProjectScope ?? (() => {})}
             onClearCollection={onClearCollectionScope ?? (() => {})}
             onResetScope={onResetScope ?? (() => {})}
@@ -959,138 +940,100 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         </div>
       ) : null}
 
-      {/* Summary row */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 8,
-          marginBottom: 16,
-          alignItems: 'center',
-        }}
-      >
-        <SummaryChip
-          label="All"
-          count={scopedCounts.total}
-          active={statusFilter === 'all' && failureCategoryFilter === 'all' && failureStageFilter === 'all'}
-          tone="neutral"
-          onClick={() => {
-            setStatusFilter('all');
-            setFailureCategoryFilter('all');
-            setFailureStageFilter('all');
-            setTrashSuggestionsOnly(false);
+      {/* Status filters — counts stay fixed; selection highlights active chip only */}
+      <div style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            alignItems: 'center',
+            marginBottom: 8,
           }}
-        />
-        <SummaryChip
-          label="Enriched"
-          count={scopedCounts.ok}
-          active={statusFilter === 'ok'}
-          tone="ok"
-          onClick={() => {
-            setStatusFilter('ok');
-            setFailureCategoryFilter('all');
-            setFailureStageFilter('all');
-            setTrashSuggestionsOnly(false);
-          }}
-        />
-        <SummaryChip
-          label="Not enriched"
-          count={scopedCounts.notEnriched}
-          active={statusFilter === 'not_enriched'}
-          tone="info"
-          onClick={() => {
-            setStatusFilter('not_enriched');
-            setFailureCategoryFilter('all');
-            setFailureStageFilter('all');
-            setTrashSuggestionsOnly(false);
-          }}
-        />
-        <SummaryChip
-          label="Failed"
-          count={scopedCounts.failed}
-          active={statusFilter === 'failed'}
-          tone="error"
-          onClick={() => {
-            setStatusFilter('failed');
-            setFailureCategoryFilter('all');
-            setFailureStageFilter('all');
-            setTrashSuggestionsOnly(false);
-          }}
-        />
-        {trashSuggestionRows.length > 0 ? (
+        >
           <SummaryChip
-            label="Trash suggestions"
-            count={trashSuggestionRows.length}
-            active={trashSuggestionsOnly}
-            tone="warn"
-            onClick={() => {
-              setTrashSuggestionsOnly((v) => !v);
-              if (!trashSuggestionsOnly) {
-                setStatusFilter('all');
-                setFailureCategoryFilter('all');
-                setFailureStageFilter('all');
-              }
-            }}
+            label="All"
+            count={rowsForStatusCounts.length}
+            active={outcomeLabel === 'all' && !trashSuggestionsOnly}
+            color={PIPELINE_STATE_COLORS.neutral}
+            onClick={clearHubFilters}
           />
-        ) : null}
-        <SummaryChip
-          label="Fetch review"
-          count={scopedCounts.pendingFetchReview}
-          active={statusFilter === 'pending_fetch_review'}
-          tone="warn"
-          onClick={() => {
-            setStatusFilter('pending_fetch_review');
-            setFailureCategoryFilter('all');
-            setFailureStageFilter('all');
-            setTrashSuggestionsOnly(false);
+          {trashSuggestionRows.length > 0 ? (
+            <SummaryChip
+              label="Trash suggestions"
+              count={trashSuggestionRows.length}
+              active={trashSuggestionsOnly}
+              color={PIPELINE_STATE_COLORS.skipped}
+              onClick={() => {
+                if (trashSuggestionsOnly) {
+                  setTrashSuggestionsOnly(false);
+                } else {
+                  clearOutcomeFilter();
+                  setTrashSuggestionsOnly(true);
+                }
+              }}
+            />
+          ) : null}
+          {initialLoading ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                color: 'var(--text-faint)',
+                fontSize: 'var(--text-xs)',
+              }}
+            >
+              <Loader2 size={14} className="spin" />
+              Loading…
+            </span>
+          ) : refreshing ? (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>Refreshing…</span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void reload({ silent: true })}
+              title="Refresh"
+              style={{
+                ...chipBase,
+                marginLeft: 'auto',
+                padding: '4px 8px',
+              }}
+            >
+              <RefreshCw size={13} />
+            </button>
+          )}
+        </div>
+        <div
+          style={{
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            color: 'var(--text-faint)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            marginBottom: 6,
           }}
-        />
-        <SummaryChip
-          label="Skipped"
-          count={scopedCounts.skipped}
-          active={statusFilter === 'skipped'}
-          onClick={() => {
-            setStatusFilter('skipped');
-            setFailureCategoryFilter('all');
-            setFailureStageFilter('all');
-            setTrashSuggestionsOnly(false);
-          }}
-        />
-        {scopedCounts.embedFailed > 0 ? (
-          <SummaryChip
-            label="Embed failed"
-            count={scopedCounts.embedFailed}
-            active={statusFilter === 'embed_failed'}
-            tone="error"
-            onClick={() => {
-              setStatusFilter('embed_failed');
-              setFailureCategoryFilter('all');
-              setFailureStageFilter('all');
-              setTrashSuggestionsOnly(false);
-            }}
-          />
-        ) : null}
-        {initialLoading ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-            <Loader2 size={14} className="spin" />
-            Loading…
-          </span>
-        ) : refreshing ? (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>Refreshing…</span>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void reload({ silent: true })}
-            title="Refresh"
-            style={{
-              ...chipBase,
-              marginLeft: 'auto',
-              padding: '4px 8px',
-            }}
-          >
-            <RefreshCw size={13} />
-          </button>
-        )}
+        >
+          Status
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {statusBarChips.map((chip) => (
+            <SummaryChip
+              key={chip.label}
+              label={chip.label}
+              count={chip.count}
+              color={chip.color}
+              dimmed={chip.count === 0}
+              active={outcomeLabel === chip.label && !trashSuggestionsOnly}
+              onClick={() => {
+                setTrashSuggestionsOnly(false);
+                setDisplayOrderIds(null);
+                setRecentUpdateIds([]);
+                setOutcomeLabel(chip.label);
+              }}
+            />
+          ))}
+        </div>
       </div>
 
       {trashSuggestionsOnly && trashSuggestionRows.length > 0 ? (
@@ -1184,102 +1127,14 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             }}
           />
         </div>
-        {statusFilter !== 'all' ? (
+        {outcomeLabel !== 'all' || trashSuggestionsOnly ? (
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-            Filter: {STATUS_FILTER_LABELS[statusFilter]}
-          </span>
-        ) : trashSuggestionsOnly ? (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-            Filter: Trash suggestions
+            Showing {filteredRows.length} of {rowsForStatusCounts.length}
+            {outcomeLabel !== 'all' ? ` · ${outcomeLabel}` : ''}
+            {trashSuggestionsOnly ? ' · trash suggestions' : ''}
           </span>
         ) : null}
       </div>
-
-      {Object.keys(failureStageCounts).length > 0 ||
-      Object.keys(failureCategoryCounts).length > 0 ? (
-        <div style={{ marginBottom: 14 }}>
-          {Object.keys(failureStageCounts).length > 0 ? (
-            <div style={{ marginBottom: 10 }}>
-              <div
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--text-faint)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  marginBottom: 6,
-                }}
-              >
-                Failed stage
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                <FilterChip
-                  label="All stages"
-                  active={failureStageFilter === 'all'}
-                  color="var(--text-muted)"
-                  onClick={() => setFailureStageFilter('all')}
-                />
-                {(Object.entries(failureStageCounts) as [FailureStage, number][]).map(
-                  ([stage, n]) => (
-                    <FilterChip
-                      key={stage}
-                      label={`${FAILURE_STAGE_LABELS[stage]} (${n})`}
-                      active={failureStageFilter === stage}
-                      color={
-                        stage === 'fetch'
-                          ? 'var(--error, #f85149)'
-                          : stage === 'ai'
-                            ? 'var(--er-warn, #d29922)'
-                            : '#a371f7'
-                      }
-                      onClick={() =>
-                        setFailureStageFilter((prev) => (prev === stage ? 'all' : stage))
-                      }
-                    />
-                  )
-                )}
-              </div>
-            </div>
-          ) : null}
-          {Object.keys(failureCategoryCounts).length > 0 ? (
-            <div>
-              <div
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--text-faint)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  marginBottom: 6,
-                }}
-              >
-                Issue type
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                <FilterChip
-                  label="All issues"
-                  active={failureCategoryFilter === 'all'}
-                  color="var(--error, #f85149)"
-                  onClick={() => setFailureCategoryFilter('all')}
-                />
-                {(Object.entries(failureCategoryCounts) as [FailureCategory, number][])
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([cat, n]) => (
-                    <FilterChip
-                      key={cat}
-                      label={`${FAILURE_CATEGORY_LABELS[cat]} (${n})`}
-                      active={failureCategoryFilter === cat}
-                      color="var(--error, #f85149)"
-                      onClick={() =>
-                        setFailureCategoryFilter((prev) => (prev === cat ? 'all' : cat))
-                      }
-                    />
-                  ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
 
       {isProcessing ? (
         <div
@@ -1531,20 +1386,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                         </span>
                       ) : null}
                     </div>
-                    {item.url ? (
-                      <div
-                        style={{
-                          fontSize: 'var(--text-xs)',
-                          color: 'var(--text-faint)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          marginTop: 2,
-                        }}
-                      >
-                        {item.url}
-                      </div>
-                    ) : null}
+                    <BookmarkUrlLink item={item} />
                     {trashSuggestion ? (
                       <div
                         style={{
@@ -1635,11 +1477,14 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                     >
                       <Eye size={13} />
                     </button>
-                    {onOpenItem ? (
+                    {getBookmarkOpenUrl(item) ? (
                       <button
                         type="button"
-                        onClick={() => onOpenItem(item)}
-                        title="Open in Inspector tab"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openBookmarkInBrowser(item);
+                        }}
+                        title="Open URL in new tab"
                         style={actionBtnStyle}
                       >
                         <ExternalLink size={13} />
@@ -1716,8 +1561,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         {filteredRows.length !== tableRowsForList.length
           ? ` · ${filteredRows.length} match current filters`
           : ''}
-        {filteredRows.length !== scopedCounts.total
-          ? ` (${scopedCounts.total} in scope)`
+        {filteredRows.length !== scopedRows.length
+          ? ` (${scopedRows.length} in scope)`
           : ''}
         {counts && counts.failed > 0 ? (
           <> · {counts.failed} enrich failures in library</>

@@ -10,3 +10,4 @@ export * from './pipelineCatalog';
 export * from './singleLinkDigest';
 export * from './pipelineRunAnalysis';
 export * from './pipelineRunStore';
+export * from './pipelineDictionary';

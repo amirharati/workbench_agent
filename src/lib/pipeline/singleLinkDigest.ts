@@ -1,6 +1,7 @@
 import { getEnrichment } from '../enrichment';
-import { runItemPipeline, type ItemPipelineProgress } from './itemPipeline';
 import type { EnrichmentResult } from '../enrichment';
+import { PIPELINE_STAGE_LABELS } from './pipelineDictionary';
+import { runItemPipeline, type ItemPipelineProgress } from './itemPipeline';
 
 export type SingleLinkDigestPhase = ItemPipelineProgress['phase'];
 
@@ -30,19 +31,19 @@ export function formatDigestProgressLabel(phase: SingleLinkDigestPhase): string 
     case 'prep':
       return 'Preparing…';
     case 'enrich':
-      return 'Fetching page…';
+      return `${PIPELINE_STAGE_LABELS.fetch} & ${PIPELINE_STAGE_LABELS.enrich}…`;
     case 'embed':
-      return 'Building search embeddings…';
+      return `${PIPELINE_STAGE_LABELS.embed}…`;
     case 'classify':
-      return 'Classifying…';
+      return `${PIPELINE_STAGE_LABELS.classify}…`;
     case 'discover':
-      return 'Discovering topics…';
+      return `${PIPELINE_STAGE_LABELS.discover}…`;
     case 'save':
       return 'Saving…';
     case 'done':
-      return 'Digest complete';
+      return 'Complete';
     default:
-      return 'Digesting…';
+      return 'Processing…';
   }
 }
 

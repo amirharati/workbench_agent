@@ -15,6 +15,7 @@ import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { EnrichmentContent, ItemPipelineBadge, ENRICHMENT_EMPTY_MESSAGE } from './PipelineDisplayBlocks';
 import { ItemContextMenu } from './ItemContextMenu';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { TabPaneFrame, TabScrollShell } from './TabScrollShell';
 import {
   isScopeNarrowed,
@@ -790,7 +791,12 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
         <div><Label>URL</Label>
           {isEditing
             ? <input type="url" value={editUrl} onChange={e => onEditUrlChange(e.target.value)} placeholder="https://..." style={{ width: '100%', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
-            : <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontSize: 'var(--text-sm)', wordBreak: 'break-all' }}>{item.url}</a>}
+            : (
+                <ExtensionPageUrlLink
+                  url={item.url ?? ''}
+                  style={{ color: 'var(--accent)', fontSize: 'var(--text-sm)', wordBreak: 'break-all' }}
+                />
+              )}
         </div>
       )}
       {isBookmark && !isEditing && (

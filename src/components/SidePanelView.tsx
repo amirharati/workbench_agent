@@ -22,10 +22,6 @@ interface SidePanelViewProps {
   status: string;
   digestItemId?: string | null;
   digestStatus?: string;
-  onRunDigest?: (
-    itemId: string,
-    opts?: { forceEnrich?: boolean; preferTabSession?: boolean; tabId?: number }
-  ) => Promise<{ message: string; failed: boolean }>;
 }
 
 function itemPlacementCount(item: Item): number {
@@ -102,7 +98,6 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   status,
   digestItemId,
   digestStatus,
-  onRunDigest,
 }) => {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
@@ -1044,7 +1039,6 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             digestItemId === pipelineItemId ? digestStatus || status : undefined
           }
           onOpenInApp={onOpenFullPage}
-          onRunDigest={onRunDigest}
         />
       ) : null}
 

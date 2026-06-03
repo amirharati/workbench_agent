@@ -18,6 +18,7 @@ import {
 import { ClassifyQueueReasonBlock } from './ClassifyQueueReasonBlock';
 import { SearchDevPanel } from './SearchDevPanel';
 import type { CategorizationQueueStats } from '../../lib/categorization/types';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 type DevTab = 'queue' | 'taxonomy' | 'search';
 
@@ -230,15 +231,13 @@ function ItemDetail({
           {row.item.title || row.item.url}
         </strong>
         {row.item.url ? (
-          <a
-            href={row.item.url}
-            target="_blank"
-            rel="noreferrer"
+          <ExtensionPageUrlLink
+            url={row.item.url}
             style={{ color: 'var(--accent)', display: 'flex' }}
             title="Open URL"
           >
             <ExternalLink size={14} />
-          </a>
+          </ExtensionPageUrlLink>
         ) : null}
       </div>
       <ClassifyQueueReasonBlock

@@ -10,11 +10,16 @@ import {
   type FailureCategory,
   type FailureStage,
 } from '../enrichment/failureLabels';
+import { primaryLeafIdFromLinks, verifiedPrimaryLeafIdFromLinks } from '../categorization/counts';
+import {
+  pipelineBadgeToStatusChip,
+  resolvePipelineStatus,
+  type PipelineBadge,
+} from './pipelineBadge';
 import type { ProcessingDigest } from './itemPipelineContext';
+import { pipelineStatusColorForLabel } from './pipelineDictionary';
 import { resolvePipelineStageFromParts } from './pipelineStage';
-import type { AiItemSignal } from '../categorization/types';
-import { primaryLeafIdFromLinks } from '../categorization/counts';
-import type { AiItemCategoryLink } from '../categorization/types';
+import type { AiItemCategoryLink, AiItemSignal } from '../categorization/types';
 
 export type EnrichmentHubFilter =
   | 'all'
@@ -43,63 +48,30 @@ export type EnrichmentHubRowMeta = {
   failureCategory?: FailureCategory;
   failureStage?: FailureStage;
   failureReason?: string;
+  pipelineBadge: PipelineBadge;
   statusBadge: { text: string; color: string };
   nextStep: string;
 };
 
-function buildStatusBadge(
+function resolveRowPipelineBadge(
   enrichment: ItemEnrichment | undefined,
-  failureLabel: ReturnType<typeof resolveEnrichmentFailureLabel>,
   stageInput?: {
     signal?: AiItemSignal;
     primaryCategoryId?: string | null;
+    verifiedPrimaryCategoryId?: string | null;
     suggestedLinkCount?: number;
     embedFailed?: boolean;
   }
-): { text: string; color: string } {
-  if (failureLabel) {
-    const color =
-      failureLabel.stage === 'embed'
-        ? '#a371f7'
-        : failureLabel.stage === 'ai' && enrichment?.status === 'ok'
-          ? 'var(--er-warn, #d29922)'
-          : 'var(--error, #f85149)';
-    const text =
-      failureLabel.stage === 'ai' && enrichment?.status === 'ok'
-        ? `Fetch OK · ${FAILURE_CATEGORY_LABELS[failureLabel.category]}`
-        : failureLabel.shortLabel;
-    return { text, color };
-  }
-  if (enrichment?.pendingFetchReview) {
-    return { text: 'Fetch review', color: 'var(--er-warn, #d29922)' };
-  }
-
-  const stage = resolvePipelineStageFromParts({
+): PipelineBadge {
+  return resolvePipelineStatus({
     enrichment,
     embedFailed: stageInput?.embedFailed,
     signal: stageInput?.signal,
     primaryCategoryId: stageInput?.primaryCategoryId,
+    verifiedPrimaryCategoryId: stageInput?.verifiedPrimaryCategoryId,
     suggestedLinkCount: stageInput?.suggestedLinkCount,
+    classifyState: stageInput?.signal?.classifyState,
   });
-
-  if (stage.level === 'complete') {
-    return { text: 'Enriched', color: 'var(--er-ok, #3fb950)' };
-  }
-  if (stage.level === 'summarized') {
-    return { text: stage.label, color: 'var(--er-warn, #d29922)' };
-  }
-  if (stage.level === 'fetched') {
-    return { text: 'Fetched', color: 'var(--text-muted)' };
-  }
-
-  const status = enrichment?.status ?? 'none';
-  if (status === 'skipped') {
-    return { text: 'Skipped', color: 'var(--er-warn, #d29922)' };
-  }
-  if (!enrichment || status === 'none') {
-    return { text: 'Not enriched', color: 'var(--text-faint)' };
-  }
-  return { text: status, color: 'var(--text-muted)' };
 }
 
 function computeRowFlags(
@@ -125,14 +97,17 @@ function computeRowFlags(
   };
 }
 
+export type HubStatusStageInput = {
+  signal?: AiItemSignal;
+  primaryCategoryId?: string | null;
+  verifiedPrimaryCategoryId?: string | null;
+  suggestedLinkCount?: number;
+};
+
 function buildRowMetaFixed(
   enrichment: ItemEnrichment | undefined,
   embedFailed: boolean,
-  stageInput?: {
-    signal?: AiItemSignal;
-    primaryCategoryId?: string | null;
-    suggestedLinkCount?: number;
-  }
+  stageInput?: HubStatusStageInput
 ): EnrichmentHubRowMeta {
   const failureLabel = enrichment
     ? resolveEnrichmentFailureLabel(enrichment, embedFailed)
@@ -145,6 +120,11 @@ function buildRowMetaFixed(
     primaryCategoryId: stageInput?.primaryCategoryId,
     suggestedLinkCount: stageInput?.suggestedLinkCount,
   });
+  const pipelineBadge = resolveRowPipelineBadge(enrichment, {
+    ...stageInput,
+    embedFailed,
+  });
+  const statusBadge = pipelineBadgeToStatusChip(pipelineBadge, enrichment);
   return {
     ...flags,
     ok: stage.level === 'complete',
@@ -155,10 +135,8 @@ function buildRowMetaFixed(
         ? `${FAILURE_CATEGORY_LABELS[failureLabel.category]} — ${failureLabel.detail}`
         : FAILURE_CATEGORY_LABELS[failureLabel.category]
       : undefined,
-    statusBadge: buildStatusBadge(enrichment, failureLabel, {
-      ...stageInput,
-      embedFailed,
-    }),
+    pipelineBadge,
+    statusBadge,
     nextStep: describeEnrichmentNextStep(enrichment, embedFailed, stage),
   };
 }
@@ -278,10 +256,15 @@ export function describeRowStatusHelp(row: EnrichmentHubRow): RowStatusHelp {
     embedFailed,
   });
   if (stage.level === 'complete') {
+    const verified = row.meta.pipelineBadge.kind === 'verified';
     return {
-      badge: 'Enriched',
-      meaning: 'Fetch, AI summary, search embed, and category are all stored.',
-      tryThis: 'No action required unless you want to refresh.',
+      badge: verified ? 'Verified' : 'Enriched',
+      meaning: verified
+        ? 'You accepted the primary category. Fetch, AI summary, embed, and classification are complete.'
+        : 'AI pipeline finished (fetch, summary, embed, classify). Accept a primary category in Inspector to reach Verified.',
+      tryThis: verified
+        ? 'No action required unless you want to refresh or change categories.'
+        : 'Open Inspector → review AI categories → accept primary.',
     };
   }
   if (stage.level === 'summarized') {
@@ -335,10 +318,22 @@ export const ENRICHMENT_STATUS_GUIDE: Array<{
   tryThis: string;
 }> = [
   {
+    badge: 'Verified',
+    color: '#a371f7',
+    meaning: 'You accepted the primary category; AI pipeline is complete.',
+    tryThis: 'No action required unless you want to refresh or recategorize.',
+  },
+  {
     badge: 'Enriched',
     color: 'var(--er-ok, #3fb950)',
-    meaning: 'Full pipeline: fetch + AI summary + search embed + category.',
-    tryThis: 'No action required unless you want to refresh.',
+    meaning: 'AI pipeline complete (fetch + summary + embed + classify). Review categories to verify.',
+    tryThis: 'Open Inspector → accept primary category when ready.',
+  },
+  {
+    badge: 'AI categories',
+    color: '#f97316',
+    meaning: 'Classify produced suggestions; waiting for you to accept or change.',
+    tryThis: 'Inspector → Categories → accept primary or edit.',
   },
   {
     badge: 'Summarized',
@@ -421,10 +416,129 @@ export function rowMatchesFailureStage(row: EnrichmentHubRow, stage: FailureStag
 }
 
 export interface EnrichmentHubFilterState {
-  search: string;
-  statusFilter: EnrichmentHubFilter;
-  failureStageFilter: 'all' | FailureStage;
-  failureCategoryFilter: 'all' | FailureCategory;
+  /** Exact row status badge label (e.g. "Summarized · no category"). */
+  outcomeLabel: string | 'all';
+  search?: string;
+  trashSuggestionsOnly?: boolean;
+}
+
+export type HubOutcomeChipTone = 'ok' | 'error' | 'warn' | 'info' | 'neutral';
+
+export interface HubOutcomeChip {
+  label: string;
+  count: number;
+  tone: HubOutcomeChipTone;
+  /** When set, used for chip tint (e.g. Verified purple vs Enriched green). */
+  color?: string;
+}
+
+/**
+ * Full pipeline status catalog — hub summary always lists these (count may be 0).
+ * Matches row badges from buildStatusBadge / pipelineStage labels.
+ */
+export const HUB_PIPELINE_STATUS_LABELS: readonly string[] = [
+  'Verified',
+  'Enriched',
+  'Summarized · no category',
+  'Summarized · no embed',
+  'Summarized · pending pipeline',
+  'Summarized',
+  'Pending classify',
+  'Pending discover',
+  'Manual review',
+  'AI categories',
+  'Fetched',
+  'Not enriched',
+  'Not processed',
+  'Skipped',
+  'Fetch review',
+];
+
+/** @deprecated Use HUB_PIPELINE_STATUS_LABELS */
+export const HUB_OUTCOME_CHIP_ORDER = HUB_PIPELINE_STATUS_LABELS;
+
+export function hubOutcomeToneForLabel(label: string): HubOutcomeChipTone {
+  if (label === 'Verified') return 'info';
+  if (label === 'Enriched') return 'ok';
+  if (label === 'Not enriched' || label === 'Not processed') return 'neutral';
+  if (
+    label.startsWith('Fetch ·') ||
+    label.startsWith('Embed ·') ||
+    label.includes('failed')
+  ) {
+    return 'error';
+  }
+  if (label.startsWith('Fetch OK ·')) return 'warn';
+  if (
+    label.includes('no category') ||
+    label.includes('no embed') ||
+    label.includes('pending') ||
+    label.startsWith('Pending')
+  ) {
+    return 'info';
+  }
+  if (label === 'Summarized') return 'warn';
+  if (label === 'Manual review' || label === 'AI categories') return 'warn';
+  if (label === 'Skipped' || label === 'Fetch review') return 'warn';
+  return 'neutral';
+}
+
+/** Status label shown in hub table — use for chips, filters, and counts (must match). */
+export function hubRowStatusLabel(row: EnrichmentHubRow): string {
+  return row.meta.statusBadge.text;
+}
+
+/** Same badge text/color as the enrichment hub table (for digest batch reports). */
+export function hubStatusBadgeForEnrichment(
+  enrichment: ItemEnrichment | undefined,
+  embedFailed: boolean,
+  stageInput?: HubStatusStageInput
+): { text: string; color: string } {
+  return buildRowMetaFixed(enrichment, embedFailed, stageInput).statusBadge;
+}
+
+const HUB_PRIMARY_STATUS_LABELS = ['Verified', 'Enriched'] as const;
+
+function hubChipColor(rows: EnrichmentHubRow[], label: string): string {
+  const sample = rows.find((r) => hubRowStatusLabel(r) === label);
+  return sample?.meta.statusBadge.color ?? pipelineStatusColorForLabel(label);
+}
+
+export function buildHubOutcomeChips(rows: EnrichmentHubRow[]): HubOutcomeChip[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const label = hubRowStatusLabel(row);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+
+  const chipFor = (label: string, count: number): HubOutcomeChip => ({
+    label,
+    count,
+    tone: hubOutcomeToneForLabel(label),
+    color: hubChipColor(rows, label),
+  });
+
+  const chips: HubOutcomeChip[] = [];
+  for (const label of HUB_PRIMARY_STATUS_LABELS) {
+    chips.push(chipFor(label, counts.get(label) ?? 0));
+    counts.delete(label);
+  }
+
+  for (const label of HUB_PIPELINE_STATUS_LABELS) {
+    if ((HUB_PRIMARY_STATUS_LABELS as readonly string[]).includes(label)) continue;
+    const count = counts.get(label) ?? 0;
+    if (count > 0) {
+      chips.push(chipFor(label, count));
+      counts.delete(label);
+    }
+  }
+
+  const extra = [...counts.entries()]
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([label, count]) => chipFor(label, count));
+
+  return [...chips, ...extra];
 }
 
 export function applyEnrichmentHubFilters(
@@ -432,7 +546,7 @@ export function applyEnrichmentHubFilters(
   filters: EnrichmentHubFilterState
 ): EnrichmentHubRow[] {
   let list = rows;
-  const q = filters.search.trim().toLowerCase();
+  const q = (filters.search ?? '').trim().toLowerCase();
   if (q) {
     list = list.filter(
       (r) =>
@@ -440,15 +554,11 @@ export function applyEnrichmentHubFilters(
         (r.item.url || '').toLowerCase().includes(q)
     );
   }
-  if (filters.statusFilter !== 'all') {
-    list = list.filter((r) => rowMatchesEnrichmentFilter(r, filters.statusFilter));
+  if (filters.trashSuggestionsOnly) {
+    list = list.filter((r) => rowMatchesTrashSuggestion(r));
   }
-  if (filters.failureStageFilter !== 'all') {
-    list = list.filter((r) => r.meta.failureStage === filters.failureStageFilter);
-  }
-  if (filters.failureCategoryFilter !== 'all') {
-    const category = filters.failureCategoryFilter;
-    list = list.filter((r) => rowMatchesFailureCategory(r, category));
+  if (filters.outcomeLabel !== 'all') {
+    list = list.filter((r) => hubRowStatusLabel(r) === filters.outcomeLabel);
   }
   return list;
 }
@@ -570,6 +680,7 @@ export async function loadEnrichmentHubData(
       meta: buildRowMetaFixed(enrichment, embedFailed, {
         signal,
         primaryCategoryId: primaryLeafIdFromLinks(itemLinks),
+        verifiedPrimaryCategoryId: verifiedPrimaryLeafIdFromLinks(itemLinks),
         suggestedLinkCount: itemLinks.filter((l) => l.status === 'suggested').length,
       }),
     };

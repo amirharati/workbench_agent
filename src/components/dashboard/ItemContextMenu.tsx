@@ -141,7 +141,12 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
         {
           label: 'Delete permanently',
           action: () => {
-            if (!window.confirm(`Permanently delete "${item.title || 'Untitled'}"?`)) return;
+            if (
+              !window.confirm(
+                `Permanently delete "${item.title || 'Untitled'}"? The URL stays blocked on import; bookmark data is removed.`
+              )
+            )
+              return;
             void runQuickAccess(() => permanentlyDeleteItem(item.id));
           },
           icon: '🗑️',

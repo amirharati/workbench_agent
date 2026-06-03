@@ -33,6 +33,8 @@ import { ItemContextMenu } from '../ItemContextMenu';
 import { List, Grid, ExternalLink, Eye, Pencil, Trash2, Calendar, Plus } from 'lucide-react';
 import { NewProjectModal, NewCollectionModal, NewItemModal } from '../CreateModals';
 import { DeleteConfirmDialog } from '../../DeleteConfirmDialog';
+import { TrashView } from '../TrashView';
+import { ExtensionPageUrlLink } from '../BookmarkUrlLink';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -654,6 +656,12 @@ export const MainContent: React.FC<MainContentProps> = ({
             onOpenItem={onOpenItemFromSearch ?? (() => {})}
             showOpenInTab
             onOpenInTab={() => onLibrarySearchInTab?.(librarySearch.state.query)}
+          />
+        );
+      case 'trash':
+        return (
+          <TrashView
+            onOpenItem={onOpenItemFromSearch ?? onOpenItem}
           />
         );
       case 'settings':
@@ -1701,12 +1709,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                       </div>
 
                       {viewingItem.url && (
-                        <a
-                          href={viewingItem.url}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            if (viewingItem.url) openInNewTab(viewingItem.url);
-                          }}
+                        <ExtensionPageUrlLink
+                          url={viewingItem.url}
                           style={{
                             color: 'var(--accent)',
                             textDecoration: 'none',
@@ -1720,7 +1724,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                         >
                           <ExternalLink size={13} />
                           {viewingItem.url}
-                        </a>
+                        </ExtensionPageUrlLink>
                       )}
 
                       {/* Saved In info */}
@@ -2945,7 +2949,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     }}>
       {/* Wrapper header is only shown for views that don't render their own header. */}
       {!(activeView === 'projects' && selectedProjectId !== null) &&
-        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings', 'ai-categories', 'import-studio', 'pipeline', 'help'].includes(
+        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings', 'trash', 'ai-categories', 'import-studio', 'pipeline', 'help'].includes(
           activeView
         ) && (
           <div style={{ 
@@ -3184,14 +3188,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                 <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   URL
                 </div>
-                <a
-                  href={viewingItem.url}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (viewingItem.url) {
-                      chrome.tabs.create({ url: viewingItem.url });
-                    }
-                  }}
+                <ExtensionPageUrlLink
+                  url={viewingItem.url}
                   style={{
                     color: 'var(--accent)',
                     textDecoration: 'none',
@@ -3210,7 +3208,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                 >
                   <ExternalLink size={14} />
                   {viewingItem.url}
-                </a>
+                </ExtensionPageUrlLink>
               </div>
             )}
             

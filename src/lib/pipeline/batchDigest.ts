@@ -94,6 +94,8 @@ export async function runBatchDigest(
     skipAi?: boolean;
     forceReclassify?: boolean;
     pipelineRunAction?: PipelineReportAction;
+    skipDiscover?: boolean;
+    drainPendingClassifyQueue?: boolean;
   }
 ): Promise<BatchDigestResult> {
   const result = await runItemPipeline({
@@ -111,6 +113,8 @@ export async function runBatchDigest(
     skipAi: options?.skipAi,
     forceClassify: options?.forceReclassify !== false,
     pipelineRunAction: options?.pipelineRunAction,
+    skipDiscover: options?.skipDiscover,
+    drainPendingClassifyQueue: options?.drainPendingClassifyQueue,
   });
 
   return {

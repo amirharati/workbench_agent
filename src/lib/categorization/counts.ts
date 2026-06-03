@@ -97,6 +97,12 @@ export function primaryLeafIdFromLinks(links: AiItemCategoryLink[]): string | nu
   return primary?.categoryId ?? null;
 }
 
+/** User-confirmed primary category (accepted only — not AI suggestions). */
+export function verifiedPrimaryLeafIdFromLinks(links: AiItemCategoryLink[]): string | null {
+  const primary = links.find((l) => l.isPrimary && l.status === 'accepted');
+  return primary?.categoryId ?? null;
+}
+
 export function classifyStateFromPrimary(leafId: string | null, eligible: boolean): import('./types').ClassifyState {
   if (!eligible) return 'ineligible';
   if (!leafId) return 'pending_classify';

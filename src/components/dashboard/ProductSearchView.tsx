@@ -9,6 +9,7 @@ import { isValidBookmarkUrl } from '../../lib/utils';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
 import { ItemContextMenu } from './ItemContextMenu';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 interface ProductSearchViewProps {
   items: Item[];
@@ -470,16 +471,14 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                   )}
                 </div>
                 {row.url && isValidBookmarkUrl(row.url) && (
-                  <a
-                    href={row.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }}
-                    aria-label="Open URL"
+                  <ExtensionPageUrlLink
+                    url={row.url}
+                    stopPropagation
+                    style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2, display: 'inline-flex' }}
+                    title="Open URL"
                   >
                     <ExternalLink size={14} />
-                  </a>
+                  </ExtensionPageUrlLink>
                 )}
                 {isSelected && item && (
                   <button

@@ -15,6 +15,7 @@ import { ItemContextMenu } from './ItemContextMenu';
 import { Pencil, Trash2, ExternalLink, Calendar, FileText, Pin, Star } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { pinItem, unpinItem, favoriteItem, unfavoriteItem } from '../../lib/itemQuickAccess';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 interface TabContentProps {
   tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; workspaceId?: string; type?: 'item' | 'collection' | 'system' | 'workspace' }) | null;
@@ -505,19 +506,15 @@ export const TabContent: React.FC<TabContentProps> = ({
           </h2>
           <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {effectiveItem.url && isValidBookmarkUrl(effectiveItem.url) ? (
-              <a
-                href={effectiveItem.url}
-                onClick={(e) => {
-                  e.preventDefault();
-                  chrome.tabs.create({ url: effectiveItem.url });
-                }}
+              <ExtensionPageUrlLink
+                url={effectiveItem.url}
+                title={`Open ${effectiveItem.url} in new tab`}
                 style={{
                   color: 'var(--accent)',
                   textDecoration: 'none',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.25rem',
-                  cursor: 'pointer',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.textDecoration = 'underline';
@@ -525,11 +522,10 @@ export const TabContent: React.FC<TabContentProps> = ({
                 onMouseLeave={(e) => {
                   e.currentTarget.style.textDecoration = 'none';
                 }}
-                title={`Open ${effectiveItem.url} in new tab`}
               >
                 <ExternalLink size={12} />
                 {getDomain(effectiveItem.url)}
-              </a>
+              </ExtensionPageUrlLink>
             ) : (
               <span>{effectiveItem.source || 'Note'}</span>
             )}
@@ -780,12 +776,9 @@ export const TabContent: React.FC<TabContentProps> = ({
       {!effectiveItem.notes && effectiveItem.url && isValidBookmarkUrl(effectiveItem.url) && (
         <div style={{ marginTop: '1rem' }}>
           <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>URL</h3>
-          <a
-            href={effectiveItem.url}
-            onClick={(e) => {
-              e.preventDefault();
-              chrome.tabs.create({ url: effectiveItem.url });
-            }}
+          <ExtensionPageUrlLink
+            url={effectiveItem.url}
+            title={`Open ${effectiveItem.url} in new tab`}
             style={{
               color: 'var(--accent)',
               textDecoration: 'none',
@@ -795,7 +788,6 @@ export const TabContent: React.FC<TabContentProps> = ({
               padding: '0.75rem',
               background: 'var(--bg-glass)',
               borderRadius: 8,
-              cursor: 'pointer',
               wordBreak: 'break-all',
             }}
             onMouseEnter={(e) => {
@@ -806,11 +798,10 @@ export const TabContent: React.FC<TabContentProps> = ({
               e.currentTarget.style.textDecoration = 'none';
               e.currentTarget.style.background = 'var(--bg-glass)';
             }}
-            title={`Open ${effectiveItem.url} in new tab`}
           >
             <ExternalLink size={16} />
             {effectiveItem.url}
-          </a>
+          </ExtensionPageUrlLink>
         </div>
       )}
 

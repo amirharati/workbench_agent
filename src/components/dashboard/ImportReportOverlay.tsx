@@ -6,6 +6,7 @@ import {
   type ImportReportPipelineStatus,
   type ImportReportRow,
 } from '../../lib/pipeline/importReport';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 type ReportFilter = 'all' | 'success' | 'failed' | 'not_processed';
 
@@ -351,14 +352,10 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
                   </div>
                   <div>
                     <div style={{ fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase' }}>URL</div>
-                    <a
-                      href={selectedRow.url}
-                      target="_blank"
-                      rel="noreferrer"
+                    <ExtensionPageUrlLink
+                      url={selectedRow.url}
                       style={{ fontSize: 'var(--text-xs)', color: 'var(--accent)', wordBreak: 'break-all' }}
-                    >
-                      {selectedRow.url}
-                    </a>
+                    />
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <Badge label={selectedRow.outcome === 'created' ? 'New' : 'Existing'} />

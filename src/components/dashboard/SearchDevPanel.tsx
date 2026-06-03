@@ -13,6 +13,7 @@ import {
   type HybridSearchResultWithRelated,
   type SearchFilters,
 } from '../../lib/search';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 function ScoreBar({ label, value, max = 1 }: { label: string; value: number; max?: number }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
@@ -345,15 +346,13 @@ export function SearchDevPanel() {
                     ) : null}
                   </div>
                   {row.url ? (
-                    <a
-                      href={row.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: 'var(--text-muted)', flexShrink: 0 }}
-                      aria-label="Open URL"
+                    <ExtensionPageUrlLink
+                      url={row.url}
+                      style={{ color: 'var(--text-muted)', flexShrink: 0, display: 'inline-flex' }}
+                      title="Open URL"
                     >
                       <ExternalLink size={14} />
-                    </a>
+                    </ExtensionPageUrlLink>
                   ) : null}
                 </div>
               </div>

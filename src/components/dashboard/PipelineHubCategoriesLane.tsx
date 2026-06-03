@@ -36,6 +36,8 @@ import { PipelineMaintenanceStrip } from './PipelineMaintenanceStrip';
 import { type DiscoverConfigPlan, type DiscoverInputScope } from './DiscoverConfigModal';
 import { ManualReviewRetryModal, type ManualReviewRetryRow } from './ManualReviewRetryModal';
 import { PipelineItemInspectorPanel } from './PipelineItemInspectorPanel';
+import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
+import { getBookmarkOpenUrl } from '../../lib/itemQuickAccess';
 import { usePipelineProgress } from './PipelineProgressProvider';
 
 const PAGE_SIZE = 80;
@@ -610,6 +612,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
         forceReclassify: forceReclassify === true,
         cancellable: true,
         collectItemResults: false,
+        skipDiscover: true,
+        drainPendingClassifyQueue: false,
         itemLabels,
       });
     } catch {
@@ -967,17 +971,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                             </span>
                           ) : null}
                         </div>
-                        <div
-                          style={{
-                            fontSize: 'var(--text-xs)',
-                            color: 'var(--text-faint)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {row.item.url}
-                        </div>
+                        <BookmarkUrlLink item={row.item} style={{ marginTop: 0 }} />
                         {isRecentUpdate && !stillMatchesFilter ? (
                           <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2 }}>
                             No longer matches filter
@@ -1046,11 +1040,14 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                         >
                           <Eye size={13} />
                         </button>
-                        {onOpenItem ? (
+                        {getBookmarkOpenUrl(row.item) ? (
                           <button
                             type="button"
-                            onClick={() => onOpenItem(row.item)}
-                            title="Open in Inspector tab"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void openBookmarkInBrowser(row.item);
+                            }}
+                            title="Open URL in new tab"
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',

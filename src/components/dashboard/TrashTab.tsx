@@ -10,11 +10,19 @@ import {
 } from '../../lib/itemQuickAccess';
 import { QuickAccessItemList } from './QuickAccessItemList';
 
+const PERMANENT_DELETE_CONFIRM =
+  'Permanently delete this bookmark? The bookmark and its enrichment data will be removed, but the URL is remembered so Import Studio can skip it later. Restore first if you want to keep the link.';
+
+const EMPTY_TRASH_CONFIRM =
+  'Permanently delete every item in trash? URLs stay on the import block list; bookmark rows and enrichment are removed.';
+
 interface TrashTabProps {
   onItemClick?: (item: Item) => void;
+  /** Full-page Trash view (sidebar) vs utility tab on Home. */
+  variant?: 'tab' | 'page';
 }
 
-export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick }) => {
+export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab' }) => {
   const [items, setItems] = useState<Item[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -36,13 +44,19 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick }) => {
 
   const handlePermanentDelete = async (e: React.MouseEvent, item: Item) => {
     e.stopPropagation();
-    if (!window.confirm(`Permanently delete "${item.title || 'Untitled'}"? This cannot be undone.`)) return;
+    const title = item.title || item.url || 'Untitled';
+    if (!window.confirm(`${PERMANENT_DELETE_CONFIRM}\n\n"${title}"`)) return;
     await permanentlyDeleteItem(item.id);
   };
 
   const handleEmptyTrash = async () => {
     if (items.length === 0) return;
-    if (!window.confirm(`Permanently delete all ${items.length} item${items.length === 1 ? '' : 's'} in trash?`)) return;
+    if (
+      !window.confirm(
+        `${EMPTY_TRASH_CONFIRM}\n\nDelete ${items.length} item${items.length === 1 ? '' : 's'}?`
+      )
+    )
+      return;
     setBusy(true);
     try {
       await emptyTrash();
@@ -51,6 +65,9 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick }) => {
     }
   };
 
+  const pageHint =
+    'Restore brings the bookmark back to your library. Permanent delete removes the bookmark and enrichment but keeps the URL on the import block list until you restore or clear history.';
+
   return (
     <QuickAccessItemList
       title="Trash"
@@ -58,7 +75,12 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick }) => {
       items={items}
       emptyIcon={<Trash2 size={48} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />}
       emptyTitle="Trash is empty"
-      emptyHint="Deleted items appear here. Restore them or delete permanently."
+      emptyHint={
+        variant === 'page'
+          ? 'Deleted bookmarks appear here. Use Restore or Delete permanently from the row actions or right-click menu.'
+          : 'Deleted items appear here. Restore them or delete permanently.'
+      }
+      headerSubtitle={variant === 'page' ? pageHint : undefined}
       onItemClick={onItemClick}
       dateField={(i) => i.deletedAt ?? i.updated_at}
       dateLabel="Deleted"
@@ -113,7 +135,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick }) => {
               cursor: 'pointer',
             }}
           >
-            Delete
+            Delete permanently
           </button>
         </div>
       )}

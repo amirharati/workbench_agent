@@ -5,6 +5,7 @@ import { Panel } from '../../styles/primitives';
 import { SearchBar } from './SearchBar';
 import { Resizer } from './Resizer';
 import { Calendar, FolderOpen, ExternalLink } from 'lucide-react';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 interface NotesViewProps {
   items: Item[];
@@ -351,14 +352,12 @@ export const NotesView: React.FC<NotesViewProps> = ({
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <span>•</span>
                             <ExternalLink size={12} />
-                            <a
-                              href={selectedItem.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <ExtensionPageUrlLink
+                              url={selectedItem.url}
                               style={{ color: 'var(--accent)', textDecoration: 'none' }}
                             >
                               Open URL
-                            </a>
+                            </ExtensionPageUrlLink>
                           </div>
                         )}
                       </div>

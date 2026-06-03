@@ -1,7 +1,8 @@
 # TASK-V3 — Program breakdown (high level)
 
-**Status:** **active planning** — use for worker/session picking  
-**Last updated:** 2026-05-30  
+**Status:** **active** — orchestrator + UI reliability wave shipped 2026-06-02  
+**Last updated:** 2026-06-02  
+**Commits:** `cd4d0e3` (orchestrator) · follow-up commit (pipeline UI, import/trash, hub)  
 **Umbrella:** [`TASK-V3-pipeline-workflow.md`](TASK-V3-pipeline-workflow.md)  
 **Hub UI detail:** [`TASK-V2-pipeline-hub.md`](TASK-V2-pipeline-hub.md)  
 **Backlog index:** [`V2-DEFERRED-TRACKER.md`](V2-DEFERRED-TRACKER.md) · [`backlog.md`](../backlog.md)
@@ -50,21 +51,34 @@
 
 | ID | Status | Task file |
 |----|--------|-----------|
-| **V3-A1** | ready | [`TASK-V3-A1-repro-failure-taxonomy.md`](TASK-V3-A1-repro-failure-taxonomy.md) |
+| **V3-A1** | done | [`TASK-V3-A1-repro-failure-taxonomy.md`](TASK-V3-A1-repro-failure-taxonomy.md) |
 | **V3-A2** | queued | [`TASK-V3-A2-rate-limit-retry-policy.md`](TASK-V3-A2-rate-limit-retry-policy.md) |
-| **V3-A3** | queued | [`TASK-V3-A3-stage-aware-errors.md`](TASK-V3-A3-stage-aware-errors.md) |
-| **V3-A4** | queued | [`TASK-V3-A4-bulk-action-semantics.md`](TASK-V3-A4-bulk-action-semantics.md) |
-| **V3-A5** | queued | [`TASK-V3-A5-import-pipeline-reliability.md`](TASK-V3-A5-import-pipeline-reliability.md) |
-| **V3-A6** | queued | [`TASK-V3-A6-orchestrator-d44.md`](TASK-V3-A6-orchestrator-d44.md) |
+| **V3-A3** | **in progress** (Phase 1 done; close after dogfood) | [`TASK-V3-A3-stage-aware-errors.md`](TASK-V3-A3-stage-aware-errors.md) |
+| **V3-A4** | **partial** (bulk trash + scoped classify; not full action split) | [`TASK-V3-A4-bulk-action-semantics.md`](TASK-V3-A4-bulk-action-semantics.md) |
+| **V3-A5b** | queued | [`TASK-V3-A5b-import-scale.md`](TASK-V3-A5b-import-scale.md) |
+| **V3-A6** | done | [`TASK-V3-A6-orchestrator-d44.md`](TASK-V3-A6-orchestrator-d44.md) |
 | **V3-B1** | ready | [`TASK-V3-B1-discover-fair-game.md`](TASK-V3-B1-discover-fair-game.md) |
 | **V3-B2** | queued | [`TASK-V3-B2-discover-ux-loop.md`](TASK-V3-B2-discover-ux-loop.md) |
 | **V3-B3** | queued | [`TASK-V3-B3-home-to-hub.md`](TASK-V3-B3-home-to-hub.md) |
-| **V3-B4** | queued | [`TASK-V3-B4-classify-queue-d27.md`](TASK-V3-B4-classify-queue-d27.md) |
+| **V3-B4** | **in progress** (taxonomy/classify reliability; discover UX open) | [`TASK-V3-B4-classify-queue-d27.md`](TASK-V3-B4-classify-queue-d27.md) |
 | **V3-B5** | queued | [`TASK-V3-B5-user-signals-d26-w6.md`](TASK-V3-B5-user-signals-d26-w6.md) |
 | **V3-B6** | queued | [`TASK-V3-B6-discover-perf.md`](TASK-V3-B6-discover-perf.md) |
 | **V3-C1** | queued | [`TASK-V3-C1-hub-d25-d42.md`](TASK-V3-C1-hub-d25-d42.md) |
-| **V3-C2** | queued | [`TASK-V3-C2-inspector-hub-shortcuts.md`](TASK-V3-C2-inspector-hub-shortcuts.md) |
+| **V3-C2** | **partial** (`ItemDigestQuickActions` in Inspector + side panel) | [`TASK-V3-C2-inspector-hub-shortcuts.md`](TASK-V3-C2-inspector-hub-shortcuts.md) |
 | **V3-C3** | queued | [`TASK-V3-C3-retire-dev-modals.md`](TASK-V3-C3-retire-dev-modals.md) |
+
+### Session snapshot (2026-06-02)
+
+| Shipped (code) | Task mapping |
+|----------------|--------------|
+| `pipelineDictionary.ts`, honest toasts/chips, partial-success tone | **A3** Phase 1–2 |
+| `bookmarkFileImport.ts`, import restore-from-trash, re-import semantics | **A3** + **A5b** prep (scale still open) |
+| `batchMutate` bulk trash, `TrashView`, Hub optimistic trash | **A4** partial |
+| Hub classify scoped to selection (`drainPendingClassifyQueue` default false) | **A4** / **B4** partial |
+| `ItemDigestQuickActions`, side panel in `PipelineProgressProvider` | **C2** partial |
+| Discover/taxonomy gates (B4 session log) | **B4** — acceptance criteria not met |
+
+**Next pick (master):** close **A3** after dogfood → **B1** fair-game spec or **A5b** import waves → **B2** discover UX.
 
 ---
 
@@ -92,12 +106,11 @@ Pipeline backend issues are easier to repro in **CLI**; **app** confirms worker 
 
 | Symptom | Likely areas | Backlog / IDs |
 |---------|--------------|---------------|
-| Batch fails; single-item retry works | `batchDigest`, `PipelineProgressProvider`, worker RPC, txn size | P0, **D-44** |
-| Rate limit errors in batch; unclear retry | `llmBatchRetry`, OpenRouter client, concurrency | D-10 follow-up, hub deferred parallelism |
-| Import commit → post-process pipeline flaky | `ImportStudioView`, `bulkImportBookmarks`, post-import confirm | **D-38**, W3 |
+| UI toasts misread skip as fail (mostly fixed) | `pipelineDictionary.ts`, `PipelineProgressProvider` | **V3-A3** (close-out: batch report panel, Home chips) |
+| 10k Import Scale Risk (loads all into one tab) | `ImportStudioView`, `itemPipeline` | **V3-A5b** |
+| Rate limit errors in batch; unclear retry | `llmBatchRetry`, OpenRouter client, concurrency | D-10 follow-up |
 | “Re-digest” also classifies | `PipelineHubView` bulk flags | Hub issues |
 | Generic / wrong failure labels | `failureLabels`, `errorMessages`, enrichment vs classify paths | **D-25**, Tier F hygiene |
-| Slow batch; feels stuck | Concurrency, catalog size, embed/classify batching | D-14 workers (optional) |
 | Partial failure silent or “Skipped” unclear | Batch report, `importReport`, queue outcome panels | 05.6 leftovers |
 
 ---
@@ -105,7 +118,14 @@ Pipeline backend issues are easier to repro in **CLI**; **app** confirms worker 
 ### V3-A1 — Repro & failure taxonomy (research)
 
 **Task file:** [`TASK-V3-A1-repro-failure-taxonomy.md`](TASK-V3-A1-repro-failure-taxonomy.md)  
-**Order:** **CLI repro first** → **app validate** → merged taxonomy in task return.
+**Status:** **done** (We found the silent classify failure was due to an empty taxonomy throwing an error that got swallowed).
+
+---
+
+### V3-A6 — Orchestrator (D-44)
+
+**Task file:** [`TASK-V3-A6-orchestrator-d44.md`](TASK-V3-A6-orchestrator-d44.md)  
+**Status:** **done** (Worker refactored orchestrator into `itemPipeline.ts`, `pipelineRunStore.ts`, etc. Import Studio now auto-starts pipeline).
 
 ---
 
@@ -127,21 +147,28 @@ Pipeline backend issues are easier to repro in **CLI**; **app** confirms worker 
 
 ### V3-A3 — Stage-aware error labels & batch report (iterative)
 
-**Goal:** User sees **which stage failed** and a **plain-language** next step (not raw API text).
+**Task file:** [`TASK-V3-A3-stage-aware-errors.md`](TASK-V3-A3-stage-aware-errors.md)  
+**Status:** **in progress** — Phase 1 done (`pipelineDictionary`, honest summaries, Hub outcome chips, partial-success toast tone). Phase 2: import bad-file UX shipped; optional batch report / Home chips; master dogfood before **closed**.
+
+**Goal:** User sees **which stage failed** and a **plain-language** next step (not raw API text). Skipped stages (e.g. classify with no taxonomy) must not read as total failure.
 
 | Slice | Examples |
 |-------|----------|
+| Fix Lying Toasts | Ensure `PipelineProgressProvider` and `itemPipeline` accurately reflect skipped vs failed stages. |
 | Map errors to stage | Use enrichment `failureCategory`, classify `pending_discover` / `manual_review`, LLM parse errors |
 | Batch report rows | Title, stage badge, short label, “Retry fetch” / “Retry classify” action hint |
 | Import pipeline report | Same labels on Import Studio post-commit panel |
 | LLM-stage pickup | When classify/discover LLM returns structured error / skip, surface in UI (not only `console`) |
 
 **Backlog:** D-25 lite (fetch review), 05.C batch error toasts (pipeline-only), package 5 hygiene  
-**Touches:** `failureLabels.ts`, `errorMessages.ts`, `QueueOutcomePanel`, Hub batch report, `ImportStudioView`
+**Touches:** `failureLabels.ts`, `errorMessages.ts`, `QueueOutcomePanel`, Hub batch report, `ImportStudioView`, `singleLinkDigestLabels.ts`
 
 ---
 
 ### V3-A4 — Bulk action semantics (enrich vs digest vs classify)
+
+**Task file:** [`TASK-V3-A4-bulk-action-semantics.md`](TASK-V3-A4-bulk-action-semantics.md)  
+**Status:** **partial** — bulk trash + fast Hub removal (`batchMutate`); Hub classify/digest scoped to selection. **Not done:** explicit Re-enrich-only vs Full re-digest vs Classify-only split on Home.
 
 **Goal:** No surprise “I only wanted enrich” → also reclassified.
 
@@ -155,28 +182,21 @@ Pipeline backend issues are easier to repro in **CLI**; **app** confirms worker 
 
 ---
 
-### V3-A5 — Import → pipeline reliability (iterative)
+### V3-A5b — Import Scale (10k+ links)
 
-**Goal:** After **Commit to DB**, optional process-N flow is as reliable as Hub bulk.
+**Task file:** [`TASK-V3-A5b-import-scale.md`](TASK-V3-A5b-import-scale.md)  
+**Status:** **queued** (replaces retired `TASK-V3-A5-import-pipeline-reliability.md`). Parser hardening + re-import restore landed 2026-06-02; **waves/checkpoints not started**.
 
-| Step |
-|------|
-| Repro import → pipeline confirm → batch (same taxonomy as A1) |
-| Progress + cancel for large N (ties **D-38** 5k) |
-| Per-row outcomes in import report |
+**Goal:** The new auto-start import pipeline will crash the browser if given 10,000 links because it tries to load everything into one tab at once. We need wave/chunk processing.
 
-**Backlog:** **D-38**, W3, chunked import progress  
-**Touches:** `ImportStudioView`, `bulkImportBookmarks`, `batchDigest` / `PipelineProgressProvider`
+| Deliverable |
+|-------------|
+| Wave/chunk processing (e.g., 50-200 ids per wave) |
+| Persist run checkpoint (`importRunId`, last offset, stage) |
+| Background processing UI (don't block Import Studio) |
 
----
-
-### V3-A6 — Orchestrator & cancel (after A1–A3 stable)
-
-**Goal:** One mental model for single + batch; classify mid-batch cancel.
-
-**Backlog:** **D-44**, classify `AbortSignal`, `needsClassifyForDigest` parity, narrow 05.5 auto-digest (**D-26**)
-
-**Defer until:** A2/A3 dogfood clean — refactor without new mystery bugs.
+**Backlog:** **D-38**, W3  
+**Touches:** `itemPipeline.ts`, `ImportStudioView.tsx`
 
 ---
 
@@ -250,6 +270,9 @@ Pipeline backend issues are easier to repro in **CLI**; **app** confirms worker 
 
 ### V3-B4 — Classify queue semantics & copy (D-27)
 
+**Task file:** [`TASK-V3-B4-classify-queue-d27.md`](TASK-V3-B4-classify-queue-d27.md)  
+**Status:** **in progress** — taxonomy seed, classify gate, discover-before-classify revisions; fragmentation + acceptance run still open. See task file § Session status 2026-06-02.
+
 **Goal:** User understands **pending_classify** vs **discover** vs **classify ready**.
 
 | Step |
@@ -307,19 +330,15 @@ Not a third problem — **container** for work that lands in Tools → Pipeline.
 ## Suggested session order
 
 ```text
-A1 repro taxonomy ──► A2 rate limit policy ──► A3 error labels
-        │                                      │
-        └──────────────► A4 bulk semantics ──► A5 import pipeline
-                                      │
-B1 signal matrix ──► B2 discover UX loop ──► B3 Home → hub
-        │                    │
-        └──── B4 D-27 copy ──┴── B5 D-26/W6
-                                      │
-                              A6 D-44 orchestrator (late)
-                              B6 perf (optional)
+DONE: A1 repro ──► A6 orchestrator (cd4d0e3)
+IN FLIGHT: A3 UI dictionary / honest toasts ──► close after dogfood
+           A4 partial (trash, scoped classify) ──► finish action split
+           B4 discover/taxonomy reliability
+NEXT:     A5b import waves OR B1 fair-game ──► B2 discover UX
+LATER:    A2 rate limits · B3 Home→hub · C1 hub D-25 · B6 perf
 ```
 
-**Practical start:** **V3-A1** (CLI → app) then A2→A3; **V3-B1** can run in parallel (app/spec, not CLI-gated).
+**Practical next:** Master dogfood **A3** → pick **B1** (spec) or **A5b** (10k scale) based on pain.
 
 ---
 
@@ -333,7 +352,7 @@ B1 signal matrix ──► B2 discover UX loop ──► B3 Home → hub
 | **W6** | B5 |
 | **D-25** | A3, C1 |
 | **D-42** | C1, B2, B3 |
-| **D-38** | A5 |
+| **D-38** | A5b |
 | **D-11** | B6 (optional) |
 | **D-14** | A2/A6 (optional) |
 | **05.C** batch toasts / classify-only | A3, A4 |

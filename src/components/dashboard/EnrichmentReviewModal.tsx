@@ -12,6 +12,7 @@ import { resolveEffectiveClassifyState } from '../../lib/categorization/counts';
 import { describeClassifyQueueStatus } from '../../lib/categorization/classifyQueueReason';
 import { assessCategorizationEligibility } from '../../lib/enrichment/categorizationEligibility';
 import { ClassifyQueueReasonBlock } from './ClassifyQueueReasonBlock';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { getDB } from '../../lib/db';
 import type { ClassifyState } from '../../lib/categorization/types';
 import {
@@ -1020,10 +1021,8 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
                 >
                   {refetching && !refetchAllProgress ? 'Re-fetching…' : 'Re-fetch this'}
                 </button>
-                <a
-                  href={active.item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <ExtensionPageUrlLink
+                  url={active.item.url}
                   style={{
                     fontSize: 'var(--dev-fs-sm)',
                     color: 'var(--accent)',
@@ -1033,7 +1032,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
                   }}
                 >
                   Open URL <ExternalLink size={12} />
-                </a>
+                </ExtensionPageUrlLink>
               </div>
 
               <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>

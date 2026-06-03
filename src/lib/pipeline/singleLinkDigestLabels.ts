@@ -1,6 +1,7 @@
 import { getItem } from '../db';
 import { checkEligibility, getEnrichment } from '../enrichment';
 import { findTabForUrl } from '../enrichment/tabSessionExtract';
+import { PIPELINE_STAGE_LABELS } from './pipelineDictionary';
 import { formatDigestProgressLabel } from './singleLinkDigest';
 
 /** User-facing label before enrichOne runs (fetch vs local-only vs unchanged). */
@@ -16,25 +17,25 @@ export async function resolveEnrichProgressLabel(
 
   if (!elig.eligible) {
     if (elig.reason === 'unchanged') {
-      return 'Nothing changed — skipping fetch and AI';
+      return `Skipped — already ${PIPELINE_STAGE_LABELS.enrich.toLowerCase()}ed (unchanged)`;
     }
     if (elig.reason === 'backoff') {
-      return 'Waiting before retry…';
+      return 'Skipped — waiting before retry';
     }
     return formatDigestProgressLabel('prep');
   }
 
   if (elig.skipFetch && !options?.force) {
-    return 'Using saved notes — extracting with AI…';
+    return `${PIPELINE_STAGE_LABELS.enrich} — using saved page, running AI…`;
   }
 
   if (item.url && (await findTabForUrl(item.url, 'any'))) {
-    return 'Reading open browser tab…';
+    return `${PIPELINE_STAGE_LABELS.fetch} — reading open browser tab…`;
   }
 
   if (existing?.contentHash || existing?.fetchedAt) {
-    return 'Fetching page to compare with saved content…';
+    return `${PIPELINE_STAGE_LABELS.fetch} — comparing with saved content…`;
   }
 
-  return 'Fetching page…';
+  return `${PIPELINE_STAGE_LABELS.fetch} — downloading page…`;
 }
