@@ -56,6 +56,10 @@ coverage/
 *.temp
 .cache/
 
+# Optional local reference clones (not part of the app; clone manually if needed)
+temp/Page-agent-UI/
+temp/chrome-extensions-samples/
+
 # Playwright fetch profile (logged-in sessions; never commit)
 .fetch-test-browser/
 
