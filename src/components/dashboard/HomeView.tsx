@@ -11,6 +11,7 @@ import { useHomePipelineStats } from '../../hooks/useHomePipelineStats';
 import type { PipelineQueueKind, ProcessingDigest, PipelineMaintenanceSnapshot } from '../../lib/pipeline';
 import { MIN_DISCOVER_POOL } from '../../lib/categorization/discoverPolicy';
 import { loadItemIdsForCategory, loadItemIdsForPipelineQueue, PIPELINE_QUEUE_LABELS, PIPELINE_QUEUE_HINTS } from '../../lib/pipeline';
+import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -46,10 +47,11 @@ interface HomeViewProps {
   onTopPctChange: (pct: number) => void;
   renderListTab?: (tab: any) => React.ReactNode;
   statusBar?: React.ReactNode;
+  libraryLoading?: boolean;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar, libraryLoading = false
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const topPctRef = useRef(topPct);
@@ -62,6 +64,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     classifyRunnable,
     classifyRunnableLoading,
   } = useHomePipelineStats();
+  const showPipelineCardsLoading = libraryLoading || pipelineLoading;
   const [homeItemContextMenu, setHomeItemContextMenu] = React.useState<{
     item: Item;
     x: number;
@@ -302,7 +305,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
           ))}
         </div>
 
-        {/* Cards */}
+        {libraryLoading ? (
+          <div style={{ width: '100%', maxWidth: 1000 }}>
+            <LibraryLoadingPlaceholder message="Loading library…" />
+          </div>
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, width: '100%', maxWidth: 1000 }}>
           <HomeCard
             icon={<Star size={14} />}
@@ -396,10 +403,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </HomeCard>
 
           <HomeCard icon={<Zap size={14} />} title="Processing Digest">
-            {pipelineLoading ? (
-              <div style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', padding: '4px 0' }}>
-                Loading…
-              </div>
+            {showPipelineCardsLoading ? (
+              <LibraryLoadingPlaceholder variant="inline" message="Loading…" />
             ) : digest?.healthy ? (
               <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
                 All caught up — library processing looks healthy.
@@ -427,10 +432,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </HomeCard>
 
           <HomeCard icon={<BarChart2 size={14} />} title="Library Overview">
-            {pipelineLoading ? (
-              <div style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', padding: '4px 0' }}>
-                Loading…
-              </div>
+            {showPipelineCardsLoading ? (
+              <LibraryLoadingPlaceholder variant="inline" message="Loading…" />
             ) : categories.length === 0 ? (
               <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
                 No AI categories with items yet.
@@ -473,8 +476,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
             )}
           </HomeCard>
         </div>
+        )}
 
-        {items.length > 0 && !hasBottomRow && (
+        {items.length > 0 && !hasBottomRow && !libraryLoading && (
           <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center', marginTop: 16 }}>
             {items.length} item{items.length !== 1 ? 's' : ''} in your library
           </div>

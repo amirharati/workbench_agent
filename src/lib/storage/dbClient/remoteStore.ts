@@ -22,6 +22,125 @@ type HydrateSnapshot = {
   trash: ReturnType<IdbCompatStore['getAllTrashHistory']>;
 };
 
+/** Chrome structured-clone cap per worker postMessage (~64MiB). */
+const HYDRATE_PAGE_SIZE = 1000;
+
+const HYDRATE_SMALL_TABLES = [
+  'projects',
+  'collections',
+  'workspaces',
+  'snapshots',
+  'ai_categories',
+  'ai_taxonomy_state',
+  'trash_history',
+] as const;
+
+const HYDRATE_PAGED_TABLES = [
+  'items',
+  'notes',
+  'item_enrichment',
+  'ai_item_signals',
+  'ai_item_category_links',
+] as const;
+
+function emptyHydrateSnapshot(): HydrateSnapshot {
+  return {
+    projects: [],
+    collections: [],
+    items: [],
+    notes: [],
+    snapshots: [],
+    workspaces: [],
+    enrichment: [],
+    categories: [],
+    links: [],
+    signals: [],
+    taxonomy: undefined,
+    trash: [],
+  };
+}
+
+const PAGED_TABLE_SET = new Set<string>(HYDRATE_PAGED_TABLES);
+
+function mergeHydrateTableRows(
+  snapshot: HydrateSnapshot,
+  storeName: string,
+  rows: unknown[],
+  append: boolean
+): void {
+  const put = <T>(target: T[], chunk: T[]) => {
+    if (append) target.push(...chunk);
+    else target.splice(0, target.length, ...chunk);
+  };
+  switch (storeName) {
+    case 'projects':
+      put(snapshot.projects, rows as HydrateSnapshot['projects']);
+      return;
+    case 'collections':
+      put(snapshot.collections, rows as HydrateSnapshot['collections']);
+      return;
+    case 'items':
+      put(snapshot.items, rows as HydrateSnapshot['items']);
+      return;
+    case 'notes':
+      put(snapshot.notes, rows as HydrateSnapshot['notes']);
+      return;
+    case 'snapshots':
+      put(snapshot.snapshots, rows as HydrateSnapshot['snapshots']);
+      return;
+    case 'workspaces':
+      put(snapshot.workspaces, rows as HydrateSnapshot['workspaces']);
+      return;
+    case 'item_enrichment':
+      put(snapshot.enrichment, rows as HydrateSnapshot['enrichment']);
+      return;
+    case 'ai_categories':
+      put(snapshot.categories, rows as HydrateSnapshot['categories']);
+      return;
+    case 'ai_item_category_links':
+      put(snapshot.links, rows as HydrateSnapshot['links']);
+      return;
+    case 'ai_item_signals':
+      put(snapshot.signals, rows as HydrateSnapshot['signals']);
+      return;
+    case 'ai_taxonomy_state': {
+      const state = (rows as NonNullable<HydrateSnapshot['taxonomy']>[])[0];
+      snapshot.taxonomy = state ?? undefined;
+      return;
+    }
+    case 'trash_history':
+      put(snapshot.trash, rows as HydrateSnapshot['trash']);
+      return;
+    default:
+      return;
+  }
+}
+
+/** One table from worker → snapshot; paged tables use multiple RPCs (64MiB-safe). */
+async function syncTableFromWorker(snapshot: HydrateSnapshot, storeName: string): Promise<void> {
+  if (PAGED_TABLE_SET.has(storeName)) {
+    let offset = 0;
+    for (;;) {
+      const page = await rpc<{ rows: unknown[]; done: boolean }>('refreshTablePage', [
+        storeName,
+        offset,
+        HYDRATE_PAGE_SIZE,
+      ]);
+      if (page.rows.length) {
+        mergeHydrateTableRows(snapshot, storeName, page.rows, offset > 0);
+      }
+      if (page.done) break;
+      offset += HYDRATE_PAGE_SIZE;
+    }
+    return;
+  }
+  const partial = await rpc<Record<string, unknown>>('refreshTables', [[storeName]]);
+  const rows = partial[storeName];
+  if (Array.isArray(rows)) {
+    mergeHydrateTableRows(snapshot, storeName, rows, false);
+  }
+}
+
 /**
  * Tab-side read cache + write-through RPC to the DB worker.
  * Preserves the synchronous IdbCompatStore API used across the app.
@@ -36,8 +155,14 @@ export class RemoteIdbCompatStore {
 
   async hydrate(force = false): Promise<void> {
     if (this.snapshot && !force) return;
-    const data = (await rpc<HydrateSnapshot>('hydrate', [])) as HydrateSnapshot;
-    this.snapshot = data;
+    const snapshot = emptyHydrateSnapshot();
+    for (const storeName of HYDRATE_SMALL_TABLES) {
+      await syncTableFromWorker(snapshot, storeName);
+    }
+    for (const storeName of HYDRATE_PAGED_TABLES) {
+      await syncTableFromWorker(snapshot, storeName);
+    }
+    this.snapshot = snapshot;
     try {
       const { getDbWorkerStatus } = await import('./index');
       const status = await getDbWorkerStatus();
@@ -66,33 +191,12 @@ export class RemoteIdbCompatStore {
   async refreshTablesFromWorker(storeNames: readonly string[]): Promise<void> {
     if (!storeNames.length) return;
     await this.drainWrites();
-    const partial = await rpc<Record<string, unknown>>('refreshTables', [storeNames]);
     if (!this.snapshot) {
       await this.hydrate(true);
       return;
     }
     for (const name of storeNames) {
-      const rows = partial[name];
-      if (rows === undefined) continue;
-      switch (name) {
-        case 'items':
-          this.snapshot.items = rows as HydrateSnapshot['items'];
-          break;
-        case 'item_enrichment':
-          this.snapshot.enrichment = rows as HydrateSnapshot['enrichment'];
-          break;
-        case 'ai_item_signals':
-          this.snapshot.signals = rows as HydrateSnapshot['signals'];
-          break;
-        case 'ai_item_category_links':
-          this.snapshot.links = rows as HydrateSnapshot['links'];
-          break;
-        case 'ai_categories':
-          this.snapshot.categories = rows as HydrateSnapshot['categories'];
-          break;
-        default:
-          break;
-      }
+      await syncTableFromWorker(this.snapshot, name);
     }
   }
 

@@ -289,7 +289,7 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 **Post-V2 (active):** [`temp/TASK-POST-V2.md`](temp/TASK-POST-V2.md)
 
 1. **V2.3** — quick wins ([`temp/TASK-V2.3-quick-wins.md`](temp/TASK-V2.3-quick-wins.md)).
-2. **V3** — pipeline ([`temp/TASK-V3-pipeline-workflow.md`](temp/TASK-V3-pipeline-workflow.md)).
+2. **V3** — pipeline: discover map→reduce shipped; dogfood reliability (chunked worker sync, Hub bulk Run steps); next staging workflow + import scale.
 3. **V4** — multi-device sync ([`temp/TASK-V4-sync-replicas.md`](temp/TASK-V4-sync-replicas.md)) — deferred.
 4. **D-45** local folder library — when ready.
 5. Notes strategy (D-04) + import provenance (D-05).
@@ -301,4 +301,4 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ---
 
-*Last updated: 2026-05-29 — **V2.1 + V2.1.1 shipped.** V3/V4 single-device; multi-device sync deferred.*
+*Last updated: 2026-06-04 — V3 dogfood fixes shipped (chunked DB sync, Hub bulk UX). V4 multi-device still deferred.*

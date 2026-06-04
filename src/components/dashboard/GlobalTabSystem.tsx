@@ -32,6 +32,55 @@ export interface GlobalTabList { kind: 'list'; id: string; listType: 'bookmark-l
 
 const UTILITY_LIST_TYPES = new Set(['favorites', 'pinned', 'quick-access', 'trash', 'recent']);
 
+export type PruneGlobalTabsContext = {
+  itemIds: ReadonlySet<string>;
+  workspaceIds: ReadonlySet<string>;
+};
+
+/** Drop tabs that point at rows removed from SQLite (localStorage survives DB wipe). */
+export function pruneGlobalTabs(
+  state: GlobalTabState,
+  ctx: PruneGlobalTabsContext
+): GlobalTabState {
+  const tabs: GlobalTab[] = [];
+
+  for (const tab of state.tabs) {
+    if (tab.kind === 'search') {
+      tabs.push(tab);
+      continue;
+    }
+    if (tab.kind === 'item') {
+      if (ctx.itemIds.has(tab.itemId)) tabs.push(tab);
+      continue;
+    }
+    if (tab.kind === 'list') {
+      if (UTILITY_LIST_TYPES.has(tab.listType)) {
+        tabs.push(tab);
+        continue;
+      }
+      if (tab.listType === 'workspace') {
+        if (tab.workspaceId && ctx.workspaceIds.has(tab.workspaceId)) tabs.push(tab);
+        continue;
+      }
+      if (tab.itemIds?.length) {
+        const kept = tab.itemIds.filter((id) => ctx.itemIds.has(id));
+        if (kept.length === 0) continue;
+        if (kept.length === tab.itemIds.length) tabs.push(tab);
+        else tabs.push({ ...tab, itemIds: kept });
+        continue;
+      }
+      tabs.push(tab);
+    }
+  }
+
+  const activeTabId =
+    state.activeTabId && tabs.some((t) => t.id === state.activeTabId)
+      ? state.activeTabId
+      : tabs[tabs.length - 1]?.id ?? null;
+
+  return { ...state, tabs, activeTabId };
+}
+
 export type GlobalTab = GlobalTabItem | GlobalTabSearch | GlobalTabList;
 
 export interface GlobalTabState {

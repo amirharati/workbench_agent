@@ -65,7 +65,8 @@ interface MainContentProps {
     notes?: string;
     collectionIds: string[];
   }) => Promise<void>;
-  onRefresh?: () => Promise<void>;
+  onRefresh?: (scope?: import('../../../lib/libraryRefresh').LibraryRefreshScope) => Promise<void>;
+  libraryLoading?: boolean;
   onChooseBackupFolder?: () => Promise<void>;
   onSetAsBrowserHome?: () => Promise<void>;
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<RestoreBackupResult>;
@@ -135,6 +136,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   onCreateCollection,
   onCreateItem,
   onRefresh,
+  libraryLoading = false,
   onChooseBackupFolder,
   onSetAsBrowserHome,
   onRestoreBackupFile,
@@ -608,6 +610,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             items={items}
             collections={collections}
             projects={projects}
+            libraryLoading={libraryLoading}
             homeState={globalTabState ?? { tabs: [], activeTabId: null, topPct: 40, searchQuery: '', bottomLayout: 'tabs', isSidebarCollapsed: false }}
             onHomeStateChange={onGlobalTabStateChange ?? (() => {})}
             onUpdateItem={onUpdateBookmark}
@@ -702,6 +705,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             items={items}
             collections={collections}
             projects={projects}
+            libraryLoading={libraryLoading}
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
             onOpenItem={onOpenItemFromSearch ?? onOpenItem}
@@ -726,6 +730,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             items={items}
             collections={collections}
             projects={projects}
+            libraryLoading={libraryLoading}
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
             onOpenItem={onOpenItemFromSearch ?? onOpenItem}

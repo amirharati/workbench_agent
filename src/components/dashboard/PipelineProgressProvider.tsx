@@ -49,6 +49,7 @@ import type { TopicClassifySummary } from '../../lib/categorization/types';
 import { PipelineBatchReportPanel } from './PipelineBatchReportPanel';
 import { QueueOutcomePanel } from './QueueOutcomePanel';
 import { resolvePipelineSummaryTone } from '../../lib/pipeline/pipelineDictionary';
+import type { LibraryRefreshScope } from '../../lib/libraryRefresh';
 
 function formatClassifyRunSummary(s: TopicClassifySummary, itemCount?: number): string {
   const parts = [
@@ -204,7 +205,14 @@ export function usePipelineProgress(): PipelineProgressContextValue {
 
 interface PipelineProgressProviderProps {
   children: React.ReactNode;
-  onRefresh?: () => void | Promise<void>;
+  onRefresh?: (scope?: LibraryRefreshScope) => void | Promise<void>;
+}
+
+async function refreshAfterPipeline(
+  onRefresh: PipelineProgressProviderProps['onRefresh'],
+  scope?: LibraryRefreshScope
+): Promise<void> {
+  await onRefresh?.(scope);
 }
 
 function applyPipelineProgress(
@@ -345,7 +353,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           reportRows,
           reportScopeCount: itemIds.length > 0 ? itemIds.length : undefined,
         });
-        await onRefresh?.();
+        await refreshAfterPipeline(onRefresh, { itemIds });
 
         if (result.pipelineDebugSavedTo && itemIds.length > 0 && !cancelled) {
           setModal((prev) =>
@@ -454,7 +462,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           tone,
           reportRows,
         });
-        await onRefresh?.();
+        await refreshAfterPipeline(onRefresh, { itemIds: [itemId] });
         return result;
       } catch (e) {
         const summary = e instanceof Error ? e.message : 'Digest failed';
@@ -510,7 +518,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           tone,
           reportRows,
         });
-        await onRefresh?.();
+        await refreshAfterPipeline(onRefresh, { itemIds: [itemId] });
         return result;
       } catch (e) {
         const summary = e instanceof Error ? e.message : 'Re-run AI failed';
@@ -585,7 +593,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           tone,
           reportRows,
         });
-        await onRefresh?.();
+        await refreshAfterPipeline(onRefresh, { itemIds: uniqueIds });
         return results;
       } catch (e) {
         const summary = e instanceof Error ? e.message : 'Re-run AI failed';
@@ -662,7 +670,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           summary: summaryText,
           tone: failed > 0 ? 'error' : embedded > 0 ? 'success' : 'info',
         });
-        await onRefresh?.();
+        await refreshAfterPipeline(onRefresh, { itemIds: uniqueIds });
         return { embedded, skipped, failed };
       } catch (e) {
         const summary = e instanceof Error ? e.message : 'Re-embed failed';
@@ -826,7 +834,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           reportRows,
           queueOutcome,
         });
-        await onRefresh?.();
+        await refreshAfterPipeline(
+          onRefresh,
+          options?.itemIds?.length ? { itemIds: options.itemIds } : undefined
+        );
         return { discover, classifySummary };
       } catch (e) {
         const cancelled = controller.signal.aborted || (e instanceof Error && e.message === 'Cancelled');
@@ -996,7 +1007,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           reportRows,
           queueOutcome,
         });
-        await onRefresh?.();
+        await refreshAfterPipeline(
+          onRefresh,
+          options?.itemIds?.length ? { itemIds: options.itemIds.slice(0, maxItems) } : undefined
+        );
         return { summary: s, categories: [] as import('../../lib/categorization/types').AiCategory[] };
       } catch (e) {
         const cancelled = controller.signal.aborted || (e instanceof Error && e.message === 'Cancelled');

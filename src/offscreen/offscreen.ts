@@ -133,7 +133,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   workerRpc(method, args ?? [])
     .then((result) => {
       sendResponse({ id, ok: true, result });
-      if (method !== 'ping' && method !== 'getStatus' && method !== 'hydrate') {
+      const readOnly =
+        method === 'ping' ||
+        method === 'getStatus' ||
+        method === 'hydrate' ||
+        method === 'refreshTables' ||
+        method === 'refreshTablePage' ||
+        method === 'liveFingerprint' ||
+        method === 'inspectImportBytes';
+      if (!readOnly) {
         chrome.runtime.sendMessage({ type: 'db-data-changed' }).catch(() => {});
       }
     })

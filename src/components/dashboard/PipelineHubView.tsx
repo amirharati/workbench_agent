@@ -42,6 +42,8 @@ import { usePipelineProgress } from './PipelineProgressProvider';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
 import { getBookmarkOpenUrl } from '../../lib/itemQuickAccess';
+import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
+import { HubBulkStagedActions } from './HubBulkStagedActions';
 
 type HubLane = 'enrichment' | 'categories';
 
@@ -49,6 +51,7 @@ interface PipelineHubViewProps {
   items: Item[];
   collections: Collection[];
   projects: Project[];
+  libraryLoading?: boolean;
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   onOpenItem?: (item: Item) => void;
@@ -247,6 +250,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   items,
   collections,
   projects,
+  libraryLoading = false,
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
   onOpenItem,
@@ -415,8 +419,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   );
 
   useEffect(() => {
+    if (libraryLoading) return;
     void reload();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount only
+  }, [libraryLoading, reload]);
 
   /** Once after first load: clear persisted filter only if label no longer exists (not on every chip click). */
   useEffect(() => {
@@ -597,6 +602,11 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
   const getOrderedSelectedIds = useCallback(
     () => tableRowsForList.filter((r) => selectedIds.has(r.item.id)).map((r) => r.item.id),
+    [tableRowsForList, selectedIds]
+  );
+
+  const selectedHubRows = useMemo(
+    () => tableRowsForList.filter((r) => selectedIds.has(r.item.id)),
     [tableRowsForList, selectedIds]
   );
 
@@ -1161,6 +1171,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         <div
           style={{
             display: 'flex',
+            flexWrap: 'wrap',
             alignItems: 'center',
             gap: 12,
             padding: '10px 14px',
@@ -1198,6 +1209,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             <Eye size={13} />
             Inspect
           </button>
+          <HubBulkStagedActions
+            selectedRows={selectedHubRows}
+            disabled={pipeline.isRunning}
+          />
           <button
             type="button"
             onClick={() => void handleBulkRedigest()}
@@ -1216,7 +1231,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               cursor: pipeline.isRunning ? 'wait' : 'pointer',
               opacity: pipeline.isRunning ? 0.7 : 1,
             }}
-            title="Re-fetch, re-run AI, and classify selected items"
+            title="Force full pipeline (fetch, AI, embed, classify) on every selected item"
           >
             <RotateCcw size={13} />
             Re-digest
@@ -1304,10 +1319,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           <span>Actions</span>
         </div>
 
-        {initialLoading && filteredRows.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-            Loading enrichment data…
-          </div>
+        {libraryLoading || (initialLoading && filteredRows.length === 0) ? (
+          <LibraryLoadingPlaceholder
+            message={libraryLoading ? 'Loading library…' : 'Loading enrichment data…'}
+          />
         ) : visibleRows.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
             No items match the current filters.

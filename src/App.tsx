@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   addItemWithMerge, 
   addProject,
@@ -19,8 +19,14 @@ import {
   UpdateItemOptions,
   normalizeBookmarkUrl,
   reloadDB,
+  refreshPipelineCacheFromWorker,
+  getItem,
 } from './lib/db';
-import { getActiveItems, moveItemToTrash, formatRestoreSummary } from './lib/itemQuickAccess';
+import { getActiveItems, isActiveItem, moveItemToTrash, formatRestoreSummary } from './lib/itemQuickAccess';
+import {
+  shouldUseLightLibraryRefresh,
+  type LibraryRefreshScope,
+} from './lib/libraryRefresh';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelView } from './components/SidePanelView';
 import { PipelineProgressProvider } from './components/dashboard/PipelineProgressProvider';
@@ -66,6 +72,7 @@ function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
   const [isSidePanel, setIsSidePanel] = useState(false);
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
   const [status, setStatus] = useState('');
@@ -312,45 +319,83 @@ function App() {
   }, []);
 
   // Load data
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLibraryLoading(true);
     let lastError: unknown;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      try {
-        if (!(await hasWritableBackupFolder())) return;
+    try {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          if (!(await hasWritableBackupFolder())) return;
 
-        const allProjects = await getAllProjects();
-        setProjects(allProjects);
-        const allCollections = await getAllCollections();
-        setCollections(allCollections);
-        const allWorkspaces = await getAllWorkspaces();
-        setWorkspaces(allWorkspaces);
-        const allItems = await getActiveItems();
-        setItems(allItems.sort((a, b) => b.created_at - a.created_at));
-        return;
-      } catch (e) {
-        lastError = e;
-        if (!isTransientDbRpcError(e) || attempt >= 3) {
-          console.error('loadData failed:', e);
-          notifyUser({
-            type: 'error',
-            message: `Could not load library data: ${e instanceof Error ? e.message : String(e)}`,
-          });
+          const allProjects = await getAllProjects();
+          setProjects(allProjects);
+          const allCollections = await getAllCollections();
+          setCollections(allCollections);
+          const allWorkspaces = await getAllWorkspaces();
+          setWorkspaces(allWorkspaces);
+          const allItems = await getActiveItems();
+          setItems(allItems.sort((a, b) => b.created_at - a.created_at));
           return;
+        } catch (e) {
+          lastError = e;
+          if (!isTransientDbRpcError(e) || attempt >= 3) {
+            console.error('loadData failed:', e);
+            notifyUser({
+              type: 'error',
+              message: `Could not load library data: ${e instanceof Error ? e.message : String(e)}`,
+            });
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
         }
-        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
       }
+      if (lastError) {
+        console.error('loadData failed:', lastError);
+        notifyUser({
+          type: 'error',
+          message: `Could not load library data: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+        });
+      }
+    } finally {
+      setLibraryLoading(false);
     }
-    if (lastError) {
-      console.error('loadData failed:', lastError);
-      notifyUser({
-        type: 'error',
-        message: `Could not load library data: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
-      });
-    }
-  };
+  }, []);
+
+  const refreshLibraryItems = useCallback(async (itemIds: string[]) => {
+    await refreshPipelineCacheFromWorker();
+    const unique = [...new Set(itemIds)];
+    const rows = await Promise.all(unique.map((id) => getItem(id)));
+    setItems((prev) => {
+      const byId = new Map(prev.map((i) => [i.id, i]));
+      for (let i = 0; i < unique.length; i++) {
+        const id = unique[i]!;
+        const row = rows[i];
+        if (!row || !isActiveItem(row)) {
+          byId.delete(id);
+        } else {
+          byId.set(id, row);
+        }
+      }
+      return [...byId.values()].sort((a, b) => b.created_at - a.created_at);
+    });
+  }, []);
+
+  const refreshLibrary = useCallback(
+    async (scope?: LibraryRefreshScope) => {
+      if (shouldUseLightLibraryRefresh(scope) && scope?.itemIds?.length) {
+        await refreshLibraryItems(scope.itemIds);
+        return;
+      }
+      await loadData();
+    },
+    [loadData, refreshLibraryItems]
+  );
 
   const loadDataRef = useRef(loadData);
   loadDataRef.current = loadData;
+
+  const refreshLibraryRef = useRef(refreshLibrary);
+  refreshLibraryRef.current = refreshLibrary;
 
   const reloadFromPeer = async () => {
     // Never close SQLite mid-digest — it surfaces as a fake "network/CORS" error.
@@ -435,7 +480,7 @@ function App() {
       .then(async (r) => {
         setDigestStatus(r.message);
         showStatus(r.message, 5000);
-        await loadData();
+        await refreshLibraryRef.current({ itemIds: [itemId] });
         return r;
       })
       .catch((error) => {
@@ -1042,7 +1087,7 @@ function App() {
           </div>
         ) : null}
         {!showBackupOnboarding && backupFolderReady ? (
-          <PipelineProgressProvider onRefresh={loadData}>
+          <PipelineProgressProvider onRefresh={refreshLibrary}>
             <SidePanelView
               projects={projects}
               collections={collections}
@@ -1125,7 +1170,8 @@ function App() {
       onCreateItem={handleCreateItem}
       onCloseTab={handleCloseTab}
       onCloseWindow={handleCloseWindow}
-      onRefresh={loadData}
+      onRefresh={refreshLibrary}
+      libraryLoading={libraryLoading}
       onChooseBackupFolder={async () => {
         await handleChooseBackupFolder();
       }}

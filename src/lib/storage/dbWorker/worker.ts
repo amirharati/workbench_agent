@@ -34,6 +34,17 @@ const IMPORT_METHODS = new Set([
   'importDB',
 ]);
 
+/** Read-only RPCs — must not broadcast data-changed (hydrate uses many calls). */
+const READ_ONLY_RPC_METHODS = new Set([
+  'ping',
+  'getStatus',
+  'hydrate',
+  'refreshTables',
+  'refreshTablePage',
+  'liveFingerprint',
+  'inspectImportBytes',
+]);
+
 const MUTATING_STORE_METHODS = new Set([
   'put',
   'delete',
@@ -178,6 +189,22 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       }
       return out;
     }
+    case 'refreshTablePage': {
+      const storeName = args[0] as string;
+      const offset = Math.max(0, Number(args[1]) || 0);
+      const limit = Math.min(5000, Math.max(1, Number(args[2]) || 1000));
+      if (typeof storeName !== 'string' || !storeName) {
+        return { rows: [], done: true };
+      }
+      const store = await getIdbCompatStore();
+      const rows = store.getPage(storeName, offset, limit);
+      return { rows, done: rows.length < limit };
+    }
+    case 'liveFingerprint': {
+      const store = await getIdbCompatStore();
+      const { fingerprintFromStore } = await import('../importFingerprint');
+      return fingerprintFromStore(store);
+    }
     case 'batchMutate': {
       const ops = args[0] as DbMutation[];
       if (!Array.isArray(ops) || ops.length === 0) {
@@ -253,12 +280,7 @@ workerScope.onmessage = async (event: MessageEvent<RpcRequest | { type: string; 
       const result = await handleMethod(method, args ?? []);
       const response: RpcResponse = { id, ok: true, result };
       workerScope.postMessage(response);
-      if (
-        method !== 'ping' &&
-        method !== 'getStatus' &&
-        method !== 'hydrate' &&
-        !IMPORT_METHODS.has(method)
-      ) {
+      if (!READ_ONLY_RPC_METHODS.has(method) && !IMPORT_METHODS.has(method)) {
         workerScope.postMessage({ type: 'data-changed', revision: revisionTracker.getLocalRevisionSync() });
       }
     } catch (e) {

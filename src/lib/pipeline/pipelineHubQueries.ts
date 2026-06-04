@@ -18,7 +18,7 @@ import {
 } from './pipelineBadge';
 import type { ProcessingDigest } from './itemPipelineContext';
 import { pipelineStatusColorForLabel } from './pipelineDictionary';
-import { resolvePipelineStageFromParts } from './pipelineStage';
+import { resolvePipelineStageFromParts, type PipelineStageInfo } from './pipelineStage';
 import type { AiItemCategoryLink, AiItemSignal } from '../categorization/types';
 
 export type EnrichmentHubFilter =
@@ -49,6 +49,7 @@ export type EnrichmentHubRowMeta = {
   failureStage?: FailureStage;
   failureReason?: string;
   pipelineBadge: PipelineBadge;
+  pipelineStage: PipelineStageInfo;
   statusBadge: { text: string; color: string };
   nextStep: string;
 };
@@ -136,6 +137,7 @@ function buildRowMetaFixed(
         : FAILURE_CATEGORY_LABELS[failureLabel.category]
       : undefined,
     pipelineBadge,
+    pipelineStage: stage,
     statusBadge,
     nextStep: describeEnrichmentNextStep(enrichment, embedFailed, stage),
   };

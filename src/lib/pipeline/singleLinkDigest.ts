@@ -92,6 +92,7 @@ export async function runSingleLinkDigest(
       forceEnrich: options?.forceEnrich === true,
       forceClassify: true,
       processAll: true,
+      skipDiscover: true,
       collectItemResults: true,
       signal: options?.signal,
       enrichOneOptions: {

@@ -929,14 +929,10 @@ class BackupCoordinatorImpl {
       incomingFp = fingerprintFromBackupData(incoming);
     }
 
-    const liveSnapshot = await dbRpc<{
-      items: ReturnType<import('./storage/sqlite/store').IdbCompatStore['getAllItems']>;
-      notes: ReturnType<import('./storage/sqlite/store').IdbCompatStore['getAllNotes']>;
-    }>('hydrate', []);
-    const liveFp = fingerprintFromStore({
-      getAllItems: () => liveSnapshot.items,
-      getAllNotes: () => liveSnapshot.notes,
-    });
+    const liveFp = await dbRpc<Awaited<ReturnType<typeof fingerprintFromStore>>>(
+      'liveFingerprint',
+      []
+    );
 
     if (!isLiveNewerThanBackup(liveFp, incomingFp)) {
       return null;

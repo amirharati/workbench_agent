@@ -7,7 +7,14 @@ import type { BackupStatusSnapshot, RestoreBackupResult } from '../../../lib/bac
 import type { DbWorkerStatus } from '../../../lib/storage/dbClient';
 import type { AISettings } from '../../../lib/ai/types';
 import { ensurePendingClassifySignals } from '../../../lib/categorization';
-import { type GlobalTabState, loadGlobalTabState, saveGlobalTabState, GlobalTabSystem, type GlobalTabSearch } from '../GlobalTabSystem';
+import {
+  type GlobalTabState,
+  loadGlobalTabState,
+  pruneGlobalTabs,
+  saveGlobalTabState,
+  GlobalTabSystem,
+  type GlobalTabSearch,
+} from '../GlobalTabSystem';
 import { WorkspaceTabRenderer } from '../WorkspaceTabRenderer';
 import { RightPanel } from './RightPanel';
 import { StatusBar, useStatusBar } from '../StatusBar';
@@ -109,7 +116,9 @@ interface DashboardLayoutProps {
   }) => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
-  onRefresh?: () => Promise<void>;
+  onRefresh?: (scope?: import('../../../lib/libraryRefresh').LibraryRefreshScope) => Promise<void>;
+  /** True while first library hydrate / loadData is in flight */
+  libraryLoading?: boolean;
   onChooseBackupFolder?: () => Promise<void>;
   onSetAsBrowserHome?: () => Promise<void>;
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<RestoreBackupResult>;
@@ -156,6 +165,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   onCloseTab,
   onCloseWindow,
   onRefresh,
+  libraryLoading = false,
   onChooseBackupFolder,
   onSetAsBrowserHome,
   onRestoreBackupFile,
@@ -212,13 +222,40 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     saveGlobalTabState(next);
   };
 
-  
-  // Item tabs - persist across navigation
-  
-
   useEffect(() => {
     void ensurePendingClassifySignals();
   }, []);
+
+  /** Close tabs whose item/workspace ids no longer exist (e.g. after DB clear). */
+  useEffect(() => {
+    if (libraryLoading) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+      const { getAllItems } = await import('../../../lib/db');
+      const allItems = await getAllItems();
+      if (cancelled) return;
+      const itemIds = new Set(allItems.map((i) => i.id));
+      const workspaceIds = new Set(workspaces.map((w) => w.id));
+      setGlobalTabState((prev) => {
+        const pruned = pruneGlobalTabs(prev, { itemIds, workspaceIds });
+        if (
+          JSON.stringify(pruned.tabs) === JSON.stringify(prev.tabs) &&
+          pruned.activeTabId === prev.activeTabId
+        ) {
+          return prev;
+        }
+        saveGlobalTabState(pruned);
+        return pruned;
+      });
+      } catch {
+        /* DB not ready — keep tabs until next items/workspaces update */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [items, workspaces, libraryLoading]);
 
   useEffect(() => {
     const stored = localStorage.getItem('workbench-font-scale');
@@ -789,6 +826,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onCreateCollection={onCreateCollection}
                 onCreateItem={onCreateItem}
                 onRefresh={onRefresh}
+                libraryLoading={libraryLoading}
                 onChooseBackupFolder={onChooseBackupFolder}
                 onSetAsBrowserHome={onSetAsBrowserHome}
                 onRestoreBackupFile={onRestoreBackupFile}
@@ -840,6 +878,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onCreateCollection={onCreateCollection}
               onCreateItem={onCreateItem}
               onRefresh={onRefresh}
+              libraryLoading={libraryLoading}
               onChooseBackupFolder={onChooseBackupFolder}
               onSetAsBrowserHome={onSetAsBrowserHome}
               onRestoreBackupFile={onRestoreBackupFile}
@@ -913,6 +952,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                   onCreateCollection={onCreateCollection}
                   onCreateItem={onCreateItem}
                   onRefresh={onRefresh}
+                  libraryLoading={libraryLoading}
                   onChooseBackupFolder={onChooseBackupFolder}
                   onSetAsBrowserHome={onSetAsBrowserHome}
                   onRestoreBackupFile={onRestoreBackupFile}

@@ -746,6 +746,14 @@ export class SqliteStore {
     return rows.map(rowToItem);
   }
 
+  getItemsPage(offset: number, limit: number): Item[] {
+    const rows = this.conn.selectAll<ItemRow>(
+      'SELECT * FROM items ORDER BY id LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
+    return rows.map(rowToItem);
+  }
+
   getItem(id: string): Item | undefined {
     const row = this.conn.selectOne<ItemRow>('SELECT * FROM items WHERE id = ?', [id]);
     return row ? rowToItem(row) : undefined;
@@ -776,6 +784,14 @@ export class SqliteStore {
   // --- Notes ---
   getAllNotes(): Note[] {
     const rows = this.conn.selectAll<NoteRow>('SELECT * FROM notes');
+    return rows.map(rowToNote);
+  }
+
+  getNotesPage(offset: number, limit: number): Note[] {
+    const rows = this.conn.selectAll<NoteRow>(
+      'SELECT * FROM notes ORDER BY id LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
     return rows.map(rowToNote);
   }
 
@@ -841,6 +857,14 @@ export class SqliteStore {
   // --- Enrichment ---
   getAllEnrichment(): ItemEnrichment[] {
     const rows = this.conn.selectAll<EnrichmentRow>('SELECT * FROM item_enrichment');
+    return rows.map(rowToEnrichment);
+  }
+
+  getEnrichmentPage(offset: number, limit: number): ItemEnrichment[] {
+    const rows = this.conn.selectAll<EnrichmentRow>(
+      'SELECT * FROM item_enrichment ORDER BY item_id LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
     return rows.map(rowToEnrichment);
   }
 
@@ -933,6 +957,14 @@ export class SqliteStore {
     return rows.map(rowToLink);
   }
 
+  getLinksPage(offset: number, limit: number): AiItemCategoryLink[] {
+    const rows = this.conn.selectAll<LinkRow>(
+      'SELECT * FROM ai_item_category_links ORDER BY id LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
+    return rows.map(rowToLink);
+  }
+
   getLinksByItem(itemId: string): AiItemCategoryLink[] {
     const rows = this.conn.selectAll<LinkRow>('SELECT * FROM ai_item_category_links WHERE item_id = ?', [itemId]);
     return rows.map(rowToLink);
@@ -964,6 +996,14 @@ export class SqliteStore {
   // --- AI Signals ---
   getAllSignals(): AiItemSignal[] {
     const rows = this.conn.selectAll<SignalRow>('SELECT * FROM ai_item_signals');
+    return rows.map(rowToSignal);
+  }
+
+  getSignalsPage(offset: number, limit: number): AiItemSignal[] {
+    const rows = this.conn.selectAll<SignalRow>(
+      'SELECT * FROM ai_item_signals ORDER BY item_id LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
     return rows.map(rowToSignal);
   }
 
@@ -1108,6 +1148,28 @@ export class IdbCompatStore {
       case 'trash_history': return this.store.getAllTrashHistory();
       case 'pipeline_debug': return this.store.getAllPipelineDebug();
       default: return [];
+    }
+  }
+
+  /** Paginated read for hydrate RPC (keeps each postMessage under Chrome's ~64MiB cap). */
+  getPage(storeName: string, offset: number, limit: number): unknown[] {
+    const off = Math.max(0, offset);
+    const lim = Math.min(5000, Math.max(1, limit));
+    switch (storeName) {
+      case 'items':
+        return this.store.getItemsPage(off, lim);
+      case 'notes':
+        return this.store.getNotesPage(off, lim);
+      case 'item_enrichment':
+        return this.store.getEnrichmentPage(off, lim);
+      case 'ai_item_signals':
+        return this.store.getSignalsPage(off, lim);
+      case 'ai_item_category_links':
+        return this.store.getLinksPage(off, lim);
+      default: {
+        const all = this.getAll(storeName);
+        return all.slice(off, off + lim);
+      }
     }
   }
 
