@@ -1,3 +1,4 @@
+/** @deprecated for eval — prefer `tsx scripts/categorize/run-discover-incremental-app.mts` (imports `src/lib/categorization/discoverMapReduce.ts`). Legacy baseline only. */
 import { createHash } from 'crypto';
 import { normalizeTag, slugFromTerms } from './naming.mjs';
 import { l2Normalize, cosineSimilarity } from './math.mjs';

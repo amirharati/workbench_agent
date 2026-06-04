@@ -19,6 +19,9 @@ export type ClassifyState =
   | 'pending_reclassify'
   | 'classified'
   | 'classified_general'
+  | 'classified_removal'
+  /** link-quality login/auth wall — keep bookmark; may enrich after browser login */
+  | 'classified_attention'
   | 'pending_discover'
   | 'manual_review'
   | 'manual_only';
@@ -41,6 +44,8 @@ export interface AiCategory {
   centroid?: number[];
   canonicalTags?: string[];
   isGeneralFallback?: boolean;
+  /** Junk/broken links — UI may suggest removal; not a topic leaf. */
+  isRemovalCandidate?: boolean;
   itemCount?: number;
   primaryItemCount?: number;
   secondaryItemCount?: number;
@@ -132,6 +137,13 @@ export interface DiscoverRunSummary {
   newLeaves: number;
   proposedParentsRaw: number;
   proposedLeavesRaw: number;
+  reduceCalls?: number;
+  reduceLeafCalls?: number;
+  reduceMode?: string;
+  leavesKeptPct?: number;
+  taxonomyMergeParents?: number;
+  taxonomyMergeLeaves?: number;
+  mergeAuditCount?: number;
   duplicateLeavesSkipped: number;
   llmErrors: number;
   itemsMarkedForReclassify: number;
@@ -159,8 +171,8 @@ export const DEFAULT_TAXONOMY_STATE: AiTaxonomyState = {
   bulkModeActive: false,
   bulkDiscoverRuns: 0,
   maxBulkDiscoverRuns: 3,
-  maxNewLeavesPerDiscover: 8,
-  maxNewParentsPerDiscover: 2,
+  maxNewLeavesPerDiscover: 36,
+  maxNewParentsPerDiscover: 5,
   unassignedThresholdPercent: 15,
   updated_at: 0,
 };
@@ -245,6 +257,8 @@ export interface TopicClassifySummary {
   assignedPrimary: number;
   classifiedSpecific: number;
   classifiedGeneral: number;
+  /** link-quality parent — removal candidates */
+  classifiedRemoval: number;
   assignedSecondary: number;
   multiLabel: number;
   unassigned: number;

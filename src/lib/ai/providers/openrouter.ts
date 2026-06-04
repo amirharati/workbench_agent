@@ -60,7 +60,7 @@ export const runOpenRouterCompletion = async (
 
   const endpoint = buildEndpoint(settings.baseUrl);
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), settings.timeoutMs);
+  const timeout = globalThis.setTimeout(() => controller.abort(), settings.timeoutMs);
 
   const abortListener = () => controller.abort();
   if (request.signal) {
@@ -130,7 +130,7 @@ export const runOpenRouterCompletion = async (
     }
     throw new AIClientError('network', 'Network error while calling AI provider.');
   } finally {
-    window.clearTimeout(timeout);
+    globalThis.clearTimeout(timeout);
     if (request.signal) {
       request.signal.removeEventListener('abort', abortListener);
     }

@@ -44,13 +44,18 @@ export function buildTopicExtractPrompt(
     'Each specific topic is ONE atomic subject (2-5 words). Never slash-separated mashups.',
     ...TOPIC_CATALOG_RULES,
     'NEVER skip or reject links because they are adult/erotic/porn — assign adult-erotic-content or sexuality-wellness-education.',
+    'NEVER put substantive pages in link-quality (generic-low-signal, etc.): movie/TV lists, immigration/visa, directories, tutorials, adult — always a normal topic leaf, *-general, or proposed.',
+    'Login/auth walls (YouTube sign-in, etc.) → login-auth-required (attention basket — keep bookmark). Removal leaves: 404/5xx, example.com, fetch fail, blank pages only.',
+    'If the summary describes a real topic, NEVER use link-quality (even if the URL looks generic).',
     'Singularity/containers/HPC runtime → infra-hosting-general unless a specific infra leaf fits.',
     'Indie hackers / business ideas → product-gtm-general or propose one specific GTM leaf.',
+    'Immigration / embassy / visa process → government-forms-requests (or propose under health-lifestyle).',
+    'Movies / TV / streaming site lists → movies-tv-streaming (or propose).',
     'Do not invent topics from URL alone; use summary substance.',
-    'Use judgment: if the item clearly belongs to a parent domain (e.g. ML, software, finance), pick the best existing leaf — specific if it fits, otherwise the parent\'s general leaf. Do NOT force-fit unrelated categories.',
-    'Leave topicIds empty (no proposed) only when the content genuinely does not fit any existing parent domain — it will go to discover.',
-    'Only propose a new leaf when a clear parent domain exists but has no leaf that even loosely covers the content.',
-    'Use skip:true ONLY for empty/login/placeholder/captcha pages with no substantive content.',
+    'Use judgment: if the item clearly belongs to a parent domain, pick the best leaf — specific if it fits, otherwise that parent\'s *-general. Do NOT force-fit unrelated categories.',
+    'Leave topicIds empty only when no parent domain fits at all — it will go to discover.',
+    'Only propose a new leaf when the domain is clear but no sibling leaf even loosely fits.',
+    'Dead links: 404/5xx/placeholder → link-quality; never generic-low-signal for those (use page-not-found or placeholder-junk).',
     'Return one result object per item in items[] — same itemId, no omissions.',
   ];
 
@@ -173,7 +178,7 @@ export async function callTopicExtractBatch(
           {
             role: 'system',
             content:
-              'You extract concurrent atomic topics for bookmarks. Return only valid JSON. Use leafId or topicPaths from grouped topicCatalog. Prefer specific leaves over *-general fallbacks. If nothing fits, propose a new leaf under the best parent — do not skip substantive pages. skip:true only for junk/login/placeholder pages with no real content.',
+              'You extract atomic topics for bookmarks (JSON only). Prefer specific leaves over *-general. link-quality removal: 404, 5xx, example.com, fetch fail. Login walls → login-auth-required (attention, not removal). Never link-quality when summary has a real subject. Adult → adult-erotic-content. Missing leaf → propose or *-general.',
           },
           { role: 'user', content: prompt },
         ],

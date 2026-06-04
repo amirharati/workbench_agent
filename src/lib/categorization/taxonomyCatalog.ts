@@ -1,5 +1,10 @@
 /** Taxonomy presentation for LLM classify/discover (ported from CLI). */
 
+import {
+  isLinkQualityAttentionLeafId,
+  isLinkQualityRemovalLeafId,
+  LINK_QUALITY_PARENT_ID,
+} from './linkQuality';
 import type { AiCategory } from './types';
 
 export const GENERAL_LEAF_SUFFIX = '-general';
@@ -139,6 +144,7 @@ export function ensureGeneralFallbackLeaves(
   const existing = new Set(leaves.map((l) => l.id));
   const added: typeof leaves = [];
   for (const parent of parents) {
+    if (parent.id === LINK_QUALITY_PARENT_ID) continue;
     if (parentHasGeneralLeaf(parent.id, leaves)) continue;
     const id = generalLeafId(parent.id);
     if (existing.has(id)) continue;
@@ -158,9 +164,15 @@ export function formatGroupedCatalogMarkdown(
     lines.push(`### ${group.parentName} (\`${group.parentId}\`)`);
     if (group.parentDescription) lines.push(`_${group.parentDescription}_`);
     for (const leaf of group.leaves) {
+      let removal = '';
+      if (isLinkQualityRemovalLeafId(leaf.leafId)) {
+        removal = ' **[removal candidate — dead/placeholder/fetch fail]**';
+      } else if (isLinkQualityAttentionLeafId(leaf.leafId)) {
+        removal = ' **[needs attention — login/auth; keep bookmark]**';
+      }
       const fb = leaf.isGeneralFallback ? ' **[fallback — use only if no sibling fits]**' : '';
       lines.push(
-        `- **\`${leaf.leafId}\`** — ${leaf.name}${fb}`,
+        `- **\`${leaf.leafId}\`** — ${leaf.name}${removal}${fb}`,
         `  Path: ${leaf.path}`,
         `  ${leaf.description || '(no description)'}`
       );
@@ -250,8 +262,13 @@ export const TOPIC_CATALOG_RULES = [
   'Pick the most specific leaf first. Use the *-general leaf under a parent only when no sibling leaf fits.',
   'Never assign both a *-general leaf and another leaf under the same parent in one result.',
   'topicIds: 0-3 leaf ids (first = primary). Multiple ids only for distinct topics (often different parents).',
-  'skip: true only for empty/login/placeholder pages with no real topic — NEVER skip solely because content is adult/erotic/pornographic.',
-  'Adult: explicit video/tube/fetish pages → adult-erotic-content (health-lifestyle parent). Sexuality wellness → sexuality-wellness-education or health-nutrition — not skip.',
+  '**link-quality parent has two baskets (not topic taxonomy):**',
+  '  - **Removal:** 404/5xx → `page-not-found`; example.com → `placeholder-junk`; fetch fail → `enrich-fetch-failed`; blank no-subject → `generic-low-signal`; empty social → `social-no-topic`.',
+  '  - **Needs attention (keep bookmark):** sign-in/auth wall with no public content → `login-auth-required` (may re-enrich when user is logged in — NOT removal junk).',
+  '  - Never use removal leaves for substantive pages (movies, visas, adult, guides).',
+  '**Never use link-quality for:** movie/TV lists, visa/immigration guides, directories, articles, tutorials, adult/porn, or any page whose summary names a real subject. When unsure, pick a topic leaf or `proposed` — not link-quality.',
+  'skip: true is rare. NEVER skip substantive, adult, or “edgy” content.',
+  'Adult/porn/explicit tube → adult-erotic-content. Sexuality wellness articles → sexuality-wellness-education.',
   'proposed: at most 1 new specific leaf when topic is clear but missing (include parentId). Do not propose a second *-general.',
 ];
 

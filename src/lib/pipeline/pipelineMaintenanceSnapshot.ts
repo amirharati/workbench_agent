@@ -9,12 +9,12 @@ import {
   computeDiscoverPoolStats,
   getPipelineCatalog,
 } from './pipelineCatalog';
-import { MIN_DISCOVER_POOL } from '../categorization/discoverPolicy';
+import { APP_DISCOVER_MAP_BATCH_SIZE, MIN_DISCOVER_POOL } from '../categorization/discoverPolicy';
 import { loadAISettings } from '../ai/settings';
 import { loadItemIdsForPipelineQueue } from './itemPipelineContext';
 
-/** LLM chunk size for hub discover (all stuck items are processed across as many chunks as needed). */
-export const HUB_DISCOVER_SAMPLE_BATCH_SIZE = 16;
+/** LLM chunk size for hub discover (v3 MAP batches; full pool across ceil(n / size) calls). */
+export const HUB_DISCOVER_SAMPLE_BATCH_SIZE = APP_DISCOVER_MAP_BATCH_SIZE;
 export const HUB_CLASSIFY_BATCH_SIZE = 12;
 import type { CategorizationQueueStats, DiscoverRunSummary, DiscoverRunSnapshot } from '../categorization/types';
 import type { AiTaxonomyState } from '../categorization/types';

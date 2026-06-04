@@ -173,6 +173,7 @@ export function emptyTopicClassifySummary(): import('./types').TopicClassifySumm
     assignedPrimary: 0,
     classifiedSpecific: 0,
     classifiedGeneral: 0,
+    classifiedRemoval: 0,
     assignedSecondary: 0,
     multiLabel: 0,
     unassigned: 0,

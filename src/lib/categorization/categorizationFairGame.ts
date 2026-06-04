@@ -1,4 +1,5 @@
 import type { ClassifyState } from './types';
+import { isLinkQualityLeafId } from './linkQuality';
 import { isGeneralLeafId } from './taxonomyCatalog';
 import { itemNeedsClassifyFromPolicy } from './classifyPolicy';
 
@@ -19,7 +20,15 @@ export function isFairGameForCategorization(input: {
   if (force) return true;
 
   const st = input.classifyState;
-  if (st === 'ineligible' || st === 'manual_only' || st === 'manual_review') return false;
+  if (
+    st === 'ineligible' ||
+    st === 'classified_removal' ||
+    st === 'classified_attention' ||
+    st === 'manual_only' ||
+    st === 'manual_review'
+  ) {
+    return false;
+  }
   if (st === 'skipped') return false;
 
   const primaryId = input.primaryCategoryId ?? null;
@@ -41,7 +50,11 @@ export function hasSpecificPrimaryTopic(
   primaryCategoryId: string | null | undefined,
   _classifyState?: ClassifyState
 ): boolean {
-  return Boolean(primaryCategoryId && !isGeneralLeafId(primaryCategoryId));
+  return Boolean(
+    primaryCategoryId &&
+      !isGeneralLeafId(primaryCategoryId) &&
+      !isLinkQualityLeafId(primaryCategoryId)
+  );
 }
 
 /** Whether this item should enter the next classify batch. */

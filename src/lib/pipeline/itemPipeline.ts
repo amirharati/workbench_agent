@@ -5,6 +5,7 @@
 import {
   classifyIncremental,
   discoverBatch,
+  APP_DISCOVER_MAP_BATCH_SIZE,
   listItemIdsWithoutCategory,
   listItemIdsWithGeneralCategory,
   reconcileStaleIneligibleSignals,
@@ -228,9 +229,8 @@ async function runClassifyWithDiscover(
 
   notifyDataChanged('categorization.update');
 
-  // One discover + reclassify shot per pipeline run for items with no category.
-  // Skip for single-item / interactive classify — discover is a slow LLM taxonomy-expansion
-  // call (30–60 s) and is only useful for bulk batches, not quick Hub classify.
+  // Post-classify discover (v3 map→reduce): gap-fill unassigned / pending. Skip for a single
+  // bookmark — classify + link-quality heuristics handle 404/junk without taxonomy expansion.
   const skipDiscover = opts.skipDiscover === true || mergedIds.length === 1;
 
   if (!skipDiscover && !classifyError && !opts.signal?.aborted) {
@@ -253,7 +253,7 @@ async function runClassifyWithDiscover(
           enforceBulkRunCap: false,
           stuckOnly: true,
           onlyWithoutCategory: true,
-          sampleBatchSize: 24,
+          sampleBatchSize: APP_DISCOVER_MAP_BATCH_SIZE,
           signal: opts.signal,
           onProgress: (p) => {
             report(
@@ -336,7 +336,7 @@ async function runClassifyWithDiscover(
           enforceBulkRunCap: false,
           stuckOnly: false,
           onlyWithoutCategory: false,
-          sampleBatchSize: 24,
+          sampleBatchSize: APP_DISCOVER_MAP_BATCH_SIZE,
           maxBatches: 1,
           maxNewParentsOverride: 1,
           maxNewLeavesOverride: 6,
@@ -746,6 +746,7 @@ export async function runItemPipeline(
           enforceBulkRunCap: false,
           stuckOnly: false,
           onlyWithoutCategory: false,
+          sampleBatchSize: APP_DISCOVER_MAP_BATCH_SIZE,
           signal: options.signal,
           onProgress: (p) => {
             report(options, 'discover', p.label || 'Discovering categories…', p.current, Math.max(p.total, 1));

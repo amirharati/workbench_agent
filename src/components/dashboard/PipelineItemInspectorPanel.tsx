@@ -372,7 +372,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           forceReclassify: true,
           cancellable: true,
           collectItemResults: true,
-          skipDiscover: targetIds.length <= 25,
+          skipDiscover: false,
           drainPendingClassifyQueue: false,
           itemLabels,
         });
@@ -400,7 +400,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
         processAll: true,
         forceReclassify: true,
         collectItemResults: true,
-        skipDiscover: targetIds.length <= 25,
+        skipDiscover: false,
         drainPendingClassifyQueue: false,
         itemLabels,
       });

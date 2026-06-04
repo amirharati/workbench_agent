@@ -36,6 +36,8 @@ export const PIPELINE_QUEUE_FILTER_OPTIONS: Array<{
   { id: 'pending_reclassify', label: 'Re-classify queued' },
   { id: 'pending_discover', label: 'No category found', hint: 'AI ran but no topic matched' },
   { id: 'classified_general', label: 'General / Other' },
+  { id: 'classified_removal', label: 'Removal candidate (junk/broken)' },
+  { id: 'classified_attention', label: 'Needs attention (login/auth)' },
   { id: 'manual_review', label: 'Manual review' },
   { id: 'ineligible', label: 'Ineligible' },
   { id: 'no_signal', label: 'No signal', hint: 'AI ok but no classify signal row' },

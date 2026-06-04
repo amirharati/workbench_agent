@@ -3,6 +3,7 @@ import { Tags, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   classifyIncremental,
   discoverBatch,
+  APP_DISCOVER_MAP_BATCH_SIZE,
   ensurePendingClassifySignals,
   getAiCategories,
   getAiLinksForItem,
@@ -116,7 +117,7 @@ export function CategorizationPanel({
       itemIds: scopedItemIds?.length ? scopedItemIds : undefined,
       stuckOnly: true as const,
       maxBatches: maxDiscoverBatches,
-      sampleBatchSize: 16,
+      sampleBatchSize: APP_DISCOVER_MAP_BATCH_SIZE,
       onProgress,
     }),
     [scopedItemIds, maxDiscoverBatches, onProgress]

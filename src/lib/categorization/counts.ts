@@ -1,4 +1,5 @@
 import type { AiCategory, AiItemCategoryLink } from './types';
+import { classifyStateForLinkQualityLeaf, isLinkQualityLeafId } from './linkQuality';
 import { isGeneralLeafId } from './taxonomyCatalog';
 
 const COUNTABLE_STATUSES = new Set(['suggested', 'accepted']);
@@ -106,6 +107,7 @@ export function verifiedPrimaryLeafIdFromLinks(links: AiItemCategoryLink[]): str
 export function classifyStateFromPrimary(leafId: string | null, eligible: boolean): import('./types').ClassifyState {
   if (!eligible) return 'ineligible';
   if (!leafId) return 'pending_classify';
+  if (isLinkQualityLeafId(leafId)) return classifyStateForLinkQualityLeaf(leafId);
   if (isGeneralLeafId(leafId)) return 'classified_general';
   return 'classified';
 }
@@ -119,6 +121,7 @@ export function resolveEffectiveClassifyState(input: {
 }): import('./types').ClassifyState {
   if (input.signalState) return input.signalState;
   const pid = input.primaryCategoryId ?? null;
+  if (pid && isLinkQualityLeafId(pid)) return classifyStateForLinkQualityLeaf(pid);
   if (pid && !isGeneralLeafId(pid)) return 'classified';
   if (pid && isGeneralLeafId(pid)) return 'classified_general';
   // AI-ready but no topic stored yet → pending until classify gate runs

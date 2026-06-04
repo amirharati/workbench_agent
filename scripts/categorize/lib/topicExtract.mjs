@@ -118,14 +118,89 @@ export const TOPIC_FEW_SHOT = [
     },
   },
   {
-    title: 'YouTube',
+    title: '404 Page Not Found — NZXT Support',
+    summary:
+      'HTTP 404. The requested support article was not found. No product documentation body.',
+    output: {
+      skip: false,
+      topicPaths: [['link-quality', 'seed_page-not-found']],
+      topicIds: ['seed_page-not-found'],
+      proposed: [],
+      confidence: 0.94,
+      reason: 'Dead link — error page only, not a topic.',
+    },
+  },
+  {
+    title: '500 Internal Server Error',
+    summary:
+      'nginx reports an internal server error. No article, documentation, or product content on the page.',
+    output: {
+      skip: false,
+      topicPaths: [['link-quality', 'seed_page-not-found']],
+      topicIds: ['seed_page-not-found'],
+      proposed: [],
+      confidence: 0.9,
+      reason: '5xx error page — bookmark is broken/unreachable.',
+    },
+  },
+  {
+    title: 'Example Domain',
+    summary: 'IANA reserved example.com placeholder; not real content.',
+    output: {
+      skip: false,
+      topicPaths: [['link-quality', 'seed_placeholder-junk']],
+      topicIds: ['seed_placeholder-junk'],
+      proposed: [],
+      confidence: 0.97,
+      reason: 'Intentional placeholder URL.',
+    },
+  },
+  {
+    title: 'Old blog post (fetch failed)',
     summary: '',
     output: {
-      skip: true,
-      topicIds: [],
+      skip: false,
+      topicPaths: [['link-quality', 'seed_enrich-fetch-failed']],
+      topicIds: ['seed_enrich-fetch-failed'],
       proposed: [],
-      confidence: 0.95,
-      reason: 'Generic login/home — no topic.',
+      confidence: 0.88,
+      reason: 'No usable summary — enrich or fetch failed.',
+    },
+  },
+  {
+    title: 'Working Free Movies and TV Shows Websites List - YarrList',
+    summary:
+      'Curated list of sites for free movies, TV shows, anime, sports streams, torrents, music, and related media.',
+    output: {
+      skip: false,
+      topicIds: ['seed_movies-tv-streaming'],
+      proposed: [],
+      confidence: 0.91,
+      reason: 'Clear movies/TV topic — not link-quality.',
+    },
+  },
+  {
+    title: 'Immigrant Visa Process - U.S. Embassy & Consulates in Canada',
+    summary:
+      'Immigrant visa steps: I-130/I-140, NVC, interview, medical exam, post-visa procedures.',
+    output: {
+      skip: false,
+      topicIds: ['seed_government-forms-requests'],
+      proposed: [],
+      confidence: 0.93,
+      reason: 'Immigration/visa guide — not link-quality.',
+    },
+  },
+  {
+    title: 'YouTube',
+    summary: 'Sign in to continue to YouTube. No video or channel topic in the text.',
+    output: {
+      skip: false,
+      topicPaths: [['link-quality', 'seed_generic-low-signal']],
+      topicIds: ['seed_generic-low-signal'],
+      proposed: [],
+      confidence: 0.9,
+      reason: 'Empty login shell only.',
     },
   },
 ];
@@ -150,10 +225,12 @@ export function buildTopicExtractPrompt(topicCatalog, batchItems) {
     'Each specific topic is ONE atomic subject (2-5 words). Never slash-separated mashups.',
     ...TOPIC_CATALOG_RULES,
     'NEVER skip or reject links because they are adult/erotic/porn — assign adult-erotic-content or sexuality-wellness-education.',
+    'NEVER use link-quality generic-low-signal for substantive pages (movies, immigration, lists, adult).',
     'Singularity/containers/HPC runtime → infra-hosting-general unless a specific infra leaf fits.',
     'Indie hackers / business ideas → product-gtm-general or propose one specific GTM leaf.',
     'proposed: parentId one of quant-finance, machine-learning, ai-productivity, software-dev, product-gtm, personal-finance, health-lifestyle, infra-hosting, hardware.',
     'Do not invent topics from URL alone; use summary substance.',
+    'Old bookmarks: if title/summary is only 404/410/5xx/error-page text, assign link-quality (usually page-not-found) — do not leave topicIds empty.',
     'Return one result object per item in items[] — same itemId, no omissions.',
   ];
 

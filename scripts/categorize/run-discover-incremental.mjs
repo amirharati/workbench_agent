@@ -5,6 +5,7 @@
  *   npm run discover-incremental -- --state-in data/experiments/categorize/.../classify-state.jsonl --dry-run
  *   npm run discover-incremental -- --state-in .../classify-state.jsonl --run-llm --max-batches 1
  *   npm run discover-incremental -- --state-in ... --run-llm --all-eligible   # full corpus discover
+ *   npm run discover-incremental -- --no-seed --all-eligible --run-llm --max-batches 4 --out .../cold
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -19,6 +20,8 @@ import {
   DEFAULT_DISCOVER_BATCH_SIZE,
   emptyDiscoverRunSummary,
   MIN_DISCOVER_POOL,
+  planDiscoverMapBatches,
+  sliceDiscoverMapPool,
 } from './lib/discoverPolicy.mjs';
 import {
   callDiscoveryBatch,
@@ -52,9 +55,10 @@ function parseArgs(argv) {
     runLlm: false,
     stuckOnly: true,
     batchSize: DEFAULT_DISCOVER_BATCH_SIZE,
-    maxBatches: 1,
+    maxBatches: undefined,
     maxNewLeaves: 20,
     maxNewParents: 5,
+    noSeed: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -62,7 +66,10 @@ function parseArgs(argv) {
     if (a === '--max') opts.max = Number(argv[++i]) || opts.max;
     else if (a === '--corpus') opts.corpora = (argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--ai-eval') opts.aiEvalJsonl = argv[++i];
-    else if (a === '--seed-in') opts.seedIn = argv[++i];
+    else if (a === '--no-seed') {
+      opts.noSeed = true;
+      opts.seedIn = null;
+    } else if (a === '--seed-in') opts.seedIn = argv[++i];
     else if (a === '--state-in') opts.stateIn = argv[++i];
     else if (a === '--out') opts.outDir = argv[++i];
     else if (a === '--dry-run') {
@@ -73,7 +80,10 @@ function parseArgs(argv) {
       opts.dryRun = false;
     } else if (a === '--all-eligible') opts.stuckOnly = false;
     else if (a === '--batch-size') opts.batchSize = Number(argv[++i]) || opts.batchSize;
-    else if (a === '--max-batches') opts.maxBatches = Number(argv[++i]) || opts.maxBatches;
+    else if (a === '--max-batches') {
+      const n = Number(argv[++i]);
+      if (Number.isFinite(n) && n > 0) opts.maxBatches = n;
+    }
     else if (a === '--max-new-leaves') opts.maxNewLeaves = Number(argv[++i]) || opts.maxNewLeaves;
   }
 
@@ -101,7 +111,7 @@ function buildSummaryMd({ summary, opts, mode, seedMeta }) {
     '',
     `- Corpus: ${opts.corpora.join(', ')}`,
     `- Classify state: ${opts.stateIn ?? '(required for gap-fill)'}`,
-    `- Seed: ${opts.seedIn} (v${seedMeta.taxonomyVersion}, ${seedMeta.leafCount} leaves)`,
+    `- Seed: ${seedMeta.seedPath ?? opts.seedIn} (v${seedMeta.taxonomyVersion}, ${seedMeta.leafCount} leaves${seedMeta.coldStart ? ', cold start' : ''})`,
     `- Mode: ${opts.stuckOnly ? 'gap-fill (stuck only)' : 'all eligible'}`,
     `- Max batches: ${opts.maxBatches} · batch size: ${opts.batchSize}`,
     '',
@@ -134,8 +144,8 @@ async function main() {
     console.error('Gap-fill mode requires --state-in (classify-state.jsonl from classify-incremental)');
     process.exit(1);
   }
-  if (!existsSync(opts.seedIn)) {
-    console.error(`Seed not found: ${opts.seedIn}`);
+  if (!opts.noSeed && (!opts.seedIn || !existsSync(opts.seedIn))) {
+    console.error(`Seed not found: ${opts.seedIn} (use --no-seed for cold taxonomy)`);
     process.exit(1);
   }
 
@@ -176,22 +186,35 @@ async function main() {
     process.exit(0);
   }
 
-  const seed = loadSeedTaxonomy(opts.seedIn);
-  let parents = [...(seed.parents ?? [])];
-  let parentIds = new Set(parents.map((p) => p.id));
-  let leaves = (seed.leaves ?? []).map((l) => ({
-    id: l.id,
-    parentId: l.parentId,
-    name: l.name,
-    description: l.description ?? '',
-    canonicalTags: l.canonicalTags ?? [],
-  }));
-  let taxonomyVersion = seed.taxonomyVersion ?? 0;
-  const seedMeta = { taxonomyVersion, leafCount: leaves.length };
+  const bootstrapMode = opts.noSeed;
+  let parents = [];
+  let parentIds = new Set();
+  let leaves = [];
+  let taxonomyVersion = 0;
+  if (!opts.noSeed) {
+    const seed = loadSeedTaxonomy(opts.seedIn);
+    parents = [...(seed.parents ?? [])];
+    parentIds = new Set(parents.map((p) => p.id));
+    leaves = (seed.leaves ?? []).map((l) => ({
+      id: l.id,
+      parentId: l.parentId,
+      name: l.name,
+      description: l.description ?? '',
+      canonicalTags: l.canonicalTags ?? [],
+    }));
+    taxonomyVersion = seed.taxonomyVersion ?? 0;
+  }
+  const seedMeta = {
+    taxonomyVersion,
+    leafCount: leaves.length,
+    coldStart: opts.noSeed,
+    seedPath: opts.noSeed ? '(none)' : opts.seedIn,
+  };
 
-  const batches = chunkItems(pool, opts.batchSize).slice(0, opts.maxBatches);
-  summary.itemsSampled = batches.reduce((n, b) => n + b.length, 0);
-  summary.discoverBatches = batches.length;
+  const batches = sliceDiscoverMapPool(pool, opts.batchSize, opts.maxBatches);
+  const mapPlan = planDiscoverMapBatches(pool.length, opts.batchSize, opts.maxBatches);
+  summary.itemsSampled = mapPlan.itemsSampled;
+  summary.discoverBatches = mapPlan.mapBatchCount;
 
   const batchLogs = [];
   const allItemResults = [];
@@ -202,8 +225,8 @@ async function main() {
     const resp = await callDiscoveryBatch(settings, parents, leaves, batch, {
       maxNewPerBatch: opts.maxNewLeaves,
       maxNewParents: opts.maxNewParents,
-      bootstrapMode: false,
-      gapFillMode: opts.stuckOnly,
+      bootstrapMode: leaves.length === 0,
+      gapFillMode: opts.stuckOnly && leaves.length > 0,
     });
 
     if (resp.ok) return { ok: true, data: resp.data, batch };
@@ -219,8 +242,8 @@ async function main() {
       const one = await callDiscoveryBatch(settings, parents, leaves, [single], {
         maxNewPerBatch: opts.maxNewLeaves,
         maxNewParents: opts.maxNewParents,
-        bootstrapMode: false,
-        gapFillMode: opts.stuckOnly,
+        bootstrapMode: leaves.length === 0,
+        gapFillMode: opts.stuckOnly && leaves.length > 0,
       });
       if (!one.ok) {
         errors++;

@@ -12,24 +12,32 @@ import {
   isGeneralLeafId,
 } from './taxonomyCatalog';
 import {
+  detectLinkQualityFromItem,
+  findLinkQualityCategory,
+  isLinkQualityLeafId,
+  classifyStateForLinkQualityLeaf,
+  linkQualityCategoryAllowed,
+  type LinkQualityDetectInput,
+} from './linkQuality';
+import {
   chunkClassifyBatch,
   resolveTopicExtractBatchWithRetry,
   topicExtractBatchSize,
   type ClassifyBatchItem,
 } from './topicExtract';
-import { chunk } from './parseReview';
 import {
   hasSpecificPrimaryTopic,
   itemNeedsClassify,
 } from './categorizationFairGame';
 import { hashText } from './textHash';
 import { getTaxonomyState, saveTaxonomyState, shouldTriggerDiscover } from './taxonomyState';
+import { promoteProposedLeaf, type DiscoverSampleItem } from './discoverTaxonomy';
 import {
-  mergeDiscoveryTaxonomy,
-  promoteProposedLeaf,
-  type DiscoverSampleItem,
-} from './discoverTaxonomy';
-import { getBundledSeedDocument, seedDocumentToCategories } from './seedImport';
+  ensureTaxonomyPatches,
+  getBundledSeedDocument,
+  seedDocumentToCategories,
+} from './seedImport';
+import { APP_DISCOVER_MAP_BATCH_SIZE } from './discoverPolicy';
 import type {
   AiCategory,
   AiItemCategoryLink,
@@ -58,8 +66,6 @@ import {
 } from './classifyQueueReason';
 import {
   bumpDiscoverFailureBucket,
-  callDiscoveryBatchWithRetry,
-  DEFAULT_DISCOVER_BATCH_SIZE,
   discoverSamplePriority,
   discoverStuckKind,
   emptyDiscoverRunSummary,
@@ -68,6 +74,8 @@ import {
   MIN_DISCOVER_POOL,
   shouldMarkReclassifyAfterDiscover,
 } from './discoverPolicy';
+import { DISCOVER_MAP_BATCH_SIZE, runDiscoverMapReduce } from './discoverMapReduce';
+import { planDiscoverMapBatches, sliceDiscoverMapPool } from './discoverPolicy';
 
 const COUNTABLE_STATUSES = new Set(['suggested', 'accepted']);
 
@@ -211,6 +219,24 @@ async function buildClassifyBatchItem(
       textForClassification: classifyText,
       enrichmentAiTags: enrichment?.aiTags,
     },
+  };
+}
+
+function linkQualityInputFor(
+  item: Pick<Item, 'title' | 'url'>,
+  enrichment?: ItemEnrichment | null,
+  extra?: { eligibilityReason?: string; llmReason?: string }
+): LinkQualityDetectInput {
+  return {
+    title: item.title,
+    url: item.url,
+    aiStatus: enrichment?.aiStatus,
+    aiSummary: enrichment?.summary,
+    aiTags: enrichment?.aiTags,
+    aiKeyPoints: enrichment?.aiKeyPoints,
+    quotedText: enrichment?.quotedText,
+    eligibilityReason: extra?.eligibilityReason,
+    llmReason: extra?.llmReason,
   };
 }
 
@@ -697,11 +723,15 @@ async function ensurePendingClassifySignalsWork(): Promise<number> {
 
 export async function ensureSeedTaxonomy(): Promise<void> {
   const stats = await getCategorizationQueueStats();
-  if (stats.leafCount > 0) return;
+  if (stats.leafCount > 0) {
+    await ensureTaxonomyPatches();
+    return;
+  }
   console.info('[taxonomy] no leaves found — auto-importing seed taxonomy');
   await importSeedTaxonomy(false); // false = don't replace existing (none to replace anyway)
   const { commitPendingDbWrites } = await import('../db');
   await commitPendingDbWrites();
+  await ensureTaxonomyPatches();
 }
 
 export async function importSeedTaxonomy(replaceExisting = true): Promise<{
@@ -732,6 +762,7 @@ export async function importSeedTaxonomy(replaceExisting = true): Promise<{
     bulkDiscoverRuns: 0,
   });
   notifyDataChanged('categorization.update');
+  await ensureTaxonomyPatches();
 
   return {
     parents: doc.parents.length,
@@ -1177,6 +1208,7 @@ export async function previewClassifyBatchItemIds(
 export async function classifyIncremental(
   opts: ClassifyIncrementalOptions = {}
 ): Promise<TopicClassifyResult> {
+  await ensureTaxonomyPatches();
   throwIfAborted(opts.signal);
   reportProgress(opts, {
     phase: 'prepare',
@@ -1251,6 +1283,12 @@ export async function classifyIncremental(
     qualityTier?: 'high' | 'medium' | 'low';
   }> = [];
   const gateWrites: Array<{ itemId: string; signal: AiItemSignal }> = [];
+  const preBatchWrites: Array<{
+    itemId: string;
+    signal: AiItemSignal;
+    links: AiItemCategoryLink[];
+    removeAiSuggested: boolean;
+  }> = [];
   const summary = emptyTopicClassifySummary();
 
   for (const item of items) {
@@ -1263,6 +1301,61 @@ export async function classifyIncremental(
     const primaryId = primaryCategoryByItem.get(item.id);
 
     if (!built.eligible || !built.batch) {
+      const lq = detectLinkQualityFromItem(item, enrichment, {
+        eligibilityReason: built.eligibilityReason,
+      });
+      const lqLeaf = lq ? findLinkQualityCategory(categories, lq.leafId) : undefined;
+      const lqInput = linkQualityInputFor(item, enrichment, {
+        eligibilityReason: built.eligibilityReason,
+      });
+      if (lq && lqLeaf && linkQualityCategoryAllowed(lqLeaf.id, lqInput)) {
+        const now = Date.now();
+        const lqState = classifyStateForLinkQualityLeaf(lqLeaf.id);
+        summary.assignedPrimary++;
+        if (lqState === 'classified_removal') summary.classifiedRemoval++;
+        preBatchWrites.push({
+          itemId: item.id,
+          removeAiSuggested: true,
+          links: [
+            {
+              id: aiLinkId(item.id, lqLeaf.id),
+              itemId: item.id,
+              categoryId: lqLeaf.id,
+              score: 0.92,
+              isPrimary: true,
+              source: 'ai',
+              status: 'suggested',
+              created_at: now,
+              updated_at: now,
+            },
+          ],
+          signal: {
+            itemId: item.id,
+            textHash: prev?.textHash ?? '',
+            classifyTextHash: built.hash || prev?.classifyTextHash || '',
+            embeddingModel: prev?.embeddingModel ?? '',
+            embedding: prev?.embedding ?? [],
+            derivedTags: prev?.derivedTags ?? [],
+            signalStatus: 'ok',
+            classifyState: classifyStateForLinkQualityLeaf(lqLeaf.id),
+            discoverState: 'none',
+            isNovelty: false,
+            eligibilityReason: built.eligibilityReason,
+            lastClassifySkipReason: lq.reason,
+            lastProcessedAt: now,
+            lastClassifiedAt: now,
+            classifyRetryCount: prev?.classifyRetryCount ?? 0,
+            llmReview: {
+              decisionType: 'existing',
+              categoryIds: [lqLeaf.id],
+              confidence: 0.92,
+              reason: lq.reason,
+              classifyMode: 'link-quality-heuristic',
+            },
+          },
+        });
+        continue;
+      }
       summary.skippedIneligible++;
       summary.failureBuckets = bumpFailureBucket(
         summary.failureBuckets,
@@ -1399,6 +1492,11 @@ export async function classifyIncremental(
     await commitPendingDbWrites();
   }
 
+  if (preBatchWrites.length) {
+    categories = await persistClassifyResults(categories, preBatchWrites);
+    await syncClassifySignalsFromLinks(preBatchWrites.map((w) => w.itemId));
+  }
+
   if (!toProcess.length) {
     const runAt = Date.now();
     await saveTaxonomyState({
@@ -1429,6 +1527,7 @@ export async function classifyIncremental(
   await yieldToUi();
 
   const now = Date.now();
+  const itemById = new Map(items.map((i) => [i.id, i]));
 
   for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
     const batchWrites: Array<{
@@ -1504,20 +1603,53 @@ export async function classifyIncremental(
           llmReason: decision?.reason,
         });
       } else if (decision.decisionType === 'none' && !decision.categoryIds?.length) {
-        // No matching topic → discover gap-fill (never terminal "skipped" for valid AI-ready items).
-        const retry = applyClassifyRetryPolicy(prevRetry, 'unassigned');
-        classifyState = retry.nextState;
-        retryCount = retry.nextRetryCount;
-        summary.unassigned++;
-        if (retry.routedToManualReview) {
-          summary.failureBuckets = bumpFailureBucket(summary.failureBuckets, 'manual_review_unassigned');
+        const corpusItem = itemById.get(batchItem.itemId);
+        const lq = corpusItem
+          ? detectLinkQualityFromItem(corpusItem, enrichByItem.get(batchItem.itemId), {
+              llmReason: decision.reason,
+            })
+          : null;
+        const lqLeaf = lq ? findLinkQualityCategory(categories, lq.leafId) : undefined;
+        const lqInput = corpusItem
+          ? linkQualityInputFor(corpusItem, enrichByItem.get(batchItem.itemId), {
+              llmReason: decision.reason,
+            })
+          : null;
+        if (lq && lqLeaf && lqInput && linkQualityCategoryAllowed(lqLeaf.id, lqInput)) {
+          links.push({
+            id: aiLinkId(batchItem.itemId, lqLeaf.id),
+            itemId: batchItem.itemId,
+            categoryId: lqLeaf.id,
+            score: 0.9,
+            isPrimary: true,
+            source: 'ai',
+            status: 'suggested',
+            created_at: now,
+            updated_at: now,
+          });
+          classifyState = classifyStateForLinkQualityLeaf(lqLeaf.id);
+          retryCount = prevRetry;
+          summary.assignedPrimary++;
+          if (classifyState === 'classified_removal') summary.classifiedRemoval++;
+          lastClassifySkipReason = lq.reason;
         } else {
-          summary.pendingDiscover++;
+          const retry = applyClassifyRetryPolicy(prevRetry, 'unassigned');
+          classifyState = retry.nextState;
+          retryCount = retry.nextRetryCount;
+          summary.unassigned++;
+          if (retry.routedToManualReview) {
+            summary.failureBuckets = bumpFailureBucket(
+              summary.failureBuckets,
+              'manual_review_unassigned'
+            );
+          } else {
+            summary.pendingDiscover++;
+          }
+          lastClassifySkipReason = classifyOutcomeReason('unassigned', {
+            routedToManualReview: retry.routedToManualReview,
+            llmReason: decision.reason,
+          });
         }
-        lastClassifySkipReason = classifyOutcomeReason('unassigned', {
-          routedToManualReview: retry.routedToManualReview,
-          llmReason: decision.reason,
-        });
       } else if (decision.decisionType === 'existing' && decision.categoryIds?.length) {
         const assignments = assignmentsFromCategoryIds(decision.categoryIds);
         for (const a of assignments) {
@@ -1534,7 +1666,32 @@ export async function classifyIncremental(
           });
         }
         const primaryId = decision.categoryIds[0];
-        if (isGeneralLeafId(primaryId)) {
+        const corpusItem = itemById.get(batchItem.itemId);
+        const lqInput = corpusItem
+          ? linkQualityInputFor(corpusItem, enrichByItem.get(batchItem.itemId), {
+              llmReason: decision.reason,
+            })
+          : null;
+        if (
+          isLinkQualityLeafId(primaryId) &&
+          lqInput &&
+          linkQualityCategoryAllowed(primaryId, lqInput)
+        ) {
+          classifyState = classifyStateForLinkQualityLeaf(primaryId);
+          retryCount = prevRetry;
+          summary.assignedPrimary++;
+          if (classifyState === 'classified_removal') summary.classifiedRemoval++;
+          lastClassifySkipReason = decision.reason ?? 'Link-quality bucket';
+        } else if (isLinkQualityLeafId(primaryId)) {
+          const retry = applyClassifyRetryPolicy(prevRetry, 'unassigned');
+          classifyState = retry.nextState;
+          retryCount = retry.nextRetryCount;
+          summary.unassigned++;
+          summary.pendingDiscover++;
+          lastClassifySkipReason =
+            decision.reason ?? 'Link-quality rejected — substantive summary; needs topic';
+          links.length = 0;
+        } else if (isGeneralLeafId(primaryId)) {
           const retry = applyClassifyRetryPolicy(prevRetry, 'general');
           classifyState = retry.nextState;
           retryCount = retry.nextRetryCount;
@@ -1749,7 +1906,7 @@ export async function classifyIncremental(
         singleBatch: true,
         enforceBulkRunCap: true,
         stuckOnly: true,
-        sampleBatchSize: 24,
+        sampleBatchSize: APP_DISCOVER_MAP_BATCH_SIZE,
       });
     }
   }
@@ -1764,14 +1921,12 @@ export async function classifyIncremental(
   return { summary, categories };
 }
 
-/** Match CLI discover batch size — smaller prompts, fewer timeouts. */
-const DISCOVER_SAMPLE_BATCH = DEFAULT_DISCOVER_BATCH_SIZE;
-
 export async function discoverBatch(
   opts: {
     maxItems?: number;
     itemIds?: string[];
     singleBatch?: boolean;
+    /** Cap MAP batches; omit to process the full sampled pool (ceil(n/batchSize)). */
     maxBatches?: number;
     enforceBulkRunCap?: boolean;
     /** Gap-fill: only general / unassigned / pending_discover (default true). */
@@ -1787,6 +1942,7 @@ export async function discoverBatch(
     signal?: AbortSignal;
   } = {}
 ): Promise<DiscoverBatchResult> {
+  await ensureTaxonomyPatches();
   throwIfAborted(opts.signal);
   opts.onProgress?.({
     phase: 'prepare',
@@ -1943,14 +2099,15 @@ export async function discoverBatch(
     };
   }
 
-  const batchSize = opts.sampleBatchSize ?? DISCOVER_SAMPLE_BATCH;
-  const maxBatches =
-    opts.maxBatches ?? (opts.singleBatch ? 1 : Number.POSITIVE_INFINITY);
-  const sampleChunks = chunk(samples, batchSize).slice(0, maxBatches);
-  runSummary.itemsSampled = sampleChunks.reduce((n, c) => n + c.length, 0);
-  runSummary.discoverBatches = sampleChunks.length;
+  const mapBatchSize = opts.sampleBatchSize ?? DISCOVER_MAP_BATCH_SIZE;
+  const maxMapBatches = opts.singleBatch ? 1 : opts.maxBatches;
+  const mapPlan = planDiscoverMapBatches(samples.length, mapBatchSize, maxMapBatches);
+  const sampledForRun = sliceDiscoverMapPool(samples, mapBatchSize, maxMapBatches).flat();
+  runSummary.itemsSampled = sampledForRun.length;
+  runSummary.discoverBatches = mapPlan.mapBatchCount;
 
-  const maxNewParents = opts.maxNewParentsOverride ?? (state.maxNewParentsPerDiscover ?? 2);
+  const maxNewParents = opts.maxNewParentsOverride ?? state.maxNewParentsPerDiscover;
+  const maxNewLeaves = opts.maxNewLeavesOverride ?? state.maxNewLeavesPerDiscover;
   const now = Date.now();
   let totalNewParents = 0;
   let totalNewLeaves = 0;
@@ -1961,112 +2118,108 @@ export async function discoverBatch(
   let taxonomyVersion = state.taxonomyVersion;
   let anyAdded = false;
   const successfulSampleIds = new Set<string>();
+  const categoriesBefore = categories;
 
-  for (let i = 0; i < sampleChunks.length; i++) {
-    throwIfAborted(opts.signal);
-    const chunkSamples = sampleChunks[i];
-    const parents = getParentsFromCategories(categories);
+  opts.onProgress?.({
+    phase: 'discover',
+    label: `Map → reduce discover (${runSummary.discoverBatches} map batch(es))…`,
+    current: 0,
+    total: 1,
+  });
+  await yieldToUi();
 
+  const mapReduce = await runDiscoverMapReduce(aiSettings, categories, sampledForRun, {
+    mapBatchSize,
+    maxMapBatches,
+    maxNetParents: maxNewParents,
+    maxNetLeaves: maxNewLeaves,
+    gapFillMode,
+    reduceMode: 'per-parent',
+    signal: opts.signal,
+    onProgress: (msg) => {
+      opts.onProgress?.({
+        phase: 'discover',
+        label: msg,
+        current: 0,
+        total: 1,
+      });
+    },
+  });
+
+  categories = mapReduce.categories;
+  proposedParents = mapReduce.proposedParentsRaw;
+  proposedLeaves = mapReduce.proposedLeavesRaw;
+  runSummary.proposedParentsRaw = mapReduce.proposedParentsRaw;
+  runSummary.proposedLeavesRaw = mapReduce.proposedLeavesRaw;
+  runSummary.reduceCalls = mapReduce.reduceCalls;
+  runSummary.taxonomyMergeParents = mapReduce.taxonomyMerge.mergedParents;
+  runSummary.taxonomyMergeLeaves = mapReduce.taxonomyMerge.mergedLeaves;
+  runSummary.mergeAuditCount = mapReduce.mergeAudit.length;
+  llmErrors = mapReduce.llmErrors;
+  runSummary.llmErrors = mapReduce.llmErrors;
+
+  if (mapReduce.llmErrors > 0) {
+    runSummary.failureBuckets = bumpDiscoverFailureBucket(
+      runSummary.failureBuckets,
+      'llm_batch_error'
+    );
+    batchErrors.push(`map/reduce: ${mapReduce.llmErrors} LLM error(s)`);
+  }
+
+  for (const row of sampledForRun) successfulSampleIds.add(row.itemId);
+
+  const addedParents = mapReduce.addedParents;
+  const addedLeaves = mapReduce.addedLeaves;
+  const addedAll = [...addedParents, ...addedLeaves];
+  const updatedExisting = categories.filter((c) => {
+    const before = categoriesBefore.find((b) => b.id === c.id);
+    return before && (before.parentId !== c.parentId || before.parentName !== c.parentName);
+  });
+
+  runSummary.newParents = addedParents.length;
+  runSummary.newLeaves = addedLeaves.length;
+  totalNewParents = addedParents.length;
+  totalNewLeaves = addedLeaves.length;
+
+  const mergedIds = new Set(categories.map((c) => c.id));
+  const deletedByMerge = categoriesBefore
+    .map((c) => c.id)
+    .filter((id) => !mergedIds.has(id));
+
+  if (addedAll.length || updatedExisting.length || deletedByMerge.length) {
+    anyAdded = true;
+    taxonomyVersion += 1;
     opts.onProgress?.({
-      phase: 'discover',
-      label: `Discovering topics for ${sampleChunks.length > 1 ? `batch ${i + 1}/${sampleChunks.length} (` : ''}${chunkSamples.length} items${sampleChunks.length > 1 ? ')' : ''}…`,
-      current: i,
-      total: sampleChunks.length,
+      phase: 'save',
+      label: `Saving discover: +${addedParents.length} parents, +${addedLeaves.length} leaves…`,
+      current: 0,
+      total: 1,
     });
     await yieldToUi();
 
-    const resp = await callDiscoveryBatchWithRetry(
-      aiSettings,
-      parents,
-      categories,
-      chunkSamples,
-      {
-        maxNewParents,
-        maxNewLeaves: opts.maxNewLeavesOverride ?? state.maxNewLeavesPerDiscover,
-        gapFillMode,
-        batchSize,
-        signal: opts.signal,
-        onProgress: (msg) => {
-          opts.onProgress?.({
-            phase: 'discover',
-            label: `Discovering topics for ${sampleChunks.length > 1 ? `batch ${i + 1}/${sampleChunks.length}` : `${chunkSamples.length} items`}: ${msg}`,
-            current: i,
-            total: sampleChunks.length,
-          });
-        }
-      }
+    const tx = db.transaction(['ai_categories'], 'readwrite');
+    const store = tx.objectStore('ai_categories');
+    for (const row of [...addedAll, ...updatedExisting]) {
+      await store.put(row);
+    }
+    for (const id of deletedByMerge) {
+      await store.delete(id);
+    }
+    await tx.done;
+    const parentRows = categories.filter((c) => c.kind === 'parent');
+    for (const p of parentRows) {
+      p.childLeafCount = categories.filter(
+        (l) => l.kind === 'leaf' && l.parentId === p.id
+      ).length;
+      await db.put('ai_categories', p);
+    }
+  }
+
+  if (mapReduce.mergeAudit.length) {
+    console.info(
+      '[discover] merge audit:',
+      mapReduce.mergeAudit.slice(0, 20).map((e) => `${e.absorbed} → ${e.canonical} (${e.source})`)
     );
-
-    let addedParents: AiCategory[] = [];
-    let addedLeaves: AiCategory[] = [];
-    if (!resp.ok) {
-      llmErrors++;
-      runSummary.llmErrors++;
-      runSummary.failureBuckets = bumpDiscoverFailureBucket(
-        runSummary.failureBuckets,
-        'llm_batch_error'
-      );
-      if (resp.error) batchErrors.push(`batch ${i + 1}: ${resp.error}`);
-    } else {
-      for (const row of chunkSamples) successfulSampleIds.add(row.itemId);
-      if (resp.singleErrors) {
-        llmErrors += resp.singleErrors;
-        runSummary.llmErrors += resp.singleErrors;
-        runSummary.failureBuckets = bumpDiscoverFailureBucket(
-          runSummary.failureBuckets,
-          'llm_single_error'
-        );
-      }
-      const data = resp.data;
-      const rawParents = data?.newParents ?? [];
-      const rawLeaves = data?.newLeaves ?? [];
-      proposedParents += rawParents.length;
-      proposedLeaves += rawLeaves.length;
-      runSummary.proposedParentsRaw += rawParents.length;
-      runSummary.proposedLeavesRaw += rawLeaves.length;
-
-      const merged = mergeDiscoveryTaxonomy(categories, data ?? {}, {
-        maxNewParents,
-        maxNewLeaves: opts.maxNewLeavesOverride ?? state.maxNewLeavesPerDiscover,
-        now,
-      });
-      runSummary.duplicateLeavesSkipped +=
-        rawLeaves.length + (data?.itemResults?.length ?? 0) - (merged.addedLeaves?.length ?? 0);
-      addedParents = merged.addedParents;
-      addedLeaves = merged.addedLeaves;
-      categories = merged.categories;
-    }
-
-    const addedAll = [...addedParents, ...addedLeaves];
-    if (addedAll.length) {
-      anyAdded = true;
-      totalNewParents += addedParents.length;
-      totalNewLeaves += addedLeaves.length;
-      runSummary.newParents += addedParents.length;
-      runSummary.newLeaves += addedLeaves.length;
-      taxonomyVersion += 1;
-
-      opts.onProgress?.({
-        phase: 'save',
-        label: `Saving batch ${i + 1}: +${addedParents.length} parents, +${addedLeaves.length} leaves…`,
-        current: i,
-        total: sampleChunks.length,
-      });
-      await yieldToUi();
-
-      const tx = db.transaction(['ai_categories'], 'readwrite');
-      for (const row of addedAll) {
-        await tx.objectStore('ai_categories').put(row);
-      }
-      await tx.done;
-      const parentRows = categories.filter((c) => c.kind === 'parent');
-      for (const p of parentRows) {
-        p.childLeafCount = categories.filter(
-          (l) => l.kind === 'leaf' && l.parentId === p.id
-        ).length;
-        await db.put('ai_categories', p);
-      }
-    }
   }
 
   await saveTaxonomyState({
@@ -2098,7 +2251,7 @@ export async function discoverBatch(
     : `Discover done: ${runSummary.itemsSampled} processed · 0 added`;
   if (!anyAdded && (proposedParents > 0 || proposedLeaves > 0)) {
     doneLabel += ` (LLM proposed ${proposedParents} parents, ${proposedLeaves} leaves — all duplicates of existing labels)`;
-  } else if (!anyAdded && llmErrors === sampleChunks.length) {
+  } else if (!anyAdded && llmErrors >= runSummary.discoverBatches) {
     doneLabel += ` — all ${llmErrors} batch(es) failed (check API key / model)`;
   } else if (!anyAdded && llmErrors > 0) {
     doneLabel += ` · ${llmErrors} batch error(s)`;
@@ -2109,8 +2262,8 @@ export async function discoverBatch(
   opts.onProgress?.({
     phase: 'done',
     label: doneLabel,
-    current: sampleChunks.length,
-    total: sampleChunks.length,
+    current: runSummary.discoverBatches,
+    total: runSummary.discoverBatches,
   });
 
   notifyDataChanged('categorization.update');
@@ -2119,7 +2272,7 @@ export async function discoverBatch(
     newParents: totalNewParents,
     newLeaves: totalNewLeaves,
     itemsSampled: runSummary.itemsSampled,
-    discoverBatches: sampleChunks.length,
+    discoverBatches: runSummary.discoverBatches,
     proposedParents,
     proposedLeaves,
     llmErrors,

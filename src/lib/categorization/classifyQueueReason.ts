@@ -40,6 +40,8 @@ const STATE_LABELS: Record<ClassifyState, string> = {
   pending_discover: 'Pending discover',
   classified: 'Classified (specific)',
   classified_general: 'General / Other topic',
+  classified_removal: 'Removal candidate (broken/junk link)',
+  classified_attention: 'Login/auth required (re-fetch when signed in)',
   ineligible: 'Ineligible (quality gate)',
   manual_review: 'Manual review',
   skipped: 'Skipped',

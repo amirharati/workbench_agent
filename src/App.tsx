@@ -241,14 +241,17 @@ function App() {
         // This is NOT optional: if it fails we log loudly but never silently skip.
         {
           const { ensureSeedTaxonomy } = await import('./lib/categorization/classifyTopicExtract');
+          const { ensureTaxonomyPatches } = await import('./lib/categorization/seedImport');
           try {
             await ensureSeedTaxonomy();
+            await ensureTaxonomyPatches();
           } catch (e) {
             console.error('[startup] ensureSeedTaxonomy failed — classify will be blocked:', e);
             // Retry once after a short yield in case of a transient DB init race.
             await new Promise((r) => setTimeout(r, 1500));
             try {
               await ensureSeedTaxonomy();
+              await ensureTaxonomyPatches();
               console.info('[startup] ensureSeedTaxonomy succeeded on retry');
             } catch (e2) {
               console.error('[startup] ensureSeedTaxonomy retry also failed:', e2);

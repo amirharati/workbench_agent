@@ -21,6 +21,7 @@ import { reextractAI, embedIncrementalBatch, type EnrichmentResult } from '../..
 import {
   classifyIncremental,
   discoverBatch,
+  APP_DISCOVER_MAP_BATCH_SIZE,
   type ClassifyProgressUpdate,
 } from '../../lib/categorization';
 import { emptyTopicClassifySummary } from '../../lib/categorization/classifyPolicy';
@@ -723,7 +724,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           itemIds: options?.itemIds,
           stuckOnly: options?.stuckOnly !== false,
           maxBatches: options?.maxBatches,
-          sampleBatchSize: 16,
+          sampleBatchSize: APP_DISCOVER_MAP_BATCH_SIZE,
           enforceBulkRunCap: false,
           onProgress,
           signal: controller.signal,
@@ -931,9 +932,8 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           forceClassify: options?.forceReclassify !== false,
           retryManualReview: options?.retryManualReview,
           pipelineRunAction: 'batch_classify',
-          // Skip slow discover pass for small interactive classify (≤5 items).
-          // Discover is taxonomy expansion — only useful for large bulk batches.
-          skipDiscover: ids.length <= 5,
+          // v3 post-classify discover for multi-item runs; single bookmark uses classify + link-quality only.
+          skipDiscover: ids.length === 1,
           signal: controller.signal,
           onProgress: (p) => applyPipelineProgress(setModal, p),
         });

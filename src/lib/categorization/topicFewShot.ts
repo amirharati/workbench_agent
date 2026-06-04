@@ -58,14 +58,89 @@ export const TOPIC_FEW_SHOT = [
     },
   },
   {
-    title: 'YouTube',
+    title: '404 Page Not Found — NZXT Support',
+    summary:
+      'HTTP 404. The requested support article was not found. No product documentation body.',
+    output: {
+      skip: false,
+      topicPaths: [['link-quality', 'seed_page-not-found']],
+      topicIds: ['seed_page-not-found'],
+      proposed: [],
+      confidence: 0.94,
+      reason: 'Dead link — error page only, not a topic.',
+    },
+  },
+  {
+    title: '500 Internal Server Error',
+    summary:
+      'nginx reports an internal server error. No article, documentation, or product content on the page.',
+    output: {
+      skip: false,
+      topicPaths: [['link-quality', 'seed_page-not-found']],
+      topicIds: ['seed_page-not-found'],
+      proposed: [],
+      confidence: 0.9,
+      reason: '5xx error page — bookmark is broken/unreachable.',
+    },
+  },
+  {
+    title: 'Example Domain',
+    summary: 'IANA reserved example.com placeholder; not real content.',
+    output: {
+      skip: false,
+      topicPaths: [['link-quality', 'seed_placeholder-junk']],
+      topicIds: ['seed_placeholder-junk'],
+      proposed: [],
+      confidence: 0.97,
+      reason: 'Reserved example.com only — OK for placeholder-junk; real sites never go here.',
+    },
+  },
+  {
+    title: 'Old blog post (fetch failed)',
     summary: '',
     output: {
-      skip: true,
-      topicIds: [],
+      skip: false,
+      topicPaths: [['link-quality', 'seed_enrich-fetch-failed']],
+      topicIds: ['seed_enrich-fetch-failed'],
       proposed: [],
-      confidence: 0.95,
-      reason: 'Generic login/home — no topic.',
+      confidence: 0.88,
+      reason: 'No usable summary — enrich or fetch failed.',
+    },
+  },
+  {
+    title: 'Working Free Movies and TV Shows Websites List - YarrList',
+    summary:
+      'Curated list of sites for free movies, TV shows, anime, sports streams, torrents, music, and related media; suggests VPN/ad blockers.',
+    output: {
+      skip: false,
+      topicIds: ['seed_movies-tv-streaming'],
+      proposed: [],
+      confidence: 0.91,
+      reason: 'Clear movies/TV/media topic — not link-quality.',
+    },
+  },
+  {
+    title: 'Immigrant Visa Process - U.S. Embassy & Consulates in Canada',
+    summary:
+      'Steps for immigrant visas: I-130/I-140 petition, NVC processing, interview, medical exam, post-visa procedures.',
+    output: {
+      skip: false,
+      topicIds: ['seed_government-forms-requests'],
+      proposed: [],
+      confidence: 0.93,
+      reason: 'Government immigration/visa guide — specific civic topic.',
+    },
+  },
+  {
+    title: 'YouTube',
+    summary: 'Sign in to continue to YouTube. No video or channel topic in the text.',
+    output: {
+      skip: false,
+      topicPaths: [['link-quality', 'seed_login-auth-required']],
+      topicIds: ['seed_login-auth-required'],
+      proposed: [],
+      confidence: 0.9,
+      reason: 'Login wall — keep for re-fetch when signed in; not removal junk.',
     },
   },
 ];

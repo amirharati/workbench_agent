@@ -9,6 +9,9 @@ import { LLM_BATCH_RETRY_ROUNDS, LLM_SINGLE_FALLBACK_CAP } from './llmBatchRetry
 export const MIN_DISCOVER_POOL = 3;
 export const DEFAULT_DISCOVER_BATCH_SIZE = 32;
 
+/** Map batch size for app + Hub (v3 eval default; full pool = ceil(n / this)). */
+export const APP_DISCOVER_MAP_BATCH_SIZE = DEFAULT_DISCOVER_BATCH_SIZE;
+
 export type DiscoverStuckKind = 'pending_discover' | 'general' | 'unassigned' | 'manual_review';
 
 export const DISCOVER_STUCK_STATES = new Set<ClassifyState>([
@@ -242,4 +245,41 @@ export async function callDiscoveryBatchWithRetry(
     return { ok: false, error: lastError, singleErrors };
   }
   return { ok: true, data: merged, singleErrors: singleErrors || undefined };
+}
+
+/**
+ * How many MAP batches to run for a pool.
+ * Omit `maxBatches` (or pass ≤0 / non-finite) to cover **all** items: ceil(n / batchSize).
+ * Pass `maxBatches` only when you want an explicit cap (eval cost, UI slider, single-batch test).
+ */
+export function planDiscoverMapBatches(
+  itemCount: number,
+  batchSize: number,
+  maxBatches?: number
+): { mapBatchCount: number; itemsSampled: number } {
+  if (itemCount <= 0) return { mapBatchCount: 0, itemsSampled: 0 };
+  const safeBatch = Math.max(1, batchSize);
+  const needed = Math.ceil(itemCount / safeBatch);
+  if (
+    maxBatches === undefined ||
+    maxBatches === null ||
+    maxBatches <= 0 ||
+    !Number.isFinite(maxBatches)
+  ) {
+    return { mapBatchCount: needed, itemsSampled: itemCount };
+  }
+  const mapBatchCount = Math.min(needed, Math.floor(maxBatches));
+  const itemsSampled = Math.min(itemCount, mapBatchCount * safeBatch);
+  return { mapBatchCount, itemsSampled };
+}
+
+/** Chunk pool into MAP batches; default runs until every item is covered. */
+export function sliceDiscoverMapPool<T>(
+  items: T[],
+  batchSize: number,
+  maxBatches?: number
+): T[][] {
+  const chunks = chunk(items, Math.max(1, batchSize));
+  const { mapBatchCount } = planDiscoverMapBatches(items.length, batchSize, maxBatches);
+  return chunks.slice(0, mapBatchCount);
 }

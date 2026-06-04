@@ -156,3 +156,34 @@ export function buildDiscoverPool(items, classifyStateByItem, opts = {}) {
 
   return { pool, summary };
 }
+
+function chunkItems(items, size) {
+  const safe = Math.max(1, size);
+  const out = [];
+  for (let i = 0; i < items.length; i += safe) out.push(items.slice(i, i + safe));
+  return out;
+}
+
+/** @see src/lib/categorization/discoverPolicy.ts planDiscoverMapBatches */
+export function planDiscoverMapBatches(itemCount, batchSize, maxBatches) {
+  if (itemCount <= 0) return { mapBatchCount: 0, itemsSampled: 0 };
+  const safeBatch = Math.max(1, batchSize);
+  const needed = Math.ceil(itemCount / safeBatch);
+  if (
+    maxBatches === undefined ||
+    maxBatches === null ||
+    maxBatches <= 0 ||
+    !Number.isFinite(maxBatches)
+  ) {
+    return { mapBatchCount: needed, itemsSampled: itemCount };
+  }
+  const mapBatchCount = Math.min(needed, Math.floor(maxBatches));
+  const itemsSampled = Math.min(itemCount, mapBatchCount * safeBatch);
+  return { mapBatchCount, itemsSampled };
+}
+
+export function sliceDiscoverMapPool(items, batchSize, maxBatches) {
+  const chunks = chunkItems(items, batchSize);
+  const { mapBatchCount } = planDiscoverMapBatches(items.length, batchSize, maxBatches);
+  return chunks.slice(0, mapBatchCount);
+}
