@@ -56,6 +56,9 @@ coverage/
 *.temp
 .cache/
 
+# Local task briefs and session specs (not published to GitHub)
+docs/temp/
+
 # Optional local reference clones (not part of the app; clone manually if needed)
 temp/Page-agent-UI/
 temp/chrome-extensions-samples/

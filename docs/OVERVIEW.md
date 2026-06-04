@@ -32,7 +32,7 @@ Order is deliberate: **infra before features**, **bookmark volume before retriev
 1. **AI infrastructure** — Wire **cloud LLM APIs** first (provider + model + API key in settings; client module; errors/timeouts). Minimal UX (e.g. Settings section + slim **chat or “test prompt” surface**). *No embeddings/RAG required for this milestone.*
 2. **Bookmarks at scale (manual-first)** — **Bulk / manual import** and dedupe against existing `normalizeBookmarkUrl` rules; improve organization UX as library grows.
 3. **AI on bookmarks** — Use infra to **ground** answers in selected bookmarks / library excerpts (titles, notes, optional fetched snippets later); citations visible to the user. **Search dev baseline (Task 04)** exists in Enrichment dev hub; product search UX later.
-4. **V2 (active)** — **UX/UI + data model cleanup first**, then V1 backend refinement (fetch, tuning, automation). See [`BACKLOG.md`](BACKLOG.md) V2-A/B/C and [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
+4. **V2 (active)** — **UX/UI + data model cleanup first**, then V1 backend refinement (fetch, tuning, automation). See [`BACKLOG.md`](BACKLOG.md) V2-A/B/C. (Detailed task briefs: local `docs/temp/`, not in git.)
 5. **V3 (deferred)** — Chunk RAG, ANN, concept DAG, cloud embedder; optional in-browser embeddings; deeper agentic tools.
 
 Details and checkboxes live in [`BACKLOG.md`](BACKLOG.md).
@@ -95,7 +95,7 @@ Chrome MV3 extension
 - AI pipeline hardening V1.1 (Task 03): incremental classify-by-hash, quality gate tiers, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks toolbar: Results / Enrich / Categories), queue reconcilers, `pending_discover` for no-topic outcomes.
 - Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion; CLI eval; dev `SearchDevPanel` for R&D.
 - **Doc embedding step (Task 04):** `embedBackfillPlan` + `embed-incremental` CLI; vectors in `ai_item_signals`.
-- **V2 product UX (Task 05):** **V2 closed 2026-05-29**. **Storage shipped:** V2.1–V2.2. **Active:** V2.3 → **V3 pipeline** — orchestrator + pipeline UI shipped; **discover map→reduce (1a) done** (code pending commit); next **B2** staging UX — [`TASK-V3-program-breakdown.md`](temp/TASK-V3-program-breakdown.md).
+- **V2 product UX (Task 05):** **V2 closed 2026-05-29**. **Active:** V2.3 → **V3 pipeline** — orchestrator + pipeline UI shipped; discover map→reduce done (code pending commit); next discover staging UX. See [`BACKLOG.md`](BACKLOG.md).
 
 ---
 
@@ -110,14 +110,14 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Area | Status |
 |------|--------|
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
-| **V2 — Product** | ✅ **Closed** 2026-05-29. **Active:** V3 pipeline — A1/A6 done; **B4 discover 1a** done (uncommitted); **next B2**; A3 in progress — [`TASK-V3-program-breakdown`](temp/TASK-V3-program-breakdown.md). |
+| **V2 — Product** | ✅ **Closed** 2026-05-29. **Active:** V3 pipeline — orchestrator done; discover map→reduce done (uncommitted); staging UX next; pipeline UI in progress — [`BACKLOG.md`](BACKLOG.md). |
 | **AI Categorization (V1)** | Backend shipped. Product: browse taxonomy (Tools), accept/reject suggestions (Inspector), digest queues (Home). |
 | **Search** | Product hybrid search shipped (**05.2**); dev score breakdown in `SearchDevPanel`. |
 | **Enrichment / fetch** | **D-10 shipped:** headless hardening, X threads, tab-session + `file://` single-file. **D-45 tracked:** bulk folder scan for local PDFs/papers (not implemented). |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | **Shipped (05.B + 05.C):** pin/fav/trash; pin sort-to-top; batch classify from Home. Open: 30-day purge, per-project quick-access filters. |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
-| **Storage / backup** | **Shipped:** SQLite WASM + OPFS worker + atomic folder mirror + Settings restore (V2.1–V2.2). **Next:** V2.3 polish. **Later:** multi-device (**V4**), D-36 rotation — [`temp/TASK-V4-sync-replicas.md`](temp/TASK-V4-sync-replicas.md). |
+| **Storage / backup** | **Shipped:** SQLite WASM + OPFS worker + atomic folder mirror + Settings restore (V2.1–V2.2). **Next:** V2.3 polish. **Later:** multi-device (**V4**), D-36 rotation — [`BACKLOG.md`](BACKLOG.md). |
 | **Bulk bookmark import** | **Commit path shipped** (batch merge/dedupe). **Next:** import polish (**D-38**), **local folder library (D-45)**, provenance (**D-05**), scale/backup (**D-35**). |
 
 ---
@@ -134,4 +134,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-06-03 — **V3:** discover map→reduce 1a done (docs synced); code commit pending; next B2 workflow.*
+*Last updated: 2026-06-03 — Task briefs in `docs/temp/` are local-only (gitignored).*
