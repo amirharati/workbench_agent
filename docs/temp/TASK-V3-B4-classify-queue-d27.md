@@ -1,7 +1,110 @@
 # TASK-V3-B4 — Discover + Taxonomy Fragmentation Fix
 
-**Status:** **in progress** — reliability fixes landed; discover quality + UX still open  
-**Last session:** 2026-06-02 (worker) — see [**Session status**](#session-status--2026-06-02-end-of-worker-session) below  
+**Status:** **1a complete — pending master accept** (workflow → **B2**; optional cold-classify audit in this file)  
+**Last session:** 2026-06-03 (map→reduce + eval) — see [**Task return — session 1a**](#task-return--session-1a-2026-06-03)  
+**Implementation brief:** This file is the **single source of truth** for discover algorithm work; do not open a second task file for B4 code.  
+**Policy:** Staged AI runs — see program breakdown § Product policy (import auto-run is debt → **A5b**).  
+
+### Session 1a scope (this file — algorithm)
+
+| In scope | Out of scope (→ **B2** / **B5**) |
+|----------|-----------------------------------|
+| `discoverTaxonomy` prompt + JSON contract | Hub “N ready to discover” banners |
+| `mergeDiscoveryParents` / `mergeDiscoveryLeaves` | Triggers for **old library** backfill vs **new link** |
+| Empty / seed taxonomy bootstrap | Import post-commit staging UX |
+| Bulk discover caps, sampling, pre-classify discover pass | Single-item Inspector discover CTA |
+| Orphan `parent_id`, parent explosion | User-edited category → re-run discover |
+| Post-batch `taxonomyMerge` | Fair-game **UI** breakdown panel |
+
+**Validate 1a with:** CLI `discover-incremental` and/or Hub **manual** discover on fixed `itemIds` — not new product flows.
+
+---
+
+## Next session kickoff (master — session 1a)
+
+**Big goal:** Build a **map → reduce** discover pipeline (several **short LLM sub-calls**, counts TBD in **B1**) that:
+
+1. **Map** — From item samples, create **candidate clusters** as proposed **parents** and **leaves** (allow reasonable freedom within caps; optimize for recall).
+2. **Reduce** — **Prune / merge** candidates against **existing taxonomy** (seed + prior discovered) **and** other candidates from **this run**, with explicit rules for when to keep a **new parent**, keep a **new leaf**, or fold into an existing node.
+3. **Mechanical** — Code dedupe, link rewrite, keyword safety net (`taxonomyMerge`); audit log of merges.
+
+**Not this session:** Hub staging, import triggers, user-signal wiring (**B2** / **B5**).
+
+**Pair with:** Short **B1** spec (caps, pool, merge rules table) before or in parallel with B4 code.
+
+### CLI-first eval — 2×2 matrix (master)
+
+**Pipeline each cell:** `discover` → `taxonomy-out.json` → `classify` (same classify script; measures whether discovered leaves are **assignable**).
+
+**Run all four** (cheap at ~124 items × 4 discover + 4 classify — adjust `--max` / `--max-batches`):
+
+|  | **Baseline** (current discover CLI) | **Candidate** (map→reduce) |
+|--|-------------------------------------|----------------------------|
+| **Cold** (`--no-seed`) | `eval-<id>/baseline-cold/` | `eval-<id>/candidate-cold/` |
+| **Warm** (`--seed-in` seed JSON) | `eval-<id>/baseline-warm/` | `eval-<id>/candidate-warm/` |
+
+**Helper (baseline pair only):**
+
+```bash
+chmod +x scripts/categorize/run-discover-eval-baseline.sh
+./scripts/categorize/run-discover-eval-baseline.sh eval-2026-06-03 124 4
+```
+
+After map→reduce: copy script pattern or re-run with `--out eval-<id>/candidate-cold` / `candidate-warm` (same flags).
+
+**Isolated:** fresh taxonomy per cell; same corpus + `--max` + `--max-batches` for all four.
+
+#### Metrics — discover (primary)
+
+| Metric | Where |
+|--------|--------|
+| `proposedParentsRaw` / `proposedLeavesRaw` | `discover/.../run-stats.json` |
+| `newParents` / `newLeaves` (after code merge) | same |
+| Parent count in `taxonomy-out.json` | `parents.length` |
+| Leaf count / orphan `parentId` | `taxonomy-out.json` leaves |
+| `llmErrors`, failure buckets | run-stats |
+
+#### Metrics — classify (secondary)
+
+| Metric | Where |
+|--------|--------|
+| `classifiedSpecific` | classify `run-stats` / SUMMARY |
+| `pending_discover`, `classified_general`, `pending_classify` | classify state / SUMMARY |
+| Assignment rate | specific ÷ eligible |
+
+#### Compare artifact
+
+Write `eval-<id>/COMPARE.md` — table of four cells × discover + classify metrics; note regressions.
+
+**CLI note:** Baseline uses `taxonomyDiscover.mjs` mirror. Candidate must **sync mirror** or tsx-import `src/lib` after implementing map→reduce in app code.
+
+**App validate (after CLI):** Hub manual discover + classify on same N; optional fifth row in COMPARE.
+
+---
+
+## Target algorithm — map → reduce (multi-call) (master 2026-06-03)
+
+**Philosophy (not Hadoop):** two phases with **separate LLM jobs**, not one prompt that must invent *and* tidy taxonomy.
+
+| Phase | Purpose | Call shape | Context budget |
+|-------|---------|------------|----------------|
+| **Map** | Find clusters in this sample; propose parents/leaves (recall OK) | **Several short calls** — small item batches (e.g. 8–15 items), one task: “what topics appear?” | Items + **compact** parent list (id, name); avoid full leaf catalog every time |
+| **Reduce** | Merge proposals into existing + each other; broaden coverage | **One or few short calls** on **proposal list only** (names, descriptions, parentId hints) — no item bodies | Candidates from this run + shortlist of existing nodes (seed + relevant discovered) |
+| **Mechanical** | Safety net | Code: name dedupe, `taxonomyMerge` keywords, link rewrite | No LLM |
+
+**Why several shorter calls (vs one big discover batch):**
+
+| | One big call | Map + reduce, short calls |
+|--|--------------|---------------------------|
+| **Quality** | Model mixes discover + reuse + merge; catalog noise | Each call has **one job**; better JSON adherence |
+| **Cost** | Huge prompt every time (full catalog + many items) | Lower **if** map calls are slim and reduce omits item text; can be worse if every map call repeats full catalog — **avoid that** |
+| **Time** | Single wall-clock wait; failure loses batch | Map chunks can run **sequentially** (extension tab); partial progress; reduce is fast |
+| **Scale** | Context limits cap batch size | Same total items, more calls, each under token ceiling |
+
+**Acceptance (1a):** measure `proposedParentsRaw` vs parents **after reduce**; target ≤ ~5 net new parents per ~400-link wave (program breakdown / B4 criteria).
+
+**Code (session 1a+):** `runDiscoverMapReduce` — **MAP 32×4** (baseline-aligned sample), rich catalog (parents + leaf names, 1200-char summaries) → **reduce-parents** → **reduce-leaves per parent** (parallel ×5). Net caps **5** parents / **36** leaves; generous token budgets (MAP 6500, reduce 5–5.5k). CLI: `discover-incremental`; eval arms `baseline-*`, `candidate-v3-*` (see B1).
+
 **Related:** [`TASK-V3-A5b-import-scale.md`](TASK-V3-A5b-import-scale.md), [`TASK-V3-B2-discover-ux-loop.md`](TASK-V3-B2-discover-ux-loop.md), [`TASK-V3-A3-stage-aware-errors.md`](TASK-V3-A3-stage-aware-errors.md), [`TASK-V3-pipeline-workflow.md`](TASK-V3-pipeline-workflow.md)
 
 ---
@@ -376,3 +479,29 @@ Tasks A and B can be done in one commit. C, D, E each in their own commit.
   library.
 - Items classified as `*-general` on the first pass should get a specific leaf after the
   end-of-pipeline discover, or remain `*-general` only if no cluster of 2+ matching items exists.
+
+---
+
+## Task return — session 1a (2026-06-03)
+
+| Field | Value |
+|-------|-------|
+| Status | **1a complete — pending master accept** (cold classify regression optional follow-up) |
+| Master accept | [ ] Review COMPARE + test4 dogfood · [ ] Commit map→reduce code |
+| Artifacts | `data/experiments/categorize/eval-eval-2026-06-03/COMPARE.md` · `merge-audit.json` per discover run |
+| COMPARE (discover) | Cold: **14→5** parents raw→net; warm: **4→0** parents, **+23** leaves; orphans **0** |
+| COMPARE (classify) | Warm **78** specific (baseline 71); cold **19** vs **40** (sample 48 vs 111 + dropped leaf parentIds) |
+| Code | `src/lib/categorization/discoverMapReduce.ts`, `discoverTaxonomy.ts`, `taxonomyMerge.ts` (`applyTaxonomyMergeInMemory`), `classifyTopicExtract.ts` (`discoverBatch`), `scripts/categorize/run-discover-incremental-app.mts`, `run-discover-eval-candidate.sh` |
+| CLI | `npm run discover-incremental` → app map→reduce; `discover-incremental-legacy` for baseline |
+| Left for **1b (B2)** | Hub staging, when to show Run discover, import/backfill triggers, fair-game **UI**, user signals (**B5**) |
+
+### Implementation checklist (1a)
+
+| Item | Status |
+|------|--------|
+| Map batches (compact parent catalog) | **Done** |
+| Reduce LLM on proposals | **Done** |
+| Mechanical dedupe + orphan parentId | **Done** (existing + merge) |
+| `taxonomyMerge` safety net + audit log | **Done** (`merge-audit.json` CLI; console in app) |
+| CLI eval 2×2 | **Done** — see COMPARE.md |
+| Acceptance ≤5 parents | **Met** on candidate-cold (14 raw → 5 net) |

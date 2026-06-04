@@ -95,7 +95,7 @@ Chrome MV3 extension
 - AI pipeline hardening V1.1 (Task 03): incremental classify-by-hash, quality gate tiers, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks toolbar: Results / Enrich / Categories), queue reconcilers, `pending_discover` for no-topic outcomes.
 - Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion; CLI eval; dev `SearchDevPanel` for R&D.
 - **Doc embedding step (Task 04):** `embedBackfillPlan` + `embed-incremental` CLI; vectors in `ai_item_signals`.
-- **V2 product UX (Task 05):** **V2 closed 2026-05-29**. **Storage shipped:** V2.1–V2.2 (SQLite WASM, OPFS worker, atomic mirror, Settings restore). **Active:** V2.3 quick wins → **V3 pipeline** — orchestrator refactor + unified pipeline outcomes (toasts/Hub chips), import parser hardening, bulk trash — [`TASK-V3-program-breakdown.md`](temp/TASK-V3-program-breakdown.md).
+- **V2 product UX (Task 05):** **V2 closed 2026-05-29**. **Storage shipped:** V2.1–V2.2. **Active:** V2.3 → **V3 pipeline** — orchestrator + pipeline UI shipped; **discover map→reduce (1a) done** (code pending commit); next **B2** staging UX — [`TASK-V3-program-breakdown.md`](temp/TASK-V3-program-breakdown.md).
 
 ---
 
@@ -110,7 +110,7 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Area | Status |
 |------|--------|
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
-| **V2 — Product** | ✅ **Closed** 2026-05-29. **Storage:** V2.1 + V2.1.1 + **V2.2** ✅. **Active:** V2.3 quick wins → **V3 pipeline** (A1/A6 done; A3 UI in progress) — [`TASK-V3-program-breakdown`](temp/TASK-V3-program-breakdown.md). |
+| **V2 — Product** | ✅ **Closed** 2026-05-29. **Active:** V3 pipeline — A1/A6 done; **B4 discover 1a** done (uncommitted); **next B2**; A3 in progress — [`TASK-V3-program-breakdown`](temp/TASK-V3-program-breakdown.md). |
 | **AI Categorization (V1)** | Backend shipped. Product: browse taxonomy (Tools), accept/reject suggestions (Inspector), digest queues (Home). |
 | **Search** | Product hybrid search shipped (**05.2**); dev score breakdown in `SearchDevPanel`. |
 | **Enrichment / fetch** | **D-10 shipped:** headless hardening, X threads, tab-session + `file://` single-file. **D-45 tracked:** bulk folder scan for local PDFs/papers (not implemented). |
@@ -134,4 +134,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-06-02 — **V3 pipeline:** orchestrator + honest UI outcomes wave; import scale (A5b) and discover loop (B1–B4) still open.*
+*Last updated: 2026-06-03 — **V3:** discover map→reduce 1a done (docs synced); code commit pending; next B2 workflow.*
