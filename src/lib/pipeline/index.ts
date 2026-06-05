@@ -10,4 +10,5 @@ export * from './pipelineCatalog';
 export * from './singleLinkDigest';
 export * from './pipelineRunAnalysis';
 export * from './pipelineRunStore';
+export * from './importPipelineJob';
 export * from './pipelineDictionary';
