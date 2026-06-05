@@ -171,7 +171,7 @@ export type ImportPipelineToast = {
   message: string;
 };
 
-/** Resume stub until A5b-2 implements runImportPipelineJob. */
+/** Resume stub — calls wave runner when IMPORT_WAVE_PIPELINE_ENABLED, else honest toast. */
 export async function resumeImportPipelineJobStub(
   addToast: (toast: ImportPipelineToast) => void
 ): Promise<void> {
@@ -187,6 +187,24 @@ export async function resumeImportPipelineJobStub(
         'Wave processing ships in the next update — use Import Studio digest for now.',
     });
     return;
+  }
+  // A5b-2: flag true — read job from disk and run the wave orchestrator
+  const job = await readImportPipelineJob();
+  if (!job) {
+    addToast({ type: 'error', message: 'No pipeline job found. Re-import to create one.' });
+    return;
+  }
+  try {
+    const { runScopedPipelineJob } = await import('./scopedPipelineJobRunner');
+    const result = await runScopedPipelineJob(job);
+    if (result.status === 'completed') {
+      addToast({ type: 'info', message: `Pipeline run completed — ${result.completedItemIds.length} items processed.` });
+    } else if (result.lastError && result.lastError !== 'Cancelled') {
+      addToast({ type: 'error', message: `Pipeline paused: ${result.lastError}` });
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Pipeline run failed';
+    addToast({ type: 'error', message: msg });
   }
 }
 
