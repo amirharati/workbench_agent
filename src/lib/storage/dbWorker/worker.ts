@@ -9,6 +9,11 @@ import { fingerprintSqliteBytes, fingerprintFromStore, isLiveNewerThanBackup } f
 import { resetStoreSingletons, getIdbCompatStore } from '../sqlite/store';
 import type { DbMutation } from '../dbMutations';
 import * as dbCore from '../../dbCore';
+import {
+  runHubEnrichmentCounts,
+  runHubEnrichmentPage,
+  type HubScopeParams,
+} from '../../pipeline/enrichmentHubWorkerLogic';
 
 markDbWorkerProcess();
 setStorageBackend('opfs');
@@ -41,6 +46,8 @@ const READ_ONLY_RPC_METHODS = new Set([
   'hydrate',
   'refreshTables',
   'refreshTablePage',
+  'hubEnrichmentPage',
+  'hubEnrichmentCounts',
   'liveFingerprint',
   'inspectImportBytes',
 ]);
@@ -199,6 +206,25 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const store = await getIdbCompatStore();
       const rows = store.getPage(storeName, offset, limit);
       return { rows, done: rows.length < limit };
+    }
+    case 'hubEnrichmentPage': {
+      const offset = Math.max(0, Number(args[0]) || 0);
+      const limit = Math.min(500, Math.max(1, Number(args[1]) || 100));
+      const scope = (args[2] ?? {}) as HubScopeParams;
+      const store = await getIdbCompatStore();
+      return runHubEnrichmentPage(store, offset, limit, {
+        scopeProjectId: scope.scopeProjectId ?? 'all',
+        scopeCollectionId: scope.scopeCollectionId ?? 'all',
+      });
+    }
+    case 'hubEnrichmentCounts': {
+      const scope = (args[0] ?? {}) as HubScopeParams;
+      const search = typeof args[1] === 'string' ? args[1] : '';
+      const store = await getIdbCompatStore();
+      return runHubEnrichmentCounts(store, {
+        scopeProjectId: scope.scopeProjectId ?? 'all',
+        scopeCollectionId: scope.scopeCollectionId ?? 'all',
+      }, search);
     }
     case 'liveFingerprint': {
       const store = await getIdbCompatStore();

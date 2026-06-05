@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { previewClassifyBatchItemIds } from '../lib/categorization/classifyTopicExtract';
+import { ensurePipelineHydrated } from '../lib/db';
 import { subscribeToDataChanges } from '../lib/dataChangeNotifier';
 import {
   loadItemIdsForPipelineQueue,
@@ -33,11 +34,14 @@ export function useHomePipelineStats() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void Promise.all([
-      loadProcessingDigest(),
-      loadLibraryCategoryOverview(8),
-      loadPipelineMaintenanceSnapshot(),
-    ])
+    void ensurePipelineHydrated()
+      .then(() =>
+        Promise.all([
+          loadProcessingDigest(),
+          loadLibraryCategoryOverview(8),
+          loadPipelineMaintenanceSnapshot(),
+        ])
+      )
       .then(([d, c, m]) => {
         if (cancelled) return;
         setDigest(d);

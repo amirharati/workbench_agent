@@ -1,6 +1,6 @@
 import { markItemsPendingClassify } from '../categorization/classifyTopicExtract';
 import { notifyDataChanged } from '../dataChangeNotifier';
-import { getDB } from '../db';
+import { ensurePipelineHydrated, getDB } from '../db';
 import { ensureItemEmbedding } from './embedItemSignal';
 import type { ItemEnrichment } from './types';
 
@@ -33,6 +33,7 @@ export async function deleteEnrichment(itemId: string): Promise<void> {
 }
 
 export async function getAllEnrichments(): Promise<ItemEnrichment[]> {
+  await ensurePipelineHydrated();
   const db = await getDB();
   return db.getAll('item_enrichment');
 }

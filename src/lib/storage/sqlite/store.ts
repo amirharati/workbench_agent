@@ -781,6 +781,108 @@ export class SqliteStore {
     this.conn.exec('DELETE FROM items WHERE id = ?', [id]);
   }
 
+  /** Scope filter for hub list — null means all bookmarks. */
+  private hubScopeCollectionIds(
+    collections: Collection[],
+    scopeProjectId: string | 'all',
+    scopeCollectionId: string | 'all'
+  ): string[] | null {
+    if (scopeProjectId === 'all' && scopeCollectionId === 'all') return null;
+    if (scopeCollectionId !== 'all') return [scopeCollectionId];
+    return collections
+      .filter(
+        (c) =>
+          c.primaryProjectId === scopeProjectId ||
+          (Array.isArray(c.projectIds) && c.projectIds.includes(scopeProjectId))
+      )
+      .map((c) => c.id);
+  }
+
+  private hubBookmarkWhereClause(scopeCollectionIds: string[] | null): {
+    sql: string;
+    params: unknown[];
+  } {
+    let sql =
+      'deleted_at IS NULL AND url IS NOT NULL AND length(trim(url)) > 0';
+    const params: unknown[] = [];
+    if (scopeCollectionIds !== null) {
+      if (scopeCollectionIds.length === 0) {
+        return { sql: '0', params: [] };
+      }
+      const parts = scopeCollectionIds.map(
+        () => 'EXISTS (SELECT 1 FROM json_each(collection_ids) je WHERE je.value = ?)'
+      );
+      sql += ` AND (${parts.join(' OR ')})`;
+      params.push(...scopeCollectionIds);
+    }
+    return { sql, params };
+  }
+
+  countHubBookmarks(
+    collections: Collection[],
+    scopeProjectId: string | 'all',
+    scopeCollectionId: string | 'all'
+  ): number {
+    const scopeIds = this.hubScopeCollectionIds(collections, scopeProjectId, scopeCollectionId);
+    const { sql, params } = this.hubBookmarkWhereClause(scopeIds);
+    if (sql === '0') return 0;
+    const row = this.conn.selectOne<{ n: number }>(
+      `SELECT COUNT(*) as n FROM items WHERE ${sql}`,
+      params
+    );
+    return row?.n ?? 0;
+  }
+
+  getHubBookmarksPage(
+    collections: Collection[],
+    scopeProjectId: string | 'all',
+    scopeCollectionId: string | 'all',
+    offset: number,
+    limit: number
+  ): { items: Item[]; total: number } {
+    const scopeIds = this.hubScopeCollectionIds(collections, scopeProjectId, scopeCollectionId);
+    const { sql, params } = this.hubBookmarkWhereClause(scopeIds);
+    if (sql === '0') return { items: [], total: 0 };
+    const total = this.countHubBookmarks(collections, scopeProjectId, scopeCollectionId);
+    const off = Math.max(0, offset);
+    const lim = Math.min(500, Math.max(1, limit));
+    const rows = this.conn.selectAll<ItemRow>(
+      `SELECT * FROM items WHERE ${sql} ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+      [...params, lim, off]
+    );
+    return { items: rows.map(rowToItem), total };
+  }
+
+  getEnrichmentForItemIds(itemIds: string[]): ItemEnrichment[] {
+    if (!itemIds.length) return [];
+    const placeholders = itemIds.map(() => '?').join(',');
+    const rows = this.conn.selectAll<EnrichmentRow>(
+      `SELECT * FROM item_enrichment WHERE item_id IN (${placeholders})`,
+      itemIds
+    );
+    return rows.map(rowToEnrichment);
+  }
+
+  getSignalsForItemIds(itemIds: string[]): AiItemSignal[] {
+    if (!itemIds.length) return [];
+    const placeholders = itemIds.map(() => '?').join(',');
+    const rows = this.conn.selectAll<SignalRow>(
+      `SELECT * FROM ai_item_signals WHERE item_id IN (${placeholders})`,
+      itemIds
+    );
+    return rows.map(rowToSignal);
+  }
+
+  getLinksForItemIds(itemIds: string[]): AiItemCategoryLink[] {
+    if (!itemIds.length) return [];
+    const placeholders = itemIds.map(() => '?').join(',');
+    const rows = this.conn.selectAll<LinkRow>(
+      `SELECT * FROM ai_item_category_links WHERE item_id IN (${placeholders}) AND status IN ('suggested', 'accepted')`,
+      itemIds
+    );
+    return rows.map(rowToLink);
+  }
+
   // --- Notes ---
   getAllNotes(): Note[] {
     const rows = this.conn.selectAll<NoteRow>('SELECT * FROM notes');
@@ -1292,6 +1394,42 @@ export class IdbCompatStore {
   getItem(id: string) { return this.store.getItem(id); }
   putItem(item: Item) { this.store.putItem(item); }
   deleteItem(id: string) { this.store.deleteItem(id); }
+
+  countHubBookmarks(
+    collections: Collection[],
+    scopeProjectId: string | 'all',
+    scopeCollectionId: string | 'all'
+  ) {
+    return this.store.countHubBookmarks(collections, scopeProjectId, scopeCollectionId);
+  }
+
+  getHubBookmarksPage(
+    collections: Collection[],
+    scopeProjectId: string | 'all',
+    scopeCollectionId: string | 'all',
+    offset: number,
+    limit: number
+  ) {
+    return this.store.getHubBookmarksPage(
+      collections,
+      scopeProjectId,
+      scopeCollectionId,
+      offset,
+      limit
+    );
+  }
+
+  getEnrichmentForItemIds(itemIds: string[]) {
+    return this.store.getEnrichmentForItemIds(itemIds);
+  }
+
+  getSignalsForItemIds(itemIds: string[]) {
+    return this.store.getSignalsForItemIds(itemIds);
+  }
+
+  getLinksForItemIds(itemIds: string[]) {
+    return this.store.getLinksForItemIds(itemIds);
+  }
   
   getAllNotes() { return this.store.getAllNotes(); }
   getNote(id: string) { return this.store.getNote(id); }

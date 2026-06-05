@@ -119,6 +119,7 @@ interface DashboardLayoutProps {
   onRefresh?: (scope?: import('../../../lib/libraryRefresh').LibraryRefreshScope) => Promise<void>;
   /** True while first library hydrate / loadData is in flight */
   libraryLoading?: boolean;
+  libraryHydrateProgress?: { label: string; percent?: number } | null;
   onChooseBackupFolder?: () => Promise<void>;
   onSetAsBrowserHome?: () => Promise<void>;
   onRestoreBackupFile?: (file: File, mode: 'replace' | 'merge') => Promise<RestoreBackupResult>;
@@ -166,6 +167,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   onCloseWindow,
   onRefresh,
   libraryLoading = false,
+  libraryHydrateProgress = null,
   onChooseBackupFolder,
   onSetAsBrowserHome,
   onRestoreBackupFile,
@@ -827,6 +829,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onCreateItem={onCreateItem}
                 onRefresh={onRefresh}
                 libraryLoading={libraryLoading}
+                libraryHydrateProgress={libraryHydrateProgress}
                 onChooseBackupFolder={onChooseBackupFolder}
                 onSetAsBrowserHome={onSetAsBrowserHome}
                 onRestoreBackupFile={onRestoreBackupFile}
@@ -879,6 +882,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onCreateItem={onCreateItem}
               onRefresh={onRefresh}
               libraryLoading={libraryLoading}
+              libraryHydrateProgress={libraryHydrateProgress}
               onChooseBackupFolder={onChooseBackupFolder}
               onSetAsBrowserHome={onSetAsBrowserHome}
               onRestoreBackupFile={onRestoreBackupFile}
@@ -953,6 +957,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                   onCreateItem={onCreateItem}
                   onRefresh={onRefresh}
                   libraryLoading={libraryLoading}
+                  libraryHydrateProgress={libraryHydrateProgress}
                   onChooseBackupFolder={onChooseBackupFolder}
                   onSetAsBrowserHome={onSetAsBrowserHome}
                   onRestoreBackupFile={onRestoreBackupFile}

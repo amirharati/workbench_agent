@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   runAppHybridSearchWithRelated,
-  loadSearchIndexFromDb,
-  searchIndexStats,
   type HybridSearchResultWithRelated,
   type SearchFilters,
 } from '../lib/search';
@@ -72,18 +70,6 @@ export function useLibrarySearch(onError?: (message: string) => void) {
     recentQueries: loadRecentQueries(),
     indexEmpty: false,
   }));
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const index = await loadSearchIndexFromDb();
-        const stats = searchIndexStats(index);
-        setState((s) => ({ ...s, indexEmpty: stats.documents === 0 }));
-      } catch {
-        /* index check is best-effort */
-      }
-    })();
-  }, []);
 
   const setQuery = useCallback((query: string) => {
     setState((s) => ({ ...s, query }));

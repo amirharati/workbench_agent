@@ -213,18 +213,72 @@ const assertNoBookmarkDuplicateInCollections = (
 // Store initialization
 // ============================================================================
 
+export type { HydrateProgress, HydrateStage } from './storage/dbClient/remoteStore';
+
+export type LibraryHydrateProgress = {
+  label: string;
+  percent?: number;
+};
+
+type HydrateProgressListener = (progress: import('./storage/dbClient/remoteStore').HydrateProgress) => void;
+
+const hydrateProgressListeners = new Set<HydrateProgressListener>();
+
+function emitLibraryHydrateProgress(
+  progress: import('./storage/dbClient/remoteStore').HydrateProgress
+): void {
+  for (const listener of hydrateProgressListeners) {
+    listener(progress);
+  }
+}
+
+/** Subscribe to paged library hydrate progress (essential + background pipeline). */
+export function subscribeLibraryHydrateProgress(
+  listener: HydrateProgressListener
+): () => void {
+  hydrateProgressListeners.add(listener);
+  return () => hydrateProgressListeners.delete(listener);
+}
+
+const TABLE_HYDRATE_LABELS: Record<string, string> = {
+  items: 'items',
+  notes: 'notes',
+  item_enrichment: 'enrichment',
+  ai_item_signals: 'signals',
+  ai_item_category_links: 'category links',
+  projects: 'projects',
+  collections: 'collections',
+};
+
+export function formatLibraryHydrateProgress(
+  progress: import('./storage/dbClient/remoteStore').HydrateProgress
+): LibraryHydrateProgress {
+  const name = TABLE_HYDRATE_LABELS[progress.table] ?? progress.table.replace(/_/g, ' ');
+  const pageSuffix = progress.page > 1 ? ` (page ${progress.page})` : '';
+  if (progress.stage === 'pipeline') {
+    return { label: `Loading ${name}…${pageSuffix}` };
+  }
+  return { label: `Loading ${name}…${pageSuffix}` };
+}
+
 let storePromise: Promise<IdbCompatStore> | null = null;
 /** Serializes getDB vs reloadDB so callers cannot receive a stale store mid-reload. */
 let dbLifecycle: Promise<void> = Promise.resolve();
 
-async function initTabStore(): Promise<IdbCompatStore> {
+async function initTabStore(mode: 'startup' | 'full' = 'startup'): Promise<IdbCompatStore> {
   const { isTransientDbRpcError } = await import('./storage/dbClient');
   let lastError: unknown;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       await ensureDbWorker();
       const store = getRemoteStore();
-      await store.hydrate(true);
+      const onProgress = emitLibraryHydrateProgress;
+      if (mode === 'full') {
+        await store.hydrate({ force: true, stages: ['essential', 'pipeline'], onProgress });
+      } else {
+        await store.hydrate({ force: true, stages: ['essential'], onProgress });
+        store.startPipelineHydrateInBackground({ onProgress });
+      }
       await ensureDefaultProjectAndCollection(store as unknown as IdbCompatStore);
       return store as unknown as IdbCompatStore;
     } catch (e) {
@@ -235,6 +289,13 @@ async function initTabStore(): Promise<IdbCompatStore> {
     }
   }
   throw lastError;
+}
+
+/** Await pipeline tables in tab cache (Hub, classify, search). */
+export async function ensurePipelineHydrated(): Promise<void> {
+  if (isDbWorkerProcess()) return;
+  const store = getRemoteStore();
+  await store.ensurePipelineHydrated({ onProgress: emitLibraryHydrateProgress });
 }
 
 export const getDB = async (): Promise<IdbCompatStore> => {
@@ -273,7 +334,7 @@ export const reloadDB = async (): Promise<IdbCompatStore> => {
   const reloadOp = dbLifecycle.then(async () => {
     storePromise = null;
     resetRemoteStore();
-    const store = await initTabStore();
+    const store = await initTabStore('full');
     storePromise = Promise.resolve(store);
     return store;
   });
@@ -857,7 +918,11 @@ export async function commitPendingDbWrites(opts?: {
   const store = getRemoteStore();
   await store.drainWrites();
   if (opts?.hydrate === true) {
-    await store.hydrate(true);
+    await store.hydrate({
+      force: true,
+      stages: ['essential', 'pipeline'],
+      onProgress: emitLibraryHydrateProgress,
+    });
   } else if (opts?.sync === true) {
     await store.hydrateIfBehind();
   }
@@ -873,8 +938,9 @@ const PIPELINE_CACHE_TABLES = [
 /** Sync pipeline-critical tables from worker before classify (read-your-writes). */
 export async function refreshPipelineCacheFromWorker(): Promise<void> {
   if (isDbWorkerProcess()) return;
-  const { getRemoteStore } = await import('./storage/dbClient/remoteStore');
-  await getRemoteStore().refreshTablesFromWorker(PIPELINE_CACHE_TABLES);
+  const store = getRemoteStore();
+  await store.ensurePipelineHydrated({ onProgress: emitLibraryHydrateProgress });
+  await store.refreshTablesFromWorker(PIPELINE_CACHE_TABLES);
 }
 
 // ============================================================================

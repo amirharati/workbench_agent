@@ -25,7 +25,24 @@ type HydrateSnapshot = {
 /** Chrome structured-clone cap per worker postMessage (~64MiB). */
 const HYDRATE_PAGE_SIZE = 1000;
 
-const HYDRATE_SMALL_TABLES = [
+export type HydrateStage = 'essential' | 'pipeline';
+
+export type HydrateProgress = {
+  stage: HydrateStage;
+  table: string;
+  page: number;
+  rowsInPage: number;
+  rowsLoaded?: number;
+};
+
+export type HydrateOptions = {
+  force?: boolean;
+  stages?: HydrateStage[];
+  onProgress?: (p: HydrateProgress) => void;
+};
+
+/** Blocking first paint: metadata + full bookmark list. */
+const HYDRATE_ESSENTIAL_SMALL_TABLES = [
   'projects',
   'collections',
   'workspaces',
@@ -35,13 +52,22 @@ const HYDRATE_SMALL_TABLES = [
   'trash_history',
 ] as const;
 
-const HYDRATE_PAGED_TABLES = [
-  'items',
-  'notes',
+const HYDRATE_ESSENTIAL_PAGED_TABLES = ['items'] as const;
+
+/** Deferred: pipeline + notes (large on big libraries). */
+const HYDRATE_PIPELINE_PAGED_TABLES = [
   'item_enrichment',
   'ai_item_signals',
   'ai_item_category_links',
+  'notes',
 ] as const;
+
+const HYDRATE_PAGED_TABLES = [
+  ...HYDRATE_ESSENTIAL_PAGED_TABLES,
+  ...HYDRATE_PIPELINE_PAGED_TABLES,
+] as const;
+
+const PIPELINE_STORE_NAMES = new Set<string>(HYDRATE_PIPELINE_PAGED_TABLES);
 
 function emptyHydrateSnapshot(): HydrateSnapshot {
   return {
@@ -61,6 +87,16 @@ function emptyHydrateSnapshot(): HydrateSnapshot {
 }
 
 const PAGED_TABLE_SET = new Set<string>(HYDRATE_PAGED_TABLES);
+
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
 
 function mergeHydrateTableRows(
   snapshot: HydrateSnapshot,
@@ -116,20 +152,41 @@ function mergeHydrateTableRows(
   }
 }
 
+type SyncTableOpts = {
+  stage: HydrateStage;
+  onProgress?: (p: HydrateProgress) => void;
+};
+
 /** One table from worker → snapshot; paged tables use multiple RPCs (64MiB-safe). */
-async function syncTableFromWorker(snapshot: HydrateSnapshot, storeName: string): Promise<void> {
+async function syncTableFromWorker(
+  snapshot: HydrateSnapshot,
+  storeName: string,
+  opts?: SyncTableOpts
+): Promise<void> {
   if (PAGED_TABLE_SET.has(storeName)) {
     let offset = 0;
+    let page = 0;
+    let rowsLoaded = 0;
     for (;;) {
-      const page = await rpc<{ rows: unknown[]; done: boolean }>('refreshTablePage', [
+      const pageResult = await rpc<{ rows: unknown[]; done: boolean }>('refreshTablePage', [
         storeName,
         offset,
         HYDRATE_PAGE_SIZE,
       ]);
-      if (page.rows.length) {
-        mergeHydrateTableRows(snapshot, storeName, page.rows, offset > 0);
+      page += 1;
+      if (pageResult.rows.length) {
+        mergeHydrateTableRows(snapshot, storeName, pageResult.rows, offset > 0);
+        rowsLoaded += pageResult.rows.length;
       }
-      if (page.done) break;
+      opts?.onProgress?.({
+        stage: opts.stage,
+        table: storeName,
+        page,
+        rowsInPage: pageResult.rows.length,
+        rowsLoaded,
+      });
+      await yieldToMain();
+      if (pageResult.done) break;
       offset += HYDRATE_PAGE_SIZE;
     }
     return;
@@ -138,6 +195,13 @@ async function syncTableFromWorker(snapshot: HydrateSnapshot, storeName: string)
   const rows = partial[storeName];
   if (Array.isArray(rows)) {
     mergeHydrateTableRows(snapshot, storeName, rows, false);
+    opts?.onProgress?.({
+      stage: opts.stage,
+      table: storeName,
+      page: 1,
+      rowsInPage: rows.length,
+      rowsLoaded: rows.length,
+    });
   }
 }
 
@@ -152,17 +216,70 @@ export class RemoteIdbCompatStore {
   /** Last worker revision this tab's cache is consistent with. */
   private revision = 0;
   private writesInFlight = 0;
+  private essentialReady = false;
+  private pipelineHydrated = false;
+  private pipelineHydratePromise: Promise<void> | null = null;
 
-  async hydrate(force = false): Promise<void> {
-    if (this.snapshot && !force) return;
-    const snapshot = emptyHydrateSnapshot();
-    for (const storeName of HYDRATE_SMALL_TABLES) {
-      await syncTableFromWorker(snapshot, storeName);
+  isEssentialReady(): boolean {
+    return this.essentialReady;
+  }
+
+  isPipelineHydrated(): boolean {
+    return this.pipelineHydrated;
+  }
+
+  async hydrate(opts?: boolean | HydrateOptions): Promise<void> {
+    const options: HydrateOptions =
+      typeof opts === 'boolean' ? { force: opts, stages: ['essential', 'pipeline'] } : (opts ?? {});
+    const force = options.force === true;
+    const stages: HydrateStage[] = options.stages ?? ['essential', 'pipeline'];
+    const onProgress = options.onProgress;
+    const wantsEssential = stages.includes('essential');
+    const wantsPipeline = stages.includes('pipeline');
+
+    if (!force) {
+      if (wantsEssential && !wantsPipeline && this.essentialReady && this.snapshot) return;
+      if (!wantsEssential && wantsPipeline && this.pipelineHydrated) return;
+      if (wantsEssential && wantsPipeline && this.essentialReady && this.pipelineHydrated && this.snapshot) {
+        return;
+      }
     }
-    for (const storeName of HYDRATE_PAGED_TABLES) {
-      await syncTableFromWorker(snapshot, storeName);
+
+    if (force) {
+      this.essentialReady = false;
+      this.pipelineHydrated = false;
     }
-    this.snapshot = snapshot;
+
+    const snapshot =
+      force || !this.snapshot ? emptyHydrateSnapshot() : this.snapshot;
+
+    const syncOpts = (stage: HydrateStage): SyncTableOpts => ({ stage, onProgress });
+
+    if (wantsEssential && (force || !this.essentialReady)) {
+      for (const storeName of HYDRATE_ESSENTIAL_SMALL_TABLES) {
+        await syncTableFromWorker(snapshot, storeName, syncOpts('essential'));
+        await yieldToMain();
+      }
+      for (const storeName of HYDRATE_ESSENTIAL_PAGED_TABLES) {
+        await syncTableFromWorker(snapshot, storeName, syncOpts('essential'));
+      }
+      this.essentialReady = true;
+      this.snapshot = snapshot;
+    } else if (!this.snapshot) {
+      this.snapshot = snapshot;
+    }
+
+    if (wantsPipeline && (force || !this.pipelineHydrated)) {
+      if (!this.essentialReady) {
+        await this.hydrate({ force, stages: ['essential'], onProgress });
+      }
+      for (const storeName of HYDRATE_PIPELINE_PAGED_TABLES) {
+        await syncTableFromWorker(snapshot, storeName, syncOpts('pipeline'));
+      }
+      this.pipelineHydrated = true;
+      this.snapshot = snapshot;
+    }
+
     try {
       const { getDbWorkerStatus } = await import('./index');
       const status = await getDbWorkerStatus();
@@ -170,6 +287,35 @@ export class RemoteIdbCompatStore {
     } catch {
       /* revision sync is best-effort */
     }
+  }
+
+  async hydrateEssential(opts?: Pick<HydrateOptions, 'force' | 'onProgress'>): Promise<void> {
+    await this.hydrate({ ...opts, stages: ['essential'] });
+  }
+
+  async hydratePipelineTables(opts?: Pick<HydrateOptions, 'force' | 'onProgress'>): Promise<void> {
+    await this.hydrate({ ...opts, stages: ['pipeline'] });
+  }
+
+  /** Await pipeline-heavy tables (Hub, classify, search index). */
+  async ensurePipelineHydrated(opts?: Pick<HydrateOptions, 'onProgress'>): Promise<void> {
+    if (this.pipelineHydrated) return;
+    if (this.pipelineHydratePromise) {
+      await this.pipelineHydratePromise;
+      return;
+    }
+    this.pipelineHydratePromise = this.hydratePipelineTables(opts).finally(() => {
+      this.pipelineHydratePromise = null;
+    });
+    await this.pipelineHydratePromise;
+  }
+
+  /** Non-blocking pipeline hydrate after essential (startup). */
+  startPipelineHydrateInBackground(opts?: Pick<HydrateOptions, 'onProgress'>): void {
+    if (this.pipelineHydrated || this.pipelineHydratePromise) return;
+    this.pipelineHydratePromise = this.hydratePipelineTables(opts).finally(() => {
+      this.pipelineHydratePromise = null;
+    });
   }
 
   /** Wait for queued write RPCs to finish (used before cross-tab hydrate). */
@@ -191,12 +337,20 @@ export class RemoteIdbCompatStore {
   async refreshTablesFromWorker(storeNames: readonly string[]): Promise<void> {
     if (!storeNames.length) return;
     await this.drainWrites();
-    if (!this.snapshot) {
-      await this.hydrate(true);
+    if (!this.snapshot || !this.essentialReady) {
+      await this.hydrate({ force: true, stages: ['essential', 'pipeline'] });
       return;
     }
+    const needsPipeline = storeNames.some((n) => PIPELINE_STORE_NAMES.has(n));
+    if (needsPipeline) {
+      await this.ensurePipelineHydrated();
+    }
+    const stage: HydrateStage = needsPipeline ? 'pipeline' : 'essential';
     for (const name of storeNames) {
-      await syncTableFromWorker(this.snapshot, name);
+      await syncTableFromWorker(this.snapshot, name, { stage });
+    }
+    if (needsPipeline) {
+      this.pipelineHydrated = true;
     }
   }
 
@@ -208,7 +362,7 @@ export class RemoteIdbCompatStore {
         ? remoteRevision
         : (await import('./index').then((m) => m.getDbWorkerStatus())).revision;
     if (target > this.revision) {
-      await this.hydrate(true);
+      await this.hydrate({ force: true, stages: ['essential', 'pipeline'] });
       return true;
     }
     this.setRevision(target);
@@ -730,7 +884,9 @@ export class RemoteIdbCompatStore {
   }
 
   clearAllTables() {
-    void this.enqueue('clearAllTables', []).then(() => this.hydrate(true));
+    void this.enqueue('clearAllTables', []).then(() =>
+      this.hydrate({ force: true, stages: ['essential', 'pipeline'] })
+    );
   }
 
   withTransaction<T>(_fn: () => T): T {

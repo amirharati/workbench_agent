@@ -21,17 +21,26 @@ import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import { moveItemsToTrash } from '../../lib/itemQuickAccess';
 import {
   applyEnrichmentHubFilters,
-  buildHubOutcomeChips,
+  buildHubOutcomeChipsForScope,
   describeRowStatusHelp,
   enrichmentHubRowMatchesFilters,
   ENRICHMENT_STATUS_GUIDE,
-  loadEnrichmentHubData,
+  HUB_DISPLAY_PAGE_SIZE,
+  loadEnrichmentHubIndex,
+  materializeFilteredScopedHubRows,
   resolveTrashSuggestion,
   rowMatchesTrashSuggestion,
   type EnrichmentHubFilterState,
+  type EnrichmentHubIndex,
   type EnrichmentHubRow,
+  type HubOutcomeChip,
   type RowStatusHelp,
 } from '../../lib/pipeline/pipelineHubQueries';
+import {
+  fetchEnrichmentHubCounts,
+  fetchEnrichmentHubPage,
+  HUB_RPC_PAGE_SIZE,
+} from '../../lib/pipeline/enrichmentHubPage';
 import { itemMatchesScope } from '../../lib/shell/itemScope';
 import { loadNavigationState, patchNavigationState } from '../../lib/shell/navigationState';
 import { buildDisplayListWithRecentHolds } from '../../lib/pipeline/recentListHolds';
@@ -51,7 +60,6 @@ interface PipelineHubViewProps {
   items: Item[];
   collections: Collection[];
   projects: Project[];
-  libraryLoading?: boolean;
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   onOpenItem?: (item: Item) => void;
@@ -151,7 +159,109 @@ function FilterChip({
   );
 }
 
-const PAGE_SIZE = 80;
+const PAGE_SIZE = HUB_DISPLAY_PAGE_SIZE;
+
+// ---------------------------------------------------------------------------
+// Module-level cache — survives component unmount/remount (tab switches).
+// Invalidated on enrichment/import/categorization data-change events.
+// ---------------------------------------------------------------------------
+type HubCache = {
+  rows: EnrichmentHubRow[];
+  totalInScope: number;
+  chips: HubOutcomeChip[];
+  counts: Awaited<ReturnType<typeof loadEnrichmentHubIndex>>['counts'];
+  scopeProjectId: string;
+  scopeCollectionId: string;
+};
+let _hubCache: HubCache | null = null;
+
+export function invalidateHubCache(): void {
+  _hubCache = null;
+}
+
+function readHubCache(
+  scopeProjectId: string,
+  scopeCollectionId: string
+): HubCache | null {
+  if (
+    _hubCache &&
+    _hubCache.scopeProjectId === scopeProjectId &&
+    _hubCache.scopeCollectionId === scopeCollectionId
+  ) {
+    return _hubCache;
+  }
+  return null;
+}
+
+type HubCacheListener = (cache: HubCache) => void;
+const _hubCacheListeners = new Set<HubCacheListener>();
+
+function writeHubCache(cache: HubCache): void {
+  _hubCache = cache;
+  for (const listener of _hubCacheListeners) listener(cache);
+}
+
+/** When prewarm finishes after Hub mounted, push rows into React state immediately. */
+function subscribeHubCache(listener: HubCacheListener): () => void {
+  _hubCacheListeners.add(listener);
+  return () => _hubCacheListeners.delete(listener);
+}
+
+// A promise that resolves when the pre-warm fetch completes (or fails).
+// The Hub's mount effect waits on this to avoid firing a concurrent duplicate RPC.
+let _prewarmPromise: Promise<void> | null = null;
+
+export function getHubPrewarmPromise(): Promise<void> | null {
+  return _prewarmPromise;
+}
+
+/**
+ * Pre-fetch the first page of hub data into the module-level cache.
+ * Call this as early as possible (right after the DB worker is warmed up)
+ * so the Hub renders instantly when the user navigates to it.
+ * Returns a promise the Hub can await to avoid duplicate concurrent requests.
+ */
+export function prewarmHubCache(
+  scopeProjectId = 'all',
+  scopeCollectionId = 'all'
+): Promise<void> {
+  if (_prewarmPromise || _hubCache) return _prewarmPromise ?? Promise.resolve();
+  _prewarmPromise = (async () => {
+    try {
+      const pageRes = await fetchEnrichmentHubPage({
+        scopeProjectId,
+        scopeCollectionId,
+        offset: 0,
+        limit: HUB_RPC_PAGE_SIZE,
+      });
+      if (!_hubCache) {
+        writeHubCache({
+          rows: pageRes.rows,
+          totalInScope: pageRes.total,
+          chips: [],
+          // counts filled in later by the background counts fetch
+          counts: null as unknown as Awaited<ReturnType<typeof loadEnrichmentHubIndex>>['counts'],
+          scopeProjectId,
+          scopeCollectionId,
+        });
+      }
+    } catch {
+      // Non-fatal — hub will fetch normally on mount
+    }
+  })();
+  return _prewarmPromise;
+}
+
+const HUB_CACHE_INVALIDATION_REASONS = new Set<string>([
+  'enrichment.update',
+  'import.replace',
+  'categorization.update',
+  'categorization.review',
+  'pipeline.clear',
+  'item.trash.bulk',
+  'item.add',
+  'item.delete',
+]);
 
 function debounceFn<T extends (...args: never[]) => void>(fn: T, ms: number): T {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -250,7 +360,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   items,
   collections,
   projects,
-  libraryLoading = false,
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
   onOpenItem,
@@ -262,11 +371,20 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
   const [hubLane, setHubLane] = useState<HubLane>(hubSaved.hubLane);
-  const [rows, setRows] = useState<EnrichmentHubRow[]>([]);
-  const [counts, setCounts] = useState<Awaited<ReturnType<typeof loadEnrichmentHubData>>['counts'] | null>(
-    null
+
+  // Seed state from cache so the list is visible instantly on remount
+  const cachedOnMount = readHubCache(scopeProjectId, scopeCollectionId);
+  const [rows, setRows] = useState<EnrichmentHubRow[]>(cachedOnMount?.rows ?? []);
+  const [totalInScope, setTotalInScope] = useState(cachedOnMount?.totalInScope ?? 0);
+  const [hubChips, setHubChips] = useState<HubOutcomeChip[]>(cachedOnMount?.chips ?? []);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hubIndexVersion, setHubIndexVersion] = useState(0);
+  const hubIndexRef = useRef<EnrichmentHubIndex | null>(null);
+  const [counts, setCounts] = useState<Awaited<ReturnType<typeof loadEnrichmentHubIndex>>['counts'] | null>(
+    cachedOnMount?.counts ?? null
   );
-  const [initialLoading, setInitialLoading] = useState(true);
+  // If we have cached data, skip the initial loading spinner entirely
+  const [initialLoading, setInitialLoading] = useState(!cachedOnMount);
   const [refreshing, setRefreshing] = useState(false);
   const [taxonomyLeafCount, setTaxonomyLeafCount] = useState<number | null>(null);
   const [outcomeLabel, setOutcomeLabel] = useState<string | 'all'>(
@@ -313,29 +431,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
   const isProcessing = pipeline.isRunning;
 
-  const reload = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
-    if (isRunningRef.current) return undefined;
-    if (!opts?.force && Date.now() < skipHubReloadUntilRef.current) return undefined;
-    const silent = opts?.silent === true && rows.length > 0;
-    if (!silent) {
-      if (rows.length === 0) setInitialLoading(true);
-      else setRefreshing(true);
-    }
-    try {
-      const [data, queueStats] = await Promise.all([
-        loadEnrichmentHubData(itemsRef.current),
-        getCategorizationQueueStats().catch(() => null),
-      ]);
-      setRows(data.rows);
-      setCounts(data.counts);
-      setTaxonomyLeafCount(queueStats?.leafCount ?? 0);
-      return data.rows;
-    } finally {
-      setInitialLoading(false);
-      setRefreshing(false);
-    }
-  }, [rows.length]);
-
   const hubFilters = useMemo<EnrichmentHubFilterState>(
     () => ({
       outcomeLabel,
@@ -344,6 +439,93 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     }),
     [outcomeLabel, search, trashSuggestionsOnly]
   );
+
+  const hubListUsesFullIndex = useMemo(
+    () => outcomeLabel !== 'all' || !!search.trim() || trashSuggestionsOnly,
+    [outcomeLabel, search, trashSuggestionsOnly]
+  );
+
+  const loadPagedHub = useCallback(async () => {
+    const scope = { scopeProjectId, scopeCollectionId };
+
+    // Step 1: fetch first page immediately — this is fast (100-row SQL query)
+    const pageRes = await fetchEnrichmentHubPage({
+      ...scope,
+      offset: 0,
+      limit: HUB_RPC_PAGE_SIZE,
+    });
+    setRows(pageRes.rows);
+    setTotalInScope(pageRes.total);
+    hubIndexRef.current = null;
+
+    // Step 2: kick off counts in background — full scan, can take >1s on large libs
+    // Don't await here; chips and counts fill in once the worker finishes
+    void fetchEnrichmentHubCounts(scope, search).then((countRes) => {
+      setCounts(countRes.counts);
+      setHubChips(countRes.chips);
+      // Write full cache only after counts are ready
+      if (!search.trim()) {
+        writeHubCache({
+          rows: pageRes.rows,
+          totalInScope: pageRes.total,
+          chips: countRes.chips,
+          counts: countRes.counts,
+          scopeProjectId,
+          scopeCollectionId,
+        });
+      }
+    });
+
+    return pageRes.rows;
+  }, [scopeProjectId, scopeCollectionId, search]);
+
+  const rowsForCurrentView = useCallback(
+    (index: EnrichmentHubIndex): EnrichmentHubRow[] =>
+      materializeFilteredScopedHubRows(
+        index,
+        scopeProjectId,
+        scopeCollectionId,
+        collections,
+        hubFilters
+      ),
+    [scopeProjectId, scopeCollectionId, collections, hubFilters]
+  );
+
+  const reload = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
+    if (isRunningRef.current) return undefined;
+    if (!opts?.force && Date.now() < skipHubReloadUntilRef.current) return undefined;
+    // If we have cached/existing rows, never show the full-page spinner — just a subtle refresh indicator
+    const hasCachedRows = rows.length > 0;
+    const silent = opts?.silent === true && hasCachedRows;
+    if (!silent) {
+      if (!hasCachedRows) setInitialLoading(true);
+      else setRefreshing(true);
+    }
+    try {
+      // Do not block the list on this — it loads the full pipeline catalog from tab
+      // memory (all items + enrichments + signals + links). Bookmarks never pay this cost.
+      void getCategorizationQueueStats()
+        .then((queueStats) => setTaxonomyLeafCount(queueStats?.leafCount ?? 0))
+        .catch(() => {});
+
+      if (hubListUsesFullIndex) {
+        const hubResult = await loadEnrichmentHubIndex(itemsRef.current);
+        hubIndexRef.current = hubResult.index;
+        setCounts(hubResult.counts);
+        setHubIndexVersion((v) => v + 1);
+        const filtered = rowsForCurrentView(hubResult.index);
+        setRows(filtered);
+        setTotalInScope(filtered.length);
+        return filtered;
+      }
+
+      const freshRows = await loadPagedHub();
+      return freshRows;
+    } finally {
+      setInitialLoading(false);
+      setRefreshing(false);
+    }
+  }, [rows.length, hubListUsesFullIndex, rowsForCurrentView, loadPagedHub]);
 
   const filterSessionKey = useMemo(
     () =>
@@ -418,10 +600,67 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     [reload]
   );
 
+  const applyModuleCache = useCallback(
+    (cache: HubCache) => {
+      setRows(cache.rows);
+      setTotalInScope(cache.totalInScope);
+      if (cache.chips.length > 0) setHubChips(cache.chips);
+      if (cache.counts) setCounts(cache.counts);
+      setInitialLoading(false);
+    },
+    []
+  );
+
+  // If Hub is the restored tab it mounts before prewarm finishes; when cache is written,
+  // apply it here (Settings-first navigation already had cache at useState init).
   useEffect(() => {
-    if (libraryLoading) return;
+    return subscribeHubCache((cache) => {
+      if (
+        cache.scopeProjectId !== scopeProjectId ||
+        cache.scopeCollectionId !== scopeCollectionId
+      ) {
+        return;
+      }
+      applyModuleCache(cache);
+    });
+  }, [scopeProjectId, scopeCollectionId, applyModuleCache]);
+
+  // Run once on mount.
+  // • Cache hit → data already visible (seeded in useState), skip reload.
+  // • Pre-warm in flight → wait; subscribe applies cache, else reload once.
+  useEffect(() => {
+    if (readHubCache(scopeProjectId, scopeCollectionId)) return;
+    const prewarm = getHubPrewarmPromise();
+    if (prewarm) {
+      void prewarm.then(() => {
+        if (!readHubCache(scopeProjectId, scopeCollectionId)) void reload();
+      });
+      return;
+    }
     void reload();
-  }, [libraryLoading, reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const index = hubIndexRef.current;
+    if (!index || initialLoading || !hubListUsesFullIndex) return;
+    const filtered = materializeFilteredScopedHubRows(
+      index,
+      scopeProjectId,
+      scopeCollectionId,
+      collections,
+      hubFilters
+    );
+    setRows(filtered);
+    setTotalInScope(filtered.length);
+  }, [
+    hubListUsesFullIndex,
+    hubFilters,
+    scopeProjectId,
+    scopeCollectionId,
+    collections,
+    initialLoading,
+  ]);
 
   /** Once after first load: clear persisted filter only if label no longer exists (not on every chip click). */
   useEffect(() => {
@@ -435,12 +674,32 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     if (!hasMatch) setOutcomeLabel('all');
   }, [initialLoading, rows, outcomeLabel, scopeProjectId, scopeCollectionId, collections]);
 
+  const prevItemsLenRef = useRef(0);
   useEffect(() => {
+    const prevLen = prevItemsLenRef.current;
+    const nextLen = items.length;
+    prevItemsLenRef.current = nextLen;
+
+    // App loadData replaces items [] → N once while Hub may still be on the spinner.
+    // Prewarm cache is valid — apply it instead of invalidating + full reload.
+    if (prevLen === 0 && nextLen > 0) {
+      const cached = readHubCache(scopeProjectId, scopeCollectionId);
+      if (cached) {
+        if (rows.length === 0) applyModuleCache(cached);
+        return;
+      }
+    }
+    if (prevLen === nextLen) return;
+
+    invalidateHubCache();
     debouncedReload();
-  }, [items, debouncedReload]);
+  }, [items.length, debouncedReload, rows.length, scopeProjectId, scopeCollectionId, applyModuleCache]);
 
   useEffect(() => {
-    return subscribeToDataChanges(() => {
+    return subscribeToDataChanges((event) => {
+      if (HUB_CACHE_INVALIDATION_REASONS.has(event.reason)) {
+        invalidateHubCache();
+      }
       if (isRunningRef.current) return;
       debouncedReload();
     });
@@ -581,7 +840,44 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     });
   }, [filteredRows, inspectState?.ids, recentUpdateIds]);
 
-  const statusBarChips = useMemo(() => buildHubOutcomeChips(rowsForStatusCounts), [rowsForStatusCounts]);
+  const scopedBookmarkTotal = totalInScope;
+
+  const handleShowMore = useCallback(() => {
+    const nextPageLimit = pageLimit + PAGE_SIZE;
+    if (hubListUsesFullIndex || nextPageLimit <= rows.length) {
+      setPageLimit(nextPageLimit);
+      return;
+    }
+    if (rows.length >= totalInScope) {
+      setPageLimit(nextPageLimit);
+      return;
+    }
+    setLoadingMore(true);
+    void fetchEnrichmentHubPage({
+      scopeProjectId,
+      scopeCollectionId,
+      offset: rows.length,
+      limit: HUB_RPC_PAGE_SIZE,
+    })
+      .then((page) => {
+        setRows((prev) => [...prev, ...page.rows]);
+        setPageLimit(nextPageLimit);
+      })
+      .finally(() => setLoadingMore(false));
+  }, [pageLimit, hubListUsesFullIndex, rows.length, totalInScope, scopeProjectId, scopeCollectionId]);
+
+  const statusBarChips = useMemo(() => {
+    if (!hubListUsesFullIndex) return hubChips;
+    const index = hubIndexRef.current;
+    if (!index) return hubChips;
+    return buildHubOutcomeChipsForScope(
+      index,
+      scopeProjectId,
+      scopeCollectionId,
+      collections,
+      search
+    );
+  }, [hubListUsesFullIndex, hubChips, hubIndexVersion, scopeProjectId, scopeCollectionId, collections, search]);
 
   const toggleSelect = (id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -1319,9 +1615,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           <span>Actions</span>
         </div>
 
-        {libraryLoading || (initialLoading && filteredRows.length === 0) ? (
+        {(initialLoading && filteredRows.length === 0) ? (
           <LibraryLoadingPlaceholder
-            message={libraryLoading ? 'Loading library…' : 'Loading enrichment data…'}
+            message="Loading enrichment data…"
+            progress={null}
           />
         ) : visibleRows.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
@@ -1552,7 +1849,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         <div style={{ padding: '12px 0', textAlign: 'center' }}>
           <button
             type="button"
-            onClick={() => setPageLimit((n) => n + PAGE_SIZE)}
+            onClick={handleShowMore}
             style={{
               padding: '8px 16px',
               borderRadius: 6,
@@ -1570,6 +1867,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
       <div style={{ marginTop: 12, fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
         Showing {Math.min(pageLimit, tableRowsForList.length)} of {tableRowsForList.length} in view
+        {!hubListUsesFullIndex && scopedBookmarkTotal > rows.length ? (
+          <> · {rows.length} loaded of {scopedBookmarkTotal} in scope</>
+        ) : null}
+        {loadingMore ? ' · loading more…' : null}
         {recentUpdateIds.length > 0
           ? ` · ${recentUpdateIds.length} just updated (shown until you change filters)`
           : ''}

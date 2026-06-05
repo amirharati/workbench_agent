@@ -48,10 +48,11 @@ interface HomeViewProps {
   renderListTab?: (tab: any) => React.ReactNode;
   statusBar?: React.ReactNode;
   libraryLoading?: boolean;
+  libraryHydrateProgress?: { label: string; percent?: number } | null;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar, libraryLoading = false
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const topPctRef = useRef(topPct);
@@ -307,7 +308,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
         {libraryLoading ? (
           <div style={{ width: '100%', maxWidth: 1000 }}>
-            <LibraryLoadingPlaceholder message="Loading library…" />
+            <LibraryLoadingPlaceholder
+              message="Loading library…"
+              progress={libraryHydrateProgress}
+            />
           </div>
         ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, width: '100%', maxWidth: 1000 }}>

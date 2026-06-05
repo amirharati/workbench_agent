@@ -1,5 +1,6 @@
-import type { Item } from '../db';
+import type { Item, Collection } from '../db';
 import { getDB } from '../db';
+import { ensurePipelineHydrated } from '../db';
 import { getAllEnrichments, type ItemEnrichment } from '../enrichment';
 import { checkUrlEligibility } from '../enrichment/eligibility';
 import { formatEnrichmentFailureMessage } from '../enrichment/errorMessages';
@@ -20,6 +21,12 @@ import type { ProcessingDigest } from './itemPipelineContext';
 import { pipelineStatusColorForLabel } from './pipelineDictionary';
 import { resolvePipelineStageFromParts, type PipelineStageInfo } from './pipelineStage';
 import type { AiItemCategoryLink, AiItemSignal } from '../categorization/types';
+import { itemMatchesScope } from '../shell/itemScope';
+
+/** Rows materialized on first Hub paint; display shows HUB_DISPLAY_PAGE_SIZE at a time. */
+export const HUB_DISPLAY_PAGE_SIZE = 100;
+export const HUB_INITIAL_BUILD = 250;
+export const HUB_BUILD_CHUNK = 200;
 
 export type EnrichmentHubFilter =
   | 'all'
@@ -501,23 +508,26 @@ export function hubStatusBadgeForEnrichment(
 
 const HUB_PRIMARY_STATUS_LABELS = ['Verified', 'Enriched'] as const;
 
-function hubChipColor(rows: EnrichmentHubRow[], label: string): string {
-  const sample = rows.find((r) => hubRowStatusLabel(r) === label);
-  return sample?.meta.statusBadge.color ?? pipelineStatusColorForLabel(label);
-}
-
 export function buildHubOutcomeChips(rows: EnrichmentHubRow[]): HubOutcomeChip[] {
   const counts = new Map<string, number>();
+  const colors = new Map<string, string>();
   for (const row of rows) {
     const label = hubRowStatusLabel(row);
     counts.set(label, (counts.get(label) ?? 0) + 1);
+    if (!colors.has(label)) colors.set(label, row.meta.statusBadge.color);
   }
+  return buildHubOutcomeChipsFromLabelCounts(counts, colors);
+}
 
+export function buildHubOutcomeChipsFromLabelCounts(
+  counts: Map<string, number>,
+  colors: Map<string, string>
+): HubOutcomeChip[] {
   const chipFor = (label: string, count: number): HubOutcomeChip => ({
     label,
     count,
     tone: hubOutcomeToneForLabel(label),
-    color: hubChipColor(rows, label),
+    color: colors.get(label) ?? pipelineStatusColorForLabel(label),
   });
 
   const chips: HubOutcomeChip[] = [];
@@ -652,12 +662,196 @@ export function rowMatchesTrashSuggestion(row: EnrichmentHubRow): boolean {
   return resolveTrashSuggestion(row) != null;
 }
 
-export async function loadEnrichmentHubData(
+export type EnrichmentHubIndex = {
+  bookmarks: Item[];
+  metaByItemId: Map<string, EnrichmentHubRowMeta>;
+  enrichMap: Map<string, ItemEnrichment>;
+  signalByItem: Map<string, AiItemSignal>;
+  linksByItem: Map<string, AiItemCategoryLink[]>;
+};
+
+export function buildEnrichmentRowMetaForItem(
+  enrichMap: Map<string, ItemEnrichment>,
+  signalByItem: Map<string, AiItemSignal>,
+  linksByItem: Map<string, AiItemCategoryLink[]>,
+  item: Item
+): EnrichmentHubRowMeta {
+  const enrichment = enrichMap.get(item.id);
+  const signal = signalByItem.get(item.id);
+  const embedFailed = signal?.signalStatus === 'embed_failed';
+  const itemLinks = linksByItem.get(item.id) ?? [];
+  return buildRowMetaFixed(enrichment, embedFailed, {
+    signal,
+    primaryCategoryId: primaryLeafIdFromLinks(itemLinks),
+    verifiedPrimaryCategoryId: verifiedPrimaryLeafIdFromLinks(itemLinks),
+    suggestedLinkCount: itemLinks.filter((l) => l.status === 'suggested').length,
+  });
+}
+
+function accumulateCountsFromMeta(
+  meta: EnrichmentHubRowMeta,
+  acc: {
+    ok: number;
+    failed: number;
+    notEnriched: number;
+    pendingFetchReview: number;
+    skipped: number;
+    embedFailed: number;
+    failureByCategory: Partial<Record<FailureCategory, number>>;
+  }
+): void {
+  if (meta.ok) acc.ok++;
+  if (meta.failed) {
+    acc.failed++;
+    if (meta.failureCategory) {
+      acc.failureByCategory[meta.failureCategory] =
+        (acc.failureByCategory[meta.failureCategory] ?? 0) + 1;
+    }
+  }
+  if (meta.notEnriched) acc.notEnriched++;
+  if (meta.pendingFetchReview) acc.pendingFetchReview++;
+  if (meta.skipped) acc.skipped++;
+  if (meta.embedFailedLane) acc.embedFailed++;
+}
+
+export function buildCountsFromMetaMap(
+  bookmarks: Item[],
+  metaByItemId: Map<string, EnrichmentHubRowMeta>
+): EnrichmentHubCounts {
+  const acc = {
+    ok: 0,
+    failed: 0,
+    notEnriched: 0,
+    pendingFetchReview: 0,
+    skipped: 0,
+    embedFailed: 0,
+    failureByCategory: {} as Partial<Record<FailureCategory, number>>,
+  };
+  for (const item of bookmarks) {
+    const meta = metaByItemId.get(item.id);
+    if (meta) accumulateCountsFromMeta(meta, acc);
+  }
+  const { failed, notEnriched, failureByCategory } = acc;
+  return {
+    digest: {
+      manualReview: 0,
+      suggestedCategories: 0,
+      enrichFailed: failed,
+      notEnriched,
+      pendingClassify: 0,
+      healthy: failed === 0 && notEnriched === 0,
+      enrichFailedByCategory: failureByCategory,
+    },
+    total: bookmarks.length,
+    ...acc,
+  };
+}
+
+export function materializeHubRow(index: EnrichmentHubIndex, item: Item): EnrichmentHubRow {
+  const enrichment = index.enrichMap.get(item.id);
+  const signal = index.signalByItem.get(item.id);
+  const embedFailed = signal?.signalStatus === 'embed_failed';
+  const meta = index.metaByItemId.get(item.id) ?? buildEnrichmentRowMetaForItem(
+    index.enrichMap,
+    index.signalByItem,
+    index.linksByItem,
+    item
+  );
+  return { item, enrichment, embedFailed, meta };
+}
+
+export function scopedHubBookmarks(
+  index: EnrichmentHubIndex,
+  scopeProjectId: string | 'all',
+  scopeCollectionId: string | 'all',
+  collections: Collection[]
+): Item[] {
+  return index.bookmarks.filter((item) =>
+    itemMatchesScope(item, scopeProjectId, scopeCollectionId, collections)
+  );
+}
+
+export function materializeScopedHubRows(
+  index: EnrichmentHubIndex,
+  scopeProjectId: string | 'all',
+  scopeCollectionId: string | 'all',
+  collections: Collection[],
+  offset: number,
+  limit: number
+): EnrichmentHubRow[] {
+  const scoped = scopedHubBookmarks(index, scopeProjectId, scopeCollectionId, collections);
+  return scoped.slice(offset, offset + limit).map((item) => materializeHubRow(index, item));
+}
+
+function hubIndexEntryMatchesFilters(
+  index: EnrichmentHubIndex,
+  item: Item,
+  filters: EnrichmentHubFilterState
+): boolean {
+  const meta = index.metaByItemId.get(item.id);
+  if (!meta) return false;
+  const q = (filters.search ?? '').trim().toLowerCase();
+  if (q) {
+    const title = (item.title || '').toLowerCase();
+    const url = (item.url || '').toLowerCase();
+    if (!title.includes(q) && !url.includes(q)) return false;
+  }
+  if (filters.trashSuggestionsOnly && !rowMatchesTrashSuggestion(materializeHubRow(index, item))) {
+    return false;
+  }
+  if (filters.outcomeLabel !== 'all' && meta.statusBadge.text !== filters.outcomeLabel) {
+    return false;
+  }
+  return true;
+}
+
+export function materializeFilteredScopedHubRows(
+  index: EnrichmentHubIndex,
+  scopeProjectId: string | 'all',
+  scopeCollectionId: string | 'all',
+  collections: Collection[],
+  filters: EnrichmentHubFilterState
+): EnrichmentHubRow[] {
+  const scoped = scopedHubBookmarks(index, scopeProjectId, scopeCollectionId, collections);
+  const rows: EnrichmentHubRow[] = [];
+  for (const item of scoped) {
+    if (hubIndexEntryMatchesFilters(index, item, filters)) {
+      rows.push(materializeHubRow(index, item));
+    }
+  }
+  return rows;
+}
+
+export function buildHubOutcomeChipsForScope(
+  index: EnrichmentHubIndex,
+  scopeProjectId: string | 'all',
+  scopeCollectionId: string | 'all',
+  collections: Collection[],
+  search?: string
+): HubOutcomeChip[] {
+  const counts = new Map<string, number>();
+  const colors = new Map<string, string>();
+  const q = (search ?? '').trim().toLowerCase();
+  for (const item of scopedHubBookmarks(index, scopeProjectId, scopeCollectionId, collections)) {
+    if (q) {
+      const title = (item.title || '').toLowerCase();
+      const url = (item.url || '').toLowerCase();
+      if (!title.includes(q) && !url.includes(q)) continue;
+    }
+    const meta = index.metaByItemId.get(item.id);
+    if (!meta) continue;
+    const label = meta.statusBadge.text;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+    if (!colors.has(label)) colors.set(label, meta.statusBadge.color);
+  }
+  return buildHubOutcomeChipsFromLabelCounts(counts, colors);
+}
+
+/** Load maps + precompute per-item meta (counts/chips) without materializing every row. */
+export async function loadEnrichmentHubIndex(
   items: Item[]
-): Promise<{
-  rows: EnrichmentHubRow[];
-  counts: EnrichmentHubCounts;
-}> {
+): Promise<{ index: EnrichmentHubIndex; counts: EnrichmentHubCounts }> {
+  await ensurePipelineHydrated();
   const [enrichments, signals, links] = await Promise.all([
     getAllEnrichments(),
     loadHubSignals(),
@@ -666,74 +860,42 @@ export async function loadEnrichmentHubData(
 
   const enrichMap = new Map(enrichments.map((e) => [e.itemId, e]));
   const signalByItem = signals.byItem;
+  const linksByItem = links;
   const bookmarks = items
     .filter((i) => !!i.url?.trim() && i.deletedAt == null)
     .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
 
-  const rows: EnrichmentHubRow[] = bookmarks.map((item) => {
-    const enrichment = enrichMap.get(item.id);
-    const signal = signalByItem.get(item.id);
-    const embedFailed = signal?.signalStatus === 'embed_failed';
-    const itemLinks = links.get(item.id) ?? [];
-    return {
-      item,
-      enrichment,
-      embedFailed,
-      meta: buildRowMetaFixed(enrichment, embedFailed, {
-        signal,
-        primaryCategoryId: primaryLeafIdFromLinks(itemLinks),
-        verifiedPrimaryCategoryId: verifiedPrimaryLeafIdFromLinks(itemLinks),
-        suggestedLinkCount: itemLinks.filter((l) => l.status === 'suggested').length,
-      }),
-    };
-  });
-
-  let ok = 0;
-  let failed = 0;
-  let notEnriched = 0;
-  let pendingFetchReview = 0;
-  let skipped = 0;
-  let embedFailed = 0;
-  const failureByCategory: Partial<Record<FailureCategory, number>> = {};
-
-  for (const row of rows) {
-    const m = row.meta;
-    if (m.ok) ok++;
-    if (m.failed) {
-      failed++;
-      if (m.failureCategory) {
-        failureByCategory[m.failureCategory] =
-          (failureByCategory[m.failureCategory] ?? 0) + 1;
-      }
-    }
-    if (m.notEnriched) notEnriched++;
-    if (m.pendingFetchReview) pendingFetchReview++;
-    if (m.skipped) skipped++;
-    if (m.embedFailedLane) embedFailed++;
+  const metaByItemId = new Map<string, EnrichmentHubRowMeta>();
+  for (const item of bookmarks) {
+    metaByItemId.set(item.id, buildEnrichmentRowMetaForItem(enrichMap, signalByItem, linksByItem, item));
   }
 
-  return {
-    rows,
-    counts: {
-      digest: {
-        manualReview: 0,
-        suggestedCategories: 0,
-        enrichFailed: failed,
-        notEnriched,
-        pendingClassify: 0,
-        healthy: failed === 0 && notEnriched === 0,
-        enrichFailedByCategory: failureByCategory,
-      },
-      total: rows.length,
-      ok,
-      failed,
-      notEnriched,
-      pendingFetchReview,
-      skipped,
-      embedFailed,
-      failureByCategory,
-    },
+  const index: EnrichmentHubIndex = {
+    bookmarks,
+    metaByItemId,
+    enrichMap,
+    signalByItem,
+    linksByItem,
   };
+
+  return {
+    index,
+    counts: buildCountsFromMetaMap(bookmarks, metaByItemId),
+  };
+}
+
+export async function loadEnrichmentHubData(
+  items: Item[],
+  opts?: { rowLimit?: number }
+): Promise<{
+  index: EnrichmentHubIndex;
+  rows: EnrichmentHubRow[];
+  counts: EnrichmentHubCounts;
+}> {
+  const { index, counts } = await loadEnrichmentHubIndex(items);
+  const limit = opts?.rowLimit ?? index.bookmarks.length;
+  const rows = index.bookmarks.slice(0, limit).map((item) => materializeHubRow(index, item));
+  return { index, rows, counts };
 }
 
 export async function loadEmbedFailedIds(): Promise<Set<string>> {

@@ -1,7 +1,7 @@
 import { embedTexts } from '../ai/openrouterEmbeddings';
 import { loadAISettings } from '../ai/settings';
 import { DEFAULT_EMBEDDING_MODEL } from '../categorization/service';
-import { getDB } from '../db';
+import { ensurePipelineHydrated, getDB } from '../db';
 import { isActiveItem } from '../itemQuickAccess';
 import type { AiCategory, AiItemCategoryLink, AiItemSignal } from '../categorization/types';
 import { buildSearchEmbedText } from '../enrichment/searchEmbedText';
@@ -20,6 +20,7 @@ import type {
 import type { HybridSearchResultWithRelated } from './searchRelated';
 
 export async function loadSearchIndexFromDb(): Promise<SearchIndex> {
+  await ensurePipelineHydrated();
   const db = await getDB();
 
   const items = (await db.getAll('items')).filter(isActiveItem);

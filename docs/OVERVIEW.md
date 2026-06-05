@@ -95,7 +95,7 @@ Chrome MV3 extension
 - AI pipeline hardening V1.1 (Task 03): incremental classify-by-hash, quality gate tiers, run stats, discover CLI loop, **Enrichment dev hub** (Bookmarks toolbar: Results / Enrich / Categories), queue reconcilers, `pending_discover` for no-topic outcomes.
 - Hybrid search foundation V1.5 (Task 04): `src/lib/search/` — lexical + doc-embedding + category expansion; CLI eval; dev `SearchDevPanel` for R&D.
 - **Doc embedding step (Task 04):** `embedBackfillPlan` + `embed-incremental` CLI; vectors in `ai_item_signals`.
-- **V2 product UX (Task 05):** **V2 closed 2026-05-29**. **Active:** V2.3 → **V3 pipeline** — discover map→reduce shipped; dogfood fixes (chunked DB sync, Hub bulk steps, loading UX); next staging workflow + import scale. See [`BACKLOG.md`](BACKLOG.md).
+- **V2 product UX (Task 05):** **V2 closed 2026-05-29**. **Active:** V2.3 → **V3 pipeline** — discover map→reduce shipped; large-library staged hydrate + Hub worker paging; next staging workflow + import scale. See [`BACKLOG.md`](BACKLOG.md).
 
 ---
 
@@ -110,7 +110,7 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 | Area | Status |
 |------|--------|
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
-| **V2 — Product** | ✅ **Closed** 2026-05-29. **Active:** V3 pipeline — discover algo mostly done; chunked worker sync + Hub bulk UX shipped; staging workflow + large-import hardening next — [`BACKLOG.md`](BACKLOG.md). |
+| **V2 — Product** | ✅ **Closed** 2026-05-29. **Active:** V3 pipeline — discover algo mostly done; staged hydrate + Hub SQL paging for large libraries; staging workflow + import waves next — [`BACKLOG.md`](BACKLOG.md). |
 | **AI Categorization (V1)** | Backend shipped. Product: browse taxonomy (Tools), accept/reject suggestions (Inspector), digest queues (Home). |
 | **Search** | Product hybrid search shipped (**05.2**); dev score breakdown in `SearchDevPanel`. |
 | **Enrichment / fetch** | **D-10 shipped:** headless hardening, X threads, tab-session + `file://` single-file. **D-45 tracked:** bulk folder scan for local PDFs/papers (not implemented). |
@@ -134,4 +134,4 @@ When Workbench overrides the **New Tab Page** (`chrome_url_overrides.newtab`), C
 
 ---
 
-*Last updated: 2026-06-04 — V3 dogfood reliability + Hub bulk staged runs. Session planning is local-only (gitignored).*
+*Last updated: 2026-06-04 — V3 large-library load (staged hydrate, Hub worker paging). Session planning is local-only (gitignored).*

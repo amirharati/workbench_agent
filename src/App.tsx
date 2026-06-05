@@ -21,6 +21,9 @@ import {
   reloadDB,
   refreshPipelineCacheFromWorker,
   getItem,
+  formatLibraryHydrateProgress,
+  subscribeLibraryHydrateProgress,
+  type LibraryHydrateProgress,
 } from './lib/db';
 import { getActiveItems, isActiveItem, moveItemToTrash, formatRestoreSummary } from './lib/itemQuickAccess';
 import {
@@ -51,6 +54,7 @@ import {
 } from './lib/backupFolder';
 import { DATA_CHANGED_BROADCAST_CHANNEL, subscribeToDataChanges } from './lib/dataChangeNotifier';
 import { ensureDbWorker, mirrorNow, dbRpc, getDbWorkerStatus, type DbWorkerStatus } from './lib/storage/dbClient';
+import { prewarmHubCache } from './components/dashboard/PipelineHubView';
 import { backupCoordinator, BackupStatusSnapshot, isSqliteBackupFile, type RestoreBackupResult } from './lib/backupCoordinator';
 import { ManualFolderBackupSink } from './lib/backupSinks';
 import { revisionTracker } from './lib/revisionTracker';
@@ -73,6 +77,8 @@ function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryHydrateProgress, setLibraryHydrateProgress] =
+    useState<LibraryHydrateProgress | null>(null);
   const [isSidePanel, setIsSidePanel] = useState(false);
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
   const [status, setStatus] = useState('');
@@ -220,6 +226,13 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    // Warm up the DB service worker immediately — runs in parallel with the
+    // revision-tracker/backup-folder checks below so that by the time the
+    // dashboard mounts and the Hub fires its first RPC, ownerReady is already true.
+    // Also pre-fetch the first Hub page into the cache so the Hub view is instant.
+    void ensureDbWorker()
+      .then(() => prewarmHubCache())
+      .catch(() => { /* retried by dbRpc internally */ });
     (async () => {
       try {
         // Ensure backup system is ready before load/conflict (effect 1 may still be racing).
@@ -306,6 +319,12 @@ function App() {
   };
 
   useEffect(() => {
+    return subscribeLibraryHydrateProgress((progress) => {
+      setLibraryHydrateProgress(formatLibraryHydrateProgress(progress));
+    });
+  }, []);
+
+  useEffect(() => {
     loadCurrentWindows();
     const handleTabUpdate = () => loadCurrentWindows();
     chrome.tabs.onCreated.addListener(handleTabUpdate);
@@ -327,13 +346,15 @@ function App() {
         try {
           if (!(await hasWritableBackupFolder())) return;
 
-          const allProjects = await getAllProjects();
+          const [allProjects, allCollections, allWorkspaces, allItems] = await Promise.all([
+            getAllProjects(),
+            getAllCollections(),
+            getAllWorkspaces(),
+            getActiveItems(),
+          ]);
           setProjects(allProjects);
-          const allCollections = await getAllCollections();
           setCollections(allCollections);
-          const allWorkspaces = await getAllWorkspaces();
           setWorkspaces(allWorkspaces);
-          const allItems = await getActiveItems();
           setItems(allItems.sort((a, b) => b.created_at - a.created_at));
           return;
         } catch (e) {
@@ -358,6 +379,7 @@ function App() {
       }
     } finally {
       setLibraryLoading(false);
+      setLibraryHydrateProgress(null);
     }
   }, []);
 
@@ -1172,6 +1194,7 @@ function App() {
       onCloseWindow={handleCloseWindow}
       onRefresh={refreshLibrary}
       libraryLoading={libraryLoading}
+      libraryHydrateProgress={libraryLoading ? libraryHydrateProgress : null}
       onChooseBackupFolder={async () => {
         await handleChooseBackupFolder();
       }}
