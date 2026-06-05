@@ -20,7 +20,7 @@ function formatJobSummary(job: ImportPipelineJob): string {
   const statusPart = job.lastError
     ? `${job.status}: ${job.lastError}`
     : job.status;
-  return `Import pipeline incomplete — ${count} link${job.itemIds.length === 1 ? '' : 's'} in job${wavePart} · ${statusPart}`;
+  return `Large batch pipeline — ${count} link${job.itemIds.length === 1 ? '' : 's'}${wavePart} · ${statusPart}`;
 }
 
 const ACTIVE_STATUSES = new Set<ImportPipelineJob['status']>(['paused', 'running', 'failed']);
@@ -54,9 +54,9 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
     try {
       await onDismiss();
       setDismissOpen(false);
-      addToast({ type: 'info', message: 'Import pipeline job dismissed.' });
+      addToast({ type: 'info', message: 'Pipeline job dismissed.' });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Could not dismiss import job.';
+      const msg = e instanceof Error ? e.message : 'Could not dismiss pipeline job.';
       addToast({ type: 'error', message: msg });
     } finally {
       setDismissing(false);
@@ -105,7 +105,7 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
               }}
             >
               <AlertTriangle size={18} color="var(--er-warn, #d29922)" />
-              Dismiss import pipeline job?
+              Dismiss pipeline job?
             </h3>
             <p
               style={{
@@ -116,8 +116,8 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
               }}
             >
               This removes <code>import-pipeline-job.json</code> from your backup folder. You can
-              still process links via Import Studio digest; wave resume will not be available until
-              you import again.
+              still run fetch + AI from Import Studio or Enrichment Hub; wave resume will not be
+              available until you start another large batch pipeline run.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button

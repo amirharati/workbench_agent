@@ -13,6 +13,12 @@ export const IMPORT_PIPELINE_JOB_FILE = 'import-pipeline-job.json';
 export const IMPORT_PIPELINE_JOB_VERSION = 1 as const;
 /** 96 = 3× embed/discover MAP batch size (32; see EMBED_BATCH_SIZE, DEFAULT_DISCOVER_BATCH_SIZE). */
 export const IMPORT_PIPELINE_WAVE_SIZE = 96;
+/** Minimum |itemIds| to create a scoped pipeline job file (import commit or future Hub batch). */
+export const SCOPED_PIPELINE_JOB_THRESHOLD = IMPORT_PIPELINE_WAVE_SIZE;
+
+export function shouldCreateScopedPipelineJob(itemIds: string[]): boolean {
+  return itemIds.length >= SCOPED_PIPELINE_JOB_THRESHOLD;
+}
 
 export type ImportPipelineJobStatus = 'paused' | 'running' | 'completed' | 'failed';
 
