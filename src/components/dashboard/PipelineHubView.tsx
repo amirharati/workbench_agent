@@ -842,6 +842,13 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
   const scopedBookmarkTotal = totalInScope;
 
+  const hasMoreToShow =
+    tableRowsForList.length > pageLimit ||
+    (!hubListUsesFullIndex && rows.length < totalInScope);
+  const showMoreRemaining =
+    Math.max(0, tableRowsForList.length - pageLimit) +
+    (!hubListUsesFullIndex && rows.length < totalInScope ? totalInScope - rows.length : 0);
+
   const handleShowMore = useCallback(() => {
     const nextPageLimit = pageLimit + PAGE_SIZE;
     if (hubListUsesFullIndex || nextPageLimit <= rows.length) {
@@ -1845,11 +1852,12 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         )}
       </div>
 
-      {tableRowsForList.length > pageLimit ? (
+      {hasMoreToShow ? (
         <div style={{ padding: '12px 0', textAlign: 'center' }}>
           <button
             type="button"
             onClick={handleShowMore}
+            disabled={loadingMore}
             style={{
               padding: '8px 16px',
               borderRadius: 6,
@@ -1857,10 +1865,11 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               background: 'var(--bg-panel)',
               color: 'var(--text-muted)',
               fontSize: 'var(--text-sm)',
-              cursor: 'pointer',
+              cursor: loadingMore ? 'wait' : 'pointer',
+              opacity: loadingMore ? 0.7 : 1,
             }}
           >
-            Show more ({tableRowsForList.length - pageLimit} remaining)
+            Show more ({showMoreRemaining} remaining)
           </button>
         </div>
       ) : null}
