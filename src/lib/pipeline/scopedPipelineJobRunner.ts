@@ -337,3 +337,15 @@ export async function runScopedPipelineJob(
 
 /** Alias until P2 rename to runScopedPipelineJob */
 export const runImportPipelineJob = runScopedPipelineJob;
+
+/** Human-readable progress line for Import Studio / dashboard toasts. */
+export function formatScopedPipelineJobProgress(p: ScopedPipelineJobProgress): string {
+  const wave = `Wave ${Math.min(p.waveIndex + 1, p.waveTotal)}/${p.waveTotal}`;
+  if (p.phase === 'enrich' && p.enrichTotal != null && p.enrichDone != null) {
+    return `${wave} · Enriching ${p.enrichDone}/${p.enrichTotal}…`;
+  }
+  if (p.phase === 'wave' || p.phase === 'embed' || p.phase === 'classify') {
+    return `${wave} · ${p.label}`;
+  }
+  return p.label;
+}

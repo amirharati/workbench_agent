@@ -5,8 +5,8 @@ import {
 } from '../backupFolder';
 import { loadPipelineMaintenanceSnapshot } from './pipelineMaintenanceSnapshot';
 
-/** When false, wave runner (A5b-2) and Resume action stay disabled. */
-export const IMPORT_WAVE_PIPELINE_ENABLED = false;
+/** When true, Import Studio ≥96 digest and dashboard Resume use the wave runner. */
+export const IMPORT_WAVE_PIPELINE_ENABLED = true;
 
 /** Beside workbench.sqlite in the backup folder. */
 export const IMPORT_PIPELINE_JOB_FILE = 'import-pipeline-job.json';
