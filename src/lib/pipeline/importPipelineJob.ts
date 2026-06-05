@@ -3,6 +3,10 @@ import {
   requireWritableBackupFolder,
   writeJsonToBackupFolder,
 } from '../backupFolder';
+import { loadPipelineMaintenanceSnapshot } from './pipelineMaintenanceSnapshot';
+
+/** When false, wave runner (A5b-2) and Resume action stay disabled. */
+export const IMPORT_WAVE_PIPELINE_ENABLED = false;
 
 /** Beside workbench.sqlite in the backup folder. */
 export const IMPORT_PIPELINE_JOB_FILE = 'import-pipeline-job.json';
@@ -11,6 +15,19 @@ export const IMPORT_PIPELINE_JOB_VERSION = 1 as const;
 export const IMPORT_PIPELINE_WAVE_SIZE = 96;
 
 export type ImportPipelineJobStatus = 'paused' | 'running' | 'completed' | 'failed';
+
+export type ImportPipelinePreflight = {
+  ok: boolean;
+  reason?: string;
+};
+
+export async function preflightImportPipelineStart(): Promise<ImportPipelinePreflight> {
+  const { blockers } = await loadPipelineMaintenanceSnapshot();
+  if (blockers.needsApiKey) {
+    return { ok: false, reason: 'Add AI API key in Settings.' };
+  }
+  return { ok: true };
+}
 
 export type ImportPipelineJob = {
   version: 1;
@@ -140,6 +157,30 @@ export async function writeImportPipelineJob(job: ImportPipelineJob): Promise<vo
   const res = await writeJsonToBackupFolder(IMPORT_PIPELINE_JOB_FILE, json);
   if (!res.ok) {
     throw new Error(res.error ?? `Failed to write ${IMPORT_PIPELINE_JOB_FILE}`);
+  }
+}
+
+export type ImportPipelineToast = {
+  type: 'error' | 'info';
+  message: string;
+};
+
+/** Resume stub until A5b-2 implements runImportPipelineJob. */
+export async function resumeImportPipelineJobStub(
+  addToast: (toast: ImportPipelineToast) => void
+): Promise<void> {
+  const pre = await preflightImportPipelineStart();
+  if (!pre.ok) {
+    addToast({ type: 'error', message: pre.reason ?? 'Cannot start import pipeline.' });
+    return;
+  }
+  if (!IMPORT_WAVE_PIPELINE_ENABLED) {
+    addToast({
+      type: 'info',
+      message:
+        'Wave processing ships in the next update — use Import Studio digest for now.',
+    });
+    return;
   }
 }
 

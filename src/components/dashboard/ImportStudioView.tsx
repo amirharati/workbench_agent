@@ -10,6 +10,8 @@ import {
   runBatchDigest,
   formatBatchDigestProgress,
   buildImportReport,
+  createImportPipelineJob,
+  writeImportPipelineJob,
   type BatchDigestResult,
   type ImportReport,
 } from '../../lib/pipeline';
@@ -446,6 +448,20 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
 
       if (onImported) {
         await onImported();
+      }
+
+      if (result.affectedItemIds.length > 0) {
+        try {
+          const job = createImportPipelineJob(result.affectedItemIds);
+          await writeImportPipelineJob(job);
+          addToast({
+            type: 'info',
+            message:
+              'Import saved — pipeline job ready (resume from dashboard when wave processing is enabled).',
+          });
+        } catch (e) {
+          console.warn('[import] could not write import-pipeline-job.json', e);
+        }
       }
 
       if (processNewImports && result.affectedItems.length > 0) {

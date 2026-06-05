@@ -23,6 +23,8 @@ import { PipelineProgressProvider, usePipelineProgress } from '../PipelineProgre
 import { PipelineBatchConfirmModal } from '../PipelineBatchConfirmModal';
 import { CommandPalette } from '../CommandPalette';
 import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID, loadLastSearchQuery } from '../../../hooks/useLibrarySearch';
+import { useImportPipelineJob } from '../../../hooks/useImportPipelineJob';
+import { ImportPipelineJobBanner } from '../ImportPipelineJobBanner';
 import {
   loadItemIdsForCategory,
   loadItemIdsForPipelineQueue,
@@ -185,6 +187,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   onTestAI,
 }) => {
   const { addToast } = useToast();
+  const importPipelineJob = useImportPipelineJob(backupFolderReady);
   const pipeline = usePipelineProgress();
   const { messages: statusMessages, addStatusMessage, dismissStatusMessage } = useStatusBar();
   const librarySearch = useLibrarySearch((message) => {
@@ -807,7 +810,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         
         {/* Middle workspace */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-          
+          {backupFolderReady ? (
+            <ImportPipelineJobBanner
+              job={importPipelineJob.job}
+              loading={importPipelineJob.loading}
+              isResumable={importPipelineJob.isResumable}
+              onDismiss={importPipelineJob.dismissJob}
+            />
+          ) : null}
+
           {isFullPageView ? (
             // Full-page views (Settings, Tab Commander, Workspaces)
             <div style={{ flex: 1, overflow: 'auto', padding: 12 }} className="scrollbar">
