@@ -12,6 +12,7 @@ import * as dbCore from '../../dbCore';
 import {
   runHubEnrichmentCounts,
   runHubEnrichmentPage,
+  invalidateHubScopeEntryCache,
   type HubScopeParams,
 } from '../../pipeline/enrichmentHubWorkerLogic';
 
@@ -48,6 +49,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'refreshTablePage',
   'hubEnrichmentPage',
   'hubEnrichmentCounts',
+  'hubInvalidateScopeCache',
   'liveFingerprint',
   'inspectImportBytes',
 ]);
@@ -211,11 +213,12 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const offset = Math.max(0, Number(args[0]) || 0);
       const limit = Math.min(500, Math.max(1, Number(args[1]) || 100));
       const scope = (args[2] ?? {}) as HubScopeParams;
+      const filters = (args[3] ?? undefined) as import('../../pipeline/enrichmentHubWorkerLogic').HubPageFilters | null;
       const store = await getIdbCompatStore();
       return runHubEnrichmentPage(store, offset, limit, {
         scopeProjectId: scope.scopeProjectId ?? 'all',
         scopeCollectionId: scope.scopeCollectionId ?? 'all',
-      });
+      }, filters ?? undefined);
     }
     case 'hubEnrichmentCounts': {
       const scope = (args[0] ?? {}) as HubScopeParams;
@@ -225,6 +228,10 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         scopeProjectId: scope.scopeProjectId ?? 'all',
         scopeCollectionId: scope.scopeCollectionId ?? 'all',
       }, search);
+    }
+    case 'hubInvalidateScopeCache': {
+      invalidateHubScopeEntryCache();
+      return { ok: true };
     }
     case 'liveFingerprint': {
       const store = await getIdbCompatStore();
@@ -243,6 +250,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
           else store.delete(op.storeName, op.key);
         }
       });
+      invalidateHubScopeEntryCache();
       scheduleFolderMirror();
       return {
         applied: ops.length,
@@ -259,6 +267,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       }
       const result = fn.apply(store, storeArgs);
       if (isMutatingStoreMethod(storeMethod)) {
+        invalidateHubScopeEntryCache();
         scheduleFolderMirror();
         revisionTracker.recordSqliteMutation();
       }

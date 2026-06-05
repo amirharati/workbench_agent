@@ -21,17 +21,13 @@ import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import { moveItemsToTrash } from '../../lib/itemQuickAccess';
 import {
   applyEnrichmentHubFilters,
-  buildHubOutcomeChipsForScope,
   describeRowStatusHelp,
   enrichmentHubRowMatchesFilters,
   ENRICHMENT_STATUS_GUIDE,
   HUB_DISPLAY_PAGE_SIZE,
-  loadEnrichmentHubIndex,
-  materializeFilteredScopedHubRows,
   resolveTrashSuggestion,
   rowMatchesTrashSuggestion,
   type EnrichmentHubFilterState,
-  type EnrichmentHubIndex,
   type EnrichmentHubRow,
   type HubOutcomeChip,
   type RowStatusHelp,
@@ -40,7 +36,9 @@ import {
   fetchEnrichmentHubCounts,
   fetchEnrichmentHubPage,
   HUB_RPC_PAGE_SIZE,
+  invalidateHubScopeCache,
 } from '../../lib/pipeline/enrichmentHubPage';
+import type { HubPageFilters } from '../../lib/pipeline/enrichmentHubWorkerLogic';
 import { itemMatchesScope } from '../../lib/shell/itemScope';
 import { loadNavigationState, patchNavigationState } from '../../lib/shell/navigationState';
 import { buildDisplayListWithRecentHolds } from '../../lib/pipeline/recentListHolds';
@@ -161,6 +159,22 @@ function FilterChip({
 
 const PAGE_SIZE = HUB_DISPLAY_PAGE_SIZE;
 
+function toHubPageFilters(filters: EnrichmentHubFilterState): HubPageFilters {
+  return {
+    outcomeLabel: filters.outcomeLabel,
+    search: filters.search,
+    trashSuggestionsOnly: filters.trashSuggestionsOnly,
+  };
+}
+
+function hubFetchFiltersActive(filters: EnrichmentHubFilterState): boolean {
+  return (
+    filters.outcomeLabel !== 'all' ||
+    !!(filters.search ?? '').trim() ||
+    !!filters.trashSuggestionsOnly
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Module-level cache — survives component unmount/remount (tab switches).
 // Invalidated on enrichment/import/categorization data-change events.
@@ -169,7 +183,7 @@ type HubCache = {
   rows: EnrichmentHubRow[];
   totalInScope: number;
   chips: HubOutcomeChip[];
-  counts: Awaited<ReturnType<typeof loadEnrichmentHubIndex>>['counts'];
+  counts: Awaited<ReturnType<typeof fetchEnrichmentHubCounts>>['counts'];
   scopeProjectId: string;
   scopeCollectionId: string;
 };
@@ -177,6 +191,7 @@ let _hubCache: HubCache | null = null;
 
 export function invalidateHubCache(): void {
   _hubCache = null;
+  invalidateHubScopeCache();
 }
 
 function readHubCache(
@@ -199,6 +214,29 @@ const _hubCacheListeners = new Set<HubCacheListener>();
 function writeHubCache(cache: HubCache): void {
   _hubCache = cache;
   for (const listener of _hubCacheListeners) listener(cache);
+}
+
+function fetchHubCountsAndUpdateCache(
+  scope: Pick<HubCache, 'scopeProjectId' | 'scopeCollectionId'>,
+  pageSnapshot: Pick<HubCache, 'rows' | 'totalInScope'>,
+  opts?: {
+    search?: string;
+    onCounts?: (res: Awaited<ReturnType<typeof fetchEnrichmentHubCounts>>) => void;
+  }
+): void {
+  void fetchEnrichmentHubCounts(scope, opts?.search ?? '').then((countRes) => {
+    opts?.onCounts?.(countRes);
+    if (!(opts?.search ?? '').trim()) {
+      writeHubCache({
+        rows: pageSnapshot.rows,
+        totalInScope: pageSnapshot.totalInScope,
+        chips: countRes.chips,
+        counts: countRes.counts,
+        scopeProjectId: scope.scopeProjectId,
+        scopeCollectionId: scope.scopeCollectionId,
+      });
+    }
+  });
 }
 
 /** When prewarm finishes after Hub mounted, push rows into React state immediately. */
@@ -240,11 +278,15 @@ export function prewarmHubCache(
           totalInScope: pageRes.total,
           chips: [],
           // counts filled in later by the background counts fetch
-          counts: null as unknown as Awaited<ReturnType<typeof loadEnrichmentHubIndex>>['counts'],
+          counts: null as unknown as Awaited<ReturnType<typeof fetchEnrichmentHubCounts>>['counts'],
           scopeProjectId,
           scopeCollectionId,
         });
       }
+      fetchHubCountsAndUpdateCache(
+        { scopeProjectId, scopeCollectionId },
+        { rows: pageRes.rows, totalInScope: pageRes.total }
+      );
     } catch {
       // Non-fatal — hub will fetch normally on mount
     }
@@ -378,9 +420,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const [totalInScope, setTotalInScope] = useState(cachedOnMount?.totalInScope ?? 0);
   const [hubChips, setHubChips] = useState<HubOutcomeChip[]>(cachedOnMount?.chips ?? []);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hubIndexVersion, setHubIndexVersion] = useState(0);
-  const hubIndexRef = useRef<EnrichmentHubIndex | null>(null);
-  const [counts, setCounts] = useState<Awaited<ReturnType<typeof loadEnrichmentHubIndex>>['counts'] | null>(
+  const [counts, setCounts] = useState<Awaited<ReturnType<typeof fetchEnrichmentHubCounts>>['counts'] | null>(
     cachedOnMount?.counts ?? null
   );
   // If we have cached data, skip the initial loading spinner entirely
@@ -392,6 +432,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   );
   const [trashSuggestionsOnly, setTrashSuggestionsOnly] = useState(hubSaved.enrichmentTrashSuggestionsOnly);
   const [search, setSearch] = useState(hubSaved.enrichmentSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(hubSaved.enrichmentSearch);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectState, setInspectState] = useState<{ ids: string[]; index: number } | null>(null);
   /** Preserve list order + show rows that left the filter after hub actions until filters change. */
@@ -429,72 +470,65 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     });
   }, [hubLane, outcomeLabel, search, trashSuggestionsOnly]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const isProcessing = pipeline.isRunning;
 
   const hubFilters = useMemo<EnrichmentHubFilterState>(
     () => ({
       outcomeLabel,
-      search,
+      search: debouncedSearch,
       trashSuggestionsOnly,
     }),
-    [outcomeLabel, search, trashSuggestionsOnly]
+    [outcomeLabel, debouncedSearch, trashSuggestionsOnly]
   );
 
-  const hubListUsesFullIndex = useMemo(
-    () => outcomeLabel !== 'all' || !!search.trim() || trashSuggestionsOnly,
-    [outcomeLabel, search, trashSuggestionsOnly]
+  const hubFetchKey = useMemo(
+    () =>
+      JSON.stringify({
+        outcomeLabel,
+        trashSuggestionsOnly,
+        scopeProjectId,
+        scopeCollectionId,
+        search: debouncedSearch,
+      }),
+    [outcomeLabel, trashSuggestionsOnly, scopeProjectId, scopeCollectionId, debouncedSearch]
   );
 
   const loadPagedHub = useCallback(async () => {
     const scope = { scopeProjectId, scopeCollectionId };
+    const pageFilters = toHubPageFilters(hubFilters);
 
-    // Step 1: fetch first page immediately — this is fast (100-row SQL query)
     const pageRes = await fetchEnrichmentHubPage({
       ...scope,
       offset: 0,
       limit: HUB_RPC_PAGE_SIZE,
+      filters: pageFilters,
     });
     setRows(pageRes.rows);
     setTotalInScope(pageRes.total);
-    hubIndexRef.current = null;
 
-    // Step 2: kick off counts in background — full scan, can take >1s on large libs
-    // Don't await here; chips and counts fill in once the worker finishes
-    void fetchEnrichmentHubCounts(scope, search).then((countRes) => {
-      setCounts(countRes.counts);
-      setHubChips(countRes.chips);
-      // Write full cache only after counts are ready
-      if (!search.trim()) {
-        writeHubCache({
-          rows: pageRes.rows,
-          totalInScope: pageRes.total,
-          chips: countRes.chips,
-          counts: countRes.counts,
-          scopeProjectId,
-          scopeCollectionId,
-        });
+    fetchHubCountsAndUpdateCache(
+      scope,
+      { rows: pageRes.rows, totalInScope: pageRes.total },
+      {
+        search: hubFilters.search,
+        onCounts: (countRes) => {
+          setCounts(countRes.counts);
+          setHubChips(countRes.chips);
+        },
       }
-    });
+    );
 
     return pageRes.rows;
-  }, [scopeProjectId, scopeCollectionId, search]);
-
-  const rowsForCurrentView = useCallback(
-    (index: EnrichmentHubIndex): EnrichmentHubRow[] =>
-      materializeFilteredScopedHubRows(
-        index,
-        scopeProjectId,
-        scopeCollectionId,
-        collections,
-        hubFilters
-      ),
-    [scopeProjectId, scopeCollectionId, collections, hubFilters]
-  );
+  }, [scopeProjectId, scopeCollectionId, hubFilters]);
 
   const reload = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
     if (isRunningRef.current) return undefined;
     if (!opts?.force && Date.now() < skipHubReloadUntilRef.current) return undefined;
-    // If we have cached/existing rows, never show the full-page spinner — just a subtle refresh indicator
     const hasCachedRows = rows.length > 0;
     const silent = opts?.silent === true && hasCachedRows;
     if (!silent) {
@@ -502,22 +536,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       else setRefreshing(true);
     }
     try {
-      // Do not block the list on this — it loads the full pipeline catalog from tab
-      // memory (all items + enrichments + signals + links). Bookmarks never pay this cost.
       void getCategorizationQueueStats()
         .then((queueStats) => setTaxonomyLeafCount(queueStats?.leafCount ?? 0))
         .catch(() => {});
-
-      if (hubListUsesFullIndex) {
-        const hubResult = await loadEnrichmentHubIndex(itemsRef.current);
-        hubIndexRef.current = hubResult.index;
-        setCounts(hubResult.counts);
-        setHubIndexVersion((v) => v + 1);
-        const filtered = rowsForCurrentView(hubResult.index);
-        setRows(filtered);
-        setTotalInScope(filtered.length);
-        return filtered;
-      }
 
       const freshRows = await loadPagedHub();
       return freshRows;
@@ -525,18 +546,18 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       setInitialLoading(false);
       setRefreshing(false);
     }
-  }, [rows.length, hubListUsesFullIndex, rowsForCurrentView, loadPagedHub]);
+  }, [rows.length, loadPagedHub]);
 
   const filterSessionKey = useMemo(
     () =>
       JSON.stringify({
         outcomeLabel,
-        search,
+        search: debouncedSearch,
         trashSuggestionsOnly,
         scopeProjectId,
         scopeCollectionId,
       }),
-    [outcomeLabel, search, trashSuggestionsOnly, scopeProjectId, scopeCollectionId]
+    [outcomeLabel, debouncedSearch, trashSuggestionsOnly, scopeProjectId, scopeCollectionId]
   );
 
   const clearOutcomeFilter = useCallback(() => {
@@ -626,14 +647,31 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   }, [scopeProjectId, scopeCollectionId, applyModuleCache]);
 
   // Run once on mount.
-  // • Cache hit → data already visible (seeded in useState), skip reload.
-  // • Pre-warm in flight → wait; subscribe applies cache, else reload once.
+  // • Default All + cache hit → list visible instantly; skip reload.
+  // • Any active filter → worker fetch (cache is unfiltered first page only).
   useEffect(() => {
-    if (readHubCache(scopeProjectId, scopeCollectionId)) return;
+    const cached = readHubCache(scopeProjectId, scopeCollectionId);
+    const filtersActive = hubFetchFiltersActive(hubFilters);
+    if (cached) {
+      if (cached.chips.length === 0 || !cached.counts) {
+        fetchHubCountsAndUpdateCache(
+          { scopeProjectId, scopeCollectionId },
+          { rows: cached.rows, totalInScope: cached.totalInScope },
+          {
+            search: hubFilters.search,
+            onCounts: (countRes) => {
+              setCounts(countRes.counts);
+              setHubChips(countRes.chips);
+            },
+          }
+        );
+      }
+      if (!filtersActive) return;
+    }
     const prewarm = getHubPrewarmPromise();
-    if (prewarm) {
+    if (!cached && prewarm) {
       void prewarm.then(() => {
-        if (!readHubCache(scopeProjectId, scopeCollectionId)) void reload();
+        if (!readHubCache(scopeProjectId, scopeCollectionId) || filtersActive) void reload();
       });
       return;
     }
@@ -641,38 +679,28 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const prevHubFetchKeyRef = useRef(hubFetchKey);
   useEffect(() => {
-    const index = hubIndexRef.current;
-    if (!index || initialLoading || !hubListUsesFullIndex) return;
-    const filtered = materializeFilteredScopedHubRows(
-      index,
-      scopeProjectId,
-      scopeCollectionId,
-      collections,
-      hubFilters
-    );
-    setRows(filtered);
-    setTotalInScope(filtered.length);
-  }, [
-    hubListUsesFullIndex,
-    hubFilters,
-    scopeProjectId,
-    scopeCollectionId,
-    collections,
-    initialLoading,
-  ]);
+    if (prevHubFetchKeyRef.current === hubFetchKey) return;
+    prevHubFetchKeyRef.current = hubFetchKey;
+    void reload({ silent: rows.length > 0 && !hubFetchFiltersActive(hubFilters) });
+  }, [hubFetchKey, reload, rows.length, hubFilters]);
 
   /** Once after first load: clear persisted filter only if label no longer exists (not on every chip click). */
   useEffect(() => {
     if (initialLoading || validatedPersistedFilterRef.current) return;
     validatedPersistedFilterRef.current = true;
     if (outcomeLabel === 'all') return;
+    if (totalInScope === 0) {
+      setOutcomeLabel('all');
+      return;
+    }
     const scoped = rows.filter((row) =>
       itemMatchesScope(row.item, scopeProjectId, scopeCollectionId, collections)
     );
     const hasMatch = scoped.some((r) => r.meta.statusBadge.text === outcomeLabel);
     if (!hasMatch) setOutcomeLabel('all');
-  }, [initialLoading, rows, outcomeLabel, scopeProjectId, scopeCollectionId, collections]);
+  }, [initialLoading, rows, outcomeLabel, totalInScope, scopeProjectId, scopeCollectionId, collections]);
 
   const prevItemsLenRef = useRef(0);
   useEffect(() => {
@@ -756,12 +784,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     [tableRows, scopeProjectId, scopeCollectionId, collections]
   );
 
-  /** Scope + search only — chip counts stay fixed when a status or trash filter is active. */
-  const rowsForStatusCounts = useMemo(
-    () => applyEnrichmentHubFilters(scopedRows, { outcomeLabel: 'all', search }),
-    [scopedRows, search]
-  );
-
   const filteredRows = useMemo(
     () => applyEnrichmentHubFilters(scopedRows, hubFilters),
     [scopedRows, hubFilters]
@@ -840,18 +862,15 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     });
   }, [filteredRows, inspectState?.ids, recentUpdateIds]);
 
-  const scopedBookmarkTotal = totalInScope;
-
   const hasMoreToShow =
-    tableRowsForList.length > pageLimit ||
-    (!hubListUsesFullIndex && rows.length < totalInScope);
+    tableRowsForList.length > pageLimit || rows.length < totalInScope;
   const showMoreRemaining =
     Math.max(0, tableRowsForList.length - pageLimit) +
-    (!hubListUsesFullIndex && rows.length < totalInScope ? totalInScope - rows.length : 0);
+    (rows.length < totalInScope ? totalInScope - rows.length : 0);
 
   const handleShowMore = useCallback(() => {
     const nextPageLimit = pageLimit + PAGE_SIZE;
-    if (hubListUsesFullIndex || nextPageLimit <= rows.length) {
+    if (nextPageLimit <= rows.length) {
       setPageLimit(nextPageLimit);
       return;
     }
@@ -865,26 +884,24 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       scopeCollectionId,
       offset: rows.length,
       limit: HUB_RPC_PAGE_SIZE,
+      filters: toHubPageFilters(hubFilters),
     })
       .then((page) => {
         setRows((prev) => [...prev, ...page.rows]);
         setPageLimit(nextPageLimit);
       })
       .finally(() => setLoadingMore(false));
-  }, [pageLimit, hubListUsesFullIndex, rows.length, totalInScope, scopeProjectId, scopeCollectionId]);
+  }, [pageLimit, rows.length, totalInScope, scopeProjectId, scopeCollectionId, hubFilters]);
 
-  const statusBarChips = useMemo(() => {
-    if (!hubListUsesFullIndex) return hubChips;
-    const index = hubIndexRef.current;
-    if (!index) return hubChips;
-    return buildHubOutcomeChipsForScope(
-      index,
-      scopeProjectId,
-      scopeCollectionId,
-      collections,
-      search
-    );
-  }, [hubListUsesFullIndex, hubChips, hubIndexVersion, scopeProjectId, scopeCollectionId, collections, search]);
+  const statusBarChips = hubChips;
+
+  const allChipCount = useMemo(() => {
+    if (trashSuggestionsOnly) return trashSuggestionRows.length;
+    if (hubFetchFiltersActive(hubFilters)) {
+      return hubChips.reduce((sum, chip) => sum + chip.count, 0);
+    }
+    return totalInScope;
+  }, [trashSuggestionsOnly, trashSuggestionRows.length, hubFilters, hubChips, totalInScope]);
 
   const toggleSelect = (id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -1266,7 +1283,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         >
           <SummaryChip
             label="All"
-            count={rowsForStatusCounts.length}
+            count={allChipCount}
             active={outcomeLabel === 'all' && !trashSuggestionsOnly}
             color={PIPELINE_STATE_COLORS.neutral}
             onClick={clearHubFilters}
@@ -1440,11 +1457,12 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             }}
           />
         </div>
-        {outcomeLabel !== 'all' || trashSuggestionsOnly ? (
+        {outcomeLabel !== 'all' || trashSuggestionsOnly || debouncedSearch.trim() ? (
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-            Showing {filteredRows.length} of {rowsForStatusCounts.length}
+            Showing {Math.min(pageLimit, tableRowsForList.length)} of {totalInScope}
             {outcomeLabel !== 'all' ? ` · ${outcomeLabel}` : ''}
             {trashSuggestionsOnly ? ' · trash suggestions' : ''}
+            {debouncedSearch.trim() ? ` · search "${debouncedSearch.trim()}"` : ''}
           </span>
         ) : null}
       </div>
@@ -1876,18 +1894,12 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
       <div style={{ marginTop: 12, fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
         Showing {Math.min(pageLimit, tableRowsForList.length)} of {tableRowsForList.length} in view
-        {!hubListUsesFullIndex && scopedBookmarkTotal > rows.length ? (
-          <> · {rows.length} loaded of {scopedBookmarkTotal} in scope</>
+        {rows.length < totalInScope ? (
+          <> · {rows.length} loaded of {totalInScope} matching</>
         ) : null}
         {loadingMore ? ' · loading more…' : null}
         {recentUpdateIds.length > 0
           ? ` · ${recentUpdateIds.length} just updated (shown until you change filters)`
-          : ''}
-        {filteredRows.length !== tableRowsForList.length
-          ? ` · ${filteredRows.length} match current filters`
-          : ''}
-        {filteredRows.length !== scopedRows.length
-          ? ` (${scopedRows.length} in scope)`
           : ''}
         {counts && counts.failed > 0 ? (
           <> · {counts.failed} enrich failures in library</>

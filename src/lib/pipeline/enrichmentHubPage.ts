@@ -8,15 +8,29 @@ import {
   type EnrichmentHubRow,
   type HubOutcomeChip,
 } from './pipelineHubQueries';
-import type { HubEnrichmentPageResult, HubScopeParams } from './enrichmentHubWorkerLogic';
-import { runHubEnrichmentCounts, runHubEnrichmentPage } from './enrichmentHubWorkerLogic';
+import type { HubEnrichmentPageResult, HubPageFilters, HubScopeParams } from './enrichmentHubWorkerLogic';
+import {
+  invalidateHubScopeEntryCache,
+  runHubEnrichmentCounts,
+  runHubEnrichmentPage,
+} from './enrichmentHubWorkerLogic';
 
 export const HUB_RPC_PAGE_SIZE = 100;
 
 export type FetchHubPageOpts = HubScopeParams & {
   offset: number;
   limit?: number;
+  filters?: HubPageFilters;
 };
+
+function toRpcFilters(filters?: HubPageFilters): HubPageFilters | undefined {
+  if (!filters) return undefined;
+  return {
+    outcomeLabel: filters.outcomeLabel ?? 'all',
+    search: filters.search ?? '',
+    trashSuggestionsOnly: !!filters.trashSuggestionsOnly,
+  };
+}
 
 function buildRowsFromPageData(data: HubEnrichmentPageResult): EnrichmentHubRow[] {
   const enrichMap = new Map(data.enrichments.map((e) => [e.itemId, e]));
@@ -45,10 +59,11 @@ export async function fetchEnrichmentHubPage(
     scopeProjectId: opts.scopeProjectId,
     scopeCollectionId: opts.scopeCollectionId,
   };
+  const filters = toRpcFilters(opts.filters);
 
   if (isDbWorkerProcess()) {
     const store = await getDB();
-    const data = runHubEnrichmentPage(store, opts.offset, limit, scope);
+    const data = runHubEnrichmentPage(store, opts.offset, limit, scope, filters);
     return { rows: buildRowsFromPageData(data), total: data.total, done: data.done };
   }
 
@@ -56,6 +71,7 @@ export async function fetchEnrichmentHubPage(
     opts.offset,
     limit,
     scope,
+    filters ?? null,
   ]);
   return { rows: buildRowsFromPageData(data), total: data.total, done: data.done };
 }
@@ -70,4 +86,13 @@ export async function fetchEnrichmentHubCounts(
     return runHubEnrichmentCounts(store, scope, search);
   }
   return dbRpc('hubEnrichmentCounts', [scope, search ?? '']);
+}
+
+/** Clear worker meta cache (after enrichment/import mutations). */
+export function invalidateHubScopeCache(): void {
+  if (isDbWorkerProcess()) {
+    invalidateHubScopeEntryCache();
+    return;
+  }
+  void dbRpc('hubInvalidateScopeCache', []);
 }
