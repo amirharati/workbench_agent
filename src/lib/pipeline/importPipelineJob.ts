@@ -5,16 +5,18 @@ import {
 } from '../backupFolder';
 import { loadPipelineMaintenanceSnapshot } from './pipelineMaintenanceSnapshot';
 
-/** When true, Import Studio ≥96 digest and dashboard Resume use the wave runner. */
+/** When true, Import Studio and dashboard Resume use the scoped wave runner. */
 export const IMPORT_WAVE_PIPELINE_ENABLED = true;
 
 /** Beside workbench.sqlite in the backup folder. */
 export const IMPORT_PIPELINE_JOB_FILE = 'import-pipeline-job.json';
+/** Compact timing summary for dogfood comparisons (wave path only). */
+export const SCOPED_PIPELINE_RUN_LATEST = 'scoped-pipeline-run-latest.json';
 export const IMPORT_PIPELINE_JOB_VERSION = 1 as const;
 /** 96 = 3× embed/discover MAP batch size (32; see EMBED_BATCH_SIZE, DEFAULT_DISCOVER_BATCH_SIZE). */
 export const IMPORT_PIPELINE_WAVE_SIZE = 96;
-/** Minimum |itemIds| to create a scoped pipeline job file (import commit or future Hub batch). */
-export const SCOPED_PIPELINE_JOB_THRESHOLD = IMPORT_PIPELINE_WAVE_SIZE;
+/** Minimum |itemIds| to create a scoped pipeline job file (Import Studio: any non-empty batch). */
+export const SCOPED_PIPELINE_JOB_THRESHOLD = 1;
 
 export function shouldCreateScopedPipelineJob(itemIds: string[]): boolean {
   return itemIds.length >= SCOPED_PIPELINE_JOB_THRESHOLD;
@@ -35,6 +37,12 @@ export async function preflightImportPipelineStart(): Promise<ImportPipelinePref
   return { ok: true };
 }
 
+export type ImportPipelineWaveCheckpoint = {
+  waveIndex: number;
+  completedCount: number;
+  at: number;
+};
+
 export type ImportPipelineJob = {
   version: 1;
   importRunId: string;
@@ -48,6 +56,28 @@ export type ImportPipelineJob = {
   lastError: string | null;
   createdAt: number;
   updatedAt: number;
+  /** Set when runScopedPipelineJob starts — absent on commit-only job files. */
+  runner?: 'scoped_wave' | null;
+  /** Wall-clock start of the active wave run (preserved across resume). */
+  startedAt?: number | null;
+  finishedAt?: number | null;
+  durationMs?: number | null;
+  waveCheckpoints?: ImportPipelineWaveCheckpoint[];
+};
+
+export type ScopedPipelineRunSummary = {
+  runner: 'scoped_wave';
+  importRunId: string;
+  scopeCount: number;
+  waveSize: number;
+  waveCount: number;
+  status: ImportPipelineJobStatus;
+  startedAt: number;
+  finishedAt: number;
+  durationMs: number;
+  completedCount: number;
+  waveCheckpoints: ImportPipelineWaveCheckpoint[];
+  lastError: string | null;
 };
 
 const STATUSES: readonly ImportPipelineJobStatus[] = [
@@ -67,6 +97,51 @@ function isStringArray(value: unknown): value is string[] {
 
 function isStatus(value: unknown): value is ImportPipelineJobStatus {
   return typeof value === 'string' && (STATUSES as readonly string[]).includes(value);
+}
+
+function parseOptionalMs(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return undefined;
+}
+
+function parseWaveCheckpoints(value: unknown): ImportPipelineWaveCheckpoint[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: ImportPipelineWaveCheckpoint[] = [];
+  for (const row of value) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    if (typeof r.waveIndex !== 'number' || !Number.isFinite(r.waveIndex)) continue;
+    if (typeof r.completedCount !== 'number' || !Number.isFinite(r.completedCount)) continue;
+    if (typeof r.at !== 'number' || !Number.isFinite(r.at)) continue;
+    out.push({
+      waveIndex: Math.floor(r.waveIndex),
+      completedCount: Math.floor(r.completedCount),
+      at: r.at,
+    });
+  }
+  return out.length ? out : undefined;
+}
+
+function parseOptionalTimingFields(o: Record<string, unknown>): Pick<
+  ImportPipelineJob,
+  'runner' | 'startedAt' | 'finishedAt' | 'durationMs' | 'waveCheckpoints'
+> {
+  const runner = o.runner === 'scoped_wave' ? 'scoped_wave' : o.runner === null ? null : undefined;
+  return {
+    runner,
+    startedAt: parseOptionalMs(o.startedAt),
+    finishedAt: parseOptionalMs(o.finishedAt),
+    durationMs: parseOptionalMs(o.durationMs),
+    waveCheckpoints: parseWaveCheckpoints(o.waveCheckpoints),
+  };
+}
+
+export function formatPipelineDurationMs(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return '';
+  const min = ms / 60_000;
+  if (min < 1) return `${Math.round(ms / 1000)}s`;
+  return `${min.toFixed(1)} min`;
 }
 
 export function parseImportPipelineJob(raw: unknown): ImportPipelineJob | null {
@@ -102,6 +177,7 @@ export function parseImportPipelineJob(raw: unknown): ImportPipelineJob | null {
     lastError: o.lastError,
     createdAt: o.createdAt,
     updatedAt: o.updatedAt,
+    ...parseOptionalTimingFields(o),
   };
 }
 
@@ -118,7 +194,7 @@ export function createImportPipelineJob(
     version: IMPORT_PIPELINE_JOB_VERSION,
     importRunId: opts?.importRunId?.trim() || crypto.randomUUID(),
     itemIds: scope,
-    waveSize: opts?.waveSize ?? IMPORT_PIPELINE_WAVE_SIZE,
+    waveSize: opts?.waveSize ?? Math.min(IMPORT_PIPELINE_WAVE_SIZE, scope.length),
     waveIndex: 0,
     status: 'paused',
     completedItemIds: [],
@@ -152,8 +228,24 @@ function normalizeJobForWrite(job: ImportPipelineJob): ImportPipelineJob {
     completedItemIds: dedupeStrings(parsed.completedItemIds),
     pendingEnrich: dedupeStrings(parsed.pendingEnrich),
     pendingDownstream: dedupeStrings(parsed.pendingDownstream),
+    runner: job.runner ?? parsed.runner,
+    startedAt: job.startedAt !== undefined ? job.startedAt : parsed.startedAt,
+    finishedAt: job.finishedAt !== undefined ? job.finishedAt : parsed.finishedAt,
+    durationMs: job.durationMs !== undefined ? job.durationMs : parsed.durationMs,
+    waveCheckpoints: job.waveCheckpoints ?? parsed.waveCheckpoints,
     updatedAt: Date.now(),
   };
+}
+
+export async function writeScopedPipelineRunSummary(
+  summary: ScopedPipelineRunSummary
+): Promise<void> {
+  await requireWritableBackupFolder();
+  const json = JSON.stringify(summary, null, 2);
+  const res = await writeJsonToBackupFolder(SCOPED_PIPELINE_RUN_LATEST, json);
+  if (!res.ok) {
+    console.warn('[scoped-pipeline] could not write run summary:', res.error);
+  }
 }
 
 export async function writeImportPipelineJob(job: ImportPipelineJob): Promise<void> {
@@ -196,11 +288,16 @@ export async function resumeImportPipelineJobStub(
   }
   try {
     const { runScopedPipelineJob } = await import('./scopedPipelineJobRunner');
-    const result = await runScopedPipelineJob(job);
+    const { job: result } = await runScopedPipelineJob(job);
+    const dur = formatPipelineDurationMs(result.durationMs);
+    const durSuffix = dur ? ` in ${dur}` : '';
     if (result.status === 'completed') {
-      addToast({ type: 'info', message: `Pipeline run completed — ${result.completedItemIds.length} items processed.` });
+      addToast({
+        type: 'info',
+        message: `Pipeline run completed — ${result.completedItemIds.length} items processed${durSuffix}.`,
+      });
     } else if (result.lastError && result.lastError !== 'Cancelled') {
-      addToast({ type: 'error', message: `Pipeline paused: ${result.lastError}` });
+      addToast({ type: 'error', message: `Pipeline paused: ${result.lastError}${durSuffix}` });
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Pipeline run failed';

@@ -1109,9 +1109,6 @@ function scoreForSmart(item: Item, enrichment?: ItemEnrichment): number {
 export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<EnrichBatchResult> {
   const runId = crypto.randomUUID();
   const mode = options.mode ?? 'smart';
-  const cap =
-    options.maxItems ??
-    (mode === 'full' ? ENRICHMENT_DEFAULTS.fullCap : ENRICHMENT_DEFAULTS.smartCap);
 
   let items = await resolveBatchItems(options);
   const enrichmentMap = new Map(
@@ -1130,7 +1127,10 @@ export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<Enr
       .map(({ item }) => item);
   }
 
-  items = items.slice(0, cap);
+  // Process full resolved scope unless caller passes maxItems (no default cap).
+  if (options.maxItems != null && options.maxItems >= 0) {
+    items = items.slice(0, options.maxItems);
+  }
 
   let processed = 0;
   let skipped = 0;

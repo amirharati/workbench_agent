@@ -13,6 +13,7 @@ import {
 } from './taxonomyCatalog';
 import {
   detectLinkQualityFromItem,
+  fetchAttemptedForLinkQuality,
   findLinkQualityCategory,
   isLinkQualityLeafId,
   classifyStateForLinkQualityLeaf,
@@ -237,6 +238,10 @@ function linkQualityInputFor(
     quotedText: enrichment?.quotedText,
     eligibilityReason: extra?.eligibilityReason,
     llmReason: extra?.llmReason,
+    enrichmentStatus: enrichment?.status,
+    lastErrorDetail: enrichment?.lastErrorDetail,
+    snippet: enrichment?.snippet,
+    hasRawBody: enrichment?.hasRawBody,
   };
 }
 
@@ -1301,9 +1306,12 @@ export async function classifyIncremental(
     const primaryId = primaryCategoryByItem.get(item.id);
 
     if (!built.eligible || !built.batch) {
-      const lq = detectLinkQualityFromItem(item, enrichment, {
-        eligibilityReason: built.eligibilityReason,
-      });
+      const lq =
+        fetchAttemptedForLinkQuality(enrichment)
+          ? detectLinkQualityFromItem(item, enrichment, {
+              eligibilityReason: built.eligibilityReason,
+            })
+          : null;
       const lqLeaf = lq ? findLinkQualityCategory(categories, lq.leafId) : undefined;
       const lqInput = linkQualityInputFor(item, enrichment, {
         eligibilityReason: built.eligibilityReason,

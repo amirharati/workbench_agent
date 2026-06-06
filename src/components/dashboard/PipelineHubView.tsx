@@ -175,6 +175,37 @@ function hubFetchFiltersActive(filters: EnrichmentHubFilterState): boolean {
   );
 }
 
+function computeHubTableRowsForList(
+  rows: EnrichmentHubRow[],
+  collections: Collection[],
+  scopeProjectId: string | 'all' | undefined,
+  scopeCollectionId: string | 'all' | undefined,
+  hubFilters: EnrichmentHubFilterState,
+  statusFilterActive: boolean,
+  displayOrderIds: string[] | null,
+  recentUpdateIdSet: ReadonlySet<string>
+): EnrichmentHubRow[] {
+  const scopedRows = rows.filter((row) =>
+    itemMatchesScope(
+      row.item,
+      scopeProjectId ?? 'all',
+      scopeCollectionId ?? 'all',
+      collections
+    )
+  );
+  const filteredRows = applyEnrichmentHubFilters(scopedRows, hubFilters);
+  if (statusFilterActive) {
+    return filteredRows;
+  }
+  return buildDisplayListWithRecentHolds(
+    filteredRows,
+    displayOrderIds,
+    recentUpdateIdSet,
+    scopedRows,
+    rows
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Module-level cache — survives component unmount/remount (tab switches).
 // Invalidated on enrichment/import/categorization data-change events.
@@ -444,6 +475,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const [trashConfirmIds, setTrashConfirmIds] = useState<string[] | null>(null);
   const [frozenRows, setFrozenRows] = useState<EnrichmentHubRow[] | null>(null);
   const [pageLimit, setPageLimit] = useState(PAGE_SIZE);
+  const [selectingAllInScope, setSelectingAllInScope] = useState(false);
   const wasProcessingRef = useRef(false);
   const isRunningRef = useRef(pipeline.isRunning);
   const tableRowsForListRef = useRef<EnrichmentHubRow[]>([]);
@@ -796,25 +828,29 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
   const statusFilterActive = outcomeLabel !== 'all' || trashSuggestionsOnly;
 
-  const tableRowsForList = useMemo(() => {
-    if (statusFilterActive) {
-      return filteredRows;
-    }
-    return buildDisplayListWithRecentHolds(
-      filteredRows,
+  const tableRowsForList = useMemo(
+    () =>
+      computeHubTableRowsForList(
+        rows,
+        collections,
+        scopeProjectId,
+        scopeCollectionId,
+        hubFilters,
+        statusFilterActive,
+        displayOrderIds,
+        recentUpdateIdSet
+      ),
+    [
+      rows,
+      collections,
+      scopeProjectId,
+      scopeCollectionId,
+      hubFilters,
+      statusFilterActive,
       displayOrderIds,
       recentUpdateIdSet,
-      scopedRows,
-      rows
-    );
-  }, [
-    filteredRows,
-    displayOrderIds,
-    recentUpdateIdSet,
-    scopedRows,
-    rows,
-    statusFilterActive,
-  ]);
+    ]
+  );
 
   tableRowsForListRef.current = tableRowsForList;
 
@@ -912,18 +948,69 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     });
   };
 
-  const toggleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(new Set(tableRowsForList.map((r) => r.item.id)));
-    } else {
-      setSelectedIds(new Set());
+  const selectionScopeCount = useMemo(() => {
+    if (trashSuggestionsOnly) return trashSuggestionRows.length;
+    return totalInScope;
+  }, [trashSuggestionsOnly, trashSuggestionRows.length, totalInScope]);
+
+  const ensureAllHubRowsLoaded = useCallback(async (): Promise<EnrichmentHubRow[]> => {
+    if (rows.length >= totalInScope) return rows;
+    let accumulated = rows;
+    let total = totalInScope;
+    while (accumulated.length < total) {
+      const page = await fetchEnrichmentHubPage({
+        scopeProjectId,
+        scopeCollectionId,
+        offset: accumulated.length,
+        limit: HUB_RPC_PAGE_SIZE,
+        filters: toHubPageFilters(hubFilters),
+      });
+      if (page.rows.length === 0) break;
+      accumulated = [...accumulated, ...page.rows];
+      total = page.total;
     }
+    if (accumulated.length !== rows.length) {
+      setRows(accumulated);
+      setTotalInScope(total);
+      setPageLimit((prev) => Math.max(prev, accumulated.length));
+    }
+    return accumulated;
+  }, [rows, totalInScope, scopeProjectId, scopeCollectionId, hubFilters]);
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (!checked) {
+      setSelectedIds(new Set());
+      return;
+    }
+    void (async () => {
+      setSelectingAllInScope(true);
+      try {
+        const loaded = await ensureAllHubRowsLoaded();
+        const list = computeHubTableRowsForList(
+          loaded,
+          collections,
+          scopeProjectId,
+          scopeCollectionId,
+          hubFilters,
+          statusFilterActive,
+          displayOrderIds,
+          recentUpdateIdSet
+        );
+        setSelectedIds(new Set(list.map((r) => r.item.id)));
+      } finally {
+        setSelectingAllInScope(false);
+      }
+    })();
   };
 
-  const getOrderedSelectedIds = useCallback(
-    () => tableRowsForList.filter((r) => selectedIds.has(r.item.id)).map((r) => r.item.id),
-    [tableRowsForList, selectedIds]
-  );
+  const getOrderedSelectedIds = useCallback(() => {
+    const ordered = tableRowsForList
+      .filter((r) => selectedIds.has(r.item.id))
+      .map((r) => r.item.id);
+    if (ordered.length === selectedIds.size) return ordered;
+    const inTable = new Set(ordered);
+    return [...ordered, ...[...selectedIds].filter((id) => !inTable.has(id))];
+  }, [tableRowsForList, selectedIds]);
 
   const selectedHubRows = useMemo(
     () => tableRowsForList.filter((r) => selectedIds.has(r.item.id)),
@@ -1077,8 +1164,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   };
 
   const allSelected =
-    tableRowsForList.length > 0 &&
-    tableRowsForList.every((r) => selectedIds.has(r.item.id));
+    selectionScopeCount > 0 && selectedIds.size === selectionScopeCount;
 
   const closeInspect = useCallback(() => {
     setInspectState(null);
@@ -1626,12 +1712,20 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           }}
         >
           <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={(e) => toggleSelectAll(e.target.checked)}
-              aria-label="Select all"
-            />
+            {selectingAllInScope ? (
+              <Loader2 size={14} className="spin" aria-label="Selecting all in scope" />
+            ) : (
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) => toggleSelectAll(e.target.checked)}
+                aria-label={
+                  selectionScopeCount > tableRowsForList.length
+                    ? `Select all ${selectionScopeCount} in scope`
+                    : 'Select all'
+                }
+              />
+            )}
           </label>
           <span>Title</span>
           <span>Status</span>

@@ -5,6 +5,9 @@
  * Each wave = embed + classifyIncremental (autoDiscover: false). No discoverBatch.
  */
 import { classifyIncremental } from '../categorization';
+import { mergeTopicClassifySummaries } from '../categorization/classifyPolicy';
+import type { TopicClassifySummary } from '../categorization/types';
+import type { EnrichmentResult } from '../enrichment';
 import { notifyDataChanged } from '../dataChangeNotifier';
 import { commitPendingDbWrites, refreshPipelineCacheFromWorker } from '../db';
 import { enrichBatch, getAllEnrichments } from '../enrichment';
@@ -12,10 +15,14 @@ import {
   prepBatchPipelineItems,
   runEnrichmentBatchPostProcess,
 } from './batchPostProcess';
+import { fetchAttemptedForLinkQuality } from '../categorization/linkQuality';
+import { isDownstreamClassifyEligible } from './downstreamEligible';
 import {
   type ImportPipelineJob,
+  type ImportPipelineWaveCheckpoint,
   preflightImportPipelineStart,
   writeImportPipelineJob,
+  writeScopedPipelineRunSummary,
 } from './importPipelineJob';
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -33,6 +40,20 @@ export type ScopedPipelineJobProgress = {
 export type RunScopedPipelineJobOptions = {
   signal?: AbortSignal;
   onProgress?: (p: ScopedPipelineJobProgress) => void;
+  forceEnrich?: boolean;
+  forceReclassify?: boolean;
+  skipAi?: boolean;
+  refetchCompare?: boolean;
+  collectItemResults?: boolean;
+};
+
+export type ScopedPipelineJobOutcome = {
+  job: ImportPipelineJob;
+  classifySummary?: TopicClassifySummary;
+  itemEnrichResults?: EnrichmentResult[];
+  enriched: number;
+  skipped: number;
+  failed: number;
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -46,7 +67,7 @@ function estimateWaveTotal(remainingScope: number, waveSize: number): number {
 }
 
 /**
- * Scan DB and add any scope ids with aiStatus === 'ok' that are not yet in
+ * Scan DB and add scope ids eligible for downstream classify that are not yet in
  * completedSet or readySet. Returns true when at least one id was added.
  * Re-queries on each call — do not rely solely on in-memory state (resume safety).
  */
@@ -60,7 +81,7 @@ async function pollEnrichReady(
   let added = false;
   for (const id of scopeIds) {
     if (completedSet.has(id) || readySet.has(id)) continue;
-    if (byId.get(id)?.aiStatus === 'ok') {
+    if (isDownstreamClassifyEligible(byId.get(id))) {
       readySet.add(id);
       added = true;
     }
@@ -95,21 +116,27 @@ function takeScopedWave(
  */
 export async function runWaveDownstream(
   waveIds: string[],
-  signal?: AbortSignal
-): Promise<void> {
-  if (waveIds.length === 0) return;
+  opts?: {
+    signal?: AbortSignal;
+    forceReclassify?: boolean;
+  }
+): Promise<TopicClassifySummary | undefined> {
+  const signal = opts?.signal;
+  if (waveIds.length === 0) return undefined;
   await runEnrichmentBatchPostProcess(waveIds);
-  if (signal?.aborted) return;
-  await classifyIncremental({
+  if (signal?.aborted) return undefined;
+  const classifyResult = await classifyIncremental({
     itemIds: waveIds,
     maxItems: waveIds.length,
     autoDiscover: false,
+    forceReclassify: opts?.forceReclassify,
     signal,
   });
   await commitPendingDbWrites();
   await refreshPipelineCacheFromWorker();
   notifyDataChanged('enrichment.update');
   notifyDataChanged('categorization.update');
+  return classifyResult.summary;
 }
 
 // ── Orchestrator ──────────────────────────────────────────────────────────────
@@ -120,17 +147,22 @@ export async function runWaveDownstream(
  * Algorithm:
  * 1. Preflight + prepBatchPipelineItems.
  * 2. Start enrichBatch (deferPostProcess:true) on remaining un-enriched scope ids.
- * 3. Poll DB in a loop; when ≥ waveSize ids are aiStatus=ok, classify that slice.
- * 4. After enrich settles, tail-flush any remaining scope ids (failed/skipped go
- *    through downstream too; classify skips ineligible ones).
+ * 3. Poll DB in a loop; when ≥ waveSize ids are downstream-eligible, classify that slice.
+ * 4. After enrich settles, tail-flush eligible ids through embed+classify; ineligible
+ *    ids are marked completed without downstream (same gating as runItemPipeline).
  * 5. Checkpoint job file after every wave (waveIndex, completedItemIds, status).
  * 6. Resume: caller passes job loaded from disk; completedItemIds are skipped.
  */
 export async function runScopedPipelineJob(
   job: ImportPipelineJob,
   options: RunScopedPipelineJobOptions = {}
-): Promise<ImportPipelineJob> {
+): Promise<ScopedPipelineJobOutcome> {
   const { signal, onProgress } = options;
+  let classifySummary: TopicClassifySummary | undefined;
+  let itemEnrichResults: EnrichmentResult[] | undefined;
+  let enriched = 0;
+  let skipped = 0;
+  let failed = 0;
 
   const report = (
     phase: ScopedPipelineJobProgress['phase'],
@@ -149,13 +181,13 @@ export async function runScopedPipelineJob(
       lastError: pre.reason ?? 'Preflight failed',
     };
     await writeImportPipelineJob(errorJob);
-    return errorJob;
+    return { job: errorJob, enriched: 0, skipped: 0, failed: 0 };
   }
 
   if (signal?.aborted) {
     const cancelled: ImportPipelineJob = { ...job, status: 'paused', lastError: 'Cancelled' };
     await writeImportPipelineJob(cancelled);
-    return cancelled;
+    return { job: cancelled, enriched: 0, skipped: 0, failed: 0 };
   }
 
   // ── Prep ──
@@ -163,8 +195,25 @@ export async function runScopedPipelineJob(
   report('prep', 'Preparing pipeline…', job.waveIndex, estimateWaveTotal(job.itemIds.length, waveSize));
   await prepBatchPipelineItems(job.itemIds, { queueClassify: true });
 
-  // Mark running
-  const currentJob: ImportPipelineJob = { ...job, status: 'running', lastError: null };
+  // Mark running — runner fingerprint + wall-clock start (preserved on resume)
+  const runStartedAt = job.startedAt ?? Date.now();
+  const currentJob: ImportPipelineJob = {
+    ...job,
+    status: 'running',
+    lastError: null,
+    runner: 'scoped_wave',
+    startedAt: runStartedAt,
+    finishedAt: null,
+    durationMs: null,
+    waveCheckpoints: job.waveCheckpoints ?? [],
+  };
+  console.info('[scoped-pipeline-job] start', {
+    scope: currentJob.itemIds.length,
+    waveSize: currentJob.waveSize,
+    resumed: currentJob.completedItemIds.length,
+    waveIndex: currentJob.waveIndex,
+    startedAt: new Date(runStartedAt).toISOString(),
+  });
   await writeImportPipelineJob(currentJob);
 
   // ── Mutable state ──
@@ -187,13 +236,31 @@ export async function runScopedPipelineJob(
   const scopeWaveTotal = () =>
     estimateWaveTotal(currentJob.itemIds.length - completedSet.size, waveSize);
 
+  const waveCheckpoints: ImportPipelineWaveCheckpoint[] = [...(currentJob.waveCheckpoints ?? [])];
+
   // Checkpoint — persist after every downstream wave
-  const checkpoint = async () => {
+  const checkpoint = async (waveJustFinished?: number) => {
     currentJob.waveIndex = waveIndex;
     currentJob.completedItemIds = [...completedSet];
     currentJob.pendingDownstream = currentJob.itemIds.filter(
       (id) => readySet.has(id) && !completedSet.has(id)
     );
+    if (waveJustFinished != null) {
+      const entry: ImportPipelineWaveCheckpoint = {
+        waveIndex: waveJustFinished,
+        completedCount: completedSet.size,
+        at: Date.now(),
+      };
+      waveCheckpoints.push(entry);
+      currentJob.waveCheckpoints = waveCheckpoints;
+      const elapsed = entry.at - runStartedAt;
+      console.info('[scoped-pipeline-job] wave checkpoint', {
+        waveIndex: entry.waveIndex,
+        completedCount: entry.completedCount,
+        elapsedMs: elapsed,
+        elapsedMin: (elapsed / 60_000).toFixed(1),
+      });
+    }
     await writeImportPipelineJob(currentJob);
   };
 
@@ -205,13 +272,22 @@ export async function runScopedPipelineJob(
       waveIndex,
       scopeWaveTotal()
     );
-    await runWaveDownstream(waveIds, signal);
+    const waveSummary = await runWaveDownstream(waveIds, {
+      signal,
+      forceReclassify: options.forceReclassify,
+    });
+    if (waveSummary) {
+      classifySummary = classifySummary
+        ? mergeTopicClassifySummaries(classifySummary, waveSummary)
+        : waveSummary;
+    }
     for (const id of waveIds) {
       completedSet.add(id);
       readySet.delete(id);
     }
+    const finishedWave = waveIndex + 1;
     waveIndex++;
-    await checkpoint();
+    await checkpoint(finishedWave);
   };
 
   // ── Overlap: start enrichBatch, poll + classify in parallel ──
@@ -224,11 +300,14 @@ export async function runScopedPipelineJob(
       return;
     }
     try {
-      await enrichBatch({
+      const enrichResult = await enrichBatch({
         mode: 'full',
         itemIds: remainingEnrich,
         deferPostProcess: true,
-        force: false,
+        force: options.forceEnrich === true,
+        skipAi: options.skipAi,
+        refetchCompare: options.refetchCompare,
+        collectItemResults: options.collectItemResults,
         signal,
         onProgress: (p) => {
           enrichProcessed = p.processed + p.skipped + p.failed;
@@ -241,6 +320,12 @@ export async function runScopedPipelineJob(
           );
         },
       });
+      enriched = enrichResult.processed;
+      skipped = enrichResult.skipped;
+      failed = enrichResult.failed;
+      if (options.collectItemResults) {
+        itemEnrichResults = enrichResult.itemResults;
+      }
     } catch (e) {
       enrichError = e;
     } finally {
@@ -278,12 +363,30 @@ export async function runScopedPipelineJob(
       if (signal?.aborted) break;
 
       if (enrichSettled) {
-        // Tail flush: include ALL remaining scope ids (enrich-failed / skipped)
-        // classify will skip ineligible ones; marking all completed prevents infinite retry
-        for (const id of currentJob.itemIds) {
-          if (!completedSet.has(id)) readySet.add(id);
+        await commitPendingDbWrites();
+        await refreshPipelineCacheFromWorker();
+        await pollEnrichReady(currentJob.itemIds, completedSet, readySet);
+
+        while (readySet.size >= waveSize) {
+          if (signal?.aborted) break;
+          const waveIds = takeScopedWave(currentJob.itemIds, readySet, waveSize);
+          await runWave(waveIds);
         }
-        // Flush in waveSize chunks for granular checkpointing
+
+        const enrichById = new Map((await getAllEnrichments()).map((e) => [e.itemId, e]));
+        for (const id of currentJob.itemIds) {
+          if (completedSet.has(id) || readySet.has(id)) continue;
+          const enrichment = enrichById.get(id);
+          if (!fetchAttemptedForLinkQuality(enrichment)) {
+            // Never enriched — leave incomplete for resume.
+            continue;
+          }
+          if (!isDownstreamClassifyEligible(enrichment)) {
+            completedSet.add(id);
+          } else {
+            readySet.add(id);
+          }
+        }
         while (readySet.size > 0) {
           if (signal?.aborted) break;
           const count = Math.min(waveSize, readySet.size);
@@ -326,13 +429,56 @@ export async function runScopedPipelineJob(
   currentJob.completedItemIds = [...completedSet];
   currentJob.waveIndex = waveIndex;
   currentJob.pendingDownstream = [];
+  currentJob.waveCheckpoints = waveCheckpoints;
+
+  const finishedAt = Date.now();
+  currentJob.finishedAt = finishedAt;
+  if (runStartedAt) {
+    currentJob.durationMs = finishedAt - runStartedAt;
+  }
 
   await writeImportPipelineJob(currentJob);
+
+  if (currentJob.runner === 'scoped_wave' && currentJob.startedAt != null && currentJob.durationMs != null) {
+    const summary = {
+      runner: 'scoped_wave' as const,
+      importRunId: currentJob.importRunId,
+      scopeCount: currentJob.itemIds.length,
+      waveSize: currentJob.waveSize,
+      waveCount: waveIndex,
+      status: currentJob.status,
+      startedAt: currentJob.startedAt,
+      finishedAt,
+      durationMs: currentJob.durationMs,
+      completedCount: currentJob.completedItemIds.length,
+      waveCheckpoints: waveCheckpoints,
+      lastError: currentJob.lastError,
+    };
+    await writeScopedPipelineRunSummary(summary);
+    console.info('[scoped-pipeline-job] done', {
+      status: currentJob.status,
+      completed: currentJob.completedItemIds.length,
+      scope: currentJob.itemIds.length,
+      waves: waveIndex,
+      durationMs: currentJob.durationMs,
+      durationMin: (currentJob.durationMs / 60_000).toFixed(1),
+      startedAt: new Date(currentJob.startedAt).toISOString(),
+      finishedAt: new Date(finishedAt).toISOString(),
+    });
+  }
+
   await commitPendingDbWrites();
   await refreshPipelineCacheFromWorker();
 
   report('done', 'Pipeline complete', waveIndex, scopeWaveTotal());
-  return currentJob;
+  return {
+    job: currentJob,
+    classifySummary,
+    itemEnrichResults,
+    enriched,
+    skipped,
+    failed,
+  };
 }
 
 /** Alias until P2 rename to runScopedPipelineJob */

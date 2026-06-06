@@ -1,4 +1,4 @@
-import type { ClassifyState } from './types';
+import type { ClassifyState, TopicClassifySummary } from './types';
 import { isGeneralLeafId } from './taxonomyCatalog';
 import { hasSpecificPrimaryTopic } from './categorizationFairGame';
 
@@ -190,4 +190,39 @@ export function bumpFailureBucket(
   key: string
 ): Record<string, number> {
   return { ...buckets, [key]: (buckets[key] ?? 0) + 1 };
+}
+
+/** Merge wave classify summaries into one batch rollup. */
+export function mergeTopicClassifySummaries(
+  a: TopicClassifySummary,
+  b: TopicClassifySummary
+): TopicClassifySummary {
+  const mergedFailureBuckets = { ...a.failureBuckets };
+  for (const [k, v] of Object.entries(b.failureBuckets)) {
+    mergedFailureBuckets[k] = (mergedFailureBuckets[k] ?? 0) + v;
+  }
+  return {
+    totalConsidered: a.totalConsidered + b.totalConsidered,
+    processed: a.processed + b.processed,
+    skippedIneligible: a.skippedIneligible + b.skippedIneligible,
+    skippedHash: a.skippedHash + b.skippedHash,
+    skippedLlm: a.skippedLlm + b.skippedLlm,
+    skippedManualReview: a.skippedManualReview + b.skippedManualReview,
+    assignedPrimary: a.assignedPrimary + b.assignedPrimary,
+    classifiedSpecific: a.classifiedSpecific + b.classifiedSpecific,
+    classifiedGeneral: a.classifiedGeneral + b.classifiedGeneral,
+    classifiedRemoval: a.classifiedRemoval + b.classifiedRemoval,
+    assignedSecondary: a.assignedSecondary + b.assignedSecondary,
+    multiLabel: a.multiLabel + b.multiLabel,
+    unassigned: a.unassigned + b.unassigned,
+    pendingDiscover: a.pendingDiscover + b.pendingDiscover,
+    llmErrors: a.llmErrors + b.llmErrors,
+    batches: a.batches + b.batches,
+    failureBuckets: mergedFailureBuckets,
+    inputQuality: {
+      high: a.inputQuality.high + b.inputQuality.high,
+      medium: a.inputQuality.medium + b.inputQuality.medium,
+      low: a.inputQuality.low + b.inputQuality.low,
+    },
+  };
 }

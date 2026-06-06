@@ -7,20 +7,17 @@ import {
   type TrashHistoryEntry,
 } from '../../lib/trashHistory';
 import {
-  runBatchDigest,
-  formatBatchDigestProgress,
   formatScopedPipelineJobProgress,
   buildImportReport,
   createImportPipelineJob,
+  formatPipelineDurationMs,
   IMPORT_WAVE_PIPELINE_ENABLED,
   preflightImportPipelineStart,
   runScopedPipelineJob,
   shouldCreateScopedPipelineJob,
   writeImportPipelineJob,
-  type BatchDigestResult,
   type ImportReport,
 } from '../../lib/pipeline';
-import { resolvePipelineSummaryTone } from '../../lib/pipeline/pipelineDictionary';
 import { useToast } from '../ToastContainer';
 import {
   formatAllImportSchemaHelp,
@@ -180,14 +177,11 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
 
   const openImportReport = async (
     meta: NonNullable<typeof lastCommitMeta>,
-    processedIds: Set<string>,
-    batchResult?: BatchDigestResult
+    processedIds: Set<string>
   ) => {
     const report = await buildImportReport({
       ...meta,
       processedIds,
-      batchResult,
-      enrichResults: batchResult?.itemEnrichResults,
     });
     setImportReport(report);
     setPipelineConfirm(null);
@@ -220,80 +214,65 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       return;
     }
 
-    const useWavePath =
-      IMPORT_WAVE_PIPELINE_ENABLED && shouldCreateScopedPipelineJob(ids);
+    if (!IMPORT_WAVE_PIPELINE_ENABLED) {
+      addToast({ type: 'error', message: 'Import pipeline is not enabled.' });
+      return;
+    }
 
-    if (useWavePath) {
-      const pre = await preflightImportPipelineStart();
-      if (!pre.ok) {
-        addToast({ type: 'error', message: pre.reason ?? 'Cannot start import pipeline.' });
-        return;
-      }
+    const pre = await preflightImportPipelineStart();
+    if (!pre.ok) {
+      addToast({ type: 'error', message: pre.reason ?? 'Cannot start import pipeline.' });
+      return;
     }
 
     setPipelineConfirm(null);
     setPipelineFilter('');
     setProcessing(true);
-    setWavePipelineRunning(useWavePath);
+    setWavePipelineRunning(true);
     setProcessProgress(`Starting pipeline on ${ids.length} selected link${ids.length === 1 ? '' : 's'}…`);
     addToast({
       type: 'info',
-      message: useWavePath
-        ? `Large batch pipeline on ${ids.length} links — progress is checkpointed. Keep this tab open.`
-        : `Running fetch + AI + classify on ${ids.length} link${ids.length === 1 ? '' : 's'}. Keep this tab open.`,
+      message: `Running fetch + AI + classify on ${ids.length} link${ids.length === 1 ? '' : 's'} — progress is checkpointed. Keep this tab open.`,
     });
 
     try {
-      if (useWavePath) {
-        const job = createImportPipelineJob(ids);
-        await writeImportPipelineJob(job);
-        const ac = new AbortController();
-        pipelineAbortRef.current = ac;
-        const result = await runScopedPipelineJob(job, {
-          signal: ac.signal,
-          onProgress: (p) => {
-            setProcessProgress(formatScopedPipelineJobProgress(p));
-          },
-        });
-        if (result.status === 'completed') {
-          addToast({
-            type: 'info',
-            message: `Pipeline complete — ${result.completedItemIds.length} of ${result.itemIds.length} processed.`,
-          });
-        } else if (result.lastError === 'Cancelled') {
-          addToast({ type: 'info', message: 'Pipeline cancelled.' });
-        } else if (result.lastError) {
-          addToast({ type: 'error', message: `Pipeline paused: ${result.lastError}` });
-        } else {
-          addToast({
-            type: 'info',
-            message: `Pipeline paused — ${result.completedItemIds.length} of ${result.itemIds.length} processed.`,
-          });
-        }
-        if (onImported) {
-          await onImported();
-        }
-        await openImportReport(lastCommitMeta, new Set(ids));
-      } else {
-        const batch = await runBatchDigest(ids, {
-          processAll: true,
-          collectItemResults: true,
-          pipelineRunAction: 'full_digest',
-          onProgress: (p) => {
-            setProcessProgress(formatBatchDigestProgress(p));
-          },
-        });
-        addToast({
-          type: resolvePipelineSummaryTone(batch),
-          message: batch.pipelineDebugSavedTo
-            ? `${batch.message} · debug: ${batch.pipelineDebugSavedTo}`
-            : batch.message,
-        });
-        if (onImported) {
-          await onImported();
-        }
-        await openImportReport(lastCommitMeta, new Set(ids), batch);
+      console.info('[import-studio] pipeline path: scoped_wave', {
+        selected: ids.length,
+      });
+      const job = createImportPipelineJob(ids);
+      await writeImportPipelineJob(job);
+      const ac = new AbortController();
+      pipelineAbortRef.current = ac;
+      const { job: result } = await runScopedPipelineJob(job, {
+        signal: ac.signal,
+        onProgress: (p) => {
+          setProcessProgress(formatScopedPipelineJobProgress(p));
+        },
+      });
+      const dur = formatPipelineDurationMs(result.durationMs);
+      const durSuffix = dur ? ` in ${dur}` : '';
+      if (result.runner !== 'scoped_wave') {
+        console.warn('[import-studio] expected runner=scoped_wave on result job', result.runner);
       }
+      if (result.status === 'completed') {
+        addToast({
+          type: 'info',
+          message: `Pipeline complete — ${result.completedItemIds.length} of ${result.itemIds.length} processed${durSuffix}.`,
+        });
+      } else if (result.lastError === 'Cancelled') {
+        addToast({ type: 'info', message: `Pipeline cancelled${durSuffix}.` });
+      } else if (result.lastError) {
+        addToast({ type: 'error', message: `Pipeline paused: ${result.lastError}${durSuffix}` });
+      } else {
+        addToast({
+          type: 'info',
+          message: `Pipeline paused — ${result.completedItemIds.length} of ${result.itemIds.length} processed${durSuffix}.`,
+        });
+      }
+      if (onImported) {
+        await onImported();
+      }
+      await openImportReport(lastCommitMeta, new Set(ids));
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Post-import processing failed';
       addToast({ type: 'error', message: msg });
@@ -512,7 +491,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           addToast({
             type: 'info',
             message:
-              'Large batch saved — digest selected links to start the wave pipeline, or resume from the dashboard banner if interrupted.',
+              'Import saved — run digest on selected links to start the pipeline, or resume from the dashboard banner if interrupted.',
           });
         } catch (e) {
           console.warn('[import] could not write import-pipeline-job.json', e);
@@ -948,15 +927,11 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           }}
         >
           <div style={{ fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>
-            {wavePipelineRunning
-              ? 'Large batch pipeline — keep this tab open'
-              : 'Pipeline running — keep this tab open'}
+            Pipeline running — keep this tab open
           </div>
           {processProgress}
           <div style={{ marginTop: 6, color: 'var(--text-muted)' }}>
-            {wavePipelineRunning
-              ? 'Progress is saved after each wave; you can resume from the dashboard banner if this tab closes.'
-              : 'Refreshing or closing this tab will stop the batch. In-app navigation may also interrupt it.'}
+            Progress is saved after each wave; you can resume from the dashboard banner if this tab closes.
           </div>
           {wavePipelineRunning ? (
             <button

@@ -6,7 +6,7 @@
 
 import type { Item } from '../db';
 import { MIN_AI_SUMMARY_LENGTH } from '../enrichment/categorizationEligibility';
-import type { ItemEnrichment } from '../enrichment/types';
+import type { EnrichmentStatus, ItemEnrichment } from '../enrichment/types';
 import type { AiCategory } from './types';
 
 export const LINK_QUALITY_PARENT_ID = 'link-quality';
@@ -161,6 +161,26 @@ export interface LinkQualityDetectInput {
   quotedText?: string | null;
   eligibilityReason?: string | null;
   llmReason?: string | null;
+  enrichmentStatus?: EnrichmentStatus | null;
+  lastErrorDetail?: string | null;
+  snippet?: string | null;
+  hasRawBody?: boolean;
+}
+
+/** Link-quality heuristics require a fetch attempt — never title/URL-only on fresh imports. */
+export function fetchAttemptedForLinkQuality(enrichment?: ItemEnrichment | null): boolean {
+  const status = enrichment?.status;
+  return Boolean(status && status !== 'none');
+}
+
+function hasFetchContentSignal(input: LinkQualityDetectInput): boolean {
+  if (input.enrichmentStatus === 'ok') return true;
+  return Boolean(
+    input.lastErrorDetail?.trim() ||
+      input.snippet?.trim() ||
+      input.aiSummary?.trim() ||
+      input.hasRawBody
+  );
 }
 
 export interface LinkQualityDetection {
@@ -296,6 +316,11 @@ function detectDeadOrErrorPage(input: LinkQualityDetectInput): LinkQualityDetect
 }
 
 export function detectLinkQualityIssue(input: LinkQualityDetectInput): LinkQualityDetection | null {
+  const enrichStatus = input.enrichmentStatus;
+  if (!enrichStatus || enrichStatus === 'none') {
+    return null;
+  }
+
   const title = (input.title ?? '').trim();
   const url = (input.url ?? '').trim();
   const reason = norm([input.eligibilityReason, input.llmReason].filter(Boolean).join(' '));
@@ -311,13 +336,6 @@ export function detectLinkQualityIssue(input: LinkQualityDetectInput): LinkQuali
   const aiStatus = (input.aiStatus ?? '').trim();
   const summary = (input.aiSummary ?? '').trim();
 
-  if (FAILED_AI.has(aiStatus) || reason.includes('extraction failed') || reason.includes('insufficient semantic')) {
-    return {
-      leafId: LINK_QUALITY_LEAF_IDS.ENRICH_FETCH_FAILED,
-      reason: 'Enrich/fetch failed or insufficient text for topic classification',
-    };
-  }
-
   if (isReservedPlaceholderHost(url) || titleL === 'example domain') {
     const det: LinkQualityDetection = {
       leafId: LINK_QUALITY_LEAF_IDS.PLACEHOLDER_JUNK,
@@ -326,12 +344,36 @@ export function detectLinkQualityIssue(input: LinkQualityDetectInput): LinkQuali
     return linkQualityLeafAllowed(det.leafId, input) ? det : null;
   }
 
+  if (enrichStatus === 'failed' && input.lastErrorDetail?.trim()) {
+    const deadFromFetch = detectDeadOrErrorPage({
+      ...input,
+      eligibilityReason: input.lastErrorDetail,
+    });
+    if (deadFromFetch && linkQualityLeafAllowed(deadFromFetch.leafId, input)) {
+      return deadFromFetch;
+    }
+  }
+
+  if (enrichStatus === 'failed' && !hasFetchContentSignal(input)) {
+    return null;
+  }
+
   const deadOrError = detectDeadOrErrorPage(input);
   if (deadOrError && linkQualityLeafAllowed(deadOrError.leafId, input)) return deadOrError;
 
   // AI already summarized the page (often thread+quote) — let classify use Summary; only hard URL/title junk below.
   if (hasUsableAiSummary(input)) {
     return null;
+  }
+
+  if (
+    enrichStatus === 'ok' &&
+    (FAILED_AI.has(aiStatus) || reason.includes('extraction failed'))
+  ) {
+    return {
+      leafId: LINK_QUALITY_LEAF_IDS.ENRICH_FETCH_FAILED,
+      reason: 'Enrich/fetch failed or insufficient text for topic classification',
+    };
   }
 
   // Only trust LLM “no topic” heuristics when there is no usable summary (avoid mis-bucketing substantive pages).
@@ -385,6 +427,10 @@ export function detectLinkQualityFromItem(
     quotedText: enrichment?.quotedText,
     eligibilityReason: extra?.eligibilityReason,
     llmReason: extra?.llmReason,
+    enrichmentStatus: enrichment?.status,
+    lastErrorDetail: enrichment?.lastErrorDetail,
+    snippet: enrichment?.snippet,
+    hasRawBody: enrichment?.hasRawBody,
   });
 }
 

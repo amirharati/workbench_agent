@@ -135,8 +135,6 @@ export interface EnrichBatchResult {
 
 export const ENRICHMENT_DEFAULTS = {
   snippetMaxChars: 12_000,
-  smartCap: 50,
-  fullCap: 200,
   /** Parallel enrich workers (fetch + AI per item). */
   concurrency: 2,
   /** @deprecated Use headlessTimeoutMs — kept for callers that read timeoutMs. */

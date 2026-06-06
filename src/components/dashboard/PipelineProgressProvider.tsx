@@ -13,6 +13,9 @@ import {
   formatItemPipelineProgress,
   pipelineProgressBar,
   loadItemIdsForPipelineQueue,
+  isFullPipelineBatch,
+  runPipelineScopeBatch,
+  scopedProgressToItemProgress,
   type BatchDigestResult,
   type SingleLinkDigestResult,
   type ItemPipelineProgress,
@@ -286,23 +289,37 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       const startedAt = Date.now();
       try {
         const scopedSelection = itemIds.length > 0 && itemIds.length <= 25;
-        const result = await runBatchDigest(itemIds, {
-          enrich: options?.enrich,
-          classify: options?.classify,
-          maxEnrich: options?.maxEnrich,
-          maxClassify: options?.maxClassify,
-          processAll: options?.processAll,
-          refetchCompare: options?.refetchCompare,
-          forceEnrich: options?.forceEnrich,
-          skipAi: options?.skipAi,
-          forceReclassify: options?.forceReclassify,
-          collectItemResults: options?.collectItemResults,
-          skipDiscover:
-            options?.skipDiscover ?? (scopedSelection ? true : undefined),
-          drainPendingClassifyQueue: options?.drainPendingClassifyQueue,
-          signal: controller?.signal,
-          onProgress: (p) => applyPipelineProgress(setModal, p),
-        });
+        const result = isFullPipelineBatch(options)
+          ? await runPipelineScopeBatch(itemIds, {
+              signal: controller?.signal,
+              forceEnrich: options?.forceEnrich,
+              forceReclassify: options?.forceReclassify,
+              refetchCompare: options?.refetchCompare,
+              collectItemResults: options?.collectItemResults,
+              writeJobFile: true,
+              onProgress: (p) =>
+                applyPipelineProgress(
+                  setModal,
+                  scopedProgressToItemProgress(p, itemIds.length)
+                ),
+            })
+          : await runBatchDigest(itemIds, {
+              enrich: options?.enrich,
+              classify: options?.classify,
+              maxEnrich: options?.maxEnrich,
+              maxClassify: options?.maxClassify,
+              processAll: options?.processAll,
+              refetchCompare: options?.refetchCompare,
+              forceEnrich: options?.forceEnrich,
+              skipAi: options?.skipAi,
+              forceReclassify: options?.forceReclassify,
+              collectItemResults: options?.collectItemResults,
+              skipDiscover:
+                options?.skipDiscover ?? (scopedSelection ? true : undefined),
+              drainPendingClassifyQueue: options?.drainPendingClassifyQueue,
+              signal: controller?.signal,
+              onProgress: (p) => applyPipelineProgress(setModal, p),
+            });
 
         const cancelled = result.enrichCancelled || controller?.signal.aborted || result.classifyError === 'classification cancelled';
         const itemLabels = options?.itemLabels ?? {};

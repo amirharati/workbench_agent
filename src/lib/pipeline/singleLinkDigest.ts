@@ -1,6 +1,11 @@
 import { getEnrichment } from '../enrichment';
 import type { EnrichmentResult } from '../enrichment';
 import { PIPELINE_STAGE_LABELS } from './pipelineDictionary';
+import {
+  runPipelineScopeBatch,
+  scopedProgressToItemProgress,
+  shouldUseScopedPipelineForSingle,
+} from './pipelineScopeRun';
 import { runItemPipeline, type ItemPipelineProgress } from './itemPipeline';
 
 export type SingleLinkDigestPhase = ItemPipelineProgress['phase'];
@@ -84,6 +89,34 @@ export async function runSingleLinkDigest(
 
   inFlight.add(itemId);
   try {
+    if (shouldUseScopedPipelineForSingle(options)) {
+      const batch = await runPipelineScopeBatch([itemId], {
+        forceEnrich: options?.forceEnrich === true,
+        collectItemResults: true,
+        writeJobFile: false,
+        signal: options?.signal,
+        onProgress: options?.onProgress
+          ? (p) => options.onProgress!(scopedProgressToItemProgress(p, 1))
+          : undefined,
+      });
+      const enrich =
+        batch.itemEnrichResults?.[0] ??
+        ({
+          itemId,
+          status: 'none' as const,
+          skipped: true,
+          message: 'no_enrich_result',
+        } satisfies EnrichmentResult);
+      return {
+        itemId,
+        enrich,
+        classifyAttempted: batch.classifySummary !== undefined,
+        classifyProcessed: batch.classifySummary?.processed ?? 0,
+        classifyError: batch.classifyError,
+        message: batch.message,
+      };
+    }
+
     const result = await runItemPipeline({
       itemIds: [itemId],
       enrich: true,

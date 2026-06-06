@@ -1,6 +1,7 @@
 export * from './itemPipeline';
 export * from './batchDigest';
 export * from './batchPostProcess';
+export * from './downstreamEligible';
 export * from './importReport';
 export * from './itemPipelineContext';
 export * from './pipelineBadge';
@@ -12,4 +13,5 @@ export * from './pipelineRunAnalysis';
 export * from './pipelineRunStore';
 export * from './importPipelineJob';
 export * from './scopedPipelineJobRunner';
+export * from './pipelineScopeRun';
 export * from './pipelineDictionary';

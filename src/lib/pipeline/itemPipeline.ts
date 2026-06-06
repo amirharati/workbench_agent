@@ -17,6 +17,7 @@ import { commitPendingDbWrites, refreshPipelineCacheFromWorker } from '../db';
 import {
   enrichBatch,
   enrichOne,
+  getAllEnrichments,
   getEnrichment,
   type EnrichmentResult,
 } from '../enrichment';
@@ -26,6 +27,7 @@ import {
   prepBatchPipelineItems,
   runEnrichmentBatchPostProcess,
 } from './batchPostProcess';
+import { filterDownstreamClassifyEligible } from './downstreamEligible';
 import type { PipelineReportAction } from './pipelineBatchReport';
 import { buildPipelineRunExport } from './pipelineRunAnalysis';
 import {
@@ -39,9 +41,8 @@ import {
   isPipelineSkipMessage,
 } from './pipelineDictionary';
 
-export const PIPELINE_DEFAULTS = {
-  maxEnrich: 50,
-} as const;
+/** @deprecated Batch pipeline processes the full `itemIds` scope; pass `maxEnrich` only to limit intentionally. */
+export const PIPELINE_DEFAULTS = {} as const;
 
 export type ItemPipelinePhase = 'prep' | 'enrich' | 'embed' | 'classify' | 'discover' | 'save' | 'done';
 
@@ -85,6 +86,7 @@ export interface RunItemPipelineOptions {
    * Default true — user actions should always finish the job.
    */
   forceClassify?: boolean;
+  /** @deprecated Full scope is always processed; use `maxEnrich` only to limit intentionally. */
   processAll?: boolean;
   maxEnrich?: number;
   maxClassify?: number;
@@ -582,18 +584,8 @@ export async function runItemPipeline(
   const doEnrich = options.enrich !== false;
   const doClassify = options.classify !== false;
   const forceClassify = options.forceClassify !== false;
-  const processAll = options.processAll === true;
-
-  const maxEnrich = processAll
-    ? uniqueIds.length
-    : (options.maxEnrich ?? PIPELINE_DEFAULTS.maxEnrich);
-  const remaining = processAll
-    ? 0
-    : doEnrich && doClassify
-      ? Math.max(0, uniqueIds.length - maxEnrich)
-      : doEnrich
-        ? Math.max(0, uniqueIds.length - maxEnrich)
-        : 0;
+  const maxEnrich = options.maxEnrich ?? uniqueIds.length;
+  const remaining = Math.max(0, uniqueIds.length - maxEnrich);
 
   try {
     if (doEnrich) {
@@ -759,7 +751,9 @@ export async function runItemPipeline(
       }
     }
 
-    const classifyOutcome = await runClassifyWithDiscover(uniqueIds, {
+    const enrichById = new Map((await getAllEnrichments()).map((e) => [e.itemId, e]));
+    const classifyIds = filterDownstreamClassifyEligible(uniqueIds, enrichById);
+    const classifyOutcome = await runClassifyWithDiscover(classifyIds, {
       ...options,
       forceClassify,
     });
