@@ -1305,6 +1305,11 @@ export async function classifyIncremental(
     const st = prev?.classifyState;
     const primaryId = primaryCategoryByItem.get(item.id);
 
+    if (st === 'manual_only' && !opts.forceReclassify) {
+      summary.skippedManualReview++;
+      continue;
+    }
+
     if (!built.eligible || !built.batch) {
       const lq =
         fetchAttemptedForLinkQuality(enrichment)
@@ -1424,7 +1429,10 @@ export async function classifyIncremental(
     if (skipDecision.skip) {
       if (skipDecision.reason === 'unchanged_hash_specific' || skipDecision.reason === 'unchanged_hash_skipped') {
         summary.skippedHash++;
-      } else if (skipDecision.reason === 'manual_review') {
+      } else if (
+        skipDecision.reason === 'manual_review' ||
+        skipDecision.reason === 'manual_only'
+      ) {
         summary.skippedManualReview++;
       }
       if (prev) {

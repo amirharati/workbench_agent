@@ -66,6 +66,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ## 🔴 Reliability & data
 
+- [ ] **DISC-POST-1 — Discover bulk requeue + misleading outcome** (2026-06-06, **high**): After discover+classify on General/Other pool, outcome modal implies ~N categories lost; taxonomy grew (+22 leaves). Root: `shouldMarkReclassifyAfterDiscover` flips all samples to `pending_classify`; classify then skips most on eligibility. **Not** user-signals SIG-0/1/B2-lite. Spec: [`docs/temp/TASK-V3-DISC-POST-1-discover-requeue-honesty.md`](temp/TASK-V3-DISC-POST-1-discover-requeue-honesty.md) · dogfood **#13**. Fix **D** (outcome honesty) can ship before policy **A/B**.
 - [ ] **Error handling**: consistent try/catch on async paths (`App.tsx`, dashboard handlers, Chrome APIs); user-visible errors vs silent `console.error`.
 - [ ] **DB transactions**: multi-step deletes (`deleteCollection`, `deleteProject`, bulk moves) reviewed for atomicity in `db.ts`.
 - [ ] **Input validation**: URLs, IDs, text limits; centralize validation helpers (extend existing `src/lib/utils.ts` patterns as needed).
@@ -289,7 +290,7 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 **Post-V2 (active):** [`temp/TASK-POST-V2.md`](temp/TASK-POST-V2.md)
 
 1. **V2.3** — quick wins ([`temp/TASK-V2.3-quick-wins.md`](temp/TASK-V2.3-quick-wins.md)).
-2. **V3** — pipeline: discover map→reduce shipped; large-library staged hydrate + Hub worker paging; next staging workflow (B2) + import scale (A5b).
+2. **V3** — pipeline: discover map→reduce + A5b + **user-signals Phase 1** (SIG-0/1/B2-lite, commit pending); **next:** DISC-POST-1 discover trust **or** user-signals Phase 2 (SIG-2).
 3. **V4** — multi-device sync ([`temp/TASK-V4-sync-replicas.md`](temp/TASK-V4-sync-replicas.md)) — deferred.
 4. **D-45** local folder library — when ready.
 5. Notes strategy (D-04) + import provenance (D-05).
@@ -301,4 +302,4 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ---
 
-*Last updated: 2026-06-04 — V3 large-library phase 1 (staged hydrate, Hub SQL paging). V4 multi-device still deferred.*
+*Last updated: 2026-06-06 — User-signals Phase 1 done (uncommitted); DISC-POST-1 filed (discover requeue/outcome). V4 multi-device still deferred.*

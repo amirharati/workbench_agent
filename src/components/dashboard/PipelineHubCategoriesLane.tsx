@@ -444,6 +444,11 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
     return { unassignedIds, generalIds, pendingClassifyIds, allEligibleIds };
   }, [scopedRows, filteredRows, selectedIds]);
 
+  const discoverWaiting = useMemo(
+    () => discoverScopeIds.unassignedIds.length + discoverScopeIds.generalIds.length,
+    [discoverScopeIds]
+  );
+
   const discoverConfigPlan = useMemo<DiscoverConfigPlan | undefined>(() => {
     if (!maintenanceSnapshot) return undefined;
     
@@ -673,6 +678,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
               : 'Entire library'
         }
         discoverConfigPlan={discoverConfigPlan}
+        discoverWaiting={discoverWaiting}
         onRefresh={() => void reloadMaintenance(true)}
         onDiscover={handleDiscover}
         onClassifyPending={handleClassifyPending}

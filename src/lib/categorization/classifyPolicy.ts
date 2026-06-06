@@ -9,6 +9,7 @@ export type ClassifySkipReason =
   | 'unchanged_hash_specific'
   | 'unchanged_hash_skipped'
   | 'manual_review'
+  | 'manual_only'
   | 'not_fair_game';
 
 export interface ClassifySkipDecision {
@@ -48,6 +49,10 @@ export function shouldSkipClassify(input: {
 
   if (forceReclassify) {
     return { skip: false };
+  }
+
+  if (st === 'manual_only') {
+    return { skip: true, reason: 'manual_only' };
   }
 
   if (st === 'manual_review' && !retryManualReview) {

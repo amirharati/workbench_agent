@@ -11,6 +11,8 @@ export type PipelineMaintenanceStripProps = {
   refreshing?: boolean;
   scopeLabel?: string;
   discoverConfigPlan?: DiscoverConfigPlan;
+  /** Scoped stuck pool: unassigned + general (includes pending_discover rows). */
+  discoverWaiting?: number;
   disabled?: boolean;
   onRefresh?: () => void;
   onDiscover: (scope: DiscoverInputScope, andClassify: boolean, batches: number) => void;
@@ -26,6 +28,7 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
   refreshing,
   scopeLabel = 'Entire library',
   discoverConfigPlan,
+  discoverWaiting = 0,
   disabled,
   onRefresh,
   onDiscover,
@@ -62,6 +65,10 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
   if (!snapshot) return null;
 
   const { queue } = snapshot;
+  const pendingClassify = discoverConfigPlan?.counts.pendingClassify ?? 0;
+  const discoverDisabled = disabled || !discoverConfigPlan || discoverWaiting === 0;
+  const classifyPendingDisabled = disabled || pendingClassify === 0;
+  const noStagedWork = discoverWaiting === 0 && pendingClassify === 0;
 
   return (
     <>
@@ -165,6 +172,17 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
           padding: '12px 14px',
         }}
       >
+        <p
+          style={{
+            margin: '0 0 12px',
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-faint)',
+            lineHeight: 1.45,
+          }}
+        >
+          Staged AI — nothing runs until you click Run below.
+        </p>
+
         <div
           style={{
             display: 'flex',
@@ -221,11 +239,16 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
               Discover
             </div>
             <p style={{ margin: '0 0 10px', fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.4 }}>
-              Propose new topics based on your bookmarks.
+              Propose new topics for bookmarks waiting on discover.
             </p>
+            {queue.pendingDiscover > 0 ? (
+              <p style={{ margin: '0 0 8px', fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                {queue.pendingDiscover} marked pending discover
+              </p>
+            ) : null}
             <button
               type="button"
-              disabled={disabled || !discoverConfigPlan}
+              disabled={discoverDisabled}
               onClick={() => setDiscoverModalOpen(true)}
               style={{
                 display: 'inline-flex',
@@ -238,12 +261,12 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
                 color: 'var(--text)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 600,
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                opacity: disabled ? 0.7 : 1,
+                cursor: discoverDisabled ? 'not-allowed' : 'pointer',
+                opacity: discoverDisabled ? 0.7 : 1,
               }}
             >
               <Sparkles size={13} color="#d29922" />
-              Discover Topics...
+              Run discover ({discoverWaiting})
             </button>
           </div>
 
@@ -253,13 +276,13 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
               Classify
             </div>
             <p style={{ margin: '0 0 10px', fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.4 }}>
-              Assign existing topics to bookmarks.
+              Ready to classify — assign existing topics to bookmarks.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {onClassifyPending && (
                 <button
                   type="button"
-                  disabled={disabled || discoverConfigPlan?.counts.pendingClassify === 0}
+                  disabled={classifyPendingDisabled}
                   onClick={onClassifyPending}
                   style={{
                     display: 'inline-flex',
@@ -272,12 +295,12 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
                     color: '#fff',
                     fontSize: 'var(--text-xs)',
                     fontWeight: 600,
-                    cursor: disabled || discoverConfigPlan?.counts.pendingClassify === 0 ? 'not-allowed' : 'pointer',
-                    opacity: disabled || discoverConfigPlan?.counts.pendingClassify === 0 ? 0.7 : 1,
+                    cursor: classifyPendingDisabled ? 'not-allowed' : 'pointer',
+                    opacity: classifyPendingDisabled ? 0.7 : 1,
                   }}
                 >
                   <Tags size={13} />
-                  Classify Pending ({discoverConfigPlan?.counts.pendingClassify ?? 0})
+                  Classify Pending ({pendingClassify})
                 </button>
               )}
               {onReclassifyAll && (
@@ -307,6 +330,19 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
             </div>
           </div>
         </div>
+
+        {noStagedWork ? (
+          <p
+            style={{
+              margin: '12px 0 0',
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-faint)',
+              lineHeight: 1.45,
+            }}
+          >
+            No staged discover or classify work in this scope.
+          </p>
+        ) : null}
 
         {/* MANUAL REVIEW SECTION */}
         {onRetryManual && queue.manualReview > 0 ? (

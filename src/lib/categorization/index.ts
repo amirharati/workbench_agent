@@ -38,6 +38,12 @@ export {
   CategoryReviewError,
 } from './categoryReview';
 export {
+  applyUserSignal,
+  resolveStagedClassifyStateAfterReject,
+  UserSignalPolicyError,
+} from './userSignalPolicy';
+export type { UserSignalKind, UserSignalPayload } from './userSignalPolicy';
+export {
   buildCategorizationEmbedText,
   buildCategorizationText,
   substantiveTextLength,

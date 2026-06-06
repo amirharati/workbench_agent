@@ -804,15 +804,15 @@ const ProcessingDigestBody: React.FC<ProcessingDigestBodyProps> = ({
           }}
         >
           <strong style={{ color: 'var(--text)' }}>{maintenance.discoverPool.stuckPool}</strong> bookmarks
-          stuck on General/Other or unassigned
+          staged for discover (General/Other or unassigned)
           {maintenance.queue.pendingDiscover > 0 ? (
             <>
               {' '}
-              (<strong style={{ color: 'var(--text)' }}>{maintenance.queue.pendingDiscover}</strong> pending
-              discover)
+              (<strong style={{ color: 'var(--text)' }}>{maintenance.queue.pendingDiscover}</strong> marked
+              pending discover)
             </>
           ) : null}
-          . Discover can propose new taxonomy topics — you choose when to run it (uses AI).{' '}
+          . Nothing runs until you confirm in the Hub — discover can propose new taxonomy topics (uses AI).{' '}
           <button
             type="button"
             onClick={onOpenPipelineHub}
@@ -828,7 +828,7 @@ const ProcessingDigestBody: React.FC<ProcessingDigestBodyProps> = ({
               cursor: 'pointer',
             }}
           >
-            Open Enrichment Hub → Discover
+            Review & run discover
           </button>
         </div>
       ) : null}

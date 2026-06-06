@@ -54,6 +54,7 @@ export function formatClassifySkipReason(code?: string): string {
     unchanged_hash_specific: 'Text unchanged since last specific topic assignment',
     unchanged_hash_skipped: 'Text unchanged; LLM previously skipped this item',
     manual_review: 'Auto-retry limit reached — needs manual classify',
+    manual_only: 'User accepted category — locked until force reclassify',
     not_fair_game: 'Not in classify scope (failed quality gate or terminal state)',
     quality_gate: 'Failed quality gate before LLM',
     llm_error: 'LLM batch error',
