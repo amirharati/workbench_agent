@@ -1812,8 +1812,7 @@ export const bulkImportBookmarks = async (
   
   if (createdItemIds.length > 0) {
     try {
-      const { markItemsPendingClassify, noteBulkImport } = await import('./categorization/classifyTopicExtract');
-      await markItemsPendingClassify(createdItemIds);
+      const { noteBulkImport } = await import('./categorization/classifyTopicExtract');
       await noteBulkImport(createdItemIds.length);
     } catch (e) {
       console.warn('Bulk import: could not queue categorization', e);

@@ -22,10 +22,7 @@ export async function prepBatchPipelineItems(
   if (!uniqueIds.length) return;
   await commitPendingDbWrites();
   await reconcileOrphanClassifiedSignals();
-  if (opts?.queueClassify !== false) {
-    await markItemsPendingClassify(uniqueIds);
-    await commitPendingDbWrites();
-  }
+  void opts?.queueClassify;
 }
 
 /** Flush enrich writes, reset orphan classify states, queue classify, embed in API batches. */

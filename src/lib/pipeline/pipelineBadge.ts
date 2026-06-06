@@ -6,6 +6,7 @@ import {
   type FailureCategory,
 } from '../enrichment/failureLabels';
 import type { ItemEnrichment } from '../enrichment/types';
+import { isDownstreamClassifyEligible } from './downstreamEligible';
 import { PIPELINE_STATE_COLORS } from './pipelineDictionary';
 import type { ItemPipelineContext } from './itemPipelineContext';
 import { resolvePipelineStageFromParts } from './pipelineStage';
@@ -127,19 +128,19 @@ export function resolvePipelineStatus(input: PipelineStatusInput): PipelineBadge
     return { kind: 'needs_review', variant: 'warning', label: 'Manual review' };
   }
 
-  if (
+  if (signalState === 'pending_discover') {
+    return { kind: 'partial', variant: 'info', label: 'Pending discover' };
+  }
+
+  const classifyQueueState =
     signalState === 'pending_classify' ||
     signalState === 'pending_reclassify' ||
-    signalState === 'pending_discover' ||
     ((signalState === 'classified' || signalState === 'classified_general') &&
       !primaryCategoryId &&
-      suggestedLinkCount === 0)
-  ) {
-    return {
-      kind: 'partial',
-      variant: 'info',
-      label: signalState === 'pending_discover' ? 'Pending discover' : 'Pending classify',
-    };
+      suggestedLinkCount === 0);
+
+  if (classifyQueueState && isDownstreamClassifyEligible(enrichment)) {
+    return { kind: 'partial', variant: 'info', label: 'Pending classify' };
   }
 
   const stage = resolvePipelineStageFromParts({

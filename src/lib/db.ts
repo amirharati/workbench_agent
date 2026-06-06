@@ -1236,8 +1236,7 @@ export const bulkImportBookmarks = async (
   
   if (affectedItemIds.length > 0) {
     try {
-      const { markItemsPendingClassify, noteBulkImport } = await import('./categorization/classifyTopicExtract');
-      await markItemsPendingClassify(affectedItemIds);
+      const { noteBulkImport } = await import('./categorization/classifyTopicExtract');
       if (createdItemIds.length > 0) {
         await noteBulkImport(createdItemIds.length);
       }

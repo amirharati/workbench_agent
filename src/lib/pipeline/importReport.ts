@@ -107,12 +107,6 @@ function resolvePipelineStatus(input: {
   }
 
   if (input.enrichResult?.skipped || input.enrichResult?.message === 'content_unchanged') {
-    if (input.classifyState === 'pending_classify' || input.classifyState === 'pending_reclassify') {
-      return {
-        pipelineStatus: 'pending_classify',
-        detail: enrichDetail(input.enrichResult) + ' — ready to classify',
-      };
-    }
     return { pipelineStatus: 'unchanged', detail: enrichDetail(input.enrichResult) };
   }
 
@@ -133,10 +127,6 @@ function resolvePipelineStatus(input: {
       pipelineStatus: 'enriched',
       detail: input.summary ? 'Summary ready' : 'Fetch and extract complete',
     };
-  }
-
-  if (input.classifyState === 'pending_classify' || input.classifyState === 'pending_reclassify') {
-    return { pipelineStatus: 'pending_classify', detail: 'Ready to classify' };
   }
 
   if (input.classifyError) {
