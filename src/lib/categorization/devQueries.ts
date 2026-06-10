@@ -117,6 +117,7 @@ export interface PipelineQueueItemRow {
   hasSignal: boolean;
   primaryCategoryId?: string | null;
   primaryCategoryName?: string | null;
+  primaryLinkStatus?: 'accepted' | 'suggested' | null;
   parentCategoryName?: string | null;
   topicPath?: string | null;
   eligible: boolean;
@@ -154,6 +155,13 @@ export function buildPipelineQueueRowsFromCatalog(
 ): PipelineQueueItemRow[] {
   const q = search.trim().toLowerCase();
   const rows: PipelineQueueItemRow[] = [];
+  const acceptedPrimaryByItem = new Map<string, string>();
+  const suggestedPrimaryByItem = new Map<string, string>();
+  for (const link of catalog.links) {
+    if (link.source !== 'ai' || !link.isPrimary || !COUNTABLE_STATUSES.has(link.status)) continue;
+    if (link.status === 'accepted') acceptedPrimaryByItem.set(link.itemId, link.categoryId);
+    else if (link.status === 'suggested') suggestedPrimaryByItem.set(link.itemId, link.categoryId);
+  }
 
   for (const item of catalog.items) {
     const enrichment = catalog.enrichByItem.get(item.id);
@@ -179,6 +187,11 @@ export function buildPipelineQueueRowsFromCatalog(
       hasSignal: !!signal,
       primaryCategoryId: primaryId,
       primaryCategoryName: leaf?.name ?? null,
+      primaryLinkStatus: acceptedPrimaryByItem.has(item.id)
+        ? 'accepted'
+        : suggestedPrimaryByItem.has(item.id)
+          ? 'suggested'
+          : null,
       parentCategoryName: parentName,
       topicPath,
       eligible: eligibility.eligible,

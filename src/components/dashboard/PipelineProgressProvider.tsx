@@ -225,13 +225,30 @@ function applyPipelineProgress(
   update: ItemPipelineProgress
 ) {
   const bar = pipelineProgressBar(update);
+  const ratio = bar.total > 0 ? bar.current / bar.total : 0;
+  setRunningProgress(setModal, formatItemPipelineProgress(update), ratio);
+}
+
+function clampRatio(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+function setRunningProgress(
+  setModal: React.Dispatch<React.SetStateAction<ModalState>>,
+  progressLabel: string,
+  ratio: number
+): void {
+  const next = Math.round(clampRatio(ratio) * 100);
   setModal((prev) =>
     prev.open && prev.phase === 'running'
       ? {
           ...prev,
-          progressLabel: formatItemPipelineProgress(update),
-          current: bar.current,
-          total: bar.total,
+          progressLabel,
+          current: Math.max(prev.current, next),
+          total: 100,
         }
       : prev
   );
@@ -284,7 +301,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         title,
         progressLabel: 'Starting…',
         current: 0,
-        total: 4,
+        total: 100,
         cancellable,
       });
 
@@ -452,7 +469,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         title,
         progressLabel: 'Starting…',
         current: 0,
-        total: 4,
+        total: 100,
         cancellable: false,
       });
 
@@ -519,7 +536,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         title,
         progressLabel: 'Extracting summary…',
         current: 0,
-        total: 1,
+        total: 100,
         cancellable: false,
       });
 
@@ -580,7 +597,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         title,
         progressLabel: 'Starting…',
         current: 0,
-        total: uniqueIds.length,
+        total: 100,
         cancellable: false,
       });
 
@@ -588,18 +605,14 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       try {
         for (let i = 0; i < uniqueIds.length; i++) {
           const itemId = uniqueIds[i];
-          setModal((prev) =>
-            prev.open && prev.phase === 'running'
-              ? {
-                  ...prev,
-                  progressLabel: `Re-running AI ${i + 1}/${uniqueIds.length}…`,
-                  current: i,
-                  total: uniqueIds.length,
-                }
-              : prev
+          setRunningProgress(
+            setModal,
+            `Re-running AI ${i + 1}/${uniqueIds.length}…`,
+            uniqueIds.length > 0 ? i / uniqueIds.length : 0
           );
           results.push(await reextractAI(itemId, { force: options?.force }));
         }
+        setRunningProgress(setModal, 'Re-running AI complete', 1);
 
         const reportRows = await buildEnrichOutcomeReportRows(uniqueIds, itemLabels, {
           action: 'ai_extract',
@@ -650,7 +663,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         title,
         progressLabel: 'Embedding search vectors…',
         current: 0,
-        total: uniqueIds.length,
+        total: 100,
         cancellable: false,
       });
 
@@ -658,18 +671,12 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         const summary = await embedIncrementalBatch({
           itemIds: uniqueIds,
           onProgress: (p) => {
-            setModal((prev) =>
-              prev.open && prev.phase === 'running'
-                ? {
-                    ...prev,
-                    progressLabel:
-                      p.phase === 'prepare'
-                        ? 'Preparing embed batch…'
-                        : `Embedding batch ${p.batchIndex}/${p.batchTotal}…`,
-                    current: p.embeddedSoFar,
-                    total: uniqueIds.length,
-                  }
-                : prev
+            setRunningProgress(
+              setModal,
+              p.phase === 'prepare'
+                ? 'Preparing embed batch…'
+                : `Embedding batch ${p.batchIndex}/${p.batchTotal}…`,
+              uniqueIds.length > 0 ? p.embeddedSoFar / uniqueIds.length : 0
             );
           },
         });
@@ -729,21 +736,43 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         title,
         progressLabel: 'Preparing discover…',
         current: 0,
-        total: 1,
+        total: 100,
         cancellable: true,
       });
 
+      let classifyStarted = false;
+      let discoverTick = 0;
+      let classifyTick = 0;
       const onProgress = (u: ClassifyProgressUpdate) => {
-        setModal((prev) =>
-          prev.open && prev.phase === 'running'
-            ? {
-                ...prev,
-                progressLabel: u.label,
-                current: u.current,
-                total: Math.max(u.total, 1),
-              }
-            : prev
-        );
+        const boundedStep = u.total > 0 ? Math.max(0, Math.min(1, u.current / u.total)) : 0;
+
+        if (!classifyStarted) {
+          let ratio = 0;
+          if (u.phase === 'prepare') ratio = andClassify ? 0.05 : 0.08;
+          else if (u.phase === 'discover') {
+            discoverTick += 1;
+            const discoverStep =
+              u.total > 1 ? boundedStep : Math.min(0.98, discoverTick / 8);
+            ratio = andClassify
+              ? 0.1 + discoverStep * 0.55
+              : 0.1 + discoverStep * 0.82;
+          } else if (u.phase === 'save') ratio = andClassify ? 0.68 : 0.96;
+          else if (u.phase === 'done') ratio = andClassify ? 0.7 : 1;
+          setRunningProgress(setModal, u.label, ratio);
+          return;
+        }
+
+        let ratio = 0.72;
+        if (u.phase === 'prepare') ratio = 0.74;
+        else if (u.phase === 'classify') {
+          classifyTick += 1;
+          const classifyStep =
+            u.total > 1 ? boundedStep : Math.min(0.98, classifyTick / 8);
+          ratio = 0.76 + classifyStep * 0.18;
+        } else if (u.phase === 'discover') ratio = 0.95;
+        else if (u.phase === 'save') ratio = 0.98;
+        else if (u.phase === 'done') ratio = 1;
+        setRunningProgress(setModal, u.label, ratio);
       };
 
       try {
@@ -786,13 +815,11 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
               : [];
 
         if (andClassify && classifyIds.length > 0) {
-          setModal((prev) =>
-            prev.open && prev.phase === 'running'
-              ? {
-                  ...prev,
-                  progressLabel: `Classifying ${classifyIds.length} processed bookmark(s)…`,
-                }
-              : prev
+          classifyStarted = true;
+          setRunningProgress(
+            setModal,
+            `Classifying ${classifyIds.length} queued bookmark(s)…`,
+            0.7
           );
           const classifyResult = await classifyIncremental({
             itemIds: classifyIds,
@@ -945,7 +972,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           ? `Preparing classify for ${Math.min(itemIds.length, maxItems)} bookmark(s)…`
           : 'Preparing classify…',
         current: 0,
-        total: 1,
+        total: 100,
         cancellable: true,
       });
 

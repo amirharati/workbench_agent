@@ -77,6 +77,10 @@ const stageCardStyle: React.CSSProperties = {
   minHeight: 0,
 };
 
+function isQueuedClassifyState(state?: string): boolean {
+  return state === 'pending_classify' || state === 'pending_reclassify';
+}
+
 const actionBtnStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -487,8 +491,11 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           : 'var(--text-faint)';
 
   const classifyLabel =
-    context?.primaryCategoryName ??
-    context?.suggestedLinks.find((l) => l.isPrimary)?.name ??
+    context?.primaryCategoryName
+      ? `Assigned: ${context.primaryCategoryName}`
+      : context?.suggestedLinks.find((l) => l.isPrimary)?.name
+        ? `Suggested: ${context.suggestedLinks.find((l) => l.isPrimary)?.name}`
+        :
     context?.suggestedLinks[0]?.name ??
     (context?.classifyState === 'classified' && !context?.acceptedLinks.length && !context?.suggestedLinks.length
       ? 'classified (no topic stored)'
@@ -846,14 +853,27 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
               </div>
             ) : context?.suggestedLinks.length ? (
               <div style={{ color: 'var(--text-muted)' }}>
-                <span style={{ color: 'var(--text-faint)' }}>AI suggested: </span>
+                <span style={{ color: 'var(--text-faint)' }}>
+                  {isQueuedClassifyState(context.classifyState)
+                    ? 'AI suggested: '
+                    : 'Model selected (not accepted): '}
+                </span>
                 {context.suggestedLinks.map((l) => (
                   <span key={l.categoryId} style={{ marginRight: 6 }}>
                     {l.name}
                     {l.isPrimary ? ' ★' : ''}
                   </span>
                 ))}
-                <span style={{ color: 'var(--text-faint)' }}> (accept in Categories hub)</span>
+                <span style={{ color: 'var(--text-faint)' }}>
+                  {isQueuedClassifyState(context.classifyState)
+                    ? ' (accept in Categories hub)'
+                    : ' (classified result; accept in Categories hub to lock it)'}
+                </span>
+                {isQueuedClassifyState(context.classifyState) ? (
+                  <div style={{ color: 'var(--er-warn, #d29922)', marginTop: 4 }}>
+                    Provisional only — item is still queued for classify and this suggestion can change.
+                  </div>
+                ) : null}
               </div>
             ) : context?.classifyState === 'classified' ? (
               <div style={{ color: 'var(--er-warn, #d29922)' }}>
@@ -863,7 +883,9 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
               <div style={{ color: 'var(--text-faint)' }}>No accepted category</div>
             )}
             {context?.suggestedLinks.length ? (
-              <MetaLine label="Suggested">
+              <MetaLine
+                label={isQueuedClassifyState(context.classifyState) ? 'Suggested' : 'Model selected'}
+              >
                 {context.suggestedLinks.map((l) => l.name).join(', ')}
               </MetaLine>
             ) : null}

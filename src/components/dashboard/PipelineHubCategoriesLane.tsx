@@ -104,6 +104,17 @@ function formatTime(ts?: number): string {
   });
 }
 
+function topicSourceLabel(row: PipelineQueueItemRow): string | null {
+  if (!row.topicPath) return null;
+  if (row.primaryLinkStatus === 'accepted') return 'Assigned';
+  if (row.primaryLinkStatus === 'suggested') {
+    return row.classifyState === 'pending_classify' || row.classifyState === 'pending_reclassify'
+      ? 'AI suggested'
+      : 'Model selected';
+  }
+  return 'Topic';
+}
+
 const chipBase: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -1063,7 +1074,27 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                         }}
                         title={row.topicPath ?? undefined}
                       >
-                        {row.topicPath ?? '—'}
+                        {row.topicPath ? (
+                          <>
+                            <span style={{ color: 'var(--text)' }}>{row.topicPath}</span>
+                            <span
+                              style={{
+                                marginLeft: 6,
+                                color:
+                                  row.primaryLinkStatus === 'accepted'
+                                    ? 'var(--er-ok, #3fb950)'
+                                    : row.primaryLinkStatus === 'suggested'
+                                      ? 'var(--er-warn, #d29922)'
+                                      : 'var(--text-faint)',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {topicSourceLabel(row)}
+                            </span>
+                          </>
+                        ) : (
+                          '—'
+                        )}
                       </div>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button
