@@ -14,6 +14,7 @@ export * from './taxonomyState';
 export * from './topicExtract';
 export * from './categorizationFairGame';
 export * from './linkQuality';
+export * from './classificationPresentation';
 export * from './classifyPolicy';
 export * from './discoverPolicy';
 export * from './classifyQueueReason';

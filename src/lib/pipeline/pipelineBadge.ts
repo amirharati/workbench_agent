@@ -1,4 +1,9 @@
 import type { StatusBadgeVariant } from '../../components/StatusBadge';
+import {
+  isLinkQualityAttentionLeafId,
+  isLinkQualityRemovalLeafId,
+} from '../categorization/linkQuality';
+import { isGeneralLeafId } from '../categorization/taxonomyCatalog';
 import type { AiItemSignal, ClassifyState } from '../categorization/types';
 import {
   FAILURE_CATEGORY_LABELS,
@@ -50,12 +55,39 @@ export function shouldShowListPipelineBadge(
   return badge.kind === 'failed' || badge.kind === 'needs_review' || badge.kind === 'partial';
 }
 
+/** Non-topic outcomes — never read as Enriched/Verified success (T1-A2). */
+export function resolveSpecialClassificationBadge(input: {
+  primaryCategoryId?: string | null;
+  classifyState?: ClassifyState;
+}): PipelineBadge | null {
+  const { primaryCategoryId = null, classifyState } = input;
+  if (
+    isLinkQualityRemovalLeafId(primaryCategoryId) ||
+    classifyState === 'classified_removal'
+  ) {
+    return { kind: 'failed', variant: 'error', label: 'Removal candidate' };
+  }
+  if (
+    isLinkQualityAttentionLeafId(primaryCategoryId) ||
+    classifyState === 'classified_attention'
+  ) {
+    return { kind: 'needs_review', variant: 'warning', label: 'Needs attention' };
+  }
+  if (
+    classifyState === 'classified_general' ||
+    (primaryCategoryId && isGeneralLeafId(primaryCategoryId))
+  ) {
+    return { kind: 'partial', variant: 'warning', label: 'General / Other' };
+  }
+  return null;
+}
+
 export function pipelineBadgeToStatusChip(
   badge: PipelineBadge,
   enrichment?: ItemEnrichment
 ): { text: string; color: string } {
   if (badge.kind === 'failed' && badge.failureStage === 'embed') {
-    return { text: badge.label, color: PIPELINE_STATE_COLORS.pending };
+    return { text: badge.label, color: PIPELINE_STATE_COLORS.failed };
   }
   if (
     badge.kind === 'failed' &&
@@ -141,6 +173,14 @@ export function resolvePipelineStatus(input: PipelineStatusInput): PipelineBadge
 
   if (classifyQueueState && isDownstreamClassifyEligible(enrichment)) {
     return { kind: 'partial', variant: 'info', label: 'Pending classify' };
+  }
+
+  const specialClassification = resolveSpecialClassificationBadge({
+    primaryCategoryId,
+    classifyState: signalState,
+  });
+  if (specialClassification) {
+    return specialClassification;
   }
 
   const stage = resolvePipelineStageFromParts({

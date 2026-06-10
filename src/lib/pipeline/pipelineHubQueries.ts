@@ -135,7 +135,7 @@ function buildRowMetaFixed(
   const statusBadge = pipelineBadgeToStatusChip(pipelineBadge, enrichment);
   return {
     ...flags,
-    ok: stage.level === 'complete',
+    ok: pipelineBadge.kind === 'verified' || pipelineBadge.kind === 'ready',
     failureCategory: failureLabel?.category,
     failureStage: failureLabel?.stage,
     failureReason: failureLabel
@@ -489,6 +489,8 @@ export function hubOutcomeToneForLabel(label: string): HubOutcomeChipTone {
   if (label === 'Summarized') return 'warn';
   if (label === 'Manual review' || label === 'AI categories') return 'warn';
   if (label === 'Skipped' || label === 'Fetch review') return 'warn';
+  if (label === 'Removal candidate') return 'error';
+  if (label === 'Needs attention' || label === 'General / Other') return 'warn';
   return 'neutral';
 }
 

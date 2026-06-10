@@ -79,6 +79,26 @@ export function resolveClassifyQueueBlocker(input: {
     };
   }
 
+  if (st === 'classified_removal') {
+    return {
+      code: 'ready_for_classify',
+      label: 'Removal candidate (broken/junk link)',
+      detail: 'Classified as junk or broken — not a completed topic assignment',
+      hint: 'Review for trash or re-fetch if the link is still useful',
+      stateLabel: 'Removal candidate',
+    };
+  }
+
+  if (st === 'classified_attention') {
+    return {
+      code: 'ready_for_classify',
+      label: 'Login/auth required (re-fetch when signed in)',
+      detail: 'Sign-in wall or auth shell — keep bookmark; re-digest after signing in',
+      hint: 'Open in browser tab, sign in, then re-digest',
+      stateLabel: 'Needs attention',
+    };
+  }
+
   if (st === 'ineligible') {
     return pack(
       'quality_ineligible',
@@ -179,6 +199,16 @@ export function isEnrichmentQueueBlocker(blocker: ClassifyPendingBlocker): boole
   return ENRICHMENT_QUEUE_BLOCKERS.has(blocker);
 }
 
+const BLOCKER_STATE_LABEL_CLASSIFY_STATES = new Set<ClassifyState>([
+  'classified_general',
+  'classified_removal',
+  'classified_attention',
+  'pending_discover',
+  'manual_review',
+  'ineligible',
+  'skipped',
+]);
+
 export function displayClassifyStateLabel(
   classifyState: ClassifyState | undefined,
   blocker: ClassifyQueueBlockerInfo,
@@ -191,7 +221,8 @@ export function displayClassifyStateLabel(
   if (
     classifyState === 'pending_classify' ||
     classifyState === 'pending_reclassify' ||
-    !classifyState
+    !classifyState ||
+    (classifyState && BLOCKER_STATE_LABEL_CLASSIFY_STATES.has(classifyState))
   ) {
     return blocker.stateLabel;
   }

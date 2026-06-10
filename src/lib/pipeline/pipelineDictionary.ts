@@ -54,6 +54,10 @@ export function pipelineStatusColorForLabel(label: string): string {
   if (label === 'Manual review' || label === 'AI categories' || label === 'Fetch review') {
     return PIPELINE_STATE_COLORS.review;
   }
+  if (label === 'Removal candidate') return PIPELINE_STATE_COLORS.failed;
+  if (label === 'Needs attention' || label === 'General / Other') {
+    return PIPELINE_STATE_COLORS.skipped;
+  }
   if (label === 'Skipped') return PIPELINE_STATE_COLORS.skipped;
   return PIPELINE_STATE_COLORS.neutral;
 }

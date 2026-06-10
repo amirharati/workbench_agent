@@ -78,6 +78,13 @@ function mapPipelineStatus(
   if (!wasProcessed) return 'not_run';
   if (badge.kind === 'failed') return 'failed';
   if (badge.kind === 'needs_review') return 'review_needed';
+  if (
+    badge.label === 'General / Other' ||
+    badge.label === 'Removal candidate' ||
+    badge.label === 'Needs attention'
+  ) {
+    return 'review_needed';
+  }
   if (ctx?.primaryCategoryId && (badge.kind === 'verified' || badge.kind === 'ready')) {
     return 'classified';
   }

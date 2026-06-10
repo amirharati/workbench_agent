@@ -28,6 +28,7 @@ import {
 } from '../../lib/enrichment';
 import { ENRICHMENT_DEFAULTS } from '../../lib/enrichment/types';
 import { shouldOfferTabSessionFetch } from '../../lib/enrichment/tabSessionExtract';
+import { resolveClassificationPresentation } from '../../lib/categorization/classificationPresentation';
 import { DEFAULT_EMBEDDING_MODEL } from '../../lib/categorization/service';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
@@ -490,17 +491,30 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           ? 'var(--er-warn, #d29922)'
           : 'var(--text-faint)';
 
-  const classifyLabel =
-    context?.primaryCategoryName
+  const classificationPresentation = resolveClassificationPresentation({
+    primaryCategoryId: context?.primaryCategoryId,
+    classifyState: context?.classifyState,
+  });
+  const primaryTopicName =
+    context?.primaryCategoryName ??
+    context?.suggestedLinks.find((l) => l.isPrimary)?.name ??
+    context?.suggestedLinks[0]?.name;
+  const classifyLabel = classificationPresentation
+    ? primaryTopicName
+      ? `${classificationPresentation.headline}: ${primaryTopicName}`
+      : classificationPresentation.headline
+    : context?.primaryCategoryName
       ? `Assigned: ${context.primaryCategoryName}`
       : context?.suggestedLinks.find((l) => l.isPrimary)?.name
         ? `Suggested: ${context.suggestedLinks.find((l) => l.isPrimary)?.name}`
-        :
-    context?.suggestedLinks[0]?.name ??
-    (context?.classifyState === 'classified' && !context?.acceptedLinks.length && !context?.suggestedLinks.length
-      ? 'classified (no topic stored)'
-      : context?.classifyState?.replace(/_/g, ' ')) ??
-    '—';
+        : context?.suggestedLinks[0]?.name ??
+          (context?.classifyState === 'classified' &&
+          !context?.acceptedLinks.length &&
+          !context?.suggestedLinks.length
+            ? 'classified (no topic stored)'
+            : context?.classifyState?.replace(/_/g, ' ')) ??
+          '—';
+  const classifyStatusColor = classificationPresentation?.color ?? 'var(--accent)';
 
   const aiShortGated =
     enrich?.aiStatus === 'content_too_short' || isSnippetTooShortForAI(enrich);
@@ -834,13 +848,19 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
             icon={Tags}
             title="Categories"
             status={classifyLabel}
-            statusColor="var(--accent)"
+            statusColor={classifyStatusColor}
             onClear={() => void runClearStage('classify')}
             clearDisabled={running}
             clearTitle="Delete category links and reset classify state"
           />
           <StageBody>
-            <MetaLine label="State">{context?.classifyState?.replace(/_/g, ' ') ?? '—'}</MetaLine>
+            <MetaLine label="State">
+              <span style={{ color: classificationPresentation?.color }}>
+                {classificationPresentation?.headline ??
+                  context?.classifyState?.replace(/_/g, ' ') ??
+                  '—'}
+              </span>
+            </MetaLine>
             {context?.acceptedLinks.length ? (
               <div style={{ color: 'var(--text-muted)' }}>
                 <span style={{ color: 'var(--text-faint)' }}>Accepted: </span>

@@ -2,15 +2,33 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, RefreshCw, Search } from 'lucide-react';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import {
+  isLinkQualityTaxonomyParent,
+  resolveClassificationPresentation,
+} from '../../lib/categorization/classificationPresentation';
+import {
   getTaxonomyTreeWithCounts,
   type TaxonomyLeafRow,
   type TaxonomyParentRow,
 } from '../../lib/categorization/devQueries';
+import { isLinkQualityRemovalLeafId, isLinkQualityAttentionLeafId } from '../../lib/categorization/linkQuality';
 
 interface AiCategoriesViewProps {
   onBrowseCategory?: (categoryId: string, name: string) => void;
   /** When nested inside Enrichment Hub — hide page chrome. */
   embedded?: boolean;
+}
+
+function splitTaxonomyParents(parents: TaxonomyParentRow[]): {
+  topicParents: TaxonomyParentRow[];
+  pipelineParents: TaxonomyParentRow[];
+} {
+  const topicParents: TaxonomyParentRow[] = [];
+  const pipelineParents: TaxonomyParentRow[] = [];
+  for (const row of parents) {
+    if (isLinkQualityTaxonomyParent(row.category.id)) pipelineParents.push(row);
+    else topicParents.push(row);
+  }
+  return { topicParents, pipelineParents };
 }
 
 const RELOAD_REASONS = new Set([
@@ -107,6 +125,10 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
   }, [taxonomy, q, showEmpty]);
 
   const data = filtered ?? taxonomy;
+  const { topicParents, pipelineParents } = splitTaxonomyParents(data?.parents ?? []);
+  const orphanLeaves = data?.orphanLeaves ?? [];
+  const hasTaxonomyRows =
+    topicParents.length > 0 || pipelineParents.length > 0 || orphanLeaves.length > 0;
 
   return (
     <div
@@ -289,7 +311,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
 
       {loading && !data ? (
         <p style={{ color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>Loading taxonomy…</p>
-      ) : !data?.parents.length && !data?.orphanLeaves.length ? (
+      ) : !hasTaxonomyRows ? (
         <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
           {taxonomy
             ? showEmpty || q
@@ -329,7 +351,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
             {onBrowseCategory && <span style={{ width: 64 }} />}
           </div>
 
-          {data.parents.map((row, i) => (
+          {topicParents.map((row, i) => (
             <ParentRow
               key={row.category.id}
               row={row}
@@ -338,7 +360,15 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
             />
           ))}
 
-          {data.orphanLeaves.length > 0 && (
+          {pipelineParents.length > 0 ? (
+            <PipelineTaxonomySection
+              parents={pipelineParents}
+              defaultOpen={!!q}
+              onBrowse={onBrowseCategory}
+            />
+          ) : null}
+
+          {orphanLeaves.length > 0 && (
             <div style={{ borderTop: '1px solid var(--border)', padding: '8px 0' }}>
               <div
                 style={{
@@ -350,7 +380,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
               >
                 Other topics (no parent)
               </div>
-              {data.orphanLeaves.map((leaf) => (
+              {orphanLeaves.map((leaf) => (
                 <LeafRow key={leaf.category.id} leaf={leaf} onBrowse={onBrowseCategory} />
               ))}
             </div>
@@ -408,27 +438,96 @@ function BrowseButton({
   );
 }
 
+function PipelineTaxonomySection({
+  parents,
+  defaultOpen,
+  onBrowse,
+}: {
+  parents: TaxonomyParentRow[];
+  defaultOpen?: boolean;
+  onBrowse?: (categoryId: string, name: string) => void;
+}) {
+  return (
+    <div
+      style={{
+        borderTop: '2px solid color-mix(in srgb, var(--er-warn, #d29922) 45%, var(--border))',
+        background: 'color-mix(in srgb, var(--er-warn, #d29922) 5%, var(--bg-panel))',
+      }}
+    >
+      <div
+        style={{
+          padding: '10px 12px 6px',
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 'var(--text-xs)',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            color: 'var(--er-warn, #d29922)',
+          }}
+        >
+          Link quality &amp; attention
+        </div>
+        <p
+          style={{
+            margin: '4px 0 0',
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-muted)',
+            lineHeight: 1.45,
+          }}
+        >
+          Pipeline buckets for broken, low-signal, or auth-gated pages — still in the taxonomy tree, but not
+          normal topic classification.
+        </p>
+      </div>
+      {parents.map((row) => (
+        <ParentRow
+          key={row.category.id}
+          row={row}
+          variant="pipeline"
+          defaultOpen={defaultOpen ?? row.itemCount > 0}
+          onBrowse={onBrowse}
+        />
+      ))}
+    </div>
+  );
+}
+
 function ParentRow({
   row,
   defaultOpen,
   onBrowse,
+  variant = 'topic',
 }: {
   row: TaxonomyParentRow;
   defaultOpen?: boolean;
   onBrowse?: (categoryId: string, name: string) => void;
+  variant?: 'topic' | 'pipeline';
 }) {
   const [open, setOpen] = useState(defaultOpen ?? row.itemCount > 0);
   const canBrowse = !!onBrowse && row.itemCount > 0;
+  const pipelineParent = variant === 'pipeline';
 
   return (
-    <div style={{ borderBottom: '1px solid var(--border)' }}>
+    <div
+      style={{
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           padding: '8px 12px',
-          background: open ? 'var(--accent-weak)' : 'transparent',
+          background: open
+            ? pipelineParent
+              ? 'color-mix(in srgb, var(--er-warn, #d29922) 10%, var(--bg))'
+              : 'var(--accent-weak)'
+            : 'transparent',
         }}
       >
         <button
@@ -445,7 +544,16 @@ function ParentRow({
           }}
         >
           {open ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
-          <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: 'var(--text-sm)',
+              color: pipelineParent ? 'var(--er-warn, #d29922)' : 'var(--text)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {row.category.name}
           </span>
         </button>
@@ -465,7 +573,13 @@ function ParentRow({
       {open && (
         <div style={{ paddingLeft: 20, paddingBottom: 4 }}>
           {row.leaves.map((leaf) => (
-            <LeafRow key={leaf.category.id} leaf={leaf} onBrowse={onBrowse} indent />
+            <LeafRow
+              key={leaf.category.id}
+              leaf={leaf}
+              onBrowse={onBrowse}
+              indent
+              variant={pipelineParent ? 'pipeline' : 'topic'}
+            />
           ))}
           {!row.leaves.length && (
             <p style={{ margin: '4px 12px', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>No leaf topics</p>
@@ -480,12 +594,41 @@ function LeafRow({
   leaf,
   onBrowse,
   indent,
+  variant = 'topic',
 }: {
   leaf: TaxonomyLeafRow;
   onBrowse?: (categoryId: string, name: string) => void;
   indent?: boolean;
+  variant?: 'topic' | 'pipeline';
 }) {
   const canBrowse = !!onBrowse && leaf.itemCount > 0;
+  const leafPresentation = resolveClassificationPresentation({
+    primaryCategoryId: leaf.category.id,
+  });
+  const removalLeaf = isLinkQualityRemovalLeafId(leaf.category.id);
+  const attentionLeaf = isLinkQualityAttentionLeafId(leaf.category.id);
+  const leafColor =
+    variant === 'pipeline'
+      ? removalLeaf
+        ? 'var(--error, #f85149)'
+        : attentionLeaf
+          ? 'var(--er-warn, #d29922)'
+          : leaf.primaryItemCount
+            ? 'var(--text)'
+            : 'var(--text-muted)'
+      : leafPresentation?.tier === 'general'
+        ? 'var(--er-warn, #d29922)'
+        : leaf.primaryItemCount
+          ? 'var(--text)'
+          : 'var(--text-muted)';
+  const leafPrefix =
+    variant === 'pipeline'
+      ? removalLeaf
+        ? '⚠ '
+        : attentionLeaf
+          ? '◉ '
+          : '• '
+      : leafPresentation?.leafPrefix ?? (leaf.category.isGeneralFallback ? '◦ ' : '• ');
   return (
     <div
       style={{
@@ -494,7 +637,7 @@ function LeafRow({
         gap: 8,
         padding: indent ? '4px 12px 4px 20px' : '6px 12px',
         fontSize: 'var(--text-sm)',
-        color: leaf.primaryItemCount ? 'var(--text)' : 'var(--text-muted)',
+        color: leafColor,
       }}
     >
       <span
@@ -507,7 +650,7 @@ function LeafRow({
         }}
         title={leaf.category.name}
       >
-        {leaf.category.isGeneralFallback ? '◦ ' : '• '}
+        {leafPrefix}
         {leaf.category.name}
       </span>
       <span style={{ width: 52 }} />

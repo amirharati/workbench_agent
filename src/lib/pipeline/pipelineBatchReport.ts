@@ -286,6 +286,7 @@ function outcomeFromPipelineBadge(
   if (badge.kind === 'needs_review') return 'review';
   if (badge.kind === 'partial') {
     if (badge.label === 'Skipped') return 'skipped';
+    if (badge.label === 'General / Other') return 'review';
     if (badge.label === 'Fetched' || badge.label.startsWith('Pending')) return 'fetched';
     return 'fetched';
   }

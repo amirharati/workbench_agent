@@ -22,6 +22,7 @@ import {
   type PipelineQueueItemRow,
 } from '../../lib/categorization/devQueries';
 import { invalidatePipelineCatalog } from '../../lib/pipeline/pipelineCatalog';
+import { resolveClassificationPresentation } from '../../lib/categorization/classificationPresentation';
 import {
   displayClassifyStateLabel,
   resolveClassifyQueueBlocker,
@@ -51,6 +52,8 @@ const STATE_COLORS: Record<string, string> = {
   pending_reclassify: RECLASSIFY_ACCENT,
   pending_discover: 'var(--er-warn, #d29922)',
   classified_general: 'var(--er-warn, #d29922)',
+  classified_removal: 'var(--error, #f85149)',
+  classified_attention: 'var(--er-warn, #d29922)',
   manual_review: 'var(--error, #f85149)',
   ineligible: 'var(--text-faint)',
   skipped: 'var(--text-muted)',
@@ -63,7 +66,12 @@ function rowStateColor(row: PipelineQueueItemRow): string {
   if (row.enrichmentStatusLabel) {
     if (row.enrichmentStatusLabel.startsWith('Fetch OK ·')) return 'var(--er-warn, #d29922)';
     if (row.enrichmentStatusLabel.startsWith('Fetch ·')) return 'var(--error, #f85149)';
-    if (row.enrichmentStatusLabel.startsWith('Embed ·')) return '#a371f7';
+    if (row.enrichmentStatusLabel.startsWith('Embed ·')) return 'var(--error, #f85149)';
+    return 'var(--er-warn, #d29922)';
+  }
+  const stateLabel = rowStateLabel(row);
+  if (stateLabel === 'Removal candidate') return 'var(--error, #f85149)';
+  if (stateLabel === 'Needs attention' || stateLabel === 'General / Other') {
     return 'var(--er-warn, #d29922)';
   }
   const st = row.classifyState;
@@ -104,8 +112,17 @@ function formatTime(ts?: number): string {
   });
 }
 
+function topicSourcePresentation(row: PipelineQueueItemRow) {
+  return resolveClassificationPresentation({
+    primaryCategoryId: row.primaryCategoryId,
+    classifyState: row.classifyState,
+  });
+}
+
 function topicSourceLabel(row: PipelineQueueItemRow): string | null {
   if (!row.topicPath) return null;
+  const presentation = topicSourcePresentation(row);
+  if (presentation) return presentation.sourceTag;
   if (row.primaryLinkStatus === 'accepted') return 'Assigned';
   if (row.primaryLinkStatus === 'suggested') {
     return row.classifyState === 'pending_classify' || row.classifyState === 'pending_reclassify'
@@ -113,6 +130,14 @@ function topicSourceLabel(row: PipelineQueueItemRow): string | null {
       : 'Model selected';
   }
   return 'Topic';
+}
+
+function topicSourceColor(row: PipelineQueueItemRow): string {
+  const presentation = topicSourcePresentation(row);
+  if (presentation) return presentation.color;
+  if (row.primaryLinkStatus === 'accepted') return 'var(--er-ok, #3fb950)';
+  if (row.primaryLinkStatus === 'suggested') return 'var(--er-warn, #d29922)';
+  return 'var(--text-faint)';
 }
 
 const chipBase: React.CSSProperties = {
@@ -973,6 +998,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
             ) : (
               visibleRows.map((row) => {
                 const st = row.classifyState;
+                const topicPresentation = topicSourcePresentation(row);
                 const isRecentUpdate = recentUpdateIdSet.has(row.item.id);
                 const stillMatchesFilter = filteredRows.some((r) => r.item.id === row.item.id);
                 const isCurrentInspect =
@@ -1076,16 +1102,17 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                       >
                         {row.topicPath ? (
                           <>
-                            <span style={{ color: 'var(--text)' }}>{row.topicPath}</span>
+                            <span
+                              style={{
+                                color: topicPresentation?.color ?? 'var(--text)',
+                              }}
+                            >
+                              {row.topicPath}
+                            </span>
                             <span
                               style={{
                                 marginLeft: 6,
-                                color:
-                                  row.primaryLinkStatus === 'accepted'
-                                    ? 'var(--er-ok, #3fb950)'
-                                    : row.primaryLinkStatus === 'suggested'
-                                      ? 'var(--er-warn, #d29922)'
-                                      : 'var(--text-faint)',
+                                color: topicPresentation?.color ?? topicSourceColor(row),
                                 fontWeight: 600,
                               }}
                             >
