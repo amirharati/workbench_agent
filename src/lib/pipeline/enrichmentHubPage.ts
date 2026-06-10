@@ -4,6 +4,7 @@ import { getDB } from '../db';
 import type { AiItemCategoryLink } from '../categorization/types';
 import {
   buildEnrichmentRowMetaForItem,
+  enrichmentHubRowFields,
   type EnrichmentHubCounts,
   type EnrichmentHubRow,
   type HubOutcomeChip,
@@ -46,7 +47,14 @@ function buildRowsFromPageData(data: HubEnrichmentPageResult): EnrichmentHubRow[
     const signal = signalByItem.get(item.id);
     const embedFailed = signal?.signalStatus === 'embed_failed';
     const meta = buildEnrichmentRowMetaForItem(enrichMap, signalByItem, linksByItem, item);
-    return { item, enrichment, embedFailed, meta };
+    const itemLinks = linksByItem.get(item.id) ?? [];
+    return {
+      item,
+      enrichment,
+      embedFailed,
+      meta,
+      ...enrichmentHubRowFields(signal, itemLinks),
+    };
   });
 }
 
@@ -76,11 +84,18 @@ export async function fetchEnrichmentHubPage(
   return { rows: buildRowsFromPageData(data), total: data.total, done: data.done };
 }
 
+export type HubEnrichmentCountsResult = {
+  counts: EnrichmentHubCounts;
+  chips: HubOutcomeChip[];
+  /** Scope-wide trash candidates; ignores outcome label filter. */
+  trashSuggestionCount: number;
+};
+
 /** Chip counts computed in worker (batched scan, no rows sent to tab). */
 export async function fetchEnrichmentHubCounts(
   scope: HubScopeParams,
   search?: string
-): Promise<{ counts: EnrichmentHubCounts; chips: HubOutcomeChip[] }> {
+): Promise<HubEnrichmentCountsResult> {
   if (isDbWorkerProcess()) {
     const store = await getDB();
     return runHubEnrichmentCounts(store, scope, search);

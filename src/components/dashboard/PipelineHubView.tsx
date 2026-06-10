@@ -215,6 +215,7 @@ type HubCache = {
   totalInScope: number;
   chips: HubOutcomeChip[];
   counts: Awaited<ReturnType<typeof fetchEnrichmentHubCounts>>['counts'];
+  trashSuggestionCount: number;
   scopeProjectId: string;
   scopeCollectionId: string;
 };
@@ -273,6 +274,7 @@ function fetchHubCountsAndUpdateCache(
         totalInScope: pageSnapshot.totalInScope,
         chips: countRes.chips,
         counts: countRes.counts,
+        trashSuggestionCount: countRes.trashSuggestionCount,
         scopeProjectId: scope.scopeProjectId,
         scopeCollectionId: scope.scopeCollectionId,
       });
@@ -320,6 +322,7 @@ export function prewarmHubCache(
           chips: [],
           // counts filled in later by the background counts fetch
           counts: null as unknown as Awaited<ReturnType<typeof fetchEnrichmentHubCounts>>['counts'],
+          trashSuggestionCount: 0,
           scopeProjectId,
           scopeCollectionId,
         });
@@ -480,6 +483,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const [counts, setCounts] = useState<Awaited<ReturnType<typeof fetchEnrichmentHubCounts>>['counts'] | null>(
     cachedOnMount?.counts ?? null
   );
+  const [trashSuggestionCount, setTrashSuggestionCount] = useState(
+    cachedOnMount?.trashSuggestionCount ?? 0
+  );
   // If we have cached data, skip the initial loading spinner entirely
   const [initialLoading, setInitialLoading] = useState(!cachedOnMount);
   const [refreshing, setRefreshing] = useState(false);
@@ -577,6 +583,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         onCounts: (countRes) => {
           setCounts(countRes.counts);
           setHubChips(countRes.chips);
+          setTrashSuggestionCount(countRes.trashSuggestionCount);
         },
       }
     );
@@ -626,6 +633,17 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     clearOutcomeFilter();
     setTrashSuggestionsOnly(false);
   }, [clearOutcomeFilter]);
+
+  const toggleTrashSuggestions = useCallback(() => {
+    if (trashSuggestionsOnly) {
+      setTrashSuggestionsOnly(false);
+      return;
+    }
+    clearOutcomeFilter();
+    setDisplayOrderIds(null);
+    setRecentUpdateIds([]);
+    setTrashSuggestionsOnly(true);
+  }, [trashSuggestionsOnly, clearOutcomeFilter]);
 
   const applyRecentHolds = useCallback(
     (
@@ -685,6 +703,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       setTotalInScope(cache.totalInScope);
       if (cache.chips.length > 0) setHubChips(cache.chips);
       if (cache.counts) setCounts(cache.counts);
+      setTrashSuggestionCount(cache.trashSuggestionCount);
       setInitialLoading(false);
     },
     []
@@ -727,6 +746,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             onCounts: (countRes) => {
               setCounts(countRes.counts);
               setHubChips(countRes.chips);
+              setTrashSuggestionCount(countRes.trashSuggestionCount);
             },
           }
         );
@@ -851,11 +871,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     [scopedRows, hubFilters]
   );
 
-  const trashSuggestionRows = useMemo(
-    () => scopedRows.filter((r) => rowMatchesTrashSuggestion(r)),
-    [scopedRows]
-  );
-
   const statusFilterActive = outcomeLabel !== 'all' || trashSuggestionsOnly;
 
   const tableRowsForList = useMemo(
@@ -962,12 +977,12 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const statusBarChips = hubChips;
 
   const allChipCount = useMemo(() => {
-    if (trashSuggestionsOnly) return trashSuggestionRows.length;
+    if (trashSuggestionsOnly) return hubChips.reduce((sum, chip) => sum + chip.count, 0);
     if (hubFetchFiltersActive(hubFilters)) {
       return hubChips.reduce((sum, chip) => sum + chip.count, 0);
     }
     return totalInScope;
-  }, [trashSuggestionsOnly, trashSuggestionRows.length, hubFilters, hubChips, totalInScope]);
+  }, [trashSuggestionsOnly, hubFilters, hubChips, totalInScope]);
 
   const toggleSelect = (id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -978,10 +993,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     });
   };
 
-  const selectionScopeCount = useMemo(() => {
-    if (trashSuggestionsOnly) return trashSuggestionRows.length;
-    return totalInScope;
-  }, [trashSuggestionsOnly, trashSuggestionRows.length, totalInScope]);
+  const selectionScopeCount = totalInScope;
 
   const ensureAllHubRowsLoaded = useCallback(async (): Promise<EnrichmentHubRow[]> => {
     if (rows.length >= totalInScope) return rows;
@@ -1190,7 +1202,25 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   };
 
   const handleSelectAllTrashSuggestions = () => {
-    setSelectedIds(new Set(trashSuggestionRows.map((r) => r.item.id)));
+    void (async () => {
+      setSelectingAllInScope(true);
+      try {
+        const loaded = await ensureAllHubRowsLoaded();
+        setSelectedIds(
+          new Set(loaded.filter((r) => rowMatchesTrashSuggestion(r)).map((r) => r.item.id))
+        );
+      } finally {
+        setSelectingAllInScope(false);
+      }
+    })();
+  };
+
+  const handleTrashAllSuggestions = () => {
+    void (async () => {
+      const loaded = await ensureAllHubRowsLoaded();
+      const ids = loaded.filter((r) => rowMatchesTrashSuggestion(r)).map((r) => r.item.id);
+      void handleMoveSelectedToTrash(ids);
+    })();
   };
 
   const allSelected =
@@ -1405,22 +1435,14 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             color={PIPELINE_STATE_COLORS.neutral}
             onClick={clearHubFilters}
           />
-          {trashSuggestionRows.length > 0 ? (
-            <SummaryChip
-              label="Trash suggestions"
-              count={trashSuggestionRows.length}
-              active={trashSuggestionsOnly}
-              color={PIPELINE_STATE_COLORS.skipped}
-              onClick={() => {
-                if (trashSuggestionsOnly) {
-                  setTrashSuggestionsOnly(false);
-                } else {
-                  clearOutcomeFilter();
-                  setTrashSuggestionsOnly(true);
-                }
-              }}
-            />
-          ) : null}
+          <SummaryChip
+            label="Trash suggestions"
+            count={trashSuggestionCount}
+            active={trashSuggestionsOnly}
+            color={PIPELINE_STATE_COLORS.failed}
+            dimmed={trashSuggestionCount === 0}
+            onClick={toggleTrashSuggestions}
+          />
           {initialLoading ? (
             <span
               style={{
@@ -1463,7 +1485,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         >
           Status
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           {statusBarChips.map((chip) => (
             <SummaryChip
               key={chip.label}
@@ -1480,10 +1502,18 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               }}
             />
           ))}
+          <SummaryChip
+            label="Trash suggestions"
+            count={trashSuggestionCount}
+            active={trashSuggestionsOnly}
+            color={PIPELINE_STATE_COLORS.failed}
+            dimmed={trashSuggestionCount === 0}
+            onClick={toggleTrashSuggestions}
+          />
         </div>
       </div>
 
-      {trashSuggestionsOnly && trashSuggestionRows.length > 0 ? (
+      {trashSuggestionsOnly ? (
         <div
           style={{
             display: 'flex',
@@ -1500,12 +1530,13 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           }}
         >
           <span style={{ flex: '1 1 200px' }}>
-            {trashSuggestionRows.length} bookmark{trashSuggestionRows.length === 1 ? '' : 's'} look like dead
-            or invalid links (404, unreachable host, localhost, bad URL).
+            {trashSuggestionCount === 0
+              ? 'No bookmarks in this scope look like trash suggestions.'
+              : `${trashSuggestionCount} bookmark${trashSuggestionCount === 1 ? '' : 's'} look like dead links, removal candidates, or hard enrich failures (404, fetch fail, placeholder, low-signal).`}
           </span>
           <button
             type="button"
-            disabled={pipeline.isRunning}
+            disabled={pipeline.isRunning || trashSuggestionCount === 0}
             onClick={handleSelectAllTrashSuggestions}
             style={{
               padding: '5px 12px',
@@ -1521,8 +1552,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           </button>
           <button
             type="button"
-            disabled={pipeline.isRunning}
-            onClick={() => void handleMoveSelectedToTrash(trashSuggestionRows.map((r) => r.item.id))}
+            disabled={pipeline.isRunning || trashSuggestionCount === 0}
+            onClick={handleTrashAllSuggestions}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -1538,7 +1569,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             }}
           >
             <Trash2 size={13} />
-            Trash all {trashSuggestionRows.length}
+            Trash all {trashSuggestionCount}
           </button>
         </div>
       ) : null}
@@ -1858,9 +1889,14 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                           marginTop: 4,
                           fontSize: 10,
                           fontWeight: 600,
-                          color: 'var(--er-warn, #d29922)',
+                          color:
+                            /404|410|Invalid|unreachable|Removal|Placeholder|junk|enrich failed|Fetch or enrich|Low-signal/i.test(
+                              trashSuggestion
+                            )
+                              ? 'var(--error, #f85149)'
+                              : 'var(--er-warn, #d29922)',
                         }}
-                        title="Suggested for trash — bad or dead link"
+                        title="Suggested for trash — review before deleting"
                       >
                         <Trash2 size={10} />
                         {trashSuggestion}

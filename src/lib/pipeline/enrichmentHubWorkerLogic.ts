@@ -6,7 +6,9 @@ import {
   buildCountsFromMetaMap,
   buildEnrichmentRowMetaForItem,
   buildHubOutcomeChipsFromLabelCounts,
+  enrichmentHubRowFields,
   enrichmentHubRowMatchesFilters,
+  rowMatchesTrashSuggestion,
   type EnrichmentHubCounts,
   type EnrichmentHubFilterState,
   type EnrichmentHubRow,
@@ -85,6 +87,7 @@ function entryToRow(entry: HubScopeEntry): EnrichmentHubRow {
     enrichment: entry.enrichment,
     embedFailed: entry.embedFailed,
     meta: entry.meta,
+    ...enrichmentHubRowFields(entry.signal, entry.links),
   };
 }
 
@@ -256,13 +259,14 @@ export function runHubEnrichmentCounts(
   store: IdbCompatStore,
   scope: HubScopeParams,
   search?: string
-): { counts: EnrichmentHubCounts; chips: HubOutcomeChip[] } {
+): { counts: EnrichmentHubCounts; chips: HubOutcomeChip[]; trashSuggestionCount: number } {
   const q = (search ?? '').trim().toLowerCase();
   const entries = getOrBuildScopeEntries(store, scope);
   const labelCounts = new Map<string, number>();
   const labelColors = new Map<string, string>();
   const metaByItemId = new Map<string, EnrichmentHubRowMeta>();
   const bookmarks: Item[] = [];
+  let trashSuggestionCount = 0;
 
   for (const entry of entries) {
     if (q) {
@@ -275,10 +279,12 @@ export function runHubEnrichmentCounts(
     const label = entry.meta.statusBadge.text;
     labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
     if (!labelColors.has(label)) labelColors.set(label, entry.meta.statusBadge.color);
+    if (rowMatchesTrashSuggestion(entryToRow(entry))) trashSuggestionCount++;
   }
 
   return {
     counts: buildCountsFromMetaMap(bookmarks, metaByItemId),
     chips: buildHubOutcomeChipsFromLabelCounts(labelCounts, labelColors),
+    trashSuggestionCount,
   };
 }

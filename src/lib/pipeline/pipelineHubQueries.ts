@@ -2,7 +2,6 @@ import type { Item, Collection } from '../db';
 import { getDB } from '../db';
 import { ensurePipelineHydrated } from '../db';
 import { getAllEnrichments, type ItemEnrichment } from '../enrichment';
-import { checkUrlEligibility } from '../enrichment/eligibility';
 import { formatEnrichmentFailureMessage } from '../enrichment/errorMessages';
 import {
   FAILURE_CATEGORY_LABELS,
@@ -20,7 +19,8 @@ import {
 import type { ProcessingDigest } from './itemPipelineContext';
 import { pipelineStatusColorForLabel } from './pipelineDictionary';
 import { resolvePipelineStageFromParts, type PipelineStageInfo } from './pipelineStage';
-import type { AiItemCategoryLink, AiItemSignal } from '../categorization/types';
+import type { AiItemCategoryLink, AiItemSignal, ClassifyState } from '../categorization/types';
+import { resolveTrashSuggestionFromInput } from './trashSuggestion';
 import { itemMatchesScope } from '../shell/itemScope';
 
 /** Rows materialized on first Hub paint; display shows HUB_DISPLAY_PAGE_SIZE at a time. */
@@ -43,7 +43,20 @@ export type EnrichmentHubRow = {
   embedFailed: boolean;
   /** Precomputed at load — avoids heavy work on every render/filter. */
   meta: EnrichmentHubRowMeta;
+  primaryCategoryId?: string | null;
+  classifyState?: ClassifyState;
 };
+
+export function enrichmentHubRowFields(
+  signal?: AiItemSignal,
+  links?: AiItemCategoryLink[]
+): Pick<EnrichmentHubRow, 'primaryCategoryId' | 'classifyState'> {
+  const itemLinks = links ?? [];
+  return {
+    primaryCategoryId: primaryLeafIdFromLinks(itemLinks),
+    classifyState: signal?.classifyState,
+  };
+}
 
 export type EnrichmentHubRowMeta = {
   ok: boolean;
@@ -584,80 +597,16 @@ export function enrichmentHubRowMatchesFilters(
   return applyEnrichmentHubFilters([row], filters).length > 0;
 }
 
-const NOT_FOUND_DETAIL_RE =
-  /\b(?:HTTP\s*404|HTTP\s*410|404\s*[-—–]|page not found|page removed|410\s*[-—–]|gone)\b/i;
-
-/** DNS / host-dead signals — not generic provider or CORS noise. */
-const DEAD_NETWORK_DETAIL_RE =
-  /\b(?:ENOTFOUND|ECONNREFUSED|ERR_NAME_NOT_RESOLVED|NXDOMAIN|could not resolve|getaddrinfo|host not found|unable to resolve|name or service not known|network is unreachable)\b/i;
-
-const PROVIDER_NETWORK_NOISE_RE =
-  /\b(?:Jina reader|reaching Jina|rate limit|CORS|Failed to fetch)\b/i;
-
-function failureDetailText(
-  enrichment: ItemEnrichment | undefined,
-  failureReason?: string
-): string {
-  return [enrichment?.lastErrorDetail, failureReason].filter(Boolean).join(' ').trim();
-}
-
-function isNotFoundFailure(
-  enrichment: ItemEnrichment | undefined,
-  failureReason?: string
-): boolean {
-  const detail = failureDetailText(enrichment, failureReason);
-  if (NOT_FOUND_DETAIL_RE.test(detail)) return true;
-  if (
-    enrichment?.lastErrorCode === 'parse_empty' &&
-    /could not resolve t\.co/i.test(detail)
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function isClearDeadNetworkFailure(
-  enrichment: ItemEnrichment | undefined,
-  failureReason?: string
-): boolean {
-  if (enrichment?.lastErrorCode !== 'network') return false;
-  const detail = failureDetailText(enrichment, failureReason);
-  if (!detail || PROVIDER_NETWORK_NOISE_RE.test(detail)) return false;
-  return DEAD_NETWORK_DETAIL_RE.test(detail);
-}
-
-/** Short label for why this row is a trash candidate (dead link, bad URL, etc.). */
+/** Short label for why this row is a trash candidate (dead link, removal bucket, enrich fail, etc.). */
 export function resolveTrashSuggestion(row: EnrichmentHubRow): string | null {
-  const url = (row.item.url || '').trim();
-  if (!url) return 'No URL';
-
-  const urlCheck = checkUrlEligibility(url);
-  if (!urlCheck.eligible) {
-    switch (urlCheck.reason) {
-      case 'invalid_url':
-        return 'Invalid URL';
-      case 'excluded_localhost':
-        return 'Localhost URL';
-      case 'no_url':
-        return 'No URL';
-      default:
-        return null;
-    }
-  }
-
-  const enrichment = row.enrichment;
-  const detail = failureDetailText(enrichment, row.meta.failureReason);
-
-  if (isNotFoundFailure(enrichment, row.meta.failureReason)) {
-    if (/410|page removed|gone/i.test(detail)) return 'Page removed (410)';
-    return 'Page not found (404)';
-  }
-
-  if (isClearDeadNetworkFailure(enrichment, row.meta.failureReason)) {
-    return 'Site unreachable';
-  }
-
-  return null;
+  return resolveTrashSuggestionFromInput({
+    item: row.item,
+    enrichment: row.enrichment,
+    embedFailed: row.embedFailed,
+    meta: row.meta,
+    primaryCategoryId: row.primaryCategoryId,
+    classifyState: row.classifyState,
+  });
 }
 
 export function rowMatchesTrashSuggestion(row: EnrichmentHubRow): boolean {
@@ -759,7 +708,14 @@ export function materializeHubRow(index: EnrichmentHubIndex, item: Item): Enrich
     index.linksByItem,
     item
   );
-  return { item, enrichment, embedFailed, meta };
+  const itemLinks = index.linksByItem.get(item.id) ?? [];
+  return {
+    item,
+    enrichment,
+    embedFailed,
+    meta,
+    ...enrichmentHubRowFields(signal, itemLinks),
+  };
 }
 
 export function scopedHubBookmarks(
