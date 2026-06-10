@@ -1,4 +1,3 @@
-import { getCategorizationQueueStats, getDiscoverPoolStats } from '../categorization';
 import type { TopicClassifySummary } from '../categorization/types';
 
 /** Key hub queue counters shown before/after maintenance actions. */
@@ -30,6 +29,7 @@ export type HubQueueOutcome = {
     | 'classifiedGeneral'
     | 'pendingDiscover'
     | 'skippedHash'
+    | 'skippedIneligible'
     | 'skippedManualReview'
     | 'llmErrors'
     | 'unassigned'
@@ -43,6 +43,7 @@ export type HubQueueOutcome = {
 };
 
 export async function loadHubQueueSnapshot(): Promise<HubQueueSnapshot> {
+  const { getCategorizationQueueStats, getDiscoverPoolStats } = await import('../categorization');
   const [queue, pool] = await Promise.all([
     getCategorizationQueueStats(),
     getDiscoverPoolStats(),
@@ -173,6 +174,69 @@ export function buildHubQueueMetricRows(outcome: HubQueueOutcome): HubQueueMetri
   }));
 }
 
+const LIBRARY_SCOPE_NOTE =
+  'Table below is library-wide queue totals (not only this run selection).';
+
+function appendDiscoverOutcomeLines(
+  lines: string[],
+  action: HubQueueAction,
+  discover: NonNullable<HubQueueOutcome['discover']>,
+  batch?: HubQueueOutcome['batch']
+): void {
+  const n = discover.itemsSampled;
+  lines.push(`Discover sampled ${n} stuck bookmark${n === 1 ? '' : 's'}.`);
+
+  if (discover.newLeaves > 0 || discover.newParents > 0) {
+    const suffix = action === 'discover' ? ' to taxonomy' : '';
+    lines.push(
+      `Added ${discover.newParents} parent(s) and ${discover.newLeaves} new topic(s)${suffix}.`
+    );
+  } else if (action === 'discover') {
+    lines.push('No new topics added this run.');
+  }
+
+  if (discover.itemsMarkedForReclassify > 0) {
+    lines.push(
+      `${discover.itemsMarkedForReclassify} bookmark${discover.itemsMarkedForReclassify === 1 ? '' : 's'} were queued for classify after discover.`
+    );
+  }
+
+  if (batch && (action === 'discover_classify' || action === 'category_update')) {
+    if (batch.processed > 0) {
+      lines.push(
+        `Classify made ${batch.processed} LLM call${batch.processed === 1 ? '' : 's'} on queued items.`
+      );
+      if (batch.classifiedSpecific > 0) {
+        lines.push(
+          `${batch.classifiedSpecific} assigned a specific topic — they leave the classify queue.`
+        );
+      }
+      if (batch.classifiedGeneral > 0) {
+        lines.push(
+          `${batch.classifiedGeneral} assigned General/Other — moved to that bucket (not “done”).`
+        );
+      }
+      if (batch.pendingDiscover > 0 || (batch.unassigned ?? 0) > 0) {
+        const routed = batch.pendingDiscover + (batch.unassigned ?? 0);
+        lines.push(`${routed} routed toward discover (no good topic yet).`);
+      }
+    }
+    if ((batch.skippedIneligible ?? 0) > 0) {
+      lines.push(
+        `${batch.skippedIneligible} skipped as ineligible (insufficient semantic text).`
+      );
+    }
+    if (batch.skippedHash > 0) {
+      lines.push(`${batch.skippedHash} skipped unchanged (no LLM).`);
+    }
+    if (batch.llmErrors > 0) {
+      lines.push(`${batch.llmErrors} LLM error(s) — may land in manual review.`);
+    }
+  }
+
+  lines.push(LIBRARY_SCOPE_NOTE);
+}
+
 export function explainHubQueueOutcome(outcome: HubQueueOutcome): {
   headline: string;
   lines: string[];
@@ -182,22 +246,18 @@ export function explainHubQueueOutcome(outcome: HubQueueOutcome): {
   const lines: string[] = [];
   const poolHighlights = buildPoolChangeHighlights(before, after);
 
-  if (action === 'category_update') {
-    if (discover && discover.itemsSampled > 0) {
-      lines.push(
-        `Topic discovery: ${discover.itemsSampled} weak/unassigned bookmark${discover.itemsSampled === 1 ? '' : 's'}.`
-      );
-      if (discover.newLeaves > 0 || discover.newParents > 0) {
-        lines.push(
-          `Added ${discover.newParents} parent(s) and ${discover.newLeaves} new topic(s).`
-        );
-      }
-    }
+  if (
+    discover &&
+    discover.itemsSampled > 0 &&
+    (action === 'discover' || action === 'discover_classify' || action === 'category_update')
+  ) {
+    appendDiscoverOutcomeLines(lines, action, discover, batch);
+  } else if (action === 'category_update') {
     if (batch && batch.processed > 0) {
       lines.push(
         `Classification: ${batch.classifiedSpecific} specific topic${batch.classifiedSpecific === 1 ? '' : 's'}, ${batch.classifiedGeneral} General/Other.`
       );
-    } else if (!discover?.itemsSampled) {
+    } else {
       lines.push(`Processed ${itemsRun} bookmark${itemsRun === 1 ? '' : 's'}.`);
     }
   } else if (batch && batch.processed > 0) {
@@ -223,20 +283,6 @@ export function explainHubQueueOutcome(outcome: HubQueueOutcome): {
     }
     if (batch.llmErrors > 0) {
       lines.push(`${batch.llmErrors} LLM error(s) — may land in manual review.`);
-    }
-  } else if (discover) {
-    lines.push(
-      `Discover processed all ${discover.itemsSampled} stuck bookmark${discover.itemsSampled === 1 ? '' : 's'} in scope.`
-    );
-    if (discover.newLeaves > 0 || discover.newParents > 0) {
-      lines.push(
-        `Added ${discover.newParents} parent(s) and ${discover.newLeaves} new topic(s) to taxonomy.`
-      );
-    } else {
-      lines.push('No new topics added this run.');
-    }
-    if (discover.itemsMarkedForReclassify > 0) {
-      lines.push(`${discover.itemsMarkedForReclassify} queued to reclassify with new topics.`);
     }
   } else {
     lines.push(`Processed ${itemsRun} bookmark${itemsRun === 1 ? '' : 's'}.`);
