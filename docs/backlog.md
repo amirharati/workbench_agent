@@ -66,7 +66,7 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ## 🔴 Reliability & data
 
-- [ ] **DISC-POST-1 — Discover bulk requeue + misleading outcome** (2026-06-06, **high**): After discover+classify on General/Other pool, outcome modal implies ~N categories lost; taxonomy grew (+22 leaves). Root: `shouldMarkReclassifyAfterDiscover` flips all samples to `pending_classify`; classify then skips most on eligibility. **Not** user-signals SIG-0/1/B2-lite. Spec: [`docs/temp/TASK-V3-DISC-POST-1-discover-requeue-honesty.md`](temp/TASK-V3-DISC-POST-1-discover-requeue-honesty.md) · dogfood **#13**. Fix **D** (outcome honesty) can ship before policy **A/B**.
+- [ ] **DISC-POST-1 — Discover bulk requeue + misleading outcome** (2026-06-06, **deferred**): General-pool bulk run on test4; discover OK in main loop — fix when prioritized. Spec: [`docs/temp/TASK-V3-DISC-POST-1-discover-requeue-honesty.md`](temp/TASK-V3-DISC-POST-1-discover-requeue-honesty.md) · dogfood **#13**. **Active:** dogfood sprint pass 2 fixes low-hanging UX (#8, etc.).
 - [ ] **Error handling**: consistent try/catch on async paths (`App.tsx`, dashboard handlers, Chrome APIs); user-visible errors vs silent `console.error`.
 - [ ] **DB transactions**: multi-step deletes (`deleteCollection`, `deleteProject`, bulk moves) reviewed for atomicity in `db.ts`.
 - [ ] **Input validation**: URLs, IDs, text limits; centralize validation helpers (extend existing `src/lib/utils.ts` patterns as needed).

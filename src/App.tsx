@@ -31,14 +31,10 @@ import {
   type LibraryRefreshScope,
 } from './lib/libraryRefresh';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
-import { SidePanelView } from './components/SidePanelView';
+import { SidePanelConnected } from './components/SidePanelConnected';
 import { PipelineProgressProvider } from './components/dashboard/PipelineProgressProvider';
 import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from './lib/tabUrlCapture';
-import {
-  runSingleLinkDigest,
-  isAnyDigestInFlight,
-  type SingleLinkDigestResult,
-} from './lib/pipeline/singleLinkDigest';
+import { isAnyDigestInFlight, runSingleLinkDigest } from './lib/pipeline/singleLinkDigest';
 import { BackupOnboardingModal } from './components/BackupOnboardingModal';
 import {
   setBackupFolderOnboarding,
@@ -81,9 +77,6 @@ function App() {
     useState<LibraryHydrateProgress | null>(null);
   const [isSidePanel, setIsSidePanel] = useState(false);
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
-  const [status, setStatus] = useState('');
-  const [digestItemId, setDigestItemId] = useState<string | null>(null);
-  const [digestStatus, setDigestStatus] = useState('');
   const [showBackupOnboarding, setShowBackupOnboarding] = useState(false);
   const [folderGateResolved, setFolderGateResolved] = useState(false);
   const [backupFolderReady, setBackupFolderReady] = useState(false);
@@ -226,13 +219,8 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    // Warm up the DB service worker immediately — runs in parallel with the
-    // revision-tracker/backup-folder checks below so that by the time the
-    // dashboard mounts and the Hub fires its first RPC, ownerReady is already true.
-    // Also pre-fetch the first Hub page into the cache so the Hub view is instant.
-    void ensureDbWorker()
-      .then(() => prewarmHubCache())
-      .catch(() => { /* retried by dbRpc internally */ });
+    // Warm up the DB service worker immediately (Hub prewarm runs after loadData when library is ready).
+    void ensureDbWorker().catch(() => { /* retried by dbRpc internally */ });
     (async () => {
       try {
         // Ensure backup system is ready before load/conflict (effect 1 may still be racing).
@@ -257,6 +245,7 @@ function App() {
         await purgeLegacyLocalDomainStorage();
         await loadData();
         if (cancelled) return;
+        void prewarmHubCache();
         // Guarantee taxonomy is loaded on every startup — classify cannot run without leaves.
         // This is NOT optional: if it fails we log loudly but never silently skip.
         {
@@ -476,81 +465,30 @@ function App() {
     };
   }, []);
 
-  const statusClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showStatus = (msg: string, holdMs = 2500) => {
-    if (statusClearRef.current) clearTimeout(statusClearRef.current);
-    setStatus(msg);
-    statusClearRef.current = setTimeout(() => setStatus(''), holdMs);
+  const showStatus = (_msg: string, _holdMs = 2500) => {
+    /* Side panel status: SidePanelConnected. Dashboard: DashboardLayout toasts. */
   };
 
-  const startSingleLinkDigest = (
+  /** Dashboard-only silent digest (side panel uses PipelineProgressProvider modal). */
+  const startDashboardDigest = (
     itemId: string,
-    opts?: { forceEnrich?: boolean; preferTabSession?: boolean; tabId?: number }
-  ): Promise<SingleLinkDigestResult> => {
-    setDigestItemId(itemId);
-    setDigestStatus('Starting digest…');
-    return runSingleLinkDigest(itemId, {
-      forceEnrich: opts?.forceEnrich,
+    opts?: { preferTabSession?: boolean; tabId?: number }
+  ) => {
+    void runSingleLinkDigest(itemId, {
       preferTabSession: opts?.preferTabSession,
       tabId: opts?.tabId,
-      onProgress: (p) => {
-        setDigestStatus(p.label);
-        showStatus(p.label, 12_000);
-      },
     })
-      .then(async (r) => {
-        setDigestStatus(r.message);
-        showStatus(r.message, 5000);
+      .then(async () => {
         await refreshLibraryRef.current({ itemIds: [itemId] });
-        return r;
       })
       .catch((error) => {
-        const msg = toStatusMessage(error, 'Digest failed');
-        setDigestStatus(msg);
-        showStatus(msg, 5000);
-        throw error;
+        showStatus(toStatusMessage(error, 'Digest failed'), 5000);
       });
   };
 
   const toStatusMessage = (error: unknown, fallback: string) => {
     if (error instanceof Error && error.message.trim()) return error.message;
     return fallback;
-  };
-
-  const handleSaveCurrentTab = async (collectionId?: string) => {
-    const ctx = await getActiveTabBookmarkContext();
-    if (ctx?.url && (/^https?:\/\//i.test(ctx.url) || /^file:\/\//i.test(ctx.url))) {
-      const collectionIds = collectionId ? [collectionId] : [];
-      try {
-        const result = await addItemWithMerge({
-          url: ctx.url,
-          title: ctx.title || 'Untitled',
-          favicon: ctx.favIconUrl,
-          tags: [],
-          source: 'tab',
-          collectionIds,
-        });
-
-        if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
-          showStatus('Already saved in this collection — digesting…', 4000);
-        } else if (result.merged && result.addedToCollections.length > 0) {
-          showStatus('Added to collection — digesting…', 4000);
-        } else {
-          showStatus('Tab saved — digesting…', 4000);
-        }
-
-        await loadData();
-        startSingleLinkDigest(result.itemId, {
-          preferTabSession: true,
-          tabId: ctx.tabId,
-        });
-      } catch (error) {
-        showStatus(toStatusMessage(error, 'Could not save tab'));
-      }
-    } else {
-      showStatus('Cannot save this page');
-    }
   };
 
   /** Full-app bookmark add (digest + toast run in DashboardLayout). Returns item id for http(s) saves. */
@@ -587,7 +525,7 @@ function App() {
       const url = (updates.url ?? items.find((i) => i.id === id)?.url ?? '').trim();
       if (url && /^https?:\/\//i.test(url)) {
         showStatus('Bookmark updated — digesting…', 4000);
-        startSingleLinkDigest(id);
+        startDashboardDigest(id);
       } else {
         showStatus('Bookmark updated');
       }
@@ -732,7 +670,7 @@ function App() {
         } else {
           showStatus('Bookmark added — digesting…', 4000);
         }
-        startSingleLinkDigest(result.itemId, { preferTabSession: true, tabId });
+        startDashboardDigest(result.itemId, { preferTabSession: true, tabId });
       } else {
         showStatus('Note added');
       }
@@ -1110,34 +1048,16 @@ function App() {
         ) : null}
         {!showBackupOnboarding && backupFolderReady ? (
           <PipelineProgressProvider onRefresh={refreshLibrary}>
-            <SidePanelView
+            <SidePanelConnected
               projects={projects}
               collections={collections}
               items={items}
-              onSaveTab={handleSaveCurrentTab}
-              onCreateItem={handleCreateItem}
-              onUpdateItem={async (id, data) => {
-                await handleUpdateBookmark(
-                  id,
-                  {
-                    title: data.title,
-                    url: data.url || '',
-                    notes: data.notes,
-                    collectionIds: data.collectionIds,
-                  },
-                  data.notesPlacementCollectionId
-                    ? { notesPlacementCollectionId: data.notesPlacementCollectionId }
-                    : undefined
-                );
-              }}
               onDeleteItem={handleDeleteBookmark}
               onCreateProject={handleCreateProject}
               onCreateCollection={handleCreateCollection}
               onOpenFullPage={handleOpenFullPage}
               onSetAsBrowserHome={handleSetAsBrowserHome}
-              status={status}
-              digestItemId={digestItemId}
-              digestStatus={digestStatus}
+              loadData={loadData}
             />
           </PipelineProgressProvider>
         ) : null}

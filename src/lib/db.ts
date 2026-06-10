@@ -933,6 +933,7 @@ const PIPELINE_CACHE_TABLES = [
   'item_enrichment',
   'ai_item_signals',
   'ai_item_category_links',
+  'ai_categories',
 ] as const;
 
 /** Sync pipeline-critical tables from worker before classify (read-your-writes). */
@@ -1069,6 +1070,11 @@ export const bulkImportBookmarks = async (
       options,
     ]);
     await reloadDB();
+    const { invalidateHubScopeCache } = await import('./pipeline/enrichmentHubPage');
+    invalidateHubScopeCache();
+    if (result.affectedItemIds.length > 0) {
+      notifyDataChanged('import.bulk');
+    }
     return result;
   }
   const store = await getDB();
@@ -1230,10 +1236,12 @@ export const bulkImportBookmarks = async (
     }
   });
 
-  if (created > 0 || merged > 0) {
+  if (affectedItemIds.length > 0) {
+    notifyDataChanged('import.bulk');
+  } else if (created > 0 || merged > 0) {
     notifyDataChanged('item.update');
   }
-  
+
   if (affectedItemIds.length > 0) {
     try {
       const { noteBulkImport } = await import('./categorization/classifyTopicExtract');

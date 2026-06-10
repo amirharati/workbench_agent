@@ -1,5 +1,14 @@
 import React from 'react';
-import { bulkImportBookmarks, ensureProjectUnsortedCollection, normalizeBookmarkUrl, type BulkImportAffectedItem, type BulkImportSkippedTrashedItem, type Collection, type Project } from '../../lib/db';
+import {
+  bulkImportBookmarks,
+  ensureProjectUnsortedCollection,
+  normalizeBookmarkUrl,
+  refreshPipelineCacheFromWorker,
+  type BulkImportAffectedItem,
+  type BulkImportSkippedTrashedItem,
+  type Collection,
+  type Project,
+} from '../../lib/db';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import {
   getTrashHistoryMap,
@@ -179,6 +188,9 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     meta: NonNullable<typeof lastCommitMeta>,
     processedIds: Set<string>
   ) => {
+    if (processedIds.size > 0) {
+      await refreshPipelineCacheFromWorker();
+    }
     const report = await buildImportReport({
       ...meta,
       processedIds,

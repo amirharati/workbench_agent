@@ -2,10 +2,14 @@
 const HASH_CRITICAL_HOST_RE =
   /mail\.google\.com|outlook\.(live|office)\.com|outlook\.office365\.com/i;
 
+/** SPAs where chrome.tabs.url can lag behind in-page navigation. */
+const SPA_LIVE_HREF_HOST_RE = /grok\.com|chatgpt\.com|claude\.ai/i;
+
 export function needsLiveTabHref(fallbackUrl: string): boolean {
   const trimmed = fallbackUrl.trim();
   if (!trimmed) return true;
   if (HASH_CRITICAL_HOST_RE.test(trimmed)) return true;
+  if (SPA_LIVE_HREF_HOST_RE.test(trimmed)) return true;
   try {
     const u = new URL(trimmed);
     if (u.hash && u.hash.length > 1) return false;
@@ -53,19 +57,68 @@ export type ActiveTabBookmarkContext = {
   favIconUrl?: string;
 };
 
-export async function getActiveTabBookmarkContext(): Promise<ActiveTabBookmarkContext | null> {
+export async function getSidePanelHostTabId(): Promise<number | null> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return null;
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'side-panel-host-tab' });
+    const tabId = response?.tabId;
+    return typeof tabId === 'number' ? tabId : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getTabBookmarkContext(
+  tabId: number
+): Promise<ActiveTabBookmarkContext | null> {
+  if (typeof chrome === 'undefined' || !chrome.tabs?.get) return null;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab?.id || !tab.url) return null;
+    const raw = tab.url.trim();
+    if (!/^https?:\/\//i.test(raw) && !/^file:\/\//i.test(raw)) return null;
+
+    const url = await resolveTabBookmarkUrl(tab.id, tab.url);
+    return {
+      tabId: tab.id,
+      url,
+      title: (tab.title || '').trim() || url,
+      favIconUrl: tab.favIconUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function queryFocusedActiveTabContext(): Promise<ActiveTabBookmarkContext | null> {
   if (typeof chrome === 'undefined' || !chrome.tabs?.query) return null;
 
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab?.id || !tab.url) return null;
-  const raw = tab.url.trim();
-  if (!/^https?:\/\//i.test(raw) && !/^file:\/\//i.test(raw)) return null;
+  const queries: chrome.tabs.QueryInfo[] = [
+    { active: true, lastFocusedWindow: true },
+    { active: true, currentWindow: true },
+  ];
 
-  const url = await resolveTabBookmarkUrl(tab.id, tab.url);
-  return {
-    tabId: tab.id,
-    url,
-    title: (tab.title || '').trim() || url,
-    favIconUrl: tab.favIconUrl,
-  };
+  for (const query of queries) {
+    const [tab] = await chrome.tabs.query(query);
+    if (!tab?.id || !tab.url) continue;
+    const raw = tab.url.trim();
+    if (!/^https?:\/\//i.test(raw) && !/^file:\/\//i.test(raw)) continue;
+    const url = await resolveTabBookmarkUrl(tab.id, tab.url);
+    return {
+      tabId: tab.id,
+      url,
+      title: (tab.title || '').trim() || url,
+      favIconUrl: tab.favIconUrl,
+    };
+  }
+  return null;
+}
+
+export async function getActiveTabBookmarkContext(): Promise<ActiveTabBookmarkContext | null> {
+  const hostTabId = await getSidePanelHostTabId();
+  if (hostTabId != null) {
+    const host = await getTabBookmarkContext(hostTabId);
+    if (host) return host;
+  }
+  return queryFocusedActiveTabContext();
 }

@@ -2,6 +2,10 @@ import { getDB } from '../db';
 import type { Item } from '../db';
 import type { ItemEnrichment } from '../enrichment/types';
 import { assessCategorizationEligibility } from '../enrichment/categorizationEligibility';
+import {
+  hubAlignedEnrichmentStatusLabel,
+  isEnrichmentFailure,
+} from '../enrichment/failureLabels';
 import { linkCountsForCategories, resolveEffectiveClassifyState } from './counts';
 import {
   pendingSubFilterMatchesBlocker,
@@ -53,6 +57,27 @@ export function matchesPipelineQueueFilter(
   return matchesPipelineFilter(filter, row);
 }
 
+/** Matches filter chips **Waiting to classify** + **Re-classify queued** (Classify Pending CTA). */
+export function isClassifyPendingRunnable(row: PipelineQueueItemRow): boolean {
+  return (
+    matchesPipelineFilter('pending_ready', row) ||
+    matchesPipelineFilter('pending_reclassify', row)
+  );
+}
+
+/**
+ * Matches **Reclassify All** scope: eligible items that already went through digest and/or classify
+ * (not merely long title/notes with no enrichment row).
+ */
+export function isReclassifyScopeCandidate(row: PipelineQueueItemRow): boolean {
+  if (!row.eligible) return false;
+  const enrichStatus = row.enrichment?.status ?? 'none';
+  if (enrichStatus !== 'none') return true;
+  if (row.hasSignal) return true;
+  if (row.primaryCategoryId) return true;
+  return false;
+}
+
 export function countPipelineQueueFilters(
   rows: PipelineQueueItemRow[]
 ): Partial<Record<PipelineQueueFilter, number>> {
@@ -101,6 +126,9 @@ export interface PipelineQueueItemRow {
   lastClassifySkipReason?: string;
   pendingBlocker?: ClassifyPendingBlocker;
   pendingBlockerLabel?: string;
+  embedFailed?: boolean;
+  /** Hub-aligned enrich/fetch label when digest step failed (overrides "classified" in State column). */
+  enrichmentStatusLabel?: string | null;
 }
 
 export interface TaxonomyLeafRow {
@@ -141,6 +169,8 @@ export function buildPipelineQueueRowsFromCatalog(
     });
     const topicPath =
       leaf && parentName ? `${parentName} › ${leaf.name}` : leaf?.name ?? null;
+    const embedFailed = signal?.signalStatus === 'embed_failed';
+    const enrichmentStatusLabel = hubAlignedEnrichmentStatusLabel(enrichment, embedFailed);
 
     const row: PipelineQueueItemRow = {
       item,
@@ -156,6 +186,8 @@ export function buildPipelineQueueRowsFromCatalog(
       classifyRetryCount: signal?.classifyRetryCount,
       inputQualityTier: signal?.inputQualityTier,
       lastClassifySkipReason: signal?.lastClassifySkipReason,
+      embedFailed,
+      enrichmentStatusLabel,
     };
     const blocker = resolveClassifyQueueBlocker(row);
     row.pendingBlocker = blocker.code;
@@ -213,6 +245,10 @@ function matchesPipelineFilter(
   const st = row.classifyState;
   const primaryId = row.primaryCategoryId;
   const blocker = row.pendingBlocker ?? resolveClassifyQueueBlocker(row).code;
+  const enrichIncomplete = Boolean(
+    row.enrichmentStatusLabel ||
+      isEnrichmentFailure(row.enrichment, row.embedFailed)
+  );
 
   if (filter === 'all') return true;
   if (filter === 'no_signal') return !row.hasSignal && row.enrichment?.aiStatus === 'ok';
@@ -221,9 +257,20 @@ function matchesPipelineFilter(
     if (st === 'skipped' || st === 'manual_only') return false;
     return true;
   }
-  if (filter === 'pending_not_enriched' || filter === 'pending_no_ai' || filter === 'pending_ready') {
+  if (filter === 'pending_not_enriched') {
+    if (st !== 'pending_classify' && st !== 'pending_reclassify') return false;
+    return pendingSubFilterMatchesBlocker(filter, blocker);
+  }
+  if (filter === 'pending_no_ai') {
+    return pendingSubFilterMatchesBlocker(filter, blocker);
+  }
+  if (filter === 'pending_ready') {
+    if (enrichIncomplete) return false;
     if (st !== 'pending_classify') return false;
     return pendingSubFilterMatchesBlocker(filter, blocker);
+  }
+  if (filter === 'classified') {
+    return st === 'classified' && !enrichIncomplete;
   }
   return st === filter;
 }
@@ -231,8 +278,15 @@ function matchesPipelineFilter(
 export async function getTaxonomyTreeWithCounts(): Promise<{
   parents: TaxonomyParentRow[];
   orphanLeaves: TaxonomyLeafRow[];
-  totals: { parents: number; leaves: number; itemsWithPrimary: number };
+  totals: {
+    parents: number;
+    leaves: number;
+    itemsWithPrimary: number;
+    itemsWithPrimaryEnrichIncomplete: number;
+  };
 }> {
+  const { refreshPipelineCacheFromWorker } = await import('../db');
+  await refreshPipelineCacheFromWorker();
   const db = await getDB();
   const categories = db.objectStoreNames.contains('ai_categories')
     ? await db.getAll('ai_categories')
@@ -240,6 +294,16 @@ export async function getTaxonomyTreeWithCounts(): Promise<{
   const links = db.objectStoreNames.contains('ai_item_category_links')
     ? await db.getAll('ai_item_category_links')
     : [];
+  const enrichments = db.objectStoreNames.contains('item_enrichment')
+    ? await db.getAll('item_enrichment')
+    : [];
+  const signals = db.objectStoreNames.contains('ai_item_signals')
+    ? await db.getAll('ai_item_signals')
+    : [];
+  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  const embedFailedIds = new Set(
+    signals.filter((s) => s.signalStatus === 'embed_failed').map((s) => s.itemId)
+  );
   const counts = linkCountsForCategories(categories, links);
 
   const parents = categories
@@ -293,9 +357,15 @@ export async function getTaxonomyTreeWithCounts(): Promise<{
     .sort((a, b) => b.primaryItemCount - a.primaryItemCount);
 
   const itemsWithPrimary = new Set<string>();
+  const itemsWithPrimaryEnrichIncomplete = new Set<string>();
   for (const l of links) {
     if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
       itemsWithPrimary.add(l.itemId);
+      const enrichment = enrichByItem.get(l.itemId);
+      const embedFailed = embedFailedIds.has(l.itemId);
+      if (isEnrichmentFailure(enrichment, embedFailed)) {
+        itemsWithPrimaryEnrichIncomplete.add(l.itemId);
+      }
     }
   }
 
@@ -306,6 +376,7 @@ export async function getTaxonomyTreeWithCounts(): Promise<{
       parents: parentRows.length,
       leaves: leaves.length,
       itemsWithPrimary: itemsWithPrimary.size,
+      itemsWithPrimaryEnrichIncomplete: itemsWithPrimaryEnrichIncomplete.size,
     },
   };
 }

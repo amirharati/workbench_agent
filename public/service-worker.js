@@ -29,6 +29,40 @@ async function ensureOffscreenDocument() {
 // Keep side panel disabled by default; enable it only for the tab where
 // the user explicitly clicks the extension action.
 let sidePanelEnabledTabId = null;
+const SIDE_PANEL_HOST_TAB_KEY = 'sidePanelHostTabId';
+
+async function setSidePanelHostTabId(tabId) {
+  sidePanelEnabledTabId = tabId;
+  try {
+    await chrome.storage.session.set({ [SIDE_PANEL_HOST_TAB_KEY]: tabId });
+  } catch {
+    /* session storage unavailable */
+  }
+}
+
+async function clearSidePanelHostTabId() {
+  sidePanelEnabledTabId = null;
+  try {
+    await chrome.storage.session.remove(SIDE_PANEL_HOST_TAB_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function readSidePanelHostTabId() {
+  if (typeof sidePanelEnabledTabId === 'number') return sidePanelEnabledTabId;
+  try {
+    const data = await chrome.storage.session.get(SIDE_PANEL_HOST_TAB_KEY);
+    const id = data[SIDE_PANEL_HOST_TAB_KEY];
+    if (typeof id === 'number') {
+      sidePanelEnabledTabId = id;
+      return id;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 
 chrome.sidePanel
   .setOptions({ enabled: false, path: 'index.html' })
@@ -47,12 +81,12 @@ chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel
     .open({ tabId: tab.id })
     .catch((error) => console.error(error));
-  sidePanelEnabledTabId = tab.id;
+  void setSidePanelHostTabId(tab.id);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (sidePanelEnabledTabId === tabId) {
-    sidePanelEnabledTabId = null;
+    void clearSidePanelHostTabId();
   }
 });
 
@@ -105,6 +139,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ url: null, error: String(e) });
       }
     })();
+    return true;
+  }
+
+  if (message?.type === 'side-panel-host-tab') {
+    readSidePanelHostTabId()
+      .then((tabId) => sendResponse({ tabId }))
+      .catch(() => sendResponse({ tabId: null }));
     return true;
   }
 

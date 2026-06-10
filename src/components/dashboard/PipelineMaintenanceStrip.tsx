@@ -118,7 +118,7 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
               Reclassify Entire Scope?
             </h3>
             <p style={{ margin: '0 0 16px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              This will re-run the topic classification AI on <strong>all {discoverConfigPlan?.counts.all} bookmarks</strong> in the current scope ({scopeLabel}), even if they already have a specific topic.
+              This will re-run the topic classification AI on <strong>{discoverConfigPlan?.counts.all} bookmarks</strong> in the current scope ({scopeLabel}) that have already been digested or classified, even if they already have a specific topic.
             </p>
             <p style={{ margin: '0 0 20px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
               This is useful if you have significantly changed your taxonomy and want to apply it everywhere. It may consume a large number of API calls.
@@ -324,7 +324,7 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
                   }}
                 >
                   <RefreshCw size={13} />
-                  Reclassify All ({discoverConfigPlan?.counts.all ?? 0})
+                  Reclassify in scope ({discoverConfigPlan?.counts.all ?? 0})
                 </button>
               )}
             </div>

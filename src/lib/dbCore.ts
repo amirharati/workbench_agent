@@ -1032,10 +1032,12 @@ export const bulkImportBookmarks = async (
     }
   });
 
-  if (created > 0 || merged > 0) {
+  if (affectedItemIds.length > 0) {
+    notifyDataChanged('import.bulk');
+  } else if (created > 0 || merged > 0) {
     notifyDataChanged('item.update');
   }
-  
+
   if (affectedItemIds.length > 0) {
     try {
       const { noteBulkImport } = await import('./categorization/classifyTopicExtract');

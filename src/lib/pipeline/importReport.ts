@@ -1,7 +1,13 @@
 import type { BulkImportAffectedItem } from '../db';
-import type { EnrichmentResult } from '../enrichment';
 import type { BatchDigestResult } from './batchDigest';
-import { loadItemPipelineContext } from './itemPipelineContext';
+import { loadItemPipelineContext, type ItemPipelineContext } from './itemPipelineContext';
+import { describeEnrichmentNextStep } from './pipelineHubQueries';
+import {
+  pipelineBadgeToStatusChip,
+  resolvePipelineBadge,
+  type PipelineBadge,
+} from './pipelineBadge';
+import { resolvePipelineStage } from './pipelineStage';
 
 export type ImportReportPipelineStatus =
   | 'not_run'
@@ -18,9 +24,17 @@ export interface ImportReportRow {
   url: string;
   title: string;
   outcome: 'created' | 'merged' | 'restored';
+  /** Filter bucket (legacy); prefer hubStatusLabel for display. */
   pipelineStatus: ImportReportPipelineStatus;
   detail: string;
+  /** Same text as Enrichment Hub → Status column. */
+  hubStatusLabel: string;
+  hubStatusColor: string;
+  /** Same as Enrichment Hub → Next step column. */
+  hubNextStep: string;
   categoryName?: string;
+  topicPath?: string;
+  failureStage?: 'fetch' | 'ai' | 'embed';
   summary?: string;
   wasProcessed: boolean;
 }
@@ -44,8 +58,9 @@ export interface ImportReport {
   rows: ImportReportRow[];
 }
 
+/** @deprecated Use row.hubStatusLabel — kept for filter helpers. */
 export const IMPORT_REPORT_STATUS_LABELS: Record<ImportReportPipelineStatus, string> = {
-  not_run: 'Not processed',
+  not_run: 'Import only',
   enriched: 'Summarized',
   unchanged: 'Unchanged',
   failed: 'Failed',
@@ -55,85 +70,74 @@ export const IMPORT_REPORT_STATUS_LABELS: Record<ImportReportPipelineStatus, str
   review_needed: 'Review needed',
 };
 
-function enrichDetail(result: EnrichmentResult): string {
-  if (result.message?.startsWith('prior_kept_')) {
-    const reason = result.message.replace('prior_kept_', '').replace(/_/g, ' ');
-    return `Kept prior summary — suspicious re-fetch (${reason})`;
+function mapPipelineStatus(
+  ctx: ItemPipelineContext | null,
+  badge: PipelineBadge,
+  wasProcessed: boolean
+): ImportReportPipelineStatus {
+  if (!wasProcessed) return 'not_run';
+  if (badge.kind === 'failed') return 'failed';
+  if (badge.kind === 'needs_review') return 'review_needed';
+  if (ctx?.primaryCategoryId && (badge.kind === 'verified' || badge.kind === 'ready')) {
+    return 'classified';
   }
-  if (result.status === 'failed') {
-    return result.message || result.errorCode || 'Fetch or AI extract failed';
+  if (
+    ctx?.classifyState === 'pending_classify' ||
+    ctx?.classifyState === 'pending_reclassify' ||
+    ctx?.classifyState === 'pending_discover'
+  ) {
+    return 'pending_classify';
   }
-  const skip = result.message?.trim();
-  if (skip === 'content_unchanged') return 'Page unchanged — kept existing summary';
-  if (result.skipped && skip) return `Skipped fetch (${skip})`;
-  if (result.skipped) return 'Already up to date';
-  return 'Fetched page and extracted summary';
+  if (ctx?.enrichment?.status === 'skipped') return 'unchanged';
+  if (badge.kind === 'ready' || badge.kind === 'verified' || badge.kind === 'partial') {
+    return 'enriched';
+  }
+  return 'not_enriched';
 }
 
-function resolvePipelineStatus(input: {
-  wasProcessed: boolean;
-  enrichResult?: EnrichmentResult;
-  categoryName?: string;
-  classifyState?: string;
-  summary?: string;
-  classifyError?: string;
-  pendingFetchReview?: boolean;
-  pendingFetchReviewReason?: string;
-}): Pick<ImportReportRow, 'pipelineStatus' | 'detail'> {
-  if (!input.wasProcessed) {
-    return { pipelineStatus: 'not_run', detail: 'Saved to library — pipeline not run' };
-  }
-
-  if (input.enrichResult?.message?.startsWith('prior_kept_') || input.pendingFetchReview) {
-    const reason =
-      input.enrichResult?.message?.replace('prior_kept_', '') ||
-      input.pendingFetchReviewReason ||
-      'suspicious_fetch';
+function buildRowFromContext(
+  item: BulkImportAffectedItem,
+  wasProcessed: boolean,
+  ctx: ItemPipelineContext | null
+): ImportReportRow {
+  if (!wasProcessed) {
     return {
-      pipelineStatus: 'review_needed',
-      detail: `Kept prior summary — suspicious re-fetch (${reason.replace(/_/g, ' ')})`,
+      itemId: item.itemId,
+      url: item.url,
+      title: item.title,
+      outcome: item.outcome,
+      pipelineStatus: 'not_run',
+      hubStatusLabel: 'Import only',
+      hubStatusColor: 'var(--text-muted)',
+      hubNextStep: 'Run digest from Enrichment Hub',
+      detail: 'Saved to library — digest not run in this import',
+      wasProcessed: false,
     };
   }
 
-  if (input.enrichResult?.status === 'failed') {
-    return { pipelineStatus: 'failed', detail: enrichDetail(input.enrichResult) };
-  }
+  const badge = resolvePipelineBadge(ctx);
+  const chip = pipelineBadgeToStatusChip(badge, ctx?.enrichment);
+  const embedFailed = ctx?.signal?.signalStatus === 'embed_failed';
+  const stage = ctx ? resolvePipelineStage(ctx) : undefined;
+  const hubNextStep = describeEnrichmentNextStep(ctx?.enrichment, !!embedFailed, stage);
+  const topicPath = ctx?.primaryTopicPath ?? undefined;
 
-  if (input.categoryName) {
-    return {
-      pipelineStatus: 'classified',
-      detail: `Category: ${input.categoryName}`,
-    };
-  }
-
-  if (input.enrichResult?.skipped || input.enrichResult?.message === 'content_unchanged') {
-    return { pipelineStatus: 'unchanged', detail: enrichDetail(input.enrichResult) };
-  }
-
-  if (input.enrichResult?.status === 'ok') {
-    if (input.classifyState === 'pending_classify' || input.classifyState === 'pending_reclassify') {
-      return {
-        pipelineStatus: 'pending_classify',
-        detail: input.summary ? 'Summary ready — pending classify' : 'Pending classify',
-      };
-    }
-    if (input.classifyError) {
-      return {
-        pipelineStatus: 'enriched',
-        detail: `Summary ready — ${input.classifyError}`,
-      };
-    }
-    return {
-      pipelineStatus: 'enriched',
-      detail: input.summary ? 'Summary ready' : 'Fetch and extract complete',
-    };
-  }
-
-  if (input.classifyError) {
-    return { pipelineStatus: 'not_enriched', detail: input.classifyError };
-  }
-
-  return { pipelineStatus: 'not_enriched', detail: 'No enrichment yet' };
+  return {
+    itemId: item.itemId,
+    url: item.url,
+    title: item.title,
+    outcome: item.outcome,
+    pipelineStatus: mapPipelineStatus(ctx, badge, wasProcessed),
+    hubStatusLabel: chip.text,
+    hubStatusColor: chip.color,
+    hubNextStep,
+    detail: hubNextStep,
+    categoryName: ctx?.primaryCategoryName ?? undefined,
+    topicPath,
+    failureStage: badge.failureStage,
+    summary: ctx?.summary,
+    wasProcessed: true,
+  };
 }
 
 export async function buildImportReport(input: {
@@ -147,39 +151,15 @@ export async function buildImportReport(input: {
   items: BulkImportAffectedItem[];
   processedIds?: Set<string>;
   batchResult?: BatchDigestResult;
-  enrichResults?: EnrichmentResult[];
 }): Promise<ImportReport> {
-  const enrichByItem = new Map((input.enrichResults ?? []).map((r) => [r.itemId, r]));
   const processedIds = input.processedIds ?? new Set<string>();
   const pipelineRan = processedIds.size > 0;
 
   const rows: ImportReportRow[] = [];
   for (const item of input.items) {
     const wasProcessed = processedIds.has(item.itemId);
-    const enrichResult = enrichByItem.get(item.itemId);
     const ctx = wasProcessed ? await loadItemPipelineContext(item.itemId) : null;
-    const { pipelineStatus, detail } = resolvePipelineStatus({
-      wasProcessed,
-      enrichResult,
-      categoryName: ctx?.primaryCategoryName ?? undefined,
-      classifyState: ctx?.classifyState,
-      summary: ctx?.summary,
-      classifyError: input.batchResult?.classifyError,
-      pendingFetchReview: ctx?.enrichment?.pendingFetchReview,
-      pendingFetchReviewReason: ctx?.enrichment?.pendingFetchReviewReason,
-    });
-
-    rows.push({
-      itemId: item.itemId,
-      url: item.url,
-      title: item.title,
-      outcome: item.outcome,
-      pipelineStatus,
-      detail,
-      categoryName: ctx?.primaryCategoryName ?? undefined,
-      summary: ctx?.summary,
-      wasProcessed,
-    });
+    rows.push(buildRowFromContext(item, wasProcessed, ctx));
   }
 
   return {
@@ -216,8 +196,10 @@ export function importReportStats(report: ImportReport) {
     pendingClassify: 0,
     notEnriched: 0,
     reviewNeeded: 0,
+    digestRan: 0,
   };
   for (const row of report.rows) {
+    if (row.wasProcessed) counts.digestRan += 1;
     switch (row.pipelineStatus) {
       case 'not_run':
         counts.notRun += 1;
@@ -248,4 +230,23 @@ export function importReportStats(report: ImportReport) {
     }
   }
   return counts;
+}
+
+/** Status chip counts using the same labels as Enrichment Hub. */
+export function importReportHubStatusCounts(
+  report: ImportReport
+): Array<{ label: string; count: number; color: string }> {
+  const byLabel = new Map<string, { count: number; color: string }>();
+  for (const row of report.rows) {
+    const label = row.hubStatusLabel;
+    const existing = byLabel.get(label);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      byLabel.set(label, { count: 1, color: row.hubStatusColor });
+    }
+  }
+  return [...byLabel.entries()]
+    .map(([label, { count, color }]) => ({ label, count, color }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }

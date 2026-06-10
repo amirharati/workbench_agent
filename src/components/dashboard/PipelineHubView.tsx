@@ -222,6 +222,7 @@ let _hubCache: HubCache | null = null;
 
 export function invalidateHubCache(): void {
   _hubCache = null;
+  _prewarmPromise = null;
   invalidateHubScopeCache();
 }
 
@@ -242,7 +243,16 @@ function readHubCache(
 type HubCacheListener = (cache: HubCache) => void;
 const _hubCacheListeners = new Set<HubCacheListener>();
 
-function writeHubCache(cache: HubCache): void {
+function writeHubCache(cache: HubCache, opts?: { force?: boolean }): void {
+  if (
+    !opts?.force &&
+    _hubCache &&
+    _hubCache.scopeProjectId === cache.scopeProjectId &&
+    _hubCache.scopeCollectionId === cache.scopeCollectionId &&
+    cache.totalInScope < _hubCache.totalInScope
+  ) {
+    return;
+  }
   _hubCache = cache;
   for (const listener of _hubCacheListeners) listener(cache);
 }
@@ -328,6 +338,7 @@ export function prewarmHubCache(
 const HUB_CACHE_INVALIDATION_REASONS = new Set<string>([
   'enrichment.update',
   'import.replace',
+  'import.bulk',
   'categorization.update',
   'categorization.review',
   'pipeline.clear',
@@ -444,11 +455,26 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
   const [hubLane, setHubLane] = useState<HubLane>(hubSaved.hubLane);
+  const [categoriesScopeItemCount, setCategoriesScopeItemCount] = useState<number | null>(null);
+
+  const libraryScopeItemCount = useMemo(
+    () =>
+      items.filter((i) =>
+        itemMatchesScope(i, scopeProjectId, scopeCollectionId, collections)
+      ).length,
+    [items, scopeProjectId, scopeCollectionId, collections]
+  );
 
   // Seed state from cache so the list is visible instantly on remount
   const cachedOnMount = readHubCache(scopeProjectId, scopeCollectionId);
   const [rows, setRows] = useState<EnrichmentHubRow[]>(cachedOnMount?.rows ?? []);
   const [totalInScope, setTotalInScope] = useState(cachedOnMount?.totalInScope ?? 0);
+
+  /** Scope bar count — worker total (enrichment), not loaded page length (capped at 100). */
+  const scopeChipsItemCount =
+    hubLane === 'categories'
+      ? (categoriesScopeItemCount ?? libraryScopeItemCount)
+      : totalInScope;
   const [hubChips, setHubChips] = useState<HubOutcomeChip[]>(cachedOnMount?.chips ?? []);
   const [loadingMore, setLoadingMore] = useState(false);
   const [counts, setCounts] = useState<Awaited<ReturnType<typeof fetchEnrichmentHubCounts>>['counts'] | null>(
@@ -664,6 +690,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     []
   );
 
+  const totalInScopeRef = useRef(totalInScope);
+  totalInScopeRef.current = totalInScope;
+
   // If Hub is the restored tab it mounts before prewarm finishes; when cache is written,
   // apply it here (Settings-first navigation already had cache at useState init).
   useEffect(() => {
@@ -674,16 +703,20 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       ) {
         return;
       }
+      if (
+        totalInScopeRef.current > 0 &&
+        cache.totalInScope < totalInScopeRef.current
+      ) {
+        return;
+      }
       applyModuleCache(cache);
     });
   }, [scopeProjectId, scopeCollectionId, applyModuleCache]);
 
-  // Run once on mount.
-  // • Default All + cache hit → list visible instantly; skip reload.
-  // • Any active filter → worker fetch (cache is unfiltered first page only).
+  // Run once on mount — paint from cache if present, then always reconcile with worker.
+  // Early prewarm can finish before folder DB is ready and cache a tiny stale page.
   useEffect(() => {
     const cached = readHubCache(scopeProjectId, scopeCollectionId);
-    const filtersActive = hubFetchFiltersActive(hubFilters);
     if (cached) {
       if (cached.chips.length === 0 || !cached.counts) {
         fetchHubCountsAndUpdateCache(
@@ -698,16 +731,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           }
         );
       }
-      if (!filtersActive) return;
     }
-    const prewarm = getHubPrewarmPromise();
-    if (!cached && prewarm) {
-      void prewarm.then(() => {
-        if (!readHubCache(scopeProjectId, scopeCollectionId) || filtersActive) void reload();
-      });
-      return;
-    }
-    void reload();
+    void reload({ silent: !!cached });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -744,10 +769,15 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     // Prewarm cache is valid — apply it instead of invalidating + full reload.
     if (prevLen === 0 && nextLen > 0) {
       const cached = readHubCache(scopeProjectId, scopeCollectionId);
-      if (cached) {
+      const scopeIsAll = scopeProjectId === 'all' && scopeCollectionId === 'all';
+      if (
+        cached &&
+        (!scopeIsAll || nextLen === 0 || cached.totalInScope === nextLen)
+      ) {
         if (rows.length === 0) applyModuleCache(cached);
         return;
       }
+      if (cached) invalidateHubCache();
     }
     if (prevLen === nextLen) return;
 
@@ -1250,7 +1280,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             scopeCollectionId={scopeCollectionId}
             projects={projects}
             collections={collections}
-            itemCount={scopedRows.length}
+            itemCount={scopeChipsItemCount}
             onClearProject={onClearProjectScope ?? (() => {})}
             onClearCollection={onClearCollectionScope ?? (() => {})}
             onResetScope={onResetScope ?? (() => {})}
@@ -1310,6 +1340,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           scopeCollectionId={scopeCollectionId}
           onOpenItem={onOpenItem}
           onBrowseCategory={onBrowseCategory}
+          onScopeItemCount={setCategoriesScopeItemCount}
         />
       ) : null}
 

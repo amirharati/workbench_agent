@@ -185,6 +185,29 @@ export function failureFieldsFromEnrichment(
   return { failureStage: label.stage, failureCategory: label.category };
 }
 
+/** Same status text as Enrichment Hub → Status column (e.g. Fetch OK · AI — text too short). */
+export function hubAlignedEnrichmentStatusLabel(
+  enrichment?: Pick<
+    ItemEnrichment,
+    | 'status'
+    | 'lastErrorCode'
+    | 'lastErrorDetail'
+    | 'aiStatus'
+    | 'aiError'
+    | 'snippet'
+    | 'failureStage'
+    | 'failureCategory'
+  > | null,
+  embedFailed?: boolean
+): string | null {
+  const failureLabel = resolveEnrichmentFailureLabel(enrichment, embedFailed);
+  if (!failureLabel) return null;
+  const fetchOkAiFailed = enrichment?.status === 'ok' && failureLabel.stage === 'ai';
+  return fetchOkAiFailed
+    ? `Fetch OK · ${FAILURE_CATEGORY_LABELS[failureLabel.category]}`
+    : failureLabel.shortLabel;
+}
+
 export function isEnrichmentFailure(
   enrichment?: Pick<ItemEnrichment, 'status' | 'aiStatus'> | null,
   embedFailed?: boolean

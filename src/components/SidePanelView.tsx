@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Save, RefreshCw, Pin, Star } from 'lucide-react';
 import { Collection, Item, Project, normalizeBookmarkUrl } from '../lib/db';
-import { resolveTabBookmarkUrl } from '../lib/tabUrlCapture';
+import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
 import { favoriteItem, pinItem, unfavoriteItem, unpinItem } from '../lib/itemQuickAccess';
 import { Panel, Input, ButtonGhost, ButtonPrimary, Divider } from '../styles/primitives';
 import { isValidBookmarkUrl } from '../lib/utils';
@@ -22,6 +22,7 @@ interface SidePanelViewProps {
   status: string;
   digestItemId?: string | null;
   digestStatus?: string;
+  digestRunning?: boolean;
 }
 
 function itemPlacementCount(item: Item): number {
@@ -98,6 +99,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   status,
   digestItemId,
   digestStatus,
+  digestRunning = false,
 }) => {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
@@ -115,7 +117,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const [selectedExistingItemId, setSelectedExistingItemId] = useState<string | null>(null);
   const [selectedPlacementCollectionId, setSelectedPlacementCollectionId] = useState<string | null>(null);
   const [forceNewCopyMode, setForceNewCopyMode] = useState(false);
-  const prefillInFlightRef = useRef(false);
+  const prefillSeqRef = useRef(0);
+  const hostTabIdRef = useRef<number | null>(null);
   const lastPrefilledRef = useRef<{ url: string; title: string }>({ url: '', title: '' });
   const activeTabUrlRef = useRef('');
   /** Last item title mirrored into the form — used to apply digest tier2 upgrades without clobbering edits. */
@@ -208,7 +211,9 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   }, [digestItemId, selectedExistingItemId, matchingItems]);
 
   const showPipelinePanel =
-    !!pipelineItemId && !!url.trim() && isValidBookmarkUrl(url.trim());
+    !!pipelineItemId &&
+    (digestItemId === pipelineItemId ||
+      (!!url.trim() && isValidBookmarkUrl(url.trim())));
 
   // Auto-set collection when project changes, but not in new copy mode (user must pick explicitly)
   useEffect(() => {
@@ -444,7 +449,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         // After a successful save, always return to selected-existing flow.
         setForceNewCopyMode(false);
         resetForm();
-        await prefillFromActiveTab();
+        await prefillFromHostTab();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add item');
@@ -453,96 +458,78 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     }
   };
 
-  const prefillFromActiveTab = async () => {
-    if (prefillInFlightRef.current) return;
-    prefillInFlightRef.current = true;
+  const applyHostTabContext = useCallback((tabUrl: string, tabTitle: string) => {
+    const trimmedUrl = tabUrl.trim();
+    if (!trimmedUrl || !isValidBookmarkUrl(trimmedUrl)) return;
+
+    const tabChanged =
+      normalizeBookmarkUrl(trimmedUrl) !== normalizeBookmarkUrl(activeTabUrlRef.current);
+
+    if (tabChanged) {
+      activeTabUrlRef.current = trimmedUrl;
+      setForceNewCopyMode(false);
+      setSelectedExistingItemId(null);
+      setSelectedPlacementCollectionId(null);
+      setNotes('');
+      syncedItemTitleRef.current = '';
+    }
+
+    const trimmedTitle = tabTitle.trim() || trimmedUrl;
+    lastPrefilledRef.current = { url: trimmedUrl, title: trimmedTitle };
+    setUrl(trimmedUrl);
+    setTitle(trimmedTitle);
+    syncedItemTitleRef.current = trimmedTitle;
+  }, []);
+
+  const prefillFromHostTab = useCallback(async () => {
+    const seq = ++prefillSeqRef.current;
     try {
-      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      const tab = tabs[0];
-      if (!tab?.id) return;
-      const tabTitle = (tab.title || '').trim();
-      const rawTabUrl = (tab.url || '').trim();
-      const tabUrl =
-        rawTabUrl && (/^https?:\/\//i.test(rawTabUrl) || /^file:\/\//i.test(rawTabUrl))
-          ? await resolveTabBookmarkUrl(tab.id, rawTabUrl)
-          : rawTabUrl;
-      const tabChanged =
-        !!tabUrl &&
-        isValidBookmarkUrl(tabUrl) &&
-        normalizeBookmarkUrl(tabUrl) !== normalizeBookmarkUrl(activeTabUrlRef.current);
-
-      if (tabChanged) {
-        activeTabUrlRef.current = tabUrl;
-        setForceNewCopyMode(false);
-        setSelectedExistingItemId(null);
-        setSelectedPlacementCollectionId(null);
-        setNotes('');
-        if (tabTitle) {
-          setTitle(tabTitle);
-          lastPrefilledRef.current.title = tabTitle;
-        }
-        setUrl(tabUrl);
-        lastPrefilledRef.current.url = tabUrl;
-        return;
-      }
-
-      if (tabUrl && /^https?:\/\//i.test(tabUrl)) {
-        setUrl((current) => {
-          const trimmed = current.trim();
-          if (!trimmed || trimmed === lastPrefilledRef.current.url) {
-            lastPrefilledRef.current.url = tabUrl;
-            return tabUrl;
-          }
-          return current;
-        });
-      }
-      if (tabTitle) {
-        setTitle((current) => {
-          const trimmed = current.trim();
-          if (!trimmed || trimmed === lastPrefilledRef.current.title) {
-            lastPrefilledRef.current.title = tabTitle;
-            return tabTitle;
-          }
-          return current;
-        });
-      }
+      const ctx = await getActiveTabBookmarkContext();
+      if (seq !== prefillSeqRef.current || !ctx) return;
+      hostTabIdRef.current = ctx.tabId;
+      applyHostTabContext(ctx.url, ctx.title);
     } catch {
       // Ignore prefill failures in restricted contexts.
-    } finally {
-      prefillInFlightRef.current = false;
     }
-  };
+  }, [applyHostTabContext]);
 
   useEffect(() => {
-    void prefillFromActiveTab();
-    // run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void prefillFromHostTab();
+  }, [prefillFromHostTab]);
 
   useEffect(() => {
     const onFocus = () => {
-      void prefillFromActiveTab();
+      void prefillFromHostTab();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void prefillFromHostTab();
+      }
     };
     const onActivated = () => {
-      void prefillFromActiveTab();
+      void prefillFromHostTab();
     };
-    const onUpdated = (_tabId: number, changeInfo: { url?: string; title?: string; status?: string }) => {
+    const onUpdated = (
+      tabId: number,
+      changeInfo: { url?: string; title?: string; status?: string }
+    ) => {
+      if (hostTabIdRef.current != null && tabId !== hostTabIdRef.current) return;
       if (changeInfo.url || changeInfo.title || changeInfo.status === 'complete') {
-        void prefillFromActiveTab();
+        void prefillFromHostTab();
       }
     };
 
     window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
     chrome.tabs.onActivated.addListener(onActivated);
     chrome.tabs.onUpdated.addListener(onUpdated);
     return () => {
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
       chrome.tabs.onActivated.removeListener(onActivated);
       chrome.tabs.onUpdated.removeListener(onUpdated);
     };
-    // register listeners once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [prefillFromHostTab]);
 
   return (
     <div
@@ -580,9 +567,10 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             setForceNewCopyMode(false);
             setSelectedExistingItemId(null);
             await onSaveTab(collectionId || undefined);
-            await prefillFromActiveTab();
+            await prefillFromHostTab();
           })();
         }}
+        disabled={digestRunning}
         style={{
           width: '100%',
           display: 'flex',
@@ -1017,16 +1005,18 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
 
         <ButtonPrimary
           onClick={() => void submitItem()}
-          disabled={submitting}
+          disabled={submitting || digestRunning}
           style={{ width: '100%', padding: '0.5rem', fontWeight: 600, fontSize: 'var(--text-sm)' }}
         >
-          {submitting
-            ? 'Saving…'
-            : forceNewCopyMode
-              ? 'Save new copy'
-              : selectedExistingItem
-                ? 'Update selected bookmark'
-                : 'Add bookmark'}
+          {digestRunning
+            ? 'Digesting…'
+            : submitting
+              ? 'Saving…'
+              : forceNewCopyMode
+                ? 'Save new copy'
+                : selectedExistingItem
+                  ? 'Update selected bookmark'
+                  : 'Add bookmark'}
         </ButtonPrimary>
       </Panel>
 

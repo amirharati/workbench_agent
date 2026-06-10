@@ -29,6 +29,8 @@ export interface ItemPipelineContext {
   eligibilityReason?: string;
   primaryCategoryId: string | null;
   primaryCategoryName: string | null;
+  /** `Parent › leaf` when parent exists — matches Hub classify queue column. */
+  primaryTopicPath: string | null;
   acceptedLinks: Array<{ categoryId: string; name: string; isPrimary: boolean }>;
   suggestedLinks: Array<{ categoryId: string; name: string; isPrimary: boolean; score: number }>;
   hasSuggestedLinks: boolean;
@@ -263,6 +265,16 @@ function buildContextForItem(
     .map((l) => mapLink(l))
     .sort((a, b) => b.score - a.score);
 
+  const primaryLeaf = primaryCategoryId ? categoryById.get(primaryCategoryId) : undefined;
+  const parentName = primaryLeaf?.parentId
+    ? categoryById.get(primaryLeaf.parentId)?.name ?? null
+    : null;
+  const primaryCategoryName = primaryLeaf?.name ?? null;
+  const primaryTopicPath =
+    primaryLeaf && parentName
+      ? `${parentName} › ${primaryLeaf.name}`
+      : primaryCategoryName;
+
   return {
     item,
     enrichment,
@@ -271,9 +283,8 @@ function buildContextForItem(
     eligible: eligibility.eligible,
     eligibilityReason: eligibility.reason,
     primaryCategoryId,
-    primaryCategoryName: primaryCategoryId
-      ? categoryById.get(primaryCategoryId)?.name ?? null
-      : null,
+    primaryCategoryName,
+    primaryTopicPath,
     acceptedLinks,
     suggestedLinks,
     hasSuggestedLinks: suggestedLinks.length > 0,

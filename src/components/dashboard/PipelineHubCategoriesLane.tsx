@@ -13,6 +13,8 @@ import { refreshPipelineCacheFromWorker } from '../../lib/db';
 import { ensurePendingClassifySignals } from '../../lib/categorization';
 import {
   countPipelineQueueFilters,
+  isClassifyPendingRunnable,
+  isReclassifyScopeCandidate,
   listPipelineQueueItems,
   matchesPipelineQueueFilter,
   PIPELINE_QUEUE_FILTER_OPTIONS,
@@ -58,6 +60,12 @@ const STATE_COLORS: Record<string, string> = {
 };
 
 function rowStateColor(row: PipelineQueueItemRow): string {
+  if (row.enrichmentStatusLabel) {
+    if (row.enrichmentStatusLabel.startsWith('Fetch OK ·')) return 'var(--er-warn, #d29922)';
+    if (row.enrichmentStatusLabel.startsWith('Fetch ·')) return 'var(--error, #f85149)';
+    if (row.enrichmentStatusLabel.startsWith('Embed ·')) return '#a371f7';
+    return 'var(--er-warn, #d29922)';
+  }
   const st = row.classifyState;
   if (st && STATE_COLORS[st]) return STATE_COLORS[st];
   const blocker = resolveClassifyQueueBlocker({
@@ -83,7 +91,7 @@ function rowStateLabel(row: PipelineQueueItemRow): string {
     eligible: row.eligible,
     eligibilityReason: row.eligibilityReason,
   });
-  return displayClassifyStateLabel(row.classifyState, blocker);
+  return displayClassifyStateLabel(row.classifyState, blocker, row.enrichmentStatusLabel);
 }
 
 function formatTime(ts?: number): string {
@@ -151,6 +159,8 @@ export type PipelineHubCategoriesLaneProps = {
   scopeCollectionId?: string | 'all';
   onOpenItem?: (item: Item) => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
+  /** Scope chips bar — full scoped/filtered count (not enrichment page size). */
+  onScopeItemCount?: (count: number) => void;
 };
 
 export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps> = ({
@@ -159,6 +169,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   scopeCollectionId = 'all',
   onOpenItem,
   onBrowseCategory,
+  onScopeItemCount,
 }) => {
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
@@ -243,12 +254,31 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
       else setRefreshing(true);
     }
     try {
+      await refreshPipelineCacheFromWorker();
       await ensurePendingClassifySignals();
+      invalidatePipelineCatalog();
+      await refreshPipelineCacheFromWorker();
       const [list, embedFailed] = await Promise.all([
         listPipelineQueueItems('all', search),
         loadEmbedFailedIds(),
       ]);
-      setAllRows(list);
+      const hadPipelineData = allRows.some(
+        (r) =>
+          !!r.primaryCategoryId ||
+          r.hasSignal ||
+          (r.enrichment?.status != null && r.enrichment.status !== 'none')
+      );
+      const looksLikeEmptyCache =
+        list.length > 0 &&
+        list.every(
+          (r) =>
+            !r.primaryCategoryId &&
+            !r.hasSignal &&
+            (!r.enrichment || r.enrichment.status === 'none')
+        );
+      if (!(silent && hadPipelineData && looksLikeEmptyCache)) {
+        setAllRows(list);
+      }
       setEmbedFailedIds(embedFailed);
       return list;
     } finally {
@@ -357,6 +387,17 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
     [scopedRows, filter]
   );
 
+  useEffect(() => {
+    if (!onScopeItemCount) return;
+    const count =
+      subTab === 'taxonomy'
+        ? scopedRows.length
+        : filter === 'all'
+          ? scopedRows.length
+          : filteredRows.length;
+    onScopeItemCount(count);
+  }, [onScopeItemCount, subTab, filter, scopedRows.length, filteredRows.length]);
+
   const tableRowsForList = useMemo(
     () =>
       buildDisplayListWithRecentHolds(
@@ -427,15 +468,15 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
     const allEligibleIds: string[] = [];
 
     for (const row of baseRows) {
-      if (!row.eligible) continue;
-      
-      allEligibleIds.push(row.item.id);
+      if (isReclassifyScopeCandidate(row)) {
+        allEligibleIds.push(row.item.id);
+      }
 
-      if (row.classifyState === 'pending_classify' || row.classifyState === 'pending_reclassify') {
+      if (isClassifyPendingRunnable(row)) {
         pendingClassifyIds.push(row.item.id);
-      } else if (row.classifyState === 'classified_general') {
+      } else if (row.eligible && row.classifyState === 'classified_general') {
         generalIds.push(row.item.id);
-      } else if (row.classifyState === 'pending_discover') {
+      } else if (row.eligible && row.classifyState === 'pending_discover') {
         // Classify ran but no specific topic matched — "no category found"
         unassignedIds.push(row.item.id);
       }
@@ -508,9 +549,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
       ? filteredRows.filter(r => selectedIds.has(r.item.id))
       : scopedRows;
       
-    const targetIds = baseRows.filter(row => 
-      row.eligible && (row.classifyState === 'pending_classify' || row.classifyState === 'pending_reclassify')
-    ).map(r => r.item.id);
+    const targetIds = baseRows.filter(isClassifyPendingRunnable).map((r) => r.item.id);
     
     if (targetIds.length === 0) return;
     
@@ -531,7 +570,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
       ? filteredRows.filter(r => selectedIds.has(r.item.id))
       : scopedRows;
       
-    const targetIds = baseRows.filter(r => r.eligible).map(r => r.item.id);
+    const targetIds = baseRows.filter(isReclassifyScopeCandidate).map((r) => r.item.id);
     
     if (targetIds.length === 0) return;
     

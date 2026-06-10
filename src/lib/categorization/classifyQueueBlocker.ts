@@ -167,10 +167,27 @@ export function pendingSubFilterMatchesBlocker(
   }
 }
 
+const ENRICHMENT_QUEUE_BLOCKERS = new Set<ClassifyPendingBlocker>([
+  'not_enriched',
+  'fetch_failed',
+  'fetch_review',
+  'no_ai_summary',
+]);
+
+/** True when classify queue should show enrich/fetch status instead of a classify bucket name. */
+export function isEnrichmentQueueBlocker(blocker: ClassifyPendingBlocker): boolean {
+  return ENRICHMENT_QUEUE_BLOCKERS.has(blocker);
+}
+
 export function displayClassifyStateLabel(
   classifyState: ClassifyState | undefined,
-  blocker: ClassifyQueueBlockerInfo
+  blocker: ClassifyQueueBlockerInfo,
+  enrichmentStatusLabel?: string | null
 ): string {
+  if (enrichmentStatusLabel) return enrichmentStatusLabel;
+  if (ENRICHMENT_QUEUE_BLOCKERS.has(blocker.code)) {
+    return blocker.stateLabel;
+  }
   if (
     classifyState === 'pending_classify' ||
     classifyState === 'pending_reclassify' ||

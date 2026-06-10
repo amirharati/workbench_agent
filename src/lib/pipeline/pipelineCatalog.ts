@@ -18,6 +18,7 @@ import type {
   DiscoverRunSummary,
 } from '../categorization/types';
 import type { ItemEnrichment } from '../enrichment/types';
+import { isEnrichmentFailure } from '../enrichment/failureLabels';
 import { subscribeToDataChanges } from '../dataChangeNotifier';
 
 const COUNTABLE_STATUSES = new Set(['suggested', 'accepted']);
@@ -87,6 +88,8 @@ export async function getPipelineCatalog(opts?: { force?: boolean }): Promise<Pi
   if (!opts?.force && catalogCache && now - catalogCache.at < CATALOG_TTL_MS) {
     return catalogCache.catalog;
   }
+  const { refreshPipelineCacheFromWorker } = await import('../db');
+  await refreshPipelineCacheFromWorker();
   const catalog = await loadPipelineCatalogFresh();
   catalogCache = { at: now, catalog };
   return catalog;
@@ -122,7 +125,12 @@ export function computeCategorizationQueueStats(
     else if (st === 'pending_discover') pendingDiscover++;
     else if (st === 'ineligible') ineligible++;
     else if (st === 'skipped') skipped++;
-    else if (st === 'classified') classified++;
+    else if (
+      st === 'classified' &&
+      !isEnrichmentFailure(enrichment, signal?.signalStatus === 'embed_failed')
+    ) {
+      classified++;
+    }
     else if (st === 'classified_general') classifiedGeneral++;
     else if (st === 'manual_review') manualReview++;
 

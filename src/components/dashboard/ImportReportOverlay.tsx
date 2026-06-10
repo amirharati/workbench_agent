@@ -1,9 +1,8 @@
 import React from 'react';
 import {
+  importReportHubStatusCounts,
   importReportStats,
-  IMPORT_REPORT_STATUS_LABELS,
   type ImportReport,
-  type ImportReportPipelineStatus,
   type ImportReportRow,
 } from '../../lib/pipeline/importReport';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
@@ -15,17 +14,6 @@ interface ImportReportOverlayProps {
   onClose: () => void;
   onImportAnother: () => void;
 }
-
-const STATUS_COLORS: Record<ImportReportPipelineStatus, string> = {
-  not_run: 'var(--text-muted)',
-  enriched: '#22c55e',
-  unchanged: 'var(--text-muted)',
-  failed: '#ef4444',
-  classified: '#818cf8',
-  pending_classify: '#d29922',
-  not_enriched: 'var(--text-faint)',
-  review_needed: '#f97316',
-};
 
 function rowMatchesFilter(row: ImportReportRow, filter: ReportFilter): boolean {
   switch (filter) {
@@ -52,6 +40,7 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
   const [selectedId, setSelectedId] = React.useState<string | null>(report.rows[0]?.itemId ?? null);
 
   const stats = React.useMemo(() => importReportStats(report), [report]);
+  const hubStatusCounts = React.useMemo(() => importReportHubStatusCounts(report), [report]);
 
   const filteredRows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -61,7 +50,10 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
       return (
         row.title.toLowerCase().includes(q) ||
         row.url.toLowerCase().includes(q) ||
+        row.hubStatusLabel.toLowerCase().includes(q) ||
+        row.hubNextStep.toLowerCase().includes(q) ||
         row.detail.toLowerCase().includes(q) ||
+        (row.topicPath?.toLowerCase().includes(q) ?? false) ||
         (row.categoryName?.toLowerCase().includes(q) ?? false)
       );
     });
@@ -105,12 +97,11 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
           },
         ]
       : []),
-    { label: 'Classified', value: stats.classified, color: STATUS_COLORS.classified },
-    { label: 'Summarized', value: stats.enriched, color: STATUS_COLORS.enriched },
-    { label: 'Unchanged', value: stats.unchanged, color: STATUS_COLORS.unchanged },
-    { label: 'Failed', value: stats.failed, color: STATUS_COLORS.failed },
-    { label: 'Review needed', value: stats.reviewNeeded, color: STATUS_COLORS.review_needed },
-    { label: 'Not processed', value: stats.notRun, color: STATUS_COLORS.not_run },
+    ...hubStatusCounts.map((chip) => ({
+      label: chip.label,
+      value: chip.count,
+      color: chip.color,
+    })),
   ];
 
   return (
@@ -150,6 +141,18 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.5 }}>
                 {report.importSummary}
                 {report.pipelineMessage ? ` · ${report.pipelineMessage}` : ''}
+                {report.pipelineRan && stats.notRun > 0 ? (
+                  <>
+                    {' '}
+                    · Digest ran on <strong style={{ color: 'var(--text)' }}>{stats.total - stats.notRun}</strong> of{' '}
+                    <strong style={{ color: 'var(--text)' }}>{stats.total}</strong> committed —{' '}
+                    <strong style={{ color: 'var(--text)' }}>{stats.notRun}</strong> saved import-only (digest later from
+                    Enrichment Hub).
+                  </>
+                ) : null}
+                <span style={{ display: 'block', marginTop: 4, color: 'var(--text-faint)' }}>
+                  Status labels match Enrichment Hub.
+                </span>
               </div>
             </div>
             <button
@@ -313,14 +316,16 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
                         style={{
                           fontSize: 10,
                           fontWeight: 700,
-                          color: STATUS_COLORS[row.pipelineStatus],
+                          color: row.hubStatusColor,
                           flexShrink: 0,
+                          textAlign: 'right',
+                          maxWidth: '42%',
                         }}
                       >
-                        {IMPORT_REPORT_STATUS_LABELS[row.pipelineStatus]}
+                        {row.hubStatusLabel}
                       </span>
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 4 }}>{row.detail}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 4 }}>{row.hubNextStep}</div>
                   </button>
                 );
               })
@@ -359,21 +364,20 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <Badge label={selectedRow.outcome === 'created' ? 'New' : 'Existing'} />
-                    <Badge
-                      label={IMPORT_REPORT_STATUS_LABELS[selectedRow.pipelineStatus]}
-                      color={STATUS_COLORS[selectedRow.pipelineStatus]}
-                    />
+                    <Badge label={selectedRow.hubStatusLabel} color={selectedRow.hubStatusColor} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase' }}>Result</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase' }}>Next step</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                      {selectedRow.detail}
+                      {selectedRow.hubNextStep}
                     </div>
                   </div>
-                  {selectedRow.categoryName ? (
+                  {selectedRow.topicPath || selectedRow.categoryName ? (
                     <div>
-                      <div style={{ fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase' }}>Category</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text)' }}>{selectedRow.categoryName}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-faint)', textTransform: 'uppercase' }}>Topic</div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text)' }}>
+                        {selectedRow.topicPath ?? selectedRow.categoryName}
+                      </div>
                     </div>
                   ) : null}
                   {selectedRow.summary ? (

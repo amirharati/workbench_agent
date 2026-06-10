@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw, Search } from 'lucide-react';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import {
@@ -16,7 +16,9 @@ interface AiCategoriesViewProps {
 const RELOAD_REASONS = new Set([
   'categorization.review',
   'categorization.update',
+  'enrichment.update',
   'import.replace',
+  'import.bulk',
   'pipeline.clear',
 ]);
 
@@ -25,42 +27,84 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
     null
   );
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
+  const [showEmpty, setShowEmpty] = useState(false);
+  const taxonomyRef = useRef(taxonomy);
+  taxonomyRef.current = taxonomy;
+  const reloadSeqRef = useRef(0);
 
-  const reload = useCallback(() => {
-    setLoading(true);
-    void getTaxonomyTreeWithCounts()
-      .then(setTaxonomy)
-      .finally(() => setLoading(false));
+  const reload = useCallback(async (opts?: { silent?: boolean }) => {
+    const seq = ++reloadSeqRef.current;
+    const hasData = taxonomyRef.current != null;
+    const silent = opts?.silent === true && hasData;
+    if (!silent) {
+      if (!hasData) setLoading(true);
+      else setRefreshing(true);
+    }
+    try {
+      const next = await getTaxonomyTreeWithCounts();
+      if (seq !== reloadSeqRef.current) return;
+      const prev = taxonomyRef.current;
+      const looksLikeHydrateRace =
+        prev != null &&
+        prev.totals.itemsWithPrimary > 0 &&
+        next.totals.itemsWithPrimary === 0 &&
+        next.parents.every((p) => p.primaryItemCount === 0);
+      if (!looksLikeHydrateRace) {
+        setTaxonomy(next);
+      }
+    } finally {
+      if (seq === reloadSeqRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
   }, []);
 
   useEffect(() => {
-    reload();
+    void reload();
   }, [reload]);
 
   useEffect(() => {
     return subscribeToDataChanges((event) => {
-      if (RELOAD_REASONS.has(event.reason)) reload();
+      if (RELOAD_REASONS.has(event.reason)) void reload({ silent: true });
     });
   }, [reload]);
 
   const q = query.trim().toLowerCase();
   const filtered = useMemo(() => {
-    if (!taxonomy || !q) return taxonomy;
+    if (!taxonomy) return taxonomy;
+
+    const hideEmpty = !showEmpty && !q;
     const match = (name: string) => name.toLowerCase().includes(q);
+
     const parents = taxonomy.parents
       .map((row) => {
-        const parentMatch = match(row.category.name);
-        const leaves = row.leaves.filter(
-          (leaf) => parentMatch || match(leaf.category.name)
-        );
-        if (!parentMatch && leaves.length === 0) return null;
-        return { ...row, leaves: parentMatch ? row.leaves : leaves };
+        let leaves = row.leaves;
+        if (q) {
+          const parentMatch = match(row.category.name);
+          leaves = row.leaves.filter((leaf) => parentMatch || match(leaf.category.name));
+          if (!parentMatch && leaves.length === 0) return null;
+          return { ...row, leaves: parentMatch ? row.leaves : leaves };
+        }
+        if (hideEmpty) {
+          leaves = row.leaves.filter((leaf) => leaf.primaryItemCount > 0);
+          if (row.primaryItemCount <= 0 && leaves.length === 0) return null;
+        }
+        return { ...row, leaves };
       })
       .filter((row): row is TaxonomyParentRow => row != null);
-    const orphanLeaves = taxonomy.orphanLeaves.filter((leaf) => match(leaf.category.name));
+
+    let orphanLeaves = taxonomy.orphanLeaves;
+    if (q) {
+      orphanLeaves = orphanLeaves.filter((leaf) => match(leaf.category.name));
+    } else if (hideEmpty) {
+      orphanLeaves = orphanLeaves.filter((leaf) => leaf.primaryItemCount > 0);
+    }
+
     return { ...taxonomy, parents, orphanLeaves };
-  }, [taxonomy, q]);
+  }, [taxonomy, q, showEmpty]);
 
   const data = filtered ?? taxonomy;
 
@@ -90,8 +134,8 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
             </div>
             <button
               type="button"
-              onClick={reload}
-              disabled={loading}
+              onClick={() => void reload()}
+              disabled={loading || refreshing}
               title="Refresh counts"
               style={{
                 display: 'flex',
@@ -103,15 +147,15 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
                 background: 'var(--bg-panel)',
                 color: 'var(--text-muted)',
                 fontSize: 'var(--text-xs)',
-                cursor: loading ? 'wait' : 'pointer',
-                flexShrink: 0,
-              }}
-            >
-              <RefreshCw size={14} />
-              Refresh
-            </button>
-          </div>
-        </header>
+              cursor: loading || refreshing ? 'wait' : 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <RefreshCw size={14} className={refreshing ? 'spin' : undefined} />
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
+      </header>
       ) : (
         <div
           style={{
@@ -129,8 +173,8 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
           </p>
           <button
             type="button"
-            onClick={reload}
-            disabled={loading}
+            onClick={() => void reload()}
+            disabled={loading || refreshing}
             title="Refresh counts"
             style={{
               display: 'inline-flex',
@@ -142,12 +186,12 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
               background: 'var(--bg-glass)',
               color: 'var(--text-muted)',
               fontSize: 'var(--text-xs)',
-              cursor: loading ? 'wait' : 'pointer',
+              cursor: loading || refreshing ? 'wait' : 'pointer',
               flexShrink: 0,
             }}
           >
-            <RefreshCw size={13} />
-            Refresh
+            <RefreshCw size={13} className={refreshing ? 'spin' : undefined} />
+            {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
       )}
@@ -172,6 +216,16 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
           <span>
             <strong style={{ color: 'var(--text)' }}>{data.totals.itemsWithPrimary}</strong> bookmarks with a
             primary topic
+            {data.totals.itemsWithPrimaryEnrichIncomplete > 0 ? (
+              <>
+                {' '}
+                ·{' '}
+                <strong style={{ color: 'var(--er-warn, #d29922)' }}>
+                  {data.totals.itemsWithPrimaryEnrichIncomplete}
+                </strong>{' '}
+                topic assigned but enrich incomplete (see Enrichment tab)
+              </>
+            ) : null}
           </span>
         </div>
       )}
@@ -182,27 +236,55 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
           alignItems: 'center',
           gap: 8,
           marginBottom: 12,
-          padding: '8px 12px',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--border)',
-          background: 'var(--input-bg)',
+          flexWrap: 'wrap',
         }}
       >
-        <Search size={16} color="var(--text-muted)" />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter by name…"
+        <div
           style={{
-            flex: 1,
-            border: 'none',
-            outline: 'none',
-            background: 'transparent',
-            color: 'var(--text)',
-            fontSize: 'var(--text-sm)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flex: '1 1 200px',
+            padding: '8px 12px',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border)',
+            background: 'var(--input-bg)',
           }}
-        />
+        >
+          <Search size={16} color="var(--text-muted)" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter by name…"
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              color: 'var(--text)',
+              fontSize: 'var(--text-sm)',
+            }}
+          />
+        </div>
+        <label
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showEmpty}
+            onChange={(e) => setShowEmpty(e.target.checked)}
+          />
+          Show empty topics
+        </label>
       </div>
 
       {loading && !data ? (
@@ -210,7 +292,9 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
       ) : !data?.parents.length && !data?.orphanLeaves.length ? (
         <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
           {taxonomy
-            ? 'No categories match your filter.'
+            ? showEmpty || q
+              ? 'No categories match your filter.'
+              : 'No topics with assigned bookmarks yet. Run classify on imports, or enable Show empty topics to browse the full taxonomy.'
             : 'No AI categories yet. Import and classify bookmarks in Settings (dev setup) to build the taxonomy.'}
         </p>
       ) : (
@@ -220,6 +304,8 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
             borderRadius: 'var(--radius-md)',
             overflow: 'hidden',
             background: 'var(--bg-panel)',
+            opacity: refreshing ? 0.72 : 1,
+            transition: 'opacity 0.15s ease',
           }}
         >
           <div

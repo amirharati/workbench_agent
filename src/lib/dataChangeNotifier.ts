@@ -26,6 +26,7 @@ export type DataChangeReason =
   | 'workspace.delete'
   | 'snapshot.add'
   | 'import.replace'
+  | 'import.bulk'
   | 'enrichment.update'
   | 'categorization.update'
   | 'categorization.review'

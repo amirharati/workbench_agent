@@ -286,6 +286,8 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const bulk = await dbCore.bulkImportBookmarks(
         ...(args as Parameters<typeof dbCore.bulkImportBookmarks>)
       );
+      invalidateHubScopeEntryCache();
+      revisionTracker.recordSqliteMutation();
       scheduleFolderMirror();
       return bulk;
     }

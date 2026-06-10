@@ -132,6 +132,8 @@ export interface RunSingleWithProgressOptions {
   /** Fetch only — skip AI extract (Re-fetch in inspector). */
   skipAi?: boolean;
   tabSessionOnly?: boolean;
+  preferTabSession?: boolean;
+  tabId?: number;
   /** Display title for the results report. */
   itemLabel?: string;
 }
@@ -460,6 +462,8 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           skipClassify: options?.skipClassify,
           skipAi: options?.skipAi,
           tabSessionOnly: options?.tabSessionOnly,
+          preferTabSession: options?.preferTabSession,
+          tabId: options?.tabId,
           onProgress: (p) => applyPipelineProgress(setModal, p),
         });
 

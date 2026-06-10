@@ -11,6 +11,7 @@ const RELOAD_REASONS = new Set([
   'enrichment.update',
   'pipeline.clear',
   'import.replace',
+  'import.bulk',
 ]);
 
 export function usePipelineMaintenanceSnapshot(opts?: {
