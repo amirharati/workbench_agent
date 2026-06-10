@@ -1,5 +1,6 @@
 import {
   pipelineBadgeToStatusChip,
+  resolvePendingDiscoverBadgeLabel,
   resolvePipelineStatus,
   resolveSpecialClassificationBadge,
 } from './pipelineBadge';
@@ -107,6 +108,26 @@ function runTests(): void {
   assert(embedFailed.kind === 'failed', 'embed failed → failed badge');
   const embedChip = pipelineBadgeToStatusChip(embedFailed);
   assert(embedChip.color === PIPELINE_STATE_COLORS.failed, 'embed fail uses error color');
+
+  const classifyEligiblePendingDiscover = resolvePipelineStatus({
+    enrichment: okEnrichment,
+    embedFailed: false,
+    signal: { classifyState: 'pending_discover', signalStatus: 'ok' } as AiItemSignal,
+    primaryCategoryId: null,
+    suggestedLinkCount: 0,
+    classifyState: 'pending_discover',
+  });
+  assert(
+    classifyEligiblePendingDiscover.label === 'Pending classify',
+    'pending_discover + enrich ok → Pending classify (#28)'
+  );
+
+  const needsDiscoverLabel = resolvePendingDiscoverBadgeLabel({
+    enrichment: { status: 'none' } as ItemEnrichment,
+    primaryCategoryId: null,
+    classifyState: 'pending_discover',
+  });
+  assert(needsDiscoverLabel === 'Pending discover', 'not enriched pending_discover → discover label');
 
   console.log('pipelineBadge.test.ts: all tests passed');
 }

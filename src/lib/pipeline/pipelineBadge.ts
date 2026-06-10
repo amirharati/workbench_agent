@@ -11,6 +11,7 @@ import {
   type FailureCategory,
 } from '../enrichment/failureLabels';
 import type { ItemEnrichment } from '../enrichment/types';
+import { isFairGameForCategorization } from '../categorization/categorizationFairGame';
 import { isDownstreamClassifyEligible } from './downstreamEligible';
 import { PIPELINE_STATE_COLORS } from './pipelineDictionary';
 import type { ItemPipelineContext } from './itemPipelineContext';
@@ -80,6 +81,28 @@ export function resolveSpecialClassificationBadge(input: {
     return { kind: 'partial', variant: 'warning', label: 'General / Other' };
   }
   return null;
+}
+
+/**
+ * pending_discover state: classify-only may still run (fair game + enrich ok).
+ * Show discover-oriented label only when classify path is not open (#28).
+ */
+export function resolvePendingDiscoverBadgeLabel(input: {
+  enrichment?: ItemEnrichment;
+  primaryCategoryId?: string | null;
+  classifyState?: ClassifyState;
+}): 'Pending classify' | 'Pending discover' {
+  if (
+    isDownstreamClassifyEligible(input.enrichment) &&
+    isFairGameForCategorization({
+      eligible: true,
+      classifyState: 'pending_discover',
+      primaryCategoryId: input.primaryCategoryId ?? null,
+    })
+  ) {
+    return 'Pending classify';
+  }
+  return 'Pending discover';
 }
 
 export function pipelineBadgeToStatusChip(
@@ -161,7 +184,12 @@ export function resolvePipelineStatus(input: PipelineStatusInput): PipelineBadge
   }
 
   if (signalState === 'pending_discover') {
-    return { kind: 'partial', variant: 'info', label: 'Pending discover' };
+    const label = resolvePendingDiscoverBadgeLabel({
+      enrichment,
+      primaryCategoryId,
+      classifyState: signalState,
+    });
+    return { kind: 'partial', variant: 'info', label };
   }
 
   const classifyQueueState =

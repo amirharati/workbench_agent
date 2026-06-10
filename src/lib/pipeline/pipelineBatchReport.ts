@@ -11,8 +11,18 @@ import {
 import { describeAiFailure, formatEnrichmentFailureMessage } from '../enrichment/errorMessages';
 import type { ItemEnrichment } from '../enrichment/types';
 import { primaryLeafIdFromLinks, verifiedPrimaryLeafIdFromLinks } from '../categorization/counts';
-import { resolvePipelineStatus, type PipelineBadge } from './pipelineBadge';
+import { resolvePendingDiscoverBadgeLabel, resolvePipelineStatus, type PipelineBadge } from './pipelineBadge';
+import {
+  formatClassifyDoneModalSummary,
+  resolveClassifyDoneModalTone,
+} from './pipelineDictionary';
 import { hubStatusBadgeForEnrichment, type HubStatusStageInput } from './pipelineHubQueries';
+
+export {
+  CLASSIFY_DONE_REPORT_SAMPLE_CAP,
+  formatClassifyDoneModalSummary,
+  formatClassifyRunSummary,
+} from './pipelineDictionary';
 
 export type PipelineReportOutcome =
   | 'enriched'
@@ -536,6 +546,10 @@ export async function buildClassifyOutcomeReportRows(
 
   const db = await getDB();
   const { labels, urls } = await hydrateItemMeta(itemIds, itemLabels);
+  const enrichments = await getAllEnrichments();
+  const enrichById = new Map(
+    enrichments.filter((e) => itemIds.includes(e.itemId)).map((e) => [e.itemId, e])
+  );
   const categories = db.objectStoreNames.contains('ai_categories')
     ? await db.getAll('ai_categories')
     : [];
@@ -582,8 +596,18 @@ export async function buildClassifyOutcomeReportRows(
       outcome = 'review';
       detail = reason || 'Still in manual review';
     } else if (st === 'pending_discover') {
-      outcome = 'review';
-      detail = reason || 'No topic match — needs discover';
+      const enrichment = enrichById.get(itemId);
+      const pendingLabel = resolvePendingDiscoverBadgeLabel({
+        enrichment,
+        primaryCategoryId: primaryId ?? null,
+        classifyState: st,
+      });
+      outcome = pendingLabel === 'Pending classify' ? 'skipped' : 'review';
+      detail =
+        reason ||
+        (pendingLabel === 'Pending classify'
+          ? 'No topic match — run Classify again or Discover'
+          : 'No topic match — needs discover');
     } else if (st === 'pending_classify') {
       outcome = 'skipped';
       detail = reason || 'Back in classify queue';
@@ -649,16 +673,22 @@ export function pipelineReportStats(rows: PipelineReportRow[]) {
 
 /** Modal tone from per-item report rows (honest when fetch OK but AI failed). */
 export function resolveReportRowsSummaryTone(
-  rows: PipelineReportRow[]
+  rows: PipelineReportRow[],
+  classifySummary?: TopicClassifySummary
 ): 'success' | 'error' | 'info' {
+  if (classifySummary) {
+    return resolveClassifyDoneModalTone(classifySummary);
+  }
+
   const stats = pipelineReportStats(rows);
-  const successLabels = new Set(['Enriched', 'Verified']);
+  const successLabels = new Set(['Enriched', 'Verified', 'Classified']);
   const successCount = rows.filter((r) => successLabels.has(reportRowDisplayLabel(r))).length;
   const issueCount = rows.length - successCount - stats.skipped - stats.unchanged;
 
   if (issueCount > 0 && successCount === 0) return 'error';
-  if (stats.failed > 0 || stats.review > 0) return 'info';
+  if (stats.failed > 0 && successCount === 0) return 'error';
   if (successCount > 0) return 'success';
+  if (stats.failed > 0 || stats.review > 0) return 'info';
   return 'info';
 }
 
@@ -675,27 +705,57 @@ export function pipelineReportStatusLabelCounts(rows: PipelineReportRow[]): Map<
   return counts;
 }
 
-/** Done-modal summary for batch digest — scope + per-row outcomes. */
+/** Done-modal summary for batch digest — run-level classify first, then row snapshot (#8). */
 export function formatBatchDigestDoneSummary(input: {
   selectedCount: number;
   reportRows: PipelineReportRow[];
   pipelineMessage?: string;
   classifySummary?: TopicClassifySummary;
+  reportRowTotal?: number;
 }): string {
-  const rowPart = formatPipelineReportSummaryFromRows(input.reportRows);
-  const parts: string[] = [];
-  if (input.selectedCount > 0) {
-    parts.push(
-      `Report covers ${input.selectedCount} selected bookmark${input.selectedCount === 1 ? '' : 's'}`
-    );
-  }
-  if (rowPart && rowPart !== 'No changes') parts.push(rowPart);
   const cs = input.classifySummary;
-  if (cs && input.selectedCount > 0 && cs.totalConsidered > input.selectedCount) {
+  const parts: string[] = [];
+
+  if (cs && (cs.processed > 0 || cs.classifiedSpecific > 0 || cs.classifiedGeneral > 0)) {
     parts.push(
-      `Classify scanned ${cs.totalConsidered} in its run scope (not all listed below — use a fresh build if this surprises you)`
+      formatClassifyDoneModalSummary({
+        summary: cs,
+        selectedCount: input.selectedCount > 0 ? input.selectedCount : undefined,
+        reportRowCount: input.reportRows.length,
+        reportRowTotal: input.reportRowTotal ?? input.selectedCount,
+      })
     );
   }
+
+  const rowPart = formatPipelineReportSummaryFromRows(input.reportRows);
+  if (rowPart && rowPart !== 'No changes') {
+    if (cs) {
+      parts.push(`Selected snapshot: ${rowPart}`);
+    } else {
+      if (input.selectedCount > 0) {
+        parts.push(
+          `Report covers ${input.selectedCount} selected bookmark${input.selectedCount === 1 ? '' : 's'}`
+        );
+      }
+      parts.push(rowPart);
+    }
+  } else if (!cs) {
+    if (input.selectedCount > 0) {
+      parts.push(
+        `Report covers ${input.selectedCount} selected bookmark${input.selectedCount === 1 ? '' : 's'}`
+      );
+    }
+  }
+
+  if (
+    cs &&
+    input.selectedCount > 0 &&
+    cs.totalConsidered > input.selectedCount &&
+    !parts.some((p) => p.includes('checked in scope'))
+  ) {
+    parts.push(`Classify scanned ${cs.totalConsidered} in run scope`);
+  }
+
   return parts.length ? parts.join(' · ') : input.pipelineMessage ?? 'Done';
 }
 

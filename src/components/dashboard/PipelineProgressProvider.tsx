@@ -29,11 +29,12 @@ import {
 } from '../../lib/categorization';
 import { emptyTopicClassifySummary } from '../../lib/categorization/classifyPolicy';
 import {
-  buildClassifyReportRows,
   buildClassifyOutcomeReportRows,
   buildEnrichOutcomeReportRows,
-  formatClassifyBatchSummary,
+  CLASSIFY_DONE_REPORT_SAMPLE_CAP,
   formatBatchDigestDoneSummary,
+  formatClassifyDoneModalSummary,
+  formatClassifyRunSummary,
   formatPipelineReportSummaryFromRows,
   resolveBatchReportAction,
   resolveReportRowsSummaryTone,
@@ -48,29 +49,13 @@ import {
   loadHubQueueSnapshot,
   type HubQueueOutcome,
 } from '../../lib/pipeline/queueOutcomeSnapshot';
-import type { TopicClassifySummary } from '../../lib/categorization/types';
 import { PipelineBatchReportPanel } from './PipelineBatchReportPanel';
 import { QueueOutcomePanel } from './QueueOutcomePanel';
-import { resolvePipelineSummaryTone } from '../../lib/pipeline/pipelineDictionary';
+import {
+  resolveClassifyDoneModalTone,
+  resolvePipelineSummaryTone,
+} from '../../lib/pipeline/pipelineDictionary';
 import type { LibraryRefreshScope } from '../../lib/libraryRefresh';
-
-function formatClassifyRunSummary(s: TopicClassifySummary, itemCount?: number): string {
-  const parts = [
-    `${s.processed} LLM call${s.processed === 1 ? '' : 's'}`,
-    `${s.classifiedSpecific} specific`,
-    `${s.classifiedGeneral} general/Other`,
-    `${s.pendingDiscover} need discover`,
-  ];
-  if (s.skippedHash > 0) {
-    parts.push(`${s.skippedHash} unchanged (skipped, no LLM)`);
-  }
-  if (itemCount != null && itemCount !== s.processed) {
-    parts.unshift(`${itemCount} selected`);
-  } else if (s.totalConsidered > s.processed && !itemCount) {
-    parts.push(`${s.totalConsidered} checked in scope`);
-  }
-  return parts.join(' · ');
-}
 
 type SummaryTone = 'success' | 'error' | 'info';
 
@@ -94,6 +79,8 @@ type ModalState =
       reportRows?: PipelineReportRow[];
       /** How many bookmarks the user selected for this batch (report list scope). */
       reportScopeCount?: number;
+      /** Full selection count when reportRows is a capped sample. */
+      reportRowsTotal?: number;
       queueOutcome?: HubQueueOutcome;
       analysisExport?: PipelineRunExport;
       analysisSavedTo?: string;
@@ -306,6 +293,11 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       });
 
       const startedAt = Date.now();
+      const classifyOnlyBatch = options?.enrich === false && options?.classify !== false;
+      let beforeQueue: HubQueueOutcome['before'] | undefined;
+      if (classifyOnlyBatch) {
+        beforeQueue = await loadHubQueueSnapshot();
+      }
       try {
         const scopedSelection = itemIds.length > 0 && itemIds.length <= 25;
         const result = isFullPipelineBatch(options)
@@ -348,6 +340,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
             ? itemIds
             : (result.itemEnrichResults?.map((r) => r.itemId) ?? []);
         let reportRows: PipelineReportRow[] | undefined;
+        let reportRowsTotal: number | undefined;
         if (!cancelled && reportIds.length) {
           const enrichRun = options?.enrich !== false;
           if (enrichRun || batchAction === 'batch_full' || batchAction === 'full_digest') {
@@ -356,29 +349,70 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
               enrichResults: result.itemEnrichResults,
             });
           } else if (batchAction === 'batch_classify' && result.classifySummary) {
-            reportRows = buildClassifyReportRows(reportIds, itemLabels, result.classifySummary);
+            reportRowsTotal = reportIds.length;
+            const sampleIds =
+              reportIds.length > CLASSIFY_DONE_REPORT_SAMPLE_CAP
+                ? reportIds.slice(0, CLASSIFY_DONE_REPORT_SAMPLE_CAP)
+                : reportIds;
+            reportRows = await buildClassifyOutcomeReportRows(sampleIds, itemLabels);
           }
         }
         const summary = cancelled
           ? 'Cancelled'
-          : reportRows?.length
-            ? formatBatchDigestDoneSummary({
-                selectedCount: itemIds.length,
-                reportRows,
-                pipelineMessage: result.message,
-                classifySummary: result.classifySummary,
+          : result.classifySummary && batchAction === 'batch_classify'
+            ? formatClassifyDoneModalSummary({
+                summary: result.classifySummary,
+                selectedCount: itemIds.length > 0 ? itemIds.length : undefined,
+                reportRowCount: reportRows?.length,
+                reportRowTotal: reportRowsTotal,
               })
-            : result.message;
+            : reportRows?.length
+              ? formatBatchDigestDoneSummary({
+                  selectedCount: itemIds.length,
+                  reportRows,
+                  pipelineMessage: result.message,
+                  classifySummary: result.classifySummary,
+                  reportRowTotal: reportRowsTotal,
+                })
+              : result.classifySummary
+                ? formatClassifyRunSummary(result.classifySummary, itemIds.length || undefined)
+                : result.message;
         const tone: SummaryTone = cancelled
           ? 'info'
-          : resolvePipelineSummaryTone({
-              enriched: result.enriched,
-              skipped: result.skipped,
-              failed: result.failed,
-              classified: result.classified,
-              classifyError: result.classifyError,
-              classifySummary: result.classifySummary,
-            });
+          : reportRows?.length && result.classifySummary
+            ? resolveReportRowsSummaryTone(reportRows, result.classifySummary)
+            : resolvePipelineSummaryTone({
+                enriched: result.enriched,
+                skipped: result.skipped,
+                failed: result.failed,
+                classified: result.classified,
+                classifyError: result.classifyError,
+                classifySummary: result.classifySummary,
+              });
+
+        const cs = result.classifySummary;
+        const afterQueue =
+          classifyOnlyBatch && cs && beforeQueue ? await loadHubQueueSnapshot() : undefined;
+        const queueOutcome: HubQueueOutcome | undefined =
+          classifyOnlyBatch && cs && beforeQueue && afterQueue
+            ? {
+                action: 'classify_pending',
+                before: beforeQueue,
+                after: afterQueue,
+                itemsRun: itemIds.length > 0 ? itemIds.length : cs.processed,
+                batch: {
+                  processed: cs.processed,
+                  classifiedSpecific: cs.classifiedSpecific,
+                  classifiedGeneral: cs.classifiedGeneral,
+                  pendingDiscover: cs.pendingDiscover,
+                  skippedHash: cs.skippedHash,
+                  skippedIneligible: cs.skippedIneligible,
+                  skippedManualReview: cs.skippedManualReview,
+                  llmErrors: cs.llmErrors,
+                  unassigned: cs.unassigned,
+                },
+              }
+            : undefined;
 
         setModal({
           open: true,
@@ -388,6 +422,8 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           tone,
           reportRows,
           reportScopeCount: itemIds.length > 0 ? itemIds.length : undefined,
+          reportRowsTotal,
+          queueOutcome,
         });
         await refreshAfterPipeline(onRefresh, { itemIds });
 
@@ -1009,6 +1045,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         const s = result.classifySummary ?? emptyTopicClassifySummary();
         let summary = '';
         let reportRows: PipelineReportRow[] | undefined;
+        let reportRowsTotal: number | undefined;
 
         const reportIds = options?.itemIds?.slice(0, maxItems);
         const wantReport =
@@ -1017,11 +1054,21 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
             (options?.retryManualReview && options?.manualRetryReport !== false));
 
         if (wantReport && reportIds) {
+          reportRowsTotal = reportIds.length;
+          const sampleIds =
+            reportIds.length > CLASSIFY_DONE_REPORT_SAMPLE_CAP
+              ? reportIds.slice(0, CLASSIFY_DONE_REPORT_SAMPLE_CAP)
+              : reportIds;
           reportRows = await buildClassifyOutcomeReportRows(
-            reportIds,
+            sampleIds,
             options?.itemLabels ?? {}
           );
-          summary = formatClassifyBatchSummary(reportRows, reportIds.length);
+          summary = formatClassifyDoneModalSummary({
+            summary: s,
+            selectedCount: itemsRun,
+            reportRowCount: reportRows.length,
+            reportRowTotal: reportRowsTotal,
+          });
         } else {
           summary = formatClassifyRunSummary(s, itemsRun);
         }
@@ -1045,8 +1092,9 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           },
         };
 
-        const tone: SummaryTone =
-          s.llmErrors > 0 ? 'error' : s.classifiedSpecific > 0 ? 'success' : 'info';
+        const tone: SummaryTone = reportRows?.length
+          ? resolveReportRowsSummaryTone(reportRows, s)
+          : resolveClassifyDoneModalTone(s);
 
         setModal({
           open: true,
@@ -1055,6 +1103,8 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           summary,
           tone,
           reportRows,
+          reportScopeCount: reportIds?.length,
+          reportRowsTotal,
           queueOutcome,
         });
         await refreshAfterPipeline(
@@ -1262,6 +1312,24 @@ function PipelineProgressModal({
           </>
         ) : (
           <div style={{ overflowY: 'auto', paddingRight: 4 }}>
+            {modal.summary ? (
+              <p
+                style={{
+                  margin: modal.queueOutcome || modal.reportRows?.length ? '0 0 14px' : '0 0 16px',
+                  fontSize: 'var(--text-sm)',
+                  lineHeight: 1.55,
+                  fontWeight: modal.queueOutcome || modal.reportRows?.length ? 600 : 400,
+                  color:
+                    modal.tone === 'error'
+                      ? '#ef4444'
+                      : modal.tone === 'info'
+                        ? 'var(--text-muted)'
+                        : 'var(--text)',
+                }}
+              >
+                {modal.summary}
+              </p>
+            ) : null}
             {modal.queueOutcome ? <QueueOutcomePanel outcome={modal.queueOutcome} /> : null}
             {modal.reportRows?.length ? (
               <div style={{ marginBottom: 12 }}>
@@ -1275,36 +1343,27 @@ function PipelineProgressModal({
                     letterSpacing: '0.04em',
                   }}
                 >
-                  This batch — per bookmark
-                  {modal.reportScopeCount != null
-                    ? ` (${modal.reportScopeCount} selected)`
-                    : ''}
+                  {modal.reportRowsTotal != null &&
+                  modal.reportRowsTotal > modal.reportRows.length
+                    ? `Sample — per bookmark (${modal.reportRows.length} of ${modal.reportRowsTotal})`
+                    : `This batch — per bookmark${
+                        modal.reportScopeCount != null
+                          ? ` (${modal.reportScopeCount} selected)`
+                          : ''
+                      }`}
                 </div>
                 <PipelineBatchReportPanel
                   rows={modal.reportRows}
                   scopeLabel={
-                    modal.reportScopeCount != null
-                      ? `Outcomes for your ${modal.reportScopeCount} selected bookmark${modal.reportScopeCount === 1 ? '' : 's'} (same labels as the hub table).`
-                      : undefined
+                    modal.reportRowsTotal != null &&
+                    modal.reportRowsTotal > modal.reportRows.length
+                      ? `Sample of ${modal.reportRows.length} bookmark${modal.reportRows.length === 1 ? '' : 's'} from this run — run totals above reflect the full batch.`
+                      : modal.reportScopeCount != null
+                        ? `Outcomes for your ${modal.reportScopeCount} selected bookmark${modal.reportScopeCount === 1 ? '' : 's'} (same labels as the hub table).`
+                        : undefined
                   }
                 />
               </div>
-            ) : !modal.queueOutcome ? (
-              <p
-                style={{
-                  margin: '0 0 16px',
-                  fontSize: 'var(--text-sm)',
-                  lineHeight: 1.55,
-                  color:
-                    modal.tone === 'error'
-                      ? '#ef4444'
-                      : modal.tone === 'info'
-                        ? 'var(--text-muted)'
-                        : 'var(--text)',
-                }}
-              >
-                {modal.summary}
-              </p>
             ) : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
               {modal.analysisExport ? (

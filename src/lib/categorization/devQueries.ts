@@ -38,7 +38,11 @@ export const PIPELINE_QUEUE_FILTER_OPTIONS: Array<{
   { id: 'pending_no_ai', label: 'No AI summary', hint: 'Fetched but AI summary missing or failed' },
   { id: 'pending_ready', label: 'Waiting to classify', hint: 'AI ready — waiting for classify run' },
   { id: 'pending_reclassify', label: 'Re-classify queued' },
-  { id: 'pending_discover', label: 'No category found', hint: 'AI ran but no topic matched' },
+  {
+    id: 'pending_discover',
+    label: 'No category found',
+    hint: 'AI ran but no topic matched — Classify may still assign from existing taxonomy',
+  },
   { id: 'classified_general', label: 'General / Other' },
   { id: 'classified_removal', label: 'Removal candidate (junk/broken)' },
   { id: 'classified_attention', label: 'Needs attention (login/auth)' },

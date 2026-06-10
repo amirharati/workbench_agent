@@ -108,6 +108,66 @@ export function formatClassifySkipBreakdown(summary: TopicClassifySummary): stri
   return bits.join(', ');
 }
 
+/** Max per-bookmark rows in classify done modal before labeling as sample. */
+export const CLASSIFY_DONE_REPORT_SAMPLE_CAP = 50;
+
+/** Run-level classify summary for done modal (#8). */
+export function formatClassifyRunSummary(s: TopicClassifySummary, itemCount?: number): string {
+  const parts = [
+    `${s.processed} LLM call${s.processed === 1 ? '' : 's'}`,
+    `${s.classifiedSpecific} specific`,
+    `${s.classifiedGeneral} general/Other`,
+    `${s.pendingDiscover} need discover`,
+  ];
+  if (s.skippedHash > 0) {
+    parts.push(`${s.skippedHash} unchanged (skipped, no LLM)`);
+  }
+  if (s.skippedIneligible > 0) {
+    parts.push(`${s.skippedIneligible} ineligible`);
+  }
+  if (s.skippedManualReview > 0) {
+    parts.push(`${s.skippedManualReview} manual review`);
+  }
+  if (s.llmErrors > 0) {
+    parts.push(`${s.llmErrors} LLM error${s.llmErrors === 1 ? '' : 's'}`);
+  }
+  if (itemCount != null && itemCount !== s.processed) {
+    parts.unshift(`${itemCount} selected`);
+  } else if (s.totalConsidered > s.processed && itemCount == null) {
+    parts.push(`${s.totalConsidered} checked in scope`);
+  }
+  return parts.join(' · ');
+}
+
+/** Done modal headline: run totals first; note when row table is partial. */
+export function formatClassifyDoneModalSummary(input: {
+  summary: TopicClassifySummary;
+  selectedCount?: number;
+  reportRowCount?: number;
+  reportRowTotal?: number;
+}): string {
+  const runLine = formatClassifyRunSummary(input.summary, input.selectedCount);
+  const total = input.reportRowTotal ?? input.reportRowCount ?? 0;
+  const shown = input.reportRowCount ?? 0;
+  if (total > 0 && shown > 0 && shown < total) {
+    return `${runLine} · Table shows ${shown} of ${total} bookmark${total === 1 ? '' : 's'}`;
+  }
+  if (total > CLASSIFY_DONE_REPORT_SAMPLE_CAP && shown > 0 && shown >= CLASSIFY_DONE_REPORT_SAMPLE_CAP) {
+    return `${runLine} · Table is a sample (first ${shown})`;
+  }
+  return runLine;
+}
+
+/** Modal tone from classify run totals (not row-only tail failures). */
+export function resolveClassifyDoneModalTone(summary: TopicClassifySummary): PipelineSummaryTone {
+  const succeeded = summary.classifiedSpecific + summary.classifiedGeneral;
+  if (summary.llmErrors > 0 && succeeded === 0) return 'error';
+  if (succeeded > 0) return 'success';
+  if (summary.llmErrors > 0) return 'info';
+  if (summary.processed > 0) return 'info';
+  return 'info';
+}
+
 export interface PipelineSummaryInput {
   enriched?: number;
   skipped?: number;
