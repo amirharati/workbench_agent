@@ -1,14 +1,16 @@
-import { normalizeBookmarkUrl } from '../db';
-import { needsLiveTabHref, resolveTabBookmarkUrl } from '../tabUrlCapture';
+import { getSidePanelHostTabId, needsLiveTabHref, resolveTabBookmarkUrl } from '../tabUrlCapture';
 import type { EnrichmentErrorCode } from './types';
 import { ENRICHMENT_DEFAULTS } from './types';
 import {
-  canonicalizeXStatusUrl,
   isFileUrl,
-  isRedditHost,
   prefersBrowserTabFetch,
   prefersBrowserTabFirst,
 } from './urlPolicy';
+import {
+  sameAuthWorkspaceHost,
+  sharedAuthSessionPathPrefix,
+  urlsMatchForTabSession,
+} from './tabSessionMatch';
 import {
   resolveEnrichmentFailureLabel,
   type FailureCategory,
@@ -101,99 +103,6 @@ export function shouldOfferTabSessionFetch(
   return TAB_SESSION_FAILURE_CATEGORIES.has(label.category);
 }
 
-function redditPathKey(url: string): string | null {
-  try {
-    if (!isRedditHost(url)) return null;
-    return new URL(url).pathname.replace(/\/+$/, '').toLowerCase() || '/';
-  } catch {
-    return null;
-  }
-}
-
-/** Stable id for Google Docs/Sheets/Drive and mail URLs — avoids matching the wrong open tab. */
-function googleWorkspaceResourceKey(url: string): string | null {
-  try {
-    const u = new URL(url.trim());
-    const host = u.hostname.replace(/^www\./, '').toLowerCase();
-
-    if (host === 'docs.google.com') {
-      const doc = u.pathname.match(/\/document\/d\/([a-zA-Z0-9_-]+)/);
-      if (doc) return `gdoc:${doc[1]}`;
-      const sheet = u.pathname.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-      if (sheet) return `gsheet:${sheet[1]}`;
-      const slides = u.pathname.match(/\/presentation\/d\/([a-zA-Z0-9_-]+)/);
-      if (slides) return `gslides:${slides[1]}`;
-      return `gdocs-path:${u.pathname.replace(/\/+$/, '')}`;
-    }
-
-    if (host === 'drive.google.com') {
-      const file = u.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-      if (file) return `gdrive:${file[1]}`;
-      const folder = u.pathname.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-      if (folder) return `gfolder:${folder[1]}`;
-      return `gdrive-path:${u.pathname.replace(/\/+$/, '')}`;
-    }
-
-    if (/^mail\.google\.com$/i.test(host) || /outlook\.(live|office)\.com$/i.test(host)) {
-      return `mail:${normalizeBookmarkUrl(u.href)}`;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function sameAuthWorkspaceHost(tabUrl: string, bookmarkUrl: string): boolean {
-  try {
-    const tabHost = new URL(tabUrl).hostname.replace(/^www\./, '').toLowerCase();
-    const bookmarkHost = new URL(bookmarkUrl).hostname.replace(/^www\./, '').toLowerCase();
-    return tabHost === bookmarkHost;
-  } catch {
-    return false;
-  }
-}
-
-function hostsLooselyMatchForTabSession(tabUrl: string, bookmarkUrl: string): boolean {
-  try {
-    const tab = new URL(tabUrl.trim());
-    const bookmark = new URL(bookmarkUrl.trim());
-
-    if (tab.protocol === 'file:' || bookmark.protocol === 'file:') {
-      return normalizeBookmarkUrl(tab.href) === normalizeBookmarkUrl(bookmark.href);
-    }
-
-    const tabReddit = redditPathKey(tab.href);
-    const bookmarkReddit = redditPathKey(bookmark.href);
-    if (tabReddit && bookmarkReddit) return tabReddit === bookmarkReddit;
-
-    const tabHost = tab.hostname.replace(/^www\./, '').toLowerCase();
-    const bookmarkHost = bookmark.hostname.replace(/^www\./, '').toLowerCase();
-    if (tabHost !== bookmarkHost) return false;
-
-    if (needsLiveTabHref(bookmarkUrl) || needsLiveTabHref(tabUrl)) {
-      const tabKey = googleWorkspaceResourceKey(tabUrl);
-      const bookmarkKey = googleWorkspaceResourceKey(bookmarkUrl);
-      if (tabKey && bookmarkKey) return tabKey === bookmarkKey;
-      return normalizeBookmarkUrl(tabUrl) === normalizeBookmarkUrl(bookmarkUrl);
-    }
-
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-function urlsMatchForTabSession(a: string, b: string): boolean {
-  try {
-    const left = normalizeBookmarkUrl(canonicalizeXStatusUrl(a.trim()));
-    const right = normalizeBookmarkUrl(canonicalizeXStatusUrl(b.trim()));
-    if (left === right) return true;
-    return hostsLooselyMatchForTabSession(left, right);
-  } catch {
-    return false;
-  }
-}
-
 function isScriptableUrl(url: string | undefined): url is string {
   if (!url) return false;
   return /^https?:\/\//i.test(url) || /^file:\/\//i.test(url);
@@ -201,6 +110,12 @@ function isScriptableUrl(url: string | undefined): url is string {
 
 function tabMatchesUrl(tab: chrome.tabs.Tab, url: string): boolean {
   return Boolean(tab.url && isScriptableUrl(tab.url) && urlsMatchForTabSession(tab.url, url));
+}
+
+function tabMatchesUrlTierB(tab: chrome.tabs.Tab, url: string): boolean {
+  if (!tab.url || !isScriptableUrl(tab.url)) return false;
+  if (!sameAuthWorkspaceHost(tab.url, url)) return false;
+  return sharedAuthSessionPathPrefix(tab.url, url);
 }
 
 async function tabMatchesUrlLive(tab: chrome.tabs.Tab, url: string): Promise<boolean> {
@@ -219,6 +134,9 @@ async function pickMatchingTab(
   for (const tab of candidates) {
     if (await tabMatchesUrlLive(tab, url)) return tab;
   }
+  for (const tab of candidates) {
+    if (tabMatchesUrlTierB(tab, url)) return tab;
+  }
   return null;
 }
 
@@ -232,14 +150,17 @@ export async function findTabForUrl(
   if (mode === 'active') {
     const [focused] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (focused && (await tabMatchesUrlLive(focused, url))) return focused;
+    if (focused && tabMatchesUrlTierB(focused, url)) return focused;
 
     const [current] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (current && (await tabMatchesUrlLive(current, url))) return current;
+    if (current && tabMatchesUrlTierB(current, url)) return current;
     return null;
   }
 
   const [focusedActive] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (focusedActive && (await tabMatchesUrlLive(focusedActive, url))) return focusedActive;
+  if (focusedActive && tabMatchesUrlTierB(focusedActive, url)) return focusedActive;
 
   const tabs = await chrome.tabs.query({});
   return pickMatchingTab(tabs, url);
@@ -488,6 +409,21 @@ export async function resolveTabSessionForUrl(
       const tab = await chrome.tabs.get(explicitTabId);
       if (tab?.url && ((await tabMatchesUrlLive(tab, url)) || sameAuthWorkspaceHost(tab.url, url))) {
         return { preferTabSession: true, tabId: explicitTabId };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const sidePanelHostTabId = await getSidePanelHostTabId();
+  if (typeof sidePanelHostTabId === 'number') {
+    try {
+      const hostTab = await chrome.tabs.get(sidePanelHostTabId);
+      if (hostTab?.id && (await tabMatchesUrlLive(hostTab, url))) {
+        return { preferTabSession: true, tabId: hostTab.id };
+      }
+      if (hostTab?.id && tabMatchesUrlTierB(hostTab, url)) {
+        return { preferTabSession: true, tabId: hostTab.id };
       }
     } catch {
       /* fall through */

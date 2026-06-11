@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
-import { Workspace, Collection, Item, Project, UpdateItemOptions, getItem } from '../../../lib/db';
+import { Workspace, Collection, Item, Project, UpdateItemOptions, getItem, normalizeBookmarkUrl } from '../../../lib/db';
+import { getActiveTabBookmarkContext } from '../../../lib/tabUrlCapture';
 import type { BackupStatusSnapshot, RestoreBackupResult } from '../../../lib/backupCoordinator';
 import type { DbWorkerStatus } from '../../../lib/storage/dbClient';
 import type { AISettings } from '../../../lib/ai/types';
@@ -411,10 +412,22 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       return;
     }
     try {
+      let digestTabId: number | undefined;
+      const activeTabCtx = await getActiveTabBookmarkContext();
+      if (
+        activeTabCtx?.url &&
+        normalizeBookmarkUrl(activeTabCtx.url) === normalizeBookmarkUrl(url)
+      ) {
+        digestTabId = activeTabCtx.tabId;
+      }
       const itemId = await onAddBookmark(url, title, collectionId);
       addToast({ type: 'success', message: `Bookmark saved to ${collectionLabel(collectionId)}` });
       if (itemId) {
-        void pipeline.runSingle(itemId, { title: 'Digesting bookmark' });
+        void pipeline.runSingle(itemId, {
+          title: 'Digesting bookmark',
+          preferTabSession: true,
+          tabId: digestTabId,
+        });
       }
     } catch (error) {
       addToast({

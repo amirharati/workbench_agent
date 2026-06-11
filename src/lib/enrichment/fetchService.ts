@@ -568,6 +568,12 @@ export async function enrichOne(
     return { itemId, status: 'failed', errorCode: 'excluded', message: 'no_item' };
   }
 
+  const resolvedTabSession = options?.tabSessionOnly
+    ? { preferTabSession: Boolean(options?.preferTabSession), tabId: options?.tabId }
+    : await resolveTabSessionForUrl(item.url, options?.tabId);
+  const preferTabSession = options?.preferTabSession ?? resolvedTabSession.preferTabSession;
+  const tabId = options?.tabId ?? resolvedTabSession.tabId;
+
   const existing = await getEnrichment(itemId);
   const elig = checkEligibility(item, existing, {
     force: options?.force,
@@ -632,8 +638,8 @@ export async function enrichOne(
       errorCode: debugOutcome.errorCode,
       attempts,
       options: {
-        preferTabSession: options?.preferTabSession,
-        tabId: options?.tabId,
+        preferTabSession,
+        tabId,
         tabSessionOnly: options?.tabSessionOnly,
         skipAi: options?.skipAi,
       },
@@ -645,8 +651,8 @@ export async function enrichOne(
     let fetchResult = await resolveItemFetch(item, pending, sourceKind, {
       force: options?.force,
       signal: options?.signal,
-      preferTabSession: options?.preferTabSession,
-      tabId: options?.tabId,
+      preferTabSession,
+      tabId,
       tabSessionOnly: options?.tabSessionOnly,
       debug: collector,
     });
@@ -1154,15 +1160,12 @@ export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<Enr
       });
 
       try {
-        const tabSession = await resolveTabSessionForUrl(item.url);
         const result = await enrichOne(item.id, {
           force: options.force,
           signal: options.signal,
           refetchCompare: options.refetchCompare,
           skipAi: options.skipAi,
           deferPostProcess: options.deferPostProcess,
-          preferTabSession: tabSession.preferTabSession,
-          tabId: tabSession.tabId,
         });
         if (options.collectItemResults) itemResults.push(result);
         if (result.skipped || result.status === 'skipped') skipped++;

@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { Project, Collection, Item, Workspace } from '../../lib/db';
-import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItemWithMerge, getItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID, type UpdateItemOptions } from '../../lib/db';
+import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItemWithMerge, getItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID, normalizeBookmarkUrl, type UpdateItemOptions } from '../../lib/db';
 import { usePipelineProgress } from './PipelineProgressProvider';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
@@ -14,6 +14,7 @@ import { Search, Sparkles, Plus, X, Sidebar, LayoutList } from 'lucide-react';
 import { DeleteConfirmDialog, type DeleteConfirmResult } from '../DeleteConfirmDialog';
 import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
 import { TabPaneFrame } from './TabScrollShell';
+import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from '../../lib/tabUrlCapture';
 
 type Tab = {
   id: string;
@@ -667,14 +668,30 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       // Ensure the project's unsorted collection exists
       const projectUnsortedId = await ensureProjectUnsortedCollection(project.id);
       const finalCollectionIds = data.collectionIds.length > 0 ? data.collectionIds : [projectUnsortedId];
+      let saveUrl = (data.url || '').trim();
+      let tabId: number | undefined;
+      let source: Item['source'] = data.url ? 'bookmark' : 'manual';
+      let title = data.title;
+
+      const ctx = await getActiveTabBookmarkContext();
+      if (ctx && saveUrl) {
+        tabId = ctx.tabId;
+        saveUrl = await resolveTabBookmarkUrl(ctx.tabId, saveUrl);
+        if (!title.trim() || title.trim() === data.url?.trim()) {
+          title = ctx.title || title;
+        }
+        if (normalizeBookmarkUrl(saveUrl) === normalizeBookmarkUrl(ctx.url)) {
+          source = 'tab';
+        }
+      }
 
       const result = await addItemWithMerge({
-        title: data.title,
-        url: data.url || '',
+        title,
+        url: saveUrl,
         notes: data.notes,
         collectionIds: finalCollectionIds,
         tags: [],
-        source: data.url ? 'bookmark' : 'manual',
+        source,
       });
 
       // Refresh data first to get the new item
@@ -687,8 +704,12 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         handleItemClick(newItem);
       }
 
-      if (data.url && /^https?:\/\//i.test(data.url)) {
-        void pipeline.runSingle(result.itemId, { title: 'Digesting new bookmark' });
+      if (saveUrl && /^https?:\/\//i.test(saveUrl)) {
+        void pipeline.runSingle(result.itemId, {
+          title: 'Digesting new bookmark',
+          preferTabSession: true,
+          tabId,
+        });
       }
 
       return result.itemId;
