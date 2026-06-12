@@ -61,6 +61,8 @@ export type TabExtractResult = {
   ok: boolean;
   markdown?: string;
   title?: string;
+  /** Live tab URL after load (for redirect vs bookmark comparison). */
+  pageUrl?: string;
   error?: string;
   detail?: string;
   errorCode?: EnrichmentErrorCode;
@@ -240,11 +242,21 @@ export async function extractFromTab(tabId: number): Promise<TabExtractResult> {
   }
 }
 
+async function readTabPageUrl(tabId: number): Promise<string | undefined> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return tab.url?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function fetchFromTabId(tabId: number): Promise<
   TabExtractResult & { fetchSourceId: 'tab-session' }
 > {
   const extracted = await extractFromTab(tabId);
-  return { ...extracted, fetchSourceId: 'tab-session' };
+  const pageUrl = await readTabPageUrl(tabId);
+  return { ...extracted, pageUrl, fetchSourceId: 'tab-session' };
 }
 
 export async function fetchFromOpenTab(
@@ -376,7 +388,8 @@ async function openEphemeralTabAndExtractInner(
       extracted = await extractFromTab(tabId);
     }
 
-    return { ...extracted, fetchSourceId: 'tab-session' };
+    const pageUrl = tabId !== undefined ? await readTabPageUrl(tabId) : undefined;
+    return { ...extracted, pageUrl, fetchSourceId: 'tab-session' };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (message === 'Aborted') {

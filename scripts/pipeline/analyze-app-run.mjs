@@ -80,6 +80,9 @@ function analyze(exported) {
     ['Fetch error codes', counts.fetchErrors ?? {}],
     ['Failure categories', counts.failureCategories ?? {}],
     ['AI status', counts.aiStatus ?? {}],
+    ['Redirect class (mechanical)', counts.redirectClass ?? {}],
+    ['Redirect AI verdict status', counts.redirectVerdictStatus ?? {}],
+    ['Summary prompt mode', counts.summaryPromptMode ?? {}],
     ['Classify state', counts.classifyState ?? {}],
     ['Run outcomes', counts.runOutcomes ?? {}],
   ]) {
@@ -87,6 +90,20 @@ function analyze(exported) {
     push(`## ${title}`);
     push('');
     for (const [k, v] of topEntries(map)) push(`- ${k}: ${v}`);
+    push('');
+  }
+
+  const redirectRows = results.filter((r) => r.enrich?.redirectVerdictStatus === 'ok');
+  if (redirectRows.length) {
+    push('## Redirect AI verdict (ok) — sample');
+    push('');
+    for (const row of redirectRows.slice(0, 20)) {
+      push(
+        `- \`${row.host}\` verdictMatch=${row.enrich.redirectVerdictMatch} summaryMode=${row.enrich.summaryPromptMode ?? '?'} review=${row.enrich.pendingFetchReview ? 'yes' : 'no'}`
+      );
+      push(`  ${row.url}`);
+    }
+    if (redirectRows.length > 20) push(`- … and ${redirectRows.length - 20} more`);
     push('');
   }
 

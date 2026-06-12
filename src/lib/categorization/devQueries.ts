@@ -304,6 +304,8 @@ export async function getTaxonomyTreeWithCounts(): Promise<{
 }> {
   const { refreshPipelineCacheFromWorker } = await import('../db');
   await refreshPipelineCacheFromWorker();
+  const { ensureSeedTaxonomy } = await import('./classifyTopicExtract');
+  await ensureSeedTaxonomy();
   const db = await getDB();
   const categories = db.objectStoreNames.contains('ai_categories')
     ? await db.getAll('ai_categories')

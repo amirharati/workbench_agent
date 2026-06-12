@@ -1,6 +1,7 @@
 import { runOpenRouterCompletion } from './providers/openrouter';
 import { runChromeNativeCompletion } from './providers/chromeNative';
 import { AICompletionRequest, AICompletionResponse, AISettings } from './types';
+import { recordAICallAudit } from './callAudit';
 
 const validateConfig = (settings: AISettings): void => {
   if (settings.provider === 'openrouter') {
@@ -17,7 +18,11 @@ const getEffectiveModelForTask = (settings: AISettings, request: AICompletionReq
   if (settings.routingMode !== 'by-task') return settings.model;
   const taskType = request.taskType ?? 'general';
   const routed = settings.taskModels?.[taskType];
-  return (routed && routed.trim()) || settings.model;
+  if (routed?.trim()) return routed.trim();
+  if (taskType === 'redirect_verdict' && settings.taskModels?.summarize?.trim()) {
+    return settings.taskModels.summarize.trim();
+  }
+  return settings.model;
 };
 
 export const runAICompletion = async (
@@ -26,14 +31,45 @@ export const runAICompletion = async (
 ): Promise<AICompletionResponse> => {
   validateConfig(settings);
   const effectiveModel = getEffectiveModelForTask(settings, request);
+  const taskType = request.taskType ?? 'general';
+  const startedAt = Date.now();
+  const audit = request.audit;
 
-  switch (settings.provider) {
-    case 'openrouter':
-      return runOpenRouterCompletion(settings, request, effectiveModel);
-    case 'chrome-native':
-      return runChromeNativeCompletion(settings, request);
-    default:
-      return runOpenRouterCompletion(settings, request, effectiveModel);
+  try {
+    let response: AICompletionResponse;
+    switch (settings.provider) {
+      case 'openrouter':
+        response = await runOpenRouterCompletion(settings, request, effectiveModel);
+        break;
+      case 'chrome-native':
+        response = await runChromeNativeCompletion(settings, request);
+        break;
+      default:
+        response = await runOpenRouterCompletion(settings, request, effectiveModel);
+    }
+    if (audit) {
+      recordAICallAudit({
+        audit,
+        taskType,
+        startedAt,
+        messages: request.messages,
+        response,
+      });
+    }
+    return response;
+  } catch (error) {
+    if (audit) {
+      const message =
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'AI request failed';
+      recordAICallAudit({
+        audit,
+        taskType,
+        startedAt,
+        messages: request.messages,
+        error: message,
+      });
+    }
+    throw error;
   }
 };
 

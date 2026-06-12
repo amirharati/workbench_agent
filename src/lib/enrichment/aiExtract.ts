@@ -1,5 +1,5 @@
-import { AIClientError } from '../ai/types';
-import type { AISettings } from '../ai/types';
+import type { AICallAuditHook } from '../ai/callAudit';
+import { AIClientError, type AISettings } from '../ai/types';
 import { runAICompletion } from '../ai/client';
 import { loadAISettings } from '../ai/settings';
 import type { EnrichmentAIStatus, SourceKind } from './types';
@@ -23,6 +23,8 @@ export type EnrichmentAIExtract = {
   keyPoints?: string[];
   improvedTitle?: string;
   tags?: string[];
+  pageMatchesBookmark?: boolean;
+  redirectNote?: string;
 };
 
 export type EnrichmentAIOutcome = {
@@ -41,6 +43,7 @@ export type ExtractEnrichmentOptions = {
   /** Bypass minimum text length gates (inspector "run anyway"). */
   forceShort?: boolean;
   signal?: AbortSignal;
+  audit?: { record: AICallAuditHook };
 };
 
 const SUMMARY_MAX = 3000;
@@ -74,11 +77,19 @@ export function parseJsonResponse(text: string): EnrichmentAIExtract | null {
           .slice(0, 8)
       : undefined;
     const keyPoints = parseKeyPoints(parsed.keyPoints);
+    const pageMatchesBookmark =
+      typeof parsed.pageMatchesBookmark === 'boolean' ? parsed.pageMatchesBookmark : undefined;
+    const redirectNote =
+      typeof parsed.redirectNote === 'string'
+        ? parsed.redirectNote.trim().slice(0, 500)
+        : undefined;
     return {
       summary: summary || undefined,
       keyPoints,
       improvedTitle: improvedTitle || undefined,
       tags: tags?.length ? tags : undefined,
+      pageMatchesBookmark,
+      redirectNote: redirectNote || undefined,
     };
   } catch {
     return null;
@@ -146,8 +157,14 @@ export async function extractEnrichmentWithAI(
       {
         taskType: 'summarize',
         signal: options?.signal,
+        audit: options?.audit
+          ? { purpose: 'enrich_summary', record: options.audit.record }
+          : undefined,
         messages: [
-          { role: 'system', content: getSystemPrompt(variant, effectiveKind) },
+          {
+            role: 'system',
+            content: getSystemPrompt(variant, effectiveKind, options?.hints),
+          },
           {
             role: 'user',
             content: buildExtractUserContent(url, title, body, options?.hints, {

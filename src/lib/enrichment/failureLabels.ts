@@ -80,6 +80,7 @@ const FETCH_CATEGORY: Record<EnrichmentErrorCode, FailureCategory> = {
   rate_limited: 'rate_limit',
   network: 'network',
   provider_error: 'provider',
+  url_redirect: 'parse',
   oversized: 'oversized',
   excluded: 'excluded',
   no_backup_folder: 'provider',
@@ -121,7 +122,11 @@ function buildLabel(
 
 function labelForFetch(code: EnrichmentErrorCode, detail?: string): EnrichmentFailureLabel {
   const category = FETCH_CATEGORY[code] ?? 'unknown';
-  return buildLabel('fetch', category, code, describeEnrichmentError(code, detail));
+  const label = buildLabel('fetch', category, code, describeEnrichmentError(code, detail));
+  if (code === 'url_redirect') {
+    return { ...label, shortLabel: 'Fetch · redirect', label: 'Fetch: Redirect mismatch' };
+  }
+  return label;
 }
 
 function labelForAi(status: EnrichmentAIStatus, detail?: string): EnrichmentFailureLabel {

@@ -10,6 +10,7 @@ export const ENRICHMENT_ERROR_HINTS: Record<EnrichmentErrorCode, string> = {
   rate_limited: 'Provider rate limit (try again later)',
   network: 'Network error — check connection or CORS',
   provider_error: 'Fetch provider failed',
+  url_redirect: 'Saved URL redirected to a different page',
   oversized: 'Response too large to store',
   no_backup_folder: 'Set backup folder in Settings for disk dumps',
 };

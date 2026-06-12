@@ -7,6 +7,8 @@ import {
   prepareExtractInput,
   sanitizeExtractOutput,
 } from './extractFilters.mjs';
+import { redirectPromptBlock } from './fetchRedirect.mjs';
+import { formatRedirectVerdictForSummary } from './redirectAiVerdict.mjs';
 
 const JSON_SHAPE_V1 = `{
   "summary": "2-3 sentence summary of the main content",
@@ -18,8 +20,28 @@ const JSON_SHAPE_V2 = `{
   "summary": "Detailed digest: lead + context; include names, products, and claims worth searching",
   "keyPoints": ["specific fact or topic", "another concrete point"],
   "improvedTitle": "clean human-readable title without site suffix",
-  "tags": ["tag1", "tag2", "tag3"]
+  "tags": ["tag1", "tag2", "tag3"],
+  "pageMatchesBookmark": true,
+  "redirectNote": ""
 }`;
+
+const REDIRECT_JSON_RULES = `- pageMatchesBookmark: MUST align with prior redirect analysis when provided; else judge from URLs and body
+- redirectNote: one short sentence when pageMatchesBookmark is false (reuse/adapt prior redirectNote when provided)
+- When pageMatchesBookmark is false: summary describes what was ACTUALLY fetched (hub/listing/homepage) — never invent the original saved article`;
+
+const REDIRECT_VERDICT_SUMMARY_RULES = `- Prior redirect analysis is authoritative for pageMatchesBookmark unless body clearly proves it wrong
+- On mismatch: open summary by stating the saved URL no longer resolves to that resource, then summarize the fetched page
+- keyPoints may list hub/listing items when fetchedPageKind is listing`;
+
+/** Which redirect-aware summary prompt path was used — mirror of prompts.ts */
+export function resolveSummaryRedirectPromptMode(hints = {}) {
+  if (hints.redirectVerdict) return 'prior_verdict';
+  const ctx = hints.redirectContext;
+  if (!ctx || ctx.redirectClass === 'none') return 'none';
+  if (ctx.redirectClass === 'suspicious' || ctx.resourceMismatch) return 'redirect_fields';
+  if (ctx.redirectClass === 'benign') return 'benign_hint';
+  return 'none';
+}
 
 const JSON_RULES_V2 = `- Return ONLY valid JSON (no markdown fences)
 - summary: factual digest of the MAIN content the user bookmarked — not page chrome
@@ -86,13 +108,29 @@ Source type: generic web page (may include link shorteners or social landing pag
 - tags: relevant searchable topics`,
 };
 
-export function getSystemPrompt(variant, sourceKind = 'article') {
+export function getSystemPrompt(variant, sourceKind = 'article', hints) {
   if (variant === 'v1') return PROMPT_V1_SYSTEM;
-  return PROMPT_V2_BY_KIND[sourceKind] ?? PROMPT_V2_BY_KIND.article;
+  let prompt = PROMPT_V2_BY_KIND[sourceKind] ?? PROMPT_V2_BY_KIND.article;
+  if (hints?.redirectVerdict) {
+    prompt = `${prompt}\n\nRedirect-aware summary (prior analysis provided):\n${REDIRECT_JSON_RULES}\n${REDIRECT_VERDICT_SUMMARY_RULES}`;
+  } else if (
+    hints?.redirectContext &&
+    (hints.redirectContext.redirectClass === 'suspicious' || hints.redirectContext.resourceMismatch)
+  ) {
+    prompt = `${prompt}\n\nRedirect fields (required when redirect context is present):\n${REDIRECT_JSON_RULES}`;
+  }
+  return prompt;
 }
 
 export function buildExtractUserContent(url, title, body, hints = {}) {
   const parts = [`URL: ${url}`, `Current title: ${title?.trim() || '(none)'}`];
+
+  if (hints.redirectVerdict) {
+    parts.push(formatRedirectVerdictForSummary(hints.redirectVerdict));
+  } else if (hints.redirectContext?.redirectClass === 'benign') {
+    const redirectBlock = redirectPromptBlock(hints.redirectContext);
+    if (redirectBlock) parts.push(redirectBlock);
+  }
 
   if (hints.channel?.trim()) parts.push(`Channel: ${hints.channel.trim()}`);
   if (hints.description?.trim()) {
@@ -140,11 +178,17 @@ export function parseJsonResponse(text) {
           .slice(0, 8)
       : undefined;
     const keyPoints = parseKeyPoints(parsed.keyPoints);
+    const pageMatchesBookmark =
+      typeof parsed.pageMatchesBookmark === 'boolean' ? parsed.pageMatchesBookmark : undefined;
+    const redirectNote =
+      typeof parsed.redirectNote === 'string' ? parsed.redirectNote.trim().slice(0, 500) : undefined;
     return {
       summary: summary || undefined,
       keyPoints,
       improvedTitle: improvedTitle || undefined,
       tags: tags?.length ? tags : undefined,
+      pageMatchesBookmark,
+      redirectNote: redirectNote || undefined,
     };
   } catch {
     return null;
@@ -204,7 +248,10 @@ export async function runOpenRouterExtract(settings, { url, title, body, sourceK
         temperature: settings.temperature ?? 0.2,
         max_tokens: maxTokens,
         messages: [
-          { role: 'system', content: getSystemPrompt(variant, sourceKind) },
+          {
+            role: 'system',
+            content: getSystemPrompt(variant, sourceKind, hints),
+          },
           {
             role: 'user',
             content: buildExtractUserContent(url, title, markdown, hints),

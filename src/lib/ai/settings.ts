@@ -48,7 +48,7 @@ const sanitizeSettings = (value: Partial<AISettings> | null | undefined): AISett
   const taskModels: AISettings['taskModels'] = {};
   const inputTaskModels = value?.taskModels;
   if (inputTaskModels && typeof inputTaskModels === 'object') {
-    for (const key of ['general', 'summarize', 'tag'] as const) {
+    for (const key of ['general', 'summarize', 'tag', 'redirect_verdict'] as const) {
       const modelValue = inputTaskModels[key];
       if (typeof modelValue === 'string' && modelValue.trim()) {
         taskModels[key] = modelValue.trim();

@@ -18,11 +18,33 @@ async function debugStoreInvoke<T>(method: string, args: unknown[] = []): Promis
   return dbRpc<T>('storeInvoke', [method, args]);
 }
 
+import type { PipelineDebugAICall } from '../ai/callAudit';
+
 export interface PipelineDebugPhase {
   name: string;
   ms: number;
   ok?: boolean;
   detail?: string;
+}
+
+/** Redirect probe + pre-summary verdict + summary prompt mode — debug only. */
+export interface PipelineDebugRedirect {
+  redirectClass: string;
+  resourceMismatch: boolean;
+  requestedUrl: string;
+  finalUrl: string;
+  verdictEligible: boolean;
+  /** ok | skipped | not_configured | parse_failed | api_error | skipped:not_eligible */
+  verdictStatus?: string;
+  verdictMs?: number;
+  verdictPageMatchesBookmark?: boolean;
+  verdictFetchedPageKind?: string;
+  verdictRedirectNote?: string;
+  /** prior_verdict = separate redirect judge ran; redirect_fields = summary-only redirect JSON rules */
+  summaryPromptMode: 'prior_verdict' | 'redirect_fields' | 'benign_hint' | 'none';
+  summaryPageMatchesBookmark?: boolean;
+  summaryRedirectNote?: string;
+  pendingFetchReview?: boolean;
 }
 
 /** Per-item pipeline timing — debug only; stored in `pipeline_debug` table. */
@@ -42,6 +64,9 @@ export interface PipelineDebugPayload {
   skipAi?: boolean;
   attempts?: number;
   phases: PipelineDebugPhase[];
+  redirect?: PipelineDebugRedirect;
+  /** Provider HTTP calls during this enrich (raw response text + model + tokens). */
+  aiCalls?: PipelineDebugAICall[];
 }
 
 export interface PipelineDebugRecord {
@@ -111,6 +136,8 @@ export async function saveEnrichPipelineDebug(input: {
   aiStatus?: string;
   errorCode?: string;
   attempts?: number;
+  redirect?: PipelineDebugRedirect;
+  aiCalls?: PipelineDebugAICall[];
   options?: {
     preferTabSession?: boolean;
     tabId?: number;
@@ -138,6 +165,8 @@ export async function saveEnrichPipelineDebug(input: {
       skipAi: input.options?.skipAi,
       attempts: input.attempts,
       phases: input.collector?.phases ?? [],
+      redirect: input.redirect,
+      aiCalls: input.aiCalls?.length ? input.aiCalls : undefined,
     },
   });
 }

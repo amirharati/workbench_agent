@@ -17,7 +17,7 @@ export const HUB_BULK_CONFIRM_THRESHOLD = 100;
 export function hubRowNeedsFetch(row: EnrichmentHubRow): boolean {
   const e = row.enrichment;
   if (!e || e.status === 'none') return true;
-  if (e.pendingFetchReview) return true;
+  if (e.pendingFetchReview && e.pendingFetchReviewReason !== 'url_redirect') return true;
   if (e.status === 'failed' || e.status === 'skipped') return true;
   if (row.meta.failed && row.meta.failureStage === 'fetch') return true;
   if (e.status !== 'ok') return true;

@@ -1,3 +1,9 @@
+import type { RedirectContext } from './fetchRedirect';
+import { redirectPromptBlock } from './fetchRedirect';
+import {
+  formatRedirectVerdictForSummary,
+  type RedirectAiVerdictData,
+} from './redirectAiVerdict';
 import type { SourceKind } from './types';
 
 export type PromptVariant = 'v1' | 'v2';
@@ -7,7 +13,28 @@ export type EnrichmentAIHints = {
   quotedAuthor?: string;
   channel?: string;
   description?: string;
+  redirectContext?: RedirectContext;
+  /** Pre-summary redirect AI verdict (suspicious redirects only). */
+  redirectVerdict?: RedirectAiVerdictData;
 };
+
+/** Which redirect-aware summary prompt path was used for the main extract call. */
+export type SummaryRedirectPromptMode =
+  | 'prior_verdict'
+  | 'redirect_fields'
+  | 'benign_hint'
+  | 'none';
+
+export function resolveSummaryRedirectPromptMode(
+  hints: Pick<EnrichmentAIHints, 'redirectContext' | 'redirectVerdict'>
+): SummaryRedirectPromptMode {
+  if (hints.redirectVerdict) return 'prior_verdict';
+  const ctx = hints.redirectContext;
+  if (!ctx || ctx.redirectClass === 'none') return 'none';
+  if (ctx.redirectClass === 'suspicious' || ctx.resourceMismatch) return 'redirect_fields';
+  if (ctx.redirectClass === 'benign') return 'benign_hint';
+  return 'none';
+}
 
 const JSON_SHAPE_V1 = `{
   "summary": "2-3 sentence summary of the main content",
@@ -19,8 +46,18 @@ const JSON_SHAPE_V2 = `{
   "summary": "Detailed digest: lead + context; include names, products, and claims worth searching",
   "keyPoints": ["specific fact or topic", "another concrete point"],
   "improvedTitle": "clean human-readable title without site suffix",
-  "tags": ["tag1", "tag2", "tag3"]
+  "tags": ["tag1", "tag2", "tag3"],
+  "pageMatchesBookmark": true,
+  "redirectNote": ""
 }`;
+
+const REDIRECT_JSON_RULES = `- pageMatchesBookmark: MUST align with prior redirect analysis when provided; else judge from URLs and body
+- redirectNote: one short sentence when pageMatchesBookmark is false (reuse/adapt prior redirectNote when provided)
+- When pageMatchesBookmark is false: summary describes what was ACTUALLY fetched (hub/listing/homepage) — never invent the original saved article`;
+
+const REDIRECT_VERDICT_SUMMARY_RULES = `- Prior redirect analysis is authoritative for pageMatchesBookmark unless body clearly proves it wrong
+- On mismatch: open summary by stating the saved URL no longer resolves to that resource, then summarize the fetched page
+- keyPoints may list hub/listing items when fetchedPageKind is listing`;
 
 const JSON_RULES_V2 = `- Return ONLY valid JSON (no markdown fences)
 - summary: factual digest of the MAIN content the user bookmarked — not page chrome
@@ -89,9 +126,23 @@ Source type: generic web page (may include link shorteners, social landing pages
 - tags: relevant searchable topics`,
 };
 
-export function getSystemPrompt(variant: PromptVariant, sourceKind: SourceKind = 'article'): string {
+export function getSystemPrompt(
+  variant: PromptVariant,
+  sourceKind: SourceKind = 'article',
+  hints?: Pick<EnrichmentAIHints, 'redirectContext' | 'redirectVerdict'>
+): string {
   if (variant === 'v1') return PROMPT_V1_SYSTEM;
-  return PROMPT_V2_BY_KIND[sourceKind] ?? PROMPT_V2_BY_KIND.article;
+  let prompt = PROMPT_V2_BY_KIND[sourceKind] ?? PROMPT_V2_BY_KIND.article;
+  if (hints?.redirectVerdict) {
+    prompt = `${prompt}\n\nRedirect-aware summary (prior analysis provided):\n${REDIRECT_JSON_RULES}\n${REDIRECT_VERDICT_SUMMARY_RULES}`;
+  } else if (
+    hints?.redirectContext &&
+    (hints.redirectContext.redirectClass === 'suspicious' ||
+      hints.redirectContext.resourceMismatch)
+  ) {
+    prompt = `${prompt}\n\nRedirect fields (required when redirect context is present):\n${REDIRECT_JSON_RULES}`;
+  }
+  return prompt;
 }
 
 export function buildExtractUserContent(
@@ -107,6 +158,13 @@ export function buildExtractUserContent(
     parts.push(
       'Current title is generic or uninformative — improvedTitle MUST be a specific, searchable headline for this bookmark (do not leave empty).'
     );
+  }
+
+  if (hints?.redirectVerdict) {
+    parts.push(formatRedirectVerdictForSummary(hints.redirectVerdict));
+  } else if (hints?.redirectContext?.redirectClass === 'benign') {
+    const redirectBlock = redirectPromptBlock(hints.redirectContext);
+    if (redirectBlock) parts.push(redirectBlock);
   }
 
   if (options?.listingPage) {

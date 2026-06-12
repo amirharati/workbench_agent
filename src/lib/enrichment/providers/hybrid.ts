@@ -1,4 +1,5 @@
 import { classifySourceKind } from '../eligibility';
+import { buildRedirectContext, probeRedirectFinalUrl } from '../fetchRedirect';
 import { explainHardFetchFailure, isFetchBodyUsable, type FetchQualityContext } from '../fetchQuality';
 import { isFileUrl, isRedditHost, isShortLinkHost, resolveFetchUrl, tcoUnresolvedError } from '../urlPolicy';
 import { jinaProvider } from './jina';
@@ -28,64 +29,101 @@ function chainForUrl(url: string): FetchProvider[] {
  * Video (YouTube): Jina
  * X: syndication (/2/thread) → local (Twitter CDN)
  */
+function attachProbeRedirect(
+  result: FetchProviderResult,
+  requestedUrl: string,
+  probe: { finalUrl: string; hops: string[] }
+): FetchProviderResult {
+  const redirectContext = buildRedirectContext(requestedUrl, probe.finalUrl, probe.hops);
+  return {
+    ...result,
+    requestedUrl,
+    finalUrl: result.finalUrl ?? probe.finalUrl,
+    redirectContext: result.redirectContext ?? redirectContext,
+  };
+}
+
 export const hybridProvider: FetchProvider = {
   id: 'hybrid',
   async fetchUrl(input: FetchProviderInput) {
+    const requestedUrl = input.hints?.requestedUrl ?? input.url;
+    const probe = await probeRedirectFinalUrl(requestedUrl, input.signal);
     const { url: resolvedUrl } = await resolveFetchUrl(input.url, input.signal);
     const ctx: FetchQualityContext = { url: resolvedUrl };
 
     if (isShortLinkHost(input.url) && isShortLinkHost(resolvedUrl)) {
-      return {
-        ok: false,
-        errorCode: 'provider_error',
-        error: tcoUnresolvedError(input.url),
-        fetchSourceId: 'hybrid',
-      };
+      return attachProbeRedirect(
+        {
+          ok: false,
+          errorCode: 'provider_error',
+          error: tcoUnresolvedError(input.url),
+          fetchSourceId: 'hybrid',
+        },
+        requestedUrl,
+        probe
+      );
     }
 
     if (isFileUrl(resolvedUrl)) {
-      return {
-        ok: false,
-        errorCode: 'auth_required',
-        error: 'Local file — reading from your open browser tab',
-        fetchSourceId: 'hybrid',
-      };
+      return attachProbeRedirect(
+        {
+          ok: false,
+          errorCode: 'auth_required',
+          error: 'Local file — reading from your open browser tab',
+          fetchSourceId: 'hybrid',
+        },
+        requestedUrl,
+        probe
+      );
     }
 
     if (isRedditHost(resolvedUrl)) {
-      return {
-        ok: false,
-        errorCode: 'bot_blocked',
-        error:
-          'reddit.com blocked for headless fetch — opening in your browser tab',
-        fetchSourceId: 'hybrid',
-      };
+      return attachProbeRedirect(
+        {
+          ok: false,
+          errorCode: 'bot_blocked',
+          error:
+            'reddit.com blocked for headless fetch — opening in your browser tab',
+          fetchSourceId: 'hybrid',
+        },
+        requestedUrl,
+        probe
+      );
     }
 
-    const resolvedInput = { ...input, url: resolvedUrl };
+    const resolvedInput = {
+      ...input,
+      url: resolvedUrl,
+      hints: { ...input.hints, requestedUrl },
+    };
     let last: FetchProviderResult = { ok: false, errorCode: 'provider_error' };
     const failures: FetchProviderResult[] = [];
 
     for (const provider of chainForUrl(resolvedUrl)) {
       const result = await provider.fetchUrl(resolvedInput);
-      last = {
-        ...result,
-        fetchSourceId: result.fetchSourceId ?? provider.id,
-      };
-      if (resultUsable(result, ctx)) {
-        return {
+      last = attachProbeRedirect(
+        {
           ...result,
           fetchSourceId: result.fetchSourceId ?? provider.id,
-        };
+        },
+        requestedUrl,
+        probe
+      );
+      if (resultUsable(result, ctx)) {
+        return last;
       }
       if (!result.ok) failures.push(last);
     }
 
     const withDetail = failures.find((f) => f.error?.trim()) ?? last;
-    return {
-      ...last,
-      error: withDetail.error ?? last.error,
-      errorCode: withDetail.errorCode ?? last.errorCode,
-    };
+    return attachProbeRedirect(
+      {
+        ...last,
+        error: withDetail.error ?? last.error,
+        errorCode: withDetail.errorCode ?? last.errorCode,
+      },
+      requestedUrl,
+      probe
+    );
   },
 };

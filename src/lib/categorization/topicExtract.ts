@@ -46,6 +46,7 @@ export function buildTopicExtractPrompt(
     'NEVER skip or reject links because they are adult/erotic/porn — assign adult-erotic-content or sexuality-wellness-education.',
     'NEVER put substantive pages in link-quality (generic-low-signal, etc.): movie/TV lists, immigration/visa, directories, tutorials, adult — always a normal topic leaf, *-general, or proposed.',
     'Login/auth walls (YouTube sign-in, etc.) → login-auth-required (attention basket — keep bookmark). Removal leaves: 404/5xx, example.com, fetch fail, blank pages only.',
+    'url-redirect-mismatch: RARE — only when summary explicitly states saved URL does not match fetched page (article→hub). NEVER for www/https, t.co→tweet, or when unsure — prefer normal topic.',
     'If the summary describes a real topic, NEVER use link-quality (even if the URL looks generic).',
     'Singularity/containers/HPC runtime → infra-hosting-general unless a specific infra leaf fits.',
     'Indie hackers / business ideas → product-gtm-general or propose one specific GTM leaf.',

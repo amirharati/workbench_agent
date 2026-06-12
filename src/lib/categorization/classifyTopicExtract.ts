@@ -13,6 +13,8 @@ import {
 } from './taxonomyCatalog';
 import {
   detectLinkQualityFromItem,
+  detectLoginAuthAttentionFromItem,
+  detectUrlRedirectMismatchAttention,
   fetchAttemptedForLinkQuality,
   findLinkQualityCategory,
   isLinkQualityLeafId,
@@ -1396,6 +1398,106 @@ export async function classifyIncremental(
         },
       });
       continue;
+    }
+
+    const loginAuthAttention = detectLoginAuthAttentionFromItem(item, enrichment);
+    if (loginAuthAttention) {
+      const lqLeaf = findLinkQualityCategory(categories, loginAuthAttention.leafId);
+      if (lqLeaf) {
+        const now = Date.now();
+        summary.assignedPrimary++;
+        preBatchWrites.push({
+          itemId: item.id,
+          removeAiSuggested: true,
+          links: [
+            {
+              id: aiLinkId(item.id, lqLeaf.id),
+              itemId: item.id,
+              categoryId: lqLeaf.id,
+              score: 0.93,
+              isPrimary: true,
+              source: 'ai',
+              status: 'suggested',
+              created_at: now,
+              updated_at: now,
+            },
+          ],
+          signal: {
+            itemId: item.id,
+            textHash: prev?.textHash ?? '',
+            classifyTextHash: built.hash || prev?.classifyTextHash || '',
+            embeddingModel: prev?.embeddingModel ?? '',
+            embedding: prev?.embedding ?? [],
+            derivedTags: prev?.derivedTags ?? [],
+            signalStatus: 'ok',
+            classifyState: 'classified_attention',
+            discoverState: 'none',
+            isNovelty: false,
+            lastClassifySkipReason: loginAuthAttention.reason,
+            lastProcessedAt: now,
+            lastClassifiedAt: now,
+            classifyRetryCount: prev?.classifyRetryCount ?? 0,
+            llmReview: {
+              decisionType: 'existing',
+              categoryIds: [lqLeaf.id],
+              confidence: 0.93,
+              reason: loginAuthAttention.reason,
+              classifyMode: 'login-auth-attention',
+            },
+          },
+        });
+        continue;
+      }
+    }
+
+    const redirectAttention = detectUrlRedirectMismatchAttention(enrichment);
+    if (redirectAttention) {
+      const lqLeaf = findLinkQualityCategory(categories, redirectAttention.leafId);
+      if (lqLeaf) {
+        const now = Date.now();
+        summary.assignedPrimary++;
+        preBatchWrites.push({
+          itemId: item.id,
+          removeAiSuggested: true,
+          links: [
+            {
+              id: aiLinkId(item.id, lqLeaf.id),
+              itemId: item.id,
+              categoryId: lqLeaf.id,
+              score: 0.94,
+              isPrimary: true,
+              source: 'ai',
+              status: 'suggested',
+              created_at: now,
+              updated_at: now,
+            },
+          ],
+          signal: {
+            itemId: item.id,
+            textHash: prev?.textHash ?? '',
+            classifyTextHash: built.hash || prev?.classifyTextHash || '',
+            embeddingModel: prev?.embeddingModel ?? '',
+            embedding: prev?.embedding ?? [],
+            derivedTags: prev?.derivedTags ?? [],
+            signalStatus: 'ok',
+            classifyState: 'classified_attention',
+            discoverState: 'none',
+            isNovelty: false,
+            lastClassifySkipReason: redirectAttention.reason,
+            lastProcessedAt: now,
+            lastClassifiedAt: now,
+            classifyRetryCount: prev?.classifyRetryCount ?? 0,
+            llmReview: {
+              decisionType: 'existing',
+              categoryIds: [lqLeaf.id],
+              confidence: 0.94,
+              reason: redirectAttention.reason,
+              classifyMode: 'redirect-mismatch-attention',
+            },
+          },
+        });
+        continue;
+      }
     }
 
     if (built.qualityTier) {

@@ -215,6 +215,8 @@ export function sanitizeExtractOutput(data: EnrichmentAIExtract): EnrichmentAIEx
     keyPoints,
     improvedTitle: improvedTitle || undefined,
     tags: tags?.length ? tags.slice(0, 8) : undefined,
+    pageMatchesBookmark: data.pageMatchesBookmark,
+    redirectNote: data.redirectNote?.trim() || undefined,
   };
 }
 

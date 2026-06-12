@@ -264,7 +264,7 @@ export const TOPIC_CATALOG_RULES = [
   'topicIds: 0-3 leaf ids (first = primary). Multiple ids only for distinct topics (often different parents).',
   '**link-quality parent has two baskets (not topic taxonomy):**',
   '  - **Removal:** 404/5xx → `page-not-found`; example.com → `placeholder-junk`; fetch fail → `enrich-fetch-failed`; blank no-subject → `generic-low-signal`; empty social → `social-no-topic`.',
-  '  - **Needs attention (keep bookmark):** sign-in/auth wall with no public content → `login-auth-required` (may re-enrich when user is logged in — NOT removal junk).',
+  '  - **Needs attention (keep bookmark):** sign-in/auth wall → `login-auth-required`; ONLY when summary explicitly says saved URL does not match fetched page (article→hub, not www/https) → `url-redirect-mismatch`. When unsure about redirects, use a normal topic — never this bucket.',
   '  - Never use removal leaves for substantive pages (movies, visas, adult, guides).',
   '**Never use link-quality for:** movie/TV lists, visa/immigration guides, directories, articles, tutorials, adult/porn, or any page whose summary names a real subject. When unsure, pick a topic leaf or `proposed` — not link-quality.',
   'skip: true is rare. NEVER skip substantive, adult, or “edgy” content.',

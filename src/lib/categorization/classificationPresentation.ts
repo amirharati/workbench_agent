@@ -1,6 +1,7 @@
 import {
   isLinkQualityAttentionLeafId,
   isLinkQualityParentId,
+  isLinkQualityRedirectMismatchLeafId,
   isLinkQualityRemovalLeafId,
   LINK_QUALITY_PARENT_ID,
 } from './linkQuality';
@@ -35,9 +36,18 @@ const REMOVAL: ClassificationPresentation = {
   leafPrefix: '⚠ ',
 };
 
-const ATTENTION: ClassificationPresentation = {
+const ATTENTION_LOGIN: ClassificationPresentation = {
   tier: 'quality_attention',
   headline: 'Needs attention · login/auth',
+  sourceTag: 'Needs attention',
+  color: 'var(--er-warn, #d29922)',
+  taxonomyParentBadge: 'Pipeline quality — not topic taxonomy',
+  leafPrefix: '◉ ',
+};
+
+const ATTENTION_REDIRECT: ClassificationPresentation = {
+  tier: 'quality_attention',
+  headline: 'Needs attention · URL redirect',
   sourceTag: 'Needs attention',
   color: 'var(--er-warn, #d29922)',
   taxonomyParentBadge: 'Pipeline quality — not topic taxonomy',
@@ -64,11 +74,14 @@ export function resolveClassificationPresentation(input: {
   ) {
     return REMOVAL;
   }
+  if (isLinkQualityRedirectMismatchLeafId(primaryCategoryId)) {
+    return ATTENTION_REDIRECT;
+  }
   if (
     isLinkQualityAttentionLeafId(primaryCategoryId) ||
     classifyState === 'classified_attention'
   ) {
-    return ATTENTION;
+    return ATTENTION_LOGIN;
   }
   if (
     classifyState === 'classified_general' ||

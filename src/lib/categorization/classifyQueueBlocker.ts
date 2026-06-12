@@ -121,7 +121,10 @@ export function resolveClassifyQueueBlocker(input: {
     return pack('fetch_failed', detail);
   }
 
-  if (enrichment.pendingFetchReview) {
+  if (
+    enrichment.pendingFetchReview &&
+    enrichment.pendingFetchReviewReason !== 'url_redirect'
+  ) {
     return pack(
       'fetch_review',
       enrichment.pendingFetchReviewReason?.replace(/_/g, ' ') ?? 'Suspicious re-fetch vs prior content'

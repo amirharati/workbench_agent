@@ -1,3 +1,4 @@
+import type { RedirectContext } from '../fetchRedirect';
 import type { ContentHints, EnrichmentErrorCode } from '../types';
 
 export interface FetchProviderResult {
@@ -10,6 +11,11 @@ export interface FetchProviderResult {
   rawBytesApprox?: number;
   /** Which sub-provider produced a successful hybrid fetch */
   fetchSourceId?: string;
+  /** Bookmark URL before fetch-time resolution. */
+  requestedUrl?: string;
+  /** URL after HTTP redirects (when known). */
+  finalUrl?: string;
+  redirectContext?: RedirectContext;
 }
 
 export interface FetchProviderInput {

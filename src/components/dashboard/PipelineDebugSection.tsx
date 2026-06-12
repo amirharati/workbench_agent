@@ -74,8 +74,8 @@ export function PipelineDebugSection() {
         When enabled, every Import Studio or Hub pipeline run writes{' '}
         <code>pipeline-run-in-progress.json</code>, <code>pipeline-run-latest.json</code>, and a{' '}
         <code>pipeline-runs/</code> folder in your backup folder (next to{' '}
-        <code>workbench.sqlite</code>). Per-item fetch timings go in <code>pipeline_debug</code>{' '}
-        (sqlite). Uncheck to stop file dumps.
+        Per-item fetch timings and <strong>AI call audit</strong> (model, tokens, raw
+        response text) go in <code>pipeline_debug</code> (sqlite). Uncheck to stop file dumps.
       </p>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
         <label

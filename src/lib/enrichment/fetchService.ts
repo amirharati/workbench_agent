@@ -16,6 +16,15 @@ import {
   formatEnrichmentFailureMessage,
 } from './errorMessages';
 import {
+  attachFetchRedirectFields,
+  buildRedirectContext,
+  shouldFlagRedirectReview,
+  shouldRunRedirectAiVerdict,
+  type RedirectContext,
+} from './fetchRedirect';
+import { runRedirectAiVerdict, type RedirectAiVerdictData, type RedirectAiVerdictOutcome } from './redirectAiVerdict';
+import { resolveSummaryRedirectPromptMode } from './prompts';
+import {
   explainHardFetchFailure,
   explainSoftFetchSuspect,
   isFetchBodyUsable,
@@ -51,8 +60,10 @@ import { ENRICHMENT_DEFAULTS } from './types';
 import {
   isPipelineDebugEnabled,
   PipelineDebugCollector,
+  type PipelineDebugRedirect,
   saveEnrichPipelineDebug,
 } from './pipelineDebug';
+import type { PipelineDebugAICall } from '../ai/callAudit';
 
 let activeProvider: FetchProvider = hybridProvider;
 
@@ -95,6 +106,8 @@ function buildDiskDump(opts: {
   fetchSourceId?: string;
   providerId: string;
   ai: EnrichmentAIExtract | null;
+  redirect?: PipelineDebugRedirect | null;
+  aiCalls?: PipelineDebugAICall[] | null;
   markdown: string;
   cleanMarkdown: string;
 }): string {
@@ -103,10 +116,47 @@ function buildDiskDump(opts: {
     providerId: opts.providerId,
     fetchSourceId: opts.fetchSourceId ?? null,
     ai: opts.ai ?? null,
+    redirect: opts.redirect ?? null,
+    aiCalls: opts.aiCalls?.length ? opts.aiCalls : null,
     savedAt: new Date().toISOString(),
   };
   const body = opts.cleanMarkdown.trim() || opts.markdown.trim();
   return `<!-- enrichment-meta\n${JSON.stringify(header, null, 2)}\n-->\n\n${body}`;
+}
+
+function buildRedirectDebugSnapshot(input: {
+  redirectContext: RedirectContext;
+  verdictEligible: boolean;
+  verdictOutcome?: RedirectAiVerdictOutcome;
+  verdictMs?: number;
+  redirectVerdict?: RedirectAiVerdictData;
+  summaryPromptMode: ReturnType<typeof resolveSummaryRedirectPromptMode>;
+  aiExtract?: EnrichmentAIExtract;
+  pendingFetchReview?: boolean;
+}): PipelineDebugRedirect | undefined {
+  const { redirectContext } = input;
+  if (redirectContext.redirectClass === 'none' && !input.verdictEligible) return undefined;
+
+  let verdictStatus: string | undefined = input.verdictOutcome?.status;
+  if (!input.verdictEligible) verdictStatus = 'skipped:not_eligible';
+  const verdict = input.redirectVerdict;
+
+  return {
+    redirectClass: redirectContext.redirectClass,
+    resourceMismatch: redirectContext.resourceMismatch ?? false,
+    requestedUrl: redirectContext.requestedUrl,
+    finalUrl: redirectContext.finalUrl,
+    verdictEligible: input.verdictEligible,
+    verdictStatus,
+    verdictMs: input.verdictMs || undefined,
+    verdictPageMatchesBookmark: verdict?.pageMatchesBookmark,
+    verdictFetchedPageKind: verdict?.fetchedPageKind,
+    verdictRedirectNote: verdict?.redirectNote?.trim() || undefined,
+    summaryPromptMode: input.summaryPromptMode,
+    summaryPageMatchesBookmark: input.aiExtract?.pageMatchesBookmark,
+    summaryRedirectNote: input.aiExtract?.redirectNote?.trim() || undefined,
+    pendingFetchReview: input.pendingFetchReview,
+  };
 }
 
 function annotateFailureFields(record: ItemEnrichment): ItemEnrichment {
@@ -271,13 +321,17 @@ async function tabSessionFetchResult(
   }
   const markdown = tab.markdown.trim();
   return {
-    result: {
-      ok: true,
-      markdown,
-      title: tab.title,
-      fetchSourceId: tab.fetchSourceId,
-      rawBytesApprox: new TextEncoder().encode(markdown).length,
-    },
+    result: attachFetchRedirectFields(
+      {
+        ok: true,
+        markdown,
+        title: tab.title,
+        fetchSourceId: tab.fetchSourceId,
+        rawBytesApprox: new TextEncoder().encode(markdown).length,
+      },
+      url,
+      tab.pageUrl
+    ),
   };
 }
 
@@ -326,13 +380,17 @@ async function tryOpenTabFetch(
     } else {
       const markdown = ephemeral.markdown.trim();
       return {
-        result: {
-          ok: true,
-          markdown,
-          title: ephemeral.title,
-          fetchSourceId: ephemeral.fetchSourceId,
-          rawBytesApprox: new TextEncoder().encode(markdown).length,
-        },
+        result: attachFetchRedirectFields(
+          {
+            ok: true,
+            markdown,
+            title: ephemeral.title,
+            fetchSourceId: ephemeral.fetchSourceId,
+            rawBytesApprox: new TextEncoder().encode(markdown).length,
+          },
+          url,
+          ephemeral.pageUrl
+        ),
       };
     }
   }
@@ -411,7 +469,7 @@ async function resolveItemFetch(
       return await activeProvider.fetchUrl({
         url: item.url,
         normalizedUrl: pending.normalizedUrl,
-        hints: { sourceKind, force: options?.force },
+        hints: { sourceKind, force: options?.force, requestedUrl: item.url },
         signal: headlessPhase.signal,
       });
     } finally {
@@ -614,6 +672,11 @@ export async function enrichOne(
   const collector = debugEnabled ? new PipelineDebugCollector() : undefined;
   let fetchMs = 0;
   let aiMs = 0;
+  let redirectDebug: PipelineDebugRedirect | undefined;
+  const aiCalls: PipelineDebugAICall[] = [];
+  const aiCallRecord = debugEnabled
+    ? (record: PipelineDebugAICall) => aiCalls.push(record)
+    : undefined;
   let debugOutcome:
     | {
         enrichStatus: string;
@@ -637,6 +700,8 @@ export async function enrichOne(
       aiStatus: debugOutcome.aiStatus,
       errorCode: debugOutcome.errorCode,
       attempts,
+      redirect: redirectDebug,
+      aiCalls: aiCalls.length ? aiCalls : undefined,
       options: {
         preferTabSession,
         tabId,
@@ -710,6 +775,9 @@ export async function enrichOne(
 
     const cleanMarkdown = stripProviderWrapper(rawMarkdown);
     const qualityCtx = { url: item.url, title: fetchResult.title };
+    const redirectContext =
+      fetchResult.redirectContext ??
+      buildRedirectContext(item.url, fetchResult.finalUrl ?? item.url);
 
     const hardFailure = explainHardFetchFailure(cleanMarkdown, qualityCtx);
     const softSuspect = hardFailure
@@ -788,12 +856,50 @@ export async function enrichOne(
 
     let aiOutcome: Awaited<ReturnType<typeof extractEnrichmentWithAI>> | undefined;
     let aiExtract: EnrichmentAIExtract | undefined;
+    let redirectVerdict: RedirectAiVerdictData | undefined;
+    let redirectVerdictOutcome: RedirectAiVerdictOutcome | undefined;
+    let redirectVerdictMs = 0;
+    let summaryPromptMode: ReturnType<typeof resolveSummaryRedirectPromptMode> = 'none';
+    const verdictEligible = shouldRunRedirectAiVerdict(redirectContext);
+    collector?.phase(
+      'redirect_context',
+      true,
+      `${redirectContext.redirectClass}${redirectContext.resourceMismatch ? '+mismatch' : ''}`
+    );
     const needsAiExtract =
       !options?.skipAi &&
       !hardFailure &&
       (!pageUnchanged || existing?.aiStatus !== 'ok');
     if (needsAiExtract) {
       const aiStart = Date.now();
+      if (verdictEligible) {
+        const verdictStart = Date.now();
+        redirectVerdictOutcome = await runRedirectAiVerdict({
+          redirectContext,
+          bookmarkTitle: item.title,
+          fetchedTitle: parsed.title || fetchResult.title,
+          bodyPreview: parsed.snippet || cleanMarkdown,
+          signal: options?.signal,
+          audit: aiCallRecord ? { record: aiCallRecord } : undefined,
+        });
+        redirectVerdictMs = Date.now() - verdictStart;
+        if (redirectVerdictOutcome.status === 'ok') {
+          redirectVerdict = redirectVerdictOutcome.data;
+        }
+        const verdictDetail = redirectVerdict
+          ? `${redirectVerdictOutcome.status} match=${redirectVerdict.pageMatchesBookmark} kind=${redirectVerdict.fetchedPageKind}`
+          : redirectVerdictOutcome.error
+            ? `${redirectVerdictOutcome.status}:${redirectVerdictOutcome.error.slice(0, 100)}`
+            : redirectVerdictOutcome.status;
+        collector?.phase(
+          'redirect_ai_verdict',
+          redirectVerdictOutcome.status === 'ok',
+          verdictDetail
+        );
+      } else if (redirectContext.redirectClass !== 'none') {
+        collector?.phase('redirect_ai_verdict', true, 'skipped:not_eligible');
+      }
+      summaryPromptMode = resolveSummaryRedirectPromptMode({ redirectContext, redirectVerdict });
       aiOutcome = await extractEnrichmentWithAI(
         parsed.snippet || cleanMarkdown,
         item.url,
@@ -806,11 +912,19 @@ export async function enrichOne(
             quotedAuthor: parsed.quotedAuthor,
             channel: parsed.channel,
             description: parsed.description,
+            redirectContext,
+            redirectVerdict,
           },
+          audit: aiCallRecord ? { record: aiCallRecord } : undefined,
         }
       );
-      aiMs = Date.now() - aiStart;
       aiExtract = aiOutcome.data;
+      collector?.phase(
+        'ai_summary',
+        aiOutcome.status === 'ok' || aiOutcome.status === 'content_too_short' || aiOutcome.status === 'empty_response',
+        `${summaryPromptMode}${aiExtract?.pageMatchesBookmark != null ? ` pmb=${aiExtract.pageMatchesBookmark}` : ''}`
+      );
+      aiMs = Date.now() - aiStart;
       if (aiExtract?.improvedTitle) {
         parsed.title = aiExtract.improvedTitle;
       }
@@ -862,11 +976,65 @@ export async function enrichOne(
     let rawBytes: number | undefined;
     let hasRawBody = false;
 
+    let tier2Applied: string[] | undefined;
+    if (status === 'ok') {
+      tier2Applied = await applyItemTier2Updates(item, parsed.title, sourceKind, aiExtract);
+      if (tier2Applied.length === 0) tier2Applied = undefined;
+    }
+
+    if (truncated.truncated && status === 'ok') {
+      const note = `Fetched body truncated (${truncated.originalChars.toLocaleString()} → ${ENRICHMENT_DEFAULTS.maxFetchMarkdownChars.toLocaleString()} chars)`;
+      lastErrorDetail = lastErrorDetail ? `${lastErrorDetail}; ${note}` : note;
+    }
+
+    let pendingFetchReview = false;
+    let pendingFetchReviewReason: EnrichmentErrorCode | undefined;
+    if (status === 'ok' && redirectContext.redirectClass !== 'none') {
+      const redirectReview = shouldFlagRedirectReview(redirectContext, {
+        pageMatchesBookmark: aiExtract?.pageMatchesBookmark,
+        redirectNote: aiExtract?.redirectNote,
+        redirectVerdict: redirectVerdict
+          ? {
+              pageMatchesBookmark: redirectVerdict.pageMatchesBookmark,
+              fetchedPageKind: redirectVerdict.fetchedPageKind,
+              redirectNote: redirectVerdict.redirectNote,
+              reason: redirectVerdict.reason,
+            }
+          : undefined,
+      });
+      const redirectNote =
+        redirectReview.annotate?.trim() ||
+        aiExtract?.redirectNote?.trim() ||
+        redirectReview.reason?.trim();
+      if (redirectNote) {
+        lastErrorDetail = lastErrorDetail
+          ? `${lastErrorDetail}; ${redirectNote}`
+          : redirectNote;
+      }
+      if (redirectReview.flag) {
+        pendingFetchReview = true;
+        pendingFetchReviewReason = 'url_redirect';
+      }
+    }
+
+    redirectDebug = buildRedirectDebugSnapshot({
+      redirectContext,
+      verdictEligible,
+      verdictOutcome: redirectVerdictOutcome,
+      verdictMs: redirectVerdictMs,
+      redirectVerdict,
+      summaryPromptMode,
+      aiExtract,
+      pendingFetchReview,
+    });
+
     const diskBody = buildDiskDump({
       url: item.url,
       fetchSourceId: fetchResult.fetchSourceId,
       providerId: activeProvider.id,
       ai: options?.skipAi ? null : (aiExtract ?? null),
+      redirect: redirectDebug ?? null,
+      aiCalls: aiCalls.length ? aiCalls : null,
       markdown: rawMarkdown,
       cleanMarkdown,
     });
@@ -878,17 +1046,6 @@ export async function enrichOne(
         rawBytes = disk.rawBytes;
         hasRawBody = true;
       }
-    }
-
-    let tier2Applied: string[] | undefined;
-    if (status === 'ok') {
-      tier2Applied = await applyItemTier2Updates(item, parsed.title, sourceKind, aiExtract);
-      if (tier2Applied.length === 0) tier2Applied = undefined;
-    }
-
-    if (truncated.truncated && status === 'ok') {
-      const note = `Fetched body truncated (${truncated.originalChars.toLocaleString()} → ${ENRICHMENT_DEFAULTS.maxFetchMarkdownChars.toLocaleString()} chars)`;
-      lastErrorDetail = lastErrorDetail ? `${lastErrorDetail}; ${note}` : note;
     }
 
     const record: ItemEnrichment = {
@@ -924,8 +1081,8 @@ export async function enrichOne(
       rawBytes,
       hasRawBody,
       tier2Applied,
-      pendingFetchReview: false,
-      pendingFetchReviewReason: undefined,
+      pendingFetchReview,
+      pendingFetchReviewReason,
       reviewRawRef: undefined,
       updated_at: now,
     };

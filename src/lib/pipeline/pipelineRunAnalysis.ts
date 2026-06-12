@@ -50,6 +50,16 @@ export interface PipelineRunEnrichRecord {
   fetchMs?: number;
   aiMs?: number;
   totalMs?: number;
+  /** Debug phases (fetch route, redirect verdict, summary, …) */
+  phases?: import('../enrichment/pipelineDebug').PipelineDebugPhase[];
+  redirectClass?: string;
+  redirectVerdictStatus?: string;
+  redirectVerdictMatch?: boolean;
+  redirectVerdictKind?: string;
+  summaryPromptMode?: string;
+  summaryPageMatchesBookmark?: boolean;
+  redirectVerdictMs?: number;
+  aiCalls?: import('../ai/callAudit').PipelineDebugAICall[];
 }
 
 export interface PipelineRunClassifyRecord {
@@ -93,6 +103,9 @@ export interface PipelineRunCounts {
   aiStatus: Record<string, number>;
   classifyState: Record<string, number>;
   runOutcomes: Record<string, number>;
+  redirectClass: Record<string, number>;
+  redirectVerdictStatus: Record<string, number>;
+  summaryPromptMode: Record<string, number>;
 }
 
 export interface PipelineRunExport {
@@ -183,6 +196,9 @@ export function summarizePipelineRunRecords(records: PipelineRunItemRecord[]): P
     aiStatus: {},
     classifyState: {},
     runOutcomes: {},
+    redirectClass: {},
+    redirectVerdictStatus: {},
+    summaryPromptMode: {},
   };
 
   for (const row of records) {
@@ -201,6 +217,9 @@ export function summarizePipelineRunRecords(records: PipelineRunItemRecord[]): P
     bump(counts.aiStatus, row.enrich.aiStatus ?? (st === 'ok' ? 'none' : undefined));
     bump(counts.classifyState, row.classify?.state);
     bump(counts.runOutcomes, row.run?.outcome);
+    bump(counts.redirectClass, row.enrich.redirectClass);
+    bump(counts.redirectVerdictStatus, row.enrich.redirectVerdictStatus);
+    bump(counts.summaryPromptMode, row.enrich.summaryPromptMode);
   }
 
   return counts;
@@ -281,6 +300,41 @@ export function formatPipelineRunAnalysisMarkdown(exported: PipelineRunExport): 
     push('### AI extract status');
     push('');
     for (const [k, v] of Object.entries(counts.aiStatus).sort((a, b) => b[1] - a[1])) {
+      push(`- ${k}: ${v}`);
+    }
+    push('');
+  }
+
+  if (counts.redirectClass && Object.keys(counts.redirectClass).length) {
+    push('### Redirect class (mechanical probe)');
+    push('');
+    for (const [k, v] of Object.entries(counts.redirectClass).sort((a, b) => b[1] - a[1])) {
+      push(`- ${k}: ${v}`);
+    }
+    push('');
+  }
+
+  if (counts.redirectVerdictStatus && Object.keys(counts.redirectVerdictStatus).length) {
+    push('### Redirect AI verdict (pre-summary call)');
+    push('');
+    push('- **ok** = dedicated redirect judge ran and parsed');
+    push('- **skipped:not_eligible** = benign/none redirect — summary-only redirect rules if any');
+    push('- **prior_verdict** summary mode = separate judge ran before summary extract');
+    push('');
+    for (const [k, v] of Object.entries(counts.redirectVerdictStatus).sort((a, b) => b[1] - a[1])) {
+      push(`- ${k}: ${v}`);
+    }
+    push('');
+  }
+
+  if (counts.summaryPromptMode && Object.keys(counts.summaryPromptMode).length) {
+    push('### Summary prompt mode (redirect-aware extract)');
+    push('');
+    push('- **prior_verdict** = summary aligned to pre-step redirect judge');
+    push('- **redirect_fields** = suspicious redirect; summary prompt adds pageMatchesBookmark rules');
+    push('- **benign_hint** = benign redirect block in user content only');
+    push('');
+    for (const [k, v] of Object.entries(counts.summaryPromptMode).sort((a, b) => b[1] - a[1])) {
       push(`- ${k}: ${v}`);
     }
     push('');
@@ -406,6 +460,20 @@ export async function buildPipelineRunExport(input: {
       enrichRec.fetchMs = debug.fetchMs;
       enrichRec.aiMs = debug.aiMs;
       enrichRec.totalMs = debug.totalMs;
+      enrichRec.phases = debug.phases;
+      const rd = debug.redirect;
+      if (rd) {
+        enrichRec.redirectClass = rd.redirectClass;
+        enrichRec.redirectVerdictStatus = rd.verdictStatus;
+        enrichRec.redirectVerdictMatch = rd.verdictPageMatchesBookmark;
+        enrichRec.redirectVerdictKind = rd.verdictFetchedPageKind;
+        enrichRec.summaryPromptMode = rd.summaryPromptMode;
+        enrichRec.summaryPageMatchesBookmark = rd.summaryPageMatchesBookmark;
+        enrichRec.redirectVerdictMs = rd.verdictMs;
+      }
+      if (debug.aiCalls?.length) {
+        enrichRec.aiCalls = debug.aiCalls;
+      }
     }
     results.push({
       itemId,
@@ -485,6 +553,7 @@ export function pipelineRunToTsv(exported: PipelineRunExport): string {
   const hasDebugTiming = exported.results.some(
     (r) => r.enrich.fetchMs != null || r.enrich.aiMs != null || r.enrich.totalMs != null
   );
+  const hasRedirect = exported.results.some((r) => r.enrich.redirectClass != null);
   const header = [
     'url',
     'host',
@@ -499,6 +568,15 @@ export function pipelineRunToTsv(exported: PipelineRunExport): string {
     'aiStatus',
     'snippetLen',
     'pendingReview',
+    ...(hasRedirect
+      ? [
+          'redirectClass',
+          'redirectVerdictStatus',
+          'redirectVerdictMatch',
+          'summaryPromptMode',
+          'summaryPmb',
+        ]
+      : []),
     'classifyState',
     'runOutcome',
     ...(hasDebugTiming ? ['fetchMs', 'aiMs', 'totalMs'] : []),
@@ -519,6 +597,15 @@ export function pipelineRunToTsv(exported: PipelineRunExport): string {
       r.enrich.aiStatus,
       r.enrich.snippetLen,
       r.enrich.pendingFetchReview ? 'yes' : '',
+      ...(hasRedirect
+        ? [
+            r.enrich.redirectClass ?? '',
+            r.enrich.redirectVerdictStatus ?? '',
+            r.enrich.redirectVerdictMatch ?? '',
+            r.enrich.summaryPromptMode ?? '',
+            r.enrich.summaryPageMatchesBookmark ?? '',
+          ]
+        : []),
       r.classify?.state,
       r.run?.outcome,
       ...(hasDebugTiming

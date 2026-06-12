@@ -1,6 +1,6 @@
 export type AIProvider = 'openrouter' | 'chrome-native';
 
-export type AITaskType = 'general' | 'summarize' | 'tag';
+export type AITaskType = 'general' | 'summarize' | 'tag' | 'redirect_verdict';
 
 export interface AISettings {
   provider: AIProvider;
@@ -24,10 +24,14 @@ export interface AIMessage {
   content: string;
 }
 
+import type { AICallAuditContext } from './callAudit';
+
 export interface AICompletionRequest {
   messages: AIMessage[];
   taskType?: AITaskType;
   signal?: AbortSignal;
+  /** When set, each provider HTTP call is recorded (model, tokens, raw response text). */
+  audit?: AICallAuditContext;
 }
 
 export interface AIUsage {

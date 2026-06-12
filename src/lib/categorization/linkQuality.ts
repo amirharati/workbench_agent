@@ -19,6 +19,8 @@ export const LINK_QUALITY_LEAF_IDS = {
   GENERIC_LOW_SIGNAL: 'generic-low-signal',
   SOCIAL_NO_TOPIC: 'social-no-topic',
   LOGIN_AUTH_REQUIRED: 'login-auth-required',
+  /** Saved URL clearly resolves to a different page (article→hub) — attention only, not removal. */
+  URL_REDIRECT_MISMATCH: 'url-redirect-mismatch',
 } as const;
 
 export type LinkQualityLeafId =
@@ -32,7 +34,10 @@ const REMOVAL_LEAF_SET = new Set<string>([
   LINK_QUALITY_LEAF_IDS.SOCIAL_NO_TOPIC,
 ]);
 
-const ATTENTION_LEAF_SET = new Set<string>([LINK_QUALITY_LEAF_IDS.LOGIN_AUTH_REQUIRED]);
+const ATTENTION_LEAF_SET = new Set<string>([
+  LINK_QUALITY_LEAF_IDS.LOGIN_AUTH_REQUIRED,
+  LINK_QUALITY_LEAF_IDS.URL_REDIRECT_MISMATCH,
+]);
 
 const ALL_LINK_QUALITY_LEAF_SET = new Set<string>([
   ...REMOVAL_LEAF_SET,
@@ -57,6 +62,13 @@ export function isLinkQualityRemovalLeafId(categoryId: string | null | undefined
 export function isLinkQualityAttentionLeafId(categoryId: string | null | undefined): boolean {
   const raw = linkQualityLeafRaw(categoryId);
   return raw !== null && ATTENTION_LEAF_SET.has(raw);
+}
+
+export function isLinkQualityRedirectMismatchLeafId(
+  categoryId: string | null | undefined
+): boolean {
+  const raw = linkQualityLeafRaw(categoryId);
+  return raw === LINK_QUALITY_LEAF_IDS.URL_REDIRECT_MISMATCH;
 }
 
 export function classifyStateForLinkQualityLeaf(
@@ -92,7 +104,7 @@ export const LINK_QUALITY_SEED_PARENT: LinkQualitySeedParent = {
   id: LINK_QUALITY_PARENT_ID,
   name: 'Link quality & attention',
   description:
-    'Not topic taxonomy: (1) removal candidates — dead/placeholder/fetch-failed links; (2) needs attention — login/auth shells worth keeping (may re-enrich when user is signed in).',
+    'Not topic taxonomy: (1) removal candidates — dead/placeholder/fetch-failed links; (2) needs attention — login/auth shells and clear URL redirect mismatches (keep bookmark).',
 };
 
 export const LINK_QUALITY_SEED_LEAVES: LinkQualitySeedLeaf[] = [
@@ -128,6 +140,16 @@ export const LINK_QUALITY_SEED_LEAVES: LinkQualitySeedLeaf[] = [
     description:
       'Sign-in wall / auth gate with no public content yet — keep bookmark; pipeline may fetch after user logs in same browser. Not removal junk.',
     canonicalTags: ['login', 'auth', 'attention'],
+    isRemovalCandidate: false,
+  },
+  {
+    id: LINK_QUALITY_LEAF_IDS.URL_REDIRECT_MISMATCH,
+    parentId: LINK_QUALITY_PARENT_ID,
+    name: 'URL redirect mismatch',
+    description:
+      'Saved bookmark URL clearly no longer points at that resource (e.g. article URL lands on hub/homepage). ' +
+      'Fetch pipeline AI confirmed mismatch — not www/https or benign redirects. Keep bookmark; update URL or accept fetched page.',
+    canonicalTags: ['redirect', 'stale-url', 'attention'],
     isRemovalCandidate: false,
   },
   {
@@ -237,7 +259,10 @@ export function linkQualityLeafAllowed(
       isReservedPlaceholderHost(input.url) || norm(input.title ?? '') === 'example domain'
     );
   }
-  if (leafId === LINK_QUALITY_LEAF_IDS.LOGIN_AUTH_REQUIRED) {
+  if (
+    leafId === LINK_QUALITY_LEAF_IDS.LOGIN_AUTH_REQUIRED ||
+    leafId === LINK_QUALITY_LEAF_IDS.URL_REDIRECT_MISMATCH
+  ) {
     return true;
   }
   if (
@@ -276,12 +301,30 @@ function linkQualityTextBlob(input: LinkQualityDetectInput): string {
       input.aiSummary,
       input.eligibilityReason,
       input.llmReason,
+      input.lastErrorDetail,
       ...(input.aiKeyPoints ?? []),
       ...(input.aiTags ?? []),
     ]
       .filter(Boolean)
       .join(' ')
   );
+}
+
+const LOGIN_AUTH_GATE_RE =
+  /\b(?:sign[\s-]?in to continue|login required|log in to view|log in to continue|verify your identity|identity verification|authentication required|create an account to|join linkedin|members only|subscribe to (?:read|view)|paywall|registration required)\b/i;
+
+/** Auth/login shell — attention bucket; runs before substantive-summary skip. */
+export function detectLoginAuthGate(input: LinkQualityDetectInput): LinkQualityDetection | null {
+  const blob = linkQualityTextBlob(input);
+  if (!LOGIN_AUTH_GATE_RE.test(blob)) return null;
+  const summary = (input.aiSummary ?? '').trim();
+  if (summary.length > 200 && !LOGIN_AUTH_GATE_RE.test(summary.slice(0, 280))) {
+    return null;
+  }
+  return {
+    leafId: LINK_QUALITY_LEAF_IDS.LOGIN_AUTH_REQUIRED,
+    reason: 'Login or auth required — keep bookmark; may re-enrich when signed in',
+  };
 }
 
 /** 404/5xx/dead-link signals — run before hasUsableAiSummary so error-page summaries still bucket. */
@@ -301,9 +344,10 @@ function detectDeadOrErrorPage(input: LinkQualityDetectInput): LinkQualityDetect
     };
   }
 
+  const withoutSp500 = blob.replace(/\bs&p\s*500\b/gi, '');
   if (
     /\b500\b|internal server error|\b502\b|\b503\b|\b504\b|bad gateway|service unavailable|gateway timeout/.test(
-      blob
+      withoutSp500
     )
   ) {
     return {
@@ -358,13 +402,16 @@ export function detectLinkQualityIssue(input: LinkQualityDetectInput): LinkQuali
     return null;
   }
 
-  const deadOrError = detectDeadOrErrorPage(input);
-  if (deadOrError && linkQualityLeafAllowed(deadOrError.leafId, input)) return deadOrError;
+  const loginAuth = detectLoginAuthGate(input);
+  if (loginAuth && linkQualityLeafAllowed(loginAuth.leafId, input)) return loginAuth;
 
-  // AI already summarized the page (often thread+quote) — let classify use Summary; only hard URL/title junk below.
+  // Substantive AI summary — prefer classify over mechanical dead/error regex (avoids false removals).
   if (hasUsableAiSummary(input)) {
     return null;
   }
+
+  const deadOrError = detectDeadOrErrorPage(input);
+  if (deadOrError && linkQualityLeafAllowed(deadOrError.leafId, input)) return deadOrError;
 
   if (
     enrichStatus === 'ok' &&
@@ -410,6 +457,57 @@ export function detectLinkQualityIssue(input: LinkQualityDetectInput): LinkQuali
   }
 
   return null;
+}
+
+/**
+ * Clear-cut redirect mismatch only — same bar as enrich `pendingFetchReview` + `url_redirect`
+ * (explicit AI verdict/summary mismatch, not mechanical path hints).
+ */
+/** Login/auth attention — eligible classify path (before topic LLM). */
+export function detectLoginAuthAttentionFromItem(
+  item: Pick<Item, 'title' | 'url'>,
+  enrichment?: ItemEnrichment | null
+): LinkQualityDetection | null {
+  if (!enrichment || enrichment.status !== 'ok') return null;
+  if (enrichment.pendingFetchReviewReason === 'url_redirect') return null;
+  const det = detectLoginAuthGate({
+    title: item.title,
+    url: item.url,
+    aiStatus: enrichment.aiStatus,
+    aiSummary: enrichment.summary,
+    aiTags: enrichment.aiTags,
+    aiKeyPoints: enrichment.aiKeyPoints,
+    enrichmentStatus: enrichment.status,
+    lastErrorDetail: enrichment.lastErrorDetail,
+    snippet: enrichment.snippet,
+    hasRawBody: enrichment.hasRawBody,
+  });
+  return det && linkQualityLeafAllowed(det.leafId, {
+    title: item.title,
+    url: item.url,
+    aiStatus: enrichment.aiStatus,
+    aiSummary: enrichment.summary,
+    lastErrorDetail: enrichment.lastErrorDetail,
+  })
+    ? det
+    : null;
+}
+
+export function detectUrlRedirectMismatchAttention(
+  enrichment?: ItemEnrichment | null
+): LinkQualityDetection | null {
+  if (!enrichment || enrichment.status !== 'ok') return null;
+  if (!enrichment.pendingFetchReview) return null;
+  if (enrichment.pendingFetchReviewReason !== 'url_redirect') return null;
+  const detail = enrichment.lastErrorDetail?.trim();
+  const blob = [detail, enrichment.summary].filter(Boolean).join(' ');
+  if (blob && LOGIN_AUTH_GATE_RE.test(blob)) return null;
+  return {
+    leafId: LINK_QUALITY_LEAF_IDS.URL_REDIRECT_MISMATCH,
+    reason:
+      detail ||
+      'Saved URL redirected to a different page (fetch AI confirmed mismatch)',
+  };
 }
 
 export function detectLinkQualityFromItem(

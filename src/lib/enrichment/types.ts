@@ -15,6 +15,7 @@ export type EnrichmentErrorCode =
   | 'rate_limited'
   | 'network'
   | 'provider_error'
+  | 'url_redirect'
   | 'oversized'
   | 'no_backup_folder';
 
@@ -32,6 +33,8 @@ export type EnrichmentAIStatus =
 export type ContentHints = {
   sourceKind?: SourceKind;
   force?: boolean;
+  /** Original bookmark URL for redirect comparison (may differ from resolved fetch URL). */
+  requestedUrl?: string;
 };
 
 export interface ItemEnrichment {

@@ -99,6 +99,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
 
     const parents = taxonomy.parents
       .map((row) => {
+        const isPipelineParent = isLinkQualityTaxonomyParent(row.category.id);
         let leaves = row.leaves;
         if (q) {
           const parentMatch = match(row.category.name);
@@ -106,9 +107,8 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
           if (!parentMatch && leaves.length === 0) return null;
           return { ...row, leaves: parentMatch ? row.leaves : leaves };
         }
-        if (hideEmpty) {
+        if (hideEmpty && !isPipelineParent) {
           leaves = row.leaves.filter((leaf) => leaf.primaryItemCount > 0);
-          if (row.primaryItemCount <= 0 && leaves.length === 0) return null;
         }
         return { ...row, leaves };
       })
@@ -128,7 +128,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
   const { topicParents, pipelineParents } = splitTaxonomyParents(data?.parents ?? []);
   const orphanLeaves = data?.orphanLeaves ?? [];
   const hasTaxonomyRows =
-    topicParents.length > 0 || pipelineParents.length > 0 || orphanLeaves.length > 0;
+    (data?.parents.length ?? 0) > 0 || orphanLeaves.length > 0;
 
   return (
     <div
@@ -190,8 +190,8 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
           }}
         >
           <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5, flex: 1 }}>
-            Browse AI-assigned topics library-wide. Counts include suggested and accepted links. Use{' '}
-            <strong style={{ color: 'var(--text)' }}>Browse</strong> to filter bookmarks by topic.
+            All topic parents are listed; enable <strong style={{ color: 'var(--text)' }}>Show empty topic leaves</strong>{' '}
+            to expand zero-count leaves. Link quality &amp; attention leaves always show for inspection.
           </p>
           <button
             type="button"
@@ -305,7 +305,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
             checked={showEmpty}
             onChange={(e) => setShowEmpty(e.target.checked)}
           />
-          Show empty topics
+          Show empty topic leaves
         </label>
       </div>
 
@@ -316,8 +316,8 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
           {taxonomy
             ? showEmpty || q
               ? 'No categories match your filter.'
-              : 'No topics with assigned bookmarks yet. Run classify on imports, or enable Show empty topics to browse the full taxonomy.'
-            : 'No AI categories yet. Import and classify bookmarks in Settings (dev setup) to build the taxonomy.'}
+              : 'No taxonomy loaded yet. Open this view again to seed categories, or enable Show empty topics.'
+            : 'Loading taxonomy…'}
         </p>
       ) : (
         <div
@@ -355,7 +355,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
             <ParentRow
               key={row.category.id}
               row={row}
-              defaultOpen={i < 2 || !!q}
+              defaultOpen={showEmpty || i < 2 || !!q}
               onBrowse={onBrowseCategory}
             />
           ))}
@@ -363,7 +363,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
           {pipelineParents.length > 0 ? (
             <PipelineTaxonomySection
               parents={pipelineParents}
-              defaultOpen={!!q}
+              defaultOpen
               onBrowse={onBrowseCategory}
             />
           ) : null}
@@ -488,7 +488,7 @@ function PipelineTaxonomySection({
           key={row.category.id}
           row={row}
           variant="pipeline"
-          defaultOpen={defaultOpen ?? row.itemCount > 0}
+          defaultOpen={defaultOpen ?? true}
           onBrowse={onBrowse}
         />
       ))}

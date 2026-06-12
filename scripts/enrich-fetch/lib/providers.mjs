@@ -12,6 +12,11 @@ import { htmlToMarkdown } from './htmlExtract.mjs';
 import { classifySourceKind } from './parse.mjs';
 import { fetchViaBrowserTab } from './tabBrowser.mjs';
 import { browserFetchHeaders, fetchXStatusFromTwitterCdn } from './xCdn.mjs';
+import {
+  buildRedirectContext,
+  resolveRedirectContext,
+  shouldFlagRedirectReview,
+} from './fetchRedirect.mjs';
 import { isRedditHost, redditBlockedResult, resolveFetchUrl } from './urlPolicy.mjs';
 import { fetchXThreadFromFx, parseXStatusUser } from './xThread.mjs';
 
@@ -39,7 +44,19 @@ function withTimeout(ms) {
   return { signal: controller.signal, clear: () => clearTimeout(timer) };
 }
 
-export async function fetchLocal(url) {
+function attachRedirect(result, requestedUrl, finalUrl, hops) {
+  const redirectContext = buildRedirectContext(requestedUrl, finalUrl, hops);
+  const review = shouldFlagRedirectReview(redirectContext);
+  return {
+    ...result,
+    requestedUrl,
+    finalUrl,
+    redirectContext,
+    redirectReview: review.flag ? review : undefined,
+  };
+}
+
+export async function fetchLocal(url, { requestedUrl = url } = {}) {
   if (isRedditHost(url)) return redditBlockedResult('local');
   const { signal, clear } = withTimeout(TIMEOUT_MS);
   try {
@@ -47,14 +64,18 @@ export async function fetchLocal(url) {
       const cdn = await fetchXStatusFromTwitterCdn(url, signal);
       if (cdn) {
         const markdown = stripProviderWrapper(cdn.markdown);
-        return {
-          ok: true,
-          id: 'local',
-          fetchSourceId: 'local',
-          markdown,
-          title: cdn.title,
-          rawBytes: markdown.length,
-        };
+        return attachRedirect(
+          {
+            ok: true,
+            id: 'local',
+            fetchSourceId: 'local',
+            markdown,
+            title: cdn.title,
+            rawBytes: markdown.length,
+          },
+          requestedUrl,
+          url
+        );
       }
     }
 
@@ -64,26 +85,39 @@ export async function fetchLocal(url) {
       signal,
       headers: browserFetchHeaders(),
     });
+    const finalUrl = res.url?.trim() || url;
     if (!res.ok) {
-      return { ok: false, id: 'local', errorCode: res.status === 429 ? 'rate_limited' : 'provider_error', status: res.status };
+      return attachRedirect(
+        { ok: false, id: 'local', errorCode: res.status === 429 ? 'rate_limited' : 'provider_error', status: res.status },
+        requestedUrl,
+        finalUrl
+      );
     }
     const html = await res.text();
     const parsed = htmlToMarkdown(html, url);
     if (!parsed) {
-      return { ok: false, id: 'local', errorCode: 'parse_empty', rawBytes: html.length, preview: html.slice(0, 400) };
+      return attachRedirect(
+        { ok: false, id: 'local', errorCode: 'parse_empty', rawBytes: html.length, preview: html.slice(0, 400) },
+        requestedUrl,
+        finalUrl
+      );
     }
     const markdown = stripProviderWrapper(parsed.markdown);
-    return {
-      ok: true,
-      id: 'local',
-      fetchSourceId: parsed.mode === 'page' ? 'local-page' : 'local',
-      markdown,
-      title: parsed.title,
-      rawBytes: markdown.length,
-    };
+    return attachRedirect(
+      {
+        ok: true,
+        id: 'local',
+        fetchSourceId: parsed.mode === 'page' ? 'local-page' : 'local',
+        markdown,
+        title: parsed.title,
+        rawBytes: markdown.length,
+      },
+      requestedUrl,
+      finalUrl
+    );
   } catch (e) {
     const code = e?.name === 'AbortError' ? 'timeout' : 'network';
-    return { ok: false, id: 'local', errorCode: code, error: String(e) };
+    return attachRedirect({ ok: false, id: 'local', errorCode: code, error: String(e) }, requestedUrl, url);
   } finally {
     clear();
   }
@@ -268,6 +302,7 @@ export function diagnoseResult(result, ctx = {}) {
 }
 
 export async function fetchAllProviders(rawUrl) {
+  const redirectContext = await resolveRedirectContext(rawUrl);
   const { url } = await resolveFetchUrl(rawUrl);
   const ctx = { url };
   const names = providerNamesForUrl(url);
@@ -278,7 +313,10 @@ export async function fetchAllProviders(rawUrl) {
       attempts.push({ ...blocked, diagnosis: diagnoseResult(blocked, ctx) });
       continue;
     }
-    const result = await PROVIDERS[name](url);
+    const result =
+      name === 'local'
+        ? await fetchLocal(url, { requestedUrl: rawUrl })
+        : await PROVIDERS[name](url);
     attempts.push({ ...result, diagnosis: diagnoseResult(result, ctx) });
   }
 
@@ -287,16 +325,21 @@ export async function fetchAllProviders(rawUrl) {
     attempts.find((a) => a.ok && a.markdown) ??
     attempts[attempts.length - 1];
 
+  const redirectReview = shouldFlagRedirectReview(redirectContext);
+
   return {
     winner,
     attempts,
     ok: resultUsable(winner, ctx),
     url,
     resolvedFrom: url !== rawUrl ? rawUrl : null,
+    redirectContext,
+    redirectReview: redirectReview.flag ? redirectReview : undefined,
   };
 }
 
 export async function fetchHybrid(rawUrl) {
+  const redirectContext = await resolveRedirectContext(rawUrl);
   const { url, resolvedFrom } = await resolveFetchUrl(rawUrl);
   const ctx = { url };
 
@@ -309,12 +352,13 @@ export async function fetchHybrid(rawUrl) {
       ok: false,
       url,
       resolvedFrom,
+      redirectContext,
     };
   }
 
   const isX = classifySourceKind(url) === 'x';
   const chain = [
-    ...(isX ? [fetchSyndication, fetchLocal] : [fetchLocal]),
+    ...(isX ? [fetchSyndication, (u) => fetchLocal(u, { requestedUrl: rawUrl })] : [(u) => fetchLocal(u, { requestedUrl: rawUrl })]),
     ...(includeTabProvider ? [fetchTab] : []),
     fetchJina,
     fetchMarkdownNew,
@@ -328,11 +372,29 @@ export async function fetchHybrid(rawUrl) {
     attempts.push({ ...result, diagnosis: diagnoseResult(result, ctx) });
     last = result;
     if (resultUsable(result, ctx)) {
-      return { winner: result, attempts, ok: true, url, resolvedFrom };
+      const redirectReview = shouldFlagRedirectReview(redirectContext);
+      return {
+        winner: result,
+        attempts,
+        ok: true,
+        url,
+        resolvedFrom,
+        redirectContext,
+        redirectReview: redirectReview.flag ? redirectReview : undefined,
+      };
     }
   }
 
-  return { winner: last, attempts, ok: false, url, resolvedFrom };
+  const redirectReview = shouldFlagRedirectReview(redirectContext);
+  return {
+    winner: last,
+    attempts,
+    ok: false,
+    url,
+    resolvedFrom,
+    redirectContext,
+    redirectReview: redirectReview.flag ? redirectReview : undefined,
+  };
 }
 
 export const PROVIDERS = {

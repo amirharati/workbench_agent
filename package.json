@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "fetch-test": "node scripts/enrich-fetch/fetch-test.mjs",
+    "fetch-spot-pipeline": "tsx scripts/enrich-fetch/run-spot-pipeline.mts",
+    "fetch-batch-pipeline": "tsx scripts/enrich-fetch/run-batch-pipeline.mts",
     "fetch-experiment": "node scripts/enrich-fetch/run-experiment.mjs",
     "fetch-ai-eval": "node scripts/enrich-fetch/run-ai-eval.mjs",
     "fetch-judge": "node scripts/enrich-fetch/run-fetch-judge.mjs",

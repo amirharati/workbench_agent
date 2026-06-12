@@ -1,44 +1,71 @@
 import { classifySourceKind } from '../eligibility';
 import { describeHttpFetchError, httpStatusToErrorCode } from '../errorMessages';
+import { buildRedirectContext } from '../fetchRedirect';
 import { htmlToMarkdown } from '../htmlExtract';
 import { isFileUrl, isShortLinkHost, tcoUnresolvedError } from '../urlPolicy';
 import { stripProviderWrapper } from '../fetchQuality';
-import type { FetchProvider } from './types';
+import type { FetchProvider, FetchProviderResult } from './types';
 import { browserFetchHeaders, fetchXStatusFromTwitterCdn } from './xCdn';
+
+function withRedirect(
+  result: FetchProviderResult,
+  requestedUrl: string,
+  finalUrl: string
+): FetchProviderResult {
+  return {
+    ...result,
+    requestedUrl,
+    finalUrl,
+    redirectContext: buildRedirectContext(requestedUrl, finalUrl),
+  };
+}
 
 export const localProvider: FetchProvider = {
   id: 'local',
-  async fetchUrl({ url, signal }) {
+  async fetchUrl({ url, signal, hints }) {
+    const requestedUrl = hints?.requestedUrl ?? url;
     try {
       if (classifySourceKind(url) === 'x') {
         const cdn = await fetchXStatusFromTwitterCdn(url, signal);
         if (cdn) {
           const markdown = stripProviderWrapper(cdn.markdown);
-          return {
-            ok: true,
-            markdown,
-            title: cdn.title,
-            rawBytesApprox: new TextEncoder().encode(markdown).length,
-            fetchSourceId: 'local',
-          };
+          return withRedirect(
+            {
+              ok: true,
+              markdown,
+              title: cdn.title,
+              rawBytesApprox: new TextEncoder().encode(markdown).length,
+              fetchSourceId: 'local',
+            },
+            requestedUrl,
+            url
+          );
         }
       }
 
       if (isShortLinkHost(url)) {
-        return {
-          ok: false,
-          errorCode: 'parse_empty',
-          error: tcoUnresolvedError(url),
-        };
+        return withRedirect(
+          {
+            ok: false,
+            errorCode: 'parse_empty',
+            error: tcoUnresolvedError(url),
+          },
+          requestedUrl,
+          url
+        );
       }
 
       if (isFileUrl(url)) {
         if (/\.pdf$/i.test(url)) {
-          return {
-            ok: false,
-            errorCode: 'auth_required',
-            error: 'Local PDF — open in Chrome tab for extraction',
-          };
+          return withRedirect(
+            {
+              ok: false,
+              errorCode: 'auth_required',
+              error: 'Local PDF — open in Chrome tab for extraction',
+            },
+            requestedUrl,
+            url
+          );
         }
       }
 
@@ -49,40 +76,61 @@ export const localProvider: FetchProvider = {
         signal,
         headers: browserFetchHeaders(),
       });
+      const finalUrl = res.url?.trim() || url;
 
       if (!res.ok) {
         const errorCode = httpStatusToErrorCode(res.status);
-        return {
-          ok: false,
-          errorCode,
-          error: describeHttpFetchError(res.status, 'local'),
-        };
+        return withRedirect(
+          {
+            ok: false,
+            errorCode,
+            error: describeHttpFetchError(res.status, 'local'),
+          },
+          requestedUrl,
+          finalUrl
+        );
       }
 
       const html = await res.text();
       const parsed = htmlToMarkdown(html, url);
       if (!parsed) {
-        return {
-          ok: false,
-          errorCode: 'parse_empty',
-          error: 'Page HTML contained too little readable text to summarize',
-        };
+        return withRedirect(
+          {
+            ok: false,
+            errorCode: 'parse_empty',
+            error: 'Page HTML contained too little readable text to summarize',
+          },
+          requestedUrl,
+          finalUrl
+        );
       }
 
       const markdown = stripProviderWrapper(parsed.markdown);
-      return {
-        ok: true,
-        markdown,
-        title: parsed.title,
-        rawBytesApprox: new TextEncoder().encode(markdown).length,
-        fetchSourceId: parsed.mode === 'page' ? 'local-page' : 'local',
-      };
+      return withRedirect(
+        {
+          ok: true,
+          markdown,
+          title: parsed.title,
+          rawBytesApprox: new TextEncoder().encode(markdown).length,
+          fetchSourceId: parsed.mode === 'page' ? 'local-page' : 'local',
+        },
+        requestedUrl,
+        finalUrl
+      );
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
-        return { ok: false, errorCode: 'timeout', error: 'Local fetch timed out' };
+        return withRedirect(
+          { ok: false, errorCode: 'timeout', error: 'Local fetch timed out' },
+          requestedUrl,
+          url
+        );
       }
       const msg = e instanceof Error ? e.message : String(e);
-      return { ok: false, errorCode: 'network', error: msg || 'Network error during local fetch' };
+      return withRedirect(
+        { ok: false, errorCode: 'network', error: msg || 'Network error during local fetch' },
+        requestedUrl,
+        url
+      );
     }
   },
 };

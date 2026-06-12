@@ -138,7 +138,11 @@ export async function ensureLinkQualityTaxonomy(): Promise<{ added: number }> {
 }
 
 /** Seed leaves added after v5 — merged into existing DBs on startup/classify. */
-const BUNDLED_LEAF_PATCH_IDS = ['movies-tv-streaming', 'login-auth-required'] as const;
+const BUNDLED_LEAF_PATCH_IDS = [
+  'movies-tv-streaming',
+  'login-auth-required',
+  'url-redirect-mismatch',
+] as const;
 
 export async function ensureBundledSeedLeafPatches(): Promise<{ added: number }> {
   const { getDB } = await import('../db');

@@ -135,6 +135,8 @@ function buildReportFromAll(url, sourceKind, localBundle, run, opts) {
   const debugProviders = run.attempts.map((a) => attachProviderDebug(a, sourceKind, localBundle));
   const hybridPick = pickHybridWinner(run.attempts, sourceKind, localBundle);
   const winner = hybridPick.result ?? run.winner;
+  const redirectContext = run.redirectContext ?? winner?.redirectContext;
+  const redirectReview = run.redirectReview ?? winner?.redirectReview;
 
   return {
     url,
@@ -144,6 +146,8 @@ function buildReportFromAll(url, sourceKind, localBundle, run, opts) {
     provider: 'all',
     fetchSourceId: winner?.fetchSourceId || winner?.id,
     hybridWouldPick: winner?.id,
+    redirectContext,
+    redirectReview,
     attempts: debugProviders.map((d) => ({
       provider: d.provider,
       ok: d.ok,
@@ -239,6 +243,21 @@ function printHuman(report, opts) {
   console.log(
     `kind=${report.sourceKind} hybrid-would-pick=${report.hybridWouldPick ?? '?'} status=${report.status}${report.errorCode ? ` error=${report.errorCode}` : ''}`
   );
+
+  if (report.redirectContext) {
+    const rc = report.redirectContext;
+    console.log(
+      `redirect: class=${rc.redirectClass}${rc.resourceMismatch ? ' resourceMismatch=yes' : ''}`
+    );
+    if (rc.redirectClass !== 'none') {
+      console.log(`  saved:  ${rc.requestedUrl}`);
+      console.log(`  final:  ${rc.finalUrl}`);
+      if (rc.hops?.length > 2) console.log(`  hops:   ${rc.hops.join(' → ')}`);
+    }
+    if (report.redirectReview?.flag) {
+      console.log(`  review: ${report.redirectReview.reason}`);
+    }
+  }
 
   if (report.attempts?.length) {
     console.log('all providers:');

@@ -63,7 +63,7 @@
     {
       "id": "link-quality",
       "name": "Link quality & attention",
-      "description": "Not topic taxonomy: removal candidates (404, placeholder, fetch fail) and needs-attention (login/auth — keep for re-fetch when signed in)."
+      "description": "Not topic taxonomy: removal candidates (404, placeholder, fetch fail) and needs-attention (login/auth, clear URL redirect mismatch — keep bookmark)."
     }
   ],
   "leaves": [
@@ -100,6 +100,15 @@
       "name": "Login or auth required",
       "description": "Sign-in/auth gate — keep bookmark; may re-enrich when user is logged in. Not removal junk.",
       "canonicalTags": ["login", "auth", "attention"],
+      "isRemovalCandidate": false,
+      "fromInitialSeed": true
+    },
+    {
+      "id": "url-redirect-mismatch",
+      "parentId": "link-quality",
+      "name": "URL redirect mismatch",
+      "description": "Saved URL clearly no longer points at that resource (article→hub). AI-confirmed only — not benign www/https redirects. Keep bookmark.",
+      "canonicalTags": ["redirect", "stale-url", "attention"],
       "isRemovalCandidate": false,
       "fromInitialSeed": true
     },
