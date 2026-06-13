@@ -6,6 +6,7 @@
 
 import type { Item } from '../db';
 import { MIN_AI_SUMMARY_LENGTH } from '../enrichment/categorizationEligibility';
+import { isMediaPrimaryXContent } from '../enrichment/xMedia';
 import type { EnrichmentStatus, ItemEnrichment } from '../enrichment/types';
 import type { AiCategory } from './types';
 
@@ -21,6 +22,7 @@ export const LINK_QUALITY_LEAF_IDS = {
   LOGIN_AUTH_REQUIRED: 'login-auth-required',
   /** Saved URL clearly resolves to a different page (article→hub) — attention only, not removal. */
   URL_REDIRECT_MISMATCH: 'url-redirect-mismatch',
+  MEDIA_NOT_TRANSCRIBED: 'media-not-transcribed',
 } as const;
 
 export type LinkQualityLeafId =
@@ -37,6 +39,7 @@ const REMOVAL_LEAF_SET = new Set<string>([
 const ATTENTION_LEAF_SET = new Set<string>([
   LINK_QUALITY_LEAF_IDS.LOGIN_AUTH_REQUIRED,
   LINK_QUALITY_LEAF_IDS.URL_REDIRECT_MISMATCH,
+  LINK_QUALITY_LEAF_IDS.MEDIA_NOT_TRANSCRIBED,
 ]);
 
 const ALL_LINK_QUALITY_LEAF_SET = new Set<string>([
@@ -153,6 +156,16 @@ export const LINK_QUALITY_SEED_LEAVES: LinkQualitySeedLeaf[] = [
     isRemovalCandidate: false,
   },
   {
+    id: LINK_QUALITY_LEAF_IDS.MEDIA_NOT_TRANSCRIBED,
+    parentId: LINK_QUALITY_PARENT_ID,
+    name: 'Media not transcribed',
+    description:
+      'X/social bookmark where fetch found embedded video or image but almost no readable text. ' +
+      'Not removal — user should review manually; video is not sent to AI.',
+    canonicalTags: ['media', 'video', 'attention', 'manual-review'],
+    isRemovalCandidate: false,
+  },
+  {
     id: LINK_QUALITY_LEAF_IDS.GENERIC_LOW_SIGNAL,
     parentId: LINK_QUALITY_PARENT_ID,
     name: 'Empty page (no subject)',
@@ -260,7 +273,8 @@ export function linkQualityLeafAllowed(
   }
   if (
     leafId === LINK_QUALITY_LEAF_IDS.LOGIN_AUTH_REQUIRED ||
-    leafId === LINK_QUALITY_LEAF_IDS.URL_REDIRECT_MISMATCH
+    leafId === LINK_QUALITY_LEAF_IDS.URL_REDIRECT_MISMATCH ||
+    leafId === LINK_QUALITY_LEAF_IDS.MEDIA_NOT_TRANSCRIBED
   ) {
     return true;
   }
@@ -358,6 +372,24 @@ function detectDeadOrErrorPage(input: LinkQualityDetectInput): LinkQualityDetect
   return null;
 }
 
+function detectMediaNotTranscribed(input: LinkQualityDetectInput): LinkQualityDetection | null {
+  if (input.enrichmentStatus !== 'ok') return null;
+  const url = (input.url ?? '').trim();
+  if (!url) return null;
+  try {
+    const host = norm(new URL(url).hostname);
+    if (!host.includes('x.com') && !host.includes('twitter.com')) return null;
+  } catch {
+    return null;
+  }
+  const body = [input.snippet, input.quotedText].filter(Boolean).join('\n\n');
+  if (!isMediaPrimaryXContent(body)) return null;
+  return {
+    leafId: LINK_QUALITY_LEAF_IDS.MEDIA_NOT_TRANSCRIBED,
+    reason: 'Embedded video/image without substantive text — review manually',
+  };
+}
+
 export function detectLinkQualityIssue(input: LinkQualityDetectInput): LinkQualityDetection | null {
   const enrichStatus = input.enrichmentStatus;
   if (!enrichStatus || enrichStatus === 'none') {
@@ -409,6 +441,11 @@ export function detectLinkQualityIssue(input: LinkQualityDetectInput): LinkQuali
 
   const loginAuth = detectLoginAuthGate(input);
   if (loginAuth && linkQualityLeafAllowed(loginAuth.leafId, input)) return loginAuth;
+
+  const mediaNotTranscribed = detectMediaNotTranscribed(input);
+  if (mediaNotTranscribed && linkQualityLeafAllowed(mediaNotTranscribed.leafId, input)) {
+    return mediaNotTranscribed;
+  }
 
   // Substantive AI summary — prefer classify over mechanical dead/error regex (avoids false removals).
   if (hasUsableAiSummary(input)) {

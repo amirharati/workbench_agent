@@ -142,6 +142,7 @@ const BUNDLED_LEAF_PATCH_IDS = [
   'movies-tv-streaming',
   'login-auth-required',
   'url-redirect-mismatch',
+  'media-not-transcribed',
 ] as const;
 
 export async function ensureBundledSeedLeafPatches(): Promise<{ added: number }> {

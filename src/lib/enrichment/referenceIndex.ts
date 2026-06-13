@@ -36,7 +36,8 @@ export function extractFollowedReferenceUrls(markdown: string): Set<string> {
 function classifyReferenceKind(url: string): EnrichmentReferenceKind {
   try {
     const host = normalizeHost(url);
-    if (host.includes('pbs.twimg.com') || host.includes('video.twimg.com')) return 'image';
+    if (host.includes('pbs.twimg.com')) return 'image';
+    if (host.includes('video.twimg.com')) return 'video';
     if (host.includes('github.com') || host.includes('gitlab.com')) return 'repo';
     if (/\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url)) return 'image';
     if (X_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) return 'social';

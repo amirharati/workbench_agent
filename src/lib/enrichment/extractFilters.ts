@@ -122,6 +122,7 @@ export function hasXExtractSignal(body: string, title?: string): boolean {
   if (/^#\s*@\w+/m.test(raw)) return true;
   if (/^##\s*\d+\/\d+/m.test(raw)) return true;
   if (/photo\(s\)\s+attached|media item\(s\) attached/i.test(raw)) return true;
+  if (/^\s*Video:\s*https?:/im.test(raw)) return true;
   if (/pbs\.twimg\.com\/media\//i.test(raw)) return true;
   if (/\bImage:\s*https?:\/\//i.test(raw)) return true;
   if (/https?:\/\/t\.co\/\S+/i.test(raw) && raw.length >= MIN_X_EXTRACT_RAW_CHARS) return true;

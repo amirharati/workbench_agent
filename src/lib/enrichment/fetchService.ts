@@ -39,6 +39,7 @@ import {
   shouldKeepSyndicationOverTab,
 } from './xFetchHeuristics';
 import { enrichMarkdownWithVision, needsImageVisionEnrichment } from './imageVision';
+import { buildMediaPrimaryMechanicalSummary, isMediaPrimaryXContent } from './xMedia';
 import { hybridProvider } from './providers/hybrid';
 import { jinaProvider } from './providers/jina';
 import { noopProvider } from './providers/noop';
@@ -948,20 +949,26 @@ export async function enrichOne(
 
     let enrichMarkdown = cleanMarkdown;
     if (!hardFailure) {
-      const visionStart = Date.now();
-      enrichMarkdown = await enrichMarkdownWithVision(cleanMarkdown, {
-        sourceKind,
-        signal: options?.signal,
-        audit: aiCallRecord ? { purpose: 'enrich_vision', record: aiCallRecord } : undefined,
-      });
-      if (enrichMarkdown.length > cleanMarkdown.length) {
-        collector?.phase(
-          'image_vision',
-          true,
-          `+${enrichMarkdown.length - cleanMarkdown.length} chars · ${Date.now() - visionStart}ms`
-        );
-      } else if (needsImageVisionEnrichment(cleanMarkdown, sourceKind)) {
-        collector?.phase('image_vision', false, 'no_description');
+      const mediaPrimaryBody =
+        sourceKind === 'x' && isMediaPrimaryXContent(cleanMarkdown);
+      if (!mediaPrimaryBody) {
+        const visionStart = Date.now();
+        enrichMarkdown = await enrichMarkdownWithVision(cleanMarkdown, {
+          sourceKind,
+          signal: options?.signal,
+          audit: aiCallRecord ? { purpose: 'enrich_vision', record: aiCallRecord } : undefined,
+        });
+        if (enrichMarkdown.length > cleanMarkdown.length) {
+          collector?.phase(
+            'image_vision',
+            true,
+            `+${enrichMarkdown.length - cleanMarkdown.length} chars · ${Date.now() - visionStart}ms`
+          );
+        } else if (needsImageVisionEnrichment(cleanMarkdown, sourceKind)) {
+          collector?.phase('image_vision', false, 'no_description');
+        }
+      } else {
+        collector?.phase('image_vision', true, 'skipped:media-not-transcribed');
       }
     }
 
@@ -1083,32 +1090,56 @@ export async function enrichOne(
         collector?.phase('redirect_ai_verdict', true, 'skipped:not_eligible');
       }
       summaryPromptMode = resolveSummaryRedirectPromptMode({ redirectContext, redirectVerdict });
-      aiOutcome = await extractEnrichmentWithAI(
-        parsed.snippet || enrichMarkdown,
-        item.url,
-        parsed.title || item.title,
-        {
-          sourceKind,
-          signal: options?.signal,
-          hints: {
-            quotedText: parsed.quotedText,
-            quotedAuthor: parsed.quotedAuthor,
-            channel: parsed.channel,
-            description: parsed.description,
-            references,
-            redirectContext,
-            redirectVerdict,
+      const mediaPrimary =
+        sourceKind === 'x' && isMediaPrimaryXContent(enrichMarkdown);
+      if (mediaPrimary) {
+        const mechanical = buildMediaPrimaryMechanicalSummary(
+          enrichMarkdown,
+          item.title,
+          item.url
+        );
+        const now = Date.now();
+        aiOutcome = {
+          status: 'ok',
+          at: now,
+          data: {
+            summary: mechanical.summary,
+            keyPoints: mechanical.keyPoints,
+            tags: mechanical.tags,
+            pageMatchesBookmark: true,
           },
-          audit: aiCallRecord ? { record: aiCallRecord } : undefined,
-        }
-      );
-      aiExtract = aiOutcome.data;
-      collector?.phase(
-        'ai_summary',
-        aiOutcome.status === 'ok' || aiOutcome.status === 'content_too_short' || aiOutcome.status === 'empty_response',
-        `${summaryPromptMode}${aiExtract?.pageMatchesBookmark != null ? ` pmb=${aiExtract.pageMatchesBookmark}` : ''}`
-      );
-      aiMs = Date.now() - aiStart;
+        };
+        aiExtract = aiOutcome.data;
+        collector?.phase('ai_summary', true, 'mechanical:media-not-transcribed');
+        aiMs = Date.now() - aiStart;
+      } else {
+        aiOutcome = await extractEnrichmentWithAI(
+          parsed.snippet || enrichMarkdown,
+          item.url,
+          parsed.title || item.title,
+          {
+            sourceKind,
+            signal: options?.signal,
+            hints: {
+              quotedText: parsed.quotedText,
+              quotedAuthor: parsed.quotedAuthor,
+              channel: parsed.channel,
+              description: parsed.description,
+              references,
+              redirectContext,
+              redirectVerdict,
+            },
+            audit: aiCallRecord ? { record: aiCallRecord } : undefined,
+          }
+        );
+        aiExtract = aiOutcome.data;
+        collector?.phase(
+          'ai_summary',
+          aiOutcome.status === 'ok' || aiOutcome.status === 'content_too_short' || aiOutcome.status === 'empty_response',
+          `${summaryPromptMode}${aiExtract?.pageMatchesBookmark != null ? ` pmb=${aiExtract.pageMatchesBookmark}` : ''}`
+        );
+        aiMs = Date.now() - aiStart;
+      }
       if (aiExtract?.improvedTitle) {
         parsed.title = aiExtract.improvedTitle;
       }

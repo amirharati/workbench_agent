@@ -2,6 +2,16 @@ import type { Item } from '../db';
 import type { EnrichmentAIStatus, ItemEnrichment } from './types';
 import { getPlacementNotes } from './itemText';
 import { stripSnippetBoilerplate } from './categorizationText';
+import { isMediaPrimaryXContent } from './xMedia';
+
+function isXBookmarkUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    return host === 'x.com' || host === 'twitter.com' || host.endsWith('.x.com') || host.endsWith('.twitter.com');
+  } catch {
+    return false;
+  }
+}
 
 /** Minimum semantic chars (title+summary+tags+notes; not host/snippet) to allow categorize. */
 export const MIN_SEMANTIC_SUBSTANCE = 100;
@@ -147,6 +157,21 @@ export function assessCategorizationEligibility(
         enrichment?.lastErrorDetail?.trim() ||
         enrichment?.lastErrorCode?.trim() ||
         'fetch failed without usable body',
+      semanticLength,
+      allowSnippetFallback: false,
+      qualityTier: 'low',
+    };
+  }
+
+  // Embedded X media with almost no readable text — filter for manual review, not topic classify.
+  if (
+    enrichment?.status === 'ok' &&
+    isXBookmarkUrl(item.url) &&
+    isMediaPrimaryXContent(enrichment.snippet || '')
+  ) {
+    return {
+      eligible: false,
+      reason: 'embedded media without substantive text',
       semanticLength,
       allowSnippetFallback: false,
       qualityTier: 'low',

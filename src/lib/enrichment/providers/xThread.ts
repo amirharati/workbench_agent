@@ -1,5 +1,12 @@
 import { appendXLinkFollowBodies } from './xLinkFollow';
 import { collectTweetIds, quotedThreadOverlapsParent, shouldSkipSameAuthorQuoteThreadExpand } from '../xQuoteExpand';
+import {
+  formatVideoAnnotationLines,
+  photoEntries,
+  type FxMedia,
+  videoEntries,
+  xStatusVideoUrl,
+} from '../xMedia';
 
 const FX_THREAD_API = 'https://api.fxtwitter.com/2/thread';
 const FX_STATUS_V2_API = 'https://api.fxtwitter.com/2/status';
@@ -13,7 +20,7 @@ export type FxTweet = {
   quote?: FxTweet;
   /** Populated when quoted tweet is expanded to a multi-part thread. */
   quoteExpanded?: string;
-  media?: { photos?: unknown[] };
+  media?: FxMedia;
 };
 
 const MAX_ROOT_WALK_HOPS = 20;
@@ -26,25 +33,42 @@ function formatQuoteBlock(tweet: FxTweet): string {
     return `\n\n${tweet.quoteExpanded.trim()}`;
   }
   const q = tweet.quote;
-  if (!q?.text?.trim()) return '';
-  return [
-    '',
-    `> Quote from @${q.author?.screen_name || 'unknown'}:`,
-    `> ${q.text.trim()}`,
-  ].join('\n');
+  if (!q) return '';
+
+  const lines: string[] = [];
+  if (q.text?.trim()) {
+    lines.push(
+      '',
+      `> Quote from @${q.author?.screen_name || 'unknown'}:`,
+      `> ${q.text.trim()}`
+    );
+  }
+
+  const quoteVideos = videoEntries(q.media);
+  if (quoteVideos.length) {
+    lines.push(
+      ...formatVideoAnnotationLines(quoteVideos, {
+        statusUrl: xStatusVideoUrl(q.author?.screen_name, q.id),
+      })
+    );
+  }
+
+  const quotePhotos = photoEntries(q.media);
+  if (quotePhotos.length) {
+    for (const photo of quotePhotos) {
+      const url = photo.url?.trim();
+      if (url) lines.push('', `Image: ${url}`);
+    }
+    lines.push('', `(${quotePhotos.length} photo(s) attached)`);
+  }
+
+  return lines.join('\n');
 }
 
-type FxPhoto = { url?: string; type?: string };
-
 function photoUrls(tweet: FxTweet): string[] {
-  const photos = tweet.media?.photos;
-  if (!Array.isArray(photos)) return [];
-  const out: string[] = [];
-  for (const entry of photos) {
-    const url = (entry as FxPhoto)?.url?.trim();
-    if (url) out.push(url);
-  }
-  return out;
+  return photoEntries(tweet.media)
+    .map((entry) => entry.url?.trim())
+    .filter((url): url is string => Boolean(url));
 }
 
 function formatTweetBody(tweet: FxTweet): string {
@@ -52,6 +76,15 @@ function formatTweetBody(tweet: FxTweet): string {
   const text = tweet?.text?.trim();
   if (text) lines.push(text);
   lines.push(formatQuoteBlock(tweet));
+
+  const videos = videoEntries(tweet.media);
+  if (videos.length) {
+    lines.push(
+      ...formatVideoAnnotationLines(videos, {
+        statusUrl: xStatusVideoUrl(tweet.author?.screen_name, tweet.id),
+      })
+    );
+  }
 
   const urls = photoUrls(tweet);
   if (urls.length) {
@@ -213,7 +246,9 @@ async function enrichQuotedTweets(
 function isFxTweetUnavailable(tweet: FxTweet | null | undefined): boolean {
   if (!tweet) return true;
   const text = tweet.text?.trim() ?? '';
-  if (!text && !tweet.media?.photos?.length) return true;
+  const hasMedia =
+    photoEntries(tweet.media).length > 0 || videoEntries(tweet.media).length > 0;
+  if (!text && !hasMedia) return true;
   if (/tweet (is )?unavailable|this (post|tweet) (is )?unavailable|account.+suspended|doesn'?t exist/i.test(text)) {
     return true;
   }

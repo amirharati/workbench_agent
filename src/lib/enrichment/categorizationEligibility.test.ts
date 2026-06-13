@@ -80,6 +80,26 @@ function runTests(): void {
     enrich({ itemId: '3', status: 'ok', lastErrorDetail: undefined })
   );
   assert(okFetch.eligible, 'ok fetch with substantive title should remain eligible');
+
+  const imageOnlyBody = [
+    '# @HangukQuant',
+    '',
+    'Image: https://pbs.twimg.com/media/chart.jpg',
+    '(1 photo(s) attached)',
+  ].join('\n');
+  const mediaPrimary = assessCategorizationEligibility(
+    item({
+      id: '4',
+      title: 'HangukQuant chart',
+      url: 'https://x.com/HangukQuant/status/1',
+    }),
+    enrich({ itemId: '4', status: 'ok', snippet: imageOnlyBody, hasRawBody: true })
+  );
+  assert(!mediaPrimary.eligible, 'image-only X post should not be topic-eligible');
+  assert(
+    mediaPrimary.reason === 'embedded media without substantive text',
+    'media-primary eligibility reason'
+  );
 }
 
 runTests();
