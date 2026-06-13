@@ -116,7 +116,7 @@
       "id": "media-not-transcribed",
       "parentId": "link-quality",
       "name": "Media not transcribed",
-      "description": "Embedded X video/image with almost no readable text — keep for manual review; video not sent to AI.",
+      "description": "Embedded X video with almost no readable text — keep for manual review. Images use vision + normal classify.",
       "canonicalTags": ["media", "video", "attention", "manual-review"],
       "isRemovalCandidate": false,
       "fromInitialSeed": true

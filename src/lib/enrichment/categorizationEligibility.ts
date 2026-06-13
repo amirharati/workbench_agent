@@ -171,7 +171,7 @@ export function assessCategorizationEligibility(
   ) {
     return {
       eligible: false,
-      reason: 'embedded media without substantive text',
+      reason: 'embedded video without substantive text',
       semanticLength,
       allowSnippetFallback: false,
       qualityTier: 'low',

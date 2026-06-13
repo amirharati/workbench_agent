@@ -87,7 +87,7 @@ function runTests(): void {
     'Image: https://pbs.twimg.com/media/chart.jpg',
     '(1 photo(s) attached)',
   ].join('\n');
-  const mediaPrimary = assessCategorizationEligibility(
+  const imageOnly = assessCategorizationEligibility(
     item({
       id: '4',
       title: 'HangukQuant chart',
@@ -95,10 +95,26 @@ function runTests(): void {
     }),
     enrich({ itemId: '4', status: 'ok', snippet: imageOnlyBody, hasRawBody: true })
   );
-  assert(!mediaPrimary.eligible, 'image-only X post should not be topic-eligible');
+  assert(imageOnly.eligible, 'image-only X post remains topic-eligible (vision path)');
+
+  const videoOnlyBody = [
+    '# @someone',
+    '',
+    'Video: https://x.com/someone/status/1/video/1',
+    '(1:30 — not transcribed)',
+  ].join('\n');
+  const videoOnly = assessCategorizationEligibility(
+    item({
+      id: '5',
+      title: 'demo clip',
+      url: 'https://x.com/someone/status/1',
+    }),
+    enrich({ itemId: '5', status: 'ok', snippet: videoOnlyBody, hasRawBody: true })
+  );
+  assert(!videoOnly.eligible, 'video-only thin post should not be topic-eligible');
   assert(
-    mediaPrimary.reason === 'embedded media without substantive text',
-    'media-primary eligibility reason'
+    videoOnly.reason === 'embedded video without substantive text',
+    'video-only eligibility reason'
   );
 }
 

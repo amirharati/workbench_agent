@@ -11,21 +11,41 @@ const imageOnlyBody = [
   '(1 photo(s) attached)',
 ].join('\n');
 
+assert(
+  detectLinkQualityIssue({
+    title: 'HangukQuant chart',
+    url: 'https://x.com/HangukQuant/status/1',
+    enrichmentStatus: 'ok',
+    snippet: imageOnlyBody,
+  }) === null,
+  'image-only X post should not use media-not-transcribed bucket'
+);
+
+const videoOnlyBody = [
+  '# @someone',
+  '',
+  'Video: https://x.com/someone/status/1/video/1',
+  '(1:30 — not transcribed)',
+].join('\n');
+
 const lq = detectLinkQualityIssue({
-  title: 'HangukQuant chart',
-  url: 'https://x.com/HangukQuant/status/1',
+  title: 'demo clip',
+  url: 'https://x.com/someone/status/1',
   enrichmentStatus: 'ok',
-  snippet: imageOnlyBody,
+  snippet: videoOnlyBody,
 });
 assert(
   lq?.leafId === LINK_QUALITY_LEAF_IDS.MEDIA_NOT_TRANSCRIBED,
-  'media-primary link quality bucket'
+  'video-only link quality bucket'
 );
 
 const philfungBody = [
   '# @philfung',
   '',
-  'With @Cline 3.4, install MCP servers with one click via MCP Marketplace.',
+  'With @Cline 3.4, install MCP servers with one click via MCP Marketplace. MCP is super cool - it lets you read SQLite databases, browse local files, automate with Playwright.',
+  '',
+  '> Quote from @sdrzn:',
+  '> Cline v3.4 is out with MCP Marketplace and mermaid diagrams in Plan mode.',
   '',
   'Video: https://x.com/sdrzn/status/1/video/1',
   '(2:05 — not transcribed)',

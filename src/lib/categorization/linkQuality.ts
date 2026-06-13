@@ -159,9 +159,8 @@ export const LINK_QUALITY_SEED_LEAVES: LinkQualitySeedLeaf[] = [
     id: LINK_QUALITY_LEAF_IDS.MEDIA_NOT_TRANSCRIBED,
     parentId: LINK_QUALITY_PARENT_ID,
     name: 'Media not transcribed',
-    description:
-      'X/social bookmark where fetch found embedded video or image but almost no readable text. ' +
-      'Not removal — user should review manually; video is not sent to AI.',
+      description:
+      'X bookmark with embedded **video** and almost no readable text. Images use vision + normal classify. Not removal.',
     canonicalTags: ['media', 'video', 'attention', 'manual-review'],
     isRemovalCandidate: false,
   },
@@ -386,7 +385,7 @@ function detectMediaNotTranscribed(input: LinkQualityDetectInput): LinkQualityDe
   if (!isMediaPrimaryXContent(body)) return null;
   return {
     leafId: LINK_QUALITY_LEAF_IDS.MEDIA_NOT_TRANSCRIBED,
-    reason: 'Embedded video/image without substantive text — review manually',
+    reason: 'Embedded video without substantive text — review manually',
   };
 }
 

@@ -43,7 +43,16 @@ const imageOnlyBody = [
   '(1 photo(s) attached)',
 ].join('\n');
 
-assert(isMediaPrimaryXContent(imageOnlyBody), 'image-only is media-primary');
+assert(!isMediaPrimaryXContent(imageOnlyBody), 'image-only is not video-primary');
+
+const videoOnlyBody = [
+  '# @someone',
+  '',
+  'Video: https://x.com/someone/status/1/video/1',
+  'Thumbnail: https://pbs.twimg.com/t.jpg',
+  '(1:30 — not transcribed)',
+].join('\n');
+assert(isMediaPrimaryXContent(videoOnlyBody), 'video-only thin body is video-primary');
 
 const quoteVideos = videoEntries({
   videos: [
@@ -64,11 +73,11 @@ assert(quoteVideoMd.includes('Video: https://x.com/sdrzn/status/2/video/1'), 'qu
 assert(quoteVideoMd.includes('Thumbnail:'), 'quote thumbnail lines');
 
 const mechanical = buildMediaPrimaryMechanicalSummary(
-  imageOnlyBody,
-  'HangukQuant: chart handout',
-  'https://x.com/HangukQuant/status/1'
+  videoOnlyBody,
+  'Someone demo clip',
+  'https://x.com/someone/status/1'
 );
-assert(mechanical.summary.includes('not transcribed'), 'mechanical summary');
+assert(mechanical.summary.includes('embedded video'), 'mechanical summary for video');
 assert(mechanical.tags.includes('media-not-transcribed'), 'mechanical tags');
 
 console.log('xMedia.test.ts: all tests passed');

@@ -107,22 +107,34 @@ export function substantiveXContentLength(body: string): number {
   return substantiveBodyLength(stripXMediaAnnotationLines(body));
 }
 
+export function hasEmbeddedVideoInXContent(body: string): boolean {
+  const raw = body.trim();
+  if (!raw) return false;
+  return (
+    /^\s*Video:\s*https?:\/\//im.test(raw) ||
+    /\bvideo\(s\)\s+attached\b/i.test(raw)
+  );
+}
+
 export function hasEmbeddedMediaInXContent(body: string): boolean {
   const raw = body.trim();
   if (!raw) return false;
   return (
-    MEDIA_ANNOTATION_LINE.test(raw) ||
-    /\bvideo\(s\)\s+attached\b/i.test(raw) ||
+    hasEmbeddedVideoInXContent(raw) ||
+    /^\s*Image:\s*https?:\/\//im.test(raw) ||
     /\bphoto\(s\)\s+attached\b/i.test(raw) ||
     /\bimage\(s\)\s+attached\b/i.test(raw)
   );
 }
 
-/** Track B — alive fetch with embedded media but almost no readable text. */
+/** Track B — thin body with embedded **video** only (images use vision + normal classify). */
 export function isMediaPrimaryXContent(body: string): boolean {
-  if (!hasEmbeddedMediaInXContent(body)) return false;
+  if (!hasEmbeddedVideoInXContent(body)) return false;
   return substantiveXContentLength(body) < MEDIA_PRIMARY_MAX_SUBSTANTIVE;
 }
+
+/** @deprecated alias */
+export const isVideoPrimaryXContent = isMediaPrimaryXContent;
 
 export function buildMediaPrimaryMechanicalSummary(
   body: string,
@@ -130,20 +142,14 @@ export function buildMediaPrimaryMechanicalSummary(
   url?: string
 ): { summary: string; keyPoints: string[]; tags: string[] } {
   const author = body.match(/^#\s*@([A-Za-z0-9_]+)/m)?.[1];
-  const videoLine = body.match(/^Video:\s*(https?:\/\/\S+)/im)?.[1];
   const duration = body.match(/\((\d+:\d{2}|\d+s)\s*[—-]/i)?.[1];
-  const hasImage = /^Image:\s*https?:\/\//im.test(body);
-  const hasVideo = Boolean(videoLine) || /\bvideo\(s\)\s+attached\b/i.test(body);
+  const videoLine = body.match(/^Video:\s*(https?:\/\/\S+)/im)?.[1];
 
   const parts: string[] = [];
   if (author) parts.push(`@${author}`);
-  if (hasVideo) {
-    parts.push(duration ? `posted an embedded video (${duration})` : 'posted an embedded video');
-  } else if (hasImage) {
-    parts.push('posted an image-only tweet');
-  } else {
-    parts.push('posted embedded media');
-  }
+  parts.push(
+    duration ? `posted an embedded video (${duration})` : 'posted an embedded video'
+  );
   parts.push('not transcribed — review manually');
 
   const titleHint = title?.trim();
@@ -153,7 +159,7 @@ export function buildMediaPrimaryMechanicalSummary(
 
   const summary = parts.join('. ').replace(/\.\s*\./g, '.') + '.';
   const keyPoints = [
-    hasVideo ? 'Embedded X video (not transcribed)' : 'Embedded X media (not transcribed)',
+    'Embedded X video (not transcribed)',
     'Queued for manual review',
   ];
   if (videoLine) keyPoints.push(videoLine);
@@ -162,6 +168,6 @@ export function buildMediaPrimaryMechanicalSummary(
   return {
     summary: summary.slice(0, 2000),
     keyPoints: keyPoints.slice(0, 6),
-    tags: ['x', hasVideo ? 'video' : 'image', 'media-not-transcribed'],
+    tags: ['x', 'video', 'media-not-transcribed'],
   };
 }
