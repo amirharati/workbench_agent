@@ -91,7 +91,32 @@ export const localProvider: FetchProvider = {
         );
       }
 
+      // PDFs (any host) can't be parsed as HTML here — let the chain fall to Jina's reader.
+      const contentType = res.headers.get('content-type')?.toLowerCase() ?? '';
+      if (contentType.includes('application/pdf')) {
+        return withRedirect(
+          {
+            ok: false,
+            errorCode: 'parse_empty',
+            error: 'PDF document — extracting via reader',
+          },
+          requestedUrl,
+          finalUrl
+        );
+      }
+
       const html = await res.text();
+      if (html.slice(0, 1024).includes('%PDF-')) {
+        return withRedirect(
+          {
+            ok: false,
+            errorCode: 'parse_empty',
+            error: 'PDF document — extracting via reader',
+          },
+          requestedUrl,
+          finalUrl
+        );
+      }
       const parsed = htmlToMarkdown(html, url);
       if (!parsed) {
         return withRedirect(

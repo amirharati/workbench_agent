@@ -5,6 +5,7 @@ import { ensureItemEmbedding } from './embedItemSignal';
 import type { ItemEnrichment } from './types';
 
 export async function getEnrichment(itemId: string): Promise<ItemEnrichment | undefined> {
+  await ensurePipelineHydrated();
   const db = await getDB();
   return db.get('item_enrichment', itemId);
 }

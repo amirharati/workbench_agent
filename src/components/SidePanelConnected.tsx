@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { addItemWithMerge, Collection, Item, Project, updateItem, normalizeBookmarkUrl } from '../lib/db';
 import { preferTabSessionForDigest } from '../lib/enrichment/xFetchHeuristics';
-import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from '../lib/tabUrlCapture';
+import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
 import { usePipelineProgress } from './dashboard/PipelineProgressProvider';
 import { SidePanelView } from './SidePanelView';
 
@@ -45,6 +45,11 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
     statusClearRef.current = setTimeout(() => setStatus(''), holdMs);
   }, []);
 
+  const clearDigestPanel = useCallback(() => {
+    setDigestItemId(null);
+    setDigestStatus('');
+  }, []);
+
   const runDigestWithModal = useCallback(
     async (
       itemId: string,
@@ -63,6 +68,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           preferTabSession: opts?.preferTabSession,
           tabId: opts?.tabId,
           itemLabel,
+          forceEnrich: true,
         });
         setDigestStatus(result.message);
         return result;
@@ -117,20 +123,19 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
   const handleCreateItem = useCallback(
     async (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => {
       try {
-        let saveUrl = (data.url || '').trim();
+        const saveUrl = (data.url || '').trim();
         let tabId: number | undefined;
         let source: Item['source'] = 'manual';
         let title = data.title;
 
         const ctx = await getActiveTabBookmarkContext();
-        if (ctx && saveUrl) {
+        // Only treat this as the live tab when the typed/pasted URL matches the
+        // active tab — otherwise we must not overwrite a pasted URL with the tab's href.
+        if (ctx && saveUrl && normalizeBookmarkUrl(saveUrl) === normalizeBookmarkUrl(ctx.url)) {
           tabId = ctx.tabId;
-          saveUrl = await resolveTabBookmarkUrl(ctx.tabId, saveUrl);
+          source = 'tab';
           if (!title.trim() || title.trim() === data.url?.trim()) {
             title = ctx.title || title;
-          }
-          if (normalizeBookmarkUrl(saveUrl) === normalizeBookmarkUrl(ctx.url)) {
-            source = 'tab';
           }
         }
 
@@ -223,6 +228,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       digestItemId={digestItemId}
       digestStatus={digestStatus}
       digestRunning={pipeline.isRunning}
+      onHostTabUrlChange={clearDigestPanel}
     />
   );
 };

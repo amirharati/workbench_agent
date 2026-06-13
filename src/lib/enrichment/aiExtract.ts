@@ -60,12 +60,37 @@ function parseKeyPoints(value: unknown): string[] | undefined {
   return points.length ? points : undefined;
 }
 
+/**
+ * LLMs often emit LaTeX/Windows paths inside JSON strings with invalid escapes
+ * (e.g. `$10^6 M_\odot$`, `\rm`). Double any backslash that is not a valid JSON
+ * escape so `JSON.parse` succeeds without mangling the content.
+ */
+export function repairInvalidJsonEscapes(input: string): string {
+  return input.replace(/\\(.)/g, (match, next: string) => {
+    if ('"\\/bfnrtu'.includes(next)) return match;
+    return `\\\\${next}`;
+  });
+}
+
+function tryParseJsonObject(candidate: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(candidate) as Record<string, unknown>;
+  } catch {
+    try {
+      return JSON.parse(repairInvalidJsonEscapes(candidate)) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+}
+
 export function parseJsonResponse(text: string): EnrichmentAIExtract | null {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = (fenced ? fenced[1] : trimmed).trim();
-  try {
-    const parsed = JSON.parse(candidate) as Record<string, unknown>;
+  {
+    const parsed = tryParseJsonObject(candidate);
+    if (!parsed) return null;
     const summary =
       typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, SUMMARY_MAX) : undefined;
     const improvedTitle =
@@ -93,8 +118,6 @@ export function parseJsonResponse(text: string): EnrichmentAIExtract | null {
       pageMatchesBookmark,
       redirectNote: redirectNote || undefined,
     };
-  } catch {
-    return null;
   }
 }
 

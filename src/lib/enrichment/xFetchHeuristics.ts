@@ -1,4 +1,4 @@
-import { normalizeHost } from './urlPolicy';
+import { normalizeHost, isYoutubeHost } from './urlPolicy';
 
 const X_TAB_CHROME_MARKERS: RegExp[] = [
   /post\s*your\s*reply/i,
@@ -48,7 +48,9 @@ export function isXStatusUrl(url: string): boolean {
  */
 export function preferTabSessionForDigest(url: string): boolean {
   if (!url.trim()) return false;
-  return !isXStatusUrl(url);
+  if (isXStatusUrl(url)) return false;
+  if (isYoutubeHost(url)) return false;
+  return true;
 }
 
 export function isSyndicationFetchSourceId(fetchSourceId?: string): boolean {
@@ -60,9 +62,10 @@ export function looksLikeSyndicationXMarkdown(markdown: string): boolean {
   const raw = rawBody(markdown);
   if (!raw) return false;
   if (/^##\s*\d+\/\d+/m.test(raw)) return true;
-  if (/^#\s*@[\w]+\s+—\s+thread\s*\(\d+\s+parts\)/m.test(raw)) return true;
+  if (/^#\s*@[\w]+\s+—\s+(?:thread|conversation)\s*\(\d+\s+parts\)/m.test(raw)) return true;
   if (/^###\s*Quoted thread from @/m.test(raw)) return true;
   if (/^## Linked:/m.test(raw)) return true;
+  if (/^## Replying to @/m.test(raw)) return true;
   if (/^## Image content/m.test(raw)) return true;
   // Single-tweet FxTwitter body — not tab's placeholder `# @unknown`
   const header = raw.match(/^#\s*@([\w]+)\s*$/m);

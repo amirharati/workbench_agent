@@ -549,15 +549,25 @@ export const addItemWithMerge = async (
       favicon = item.favicon;
     }
 
+    // Re-saving a URL that was previously trashed must restore it (un-delete),
+    // otherwise the item stays in the trash and never shows up as an active
+    // bookmark even though the save "succeeded".
+    const wasTrashed = existing.deletedAt != null;
+
     store.putItem({
       ...existing,
       title,
       favicon,
       collectionIds: newCollectionIds,
       placements,
+      deletedAt: undefined,
       updated_at: now
     });
-    
+
+    if (wasTrashed || store.getTrashEntry(dedupeKey)) {
+      store.deleteTrashEntry(dedupeKey);
+    }
+
     notifyDataChanged('item.update');
     return {
       itemId: existing.id,

@@ -23,6 +23,7 @@ interface SidePanelViewProps {
   digestItemId?: string | null;
   digestStatus?: string;
   digestRunning?: boolean;
+  onHostTabUrlChange?: () => void;
 }
 
 function itemPlacementCount(item: Item): number {
@@ -100,6 +101,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   digestItemId,
   digestStatus,
   digestRunning = false,
+  onHostTabUrlChange,
 }) => {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
@@ -472,6 +474,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       setSelectedPlacementCollectionId(null);
       setNotes('');
       syncedItemTitleRef.current = '';
+      onHostTabUrlChange?.();
     }
 
     const trimmedTitle = tabTitle.trim() || trimmedUrl;
@@ -479,7 +482,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     setUrl(trimmedUrl);
     setTitle(trimmedTitle);
     syncedItemTitleRef.current = trimmedTitle;
-  }, []);
+  }, [onHostTabUrlChange]);
 
   const prefillFromHostTab = useCallback(async () => {
     const seq = ++prefillSeqRef.current;

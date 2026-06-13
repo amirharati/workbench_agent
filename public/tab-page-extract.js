@@ -300,7 +300,80 @@
     return false;
   }
 
+  function isVideoWatchPage() {
+    var host = location.hostname.replace(/^www\./, '').toLowerCase();
+    if (host === 'youtu.be') return true;
+    if (host === 'youtube.com' || host === 'm.youtube.com') {
+      return /\/watch\b/.test(location.pathname) || location.search.indexOf('v=') >= 0;
+    }
+    if (host === 'vimeo.com') {
+      return /^\/\d+/.test(location.pathname) || /\/video\//.test(location.pathname);
+    }
+    if (host === 'twitch.tv') {
+      return /\/videos\//.test(location.pathname) || /\/clip\//.test(location.pathname);
+    }
+    return false;
+  }
+
+  function extractVideoPage() {
+    var title =
+      cleanText(
+        (
+          document.querySelector(
+            'h1.ytd-watch-metadata, h1.ytd-video-primary-info-renderer, #title h1, h1[data-testid="video-title"], h1'
+          ) || {}
+        ).innerText
+      ) ||
+      metaContent('og:title') ||
+      metaContent('twitter:title') ||
+      cleanText(document.title);
+    title = title.replace(/\s*-\s*(?:YouTube|Vimeo|Twitch|Watch|Video)\s*$/i, '');
+
+    var channel = cleanText(
+      (
+        document.querySelector(
+          '#channel-name a, ytd-channel-name a, #owner #channel-name a, ytd-video-owner-renderer a, [data-testid="channel-name"], a[href*="/@" i], a[href*="/channel/"]'
+        ) || {}
+      ).innerText ||
+        (document.querySelector('meta[name="author"]') || {}).getAttribute('content')
+    );
+
+    var metaLine = cleanText(
+      (
+        document.querySelector(
+          'ytd-video-view-count-renderer, #info-container span.view-count, #info-strings yt-formatted-string, [data-testid="view-count"]'
+        ) || {}
+      ).innerText
+    );
+
+    var description =
+      metaContent('og:description') ||
+      metaContent('description') ||
+      metaContent('twitter:description');
+    var descEl = document.querySelector(
+      'ytd-text-inline-expander #snippets, ytd-expandable-video-description-body #snippets, #description-inline-expander yt-attributed-string, #description yt-attributed-string, ytd-structured-description-content-renderer, [data-testid="description"], .description, #watch-description'
+    );
+    if (descEl) {
+      var domDesc = cleanText(descEl.innerText || descEl.textContent);
+      if (domDesc.length > (description || '').length) description = domDesc;
+    }
+
+    var lines = [];
+    if (title) lines.push('# ' + title);
+    if (channel) lines.push('Channel: ' + channel);
+    if (metaLine) lines.push(metaLine);
+    if (description && description.length >= 20) {
+      lines.push('', '## Description', '', description);
+    }
+
+    var markdown = lines.join('\n').trim();
+    if (!description && markdown.length < MIN_MARKDOWN_CHARS) return null;
+    if (markdown.length < 40 && !(description && description.length >= 20)) return null;
+    return { ok: true, title: title || document.title, markdown: markdown };
+  }
+
   function extractListingPage() {
+    if (isVideoWatchPage()) return null;
     var items = collectListingItems();
     if (!shouldPreferListing(items)) return null;
     if (items.length < 2) return null;
@@ -546,6 +619,10 @@
       if (localFile) return localFile;
       if (isXHost()) return extractX();
       if (isGmailHost()) return extractGmail();
+      if (isVideoWatchPage()) {
+        var video = extractVideoPage();
+        if (video) return video;
+      }
       var listing = extractListingPage();
       if (listing) return listing;
       return extractGeneric();

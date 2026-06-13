@@ -3,6 +3,7 @@ import type { AISettings } from '../ai/types';
 import type { AICallAuditHook } from '../ai/callAudit';
 import { runAICompletion } from '../ai/client';
 import { loadAISettings } from '../ai/settings';
+import { repairInvalidJsonEscapes } from './aiExtract';
 import type { RedirectContext } from './fetchRedirect';
 import { shouldRunRedirectAiVerdict } from './fetchRedirect';
 
@@ -92,7 +93,12 @@ export function parseRedirectVerdictResponse(text: string): RedirectAiVerdictDat
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = (fenced ? fenced[1] : trimmed).trim();
   try {
-    const parsed = JSON.parse(candidate) as Record<string, unknown>;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(candidate) as Record<string, unknown>;
+    } catch {
+      parsed = JSON.parse(repairInvalidJsonEscapes(candidate)) as Record<string, unknown>;
+    }
     if (typeof parsed.pageMatchesBookmark !== 'boolean') return null;
     const kind = String(parsed.fetchedPageKind ?? 'other').toLowerCase();
     const fetchedPageKind = (

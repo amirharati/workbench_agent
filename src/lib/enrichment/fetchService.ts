@@ -28,6 +28,7 @@ import {
   explainHardFetchFailure,
   explainSoftFetchSuspect,
   isFetchBodyUsable,
+  isVideoTabBodyUsable,
   stripProviderWrapper,
 } from './fetchQuality';
 import {
@@ -192,7 +193,10 @@ async function applyItemTier2Updates(
   const meta = { ...(item.metadata || {}) };
 
   const titleCandidate = ai?.improvedTitle?.trim() || parsedTitle?.trim();
-  if (titleCandidate && shouldUpgradeBookmarkTitle(item.title, titleCandidate, item.url)) {
+  if (
+    titleCandidate &&
+    shouldUpgradeBookmarkTitle(item.title, titleCandidate, item.url, { afterEnrich: true })
+  ) {
     updates.title = titleCandidate;
     applied.push('title');
   }
@@ -453,8 +457,14 @@ async function tryOpenTabFetch(
 
 function acceptTabFetchResult(result: FetchProviderResult, url: string): boolean {
   if (!result.ok || !result.markdown?.trim()) return false;
-  if (classifySourceKind(url) !== 'x') return true;
-  return isXTabFetchAcceptable(stripProviderWrapper(result.markdown), url);
+  const clean = stripProviderWrapper(result.markdown);
+  if (classifySourceKind(url) === 'x') {
+    return isXTabFetchAcceptable(clean, url);
+  }
+  if (classifySourceKind(url) === 'video') {
+    return isVideoTabBodyUsable(clean, url, result.title);
+  }
+  return true;
 }
 
 function headlessSyndicationIsGoodEnough(
@@ -566,6 +576,7 @@ async function resolveItemFetch(
   try {
     const debug = options?.debug;
     const isXStatus = classifySourceKind(item.url) === 'x';
+    const isVideo = classifySourceKind(item.url) === 'video';
     const wantsTab =
       options?.tabSessionOnly ||
       options?.preferTabSession ||
@@ -574,6 +585,7 @@ async function resolveItemFetch(
       wantsTab &&
       !options?.tabSessionOnly &&
       !isXStatus &&
+      !isVideo &&
       (options?.preferTabSession || prefersBrowserTabFirst(item.url));
 
     if (options?.tabSessionOnly) {
@@ -610,7 +622,7 @@ async function resolveItemFetch(
       if (skipHeadlessAfterTabMiss(item.url)) {
         return tabAttempt.error ?? tabSessionEmptyError();
       }
-    } else if (!isXStatus) {
+    } else if (!isXStatus && classifySourceKind(item.url) !== 'video') {
       debug?.phase('tab_quick_start');
       const quickTab = await runTabFetch(false);
       debug?.phase(
@@ -618,9 +630,15 @@ async function resolveItemFetch(
         !!quickTab.result?.ok,
         quickTab.result?.fetchSourceId ?? quickTab.error?.fetchSourceId
       );
-      if (quickTab.result) return quickTab.result;
+      if (quickTab.result && acceptTabFetchResult(quickTab.result, item.url)) {
+        return quickTab.result;
+      }
     } else {
-      debug?.phase('tab_quick_skipped', true, 'x_syndication_first');
+      debug?.phase(
+        'tab_quick_skipped',
+        true,
+        isXStatus ? 'x_syndication_first' : 'video_jina_first'
+      );
     }
 
     debug?.phase('headless_start');

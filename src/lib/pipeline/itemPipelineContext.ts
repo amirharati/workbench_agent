@@ -1,4 +1,4 @@
-import { getDB, type Item } from '../db';
+import { ensurePipelineHydrated, getDB, type Item } from '../db';
 import type { ItemEnrichment, EnrichmentReference } from '../enrichment/types';
 import { assessCategorizationEligibility } from '../enrichment/categorizationEligibility';
 import { getAiCategories } from '../categorization';
@@ -353,6 +353,7 @@ export function formatPipelineStageHint(ctx: ItemPipelineContext): string | unde
 }
 
 export async function loadItemPipelineContext(itemId: string): Promise<ItemPipelineContext | null> {
+  await ensurePipelineHydrated();
   const db = await getDB();
   const item = await db.get('items', itemId);
   if (!item) return null;

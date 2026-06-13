@@ -1,6 +1,33 @@
 /** Minimal tweet shape for quote-overlap checks (no provider imports). */
 export type TweetIdCarrier = { id?: string };
 
+export type TweetAuthorCarrier = TweetIdCarrier & {
+  author?: { screen_name?: string };
+};
+
+function authorScreenKey(screenName: string | undefined): string {
+  return (screenName || '').replace(/^@/, '').toLowerCase();
+}
+
+/**
+ * FxTwitter /2/thread on a reply can return the parent author's chain. Keep only the
+ * bookmarked author's tweets so expansion is anchored on the saved status.
+ */
+export function filterThreadToBookmarkAuthor<T extends TweetAuthorCarrier>(
+  thread: T[],
+  bookmarkUser: string,
+  anchorStatusId: string
+): T[] {
+  if (!thread.length) return thread;
+  const authorKey = authorScreenKey(bookmarkUser);
+  const anchor = thread.find((t) => String(t.id) === anchorStatusId);
+  if (!anchor) return [];
+
+  const authored = thread.filter((t) => authorScreenKey(t.author?.screen_name) === authorKey);
+  if (authored.length > 0) return authored;
+  return [anchor];
+}
+
 export function collectTweetIds(thread: TweetIdCarrier[]): Set<string> {
   const ids = new Set<string>();
   for (const t of thread) {

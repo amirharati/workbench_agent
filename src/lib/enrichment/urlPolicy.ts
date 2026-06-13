@@ -141,6 +141,15 @@ export function prefersBrowserTabFirst(url: string): boolean {
 
 /** After tab paths fail, headless will not help for these hosts. */
 export function skipHeadlessAfterTabMiss(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    // Docs/Sheets tab scrape is often empty — allow Jina/local fallback.
+    if (host.includes('docs.google.com') || host.includes('drive.google.com')) {
+      return false;
+    }
+  } catch {
+    /* fall through */
+  }
   return prefersBrowserTabFirst(url);
 }
 
@@ -198,6 +207,11 @@ export function isShortLinkHost(url: string): boolean {
 export function isXHost(url: string): boolean {
   const host = normalizeHost(url);
   return host === 'x.com' || host === 'twitter.com' || host === 't.co';
+}
+
+export function isYoutubeHost(url: string): boolean {
+  const host = normalizeHost(url);
+  return host.includes('youtube.com') || host === 'youtu.be';
 }
 
 /** Strip /photo/1, /video/1, etc. — keep canonical status URL for APIs. */

@@ -70,5 +70,9 @@ console.assert(
   preferTabSessionForDigest('https://seekingalpha.com/article/123'),
   'side panel keeps tab for articles'
 );
+console.assert(
+  !preferTabSessionForDigest('https://www.youtube.com/watch?v=abc'),
+  'side panel skips tab for youtube'
+);
 
 console.log('xFetchRouting.test.ts: all assertions passed');

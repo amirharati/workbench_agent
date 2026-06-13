@@ -125,6 +125,9 @@ function isGitHubMarketingShell(body: string, url?: string): boolean {
 
 function isYoutubeJinaChrome(body: string, url?: string): boolean {
   if (!url || classifySourceKind(url) !== 'video') return false;
+  if (/##\s*Description\s*\n+[\s\S]{40,}/i.test(body)) return false;
+  if (/##\s*(?:About|Synopsis)\s*\n+[\s\S]{40,}/i.test(body)) return false;
+  if (/##\s*Transcript\s*\n+[\s\S]{80,}/i.test(body)) return false;
 
   const hasChromeHeader = /YouTube\s+Back\s+\[!/i.test(body) || /-\s*YouTube\s+Back\s+\[!/i.test(body);
   if (hasChromeHeader && body.length < 3500) return true;
@@ -136,6 +139,65 @@ function isYoutubeJinaChrome(body: string, url?: string): boolean {
   }
   return false;
 }
+
+/** Tab-session video scrape — reject UI shell so headless Jina can run. */
+function videoTabHasSubstantiveContent(raw: string): boolean {
+  for (const name of ['Description', 'About', 'Synopsis', 'Transcript']) {
+    const match = raw.match(
+      new RegExp(`##\\s*${name}\\s*\\n+([\\s\\S]*?)(?=\\n##|\\n#\\s|$)`, 'i')
+    );
+    const min = name === 'Transcript' ? 80 : 40;
+    if ((match?.[1]?.trim().length ?? 0) >= min) return true;
+  }
+  const prose = raw
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      return (
+        t &&
+        !t.startsWith('#') &&
+        !/^Items on this page/i.test(t) &&
+        !/^\d+[\d,]*\s+views/i.test(t) &&
+        t.length > 40
+      );
+    })
+    .join(' ')
+    .trim();
+  return prose.length >= 200;
+}
+
+function isVideoListingTabScrape(raw: string): boolean {
+  return /^#\s+.+\n+Items on this page \(\d+\):/m.test(raw.trim());
+}
+
+export function isVideoTabBodyUsable(
+  markdown: string,
+  url: string,
+  title?: string
+): boolean {
+  if (classifySourceKind(url) !== 'video') return true;
+  const raw = rawBody(markdown);
+  if (isVideoListingTabScrape(raw)) return false;
+  const ctx: FetchQualityContext = { url, title };
+  if (explainHardFetchFailure(raw, ctx)) return false;
+  if (!isFetchBodyUsable(raw, ENRICHMENT_DEFAULTS.minUsefulSnippetChars, ctx)) return false;
+  if (!videoTabHasSubstantiveContent(raw)) return false;
+  if (/^#\s*(?:YouTube|Vimeo|Twitch)\s*$/im.test(raw.split('\n')[0]?.trim() || '')) {
+    const prose = raw
+      .split('\n')
+      .filter((l) => {
+        const t = l.trim();
+        return t && !t.startsWith('#') && !/^##\s/.test(t);
+      })
+      .join(' ')
+      .trim();
+    if (prose.length < 50) return false;
+  }
+  return true;
+}
+
+/** @deprecated use isVideoTabBodyUsable */
+export const isYoutubeTabBodyUsable = isVideoTabBodyUsable;
 
 function isLoginChromeDominant(body: string, url?: string): boolean {
   const host = url ? normalizeHost(url) : '';

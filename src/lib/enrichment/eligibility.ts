@@ -46,6 +46,24 @@ const SITE_SUFFIX_RE =
 
 const BARE_SUBREDDIT_RE = /^r\/[\w-]+$/i;
 
+function normalizeTitleCompare(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Browser tab title noise — not a user-crafted bookmark label. */
+export function titleLooksLikeBrowserChrome(title: string): boolean {
+  const t = title.trim();
+  if (!t) return false;
+  if (/^\(\d+\)\s/.test(t)) return true;
+  if (SITE_SUFFIX_RE.test(t)) return true;
+  if (/\bhttps?:\/\//i.test(t)) return true;
+  if (/t\.co\/\w+/i.test(t)) return true;
+  if (t.includes('\n')) return true;
+  if (/\s+on X:/i.test(t)) return true;
+  if (/\s+\/\s*X\s*$/i.test(t)) return true;
+  return false;
+}
+
 function stripSiteSuffix(title: string): string {
   return title.replace(SITE_SUFFIX_RE, '').trim();
 }
@@ -114,7 +132,8 @@ export function titleLooksWeak(title: string, url: string): boolean {
 export function shouldUpgradeBookmarkTitle(
   existingTitle: string | undefined,
   candidateTitle: string | undefined,
-  url: string
+  url: string,
+  options?: { afterEnrich?: boolean }
 ): boolean {
   const candidate = candidateTitle?.trim();
   if (!candidate || candidate.length < 6) return false;
@@ -127,10 +146,18 @@ export function shouldUpgradeBookmarkTitle(
   if (!current) return true;
   if (candidate === current) return false;
 
-  if (titleLooksWeak(current, url)) return true;
-
   const currentCore = stripSiteSuffix(current);
   const candidateCore = stripSiteSuffix(candidate);
+
+  if (titleLooksWeak(current, url)) return true;
+  if (titleLooksLikeBrowserChrome(current)) return true;
+
+  if (options?.afterEnrich && candidateCore.length >= 8) {
+    if (normalizeTitleCompare(currentCore) !== normalizeTitleCompare(candidateCore)) {
+      return true;
+    }
+  }
+
   if (
     SITE_SUFFIX_RE.test(current) &&
     !SITE_SUFFIX_RE.test(candidate) &&
@@ -145,10 +172,6 @@ export function shouldUpgradeBookmarkTitle(
   }
 
   if (titleMatchesUrlSlug(current, url) && candidateCore.length >= 14) {
-    return true;
-  }
-
-  if (classifySourceKind(url) === 'x' && current.length > 80) {
     return true;
   }
 

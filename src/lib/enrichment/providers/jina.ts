@@ -2,6 +2,7 @@ import type { EnrichmentErrorCode } from '../types';
 import { classifySourceKind } from '../eligibility';
 import { describeHttpFetchError, httpStatusToErrorCode } from '../errorMessages';
 import { cleanXMarkdown, detectFetchFailure, stripProviderWrapper } from '../fetchQuality';
+import { normalizeVideoMarkdown } from '../videoExtract';
 import type { FetchProvider } from './types';
 
 const JINA_BASE = 'https://r.jina.ai/';
@@ -33,6 +34,9 @@ export const jinaProvider: FetchProvider = {
       let text = stripProviderWrapper(await res.text());
       if (classifySourceKind(url) === 'x') {
         text = cleanXMarkdown(text);
+      } else if (classifySourceKind(url) === 'video') {
+        const normalized = normalizeVideoMarkdown(text);
+        if (normalized) text = normalized;
       }
       const title = extractTitleFromMarkdown(text);
       return {

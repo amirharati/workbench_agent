@@ -1,5 +1,6 @@
 import {
   collectTweetIds,
+  filterThreadToBookmarkAuthor,
   quotedThreadOverlapsParent,
   shouldSkipSameAuthorQuoteThreadExpand,
 } from './xQuoteExpand';
@@ -32,5 +33,15 @@ assert(
 
 const ids = collectTweetIds(parent);
 assert(ids.has('100') && ids.has('101') && ids.size === 2, 'collectTweetIds');
+
+const mixed = [
+  { id: '100', author: { screen_name: 'higgsfield' }, text: 'OP' },
+  { id: '200', author: { screen_name: 'sebuzdugan' }, text: 'reply' },
+];
+const replyOnly = filterThreadToBookmarkAuthor(mixed, 'sebuzdugan', '200');
+assert(replyOnly.length === 1 && replyOnly[0].id === '200', 'reply bookmark filters to author');
+
+const opOnly = filterThreadToBookmarkAuthor(mixed, 'sebuzdugan', '999');
+assert(opOnly.length === 0, 'missing anchor does not return wrong-author OP');
 
 console.log('xThread.quote.test.ts: ok');
