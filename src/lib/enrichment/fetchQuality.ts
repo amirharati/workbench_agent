@@ -169,16 +169,69 @@ function rawBody(markdown: string): string {
   return stripProviderWrapper(markdown).trim();
 }
 
+/** PDF bytes decoded as text (link-follow / local fetch). */
+export function isPdfBinaryBody(body: string): boolean {
+  const raw = rawBody(body);
+  if (!raw) return false;
+  const head = raw.slice(0, 512);
+  return /%PDF-\d/i.test(head);
+}
+
+/** Short HTTP error shells (404, page not found). */
+export function isHttpErrorPageBody(body: string, title?: string): boolean {
+  const raw = rawBody(body);
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  const titleLower = title?.trim().toLowerCase() ?? '';
+
+  if (/^404\b/.test(titleLower) || titleLower === 'page not found' || titleLower === 'not found') {
+    return true;
+  }
+
+  if (raw.length > 4000) return false;
+
+  if (/^#\s*404\b/m.test(raw)) return true;
+  if (/\b404\b[^\n]{0,80}page not found/i.test(raw)) return true;
+  if (/^page not found$/im.test(raw)) return true;
+  if (lower.includes('the page you are looking for') && lower.includes('not found')) return true;
+  if (lower.includes('this page doesn') && lower.includes('exist')) return true;
+
+  return false;
+}
+
+/** Prefer arxiv abstract HTML over PDF stream for link-follow. */
+export function rewriteLinkFollowUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    if (host === 'arxiv.org' && /\/pdf\//i.test(u.pathname)) {
+      u.pathname = u.pathname.replace(/\/pdf\//i, '/abs/');
+      return u.toString();
+    }
+  } catch {
+    /* keep original */
+  }
+  return url;
+}
+
 /** High-confidence blocks — skip AI; body is almost certainly unusable. */
 export function explainHardFetchFailure(
   markdown: string,
-  _ctx: FetchQualityContext = {}
+  ctx: FetchQualityContext = {}
 ): FetchQualityIssue | undefined {
   if (!markdown?.trim()) {
     return { code: 'parse_empty', detail: 'empty body', tier: 'hard' };
   }
   const raw = rawBody(markdown);
   const lower = raw.toLowerCase();
+
+  if (isPdfBinaryBody(raw)) {
+    return { code: 'parse_empty', detail: 'pdf binary body', tier: 'hard' };
+  }
+
+  if (isHttpErrorPageBody(raw, ctx.title)) {
+    return { code: 'parse_empty', detail: 'http error page shell', tier: 'hard' };
+  }
 
   if (raw.length < 40) {
     return { code: 'parse_empty', detail: `only ${raw.length} chars`, tier: 'hard' };

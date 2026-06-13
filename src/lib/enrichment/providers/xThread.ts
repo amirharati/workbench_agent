@@ -1,4 +1,5 @@
 import { appendXLinkFollowBodies } from './xLinkFollow';
+import { collectTweetIds, quotedThreadOverlapsParent } from '../xQuoteExpand';
 
 const FX_THREAD_API = 'https://api.fxtwitter.com/2/thread';
 const FX_STATUS_V2_API = 'https://api.fxtwitter.com/2/status';
@@ -18,6 +19,8 @@ export type FxTweet = {
 const MAX_ROOT_WALK_HOPS = 20;
 const MAX_QUOTE_THREAD_EXPANDS = 2;
 
+export { collectTweetIds, quotedThreadOverlapsParent } from '../xQuoteExpand';
+
 function formatQuoteBlock(tweet: FxTweet): string {
   if (tweet.quoteExpanded?.trim()) {
     return `\n\n${tweet.quoteExpanded.trim()}`;
@@ -31,16 +34,38 @@ function formatQuoteBlock(tweet: FxTweet): string {
   ].join('\n');
 }
 
+type FxPhoto = { url?: string; type?: string };
+
+function photoUrls(tweet: FxTweet): string[] {
+  const photos = tweet.media?.photos;
+  if (!Array.isArray(photos)) return [];
+  const out: string[] = [];
+  for (const entry of photos) {
+    const url = (entry as FxPhoto)?.url?.trim();
+    if (url) out.push(url);
+  }
+  return out;
+}
+
 function formatTweetBody(tweet: FxTweet): string {
   const lines: string[] = [];
   const text = tweet?.text?.trim();
-  if (!text) return '';
-  lines.push(text);
+  if (text) lines.push(text);
   lines.push(formatQuoteBlock(tweet));
-  if (Array.isArray(tweet.media?.photos) && tweet.media.photos.length) {
-    lines.push('', `(${tweet.media.photos.length} photo(s) attached)`);
+
+  const urls = photoUrls(tweet);
+  if (urls.length) {
+    for (const url of urls) {
+      lines.push('', `Image: ${url}`);
+    }
+    lines.push('', `(${urls.length} photo(s) attached)`);
   }
+
   return lines.join('\n').trim();
+}
+
+function threadHasFetchableContent(thread: FxTweet[]): boolean {
+  return thread.some((t) => formatTweetBody(t).length > 0);
 }
 
 /** Merge FxTwitter thread[] into enrichment markdown. */
@@ -154,15 +179,18 @@ async function enrichQuotedTweets(
   thread: FxTweet[],
   signal?: AbortSignal
 ): Promise<void> {
+  const parentIds = collectTweetIds(thread);
   let expanded = 0;
   for (const tweet of thread) {
     if (expanded >= MAX_QUOTE_THREAD_EXPANDS) break;
     const quote = tweet.quote;
     const quoteId = quote?.id;
     if (!quoteId) continue;
+    if (parentIds.has(String(quoteId))) continue;
 
     const quotedThread = await fetchThreadArray(quoteId, signal);
     if (!quotedThread?.length) continue;
+    if (quotedThreadOverlapsParent(thread, quotedThread)) continue;
 
     const qUser = quote.author?.screen_name || quotedThread[0].author?.screen_name || 'i';
 
@@ -178,6 +206,47 @@ async function enrichQuotedTweets(
   }
 }
 
+function isFxTweetUnavailable(tweet: FxTweet | null | undefined): boolean {
+  if (!tweet) return true;
+  const text = tweet.text?.trim() ?? '';
+  if (/tweet (is )?unavailable|this (post|tweet) (is )?unavailable|account.+suspended/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+/** Detect deleted/private tweets when thread endpoint returns empty. */
+async function detectTweetUnavailable(
+  statusId: string,
+  screenName: string,
+  signal?: AbortSignal
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${FX_STATUS_V2_API}/${statusId}`, {
+      signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (res.status === 404) return true;
+    if (!res.ok) return false;
+    const payload = (await res.json()) as {
+      status?: FxTweet;
+      code?: number | string;
+      message?: string;
+    };
+    if (!payload?.status?.id) return true;
+    if (isFxTweetUnavailable(payload.status)) return true;
+    const msg = `${payload.message ?? ''}`.toLowerCase();
+    if (msg.includes('not found') || msg.includes('unavailable')) return true;
+    return false;
+  } catch {
+    /* fall through */
+  }
+
+  const tweet = await fetchFxStatusTweet(statusId, screenName, signal);
+  if (!tweet?.id) return true;
+  return isFxTweetUnavailable(tweet);
+}
+
 export type FxThreadFetchResult =
   | {
       ok: true;
@@ -189,7 +258,12 @@ export type FxThreadFetchResult =
       rootStatusId?: string;
       linkFollowCount?: number;
     }
-  | { ok: false; errorCode: 'rate_limited' | 'provider_error' | 'parse_empty' | 'network' | 'timeout' };
+  | {
+      ok: false;
+      errorCode: 'rate_limited' | 'provider_error' | 'parse_empty' | 'network' | 'timeout';
+      /** When set, syndication failed because the tweet was deleted or is private (B5). */
+      unavailable?: boolean;
+    };
 
 /**
  * Full X fetch: root walk → author thread → quote expand → link follow (depth 1).
@@ -208,8 +282,13 @@ export async function fetchXThreadFromFx(
   try {
     const rootId = await resolveAuthorThreadRootId(statusId, fallbackUser, signal);
     const thread = await fetchThreadArray(rootId, signal);
-    if (!thread?.length || !thread[0]?.text?.trim()) {
-      return { ok: false, errorCode: 'parse_empty' };
+    if (!thread?.length || !threadHasFetchableContent(thread)) {
+      const unavailable = await detectTweetUnavailable(statusId, fallbackUser, signal);
+      return {
+        ok: false,
+        errorCode: 'parse_empty',
+        unavailable,
+      };
     }
 
     await enrichQuotedTweets(thread, signal);
@@ -227,7 +306,8 @@ export async function fetchXThreadFromFx(
     }
 
     const author = thread[0].author?.screen_name || fallbackUser;
-    const firstText = thread[0].text!.trim();
+    const firstBody = formatTweetBody(thread[0]);
+    const firstText = thread[0].text?.trim() || firstBody.replace(/^Image:\s*\S+/m, '').trim();
     const partCount = thread.length;
     let fetchSourceId: 'syndication' | 'syndication-thread' | 'syndication-expanded' =
       partCount > 1 ? 'syndication-thread' : 'syndication';

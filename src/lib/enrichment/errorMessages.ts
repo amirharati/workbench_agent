@@ -67,6 +67,9 @@ export function describeEnrichmentError(
   detail?: string
 ): string {
   if (!code) return 'Fetch failed';
+  if (detail?.trim() === 'tweet_unavailable') {
+    return 'Tweet unavailable — deleted, private, or suspended';
+  }
   const base = ENRICHMENT_ERROR_HINTS[code] ?? code;
   if (!detail?.trim()) return base;
   if (detail.trim().startsWith('Could not resolve t.co')) return detail.trim();

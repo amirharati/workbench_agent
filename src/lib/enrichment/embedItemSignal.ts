@@ -50,6 +50,8 @@ export interface EmbedBackfillProgress {
 export interface EmbedIncrementalOptions {
   max?: number;
   itemIds?: string[];
+  /** Re-embed even when text hash unchanged (full digest / re-digest). */
+  force?: boolean;
   onProgress?: (p: EmbedBackfillProgress) => void;
 }
 
@@ -145,6 +147,7 @@ export async function embedIncrementalBatch(
   const { pending, summary: plan } = await collectPendingEmbedRows(items, enrichments, signals, {
     max: opts.max,
     itemIds: opts.itemIds,
+    force: opts.force,
   });
 
   summary.pendingAfter = pending.length;

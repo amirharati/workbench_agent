@@ -671,6 +671,7 @@ export async function runItemPipeline(
       await yieldToUi();
       try {
         const post = await runEnrichmentBatchPostProcess(uniqueIds, {
+          forceEmbed: options.forceEnrich === true,
           onEmbedProgress: (p) => {
             if (p.phase === 'embed' && p.batchTotal > 0) {
               report(

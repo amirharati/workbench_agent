@@ -4,6 +4,8 @@
 
 import {
   hasSubstantiveExtract,
+  isTrulyEmptyExtractInput,
+  minExtractRawChars,
   prepareExtractInput,
   sanitizeExtractOutput,
 } from './extractFilters.mjs';
@@ -212,7 +214,13 @@ export async function runOpenRouterExtract(settings, { url, title, body, sourceK
   }
 
   const rawBody = body.trim().slice(0, 12_000);
-  if (rawBody.length < 80) {
+  const minChars = minExtractRawChars(sourceKind);
+
+  if (isTrulyEmptyExtractInput(rawBody, title, sourceKind)) {
+    return { status: 'empty_response', error: 'No content to summarize' };
+  }
+
+  if (rawBody.length < minChars) {
     return { status: 'content_too_short', error: 'Body too short' };
   }
 
@@ -222,7 +230,7 @@ export async function runOpenRouterExtract(settings, { url, title, body, sourceK
   }
 
   const markdown = prepared.body;
-  if (markdown.length < 80) {
+  if (markdown.length < minChars) {
     return { status: 'content_too_short', error: 'Too short after chrome strip' };
   }
 

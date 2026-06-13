@@ -155,6 +155,43 @@ function rawBody(markdown) {
   return stripProviderWrapper(markdown).trim();
 }
 
+export function isPdfBinaryBody(body) {
+  const raw = rawBody(body);
+  if (!raw) return false;
+  return /%PDF-\d/i.test(raw.slice(0, 512));
+}
+
+export function isHttpErrorPageBody(body, title) {
+  const raw = rawBody(body);
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  const titleLower = title?.trim().toLowerCase() ?? '';
+  if (/^404\b/.test(titleLower) || titleLower === 'page not found' || titleLower === 'not found') {
+    return true;
+  }
+  if (raw.length > 4000) return false;
+  if (/^#\s*404\b/m.test(raw)) return true;
+  if (/\b404\b[^\n]{0,80}page not found/i.test(raw)) return true;
+  if (/^page not found$/im.test(raw)) return true;
+  if (lower.includes('the page you are looking for') && lower.includes('not found')) return true;
+  if (lower.includes('this page doesn') && lower.includes('exist')) return true;
+  return false;
+}
+
+export function rewriteLinkFollowUrl(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    if (host === 'arxiv.org' && /\/pdf\//i.test(u.pathname)) {
+      u.pathname = u.pathname.replace(/\/pdf\//i, '/abs/');
+      return u.toString();
+    }
+  } catch {
+    /* keep */
+  }
+  return url;
+}
+
 /**
  * @param {string} markdown
  * @param {FetchQualityContext} [ctx]
@@ -164,6 +201,13 @@ export function explainHardFetchFailure(markdown, ctx = {}) {
   if (!markdown?.trim()) return { code: 'parse_empty', detail: 'empty body', tier: 'hard' };
   const raw = rawBody(markdown);
   const lower = raw.toLowerCase();
+
+  if (isPdfBinaryBody(raw)) {
+    return { code: 'parse_empty', detail: 'pdf binary body', tier: 'hard' };
+  }
+  if (isHttpErrorPageBody(raw, ctx.title)) {
+    return { code: 'parse_empty', detail: 'http error page shell', tier: 'hard' };
+  }
 
   if (raw.length < 40) return { code: 'parse_empty', detail: `only ${raw.length} chars`, tier: 'hard' };
 

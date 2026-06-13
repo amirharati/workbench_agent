@@ -30,6 +30,8 @@ export async function runEnrichmentBatchPostProcess(
   itemIds: string[],
   opts?: {
     onEmbedProgress?: (p: EmbedBackfillProgress) => void;
+    /** Re-embed even when hash matches (full digest / re-digest). */
+    forceEmbed?: boolean;
   }
 ): Promise<EnrichmentBatchPostProcessResult> {
   const uniqueIds = [...new Set(itemIds.filter(Boolean))];
@@ -67,6 +69,7 @@ export async function runEnrichmentBatchPostProcess(
   const embed = await embedIncrementalBatch({
     itemIds: aiOkIds,
     max: aiOkIds.length,
+    force: opts?.forceEmbed,
     onProgress: opts?.onEmbedProgress,
   });
 

@@ -106,41 +106,60 @@ function parseXContent(md: string): {
   const blocks: string[] = [];
   let quotedText: string | undefined;
   let quotedAuthor: string | undefined;
-  let inQuote = false;
-  const quoteLines: string[] = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lower = line.toLowerCase();
-
-    if (
-      lower.includes('quote tweet') ||
-      lower === 'quote' ||
-      /^>\s/.test(line) ||
-      lower.includes('quoted')
-    ) {
-      inQuote = true;
+  // B2: quoted author only from explicit quote markers — not first @mention in tweet body.
+  for (const line of lines) {
+    const blockquoteAuthor = line.match(/^>\s*Quote from @([A-Za-z0-9_]{1,50})/i);
+    if (blockquoteAuthor) {
+      quotedAuthor = blockquoteAuthor[1];
+      break;
     }
-
-    if (inQuote) {
-      if (/^>\s?/.test(line)) {
-        quoteLines.push(line.replace(/^>\s?/, ''));
-      } else if (line.trim()) {
-        quoteLines.push(line);
-      }
-      if (quoteLines.length > 2 && !/^>\s?/.test(lines[i + 1] || '')) {
-        inQuote = false;
-      }
-    }
-
-    const authorMatch = line.match(/^(?:@|from:?\s*)([A-Za-z0-9_]{1,50})/i);
-    if (authorMatch && !quotedAuthor) {
-      quotedAuthor = authorMatch[1];
+    const expandedAuthor = line.match(/^###\s*Quoted thread from @([A-Za-z0-9_]{1,50})/i);
+    if (expandedAuthor) {
+      quotedAuthor = expandedAuthor[1];
+      break;
     }
   }
 
-  if (quoteLines.length > 0) {
-    quotedText = quoteLines.join('\n').trim();
+  // Blockquote-style quote (single-tweet QT).
+  const blockquoteLines: string[] = [];
+  let inBlockquote = false;
+  for (const line of lines) {
+    if (/^>\s*Quote from @/i.test(line)) {
+      inBlockquote = true;
+      continue;
+    }
+    if (inBlockquote) {
+      if (/^>\s?/.test(line)) {
+        blockquoteLines.push(line.replace(/^>\s?/, ''));
+      } else if (!line.trim()) {
+        continue;
+      } else {
+        inBlockquote = false;
+      }
+    }
+  }
+  if (blockquoteLines.length > 0) {
+    quotedText = blockquoteLines.join('\n').trim();
+  }
+
+  // Expanded quoted thread — body only (skip nested thread header duplicate).
+  if (!quotedText) {
+    const expandedIdx = lines.findIndex((l) => /^###\s*Quoted thread from @/i.test(l));
+    if (expandedIdx >= 0) {
+      const body: string[] = [];
+      for (let i = expandedIdx + 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (/^###\s/.test(line) && i > expandedIdx + 1) break;
+        if (/^## Linked:/i.test(line)) break;
+        if (/^#\s+@/.test(line) && i > expandedIdx + 1) continue;
+        if (line.trim() === '---') continue;
+        if (/^##\s+\d+\/\d+/.test(line)) continue;
+        body.push(line);
+      }
+      const text = body.join('\n').trim();
+      if (text) quotedText = text;
+    }
   }
 
   if (!quotedText) {

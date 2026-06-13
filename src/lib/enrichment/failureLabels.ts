@@ -126,6 +126,14 @@ function labelForFetch(code: EnrichmentErrorCode, detail?: string): EnrichmentFa
   if (code === 'url_redirect') {
     return { ...label, shortLabel: 'Fetch · redirect', label: 'Fetch: Redirect mismatch' };
   }
+  if (detail === 'tweet_unavailable') {
+    return {
+      ...label,
+      shortLabel: 'Fetch · tweet unavailable',
+      label: 'Fetch: Tweet unavailable (deleted or private)',
+      detail: 'This tweet was deleted, is private, or is otherwise unavailable on X',
+    };
+  }
   return label;
 }
 

@@ -116,8 +116,10 @@ export interface RunSingleWithProgressOptions {
   title?: string;
   forceEnrich?: boolean;
   skipClassify?: boolean;
-  /** Fetch only — skip AI extract (Re-fetch in inspector). */
+  /** Fetch only — skip AI extract during enrich phase (Hub bulk fetch stage). */
   skipAi?: boolean;
+  /** Re-run classify LLM even when text hash unchanged (Full digest / Re-digest). */
+  forceReclassify?: boolean;
   tabSessionOnly?: boolean;
   preferTabSession?: boolean;
   tabId?: number;
@@ -514,6 +516,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           forceEnrich: options?.forceEnrich,
           skipClassify: options?.skipClassify,
           skipAi: options?.skipAi,
+          forceReclassify: options?.forceReclassify,
           tabSessionOnly: options?.tabSessionOnly,
           preferTabSession: options?.preferTabSession,
           tabId: options?.tabId,

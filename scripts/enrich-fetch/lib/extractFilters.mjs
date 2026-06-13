@@ -9,6 +9,8 @@ export const GENERIC_EXTRACT_TAGS = new Set([
 ]);
 
 export const MIN_BODY_AFTER_CHROME_STRIP = 120;
+export const MIN_X_EXTRACT_RAW_CHARS = 20;
+export const MIN_ARTICLE_EXTRACT_RAW_CHARS = 80;
 
 const CHROME_LINE =
   /^(?:\s*|\*+|#+\s*)?(?:skip to|sign\s*in|sign\s*up|log\s*in|log\s*out|join\s+linkedin|cookie|cookies|privacy\s+policy|accept\s+all|reject\s+all|subscribe|newsletter|enable\s+javascript|all\s+rights\s+reserved|menu|navigation|breadcrumb|loading\.\.\.|create\s+account|forgot\s+password|continue\s+with\s+google|continue\s+with\s+sso|email\s*or\s*(?:username|phone)|password\s*[\*:]|remember\s+me|agree\s*&\s*join|not\s+your\s+computer|guest\s+mode|member-only\s+story|value\s+must\s+not\s+be\s+empty)/i;
@@ -71,6 +73,34 @@ export function isDescriptiveTitle(title) {
   return t.length >= 18 && !GENERIC_TITLE_EXACT.test(t);
 }
 
+export function hasXExtractSignal(body, title) {
+  const raw = body.trim();
+  if (!raw) return isDescriptiveTitle(title);
+  if (/^#\s*@\w+/m.test(raw)) return true;
+  if (/^##\s*\d+\/\d+/m.test(raw)) return true;
+  if (/photo\(s\)\s+attached|media item\(s\) attached/i.test(raw)) return true;
+  if (/pbs\.twimg\.com\/media\//i.test(raw)) return true;
+  if (/\bImage:\s*https?:\/\//i.test(raw)) return true;
+  if (/https?:\/\/t\.co\/\S+/i.test(raw) && raw.length >= MIN_X_EXTRACT_RAW_CHARS) return true;
+  if (isDescriptiveTitle(title)) return true;
+  return false;
+}
+
+export function minExtractRawChars(sourceKind, forceShort) {
+  if (forceShort) return 1;
+  if (sourceKind === 'x') return MIN_X_EXTRACT_RAW_CHARS;
+  if (sourceKind === 'video') return 40;
+  return MIN_ARTICLE_EXTRACT_RAW_CHARS;
+}
+
+export function isTrulyEmptyExtractInput(rawBody, title, sourceKind) {
+  const trimmed = rawBody.trim();
+  if (!trimmed) return !isDescriptiveTitle(title);
+  if (sourceKind === 'x' && hasXExtractSignal(trimmed, title)) return false;
+  if (isDescriptiveTitle(title) && trimmed.length >= 12) return false;
+  return trimmed.length < 12;
+}
+
 export function prepareExtractInput(title, rawBody, sourceKind) {
   const filtered = prefilterExtractBody(rawBody);
   const substantive = substantiveBodyLength(filtered);
@@ -79,11 +109,12 @@ export function prepareExtractInput(title, rawBody, sourceKind) {
     return { body: filtered, shouldSkip: false, substantiveLength: substantive };
   }
   if (sourceKind === 'x') {
+    const trulyEmpty = isTrulyEmptyExtractInput(filtered, title, 'x');
     return {
       body: filtered,
-      shouldSkip: substantive < 40,
+      shouldSkip: trulyEmpty,
       substantiveLength: substantive,
-      skipReason: substantive < 40 ? 'No tweet content after chrome strip' : undefined,
+      skipReason: trulyEmpty ? 'No tweet content after chrome strip' : undefined,
     };
   }
 

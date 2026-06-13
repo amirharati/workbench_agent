@@ -119,11 +119,12 @@ export async function runWaveDownstream(
   opts?: {
     signal?: AbortSignal;
     forceReclassify?: boolean;
+    forceEmbed?: boolean;
   }
 ): Promise<TopicClassifySummary | undefined> {
   const signal = opts?.signal;
   if (waveIds.length === 0) return undefined;
-  await runEnrichmentBatchPostProcess(waveIds);
+  await runEnrichmentBatchPostProcess(waveIds, { forceEmbed: opts?.forceEmbed });
   if (signal?.aborted) return undefined;
   const classifyResult = await classifyIncremental({
     itemIds: waveIds,
@@ -224,6 +225,14 @@ export async function runScopedPipelineJob(
   // Rehydrate: pick up any ids already enriched (aiStatus=ok) in this DB
   await pollEnrichReady(currentJob.itemIds, completedSet, readySet);
 
+  // Full re-digest must re-fetch — do not treat prior enrich as "ready to classify only".
+  if (options.forceEnrich === true) {
+    for (const id of currentJob.itemIds) {
+      readySet.delete(id);
+      completedSet.delete(id);
+    }
+  }
+
   // Ids that still need enrich (not completed, not already ready)
   const remainingEnrich = currentJob.itemIds.filter(
     (id) => !completedSet.has(id) && !readySet.has(id)
@@ -275,6 +284,7 @@ export async function runScopedPipelineJob(
     const waveSummary = await runWaveDownstream(waveIds, {
       signal,
       forceReclassify: options.forceReclassify,
+      forceEmbed: options.forceReclassify || options.forceEnrich,
     });
     if (waveSummary) {
       classifySummary = classifySummary

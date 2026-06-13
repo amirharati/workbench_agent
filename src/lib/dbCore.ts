@@ -18,6 +18,7 @@ import type {
   AiTaxonomyState,
 } from './categorization/types';
 import type { TrashHistoryEntry } from './trashHistory';
+import { shouldPreferImportTitle } from './import/xImportHygiene';
 
 export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
 
@@ -964,7 +965,7 @@ export const bulkImportBookmarks = async (
         }
 
         const mergedCollectionIds = Object.keys(placements);
-        const hasBetterTitle = !!best.title && best.title !== best.url && (!existing.title || existing.title === existing.url);
+        const hasBetterTitle = shouldPreferImportTitle(existing.title, best.title, existing.url || best.url);
         const hasBetterFavicon = !!best.favicon && !existing.favicon;
 
         const updatedItem: Item = {

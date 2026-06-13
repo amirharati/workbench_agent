@@ -318,7 +318,6 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           title: `Re-fetch${countSuffix}`,
           enrich: true,
           classify: false,
-          skipAi: true,
           processAll: true,
           forceEnrich: true,
           cancellable: true,
@@ -330,7 +329,6 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           title: tabSessionOnly ? 'Fetch in browser' : 'Re-fetch',
           forceEnrich: true,
           skipClassify: true,
-          skipAi: true,
           tabSessionOnly,
           itemLabel: item.title || item.url || item.id,
         });
@@ -385,6 +383,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
         await pipeline.runSingle(item.id, {
           title: 'Full digest',
           forceEnrich: true,
+          forceReclassify: true,
           skipClassify: false,
           itemLabel: item.title || item.url || item.id,
         });

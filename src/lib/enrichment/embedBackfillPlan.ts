@@ -21,6 +21,8 @@ export interface PendingEmbedRow {
 export interface CollectPendingEmbedOptions {
   max?: number;
   itemIds?: string[];
+  /** Re-embed even when text hash matches prior signal. */
+  force?: boolean;
 }
 
 export interface EmbedPlanSummary {
@@ -104,7 +106,7 @@ export async function collectPendingEmbedRows(
 
     const textHash = await hashText(text);
     const prev = signalByItem.get(enrichment.itemId);
-    if (hasCurrentSearchEmbedding(prev, textHash)) {
+    if (!opts.force && hasCurrentSearchEmbedding(prev, textHash)) {
       summary.skippedHash++;
       continue;
     }

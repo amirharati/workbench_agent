@@ -2,6 +2,7 @@ import { classifySourceKind } from '../eligibility';
 import {
   explainHardFetchFailure,
   isFetchBodyUsable,
+  rewriteLinkFollowUrl,
   stripProviderWrapper,
   type FetchQualityContext,
 } from '../fetchQuality';
@@ -112,6 +113,8 @@ export async function appendXLinkFollowBodies(
       continue;
     }
     if (isXHost(target) || shouldSkipLinkHost(target)) continue;
+
+    target = rewriteLinkFollowUrl(target);
 
     const body = await fetchArticleBody(target, signal);
     if (!body?.markdown?.trim()) continue;

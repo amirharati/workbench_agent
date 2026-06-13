@@ -1,4 +1,4 @@
-import type { AITaskType, AICompletionRequest, AICompletionResponse } from './types';
+import type { AITaskType, AICompletionRequest, AICompletionResponse, AIMessage } from './types';
 
 /** One completed (or failed) provider HTTP call — proof for pipeline debug. */
 export interface PipelineDebugAICall {
@@ -30,7 +30,16 @@ export type AICallAuditContext = {
 const RESPONSE_TEXT_MAX = 4_000;
 
 export function promptCharCount(messages: AICompletionRequest['messages']): number {
-  return messages.reduce((n, m) => n + (m.content?.length ?? 0), 0);
+  return messages.reduce((n, m) => n + messageContentCharCount(m.content), 0);
+}
+
+export function messageContentCharCount(content: AIMessage['content']): number {
+  if (typeof content === 'string') return content.length;
+  return content.reduce((n, part) => {
+    if (part.type === 'text') return n + part.text.length;
+    if (part.type === 'image_url') return n + part.image_url.url.length;
+    return n;
+  }, 0);
 }
 
 export function recordAICallAudit(input: {

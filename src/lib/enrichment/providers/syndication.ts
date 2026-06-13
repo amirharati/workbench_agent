@@ -38,7 +38,11 @@ export const syndicationProvider: FetchProvider = {
     });
 
     if (!result.ok) {
-      return { ok: false, errorCode: result.errorCode };
+      return {
+        ok: false,
+        errorCode: result.errorCode,
+        error: result.unavailable ? 'tweet_unavailable' : undefined,
+      };
     }
 
     const markdown = stripProviderWrapper(result.markdown);

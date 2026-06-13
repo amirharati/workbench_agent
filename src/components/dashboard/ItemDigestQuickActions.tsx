@@ -82,13 +82,18 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
     onDone?.();
   };
 
+  const isRedigest =
+    primaryLabel === 'Re-digest' || primaryLabel === 'Retry digest';
+
   const runFull = async (opts?: { forceEnrich?: boolean; tabSessionOnly?: boolean }) => {
     if (running) return;
     try {
       await pipeline.runSingle(itemId, {
         title: opts?.tabSessionOnly ? 'Fetch in browser' : primaryLabel,
         forceEnrich:
-          opts?.forceEnrich ?? (badge?.kind === 'failed' || opts?.tabSessionOnly === true),
+          opts?.forceEnrich ??
+          (isRedigest || badge?.kind === 'failed' || opts?.tabSessionOnly === true),
+        forceReclassify: isRedigest || badge?.kind === 'failed',
         tabSessionOnly: opts?.tabSessionOnly,
         itemLabel: context?.item.title || itemUrl || itemId,
       });

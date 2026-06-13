@@ -4,6 +4,8 @@
  * Unsupported shapes fail fast via schema probes before heavy work.
  */
 
+import { cleanXImportText, isXMediaExpandedUrl } from './xImportHygiene';
+
 export type BookmarkImportFormat = 'json' | 'csv' | 'html';
 
 export type BookmarkImportSource = 'file-html' | 'file-csv' | 'file-json';
@@ -48,16 +50,17 @@ export const BOOKMARK_IMPORT_FORMAT_SCHEMAS: Record<BookmarkImportFormat, Bookma
     format: 'csv',
     label: 'CSV',
     summary: 'Spreadsheet export with a header row and one bookmark per line.',
-    required: ['url (or href / link column)'],
+    required: ['url, href, link, or tweet_url column'],
     optional: [
       'title, name',
-      'description, summary, excerpt, text',
+      'description, summary, excerpt, text, full_text',
       'notes, comment',
       'tags',
       'folder, folder path, path, collection, group, category',
       'image, cover, thumbnail',
+      'screen_name (X export)',
     ],
-    examples: ['url,title,folder', 'href,name,description'],
+    examples: ['url,title,folder', 'tweet_url,full_text,screen_name', 'href,name,description'],
   },
   json: {
     format: 'json',
@@ -69,6 +72,7 @@ export const BOOKMARK_IMPORT_FORMAT_SCHEMAS: Record<BookmarkImportFormat, Bookma
       'description, full_text, note_tweet_text',
       'notes, tags, folderPath, folder, collection',
       'imageUrl, extended_media (X export)',
+      'screen_name (X CSV/JSON)',
     ],
     examples: [
       '[{"url":"https://example.com","title":"Example"}]',
@@ -158,7 +162,7 @@ function pickField(row: string[], keyMap: Record<string, number>, aliases: strin
 function csvHeaderHasUrlColumn(headerLine: string): boolean {
   const header = parseCsvLine(headerLine.trim());
   const keyMap = toKeyMap(header);
-  return ['url', 'href', 'link'].some((k) => typeof keyMap[k] === 'number');
+  return ['url', 'href', 'link', 'tweet_url'].some((k) => typeof keyMap[k] === 'number');
 }
 
 /** Fast reject: wrong CSV shape (header only). */
@@ -171,7 +175,7 @@ function quickRejectCsvSchema(text: string): string | null {
   }
   if (!csvHeaderHasUrlColumn(firstLine)) {
     const header = parseCsvLine(firstLine);
-    return `CSV header must include url, href, or link. Found: ${header.slice(0, 12).join(', ') || '(empty)'}`;
+    return `CSV header must include url, href, link, or tweet_url. Found: ${header.slice(0, 12).join(', ') || '(empty)'}`;
   }
   return null;
 }
@@ -237,9 +241,35 @@ export async function parseBookmarkCsv(text: string): Promise<BookmarkImportCand
       await yieldToUi();
     }
     const row = parseCsvLine(lines[i]);
-    const url = pickField(row, keyMap, ['url', 'href', 'link']);
-    const title = pickField(row, keyMap, ['title', 'name']) || url;
-    const description = pickField(row, keyMap, ['description', 'summary', 'excerpt', 'text']);
+    const url = pickField(row, keyMap, ['url', 'href', 'link', 'tweet_url']);
+    const rawTitle = pickField(row, keyMap, ['title', 'name']);
+    const rawDescription = pickField(row, keyMap, [
+      'description',
+      'summary',
+      'excerpt',
+      'text',
+      'full_text',
+      'note_tweet_text',
+    ]);
+    const screenName = pickField(row, keyMap, ['screen_name', 'username', 'author']);
+    const looksLikeXBookmark =
+      !!pickField(row, keyMap, ['tweet_url']) ||
+      (url.includes('x.com/') || url.includes('twitter.com/')) &&
+        (!!rawDescription || !!screenName);
+    const description = looksLikeXBookmark
+      ? cleanXImportText(
+          { full_text: rawDescription, screen_name: screenName },
+          rawDescription,
+          { heuristicOnly: true }
+        )
+      : rawDescription;
+    let title = rawTitle || description || url;
+    if (looksLikeXBookmark && !rawTitle) {
+      const preview = description.split(/\s+/).slice(0, 10).join(' ');
+      title = screenName && preview ? `${screenName}: ${preview}` : screenName || url;
+    } else if (looksLikeXBookmark && rawTitle) {
+      title = cleanXImportText({ full_text: rawTitle }, rawTitle, { heuristicOnly: true }) || url;
+    }
     const notes = pickField(row, keyMap, ['notes', 'comment']);
     const tagsRaw = pickField(row, keyMap, ['tags', 'tag']);
     const folderPath = pickField(row, keyMap, [
@@ -259,7 +289,9 @@ export async function parseBookmarkCsv(text: string): Promise<BookmarkImportCand
       'preview',
       'media',
     ]);
-    const importSource = pickField(row, keyMap, ['source', 'provider', 'from', 'origin']);
+    const importSource =
+      pickField(row, keyMap, ['source', 'provider', 'from', 'origin']) ||
+      (looksLikeXBookmark ? 'x-bookmarks-export-v1' : '');
     const tags = tagsRaw ? tagsRaw.split(/[;,]/).map((t) => t.trim()).filter(Boolean) : [];
     if (!url) continue;
     out.push({
@@ -269,7 +301,7 @@ export async function parseBookmarkCsv(text: string): Promise<BookmarkImportCand
       description: description || undefined,
       notes: notes || description || undefined,
       tags: tags.length ? tags : undefined,
-      folderPath: folderPath || undefined,
+      folderPath: folderPath || (looksLikeXBookmark ? 'X / Bookmarks' : undefined),
       imageUrl: imageUrl || undefined,
       importSource: importSource || undefined,
     });
@@ -389,7 +421,8 @@ export async function parseBookmarkJson(text: string): Promise<BookmarkImportCan
   };
 
   const inferXBookmarkDescription = (row: Record<string, unknown>): string => {
-    return firstString(row, ['note_tweet_text', 'full_text', 'description', 'text']);
+    const raw = firstString(row, ['note_tweet_text', 'full_text', 'description', 'text']);
+    return cleanXImportText(row, raw);
   };
 
   const inferXBookmarkTitle = (row: Record<string, unknown>, fallbackUrl: string): string => {
@@ -405,6 +438,20 @@ export async function parseBookmarkJson(text: string): Promise<BookmarkImportCan
     }
     if (author) return `${author}: ${truncate(fallbackUrl, 80)}`;
     return fallbackUrl;
+  };
+
+  const isLikelyXMediaSubRow = (row: Record<string, unknown>): boolean => {
+    if (firstString(row, ['tweet_url', 'full_text', 'screen_name', 'note_tweet_text'])) {
+      return false;
+    }
+    const url = firstString(row, ['url', 'href', 'link']);
+    const expanded = firstString(row, ['expanded_url']);
+    if (!url || !expanded || !isXMediaExpandedUrl(expanded)) return false;
+    try {
+      return new URL(url).hostname.replace(/^www\./i, '') === 't.co';
+    } catch {
+      return false;
+    }
   };
 
   const collectObjectCandidates = async (root: unknown): Promise<Record<string, unknown>[]> => {
@@ -436,6 +483,7 @@ export async function parseBookmarkJson(text: string): Promise<BookmarkImportCan
         'permalink',
       ]);
       const hasTextLinkHint = !!firstUrlInText(firstString(row, ['full_text', 'note_tweet_text', 'text']));
+      if (isLikelyXMediaSubRow(row)) continue;
       if (hasLinkLikeField || hasTextLinkHint) out.push(row);
 
       Object.values(row).forEach((value) => {

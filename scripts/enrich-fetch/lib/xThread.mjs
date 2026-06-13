@@ -7,6 +7,22 @@ const FX_STATUS_V2_API = 'https://api.fxtwitter.com/2/status';
 const MAX_ROOT_WALK_HOPS = 20;
 const MAX_QUOTE_THREAD_EXPANDS = 2;
 
+function collectTweetIds(thread) {
+  const ids = new Set();
+  for (const t of thread) {
+    if (t.id) ids.add(String(t.id));
+  }
+  return ids;
+}
+
+function quotedThreadOverlapsParent(parent, quoted) {
+  const parentIds = collectTweetIds(parent);
+  if (!parentIds.size) return false;
+  const quotedIds = quoted.map((t) => t.id).filter(Boolean).map(String);
+  if (!quotedIds.length) return false;
+  return quotedIds.every((id) => parentIds.has(id));
+}
+
 function formatQuoteBlock(tweet) {
   if (tweet.quoteExpanded?.trim()) {
     return `\n\n${tweet.quoteExpanded.trim()}`;
@@ -112,15 +128,18 @@ async function fetchThreadArray(statusId, signal) {
 }
 
 async function enrichQuotedTweets(thread, signal) {
+  const parentIds = collectTweetIds(thread);
   let expanded = 0;
   for (const tweet of thread) {
     if (expanded >= MAX_QUOTE_THREAD_EXPANDS) break;
     const quote = tweet.quote;
     const quoteId = quote?.id;
     if (!quoteId) continue;
+    if (parentIds.has(String(quoteId))) continue;
 
     const quotedThread = await fetchThreadArray(quoteId, signal);
     if (!quotedThread?.length) continue;
+    if (quotedThreadOverlapsParent(thread, quotedThread)) continue;
 
     const qUser = quote.author?.screen_name || quotedThread[0].author?.screen_name || 'i';
 
@@ -136,6 +155,38 @@ async function enrichQuotedTweets(thread, signal) {
   }
 }
 
+function isFxTweetUnavailable(tweet) {
+  if (!tweet) return true;
+  const text = tweet.text?.trim() ?? '';
+  if (/tweet (is )?unavailable|this (post|tweet) (is )?unavailable|account.+suspended/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+async function detectTweetUnavailable(statusId, screenName, signal) {
+  try {
+    const res = await fetch(`${FX_STATUS_V2_API}/${statusId}`, {
+      signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (res.status === 404) return true;
+    if (!res.ok) return false;
+    const payload = await res.json();
+    if (!payload?.status?.id) return true;
+    if (isFxTweetUnavailable(payload.status)) return true;
+    const msg = `${payload.message ?? ''}`.toLowerCase();
+    if (msg.includes('not found') || msg.includes('unavailable')) return true;
+    return false;
+  } catch {
+    /* fall through */
+  }
+
+  const tweet = await fetchFxStatusTweet(statusId, screenName, signal);
+  if (!tweet?.id) return true;
+  return isFxTweetUnavailable(tweet);
+}
+
 /** Fetch author self-reply chain + quote expand + link follow. */
 export async function fetchXThreadFromFx(
   statusId,
@@ -145,7 +196,8 @@ export async function fetchXThreadFromFx(
     const rootId = await resolveAuthorThreadRootId(statusId, fallbackUser, signal);
     const thread = await fetchThreadArray(rootId, signal);
     if (!thread?.length || !thread[0]?.text?.trim()) {
-      return { ok: false, errorCode: 'parse_empty' };
+      const unavailable = await detectTweetUnavailable(statusId, fallbackUser, signal);
+      return { ok: false, errorCode: 'parse_empty', unavailable };
     }
 
     await enrichQuotedTweets(thread, signal);

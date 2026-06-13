@@ -30,6 +30,8 @@ import {
   isFetchBodyUsable,
   stripProviderWrapper,
 } from './fetchQuality';
+import { isSyndicationFetchSourceId, isXTabChromeDominant } from './xFetchHeuristics';
+import { enrichMarkdownWithVision, needsImageVisionEnrichment } from './imageVision';
 import { hybridProvider } from './providers/hybrid';
 import { jinaProvider } from './providers/jina';
 import { noopProvider } from './providers/noop';
@@ -320,6 +322,17 @@ async function tabSessionFetchResult(
     };
   }
   const markdown = tab.markdown.trim();
+  if (isXTabChromeDominant(markdown, url)) {
+    return {
+      result: null,
+      error: {
+        ok: false,
+        errorCode: 'parse_empty',
+        error: 'X tab page is mostly UI chrome — syndication fetch preferred',
+        fetchSourceId: 'tab-session',
+      },
+    };
+  }
   return {
     result: attachFetchRedirectFields(
       {
@@ -379,6 +392,14 @@ async function tryOpenTabFetch(
       };
     } else {
       const markdown = ephemeral.markdown.trim();
+      if (isXTabChromeDominant(markdown, url)) {
+        lastError = {
+          ok: false,
+          errorCode: 'parse_empty',
+          error: 'X tab page is mostly UI chrome — syndication fetch preferred',
+          fetchSourceId: 'tab-session',
+        };
+      } else {
       return {
         result: attachFetchRedirectFields(
           {
@@ -392,10 +413,22 @@ async function tryOpenTabFetch(
           ephemeral.pageUrl
         ),
       };
+      }
     }
   }
 
   return { result: null, error: lastError };
+}
+
+function headlessSyndicationIsGoodEnough(
+  headless: FetchProviderResult,
+  url: string,
+  cleanMarkdown: string
+): boolean {
+  return (
+    headlessResultIsGoodEnough(headless, url, cleanMarkdown) &&
+    isSyndicationFetchSourceId(headless.fetchSourceId)
+  );
 }
 
 function shouldRetryWithBrowserTab(
@@ -515,7 +548,7 @@ async function resolveItemFetch(
       if (skipHeadlessAfterTabMiss(item.url)) {
         return tabAttempt.error ?? tabSessionEmptyError();
       }
-    } else {
+    } else if (classifySourceKind(item.url) !== 'x') {
       debug?.phase('tab_quick_start');
       const quickTab = await runTabFetch(false);
       debug?.phase(
@@ -524,6 +557,8 @@ async function resolveItemFetch(
         quickTab.result?.fetchSourceId ?? quickTab.error?.fetchSourceId
       );
       if (quickTab.result) return quickTab.result;
+    } else {
+      debug?.phase('tab_quick_skipped', true, 'x_syndication_first');
     }
 
     debug?.phase('headless_start');
@@ -537,6 +572,13 @@ async function resolveItemFetch(
     const headlessClean =
       headless.ok && headless.markdown ? stripProviderWrapper(headless.markdown) : undefined;
 
+    if (
+      headlessClean &&
+      headlessSyndicationIsGoodEnough(headless, item.url, headlessClean)
+    ) {
+      return headless;
+    }
+
     if (!shouldRetryWithBrowserTab(headless, item.url, headlessClean)) {
       return headless;
     }
@@ -547,7 +589,16 @@ async function resolveItemFetch(
       !!tabRetry.result?.ok,
       tabRetry.result?.fetchSourceId ?? tabRetry.error?.fetchSourceId
     );
-    if (tabRetry.result) return tabRetry.result;
+    if (tabRetry.result) {
+      const tabClean = tabRetry.result.markdown
+        ? stripProviderWrapper(tabRetry.result.markdown)
+        : '';
+      if (tabClean && isXTabChromeDominant(tabClean, item.url)) {
+        if (headless.ok) return headless;
+      } else {
+        return tabRetry.result;
+      }
+    }
 
     if (
       tabRetry.error &&
@@ -726,7 +777,7 @@ export async function enrichOne(
     if (!fetchResult.ok || !fetchResult.markdown) {
       const errorCode = fetchResult.errorCode ?? 'provider_error';
       const lastErrorDetail = fetchResult.error?.trim() || undefined;
-      if (existing && hasValuablePriorEnrichment(existing)) {
+      if (existing && hasValuablePriorEnrichment(existing) && !options?.force) {
         debugOutcome = {
           enrichStatus: 'ok',
           errorCode,
@@ -784,9 +835,28 @@ export async function enrichOne(
       ? undefined
       : explainSoftFetchSuspect(cleanMarkdown, qualityCtx);
 
+    let enrichMarkdown = cleanMarkdown;
+    if (!hardFailure) {
+      const visionStart = Date.now();
+      enrichMarkdown = await enrichMarkdownWithVision(cleanMarkdown, {
+        sourceKind,
+        signal: options?.signal,
+        audit: aiCallRecord ? { purpose: 'enrich_vision', record: aiCallRecord } : undefined,
+      });
+      if (enrichMarkdown.length > cleanMarkdown.length) {
+        collector?.phase(
+          'image_vision',
+          true,
+          `+${enrichMarkdown.length - cleanMarkdown.length} chars · ${Date.now() - visionStart}ms`
+        );
+      } else if (needsImageVisionEnrichment(cleanMarkdown, sourceKind)) {
+        collector?.phase('image_vision', false, 'no_description');
+      }
+    }
+
     const localBundle = getLocalTextBundle(item);
     const parsed = parseFetchedContent(
-      cleanMarkdown,
+      enrichMarkdown,
       sourceKind,
       fetchResult.title
     );
@@ -801,7 +871,7 @@ export async function enrichOne(
       lastErrorDetail = hardFailure.detail;
     }
 
-    if (status === 'failed' && existing && hasValuablePriorEnrichment(existing)) {
+    if (status === 'failed' && existing && hasValuablePriorEnrichment(existing) && !options?.force) {
       debugOutcome = {
         enrichStatus: 'ok',
         errorCode: lastErrorCode,
@@ -819,7 +889,7 @@ export async function enrichOne(
     }
 
     const textHash = hashText(localBundle);
-    const contentHash = hashText(cleanMarkdown);
+    const contentHash = hashText(enrichMarkdown);
     const pageUnchanged =
       !hardFailure &&
       !options?.force &&
@@ -878,7 +948,7 @@ export async function enrichOne(
           redirectContext,
           bookmarkTitle: item.title,
           fetchedTitle: parsed.title || fetchResult.title,
-          bodyPreview: parsed.snippet || cleanMarkdown,
+          bodyPreview: parsed.snippet || enrichMarkdown,
           signal: options?.signal,
           audit: aiCallRecord ? { record: aiCallRecord } : undefined,
         });
@@ -901,7 +971,7 @@ export async function enrichOne(
       }
       summaryPromptMode = resolveSummaryRedirectPromptMode({ redirectContext, redirectVerdict });
       aiOutcome = await extractEnrichmentWithAI(
-        parsed.snippet || cleanMarkdown,
+        parsed.snippet || enrichMarkdown,
         item.url,
         parsed.title || item.title,
         {
@@ -939,7 +1009,7 @@ export async function enrichOne(
         aiOutcome.status === 'content_too_short' ||
         aiOutcome.status === 'empty_response'
       ) {
-        const fallbackText = (parsed.snippet || cleanMarkdown || localBundle || item.title || '')
+        const fallbackText = (parsed.snippet || enrichMarkdown || localBundle || item.title || '')
           .trim()
           .slice(0, ENRICHMENT_DEFAULTS.snippetMaxChars);
         if (fallbackText.length >= 8) {
@@ -1036,7 +1106,7 @@ export async function enrichOne(
       redirect: redirectDebug ?? null,
       aiCalls: aiCalls.length ? aiCalls : null,
       markdown: rawMarkdown,
-      cleanMarkdown,
+      cleanMarkdown: enrichMarkdown,
     });
 
     if (diskBody.trim()) {
@@ -1122,7 +1192,7 @@ export async function enrichOne(
       : /SQLITE|database|Db is closed/i.test(rawMsg)
         ? 'provider_error'
         : 'network';
-    if (existing && hasValuablePriorEnrichment(existing)) {
+    if (existing && hasValuablePriorEnrichment(existing) && !options?.force) {
       debugOutcome = { enrichStatus: 'ok', errorCode };
       flushDebug();
       return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode, undefined, deferPostProcess);

@@ -2,6 +2,7 @@ import { classifySourceKind } from './parse.mjs';
 import {
   explainHardFetchFailure,
   isFetchBodyUsable,
+  rewriteLinkFollowUrl,
   stripProviderWrapper,
 } from './fetchQuality.mjs';
 import { isShortLinkHost, resolveFetchUrl } from './urlPolicy.mjs';
@@ -93,6 +94,7 @@ export async function appendXLinkFollowBodies(markdown, bookmarkUrl, signal) {
       continue;
     }
     if (isXHost(target) || shouldSkip(target)) continue;
+    target = rewriteLinkFollowUrl(target);
     const body = await fetchArticleBody(target, signal);
     if (!body?.markdown?.trim()) continue;
     let host = target;

@@ -1,6 +1,10 @@
 export type AIProvider = 'openrouter' | 'chrome-native';
 
-export type AITaskType = 'general' | 'summarize' | 'tag' | 'redirect_verdict';
+export type AITaskType = 'general' | 'summarize' | 'tag' | 'redirect_verdict' | 'vision';
+
+export type AIMessageContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
 
 export interface AISettings {
   provider: AIProvider;
@@ -21,7 +25,7 @@ export interface AISettings {
 
 export interface AIMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | AIMessageContentPart[];
 }
 
 import type { AICallAuditContext } from './callAudit';

@@ -8,6 +8,8 @@ import { looksLikeListingMarkdown } from './listingExtract';
 import { titleLooksWeak } from './eligibility';
 import {
   hasSubstantiveExtract,
+  isTrulyEmptyExtractInput,
+  minExtractRawChars,
   prepareExtractInput,
   sanitizeExtractOutput,
 } from './extractFilters';
@@ -121,8 +123,17 @@ export async function extractEnrichmentWithAI(
   const listingPage = isLikelyListingUrl(url) || looksLikeListingMarkdown(markdown);
   const effectiveKind = listingPage ? 'generic' : sourceKind;
   const rawBody = markdown.trim().slice(0, 12_000);
-  const minChars = options?.forceShort ? 1 : 80;
-  if (rawBody.length < minChars) {
+  const minChars = minExtractRawChars(effectiveKind, options?.forceShort);
+
+  if (isTrulyEmptyExtractInput(rawBody, title, effectiveKind) && !options?.forceShort) {
+    return {
+      status: 'empty_response',
+      error: 'No content to summarize.',
+      at,
+    };
+  }
+
+  if (rawBody.length < minChars && !options?.forceShort) {
     return {
       status: 'content_too_short',
       error: 'Fetched text too short for AI extraction.',

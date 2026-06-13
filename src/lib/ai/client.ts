@@ -22,6 +22,12 @@ const getEffectiveModelForTask = (settings: AISettings, request: AICompletionReq
   if (taskType === 'redirect_verdict' && settings.taskModels?.summarize?.trim()) {
     return settings.taskModels.summarize.trim();
   }
+  if (taskType === 'vision' && settings.taskModels?.vision?.trim()) {
+    return settings.taskModels.vision.trim();
+  }
+  if (taskType === 'vision' && settings.taskModels?.summarize?.trim()) {
+    return settings.taskModels.summarize.trim();
+  }
   return settings.model;
 };
 

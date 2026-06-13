@@ -86,12 +86,20 @@ const messagesToPrompt = (request: AICompletionRequest): { systemPrompt?: string
   const conversationParts: string[] = [];
 
   for (const message of request.messages) {
+    const text =
+      typeof message.content === 'string'
+        ? message.content.trim()
+        : message.content
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text.trim())
+            .filter(Boolean)
+            .join('\n');
     if (message.role === 'system') {
-      systemParts.push(message.content.trim());
+      if (text) systemParts.push(text);
       continue;
     }
     const roleLabel = message.role === 'assistant' ? 'Assistant' : 'User';
-    conversationParts.push(`${roleLabel}: ${message.content.trim()}`);
+    if (text) conversationParts.push(`${roleLabel}: ${text}`);
   }
 
   const prompt = conversationParts.join('\n\n').trim();

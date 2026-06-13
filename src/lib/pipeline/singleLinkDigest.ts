@@ -64,6 +64,7 @@ export async function runSingleLinkDigest(
     forceEnrich?: boolean;
     skipClassify?: boolean;
     skipAi?: boolean;
+    forceReclassify?: boolean;
     onProgress?: (update: ItemPipelineProgress) => void;
     signal?: AbortSignal;
     preferTabSession?: boolean;
@@ -89,9 +90,15 @@ export async function runSingleLinkDigest(
 
   inFlight.add(itemId);
   try {
+    const wantsForceReclassify =
+      options?.forceReclassify === true ||
+      (options?.forceEnrich === true && options?.skipClassify !== true);
+    const forceClassify = options?.forceReclassify !== false;
+
     if (shouldUseScopedPipelineForSingle(options)) {
       const batch = await runPipelineScopeBatch([itemId], {
         forceEnrich: options?.forceEnrich === true,
+        forceReclassify: wantsForceReclassify,
         collectItemResults: true,
         writeJobFile: false,
         signal: options?.signal,
@@ -123,7 +130,7 @@ export async function runSingleLinkDigest(
       classify: options?.skipClassify !== true,
       skipAi: options?.skipAi,
       forceEnrich: options?.forceEnrich === true,
-      forceClassify: true,
+      forceClassify: forceClassify,
       processAll: true,
       skipDiscover: true,
       collectItemResults: true,
