@@ -185,6 +185,7 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                     <EnrichmentContent
                       summary={context.summary}
                       keyPoints={context.keyPoints}
+                      references={context.references}
                       compact
                       emptyMessage={
                         snippet

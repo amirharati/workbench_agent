@@ -63,6 +63,14 @@ export function buildItemText(
     lines.push(`Key points:\n${keyPoints.map((p) => `- ${p.trim()}`).join('\n')}`);
   }
 
+  if (enrichment?.references?.length) {
+    lines.push(
+      `Resources:\n${enrichment.references
+        .map((r) => `- ${r.label}: ${r.url}`)
+        .join('\n')}`
+    );
+  }
+
   return lines.join('\n\n');
 }
 

@@ -897,6 +897,7 @@ const ItemDetailEnrichment: React.FC<{ itemId: string }> = ({ itemId }) => {
       <EnrichmentContent
         summary={context?.summary}
         keyPoints={context?.keyPoints ?? []}
+        references={context?.references ?? []}
         emptyMessage={ENRICHMENT_EMPTY_MESSAGE}
       />
     </div>

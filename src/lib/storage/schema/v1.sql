@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS item_enrichment (
   fetch_source_id TEXT,
   ai_tags TEXT,
   ai_key_points TEXT,
+  references_json TEXT,
   ai_status TEXT,
   ai_error TEXT,
   ai_at INTEGER,

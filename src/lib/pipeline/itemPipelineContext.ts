@@ -1,5 +1,5 @@
 import { getDB, type Item } from '../db';
-import type { ItemEnrichment } from '../enrichment/types';
+import type { ItemEnrichment, EnrichmentReference } from '../enrichment/types';
 import { assessCategorizationEligibility } from '../enrichment/categorizationEligibility';
 import { getAiCategories } from '../categorization';
 import { hasSpecificPrimaryTopic } from '../categorization/categorizationFairGame';
@@ -36,6 +36,7 @@ export interface ItemPipelineContext {
   hasSuggestedLinks: boolean;
   summary?: string;
   keyPoints: string[];
+  references: EnrichmentReference[];
 }
 
 export interface ProcessingDigest {
@@ -293,6 +294,7 @@ function buildContextForItem(
       enrichment?.aiStatus === 'ok'
         ? (enrichment.aiKeyPoints ?? []).filter((p) => p?.trim())
         : [],
+    references: enrichment?.references ?? [],
   };
 }
 
@@ -300,6 +302,7 @@ function buildContextForItem(
 export function hasPartialPipelineData(ctx: ItemPipelineContext | null | undefined): boolean {
   if (!ctx) return false;
   if (ctx.summary?.trim() || ctx.keyPoints.length > 0) return true;
+  if (ctx.references.length > 0) return true;
   if (ctx.acceptedLinks.length > 0 || ctx.suggestedLinks.length > 0) return true;
   if (ctx.primaryCategoryName) return true;
   const e = ctx.enrichment;

@@ -33,6 +33,7 @@ import { DEFAULT_EMBEDDING_MODEL } from '../../lib/categorization/service';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { usePipelineProgress } from './PipelineProgressProvider';
+import { EnrichmentContent } from './PipelineDisplayBlocks';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
 
@@ -227,6 +228,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
   const [pendingClearStage, setPendingClearStage] = useState<PipelineStageClear | null>(null);
 
   const enrich = enrichment ?? context?.enrichment;
+  const references = context?.references ?? enrich?.references ?? [];
   const failureLabel = enrich ? resolveEnrichmentFailureLabel(enrich, embedFailed) : null;
   const badge = context ? resolvePipelineBadge(context) : null;
   const running = pipeline.isRunning || embedBusy || clearBusy;
@@ -266,7 +268,15 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
     if (enrich?.rawRef && enrich?.hasRawBody) {
       void loadDump();
     }
-  }, [item.id, enrich?.rawRef, enrich?.hasRawBody, loadDump]);
+  }, [
+    item.id,
+    enrich?.rawRef,
+    enrich?.hasRawBody,
+    enrich?.fetchedAt,
+    enrich?.contentHash,
+    enrich?.rawBytes,
+    loadDump,
+  ]);
 
   const afterAction = () => {
     reloadContext();
@@ -752,6 +762,9 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
             <MetaLine label="Raw dump">
               {enrich?.hasRawBody ? `Yes · ${enrich.rawBytes ?? '?'} bytes` : 'Not saved'}
             </MetaLine>
+            {references.length > 0 ? (
+              <MetaLine label="Indexed links">{references.length}</MetaLine>
+            ) : null}
             {enrich?.snippet ? (
               <div style={{ color: 'var(--text-muted)' }}>
                 <span style={{ color: 'var(--text-faint)' }}>Preview: </span>
@@ -789,20 +802,13 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
             {enrich?.aiTags?.length ? (
               <MetaLine label="Tags">{enrich.aiTags.join(', ')}</MetaLine>
             ) : null}
-            {context?.summary ? (
-              <div style={{ color: 'var(--text)' }}>{context.summary}</div>
-            ) : enrich?.summary ? (
-              <div style={{ color: 'var(--text)' }}>{enrich.summary}</div>
-            ) : (
-              <div style={{ color: 'var(--text-faint)' }}>No summary yet</div>
-            )}
-            {(context?.keyPoints.length ?? enrich?.aiKeyPoints?.length) ? (
-              <ul style={{ margin: 0, paddingLeft: 16, color: 'var(--text-muted)' }}>
-                {(context?.keyPoints ?? enrich?.aiKeyPoints ?? []).map((p, i) => (
-                  <li key={i}>{p}</li>
-                ))}
-              </ul>
-            ) : null}
+            <EnrichmentContent
+              summary={context?.summary ?? enrich?.summary}
+              keyPoints={context?.keyPoints ?? enrich?.aiKeyPoints ?? []}
+              references={references}
+              compact
+              emptyMessage="No summary yet"
+            />
           </StageBody>
         </div>
 

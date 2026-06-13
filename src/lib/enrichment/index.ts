@@ -50,6 +50,12 @@ export type {
 } from './fieldInventory';
 export * from './parse';
 export {
+  buildReferenceIndex,
+  extractFollowedReferenceUrls,
+  formatReferencesBlock,
+  referencesForMeta,
+} from './referenceIndex';
+export {
   clearPipelineData,
   clearItemPipelineStage,
   syncClassifySignalsFromLinks,

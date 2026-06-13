@@ -21,6 +21,28 @@ export type EnrichmentErrorCode =
 
 export type SourceKind = 'article' | 'x' | 'video' | 'generic';
 
+export type EnrichmentReferenceScope = 'external' | 'internal';
+
+export type EnrichmentReferenceKind =
+  | 'article'
+  | 'video'
+  | 'repo'
+  | 'social'
+  | 'short'
+  | 'image'
+  | 'unknown';
+
+/** Indexed URL/media from post-fetch markdown (mechanical extract, not AI). */
+export interface EnrichmentReference {
+  url: string;
+  label: string;
+  scope: EnrichmentReferenceScope;
+  kind?: EnrichmentReferenceKind;
+  /** True when depth-1 link-follow body was appended. */
+  followed?: boolean;
+  description?: string;
+}
+
 /** Result of the optional post-fetch LLM extraction step */
 export type EnrichmentAIStatus =
   | 'ok'
@@ -71,6 +93,8 @@ export interface ItemEnrichment {
   aiTags?: string[];
   /** AI-extracted bullet points for search/categorization */
   aiKeyPoints?: string[];
+  /** Mechanical URL index from fetched markdown (all links; marks followed). */
+  references?: EnrichmentReference[];
   /** LLM extraction outcome (only set when fetch succeeded and AI step ran) */
   aiStatus?: EnrichmentAIStatus;
   aiError?: string;

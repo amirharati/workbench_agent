@@ -17,7 +17,7 @@ import type {
   Workspace,
   WorkspaceWindow,
 } from '../../db';
-import type { ItemEnrichment } from '../../enrichment/types';
+import type { EnrichmentReference, ItemEnrichment } from '../../enrichment/types';
 import type {
   AiCategory,
   AiItemCategoryLink,
@@ -125,6 +125,7 @@ interface EnrichmentRow {
   fetch_source_id: string | null;
   ai_tags: string | null;
   ai_key_points: string | null;
+  references_json: string | null;
   ai_status: string | null;
   ai_error: string | null;
   ai_at: number | null;
@@ -437,6 +438,7 @@ function rowToEnrichment(row: EnrichmentRow): ItemEnrichment {
   if (row.fetch_source_id) e.fetchSourceId = row.fetch_source_id;
   if (row.ai_tags) e.aiTags = parseJson<string[]>(row.ai_tags, []);
   if (row.ai_key_points) e.aiKeyPoints = parseJson<string[]>(row.ai_key_points, []);
+  if (row.references_json) e.references = parseJson<EnrichmentReference[]>(row.references_json, []);
   if (row.ai_status) e.aiStatus = row.ai_status as ItemEnrichment['aiStatus'];
   if (row.ai_error) e.aiError = row.ai_error;
   if (row.ai_at) e.aiAt = row.ai_at;
@@ -477,6 +479,7 @@ function enrichmentToRow(e: ItemEnrichment): EnrichmentRow {
     fetch_source_id: e.fetchSourceId ?? null,
     ai_tags: e.aiTags ? toJson(e.aiTags) : null,
     ai_key_points: e.aiKeyPoints ? toJson(e.aiKeyPoints) : null,
+    references_json: e.references?.length ? toJson(e.references) : null,
     ai_status: e.aiStatus ?? null,
     ai_error: e.aiError ?? null,
     ai_at: e.aiAt ?? null,
@@ -983,14 +986,14 @@ export class SqliteStore {
         last_error_detail, next_retry_at, content_hash, text_hash, snippet, summary, fetched_title,
         source_kind, quoted_text, quoted_author, channel, description, raw_ref, raw_bytes,
         has_raw_body, skip_reason, tier2_applied, fetch_source_id, ai_tags, ai_key_points,
-        ai_status, ai_error, ai_at, pending_fetch_review, pending_fetch_review_reason,
+        references_json, ai_status, ai_error, ai_at, pending_fetch_review, pending_fetch_review_reason,
         review_raw_ref, failure_stage, failure_category, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [r.item_id, r.normalized_url, r.status, r.provider_id, r.fetched_at, r.attempts, r.last_error_code,
        r.last_error_detail, r.next_retry_at, r.content_hash, r.text_hash, r.snippet, r.summary, r.fetched_title,
        r.source_kind, r.quoted_text, r.quoted_author, r.channel, r.description, r.raw_ref, r.raw_bytes,
        r.has_raw_body, r.skip_reason, r.tier2_applied, r.fetch_source_id, r.ai_tags, r.ai_key_points,
-       r.ai_status, r.ai_error, r.ai_at, r.pending_fetch_review, r.pending_fetch_review_reason,
+       r.references_json, r.ai_status, r.ai_error, r.ai_at, r.pending_fetch_review, r.pending_fetch_review_reason,
        r.review_raw_ref, r.failure_stage, r.failure_category, r.updated_at]
     );
   }

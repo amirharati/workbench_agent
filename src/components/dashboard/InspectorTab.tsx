@@ -344,6 +344,7 @@ function ItemInspectorBody({
                 <EnrichmentContent
                   summary={context.summary}
                   keyPoints={context.keyPoints}
+                  references={context.references}
                   compact
                   showKeyPoints={!enrichmentPrimaryInItemTab}
                 />
@@ -352,7 +353,12 @@ function ItemInspectorBody({
           )}
 
           {!hasEnrichment && (
-            <EnrichmentContent summary={context.summary} keyPoints={context.keyPoints} compact />
+            <EnrichmentContent
+              summary={context.summary}
+              keyPoints={context.keyPoints}
+              references={context.references}
+              compact
+            />
           )}
 
           <section>

@@ -81,6 +81,29 @@ export function isXTabChromeDominant(markdown: string, url: string): boolean {
   return false;
 }
 
+/** Tab-session X scrape good enough to skip syndication (B13). */
+export function isXTabFetchAcceptable(markdown: string, url: string): boolean {
+  if (!isXBookmarkUrl(url)) return true;
+  const raw = rawBody(markdown);
+  if (!raw) return false;
+  if (looksLikeSyndicationXMarkdown(raw)) return true;
+  if (isXTweetUnavailableBody(raw)) return false;
+  if (isXTabChromeDominant(raw, url)) return false;
+
+  const header = raw.match(/^#\s*@([\w]+)/m);
+  if (!header || header[1].toLowerCase() === 'unknown') return false;
+
+  // Thread opener only — no ## N/M parts; syndication should expand the chain.
+  if (!/^##\s*\d+\/\d+/m.test(raw)) return false;
+
+  const bodyLen = raw
+    .split('\n')
+    .filter((l) => l.trim() && !l.startsWith('#') && l !== '---')
+    .join('\n')
+    .trim().length;
+  return bodyLen >= 120;
+}
+
 /** After syndication succeeds, never downgrade to tab-session for the same status URL. */
 export function shouldKeepSyndicationOverTab(
   headless: { ok: boolean; fetchSourceId?: string; markdown?: string },

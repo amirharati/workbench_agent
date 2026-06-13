@@ -141,7 +141,6 @@ export const HubBulkStagedActions: React.FC<HubBulkStagedActionsProps> = ({
           title: `Re-fetch (${targetIds.length})`,
           enrich: true,
           classify: false,
-          skipAi: true,
           processAll: true,
           forceEnrich: true,
           cancellable: true,

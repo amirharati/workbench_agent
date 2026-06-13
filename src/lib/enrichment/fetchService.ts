@@ -32,6 +32,7 @@ import {
 } from './fetchQuality';
 import {
   isSyndicationFetchSourceId,
+  isXTabFetchAcceptable,
   isXTweetUnavailableBody,
   isXTabChromeDominant,
   looksLikeSyndicationXMarkdown,
@@ -48,6 +49,7 @@ import { prefersBrowserTabFirst, skipHeadlessAfterTabMiss } from './urlPolicy';
 import {
   parseFetchedContent,
 } from './parse';
+import { buildReferenceIndex, referencesForMeta } from './referenceIndex';
 import { deleteRawBody, loadRawBody, writeRawBody, writeReviewRawBody } from './rawBodyStore';
 import {
   deleteEnrichment,
@@ -61,6 +63,7 @@ import type {
   EnrichBatchResult,
   EnrichmentAIStatus,
   EnrichmentErrorCode,
+  EnrichmentReference,
   EnrichmentResult,
   ItemEnrichment,
 } from './types';
@@ -114,6 +117,7 @@ function buildDiskDump(opts: {
   fetchSourceId?: string;
   providerId: string;
   ai: EnrichmentAIExtract | null;
+  references?: EnrichmentReference[] | null;
   redirect?: PipelineDebugRedirect | null;
   aiCalls?: PipelineDebugAICall[] | null;
   markdown: string;
@@ -124,6 +128,7 @@ function buildDiskDump(opts: {
     providerId: opts.providerId,
     fetchSourceId: opts.fetchSourceId ?? null,
     ai: opts.ai ?? null,
+    references: opts.references?.length ? referencesForMeta(opts.references) : null,
     redirect: opts.redirect ?? null,
     aiCalls: opts.aiCalls?.length ? opts.aiCalls : null,
     savedAt: new Date().toISOString(),
@@ -444,6 +449,12 @@ async function tryOpenTabFetch(
   return { result: null, error: lastError };
 }
 
+function acceptTabFetchResult(result: FetchProviderResult, url: string): boolean {
+  if (!result.ok || !result.markdown?.trim()) return false;
+  if (classifySourceKind(url) !== 'x') return true;
+  return isXTabFetchAcceptable(stripProviderWrapper(result.markdown), url);
+}
+
 function headlessSyndicationIsGoodEnough(
   headless: FetchProviderResult,
   url: string,
@@ -552,10 +563,16 @@ async function resolveItemFetch(
 
   try {
     const debug = options?.debug;
-    const tabFirst =
+    const isXStatus = classifySourceKind(item.url) === 'x';
+    const wantsTab =
       options?.tabSessionOnly ||
       options?.preferTabSession ||
       prefersBrowserTabFirst(item.url);
+    const tabFirst =
+      wantsTab &&
+      !options?.tabSessionOnly &&
+      !isXStatus &&
+      (options?.preferTabSession || prefersBrowserTabFirst(item.url));
 
     if (options?.tabSessionOnly) {
       debug?.phase('tab_session_only_start');
@@ -565,8 +582,13 @@ async function resolveItemFetch(
         !!tabOnly.result?.ok,
         tabOnly.result?.fetchSourceId ?? tabOnly.error?.fetchSourceId
       );
-      if (tabOnly.result) return tabOnly.result;
-      return tabOnly.error ?? tabSessionEmptyError();
+      if (tabOnly.result && acceptTabFetchResult(tabOnly.result, item.url)) {
+        return tabOnly.result;
+      }
+      if (!isXStatus) {
+        return tabOnly.error ?? tabSessionEmptyError();
+      }
+      debug?.phase('tab_session_only_x_fallback', true, 'syndication');
     }
 
     if (tabFirst) {
@@ -577,11 +599,16 @@ async function resolveItemFetch(
         !!tabAttempt.result?.ok,
         tabAttempt.result?.fetchSourceId ?? tabAttempt.error?.fetchSourceId
       );
-      if (tabAttempt.result) return tabAttempt.result;
+      if (tabAttempt.result && acceptTabFetchResult(tabAttempt.result, item.url)) {
+        return tabAttempt.result;
+      }
+      if (tabAttempt.result && isXStatus) {
+        debug?.phase('tab_first_rejected', false, 'x_not_acceptable');
+      }
       if (skipHeadlessAfterTabMiss(item.url)) {
         return tabAttempt.error ?? tabSessionEmptyError();
       }
-    } else if (classifySourceKind(item.url) !== 'x') {
+    } else if (!isXStatus) {
       debug?.phase('tab_quick_start');
       const quickTab = await runTabFetch(false);
       debug?.phase(
@@ -634,6 +661,24 @@ async function resolveItemFetch(
       const tabClean = tabRetry.result.markdown
         ? stripProviderWrapper(tabRetry.result.markdown)
         : '';
+      if (isXStatus) {
+        if (headless.ok && headlessClean && shouldKeepSyndicationOverTab(headless, tabClean, item.url)) {
+          return headless;
+        }
+        if (tabClean && isXTweetUnavailableBody(tabClean)) {
+          if (headless.ok) return headless;
+          return {
+            ok: false,
+            errorCode: 'parse_empty',
+            error: 'tweet_unavailable',
+            fetchSourceId: 'tab-session',
+          };
+        }
+        if (acceptTabFetchResult(tabRetry.result, item.url)) {
+          return tabRetry.result;
+        }
+        return headless;
+      }
       if (tabClean && isXTweetUnavailableBody(tabClean)) {
         if (headless.ok) return headless;
         return {
@@ -926,6 +971,7 @@ export async function enrichOne(
       sourceKind,
       fetchResult.title
     );
+    const references = hardFailure ? undefined : buildReferenceIndex(enrichMarkdown, item.url);
 
     let status: ItemEnrichment['status'] = 'ok';
     let lastErrorCode: EnrichmentErrorCode | undefined;
@@ -971,6 +1017,7 @@ export async function enrichOne(
         fetchedTitle: parsed.title ?? existing.fetchedTitle,
         fetchedAt: now,
         fetchSourceId: fetchResult.fetchSourceId,
+        references: hardFailure ? existing.references : references,
         pendingFetchReview: false,
         pendingFetchReviewReason: undefined,
         reviewRawRef: undefined,
@@ -1048,6 +1095,7 @@ export async function enrichOne(
             quotedAuthor: parsed.quotedAuthor,
             channel: parsed.channel,
             description: parsed.description,
+            references,
             redirectContext,
             redirectVerdict,
           },
@@ -1169,6 +1217,7 @@ export async function enrichOne(
       fetchSourceId: fetchResult.fetchSourceId,
       providerId: activeProvider.id,
       ai: options?.skipAi ? null : (aiExtract ?? null),
+      references: hardFailure ? null : references,
       redirect: redirectDebug ?? null,
       aiCalls: aiCalls.length ? aiCalls : null,
       markdown: rawMarkdown,
@@ -1210,6 +1259,7 @@ export async function enrichOne(
       description: parsed.description,
       aiTags: options?.skipAi ? existing?.aiTags : aiExtract?.tags,
       aiKeyPoints: options?.skipAi ? existing?.aiKeyPoints : aiExtract?.keyPoints,
+      references: hardFailure ? undefined : references,
       aiStatus: options?.skipAi ? existing?.aiStatus : aiOutcome?.status,
       aiError: options?.skipAi ? existing?.aiError : aiOutcome?.error,
       aiAt: options?.skipAi ? existing?.aiAt : aiOutcome?.at,
@@ -1339,6 +1389,7 @@ export async function reextractAI(
         quotedAuthor: existing.quotedAuthor,
         channel: existing.channel,
         description: existing.description,
+        references: existing.references,
       },
     }
   );

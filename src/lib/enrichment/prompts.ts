@@ -4,7 +4,7 @@ import {
   formatRedirectVerdictForSummary,
   type RedirectAiVerdictData,
 } from './redirectAiVerdict';
-import type { SourceKind } from './types';
+import type { EnrichmentReference, SourceKind } from './types';
 
 export type PromptVariant = 'v1' | 'v2';
 
@@ -13,6 +13,8 @@ export type EnrichmentAIHints = {
   quotedAuthor?: string;
   channel?: string;
   description?: string;
+  /** Mechanical URL index from fetched markdown. */
+  references?: EnrichmentReference[];
   redirectContext?: RedirectContext;
   /** Pre-summary redirect AI verdict (suspicious redirects only). */
   redirectVerdict?: RedirectAiVerdictData;
@@ -62,6 +64,7 @@ const REDIRECT_VERDICT_SUMMARY_RULES = `- Prior redirect analysis is authoritati
 const JSON_RULES_V2 = `- Return ONLY valid JSON (no markdown fences)
 - summary: factual digest of the MAIN content the user bookmarked — not page chrome
 - keyPoints: 0-6 short bullets with concrete entities, claims, or topics (empty array if none)
+- When Indexed references lists link-only URLs, mention important ones in summary or keyPoints even if their page body was not fetched
 - improvedTitle: omit " | Medium", " - Reddit", etc.; always provide a specific headline when Current title is generic (site name, Untitled, login, bare subreddit)
 - tags: 3-8 lowercase topic tags about subject matter; include proper nouns when useful; omit platform names (x, reddit, youtube, github) — those are added automatically from the URL
 - IGNORE login forms, cookie banners, CAPTCHA, and password fields — do not summarize or tag those UI elements
@@ -178,6 +181,19 @@ export function buildExtractUserContent(
   }
   if (hints?.description?.trim()) {
     parts.push(`Description: ${hints.description.trim().slice(0, 2000)}`);
+  }
+  if (hints?.references?.length) {
+    const lines = hints.references.slice(0, 40).map((r) => {
+      const flags = [
+        r.scope,
+        r.kind ?? 'unknown',
+        r.followed ? 'fetched' : 'link-only',
+      ].join(', ');
+      return `- ${r.label}: ${r.url} (${flags})`;
+    });
+    parts.push(
+      `Indexed references (cite link-only entries in summary/keyPoints when they matter):\n${lines.join('\n')}`
+    );
   }
   if (hints?.quotedText?.trim()) {
     const author = hints.quotedAuthor?.trim();

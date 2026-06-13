@@ -1,5 +1,6 @@
 import {
   isSyndicationFetchSourceId,
+  isXTabFetchAcceptable,
   isXTweetUnavailableBody,
   isXTabChromeDominant,
   looksLikeSyndicationXMarkdown,
@@ -45,5 +46,16 @@ console.assert(
   'chrome gate only for X'
 );
 console.assert(isXTweetUnavailableBody(DELETED_TAB), 'deleted tweet tab shell');
+
+const JAFAR_TAB_OPENER = `# @unknown
+
+Don't use Fiverr and Linkedin. Here are 10 best sites to get a remote job that pays in USD:`;
+
+const jafarUrl = 'https://x.com/JafarNajafov/status/1893182618679869943';
+console.assert(!isXTabFetchAcceptable(JAFAR_TAB_OPENER, jafarUrl), 'jafar tab opener rejected');
+console.assert(
+  isXTabFetchAcceptable(SYNDICATION_THREAD, xStatus),
+  'syndication thread acceptable'
+);
 
 console.log('xFetchRouting.test.ts: all assertions passed');

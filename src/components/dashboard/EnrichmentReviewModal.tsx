@@ -412,7 +412,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
   useEffect(() => {
     setRawDump(null);
     setRawError('');
-  }, [active?.item.id]);
+  }, [active?.item.id, active?.enrichment?.fetchedAt, active?.enrichment?.contentHash]);
 
   const loadDump = async () => {
     const enrich = active?.enrichment;

@@ -1,5 +1,6 @@
 import React from 'react';
 import { StatusBadge, type StatusBadgeVariant } from '../StatusBadge';
+import type { EnrichmentReference } from '../../lib/enrichment/types';
 import {
   shouldShowListPipelineBadge,
   type PipelineBadge,
@@ -27,21 +28,26 @@ export const ListPipelineBadge: React.FC<{ badge?: PipelineBadge | null }> = ({ 
 interface EnrichmentContentProps {
   summary?: string;
   keyPoints: string[];
+  references?: EnrichmentReference[];
   compact?: boolean;
   emptyMessage?: string;
   showKeyPoints?: boolean;
+  showReferences?: boolean;
 }
 
 export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
   summary,
   keyPoints,
+  references = [],
   compact,
   emptyMessage,
   showKeyPoints = true,
+  showReferences = true,
 }) => {
   const visibleKeyPoints = showKeyPoints ? keyPoints : [];
+  const visibleReferences = showReferences ? references : [];
 
-  if (!summary && visibleKeyPoints.length === 0) {
+  if (!summary && visibleKeyPoints.length === 0 && visibleReferences.length === 0) {
     return (
       <div
         style={{
@@ -91,6 +97,31 @@ export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
           >
             {visibleKeyPoints.map((point, i) => (
               <li key={`${i}-${point.slice(0, 24)}`}>{point}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {visibleReferences.length > 0 && (
+        <div>
+          <SectionLabel>Resources</SectionLabel>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: '1.1rem',
+              fontSize: compact ? 'var(--text-xs)' : 'var(--text-sm)',
+              color: 'var(--text-muted)',
+              lineHeight: 1.5,
+            }}
+          >
+            {visibleReferences.map((ref) => (
+              <li key={ref.url}>
+                {ref.label}
+                {ref.followed ? '' : ' (link only)'}
+                {' — '}
+                <a href={ref.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+                  {ref.url}
+                </a>
+              </li>
             ))}
           </ul>
         </div>

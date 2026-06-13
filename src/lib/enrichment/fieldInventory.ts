@@ -253,6 +253,7 @@ export function buildAllDataModelFields(
     { key: 'summary', label: 'summary' },
     { key: 'aiTags', label: 'aiTags' },
     { key: 'aiKeyPoints', label: 'aiKeyPoints' },
+    { key: 'references', label: 'references' },
     { key: 'quotedText', label: 'quotedText' },
     { key: 'quotedAuthor', label: 'quotedAuthor' },
     { key: 'channel', label: 'channel' },
@@ -279,6 +280,11 @@ export function buildAllDataModelFields(
     }
     if (key === 'aiKeyPoints' && enrich?.aiKeyPoints?.length) {
       raw = enrich.aiKeyPoints.join('; ');
+    }
+    if (key === 'references' && enrich?.references?.length) {
+      raw = enrich.references
+        .map((r) => `${r.label}${r.followed ? ' [fetched]' : ''}: ${r.url}`)
+        .join('\n');
     }
     const val = clip(raw as string | undefined);
     rows.push(
@@ -425,6 +431,16 @@ export function buildFillableFields(
       id: 'aiKeyPoints',
       label: 'AI key points',
       get: (e) => (e.aiKeyPoints?.length ? e.aiKeyPoints.join('\n') : null),
+    },
+    {
+      id: 'references',
+      label: 'Indexed references',
+      get: (e) =>
+        e.references?.length
+          ? e.references
+              .map((r) => `${r.label}${r.followed ? ' [fetched]' : ''}: ${r.url}`)
+              .join('\n')
+          : null,
     },
     { id: 'quotedText', label: 'Quoted tweet', get: (e) => e.quotedText },
     { id: 'quotedAuthor', label: 'Quote author', get: (e) => e.quotedAuthor },

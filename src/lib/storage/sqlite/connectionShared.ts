@@ -12,6 +12,16 @@ import type {
 } from './types';
 import { DEFAULT_CONFIG } from './types';
 
+function runSchemaMigrations(database: Database, from: number, to: number): void {
+  if (from < 3 && to >= 3) {
+    try {
+      database.exec('ALTER TABLE item_enrichment ADD COLUMN references_json TEXT;');
+    } catch {
+      /* column may already exist */
+    }
+  }
+}
+
 export type Sqlite3Static = Awaited<ReturnType<typeof sqlite3InitModule>>;
 export type Database = InstanceType<Sqlite3Static['oo1']['DB']>;
 
@@ -72,25 +82,30 @@ export function initSchema(database: Database, schemaVersion: number): void {
   }
 
   console.log(`[SQLite] Upgrading schema from v${currentVersion} to v${schemaVersion}`);
-  database.exec(SCHEMA_SQL);
 
-  const metaCount = database.exec({
-    sql: 'SELECT COUNT(*) FROM app_meta;',
-    returnValue: 'resultRows',
-  })[0]?.[0] as number;
+  if (currentVersion === 0) {
+    database.exec(SCHEMA_SQL);
 
-  if (metaCount === 0) {
-    const now = Date.now();
-    const deviceId = crypto.randomUUID();
-    database.exec({
-      sql: `INSERT INTO app_meta (id, schema_version, created_at, device_id)
-            VALUES ('default', ?, ?, ?);`,
-      bind: [schemaVersion, now, deviceId],
-    });
-    database.exec({
-      sql: `INSERT INTO sync_meta (id, local_revision, last_exported_at)
-            VALUES ('default', 0, NULL);`,
-    });
+    const metaCount = database.exec({
+      sql: 'SELECT COUNT(*) FROM app_meta;',
+      returnValue: 'resultRows',
+    })[0]?.[0] as number;
+
+    if (metaCount === 0) {
+      const now = Date.now();
+      const deviceId = crypto.randomUUID();
+      database.exec({
+        sql: `INSERT INTO app_meta (id, schema_version, created_at, device_id)
+              VALUES ('default', ?, ?, ?);`,
+        bind: [schemaVersion, now, deviceId],
+      });
+      database.exec({
+        sql: `INSERT INTO sync_meta (id, local_revision, last_exported_at)
+              VALUES ('default', 0, NULL);`,
+      });
+    }
+  } else {
+    runSchemaMigrations(database, currentVersion, schemaVersion);
   }
 
   database.exec(`PRAGMA user_version = ${schemaVersion};`);
