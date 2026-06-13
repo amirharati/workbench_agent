@@ -209,10 +209,15 @@ async function enrichQuotedTweets(
 function isFxTweetUnavailable(tweet: FxTweet | null | undefined): boolean {
   if (!tweet) return true;
   const text = tweet.text?.trim() ?? '';
-  if (/tweet (is )?unavailable|this (post|tweet) (is )?unavailable|account.+suspended/i.test(text)) {
+  if (!text && !tweet.media?.photos?.length) return true;
+  if (/tweet (is )?unavailable|this (post|tweet) (is )?unavailable|account.+suspended|doesn'?t exist/i.test(text)) {
     return true;
   }
   return false;
+}
+
+function threadIndicatesUnavailable(thread: FxTweet[]): boolean {
+  return thread.some((t) => isFxTweetUnavailable(t));
 }
 
 /** Detect deleted/private tweets when thread endpoint returns empty. */
@@ -289,6 +294,9 @@ export async function fetchXThreadFromFx(
         errorCode: 'parse_empty',
         unavailable,
       };
+    }
+    if (threadIndicatesUnavailable(thread)) {
+      return { ok: false, errorCode: 'parse_empty', unavailable: true };
     }
 
     await enrichQuotedTweets(thread, signal);

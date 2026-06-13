@@ -30,7 +30,13 @@ import {
   isFetchBodyUsable,
   stripProviderWrapper,
 } from './fetchQuality';
-import { isSyndicationFetchSourceId, isXTabChromeDominant } from './xFetchHeuristics';
+import {
+  isSyndicationFetchSourceId,
+  isXTweetUnavailableBody,
+  isXTabChromeDominant,
+  looksLikeSyndicationXMarkdown,
+  shouldKeepSyndicationOverTab,
+} from './xFetchHeuristics';
 import { enrichMarkdownWithVision, needsImageVisionEnrichment } from './imageVision';
 import { hybridProvider } from './providers/hybrid';
 import { jinaProvider } from './providers/jina';
@@ -322,6 +328,17 @@ async function tabSessionFetchResult(
     };
   }
   const markdown = tab.markdown.trim();
+  if (isXTweetUnavailableBody(markdown)) {
+    return {
+      result: null,
+      error: {
+        ok: false,
+        errorCode: 'parse_empty',
+        error: 'tweet_unavailable',
+        fetchSourceId: 'tab-session',
+      },
+    };
+  }
   if (isXTabChromeDominant(markdown, url)) {
     return {
       result: null,
@@ -392,7 +409,14 @@ async function tryOpenTabFetch(
       };
     } else {
       const markdown = ephemeral.markdown.trim();
-      if (isXTabChromeDominant(markdown, url)) {
+      if (isXTweetUnavailableBody(markdown)) {
+        lastError = {
+          ok: false,
+          errorCode: 'parse_empty',
+          error: 'tweet_unavailable',
+          fetchSourceId: 'tab-session',
+        };
+      } else if (isXTabChromeDominant(markdown, url)) {
         lastError = {
           ok: false,
           errorCode: 'parse_empty',
@@ -436,6 +460,15 @@ function shouldRetryWithBrowserTab(
   url: string,
   cleanMarkdown?: string
 ): boolean {
+  if (classifySourceKind(url) === 'x') {
+    if (headless.ok && isSyndicationFetchSourceId(headless.fetchSourceId)) return false;
+    if (!headless.ok) {
+      if (headless.error === 'tweet_unavailable') return false;
+      const code = headless.errorCode;
+      if (code === 'parse_empty' || code === 'rate_limited' || code === 'timeout') return false;
+    }
+  }
+
   if (prefersBrowserTabFirst(url)) return true;
 
   if (!headless.ok) {
@@ -583,6 +616,14 @@ async function resolveItemFetch(
       return headless;
     }
 
+    if (
+      classifySourceKind(item.url) === 'x' &&
+      headless.ok &&
+      isSyndicationFetchSourceId(headless.fetchSourceId)
+    ) {
+      return headless;
+    }
+
     const tabRetry = await runTabFetch(true);
     debug?.phase(
       'tab_retry',
@@ -593,11 +634,36 @@ async function resolveItemFetch(
       const tabClean = tabRetry.result.markdown
         ? stripProviderWrapper(tabRetry.result.markdown)
         : '';
+      if (tabClean && isXTweetUnavailableBody(tabClean)) {
+        if (headless.ok) return headless;
+        return {
+          ok: false,
+          errorCode: 'parse_empty',
+          error: 'tweet_unavailable',
+          fetchSourceId: 'tab-session',
+        };
+      }
       if (tabClean && isXTabChromeDominant(tabClean, item.url)) {
         if (headless.ok) return headless;
+      } else if (shouldKeepSyndicationOverTab(headless, tabClean, item.url)) {
+        return headless;
+      } else if (
+        classifySourceKind(item.url) === 'x' &&
+        !headless.ok &&
+        headless.errorCode === 'parse_empty' &&
+        !looksLikeSyndicationXMarkdown(tabClean)
+      ) {
+        return headless;
       } else {
         return tabRetry.result;
       }
+    }
+
+    if (
+      classifySourceKind(item.url) === 'x' &&
+      tabRetry.error?.error === 'tweet_unavailable'
+    ) {
+      return tabRetry.error;
     }
 
     if (

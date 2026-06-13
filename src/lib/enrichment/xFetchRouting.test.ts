@@ -1,5 +1,6 @@
 import {
   isSyndicationFetchSourceId,
+  isXTweetUnavailableBody,
   isXTabChromeDominant,
   looksLikeSyndicationXMarkdown,
 } from './xFetchHeuristics';
@@ -18,12 +19,19 @@ Directory for promoting side projects
 
 https://github.com/soGeneri/awesome-launch`;
 
+const TAB_FAKE_SYNDICATION = `# @unknown
+
+cursor-tools 0.6.0-alpha.0 publishing now.`;
+
+const DELETED_TAB = `See new postsHmm...this page doesn't exist. Try searching for something else.Search`;
+
 const xStatus = 'https://x.com/tom_doerr/status/1892318062075854982';
 
 console.assert(isSyndicationFetchSourceId('syndication-expanded'), 'syndication-expanded');
 console.assert(!isSyndicationFetchSourceId('tab-session'), 'not tab-session');
 console.assert(looksLikeSyndicationXMarkdown(SYNDICATION_THREAD), 'syndication shape');
 console.assert(!looksLikeSyndicationXMarkdown(TOM_DOERR_TAB_CHROME), 'not syndication shape');
+console.assert(!looksLikeSyndicationXMarkdown(TAB_FAKE_SYNDICATION), 'tab @unknown not syndication');
 console.assert(
   isXTabChromeDominant(TOM_DOERR_TAB_CHROME, xStatus),
   'tom_doerr tab chrome detected'
@@ -36,5 +44,6 @@ console.assert(
   !isXTabChromeDominant(TOM_DOERR_TAB_CHROME, 'https://example.com/article'),
   'chrome gate only for X'
 );
+console.assert(isXTweetUnavailableBody(DELETED_TAB), 'deleted tweet tab shell');
 
 console.log('xFetchRouting.test.ts: all assertions passed');
