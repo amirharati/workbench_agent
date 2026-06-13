@@ -54,4 +54,26 @@ assert(
   'expanded quoted text body'
 );
 
+// B1: same-author expanded quoted thread must not populate quoted_text (legacy bodies).
+const selfQuote = parseFetchedContent(
+  [
+    '# @EastlondonDev — thread (3 parts)',
+    '',
+    '## 3/3',
+    '',
+    'Model defaults are important.',
+    '',
+    '### Quoted thread from @EastlondonDev (5 parts)',
+    '',
+    '# @EastlondonDev — thread (5 parts)',
+    '',
+    '## 1/5',
+    '',
+    'Vote for models',
+  ].join('\n'),
+  'x'
+);
+assertEqual(selfQuote.quotedAuthor, 'EastlondonDev', 'self-quote author from header');
+assert(!selfQuote.quotedText?.includes('Vote for models'), 'B1: no quoted_text for self expanded thread');
+
 console.log('parse.quote.test.ts: ok');

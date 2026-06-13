@@ -1,5 +1,5 @@
 import { appendXLinkFollowBodies } from './xLinkFollow';
-import { collectTweetIds, quotedThreadOverlapsParent } from '../xQuoteExpand';
+import { collectTweetIds, quotedThreadOverlapsParent, shouldSkipSameAuthorQuoteThreadExpand } from '../xQuoteExpand';
 
 const FX_THREAD_API = 'https://api.fxtwitter.com/2/thread';
 const FX_STATUS_V2_API = 'https://api.fxtwitter.com/2/status';
@@ -19,7 +19,7 @@ export type FxTweet = {
 const MAX_ROOT_WALK_HOPS = 20;
 const MAX_QUOTE_THREAD_EXPANDS = 2;
 
-export { collectTweetIds, quotedThreadOverlapsParent } from '../xQuoteExpand';
+export { collectTweetIds, quotedThreadOverlapsParent, shouldSkipSameAuthorQuoteThreadExpand } from '../xQuoteExpand';
 
 function formatQuoteBlock(tweet: FxTweet): string {
   if (tweet.quoteExpanded?.trim()) {
@@ -193,6 +193,10 @@ async function enrichQuotedTweets(
     if (quotedThreadOverlapsParent(thread, quotedThread)) continue;
 
     const qUser = quote.author?.screen_name || quotedThread[0].author?.screen_name || 'i';
+    const parentUser = thread[0]?.author?.screen_name;
+    if (shouldSkipSameAuthorQuoteThreadExpand(quotedThread.length, parentUser, qUser)) {
+      continue;
+    }
 
     if (quotedThread.length > 1) {
       const md = threadToMarkdown(quotedThread, qUser);

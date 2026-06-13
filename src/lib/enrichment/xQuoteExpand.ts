@@ -23,3 +23,20 @@ export function quotedThreadOverlapsParent(
   if (!quotedIds.length) return false;
   return quotedIds.every((id) => parentIds.has(id));
 }
+
+/**
+ * B1 — skip expanding a multi-part quoted thread when the quoted author is the same
+ * as the parent thread author (self-quote of another thread). Keeps the inline
+ * blockquote only; avoids duplicating a full author thread in body + quoted_text.
+ */
+export function shouldSkipSameAuthorQuoteThreadExpand(
+  quotedThreadPartCount: number,
+  parentAuthor?: string,
+  quoteAuthor?: string
+): boolean {
+  if (quotedThreadPartCount <= 1) return false;
+  const parent = parentAuthor?.trim().toLowerCase();
+  const quote = quoteAuthor?.trim().toLowerCase();
+  if (!parent || !quote) return false;
+  return parent === quote;
+}

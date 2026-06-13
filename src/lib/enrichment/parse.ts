@@ -106,6 +106,15 @@ function parseXContent(md: string): {
   const blocks: string[] = [];
   let quotedText: string | undefined;
   let quotedAuthor: string | undefined;
+  let parentHandle: string | undefined;
+
+  for (const line of lines) {
+    const parentM = line.match(/^#\s+@([A-Za-z0-9_]{1,50})/);
+    if (parentM) {
+      parentHandle = parentM[1];
+      break;
+    }
+  }
 
   // B2: quoted author only from explicit quote markers — not first @mention in tweet body.
   for (const line of lines) {
@@ -158,7 +167,16 @@ function parseXContent(md: string): {
         body.push(line);
       }
       const text = body.join('\n').trim();
-      if (text) quotedText = text;
+      if (
+        text &&
+        !(
+          parentHandle &&
+          quotedAuthor &&
+          parentHandle.toLowerCase() === quotedAuthor.toLowerCase()
+        )
+      ) {
+        quotedText = text;
+      }
     }
   }
 
