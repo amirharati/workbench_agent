@@ -1,9 +1,11 @@
 import {
   isSyndicationFetchSourceId,
+  isXStatusUrl,
   isXTabFetchAcceptable,
   isXTweetUnavailableBody,
   isXTabChromeDominant,
   looksLikeSyndicationXMarkdown,
+  preferTabSessionForDigest,
 } from './xFetchHeuristics';
 
 const TOM_DOERR_TAB_CHROME = `PostSee new postsConversationTom Dörr@tom_doerrSubscribeClick to Subscribe to tom_doerrSelf-hostable bookmark and content organizer3:59 PM · Feb 19, 2025·18.4K Views220207290RelevantPost your replyReplyEveryone can reply`;
@@ -56,6 +58,17 @@ console.assert(!isXTabFetchAcceptable(JAFAR_TAB_OPENER, jafarUrl), 'jafar tab op
 console.assert(
   isXTabFetchAcceptable(SYNDICATION_THREAD, xStatus),
   'syndication thread acceptable'
+);
+
+console.assert(isXStatusUrl('https://x.com/philfung/status/1892291566737260629'), 'x status url');
+console.assert(!isXStatusUrl('https://x.com/philfung'), 'not status url');
+console.assert(
+  !preferTabSessionForDigest('https://x.com/philfung/status/1892291566737260629'),
+  'side panel skips tab for x status'
+);
+console.assert(
+  preferTabSessionForDigest('https://seekingalpha.com/article/123'),
+  'side panel keeps tab for articles'
 );
 
 console.log('xFetchRouting.test.ts: all assertions passed');

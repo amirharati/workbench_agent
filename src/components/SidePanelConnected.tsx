@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { addItemWithMerge, Collection, Item, Project, updateItem, normalizeBookmarkUrl } from '../lib/db';
+import { preferTabSessionForDigest } from '../lib/enrichment/xFetchHeuristics';
 import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from '../lib/tabUrlCapture';
 import { usePipelineProgress } from './dashboard/PipelineProgressProvider';
 import { SidePanelView } from './SidePanelView';
@@ -97,9 +98,10 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           }
 
           await loadData();
+          const preferTab = preferTabSessionForDigest(ctx.url);
           void runDigestWithModal(result.itemId, {
-            preferTabSession: true,
-            tabId: ctx.tabId,
+            preferTabSession: preferTab,
+            tabId: preferTab ? ctx.tabId : undefined,
             statusPrefix,
           });
         } catch (error) {
@@ -151,9 +153,10 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           } else if (result.merged && result.addedToCollections.length > 0) {
             statusPrefix = 'Added to collection';
           }
+          const preferTab = preferTabSessionForDigest(saveUrl);
           void runDigestWithModal(result.itemId, {
-            preferTabSession: true,
-            tabId,
+            preferTabSession: preferTab,
+            tabId: preferTab ? tabId : undefined,
             statusPrefix,
           });
         } else {

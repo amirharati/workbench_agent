@@ -31,6 +31,26 @@ function isXBookmarkUrl(url: string): boolean {
   return host === 'x.com' || host === 'twitter.com' || host === 't.co';
 }
 
+/** `x.com/user/status/123` — canonical tweet URL (not profile or media card alone). */
+export function isXStatusUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (!isXBookmarkUrl(url)) return false;
+    return /\/status\/\d+/i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Side-panel digest: prefer live tab for auth/login and JS-heavy pages.
+ * X status bookmarks use syndication — tab scrape is chrome-heavy and loses threads.
+ */
+export function preferTabSessionForDigest(url: string): boolean {
+  if (!url.trim()) return false;
+  return !isXStatusUrl(url);
+}
+
 export function isSyndicationFetchSourceId(fetchSourceId?: string): boolean {
   return !!fetchSourceId && fetchSourceId.startsWith('syndication');
 }

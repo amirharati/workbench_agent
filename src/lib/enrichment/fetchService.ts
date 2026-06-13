@@ -32,6 +32,7 @@ import {
 } from './fetchQuality';
 import {
   isSyndicationFetchSourceId,
+  isXStatusUrl,
   isXTabFetchAcceptable,
   isXTweetUnavailableBody,
   isXTabChromeDominant,
@@ -714,7 +715,7 @@ async function resolveItemFetch(
 
     if (
       tabRetry.error &&
-      (typeof options?.tabId === 'number' || item.source === 'tab' || options?.preferTabSession) &&
+      options?.preferTabSession &&
       classifySourceKind(item.url) === 'x'
     ) {
       return tabRetry.error;
@@ -789,11 +790,19 @@ export async function enrichOne(
     return { itemId, status: 'failed', errorCode: 'excluded', message: 'no_item' };
   }
 
-  const resolvedTabSession = options?.tabSessionOnly
-    ? { preferTabSession: Boolean(options?.preferTabSession), tabId: options?.tabId }
-    : await resolveTabSessionForUrl(item.url, options?.tabId);
-  const preferTabSession = options?.preferTabSession ?? resolvedTabSession.preferTabSession;
-  const tabId = options?.tabId ?? resolvedTabSession.tabId;
+  let preferTabSession: boolean;
+  let tabId: number | undefined;
+  if (options?.tabSessionOnly) {
+    preferTabSession = Boolean(options?.preferTabSession);
+    tabId = options?.tabId;
+  } else if (isXStatusUrl(item.url) && options?.preferTabSession !== true) {
+    preferTabSession = false;
+    tabId = undefined;
+  } else {
+    const resolvedTabSession = await resolveTabSessionForUrl(item.url, options?.tabId);
+    preferTabSession = options?.preferTabSession ?? resolvedTabSession.preferTabSession;
+    tabId = options?.tabId ?? resolvedTabSession.tabId;
+  }
 
   const existing = await getEnrichment(itemId);
   const elig = checkEligibility(item, existing, {
