@@ -3,7 +3,10 @@ import type { Item } from '../db';
 import { notifyDataChanged } from '../dataChangeNotifier';
 import { getDB } from '../db';
 import type { ItemEnrichment } from '../enrichment/types';
-import { assessCategorizationEligibility } from '../enrichment/categorizationEligibility';
+import {
+  assessCategorizationEligibility,
+  fetchFailedWithoutUsableBody,
+} from '../enrichment/categorizationEligibility';
 import { buildCategorizationText } from '../enrichment/categorizationText';
 import { applyCountsToCategories, linkCountsForCategories } from './counts';
 import {
@@ -1040,6 +1043,8 @@ export async function assignGeneralLeafFallback(itemIds: string[]): Promise<numb
     if (existingPrimary.has(item.id)) continue; // already classified
 
     const enrichment = enrichByItem.get(item.id);
+    if (fetchFailedWithoutUsableBody(enrichment)) continue;
+
     const prevSignal = signalByItem.get(item.id);
 
     const text = [

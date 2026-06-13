@@ -198,9 +198,8 @@ export function fetchAttemptedForLinkQuality(enrichment?: ItemEnrichment | null)
 function hasFetchContentSignal(input: LinkQualityDetectInput): boolean {
   if (input.enrichmentStatus === 'ok') return true;
   return Boolean(
-    input.lastErrorDetail?.trim() ||
-      input.snippet?.trim() ||
-      input.aiSummary?.trim() ||
+    input.snippet?.trim() ||
+      (input.aiSummary?.trim() && input.aiStatus === 'ok') ||
       input.hasRawBody
   );
 }
@@ -399,7 +398,13 @@ export function detectLinkQualityIssue(input: LinkQualityDetectInput): LinkQuali
   }
 
   if (enrichStatus === 'failed' && !hasFetchContentSignal(input)) {
-    return null;
+    const det: LinkQualityDetection = {
+      leafId: LINK_QUALITY_LEAF_IDS.ENRICH_FETCH_FAILED,
+      reason:
+        input.lastErrorDetail?.trim() ||
+        'Fetch failed — no usable body for topic classification',
+    };
+    return linkQualityLeafAllowed(det.leafId, input) ? det : null;
   }
 
   const loginAuth = detectLoginAuthGate(input);

@@ -87,6 +87,33 @@ export function semanticSubstanceLength(
   return n;
 }
 
+export function hasUsableFetchedBody(
+  enrichment?: ItemEnrichment | null,
+  hints?: CategorizationEligibilityInput
+): boolean {
+  const aiStatus = (hints?.aiStatus ?? enrichment?.aiStatus) as EnrichmentAIStatus | undefined;
+  const summary =
+    hints?.aiSummary?.trim() ||
+    (enrichment?.aiStatus === 'ok' ? enrichment.summary?.trim() || '' : '');
+  if (aiStatus === 'ok' && summary.length >= MIN_AI_SUMMARY_LENGTH) return true;
+
+  const snippet = enrichment?.snippet?.trim() || '';
+  if (snippetSubstance(snippet) > 0) return true;
+
+  if (enrichment?.hasRawBody) return true;
+  return false;
+}
+
+/** Fetch attempted and failed with no AI/snippet/raw body — import notes do not count. */
+export function fetchFailedWithoutUsableBody(
+  enrichment?: ItemEnrichment | null,
+  hints?: CategorizationEligibilityInput
+): boolean {
+  const status = enrichment?.status;
+  if (!status || status === 'none' || status === 'ok') return false;
+  return !hasUsableFetchedBody(enrichment, hints);
+}
+
 export function assessCategorizationEligibility(
   item: Item,
   enrichment?: ItemEnrichment | null,
@@ -111,6 +138,20 @@ export function assessCategorizationEligibility(
   const snippetOk = snippetSubstance(snippet) > 0;
   const allowSnippetFallback =
     aiOk || (!FAILED_AI.includes(aiStatus as EnrichmentAIStatus) && snippetOk && !genericTitle);
+
+  // Failed fetch with only bookmark/import chrome must not topic-classify.
+  if (fetchFailedWithoutUsableBody(enrichment, hints)) {
+    return {
+      eligible: false,
+      reason:
+        enrichment?.lastErrorDetail?.trim() ||
+        enrichment?.lastErrorCode?.trim() ||
+        'fetch failed without usable body',
+      semanticLength,
+      allowSnippetFallback: false,
+      qualityTier: 'low',
+    };
+  }
 
   if (aiOk) {
     return { eligible: true, semanticLength, allowSnippetFallback, qualityTier: 'high' };
