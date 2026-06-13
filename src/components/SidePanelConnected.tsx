@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { addItemWithMerge, Collection, Item, Project, updateItem, normalizeBookmarkUrl } from '../lib/db';
+import { addItemWithMerge, Collection, Item, Project, updateItem } from '../lib/db';
 import { preferTabSessionForDigest } from '../lib/enrichment/xFetchHeuristics';
 import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
 import { usePipelineProgress } from './dashboard/PipelineProgressProvider';
 import { SidePanelView } from './SidePanelView';
+import type { SessionExternalLink } from './SidePanelExternalSection';
 
 function toStatusMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -35,8 +36,9 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
 }) => {
   const pipeline = usePipelineProgress();
   const [status, setStatus] = useState('');
-  const [digestItemId, setDigestItemId] = useState<string | null>(null);
-  const [digestStatus, setDigestStatus] = useState('');
+  const [tabDigestItemId, setTabDigestItemId] = useState<string | null>(null);
+  const [tabDigestStatus, setTabDigestStatus] = useState('');
+  const [externalLinks, setExternalLinks] = useState<SessionExternalLink[]>([]);
   const statusClearRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showStatus = useCallback((message: string, holdMs = 2500) => {
@@ -45,20 +47,24 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
     statusClearRef.current = setTimeout(() => setStatus(''), holdMs);
   }, []);
 
-  const clearDigestPanel = useCallback(() => {
-    setDigestItemId(null);
-    setDigestStatus('');
+  const clearTabDigest = useCallback(() => {
+    setTabDigestItemId(null);
+    setTabDigestStatus('');
   }, []);
 
-  const runDigestWithModal = useCallback(
+  const clearExternalLinks = useCallback(() => {
+    setExternalLinks([]);
+  }, []);
+
+  const runTabDigest = useCallback(
     async (
       itemId: string,
       opts?: { preferTabSession?: boolean; tabId?: number; statusPrefix?: string }
     ) => {
       const item = items.find((i) => i.id === itemId);
       const itemLabel = item?.title?.trim() || item?.url || itemId;
-      setDigestItemId(itemId);
-      setDigestStatus('Starting digest…');
+      setTabDigestItemId(itemId);
+      setTabDigestStatus('Starting digest…');
       if (opts?.statusPrefix) {
         showStatus(`${opts.statusPrefix} — digesting…`, 4000);
       }
@@ -70,11 +76,47 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           itemLabel,
           forceEnrich: true,
         });
-        setDigestStatus(result.message);
+        setTabDigestStatus(result.message);
         return result;
       } catch (error) {
         const msg = toStatusMessage(error, 'Digest failed');
-        setDigestStatus(msg);
+        setTabDigestStatus(msg);
+        throw error;
+      }
+    },
+    [items, pipeline, showStatus]
+  );
+
+  const runExternalDigest = useCallback(
+    async (itemId: string, url: string, statusPrefix: string) => {
+      const item = items.find((i) => i.id === itemId);
+      const itemLabel = item?.title?.trim() || url;
+      setExternalLinks((prev) =>
+        prev.map((entry) =>
+          entry.itemId === itemId ? { ...entry, digestStatus: 'Starting digest…' } : entry
+        )
+      );
+      showStatus(`${statusPrefix} — digesting…`, 4000);
+      try {
+        const result = await pipeline.runSingle(itemId, {
+          title: 'Digesting external link',
+          preferTabSession: false,
+          itemLabel,
+          forceEnrich: true,
+        });
+        setExternalLinks((prev) =>
+          prev.map((entry) =>
+            entry.itemId === itemId ? { ...entry, digestStatus: result.message } : entry
+          )
+        );
+        return result;
+      } catch (error) {
+        const msg = toStatusMessage(error, 'Digest failed');
+        setExternalLinks((prev) =>
+          prev.map((entry) =>
+            entry.itemId === itemId ? { ...entry, digestStatus: msg } : entry
+          )
+        );
         throw error;
       }
     },
@@ -105,7 +147,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
 
           await loadData();
           const preferTab = preferTabSessionForDigest(ctx.url);
-          void runDigestWithModal(result.itemId, {
+          void runTabDigest(result.itemId, {
             preferTabSession: preferTab,
             tabId: preferTab ? ctx.tabId : undefined,
             statusPrefix,
@@ -117,7 +159,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         showStatus('Cannot save this page');
       }
     },
-    [loadData, runDigestWithModal, showStatus]
+    [loadData, runTabDigest, showStatus]
   );
 
   const handleCreateItem = useCallback(
@@ -125,16 +167,13 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       try {
         const saveUrl = (data.url || '').trim();
         let tabId: number | undefined;
-        let source: Item['source'] = 'manual';
+        let source: Item['source'] = 'tab';
         let title = data.title;
 
         const ctx = await getActiveTabBookmarkContext();
-        // Only treat this as the live tab when the typed/pasted URL matches the
-        // active tab — otherwise we must not overwrite a pasted URL with the tab's href.
-        if (ctx && saveUrl && normalizeBookmarkUrl(saveUrl) === normalizeBookmarkUrl(ctx.url)) {
+        if (ctx) {
           tabId = ctx.tabId;
-          source = 'tab';
-          if (!title.trim() || title.trim() === data.url?.trim()) {
+          if (!title.trim() || title.trim() === saveUrl) {
             title = ctx.title || title;
           }
         }
@@ -159,7 +198,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
             statusPrefix = 'Added to collection';
           }
           const preferTab = preferTabSessionForDigest(saveUrl);
-          void runDigestWithModal(result.itemId, {
+          void runTabDigest(result.itemId, {
             preferTabSession: preferTab,
             tabId: preferTab ? tabId : undefined,
             statusPrefix,
@@ -172,7 +211,42 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         throw error;
       }
     },
-    [loadData, runDigestWithModal, showStatus]
+    [loadData, runTabDigest, showStatus]
+  );
+
+  const handleCreateExternalLink = useCallback(
+    async (data: { url: string; collectionIds: string[] }) => {
+      const saveUrl = data.url.trim();
+      try {
+        const result = await addItemWithMerge({
+          url: saveUrl,
+          title: saveUrl,
+          tags: [],
+          source: 'manual',
+          collectionIds: data.collectionIds,
+        });
+        await loadData();
+
+        let statusPrefix = 'External link saved';
+        if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
+          statusPrefix = 'Already saved in this collection';
+        } else if (result.merged && result.addedToCollections.length > 0) {
+          statusPrefix = 'Added to collection';
+        }
+
+        setExternalLinks((prev) => [
+          ...prev,
+          { itemId: result.itemId, url: saveUrl, digestStatus: 'Starting digest…' },
+        ]);
+
+        void runExternalDigest(result.itemId, saveUrl, statusPrefix);
+        return result.itemId;
+      } catch (error) {
+        showStatus(toStatusMessage(error, 'Could not save external link'));
+        throw error;
+      }
+    },
+    [loadData, runExternalDigest, showStatus]
   );
 
   const handleUpdateItem = useCallback(
@@ -201,15 +275,15 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       await loadData();
       const url = (data.url || '').trim();
       if (url && /^https?:\/\//i.test(url)) {
-        void runDigestWithModal(id, { statusPrefix: 'Bookmark updated' });
+        void runTabDigest(id, { statusPrefix: 'Bookmark updated' });
       } else {
         showStatus('Bookmark updated');
       }
     },
-    [loadData, runDigestWithModal, showStatus]
+    [loadData, runTabDigest, showStatus]
   );
 
-  const displayStatus = status || digestStatus;
+  const displayStatus = status || tabDigestStatus;
 
   return (
     <SidePanelView
@@ -218,6 +292,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       items={items}
       onSaveTab={handleSaveCurrentTab}
       onCreateItem={handleCreateItem}
+      onCreateExternalLink={handleCreateExternalLink}
       onUpdateItem={handleUpdateItem}
       onDeleteItem={onDeleteItem}
       onCreateProject={onCreateProject}
@@ -225,10 +300,12 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       onOpenFullPage={onOpenFullPage}
       onSetAsBrowserHome={onSetAsBrowserHome}
       status={displayStatus}
-      digestItemId={digestItemId}
-      digestStatus={digestStatus}
+      tabDigestItemId={tabDigestItemId}
+      tabDigestStatus={tabDigestStatus}
+      externalLinks={externalLinks}
       digestRunning={pipeline.isRunning}
-      onHostTabUrlChange={clearDigestPanel}
+      onHostTabUrlChange={clearTabDigest}
+      onHostTabNavigate={clearExternalLinks}
     />
   );
 };

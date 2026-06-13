@@ -6,6 +6,7 @@ import { favoriteItem, pinItem, unfavoriteItem, unpinItem } from '../lib/itemQui
 import { Panel, Input, ButtonGhost, ButtonPrimary, Divider } from '../styles/primitives';
 import { isValidBookmarkUrl } from '../lib/utils';
 import { SidePanelDigestPanel } from './SidePanelDigestPanel';
+import { SidePanelExternalSection, type SessionExternalLink } from './SidePanelExternalSection';
 
 interface SidePanelViewProps {
   projects: Project[];
@@ -13,6 +14,7 @@ interface SidePanelViewProps {
   items: Item[];
   onSaveTab: (collectionId?: string) => Promise<void>;
   onCreateItem: (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<void>;
+  onCreateExternalLink: (data: { url: string; collectionIds: string[] }) => Promise<string | void>;
   onUpdateItem: (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }) => Promise<void>;
   onDeleteItem: (id: string, collectionId?: string) => Promise<void>;
   onCreateProject: (data: { name: string; description?: string }) => Promise<string | void>;
@@ -20,10 +22,12 @@ interface SidePanelViewProps {
   onOpenFullPage: () => void;
   onSetAsBrowserHome: () => Promise<void>;
   status: string;
-  digestItemId?: string | null;
-  digestStatus?: string;
+  tabDigestItemId?: string | null;
+  tabDigestStatus?: string;
+  externalLinks?: SessionExternalLink[];
   digestRunning?: boolean;
   onHostTabUrlChange?: () => void;
+  onHostTabNavigate?: () => void;
 }
 
 function itemPlacementCount(item: Item): number {
@@ -91,6 +95,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   items,
   onSaveTab,
   onCreateItem,
+  onCreateExternalLink,
   onUpdateItem,
   onDeleteItem,
   onCreateProject,
@@ -98,10 +103,12 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   onOpenFullPage,
   onSetAsBrowserHome,
   status,
-  digestItemId,
-  digestStatus,
+  tabDigestItemId,
+  tabDigestStatus,
+  externalLinks = [],
   digestRunning = false,
   onHostTabUrlChange,
+  onHostTabNavigate,
 }) => {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
@@ -119,6 +126,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const [selectedExistingItemId, setSelectedExistingItemId] = useState<string | null>(null);
   const [selectedPlacementCollectionId, setSelectedPlacementCollectionId] = useState<string | null>(null);
   const [forceNewCopyMode, setForceNewCopyMode] = useState(false);
+  const [externalSectionOpen, setExternalSectionOpen] = useState(false);
   const prefillSeqRef = useRef(0);
   const hostTabIdRef = useRef<number | null>(null);
   const lastPrefilledRef = useRef<{ url: string; title: string }>({ url: '', title: '' });
@@ -201,8 +209,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   }, [items, selectedExistingItemId, selectedExistingItem]);
   const hasExistingForUrl = matchingItems.length > 0;
 
-  const pipelineItemId = useMemo(() => {
-    if (digestItemId) return digestItemId;
+  const tabPipelineItemId = useMemo(() => {
+    if (tabDigestItemId) return tabDigestItemId;
     if (
       selectedExistingItemId &&
       matchingItems.some((item) => item.id === selectedExistingItemId)
@@ -210,11 +218,11 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       return selectedExistingItemId;
     }
     return matchingItems[0]?.id ?? null;
-  }, [digestItemId, selectedExistingItemId, matchingItems]);
+  }, [tabDigestItemId, selectedExistingItemId, matchingItems]);
 
-  const showPipelinePanel =
-    !!pipelineItemId &&
-    (digestItemId === pipelineItemId ||
+  const showTabPipelinePanel =
+    !!tabPipelineItemId &&
+    (tabDigestItemId === tabPipelineItemId ||
       (!!url.trim() && isValidBookmarkUrl(url.trim())));
 
   // Auto-set collection when project changes, but not in new copy mode (user must pick explicitly)
@@ -324,7 +332,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   // Reflect DB title changes (digest / tier2) in the form without waiting for a tab switch.
   useEffect(() => {
     if (forceNewCopyMode) return;
-    const id = pipelineItemId;
+    const id = tabPipelineItemId;
     if (!id) return;
     const live = items.find((i) => i.id === id);
     if (!live) return;
@@ -348,18 +356,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       return liveTitle;
     });
     lastPrefilledRef.current.title = liveTitle;
-  }, [items, pipelineItemId, url, forceNewCopyMode]);
-
-  const resetForm = () => {
-    setTitle('');
-    setUrl('');
-    setNotes('');
-    setError(null);
-    setSelectedExistingItemId(null);
-    setSelectedPlacementCollectionId(null);
-    setForceNewCopyMode(false);
-    syncedItemTitleRef.current = '';
-  };
+  }, [items, tabPipelineItemId, url, forceNewCopyMode]);
 
   const createProjectInline = async () => {
     const name = newProjectName.trim();
@@ -448,10 +445,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           collectionIds: [collectionId],
           ...(trimmedNotes.length > 0 ? { notes: trimmedNotes } : {}),
         });
-        // After a successful save, always return to selected-existing flow.
         setForceNewCopyMode(false);
-        resetForm();
-        await prefillFromHostTab();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add item');
@@ -460,29 +454,33 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     }
   };
 
-  const applyHostTabContext = useCallback((tabUrl: string, tabTitle: string) => {
-    const trimmedUrl = tabUrl.trim();
-    if (!trimmedUrl || !isValidBookmarkUrl(trimmedUrl)) return;
+  const applyHostTabContext = useCallback(
+    (tabUrl: string, tabTitle: string) => {
+      const trimmedUrl = tabUrl.trim();
+      if (!trimmedUrl || !isValidBookmarkUrl(trimmedUrl)) return;
 
-    const tabChanged =
-      normalizeBookmarkUrl(trimmedUrl) !== normalizeBookmarkUrl(activeTabUrlRef.current);
+      const tabChanged =
+        normalizeBookmarkUrl(trimmedUrl) !== normalizeBookmarkUrl(activeTabUrlRef.current);
 
-    if (tabChanged) {
-      activeTabUrlRef.current = trimmedUrl;
-      setForceNewCopyMode(false);
-      setSelectedExistingItemId(null);
-      setSelectedPlacementCollectionId(null);
-      setNotes('');
-      syncedItemTitleRef.current = '';
-      onHostTabUrlChange?.();
-    }
+      if (tabChanged) {
+        activeTabUrlRef.current = trimmedUrl;
+        setForceNewCopyMode(false);
+        setSelectedExistingItemId(null);
+        setSelectedPlacementCollectionId(null);
+        setNotes('');
+        syncedItemTitleRef.current = '';
+        onHostTabNavigate?.();
+        onHostTabUrlChange?.();
+      }
 
-    const trimmedTitle = tabTitle.trim() || trimmedUrl;
-    lastPrefilledRef.current = { url: trimmedUrl, title: trimmedTitle };
-    setUrl(trimmedUrl);
-    setTitle(trimmedTitle);
-    syncedItemTitleRef.current = trimmedTitle;
-  }, [onHostTabUrlChange]);
+      const trimmedTitle = tabTitle.trim() || trimmedUrl;
+      lastPrefilledRef.current = { url: trimmedUrl, title: trimmedTitle };
+      setUrl(trimmedUrl);
+      setTitle(trimmedTitle);
+      syncedItemTitleRef.current = trimmedTitle;
+    },
+    [onHostTabNavigate, onHostTabUrlChange]
+  );
 
   const prefillFromHostTab = useCallback(async () => {
     const seq = ++prefillSeqRef.current;
@@ -547,6 +545,23 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       }}
     >
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+      <SidePanelExternalSection
+        open={externalSectionOpen}
+        onToggleOpen={() => setExternalSectionOpen((v) => !v)}
+        links={externalLinks}
+        canSave={!!projectId && !!collectionId}
+        saveHint={
+          !projectId || !collectionId
+            ? 'Pick a project and collection in “This page” below first'
+            : undefined
+        }
+        onSave={async (externalUrl) => {
+          await onCreateExternalLink({ url: externalUrl, collectionIds: [collectionId] });
+          setExternalSectionOpen(true);
+        }}
+        onOpenInApp={onOpenFullPage}
+      />
+
       <div
         style={{
           fontSize: 'var(--text-xs)',
@@ -557,7 +572,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           padding: '0.15rem 0.25rem',
         }}
       >
-        Quick actions
+        This page
       </div>
 
       <ButtonPrimary
@@ -604,23 +619,29 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       )}
 
       <Panel style={{ padding: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-          Add bookmark
-        </div>
-
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title (optional)"
+          placeholder="Page title (optional)"
           style={{ height: 30, fontSize: 'var(--text-sm)' }}
         />
 
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.com"
-          style={{ height: 30, fontSize: 'var(--text-sm)' }}
-        />
+        <div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 4 }}>
+            Current page URL
+          </div>
+          <Input
+            value={url}
+            readOnly
+            placeholder="Waiting for tab…"
+            style={{
+              height: 30,
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-muted)',
+              cursor: 'default',
+            }}
+          />
+        </div>
 
         <textarea
           value={notes}
@@ -1018,22 +1039,22 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
               : forceNewCopyMode
                 ? 'Save new copy'
                 : selectedExistingItem
-                  ? 'Update selected bookmark'
-                  : 'Add bookmark'}
+                  ? 'Update this page'
+                  : 'Save this page'}
         </ButtonPrimary>
       </Panel>
 
-      </div>
-
-      {showPipelinePanel && pipelineItemId ? (
+      {showTabPipelinePanel && tabPipelineItemId ? (
         <SidePanelDigestPanel
-          itemId={pipelineItemId}
+          itemId={tabPipelineItemId}
           statusLabel={
-            digestItemId === pipelineItemId ? digestStatus || status : undefined
+            tabDigestItemId === tabPipelineItemId ? tabDigestStatus || status : undefined
           }
           onOpenInApp={onOpenFullPage}
         />
       ) : null}
+
+      </div>
 
       <Divider style={{ margin: '0.25rem 0', flexShrink: 0 }} />
 
