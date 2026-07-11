@@ -108,6 +108,7 @@ async function runFolderMirror(
   pendingAllowEmptyMirror = false;
   let result: { ok: boolean; error?: string } = { ok: true };
   try {
+    // allowEmptyMirror only creates a NEW file — never clobbers an existing one.
     if (!useAllowEmpty) {
       const { getIdbCompatStore } = await import('../sqlite/store');
       const { fingerprintFromStore } = await import('../importFingerprint');
@@ -121,6 +122,23 @@ async function runFolderMirror(
         };
         lastMirrorError = result.error ?? 'Refusing to mirror empty library';
         return result;
+      }
+    } else {
+      // Even "create empty" must not run if workbench.sqlite already exists.
+      try {
+        const { readBinaryFromBackupFolder, WORKBENCH_DB_FILE } = await import('../../backupFolder');
+        const existing = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
+        if (existing.ok && existing.data && existing.data.byteLength > 16) {
+          result = {
+            ok: false,
+            error:
+              'Refusing allowEmptyMirror: workbench.sqlite already exists in the backup folder. Load from folder instead.',
+          };
+          lastMirrorError = result.error ?? null;
+          return result;
+        }
+      } catch {
+        /* if we cannot check, fall through — shrink guard still applies on write */
       }
     }
 

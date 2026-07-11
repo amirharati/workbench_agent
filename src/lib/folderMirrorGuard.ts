@@ -1,13 +1,14 @@
 /**
- * Hard stop: automatic folder mirror must NEVER replace a substantial
- * workbench.sqlite with a much smaller export (empty OPFS / fresh schema).
- * Deliberate restore/import uses different code paths with explicit consent.
+ * Hard stop: automatic folder mirror must NEVER clobber an existing
+ * workbench.sqlite with an empty / much smaller export.
  */
 
-/** Existing file must be at least this large before the shrink rule applies. */
-const MIN_EXISTING_BYTES = 256 * 1024;
-/** Incoming export must be at least this fraction of existing size. */
-const MIN_INCOMING_RATIO = 0.5;
+/** Any on-disk DB above this is treated as real user data. */
+const MIN_EXISTING_BYTES = 16 * 1024;
+/** Typical empty/schema-only SQLite is well under this. */
+const EMPTY_SCHEMA_MAX_BYTES = 200 * 1024;
+/** Incoming must be at least this fraction of existing size. */
+const MIN_INCOMING_RATIO = 0.9;
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -16,7 +17,7 @@ function formatBytes(n: number): string {
 }
 
 /**
- * Returns an error message when a mirror write would be a destructive regression,
+ * Returns an error message when a mirror write would destroy folder data,
  * or null when the write is allowed.
  */
 export function wouldMirrorShrinkWorkbenchSqlite(
@@ -24,10 +25,23 @@ export function wouldMirrorShrinkWorkbenchSqlite(
   incoming: Uint8Array
 ): string | null {
   if (existing.byteLength < MIN_EXISTING_BYTES) return null;
-  if (incoming.byteLength >= existing.byteLength * MIN_INCOMING_RATIO) return null;
-  return (
-    `Refusing to overwrite workbench.sqlite (${formatBytes(existing.byteLength)}) ` +
-    `with a much smaller database (${formatBytes(incoming.byteLength)}). ` +
-    `Use Settings → Restore from backup, or re-link your backup folder to load from disk.`
-  );
+
+  // Empty / near-empty live DB must never replace a real folder file.
+  if (incoming.byteLength < EMPTY_SCHEMA_MAX_BYTES && incoming.byteLength < existing.byteLength) {
+    return (
+      `Refusing to overwrite workbench.sqlite (${formatBytes(existing.byteLength)}) ` +
+      `with an empty/near-empty database (${formatBytes(incoming.byteLength)}). ` +
+      `Homebase loads from the folder — it must not wipe it.`
+    );
+  }
+
+  if (incoming.byteLength < existing.byteLength * MIN_INCOMING_RATIO) {
+    return (
+      `Refusing to overwrite workbench.sqlite (${formatBytes(existing.byteLength)}) ` +
+      `with a smaller database (${formatBytes(incoming.byteLength)}). ` +
+      `Use Settings → Restore only when you intentionally replace the library.`
+    );
+  }
+
+  return null;
 }

@@ -4,7 +4,7 @@
 
 import DbWorker from '../lib/storage/dbWorker/worker.ts?worker';
 import { wrapExport } from '../lib/backupEnvelope';
-import { encodeBinaryForRpc, normalizeBinaryPayload } from '../lib/binaryPayload';
+import { normalizeBinaryPayload } from '../lib/binaryPayload';
 import {
   WORKBENCH_DB_FILE,
   WORKBENCH_META_FILE,
@@ -48,6 +48,15 @@ async function writeMirrorToFolder(
       console.error('[DB owner] mirror blocked:', blocked);
       return { ok: false, error: blocked };
     }
+    // Last-resort recovery copy before any allowed overwrite of an existing file.
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const safetyName = `safety-before-mirror-${stamp}.sqlite`;
+    const safety = await writeBinaryAtomicallyToBackupFolder(safetyName, existing.data, {
+      allowWorkbenchShrink: true,
+    });
+    if (!safety.ok) {
+      console.warn('[DB owner] could not write safety-before-mirror copy:', safety.error);
+    }
   }
   const binRes = await writeBinaryAtomicallyToBackupFolder(WORKBENCH_DB_FILE, payload);
   if (!binRes.ok) {
@@ -72,7 +81,8 @@ async function bootstrapFromFolderIfNeeded(): Promise<void> {
   const bytes =
     primary.ok && primary.data && primary.data.byteLength > 16 ? primary.data : null;
   if (!bytes) return;
-  await workerRpc('forceImportFromFolderBytes', [encodeBinaryForRpc(bytes)]);
+  // Transferable ArrayBuffer — never base64 (large DBs exceed message limits).
+  await workerRpcBinary('forceImportFromFolderBytes', bytes);
 }
 
 function workerRpc(method: string, args: unknown[]): Promise<unknown> {
@@ -85,6 +95,22 @@ function workerRpc(method: string, args: unknown[]): Promise<unknown> {
       }
     });
     worker.postMessage({ id, method, args });
+  });
+}
+
+/** Import/inspect large sqlite bytes via transferable buffer (no base64 bloat). */
+function workerRpcBinary(method: string, bytes: Uint8Array): Promise<unknown> {
+  const id = rpcId++;
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return new Promise((resolve, reject) => {
+    pendingRpc.set(id, (msg) => {
+      if ('id' in msg && msg.id === id) {
+        if (msg.ok) resolve(msg.result);
+        else reject(new Error(msg.error));
+      }
+    });
+    worker.postMessage({ id, method, args: [copy.buffer] }, [copy.buffer]);
   });
 }
 
@@ -114,7 +140,7 @@ async function rpcFromBackupFolderFile(
     }
     return { imported: false, reason: 'empty' };
   }
-  return workerRpc(workerMethod, [encodeBinaryForRpc(primary.data)]);
+  return workerRpcBinary(workerMethod, primary.data);
 }
 
 worker.onmessage = async (event: MessageEvent<WorkerResponse>) => {

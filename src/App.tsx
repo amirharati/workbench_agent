@@ -793,7 +793,12 @@ function App() {
         const imported = await importDB(res.existingBackupJson, true);
         if (imported) {
           await reloadDB();
-          await mirrorNow(true);
+          // Legacy JSON → OPFS only; mirror only if we actually have items.
+          const { dbRpc } = await import('./lib/storage/dbClient');
+          const liveFp = await dbRpc<{ itemCount: number }>('liveFingerprint', []);
+          if (liveFp.itemCount > 0) {
+            await mirrorNow(true);
+          }
           await loadData();
           showStatus('Folder linked. Legacy latest.json imported into workbench.sqlite.');
         } else {
@@ -806,23 +811,38 @@ function App() {
         if (res.hadExistingWorkbenchDb) {
           const loaded = await loadWorkbenchSqliteFromFolder();
           if (!loaded.ok) {
-            showStatus(`Backup folder linked, but could not load your library: ${loaded.error}`);
+            showStatus(
+              `Backup folder linked, but could not LOAD your library (folder was NOT overwritten): ${loaded.error}`
+            );
             return { ok: false, error: loaded.error };
           }
           await reloadDB();
           await loadData();
-          showStatus('Loaded your library from workbench.sqlite in that folder.');
+          showStatus('Loaded your library from workbench.sqlite in that folder (folder was not overwritten).');
         } else if (res.freshFolder) {
-          await reloadDB();
-          const mirror = await mirrorNow(true, { allowEmptyMirror: true });
-          if (!mirror.ok) {
-            showStatus(
-              `Backup folder linked, but could not create workbench.sqlite: ${mirror.error ?? 'unknown error'}`
-            );
-            return { ok: false, error: mirror.error ?? 'Could not write workbench.sqlite' };
+          // Re-check right before create — never allowEmptyMirror if a file appeared.
+          const { folderHasWorkbenchSqlite } = await import('./lib/linkBackupFolder');
+          if (await folderHasWorkbenchSqlite()) {
+            const loaded = await loadWorkbenchSqliteFromFolder();
+            if (!loaded.ok) {
+              showStatus(`Folder has workbench.sqlite but load failed (not overwritten): ${loaded.error}`);
+              return { ok: false, error: loaded.error };
+            }
+            await reloadDB();
+            await loadData();
+            showStatus('Loaded existing workbench.sqlite from that folder.');
+          } else {
+            await reloadDB();
+            const mirror = await mirrorNow(true, { allowEmptyMirror: true });
+            if (!mirror.ok) {
+              showStatus(
+                `Backup folder linked, but could not create workbench.sqlite: ${mirror.error ?? 'unknown error'}`
+              );
+              return { ok: false, error: mirror.error ?? 'Could not write workbench.sqlite' };
+            }
+            await loadData();
+            showStatus('Backup folder saved. Live database is workbench.sqlite in that folder.');
           }
-          await loadData();
-          showStatus('Backup folder saved. Live database is workbench.sqlite in that folder.');
         } else {
           showStatus('Backup folder linked, but no database was found in that folder.');
           return { ok: false, error: 'No workbench.sqlite in folder.' };
