@@ -1082,7 +1082,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           flexShrink: 0,
         }}
       >
-        Set Workbench as Home
+        Set Homebase as Home
       </ButtonGhost>
     </div>
   );

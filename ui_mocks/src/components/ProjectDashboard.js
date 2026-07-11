@@ -309,10 +309,10 @@ export function createProjectDashboard(project) {
                     <button class="view-btn ${state.currentView === 'view4' ? 'active' : ''}" data-view="view4" title="Flexible Grid">
                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                     </button>
-                    <button class="view-btn ${state.currentView === 'view5' ? 'active' : ''}" data-view="view5" title="Workbench">
+                    <button class="view-btn ${state.currentView === 'view5' ? 'active' : ''}" data-view="view5" title="Homebase">
                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="6" rx="1"></rect><rect x="3" y="12" width="8" height="9" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect></svg>
                     </button>
-                    <button class="view-btn ${state.currentView === 'view6' ? 'active' : ''}" data-view="view6" title="Enhanced Workbench">
+                    <button class="view-btn ${state.currentView === 'view6' ? 'active' : ''}" data-view="view6" title="Enhanced Homebase">
                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
                     </button>
                 </div>

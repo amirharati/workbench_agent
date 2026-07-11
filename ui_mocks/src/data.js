@@ -1,7 +1,7 @@
 
 export const projects = [
   { id: 1, title: 'Knowledge Base', description: 'Personal wiki and resources', stats: { notes: 142, collections: 12 }, icon: 'book' },
-  { id: 2, title: 'Workbench Agent', description: 'Design docs and sprint planning', stats: { notes: 24, collections: 4 }, icon: 'cpu' },
+  { id: 2, title: 'Homebase', description: 'Design docs and sprint planning', stats: { notes: 24, collections: 4 }, icon: 'cpu' },
   { id: 3, title: 'Recipes & Diet', description: 'Collection of healthy meals', stats: { notes: 85, collections: 8 }, icon: 'coffee' }
 ];
 
@@ -95,15 +95,15 @@ const generateItems = () => {
         });
     }
 
-    // Items for Project 2 (Workbench Agent) to test Split View
+    // Items for Project 2 (Homebase) to test Split View
     for (let i = 0; i < 5; i++) {
         items.push({
             id: idCounter++,
             projectId: 2,
             collectionId: 201, // Sprint 24
             type: 'note',
-            title: `Workbench Task ${i}`,
-            content: `# Workbench Task ${i}\n${loremIpsum}`,
+            title: `Homebase Task ${i}`,
+            content: `# Homebase Task ${i}\n${loremIpsum}`,
             date: "Today"
         });
     }

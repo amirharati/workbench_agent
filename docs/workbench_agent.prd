@@ -1,8 +1,8 @@
-# Workbench Agent - Product Requirements Document
+# Homebase - Product Requirements Document
 
 ## Overview
 
-Workbench Agent is a Chrome extension that serves as a personal productivity tool combining tab management, bookmark organization, note-taking, and an AI-powered assistant. The AI agent acts as a personal organizer, search engine, and contextual helper that can understand and work with your browsing context, notes, and resources.
+Homebase is a Chrome extension that serves as a personal productivity tool combining tab management, bookmark organization, note-taking, and an AI-powered assistant. The AI agent acts as a personal organizer, search engine, and contextual helper that can understand and work with your browsing context, notes, and resources.
 
 ## Vision
 
@@ -132,7 +132,7 @@ The AI agent can access:
 ### Chrome Extension
 - **Manifest**: Chrome Extension Manifest V3 (`public/manifest.json`)
 - **Service Worker**: `service-worker.js` — side panel enable/open per tab on toolbar click; `focus-tab` message helper for dashboard tab activation
-- **New Tab**: `chrome_url_overrides.newtab` → extension `index.html` so new tabs open Workbench directly
+- **New Tab**: `chrome_url_overrides.newtab` → extension `index.html` so new tabs open Homebase directly
 - **Known limitation**: Chrome may show a persistent browser/extension footer on overridden new-tab pages; **not** reliably removable for extension-hosted UI. A hosted web dashboard would be the escape hatch if a chrome-free full viewport is required later.
 - **Content Scripts**: Not currently declared in manifest; future page-context capture would add them when implemented.
 - **Storage**: Chrome `storage` where needed + IndexedDB for app data
@@ -188,7 +188,7 @@ The AI agent can access:
 6. **Projects View**: ✅ Implemented project workspace and cards
 7. **Notes View**: ✅ Implemented note-focused view over note-like items
 8. **AI Assistant**: 🟡 Infra/settings + test prompt + first bookmark-grounded ask flow implemented; richer citation/selection UX still pending
-9. **Side Panel**: ✅ Bookmark-centric workflow — URL/title prefill from active tab (updates on tab change); notes field; project/collection selection with inline create; list of saved copies for current URL (edit, placement-aware remove, **add new copy** with explicit project/collection choice); switching to a collection that already contains the URL surfaces that copy’s notes; duplicate URL blocked within same collection; Open Dashboard; Set Workbench as Home (manual Chrome startup/home setup). **BroadcastChannel** / visibility patterns refresh lists when the dashboard mutates data. Backup onboarding/import flows remain dashboard-first when required.
+9. **Side Panel**: ✅ Bookmark-centric workflow — URL/title prefill from active tab (updates on tab change); notes field; project/collection selection with inline create; list of saved copies for current URL (edit, placement-aware remove, **add new copy** with explicit project/collection choice); switching to a collection that already contains the URL surfaces that copy’s notes; duplicate URL blocked within same collection; Open Dashboard; Set Homebase as Home (manual Chrome startup/home setup). **BroadcastChannel** / visibility patterns refresh lists when the dashboard mutates data. Backup onboarding/import flows remain dashboard-first when required.
 
 ### Design Philosophy
 - Clean and minimal
@@ -263,7 +263,7 @@ The AI agent can access:
 
 ## Notes
 
-- **Extension naming**: Manifest/marketing name may read “Tab Manager AI” while docs refer to “Workbench Agent”; align naming when preparing store listing.
+- **Extension naming**: Manifest/marketing name may read “Homebase” while docs refer to “Homebase”; align naming when preparing store listing.
 - This is a personal tool; priorities may shift based on actual usage
 - Focus on building something useful first, optimize later
 - Keep it simple and maintainable

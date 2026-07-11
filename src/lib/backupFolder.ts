@@ -28,7 +28,7 @@ export const LEGACY_LATEST_SQLITE = 'latest.sqlite';
 /** Thrown when the app is used without a configured, writable backup folder. */
 export class BackupFolderRequiredError extends Error {
   constructor(
-    message = 'Choose a backup folder before using Workbench. Your data lives in workbench.sqlite in that folder.'
+    message = 'Choose a backup folder before using Homebase. Your data lives in workbench.sqlite in that folder.'
   ) {
     super(message);
     this.name = 'BackupFolderRequiredError';

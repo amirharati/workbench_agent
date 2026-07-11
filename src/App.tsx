@@ -963,7 +963,7 @@ function App() {
     await chrome.tabs.create({ url: 'chrome://settings/appearance' });
     await chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
     await chrome.tabs.create({ url: dashboardUrl });
-    showStatus('Opened settings and Workbench URL. Set it manually for Home/Startup in Chrome settings.');
+    showStatus('Opened settings and Homebase URL. Set it manually for Home/Startup in Chrome settings.');
   };
 
   const handleSaveAISettings = async (settings: AISettings) => {

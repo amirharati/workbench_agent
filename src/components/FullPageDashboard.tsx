@@ -42,7 +42,7 @@ export const FullPageDashboard: React.FC<FullPageDashboardProps> = ({
         }}
       >
         <Layout size={28} style={{ color: '#3b82f6' }} />
-        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 600, flex: 1 }}>Tab Manager</h1>
+        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 600, flex: 1 }}>Homebase</h1>
       </header>
 
       {/* Main Content - Two Column Layout */}

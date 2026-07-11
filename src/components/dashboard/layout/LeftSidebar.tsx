@@ -262,7 +262,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}>
-            Workbench
+            Homebase
           </span>
         )}
         <button 

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tab Manager AI",
+  "name": "Homebase",
   "version": "1.0.0",
-  "description": "Organize your tabs and bookmarks with AI.",
+  "description": "Your browser home for bookmarks, tabs, and knowledge — with optional AI.",
   "permissions": [
     "sidePanel",
     "offscreen",
@@ -25,7 +25,7 @@
     "newtab": "index.html"
   },
   "action": {
-    "default_title": "Open Tab Manager"
+    "default_title": "Open Homebase"
   },
   "background": {
     "service_worker": "service-worker.js"

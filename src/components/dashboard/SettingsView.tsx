@@ -108,7 +108,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isTestingAI, setIsTestingAI] = React.useState(false);
   const [showApiKey, setShowApiKey] = React.useState(false);
   const [aiTestPrompt, setAiTestPrompt] = React.useState(
-    'Reply with exactly: Workbench AI ready.'
+    'Reply with exactly: Homebase AI ready.'
   );
   const [aiTestOutput, setAiTestOutput] = React.useState('');
   const [aiTestModel, setAiTestModel] = React.useState('');
@@ -319,7 +319,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       >
         <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Home Page Setup</div>
         <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>
-          Use Workbench as your browser home/startup page. This opens Chrome settings and copies the Workbench URL.
+          Use Homebase as your browser home/startup page. This opens Chrome settings and copies the Homebase URL.
         </div>
         <div>
           <button
@@ -336,7 +336,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               fontWeight: 600,
             }}
           >
-            Set Workbench as Home
+            Set Homebase as Home
           </button>
         </div>
       </div>

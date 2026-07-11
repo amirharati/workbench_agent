@@ -1,6 +1,6 @@
 # Data integrity & backup design
 
-Living design for how Workbench protects user data and mirrors it outside IndexedDB. This now includes a shipped file-based backup core (live + manual + sync conflict guard), with scheduled rotation and a few hardening steps still pending (see [`BACKLOG.md`](BACKLOG.md)).
+Living design for how Homebase protects user data and mirrors it outside IndexedDB. This now includes a shipped file-based backup core (live + manual + sync conflict guard), with scheduled rotation and a few hardening steps still pending (see [`BACKLOG.md`](BACKLOG.md)).
 
 ---
 

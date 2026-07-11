@@ -1,6 +1,6 @@
-# Workbench UI Redesign (IDE Shell)
+# Homebase UI Redesign (IDE Shell)
 
-This document defines the target interaction model for a polished, stable, IDE-style Workbench UI. The goal is to improve consistency and reduce context loss while preserving existing feature behavior and data workflows.
+This document defines the target interaction model for a polished, stable, IDE-style Homebase UI. The goal is to improve consistency and reduce context loss while preserving existing feature behavior and data workflows.
 
 ## 1) Goals
 
@@ -12,7 +12,7 @@ This document defines the target interaction model for a polished, stable, IDE-s
 
 ## 2) Core Mental Model
 
-Workbench uses a three-region shell:
+Homebase uses a three-region shell:
 
 - Left: navigation and scope selection.
 - Middle: primary workspace (tabs + pane splits).

@@ -108,7 +108,7 @@ export const HelpView: React.FC = () => {
       children: (
         <>
           <p style={para}>
-            Workbench is your personal library for bookmarks and notes. Save links from the browser side panel,
+            Homebase is your personal library for bookmarks and notes. Save links from the browser side panel,
             organize them into projects and collections, enrich them with AI, and open items in tabs on Home or
             Bookmarks.
           </p>
@@ -356,7 +356,7 @@ export const HelpView: React.FC = () => {
           Help
         </h1>
         <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
-          Workbench guide — basics, shortcuts, and where to find things. v2
+          Homebase guide — basics, shortcuts, and where to find things. v2
         </p>
       </div>
 

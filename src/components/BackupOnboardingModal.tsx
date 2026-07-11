@@ -107,7 +107,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
                 Choose your data folder
               </h2>
               <p style={{ margin: '8px 0 0', opacity: 0.85, lineHeight: 1.5 }}>
-                Workbench stores your live database as <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> in a
+                Homebase stores your live database as <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> in a
                 folder you pick—ideally inside Dropbox, iCloud Drive, or another sync service. The app cannot run without
                 this folder.
               </p>

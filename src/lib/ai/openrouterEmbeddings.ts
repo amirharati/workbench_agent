@@ -39,7 +39,7 @@ export async function embedTexts(
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: openRouterHeaders(settings.apiKey, 'Workbench Agent Embeddings'),
+        headers: openRouterHeaders(settings.apiKey, 'Homebase Embeddings'),
         signal: controller.signal,
         body: JSON.stringify({
           model: settings.model,

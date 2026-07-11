@@ -59,7 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Logo */}
       <div style={{ padding: '1.25rem 1rem', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <Layout size={24} style={{ color: '#60a5fa' }} />
-        <span style={{ fontSize: '1.125rem', fontWeight: 600 }}>Tab Manager</span>
+        <span style={{ fontSize: '1.125rem', fontWeight: 600 }}>Homebase</span>
       </div>
 
       {/* Nav Items */}
