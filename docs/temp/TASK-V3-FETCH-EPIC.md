@@ -1,5 +1,7 @@
 # TASK-V3-FETCH-EPIC — Fetch layer honesty
 
+**Epic status:** **closed** `3d3e073` (2026-06-13) — Gates 1–4 done. Master handoff in § Epic return.
+
 > **You receive:** **this file only.**  
 > **Read-only context:** `TASK-V3-dogfood-waves-master.md` · `TASK-V3-dogfood-fix-list.md` § Fetch epic  
 > **You may edit:** **this file only** — especially § Epic return at the end.  

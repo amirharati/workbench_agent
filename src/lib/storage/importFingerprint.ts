@@ -79,6 +79,16 @@ export function isLiveNewerThanBackup(
   return false;
 }
 
+/** True when live and incoming backups describe the same library (for skip-reimport). */
+export function fingerprintsEqual(a: DbContentFingerprint, b: DbContentFingerprint): boolean {
+  return (
+    a.maxUpdatedAt === b.maxUpdatedAt &&
+    a.itemCount === b.itemCount &&
+    a.notesRowCount === b.notesRowCount &&
+    a.itemsWithNotes === b.itemsWithNotes
+  );
+}
+
 export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.byteLength !== b.byteLength) return false;
   for (let i = 0; i < a.byteLength; i++) {

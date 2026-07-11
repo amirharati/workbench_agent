@@ -14,6 +14,7 @@ import {
   writeJsonAtomicallyToBackupFolder,
 } from '../lib/backupFolder';
 import { revisionTracker } from '../lib/revisionTracker';
+import { wouldMirrorShrinkWorkbenchSqlite } from '../lib/folderMirrorGuard';
 
 const worker = new DbWorker({ name: 'workbench-db' });
 
@@ -40,6 +41,14 @@ async function writeMirrorToFolder(
   if (!payload || payload.byteLength < 16) {
     return { ok: false, error: 'Export produced empty database' };
   }
+  const existing = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
+  if (existing.ok && existing.data && existing.data.byteLength > 16) {
+    const blocked = wouldMirrorShrinkWorkbenchSqlite(existing.data, payload);
+    if (blocked) {
+      console.error('[DB owner] mirror blocked:', blocked);
+      return { ok: false, error: blocked };
+    }
+  }
   const binRes = await writeBinaryAtomicallyToBackupFolder(WORKBENCH_DB_FILE, payload);
   if (!binRes.ok) {
     return binRes;
@@ -63,7 +72,7 @@ async function bootstrapFromFolderIfNeeded(): Promise<void> {
   const bytes =
     primary.ok && primary.data && primary.data.byteLength > 16 ? primary.data : null;
   if (!bytes) return;
-  await workerRpc('bootstrapFromFolderBytes', [encodeBinaryForRpc(bytes)]);
+  await workerRpc('forceImportFromFolderBytes', [encodeBinaryForRpc(bytes)]);
 }
 
 function workerRpc(method: string, args: unknown[]): Promise<unknown> {
@@ -77,6 +86,35 @@ function workerRpc(method: string, args: unknown[]): Promise<unknown> {
     });
     worker.postMessage({ id, method, args });
   });
+}
+
+type FolderFileWorkerMethod = 'bootstrapFromFolderBytes' | 'forceImportFromFolderBytes' | 'inspectImportBytes';
+
+const FOLDER_FILE_RPC: Record<string, FolderFileWorkerMethod> = {
+  bootstrapFromBackupFolderFile: 'bootstrapFromFolderBytes',
+  forceImportFromBackupFolderFile: 'forceImportFromFolderBytes',
+  inspectImportFromBackupFolderFile: 'inspectImportBytes',
+};
+
+async function rpcFromBackupFolderFile(
+  rpcMethod: string,
+  filename: string
+): Promise<unknown> {
+  const workerMethod = FOLDER_FILE_RPC[rpcMethod];
+  if (!workerMethod) {
+    throw new Error(`Unknown folder-file RPC: ${rpcMethod}`);
+  }
+  const primary = await readBinaryFromBackupFolder(filename);
+  if (!primary.ok) {
+    throw new Error(primary.error ?? `Could not read ${filename} from backup folder`);
+  }
+  if (primary.notFound || !primary.data || primary.data.byteLength < 16) {
+    if (workerMethod === 'inspectImportBytes') {
+      return { maxUpdatedAt: 0, itemCount: 0, notesRowCount: 0, itemsWithNotes: 0 };
+    }
+    return { imported: false, reason: 'empty' };
+  }
+  return workerRpc(workerMethod, [encodeBinaryForRpc(primary.data)]);
 }
 
 worker.onmessage = async (event: MessageEvent<WorkerResponse>) => {
@@ -130,6 +168,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (method === 'ping' && bootstrapComplete && !bootstrapInFlight) {
     chrome.runtime.sendMessage({ type: 'db-owner-ready' }).catch(() => {});
   }
+
+  const folderRpc = typeof method === 'string' ? FOLDER_FILE_RPC[method] : undefined;
+  if (folderRpc) {
+    const filename = String(args?.[0] ?? WORKBENCH_DB_FILE);
+    rpcFromBackupFolderFile(method, filename)
+      .then((result) => {
+        sendResponse({ id, ok: true, result });
+        if (method !== 'inspectImportFromBackupFolderFile') {
+          chrome.runtime.sendMessage({ type: 'db-data-changed' }).catch(() => {});
+        }
+      })
+      .catch((e) => {
+        sendResponse({ id, ok: false, error: String(e) });
+      });
+    return true;
+  }
+
   workerRpc(method, args ?? [])
     .then((result) => {
       sendResponse({ id, ok: true, result });

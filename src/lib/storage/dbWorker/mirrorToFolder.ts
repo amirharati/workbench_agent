@@ -15,6 +15,7 @@ let lastMirroredRevision = -1;
 let lastMirrorError: string | null = null;
 let mirrorInFlight = false;
 let pendingForce = false;
+let pendingAllowEmptyMirror = false;
 const mirrorWaiters: Array<(result: { ok: boolean; error?: string }) => void> = [];
 
 export type MirrorExportFn = () => Promise<Uint8Array>;
@@ -42,7 +43,7 @@ function scheduleFolderMirrorAfter(delayMs: number): void {
   if (debounceTimer != null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
-    void runFolderMirror(false);
+    void runFolderMirror(false, false);
   }, delay);
 }
 
@@ -55,22 +56,30 @@ function notifyMirrorWaiters(result: { ok: boolean; error?: string }): void {
   for (const resolve of waiters) resolve(result);
 }
 
-export async function mirrorNow(force = false): Promise<{ ok: boolean; error?: string }> {
+export async function mirrorNow(
+  force = false,
+  opts?: { allowEmptyMirror?: boolean }
+): Promise<{ ok: boolean; error?: string }> {
   if (debounceTimer != null) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
   pendingForce = pendingForce || force;
-  return runFolderMirror(force || pendingForce);
+  pendingAllowEmptyMirror = pendingAllowEmptyMirror || opts?.allowEmptyMirror === true;
+  return runFolderMirror(force || pendingForce, opts?.allowEmptyMirror === true);
 }
 
-async function runFolderMirror(force: boolean): Promise<{ ok: boolean; error?: string }> {
+async function runFolderMirror(
+  force: boolean,
+  allowEmptyMirror = false
+): Promise<{ ok: boolean; error?: string }> {
   if (!exportFn || !writeFn || !getRevisionFn) {
     return { ok: false, error: 'Mirror not configured' };
   }
   if (mirrorInFlight) {
     if (force) {
       pendingForce = true;
+      pendingAllowEmptyMirror = pendingAllowEmptyMirror || allowEmptyMirror;
       return new Promise((resolve) => {
         mirrorWaiters.push(resolve);
       });
@@ -88,17 +97,33 @@ async function runFolderMirror(force: boolean): Promise<{ ok: boolean; error?: s
 
   const now = Date.now();
   if (!force && now - lastMirrorAt < MIN_INTERVAL_MS) {
-    // Edits coalesce in OPFS immediately; folder write waits out the min interval,
-    // then flushes the latest revision even if the user stopped editing.
     const remaining = lastMirrorAt + MIN_INTERVAL_MS - now;
     scheduleFolderMirrorAfter(Math.max(DEBOUNCE_MS, remaining));
     return { ok: true };
   }
 
   mirrorInFlight = true;
+  const useAllowEmpty = allowEmptyMirror || pendingAllowEmptyMirror;
   pendingForce = false;
+  pendingAllowEmptyMirror = false;
   let result: { ok: boolean; error?: string } = { ok: true };
   try {
+    if (!useAllowEmpty) {
+      const { getIdbCompatStore } = await import('../sqlite/store');
+      const { fingerprintFromStore } = await import('../importFingerprint');
+      const store = await getIdbCompatStore();
+      const liveFp = fingerprintFromStore(store);
+      if (liveFp.itemCount === 0) {
+        result = {
+          ok: false,
+          error:
+            'Refusing to mirror an empty library to workbench.sqlite. Link your backup folder or restore from a .sqlite backup in Settings.',
+        };
+        lastMirrorError = result.error ?? 'Refusing to mirror empty library';
+        return result;
+      }
+    }
+
     const raw = await exportFn();
     const bytes = normalizeBinaryPayload(raw);
     if (!bytes || bytes.byteLength < 16) {
@@ -127,8 +152,10 @@ async function runFolderMirror(force: boolean): Promise<{ ok: boolean; error?: s
   } finally {
     mirrorInFlight = false;
     if (pendingForce) {
+      const forcedAllowEmpty = pendingAllowEmptyMirror;
       pendingForce = false;
-      const forced = await runFolderMirror(true);
+      pendingAllowEmptyMirror = false;
+      const forced = await runFolderMirror(true, forcedAllowEmpty);
       notifyMirrorWaiters(forced);
     } else {
       notifyMirrorWaiters(result);

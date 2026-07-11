@@ -29,14 +29,18 @@
  *     server-side conflict detection.
  */
 
-import { exportDB, importDB, verifyBackup, reloadFromFolderDatabase, reloadDB, exportSqliteBytes } from './db';
+import { exportDB, importDB, verifyBackup, reloadFromFolderDatabase, reloadDB } from './db';
 import { countRestoreSummaryStats } from './itemQuickAccess';
 import { subscribeToDataChanges, DataChangeReason } from './dataChangeNotifier';
 import { BackupSink, BackupKind, BackupWriteResult } from './backupSinks';
 import {
   readJsonFromBackupFolder,
+  readBinaryFromBackupFolder,
   writeBinaryAtomicallyToBackupFolder,
+  deleteFileFromBackupFolder,
+  WORKBENCH_DB_FILE,
   WORKBENCH_META_FILE,
+  IMPORT_STAGING_FILE,
   LEGACY_LATEST_JSON,
 } from './backupFolder';
 import {
@@ -46,7 +50,12 @@ import {
   BackupWriterKind,
 } from './backupEnvelope';
 import { revisionTracker } from './revisionTracker';
-import { normalizeBinaryPayload, encodeBinaryForRpc } from './binaryPayload';
+import { normalizeBinaryPayload } from './binaryPayload';
+import {
+  fingerprintSqliteBytes,
+  fingerprintsEqual,
+} from './storage/importFingerprint';
+import { forceImportFromBackupFolderFile } from './storage/dbClient/folderDbRpc';
 
 const DEFAULT_DEBOUNCE_MS = 1500;
 /** Meta sidecar for live folder DB — not full JSON export on every edit. */
@@ -335,7 +344,8 @@ class BackupCoordinatorImpl {
         return summary;
       }
 
-      const bytes = await exportSqliteBytes();
+      const live = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
+      const bytes = live.ok ? normalizeBinaryPayload(live.data) : null;
       if (!bytes || bytes.byteLength < 16) {
         const err = 'Export produced empty database';
         summary.outcomes.push({ sinkId: 'folder-mirror', result: { ok: false, error: err } });
@@ -640,21 +650,23 @@ class BackupCoordinatorImpl {
 
     await this.prepareForDestructiveImport();
 
-    const liveBytes = await exportSqliteBytes();
-    if (liveBytes && liveBytes.byteLength >= 16) {
-      const { bytesEqual } = await import('./storage/importFingerprint');
-      if (bytesEqual(liveBytes, payload)) {
-        const store = await reloadDB();
-        return {
-          ok: true,
-          unchanged: true,
-          stats: statsFromStore(store),
-        };
-      }
+    const incomingFp = await fingerprintSqliteBytes(payload);
+    const { dbRpc } = await import('./storage/dbClient');
+    const liveFp = await dbRpc<Awaited<ReturnType<typeof import('./storage/importFingerprint').fingerprintFromStore>>>(
+      'liveFingerprint',
+      []
+    );
+    if (fingerprintsEqual(liveFp, incomingFp)) {
+      const store = await reloadDB();
+      return {
+        ok: true,
+        unchanged: true,
+        stats: statsFromStore(store),
+      };
     }
 
     if (!options.forceOlder) {
-      const newer = await this.detectLiveNewerThanImport(payload, 'sqlite');
+      const newer = await this.detectLiveNewerThanImport(payload, 'sqlite', incomingFp, liveFp);
       if (newer) return newer;
     }
 
@@ -669,11 +681,21 @@ class BackupCoordinatorImpl {
     }
     const safetyRef = safety.ref;
 
-    const { dbRpc } = await import('./storage/dbClient');
-    const result = await dbRpc<{ imported: boolean; reason?: string }>(
-      'forceImportFromFolderBytes',
-      [encodeBinaryForRpc(payload)]
-    );
+    const staged = await writeBinaryAtomicallyToBackupFolder(IMPORT_STAGING_FILE, payload);
+    if (!staged.ok) {
+      return {
+        ok: false,
+        error: staged.error ?? 'Could not stage import file in backup folder.',
+        safetyRef,
+      };
+    }
+
+    let result: { imported: boolean; reason?: string };
+    try {
+      result = await forceImportFromBackupFolderFile(IMPORT_STAGING_FILE);
+    } finally {
+      await deleteFileFromBackupFolder(IMPORT_STAGING_FILE);
+    }
     if (!result?.imported) {
       return {
         ok: false,
@@ -909,7 +931,9 @@ class BackupCoordinatorImpl {
 
   private async detectLiveNewerThanImport(
     incoming: Uint8Array | unknown,
-    kind: 'sqlite' | 'json'
+    kind: 'sqlite' | 'json',
+    incomingFpPrecomputed?: Awaited<ReturnType<typeof fingerprintSqliteBytes>>,
+    liveFpPrecomputed?: Awaited<ReturnType<typeof import('./storage/importFingerprint').fingerprintFromStore>>
   ): Promise<SqliteImportResult | null> {
     const {
       fingerprintFromBackupData,
@@ -919,20 +943,19 @@ class BackupCoordinatorImpl {
     } = await import('./storage/importFingerprint');
     const { dbRpc } = await import('./storage/dbClient');
 
-    let incomingFp;
-    if (kind === 'sqlite') {
-      incomingFp = await dbRpc<Awaited<ReturnType<typeof fingerprintSqliteBytes>>>(
-        'inspectImportBytes',
-        [encodeBinaryForRpc(incoming as Uint8Array)]
-      );
-    } else {
-      incomingFp = fingerprintFromBackupData(incoming);
+    let incomingFp = incomingFpPrecomputed;
+    if (!incomingFp) {
+      if (kind === 'sqlite') {
+        incomingFp = await fingerprintSqliteBytes(incoming as Uint8Array);
+      } else {
+        incomingFp = fingerprintFromBackupData(incoming);
+      }
     }
 
-    const liveFp = await dbRpc<Awaited<ReturnType<typeof fingerprintFromStore>>>(
+    const liveFp = liveFpPrecomputed ?? (await dbRpc<Awaited<ReturnType<typeof fingerprintFromStore>>>(
       'liveFingerprint',
       []
-    );
+    ));
 
     if (!isLiveNewerThanBackup(liveFp, incomingFp)) {
       return null;
@@ -964,7 +987,8 @@ class BackupCoordinatorImpl {
     } = await import('./backupFolder');
 
     const sqliteName = buildSafetySqliteFilename(new Date());
-    const sqliteBytes = await exportSqliteBytes();
+    const live = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
+    const sqliteBytes = live.ok ? normalizeBinaryPayload(live.data) : null;
     if (sqliteBytes && sqliteBytes.byteLength >= 16) {
       let sqliteRes = await writeBinaryAtomicallyToBackupFolder(sqliteName, sqliteBytes);
       if (!sqliteRes.ok) {

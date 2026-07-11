@@ -404,22 +404,12 @@ export const reloadFromFolderDatabase = async (): Promise<boolean> => {
   try {
     const {
       hasWritableBackupFolder,
-      readBinaryFromBackupFolder,
       WORKBENCH_DB_FILE,
     } = await import('./backupFolder');
     if (!(await hasWritableBackupFolder())) return false;
 
-    const primary = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
-    if (!primary.ok || !primary.data || primary.data.byteLength < 16) {
-      return false;
-    }
-
-    const { dbRpc } = await import('./storage/dbClient');
-    const { encodeBinaryForRpc } = await import('./binaryPayload');
-    const result = await dbRpc<{ imported: boolean; reason?: string }>(
-      'forceImportFromFolderBytes',
-      [encodeBinaryForRpc(primary.data)]
-    );
+    const { forceImportFromBackupFolderFile } = await import('./storage/dbClient/folderDbRpc');
+    const result = await forceImportFromBackupFolderFile(WORKBENCH_DB_FILE);
     if (!result?.imported) return false;
 
     await reloadDB();

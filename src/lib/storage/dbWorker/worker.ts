@@ -147,8 +147,12 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         lastMirrorError: mirror.lastMirrorError,
       };
     }
-    case 'mirrorNow':
-      return mirrorNow(Boolean((args[0] as { force?: boolean } | undefined)?.force));
+    case 'mirrorNow': {
+      const payload = args[0] as { force?: boolean; allowEmptyMirror?: boolean } | undefined;
+      return mirrorNow(Boolean(payload?.force), {
+        allowEmptyMirror: payload?.allowEmptyMirror === true,
+      });
+    }
     case 'bootstrapFromFolderBytes': {
       const payload = decodeBinaryFromRpc(args[0]);
       if (!payload || payload.byteLength < 16) {
@@ -165,8 +169,8 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       resetStoreSingletons();
       await importFolderBytesIntoOpfs(payload);
       await reloadWorkerStoreAfterImport();
-      const mirror = await mirrorAfterImport('bootstrap');
-      return { imported: true, mirrorOk: mirror.ok, mirrorError: mirror.error ?? null };
+      // Folder file is already the source of truth — do not mirror back.
+      return { imported: true, mirrorOk: true, mirrorSkipped: true };
     }
     case 'forceImportFromFolderBytes': {
       const payload = decodeBinaryFromRpc(args[0]);
@@ -176,8 +180,8 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       resetStoreSingletons();
       await importFolderBytesIntoOpfs(payload);
       await reloadWorkerStoreAfterImport();
-      const mirror = await mirrorAfterImport('forceImport');
-      return { imported: true, mirrorOk: mirror.ok, mirrorError: mirror.error ?? null };
+      // Loaded from folder / staging — caller mirrors only when needed (e.g. Settings restore).
+      return { imported: true, mirrorOk: true, mirrorSkipped: true };
     }
     case 'inspectImportBytes': {
       const payload = decodeBinaryFromRpc(args[0]);

@@ -10,12 +10,15 @@
  * file system primitives can later be reused by other sinks/scripts.
  */
 import { normalizeBinaryPayload } from './binaryPayload';
+import { wouldMirrorShrinkWorkbenchSqlite } from './folderMirrorGuard';
 import { getMetaDB } from './metaDb';
 
 const HANDLE_KEY = 'backup-directory';
 
 /** Canonical live database file in the user backup folder. */
 export const WORKBENCH_DB_FILE = 'workbench.sqlite';
+/** Staging file for Settings restore — written in tab, imported by offscreen (avoids 64MiB sendMessage). */
+export const IMPORT_STAGING_FILE = 'import-staging.sqlite';
 /** Envelope sidecar for conflict detection (revision / deviceId only). */
 export const WORKBENCH_META_FILE = 'workbench.meta.json';
 /** Legacy filenames — read for migration only. */
@@ -317,14 +320,38 @@ export async function writeBinaryToBackupFolder(
 }
 
 /** Atomic replace — used for live mirror and manual sqlite snapshots. */
+export type WriteBinaryToFolderOpts = {
+  /** Only for explicit user actions (e.g. conflict: keep local). Skips shrink guard on workbench.sqlite. */
+  allowWorkbenchShrink?: boolean;
+};
+
 export async function writeBinaryAtomicallyToBackupFolder(
   filename: string,
-  data: Uint8Array | ArrayBuffer
+  data: Uint8Array | ArrayBuffer,
+  opts?: WriteBinaryToFolderOpts
 ): Promise<{ ok: boolean; error?: string }> {
   const handle = await getBackupDirectoryHandle();
   if (!handle) return { ok: false, error: 'No backup folder configured' };
   const perm = await ensureReadWritePermission(handle);
   if (!perm.ok) return perm;
+
+  const payload = normalizeBinaryPayload(data);
+  if (
+    filename === WORKBENCH_DB_FILE &&
+    payload &&
+    payload.byteLength >= 16 &&
+    !opts?.allowWorkbenchShrink
+  ) {
+    const existing = await readBinaryWithHandle(handle, filename);
+    if (existing.ok && existing.data && existing.data.byteLength > 16) {
+      const blocked = wouldMirrorShrinkWorkbenchSqlite(existing.data, payload);
+      if (blocked) {
+        console.error('[backupFolder] blocked live write:', blocked);
+        return { ok: false, error: blocked };
+      }
+    }
+  }
+
   return writeBinaryAtomicallyWithHandle(handle, filename, data);
 }
 
@@ -366,6 +393,26 @@ export async function readBinaryFromBackupFolder(
   return readBinaryWithHandle(handle, filename);
 }
 
+/** Best-effort delete — used to clean up import staging files. */
+export async function deleteFileFromBackupFolder(
+  filename: string
+): Promise<{ ok: boolean; error?: string; notFound?: boolean }> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) return { ok: false, error: 'No backup folder configured' };
+  const perm = await ensureReadWritePermission(handle);
+  if (!perm.ok) return { ok: false, error: perm.error };
+  try {
+    await handle.removeEntry(filename);
+    return { ok: true };
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes('not found') || msg.includes('NotFoundError')) {
+      return { ok: true, notFound: true };
+    }
+    return { ok: false, error: msg };
+  }
+}
+
 // --- onboarding pickup ------------------------------------------------------
 
 export type PickBackupFolderResult = {
@@ -373,7 +420,9 @@ export type PickBackupFolderResult = {
   error?: string;
   /** Legacy latest.json found in folder — caller should import. */
   existingBackupJson?: string;
-  /** Empty folder linked; caller should start worker + mirror to create workbench.sqlite. */
+  /** Folder already has (or was migrated to) workbench.sqlite — caller must LOAD from disk. */
+  hadExistingWorkbenchDb?: boolean;
+  /** Empty folder linked; caller may mirror once to create workbench.sqlite. */
   freshFolder?: boolean;
 };
 
@@ -398,7 +447,7 @@ export async function pickAndPersistBackupFolder(): Promise<PickBackupFolderResu
 
     const existingDb = await readBinaryWithHandle(handle, WORKBENCH_DB_FILE);
     if (existingDb.ok && existingDb.data && existingDb.data.byteLength > 16) {
-      return { ok: true };
+      return { ok: true, hadExistingWorkbenchDb: true };
     }
 
     const legacyJson = await readJsonWithHandle(handle, LEGACY_LATEST_JSON);
@@ -409,7 +458,7 @@ export async function pickAndPersistBackupFolder(): Promise<PickBackupFolderResu
     const legacyDb = await readBinaryWithHandle(handle, LEGACY_LATEST_SQLITE);
     if (legacyDb.ok && legacyDb.data && legacyDb.data.byteLength > 16) {
       await writeBinaryWithHandle(handle, WORKBENCH_DB_FILE, legacyDb.data);
-      return { ok: true };
+      return { ok: true, hadExistingWorkbenchDb: true };
     }
 
     if (

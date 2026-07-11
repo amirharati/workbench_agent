@@ -125,6 +125,16 @@ export async function dbRpc<T>(method: string, args: unknown[]): Promise<T> {
       }
       return response.result as T;
     } catch (e) {
+      const msg = String(e);
+      const sizeLimit =
+        msg.includes('64MiB') ||
+        msg.includes('maximum allowed size') ||
+        msg.includes('Message length exceeded');
+      if (sizeLimit) {
+        throw new Error(
+          'Database transfer exceeded Chrome message size limit. Rebuild the extension and use Settings restore (stages via backup folder) or re-link your backup folder.'
+        );
+      }
       const canRetry = attempt < maxAttempts - 1 && isTransientDbRpcError(e);
       if (!canRetry) throw e;
       if (isRecoverableDbOwnerError(e)) resetDbOwnerReady();
@@ -134,8 +144,11 @@ export async function dbRpc<T>(method: string, args: unknown[]): Promise<T> {
   throw new Error(`RPC ${method} failed after retry`);
 }
 
-export async function mirrorNow(force = false): Promise<{ ok: boolean; error?: string }> {
-  return dbRpc('mirrorNow', [{ force }]);
+export async function mirrorNow(
+  force = false,
+  opts?: { allowEmptyMirror?: boolean }
+): Promise<{ ok: boolean; error?: string }> {
+  return dbRpc('mirrorNow', [{ force, allowEmptyMirror: opts?.allowEmptyMirror }]);
 }
 
 export type DbWorkerStatus = {

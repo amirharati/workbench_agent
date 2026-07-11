@@ -45,11 +45,9 @@ import {
   type PickBackupFolderResult,
   hasWritableBackupFolder,
   getBackupFolderName,
-  readBinaryFromBackupFolder,
-  WORKBENCH_DB_FILE,
 } from './lib/backupFolder';
 import { DATA_CHANGED_BROADCAST_CHANNEL, subscribeToDataChanges } from './lib/dataChangeNotifier';
-import { ensureDbWorker, mirrorNow, dbRpc, getDbWorkerStatus, type DbWorkerStatus } from './lib/storage/dbClient';
+import { ensureDbWorker, mirrorNow, getDbWorkerStatus, type DbWorkerStatus } from './lib/storage/dbClient';
 import { prewarmHubCache } from './components/dashboard/PipelineHubView';
 import { backupCoordinator, BackupStatusSnapshot, isSqliteBackupFile, type RestoreBackupResult } from './lib/backupCoordinator';
 import { ManualFolderBackupSink } from './lib/backupSinks';
@@ -61,6 +59,10 @@ import { notifyUser } from './lib/userNotify';
 import { isTransientDbRpcError } from './lib/storage/dbClient';
 import { buildPipelineSnapshotExport } from './lib/pipeline/pipelineRunAnalysis';
 import { saveAndDownloadPipelineRun } from './lib/pipeline/pipelineRunStore';
+import {
+  folderHasWorkbenchSqlite,
+  loadWorkbenchSqliteFromFolder,
+} from './lib/linkBackupFolder';
 
 export interface WindowGroup {
   windowId: number;
@@ -149,9 +151,7 @@ function App() {
           showStatus(`Could not adopt newer folder database: ${res.error}`);
         }
       } else if (info.kind === 'local-newer-same-device') {
-        // We have unflushed edits; coordinator will write them via debounce
-        // on the next mutation, but we can also nudge a flush right now.
-        await mirrorNow(true);
+        // Never push OPFS over folder on startup — debounced mirror handles real edits.
       }
       // 'remote-newer-different-device' and 'diverged-different-device'
       // are blocking; the coordinator already paused itself and the banner
@@ -243,6 +243,16 @@ function App() {
         if (!cancelled) setFolderGateResolved(true);
         const { purgeLegacyLocalDomainStorage } = await import('./lib/storage/legacyStorageCleanup');
         await purgeLegacyLocalDomainStorage();
+        await ensureDbWorker();
+        if (await folderHasWorkbenchSqlite()) {
+          const loaded = await loadWorkbenchSqliteFromFolder();
+          if (!loaded.ok) {
+            notifyUser({
+              type: 'error',
+              message: `Could not load workbench.sqlite from backup folder: ${loaded.error}`,
+            });
+          }
+        }
         await loadData();
         if (cancelled) return;
         void prewarmHubCache();
@@ -763,14 +773,6 @@ function App() {
     }
   };
 
-  const bootstrapWorkerFromFolder = async (): Promise<void> => {
-    const primary = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
-    if (primary.ok && primary.data && primary.data.byteLength > 16) {
-      const { encodeBinaryForRpc } = await import('./lib/binaryPayload');
-      await dbRpc('bootstrapFromFolderBytes', [encodeBinaryForRpc(primary.data)]);
-    }
-  };
-
   const handleChooseBackupFolder = async (): Promise<PickBackupFolderResult> => {
     // Forget what we knew about the OLD folder's remote BEFORE the picker
     // runs, so that importDB (called below if an existing latest.json is
@@ -801,15 +803,30 @@ function App() {
     } else {
       try {
         await ensureDbWorker();
-        await bootstrapWorkerFromFolder();
-        await reloadDB();
-        const mirror = await mirrorNow(true);
-        if (!mirror.ok) {
-          showStatus(`Backup folder linked, but could not write workbench.sqlite: ${mirror.error ?? 'unknown error'}`);
-          return { ok: false, error: mirror.error ?? 'Could not write workbench.sqlite' };
+        if (res.hadExistingWorkbenchDb) {
+          const loaded = await loadWorkbenchSqliteFromFolder();
+          if (!loaded.ok) {
+            showStatus(`Backup folder linked, but could not load your library: ${loaded.error}`);
+            return { ok: false, error: loaded.error };
+          }
+          await reloadDB();
+          await loadData();
+          showStatus('Loaded your library from workbench.sqlite in that folder.');
+        } else if (res.freshFolder) {
+          await reloadDB();
+          const mirror = await mirrorNow(true, { allowEmptyMirror: true });
+          if (!mirror.ok) {
+            showStatus(
+              `Backup folder linked, but could not create workbench.sqlite: ${mirror.error ?? 'unknown error'}`
+            );
+            return { ok: false, error: mirror.error ?? 'Could not write workbench.sqlite' };
+          }
+          await loadData();
+          showStatus('Backup folder saved. Live database is workbench.sqlite in that folder.');
+        } else {
+          showStatus('Backup folder linked, but no database was found in that folder.');
+          return { ok: false, error: 'No workbench.sqlite in folder.' };
         }
-        await loadData();
-        showStatus('Backup folder saved. Live database is workbench.sqlite in that folder.');
       } catch (e) {
         const msg = String(e);
         showStatus(`Backup setup failed: ${msg}`);
