@@ -20,7 +20,7 @@ export const SHELL_LAYOUT_DEFAULTS: ShellLayoutState = {
   listPaneWidth: 260,
   bookmarkListWidth: 240,
   bookmarkDetailWidth: 380,
-  notesListWidth: 240,
+  notesListWidth: 300,
   notesDetailWidth: 400,
 };
 

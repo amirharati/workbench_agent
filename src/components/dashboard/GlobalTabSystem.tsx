@@ -407,8 +407,25 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   const saveEditing = async () => {
     if (!activeItemObj || !onUpdateItem) { setIsEditing(false); return; }
     await onUpdateItem(activeItemObj.id, { title: editTitle, url: editUrl || undefined, notes: editNotes || undefined, updated_at: Date.now() });
-    setIsEditing(false);
+    // Keep note tabs in edit mode so the body stays a full editor after save.
+    if (activeItemObj.url) setIsEditing(false);
   };
+
+  // Notes open in edit mode so the body isn't a tiny read-only box.
+  React.useEffect(() => {
+    if (!activeItemObj) {
+      setIsEditing(false);
+      return;
+    }
+    if (!activeItemObj.url && onUpdateItem && !activeItemObj.deletedAt) {
+      setEditTitle(activeItemObj.title || '');
+      setEditUrl(activeItemObj.url || '');
+      setEditNotes(activeItemObj.notes || '');
+      setIsEditing(true);
+      return;
+    }
+    setIsEditing(false);
+  }, [activeItemObj?.id, activeItemObj?.url, activeItemObj?.deletedAt, onUpdateItem]);
   
   const requestMoveToTrash = () => {
     if (!activeItemObj || !onDeleteBookmark || activeItemObj.deletedAt) return;
@@ -706,6 +723,44 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
           </div>
         )}
         {activeTab?.kind === 'item' && activeItemObj && (
+          !activeItemObj.url ? (
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                padding: '16px 20px',
+                background: 'var(--bg)',
+              }}
+              className="reading-content"
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setItemContextMenu({ x: e.clientX, y: e.clientY });
+              }}
+            >
+              <ItemDetail
+                item={activeItemObj}
+                collections={collections}
+                projects={projects}
+                isEditing={isEditing}
+                editTitle={editTitle}
+                editUrl={editUrl}
+                editNotes={editNotes}
+                onEditTitleChange={setEditTitle}
+                onEditUrlChange={setEditUrl}
+                onEditNotesChange={setEditNotes}
+                onStartEdit={startEditing}
+                onCancelEdit={cancelEditing}
+                onSaveEdit={saveEditing}
+                onDelete={requestMoveToTrash}
+                onTogglePin={togglePin}
+                onToggleFavorite={toggleFavorite}
+                canEdit={!!onUpdateItem}
+              />
+            </div>
+          ) : (
           <TabScrollShell
             style={{ padding: '16px 20px', background: 'var(--bg)' }}
             className="scrollbar reading-content"
@@ -737,6 +792,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               />
             </div>
           </TabScrollShell>
+          )
         )}
         {activeTab?.kind === 'item' && !activeItemObj && (
           <div style={{ padding: 20, color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>Item not found.</div>
@@ -798,17 +854,18 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
   onStartEdit, onCancelEdit, onSaveEdit, onDelete, onTogglePin, onToggleFavorite, canEdit,
 }) => {
   const isBookmark = !!item.url;
+  const isNote = !isBookmark;
   const isTrashed = item.deletedAt != null;
   const itemCollections = collections.filter(c => (item.collectionIds || []).includes(c.id));
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{ flex: 1 }}>
+    <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: isNote ? 10 : 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexShrink: 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           {isEditing
-            ? <input type="text" value={editTitle} onChange={e => onEditTitleChange(e.target.value)} placeholder="Title" style={{ width: '100%', fontSize: 'var(--text-lg)', fontWeight: 600, padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)' }} />
+            ? <input type="text" value={editTitle} onChange={e => onEditTitleChange(e.target.value)} placeholder={isNote ? 'Note title' : 'Title'} style={{ width: '100%', fontSize: isNote ? '1.25rem' : 'var(--text-lg)', fontWeight: 600, padding: isNote ? '6px 0' : '6px 10px', borderRadius: 'var(--radius-sm)', border: isNote ? 'none' : '1px solid var(--border)', background: isNote ? 'transparent' : 'var(--bg-input)', color: 'var(--text)', outline: isNote ? 'none' : undefined }} />
             : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, margin: 0, lineHeight: 1.3 }}>{item.title || 'Untitled'}</h2>
+                <h2 style={{ fontSize: isNote ? '1.25rem' : 'var(--text-lg)', fontWeight: 600, margin: 0, lineHeight: 1.3 }}>{item.title || (isNote ? 'Untitled note' : 'Untitled')}</h2>
                 <ItemQuickAccessMarkers item={item} size={14} hideWhenTrashed />
                 {isTrashed && (
                   <span style={{ fontSize: 'var(--text-xs)', color: '#ef4444', fontWeight: 600 }}>In trash</span>
@@ -849,12 +906,16 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
               {canEdit && !isTrashed && <button onClick={onDelete} style={{...btnStyle('secondary'), color: '#ef4444'}}>Trash</button>}
             </>
           ) : (
-            <><button onClick={onCancelEdit} style={btnStyle('secondary')}>Cancel</button><button onClick={onSaveEdit} style={btnStyle('primary')}>Save</button></>
+            <>
+              {!isNote && <button onClick={onCancelEdit} style={btnStyle('secondary')}>Cancel</button>}
+              <button onClick={onSaveEdit} style={btnStyle('primary')}>Save</button>
+              {isNote && canEdit && !isTrashed && <button onClick={onDelete} style={{...btnStyle('secondary'), color: '#ef4444'}}>Trash</button>}
+            </>
           )}
         </div>
       </div>
-      {(isBookmark || isEditing) && (
-        <div><Label>URL</Label>
+      {(isBookmark || (isEditing && !isNote)) && (
+        <div style={{ flexShrink: 0 }}><Label>URL</Label>
           {isEditing
             ? <input type="url" value={editUrl} onChange={e => onEditUrlChange(e.target.value)} placeholder="https://..." style={{ width: '100%', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
             : (
@@ -869,7 +930,7 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
         <ItemDetailEnrichment itemId={item.id} />
       )}
       {itemCollections.length > 0 && (
-        <div><Label>Saved in</Label>
+        <div style={{ flexShrink: 0 }}><Label>Saved in</Label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {itemCollections.map(c => {
               const proj = projects.find(p => p.id === c.primaryProjectId);
@@ -883,13 +944,13 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
           </div>
         </div>
       )}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Label>Notes</Label>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {!isNote && <Label>Notes</Label>}
         {isEditing
-          ? <textarea value={editNotes} onChange={e => onEditNotesChange(e.target.value)} placeholder="Add notes..." style={{ flex: 1, minHeight: 100, padding: '10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)', fontSize: 'var(--text-sm)', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }} />
-          : <div style={{ flex: 1, padding: '10px 12px', background: 'var(--bg-panel)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)', whiteSpace: 'pre-wrap', overflowY: 'auto', color: item.notes ? 'var(--text)' : 'var(--text-faint)', minHeight: 60, lineHeight: 1.6 }}>{item.notes || 'No notes yet.'}</div>}
+          ? <textarea value={editNotes} onChange={e => onEditNotesChange(e.target.value)} placeholder={isNote ? 'Start writing…' : 'Add notes...'} style={{ flex: 1, minHeight: isNote ? 0 : 100, height: isNote ? '100%' : undefined, padding: isNote ? '8px 0' : '10px', borderRadius: 'var(--radius-sm)', border: isNote ? 'none' : '1px solid var(--border)', background: isNote ? 'transparent' : 'var(--bg-input)', color: 'var(--text)', fontSize: isNote ? '0.95rem' : 'var(--text-sm)', resize: isNote ? 'none' : 'vertical', fontFamily: 'inherit', lineHeight: 1.65, outline: isNote ? 'none' : undefined }} />
+          : <div style={{ flex: 1, padding: '10px 12px', background: 'var(--bg-panel)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)', whiteSpace: 'pre-wrap', overflowY: 'auto', color: item.notes ? 'var(--text)' : 'var(--text-faint)', minHeight: 60, lineHeight: 1.6 }}>{item.notes || (isNote ? 'Empty note.' : 'No notes yet.')}</div>}
       </div>
-      <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)', fontSize: 'var(--text-xs)', color: 'var(--text-faint)', display: 'flex', gap: 16 }}>
+      <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)', fontSize: 'var(--text-xs)', color: 'var(--text-faint)', display: 'flex', gap: 16, flexShrink: 0 }}>
         <span>Created: {new Date(item.created_at).toLocaleDateString()}</span>
         <span>Updated: {new Date(item.updated_at).toLocaleDateString()}</span>
       </div>

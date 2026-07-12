@@ -91,7 +91,7 @@ const FULL_PAGE_VIEWS = new Set<DashboardView>([
   'pipeline',
   'help',
 ]);
-const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search']);
+const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'notes']);
 
 interface DashboardLayoutProps {
   windows: WindowGroup[];
