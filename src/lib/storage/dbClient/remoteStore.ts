@@ -20,6 +20,7 @@ type HydrateSnapshot = {
   taxonomy: ReturnType<IdbCompatStore['getTaxonomyState']>;
   signalsByClassify?: never;
   trash: ReturnType<IdbCompatStore['getAllTrashHistory']>;
+  deletedItems: ReturnType<IdbCompatStore['getAllDeletedItems']>;
 };
 
 /** Chrome structured-clone cap per worker postMessage (~64MiB). */
@@ -50,6 +51,7 @@ const HYDRATE_ESSENTIAL_SMALL_TABLES = [
   'ai_categories',
   'ai_taxonomy_state',
   'trash_history',
+  'deleted_items',
 ] as const;
 
 const HYDRATE_ESSENTIAL_PAGED_TABLES = ['items'] as const;
@@ -83,6 +85,7 @@ function emptyHydrateSnapshot(): HydrateSnapshot {
     signals: [],
     taxonomy: undefined,
     trash: [],
+    deletedItems: [],
   };
 }
 
@@ -146,6 +149,9 @@ function mergeHydrateTableRows(
     }
     case 'trash_history':
       put(snapshot.trash, rows as HydrateSnapshot['trash']);
+      return;
+    case 'deleted_items':
+      put(snapshot.deletedItems, rows as HydrateSnapshot['deletedItems']);
       return;
     default:
       return;
@@ -526,6 +532,13 @@ export class RemoteIdbCompatStore {
         else s.trash.push(entry);
         return;
       }
+      case 'deleted_items': {
+        const entry = value as Parameters<IdbCompatStore['putDeletedItem']>[0];
+        const i = s.deletedItems.findIndex((d) => d.id === entry.id);
+        if (i >= 0) s.deletedItems[i] = entry;
+        else s.deletedItems.push(entry);
+        return;
+      }
       case 'snapshots':
         s.snapshots.push(value as Parameters<IdbCompatStore['putSnapshot']>[0]);
         return;
@@ -568,6 +581,9 @@ export class RemoteIdbCompatStore {
       case 'trash_history':
         s.trash = s.trash.filter((t) => t.normalizedUrl !== key);
         return;
+      case 'deleted_items':
+        s.deletedItems = s.deletedItems.filter((d) => d.id !== key);
+        return;
       default:
         console.warn('[RemoteIdbCompatStore] delete from unknown store:', storeName);
     }
@@ -591,6 +607,7 @@ export class RemoteIdbCompatStore {
         return state ? [state] : [];
       }
       case 'trash_history': return this.read((s) => s.trash);
+      case 'deleted_items': return this.read((s) => s.deletedItems);
       default: return [];
     }
   }
@@ -880,6 +897,23 @@ export class RemoteIdbCompatStore {
   deleteTrashEntry(normalizedUrl: string) {
     this.write('deleteTrashEntry', [normalizedUrl], (s) => {
       s.trash = s.trash.filter((t) => t.normalizedUrl !== normalizedUrl);
+    });
+  }
+
+  getAllDeletedItems() { return this.read((s) => s.deletedItems); }
+  getDeletedItem(id: string) {
+    return this.read((s) => s.deletedItems.find((d) => d.id === id));
+  }
+  putDeletedItem(entry: Parameters<IdbCompatStore['putDeletedItem']>[0]) {
+    this.write('putDeletedItem', [entry], (s) => {
+      const i = s.deletedItems.findIndex((d) => d.id === entry.id);
+      if (i >= 0) s.deletedItems[i] = entry;
+      else s.deletedItems.push(entry);
+    });
+  }
+  deleteDeletedItem(id: string) {
+    this.write('deleteDeletedItem', [id], (s) => {
+      s.deletedItems = s.deletedItems.filter((d) => d.id !== id);
     });
   }
 

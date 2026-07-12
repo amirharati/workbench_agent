@@ -44,7 +44,10 @@ import {
   pickAndPersistBackupFolder,
   type PickBackupFolderResult,
   hasWritableBackupFolder,
+  hasConfiguredBackupFolder,
   getBackupFolderName,
+  regrantBackupFolderPermission,
+  tryReuseConfiguredBackupFolder,
 } from './lib/backupFolder';
 import { DATA_CHANGED_BROADCAST_CHANNEL, subscribeToDataChanges } from './lib/dataChangeNotifier';
 import { ensureDbWorker, mirrorNow, getDbWorkerStatus, type DbWorkerStatus } from './lib/storage/dbClient';
@@ -82,6 +85,8 @@ function App() {
   const [showBackupOnboarding, setShowBackupOnboarding] = useState(false);
   const [folderGateResolved, setFolderGateResolved] = useState(false);
   const [backupFolderReady, setBackupFolderReady] = useState(false);
+  /** Handle saved but Chrome wants permission again (not a first-time pick). */
+  const [folderReconnectNeeded, setFolderReconnectNeeded] = useState(false);
   const [backupFolderName, setBackupFolderName] = useState<string | null>(null);
   const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot>(() =>
     backupCoordinator.getStatus()
@@ -112,21 +117,69 @@ function App() {
 
   const refreshBackupFolderStatus = async () => {
     try {
-      const ready = await hasWritableBackupFolder();
+      // Prefer the already-selected folder — never open the picker here.
+      const reused = await tryReuseConfiguredBackupFolder();
+      let ready = reused.ok;
+      if (!ready) {
+        ready = await hasWritableBackupFolder();
+      }
       const name = await getBackupFolderName();
+      const configured = await hasConfiguredBackupFolder();
       setBackupFolderReady(ready);
       setBackupFolderName(name);
+      setFolderReconnectNeeded(!ready && configured);
       setShowBackupOnboarding(!ready);
       await syncFileSystemSink();
     } catch {
+      // Keep reconnect mode if a folder was previously configured.
+      const configured = await hasConfiguredBackupFolder().catch(() => false);
+      const name = await getBackupFolderName().catch(() => null);
       setBackupFolderReady(false);
-      setBackupFolderName(null);
+      setBackupFolderName(name);
+      setFolderReconnectNeeded(configured);
       setShowBackupOnboarding(true);
       backupCoordinator.removeSink('file-system-manual');
       backupCoordinator.removeSink('file-system-sqlite');
       backupCoordinator.removeSink('file-system');
       backupCoordinator.setLiveBackupEnabled(false);
     }
+  };
+
+  /** Load library + taxonomy after folder access is confirmed. */
+  const bootstrapAfterFolderReady = async () => {
+    const { purgeLegacyLocalDomainStorage } = await import('./lib/storage/legacyStorageCleanup');
+    await purgeLegacyLocalDomainStorage();
+    await ensureDbWorker();
+    if (await folderHasWorkbenchSqlite()) {
+      const loaded = await loadWorkbenchSqliteFromFolder();
+      if (!loaded.ok) {
+        notifyUser({
+          type: 'error',
+          message: `Could not load workbench.sqlite from backup folder: ${loaded.error}`,
+        });
+      }
+    }
+    await loadData();
+    void prewarmHubCache();
+    {
+      const { ensureSeedTaxonomy } = await import('./lib/categorization/classifyTopicExtract');
+      const { ensureTaxonomyPatches } = await import('./lib/categorization/seedImport');
+      try {
+        await ensureSeedTaxonomy();
+        await ensureTaxonomyPatches();
+      } catch (e) {
+        console.error('[startup] ensureSeedTaxonomy failed — classify will be blocked:', e);
+        await new Promise((r) => setTimeout(r, 1500));
+        try {
+          await ensureSeedTaxonomy();
+          await ensureTaxonomyPatches();
+          console.info('[startup] ensureSeedTaxonomy succeeded on retry');
+        } catch (e2) {
+          console.error('[startup] ensureSeedTaxonomy retry also failed:', e2);
+        }
+      }
+    }
+    await runStartupConflictCheck();
   };
 
   /**
@@ -223,6 +276,19 @@ function App() {
     void ensureDbWorker().catch(() => { /* retried by dbRpc internally */ });
     (async () => {
       try {
+        // Reuse the saved folder ASAP — while a click that opened this page may
+        // still count as user activation (avoids an extra "Continue" when possible).
+        if (!cancelled && (await hasConfiguredBackupFolder())) {
+          const early = await tryReuseConfiguredBackupFolder();
+          if (early.ok && !cancelled) {
+            setBackupFolderReady(true);
+            setFolderReconnectNeeded(false);
+            setShowBackupOnboarding(false);
+            setBackupFolderName(await getBackupFolderName());
+            await syncFileSystemSink();
+          }
+        }
+
         // Ensure backup system is ready before load/conflict (effect 1 may still be racing).
         await revisionTracker.load();
         if (cancelled) return;
@@ -234,58 +300,33 @@ function App() {
 
         const ready = await hasWritableBackupFolder();
         if (!ready) {
-          if (!cancelled) setShowBackupOnboarding(true);
-          if (!cancelled) setFolderGateResolved(true);
+          // Handle is saved but Chrome revoked access — reconnect, don't re-pick.
+          const configured = await hasConfiguredBackupFolder();
+          if (!cancelled) {
+            setFolderReconnectNeeded(configured);
+            setShowBackupOnboarding(true);
+            setFolderGateResolved(true);
+          }
           return;
         }
 
         setShowBackupOnboarding(false);
+        setFolderReconnectNeeded(false);
         if (!cancelled) setFolderGateResolved(true);
-        const { purgeLegacyLocalDomainStorage } = await import('./lib/storage/legacyStorageCleanup');
-        await purgeLegacyLocalDomainStorage();
-        await ensureDbWorker();
-        if (await folderHasWorkbenchSqlite()) {
-          const loaded = await loadWorkbenchSqliteFromFolder();
-          if (!loaded.ok) {
-            notifyUser({
-              type: 'error',
-              message: `Could not load workbench.sqlite from backup folder: ${loaded.error}`,
-            });
-          }
-        }
-        await loadData();
+        await bootstrapAfterFolderReady();
         if (cancelled) return;
-        void prewarmHubCache();
-        // Guarantee taxonomy is loaded on every startup — classify cannot run without leaves.
-        // This is NOT optional: if it fails we log loudly but never silently skip.
-        {
-          const { ensureSeedTaxonomy } = await import('./lib/categorization/classifyTopicExtract');
-          const { ensureTaxonomyPatches } = await import('./lib/categorization/seedImport');
-          try {
-            await ensureSeedTaxonomy();
-            await ensureTaxonomyPatches();
-          } catch (e) {
-            console.error('[startup] ensureSeedTaxonomy failed — classify will be blocked:', e);
-            // Retry once after a short yield in case of a transient DB init race.
-            await new Promise((r) => setTimeout(r, 1500));
-            try {
-              await ensureSeedTaxonomy();
-              await ensureTaxonomyPatches();
-              console.info('[startup] ensureSeedTaxonomy succeeded on retry');
-            } catch (e2) {
-              console.error('[startup] ensureSeedTaxonomy retry also failed:', e2);
-            }
-          }
-        }
-        await runStartupConflictCheck();
       } catch (e) {
         console.error('Backup onboarding check failed:', e);
         notifyUser({
           type: 'error',
           message: `Startup failed: ${e instanceof Error ? e.message : String(e)}`,
         });
-        if (!cancelled) setFolderGateResolved(true);
-        if (!cancelled) setShowBackupOnboarding(true);
+        if (!cancelled) {
+          const configured = await hasConfiguredBackupFolder().catch(() => false);
+          setFolderReconnectNeeded(configured);
+          setFolderGateResolved(true);
+          setShowBackupOnboarding(true);
+        }
       }
     })();
     return () => {
@@ -343,7 +384,18 @@ function App() {
     try {
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          if (!(await hasWritableBackupFolder())) return;
+          // Prefer folder-ready path, but never skip refresh when the DB cache is already live —
+          // otherwise trash/pin updates look like a no-op after permission flickers to "prompt".
+          const folderReady = await hasWritableBackupFolder();
+          if (!folderReady) {
+            try {
+              const allItems = await getActiveItems();
+              setItems(allItems.sort((a, b) => b.created_at - a.created_at));
+            } catch {
+              /* not hydrated yet */
+            }
+            return;
+          }
 
           const [allProjects, allCollections, allWorkspaces, allItems] = await Promise.all([
             getAllProjects(),
@@ -545,18 +597,29 @@ function App() {
   };
 
   const handleDeleteBookmark = async (id: string, collectionId?: string) => {
-    if (collectionId) {
-      const result = await removeItemFromCollection(id, collectionId);
-      if (result.itemTrashed) {
+    try {
+      if (collectionId) {
+        const result = await removeItemFromCollection(id, collectionId);
+        if (result.itemTrashed) {
+          showStatus('Moved to trash');
+        } else if (result.removed) {
+          showStatus(`Removed from collection (still in ${result.remainingPlacements} other${result.remainingPlacements > 1 ? 's' : ''})`);
+        }
+      } else {
+        await moveItemToTrash(id, { reason: 'Moved to trash', reasonCode: 'app_delete' });
         showStatus('Moved to trash');
-      } else if (result.removed) {
-        showStatus(`Removed from collection (still in ${result.remainingPlacements} other${result.remainingPlacements > 1 ? 's' : ''})`);
       }
-    } else {
-      await moveItemToTrash(id, { reason: 'Moved to trash', reasonCode: 'app_delete' });
-      showStatus('Moved to trash');
+      // Fast UI update even if full loadData is gated on folder permission.
+      await refreshLibraryItems([id]);
+      await loadData();
+    } catch (e) {
+      console.error('Delete/trash failed:', e);
+      showStatus(toStatusMessage(e, 'Could not move to trash'));
+      notifyUser({
+        type: 'error',
+        message: `Could not move to trash: ${e instanceof Error ? e.message : String(e)}`,
+      });
     }
-    await loadData();
   };
 
   const handleCreateProject = async (data: { name: string; description?: string }) => {
@@ -855,11 +918,32 @@ function App() {
     }
     await setBackupFolderOnboarding('done');
     setShowBackupOnboarding(false);
+    setFolderReconnectNeeded(false);
     await refreshBackupFolderStatus();
     await runStartupConflictCheck();
     return { ok: true };
   };
 
+  /** One-click continue when the folder handle is already saved. */
+  const handleReconnectBackupFolder = async (): Promise<PickBackupFolderResult> => {
+    const grant = await regrantBackupFolderPermission();
+    if (!grant.ok) {
+      return { ok: false, error: grant.error ?? 'Permission denied for backup folder' };
+    }
+    const name = await getBackupFolderName();
+    await setBackupFolderOnboarding('done');
+    setFolderReconnectNeeded(false);
+    setShowBackupOnboarding(false);
+    await refreshBackupFolderStatus();
+    try {
+      await bootstrapAfterFolderReady();
+      showStatus(name ? `Reconnected to folder “${name}”.` : 'Reconnected to your data folder.');
+      return { ok: true };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, error: msg };
+    }
+  };
   const handleManualBackup = async () => {
     if (!backupCoordinator.hasAnySink()) {
       showStatus('Configure a backup folder first.');
@@ -1060,25 +1144,64 @@ function App() {
             }}
           >
             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', lineHeight: 1.4 }}>
-              Choose a data folder in full-page setup before saving bookmarks. Your live database is{' '}
-              <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> in that folder.
+              {folderReconnectNeeded ? (
+                <>
+                  Reconnect to your saved data folder
+                  {backupFolderName ? (
+                    <>
+                      {' '}
+                      (<code style={{ fontSize: '0.9em' }}>{backupFolderName}</code>)
+                    </>
+                  ) : null}
+                  . Chrome clears access after reload — one click restores it (no re-select).
+                </>
+              ) : (
+                <>
+                  Choose a data folder in full-page setup before saving bookmarks. Your live database is{' '}
+                  <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> in that folder.
+                </>
+              )}
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {folderReconnectNeeded ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleReconnectBackupFolder().then((r) => {
+                      if (!r.ok && r.error && r.error !== 'cancelled') {
+                        showStatus(r.error);
+                      }
+                    });
+                  }}
+                  style={{
+                    padding: '0.4rem 0.6rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: 'var(--accent)',
+                    color: 'var(--accent-text)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 600,
+                  }}
+                >
+                  {backupFolderName ? `Continue with “${backupFolderName}”` : 'Continue with saved folder'}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={handleOpenFullPageForBackupSetup}
                 style={{
                   padding: '0.4rem 0.6rem',
                   borderRadius: '6px',
-                  border: 'none',
-                  background: 'var(--accent)',
-                  color: 'var(--accent-text)',
+                  border: folderReconnectNeeded ? '1px solid var(--border)' : 'none',
+                  background: folderReconnectNeeded ? 'transparent' : 'var(--accent)',
+                  color: folderReconnectNeeded ? 'var(--text)' : 'var(--accent-text)',
                   cursor: 'pointer',
                   fontSize: 'var(--text-sm)',
                   fontWeight: 600,
                 }}
               >
-                Open full page setup
+                {folderReconnectNeeded ? 'Open full page' : 'Open full page setup'}
               </button>
             </div>
           </div>
@@ -1125,7 +1248,10 @@ function App() {
       <BackupOnboardingModal
         open
         allowSkip={false}
+        mode={folderReconnectNeeded ? 'reconnect' : 'choose'}
+        folderName={backupFolderName}
         onChooseFolder={handleChooseBackupFolder}
+        onReconnectFolder={handleReconnectBackupFolder}
       />
     );
   }

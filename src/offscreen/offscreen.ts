@@ -15,6 +15,9 @@ import {
 } from '../lib/backupFolder';
 import { revisionTracker } from '../lib/revisionTracker';
 import { wouldMirrorShrinkWorkbenchSqlite } from '../lib/folderMirrorGuard';
+import { syncClock } from '../lib/time/clock';
+
+void syncClock();
 
 const worker = new DbWorker({ name: 'workbench-db' });
 
@@ -28,6 +31,7 @@ type WorkerResponse =
   | { id: number; ok: false; error: string }
   | { type: 'worker-ready' }
   | { type: 'mirror-bytes'; bytes: Uint8Array; revision: number }
+  | { type: 'request-folder-bytes' }
   | { type: 'data-changed'; revision: number };
 
 async function writeMirrorToFolder(
@@ -43,19 +47,12 @@ async function writeMirrorToFolder(
   }
   const existing = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
   if (existing.ok && existing.data && existing.data.byteLength > 16) {
+    // Early size screen; writeBinaryAtomically re-checks size + items and
+    // rotates workbench.prev / prev2 before replacing live.
     const blocked = wouldMirrorShrinkWorkbenchSqlite(existing.data, payload);
     if (blocked) {
       console.error('[DB owner] mirror blocked:', blocked);
       return { ok: false, error: blocked };
-    }
-    // Last-resort recovery copy before any allowed overwrite of an existing file.
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const safetyName = `safety-before-mirror-${stamp}.sqlite`;
-    const safety = await writeBinaryAtomicallyToBackupFolder(safetyName, existing.data, {
-      allowWorkbenchShrink: true,
-    });
-    if (!safety.ok) {
-      console.warn('[DB owner] could not write safety-before-mirror copy:', safety.error);
     }
   }
   const binRes = await writeBinaryAtomicallyToBackupFolder(WORKBENCH_DB_FILE, payload);
@@ -81,8 +78,8 @@ async function bootstrapFromFolderIfNeeded(): Promise<void> {
   const bytes =
     primary.ok && primary.data && primary.data.byteLength > 16 ? primary.data : null;
   if (!bytes) return;
-  // Transferable ArrayBuffer — never base64 (large DBs exceed message limits).
-  await workerRpcBinary('forceImportFromFolderBytes', bytes);
+  // Transferable ArrayBuffer — merge when live has data; load when empty.
+  await workerRpcBinary('mergeWithFolderBytes', bytes);
 }
 
 function workerRpc(method: string, args: unknown[]): Promise<unknown> {
@@ -114,11 +111,16 @@ function workerRpcBinary(method: string, bytes: Uint8Array): Promise<unknown> {
   });
 }
 
-type FolderFileWorkerMethod = 'bootstrapFromFolderBytes' | 'forceImportFromFolderBytes' | 'inspectImportBytes';
+type FolderFileWorkerMethod =
+  | 'bootstrapFromFolderBytes'
+  | 'forceImportFromFolderBytes'
+  | 'mergeWithFolderBytes'
+  | 'inspectImportBytes';
 
 const FOLDER_FILE_RPC: Record<string, FolderFileWorkerMethod> = {
   bootstrapFromBackupFolderFile: 'bootstrapFromFolderBytes',
   forceImportFromBackupFolderFile: 'forceImportFromFolderBytes',
+  mergeWithBackupFolderFile: 'mergeWithFolderBytes',
   inspectImportFromBackupFolderFile: 'inspectImportBytes',
 };
 
@@ -170,6 +172,21 @@ worker.onmessage = async (event: MessageEvent<WorkerResponse>) => {
         error: result.error,
         at: Date.now(),
       });
+      return;
+    }
+    if (msg.type === 'request-folder-bytes') {
+      try {
+        const primary = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
+        if (primary.ok && primary.data && primary.data.byteLength >= 16) {
+          const copy = new Uint8Array(primary.data.byteLength);
+          copy.set(primary.data);
+          worker.postMessage({ type: 'folder-bytes', bytes: copy.buffer }, [copy.buffer]);
+        } else {
+          worker.postMessage({ type: 'folder-bytes', bytes: null });
+        }
+      } catch (e) {
+        worker.postMessage({ type: 'folder-bytes', bytes: null, error: String(e) });
+      }
       return;
     }
     if (msg.type === 'data-changed') {

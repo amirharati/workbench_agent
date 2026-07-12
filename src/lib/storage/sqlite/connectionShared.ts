@@ -11,6 +11,7 @@ import type {
   TransactionMode,
 } from './types';
 import { DEFAULT_CONFIG } from './types';
+import { nowMs } from '../../time/clock';
 
 function runSchemaMigrations(database: Database, from: number, to: number): void {
   if (from < 3 && to >= 3) {
@@ -18,6 +19,22 @@ function runSchemaMigrations(database: Database, from: number, to: number): void
       database.exec('ALTER TABLE item_enrichment ADD COLUMN references_json TEXT;');
     } catch {
       /* column may already exist */
+    }
+  }
+  if (from < 4 && to >= 4) {
+    try {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS deleted_items (
+          id TEXT PRIMARY KEY,
+          purged_at INTEGER NOT NULL,
+          reason TEXT
+        );
+      `);
+      database.exec(
+        'CREATE INDEX IF NOT EXISTS idx_deleted_items_purged ON deleted_items(purged_at);'
+      );
+    } catch {
+      /* table may already exist */
     }
   }
 }
@@ -92,7 +109,7 @@ export function initSchema(database: Database, schemaVersion: number): void {
     })[0]?.[0] as number;
 
     if (metaCount === 0) {
-      const now = Date.now();
+      const now = nowMs();
       const deviceId = crypto.randomUUID();
       database.exec({
         sql: `INSERT INTO app_meta (id, schema_version, created_at, device_id)
@@ -116,7 +133,7 @@ export function initSchema(database: Database, schemaVersion: number): void {
 }
 
 export function ensureDefaultData(database: Database): void {
-  const now = Date.now();
+  const now = nowMs();
   const projectCount = database.exec({
     sql: `SELECT COUNT(*) FROM projects WHERE id = 'project_default';`,
     returnValue: 'resultRows',

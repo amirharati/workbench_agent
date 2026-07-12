@@ -17,6 +17,7 @@ import { EnrichmentContent, ItemPipelineBadge, ENRICHMENT_EMPTY_MESSAGE } from '
 import { ItemContextMenu } from './ItemContextMenu';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { TabPaneFrame, TabScrollShell } from './TabScrollShell';
+import { DeleteConfirmDialog, type DeleteConfirmResult } from '../DeleteConfirmDialog';
 import {
   isScopeNarrowed,
   itemMatchesScope,
@@ -258,6 +259,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   const [maxVisibleTabs, setMaxVisibleTabs] = React.useState(5);
   const [draggedTabId, setDraggedTabId] = React.useState<string | null>(null);
   const [itemContextMenu, setItemContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+  const [trashConfirmItem, setTrashConfirmItem] = React.useState<Item | null>(null);
 
   React.useEffect(() => {
     if (!tabStripContainerRef.current) return;
@@ -408,10 +410,22 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     setIsEditing(false);
   };
   
-  const deleteItemHandler = async () => {
-    if (!activeItemObj || !onDeleteBookmark) return;
-    if (!window.confirm(`Move "${activeItemObj.title || 'Untitled'}" to trash?`)) return;
-    await onDeleteBookmark(activeItemObj.id);
+  const requestMoveToTrash = () => {
+    if (!activeItemObj || !onDeleteBookmark || activeItemObj.deletedAt) return;
+    setTrashConfirmItem(activeItemObj);
+  };
+
+  const runTrashConfirm = async (result: DeleteConfirmResult) => {
+    const target = trashConfirmItem;
+    setTrashConfirmItem(null);
+    if (!target || !onDeleteBookmark || result.action === 'cancel') return;
+    if (result.action !== 'delete-everywhere') return;
+    try {
+      await onDeleteBookmark(target.id);
+    } catch (e) {
+      console.error('Move to trash failed:', e);
+      window.alert(`Could not move to trash: ${e instanceof Error ? e.message : String(e)}`);
+    }
   };
 
   const togglePin = async () => {
@@ -716,7 +730,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                 onStartEdit={startEditing}
                 onCancelEdit={cancelEditing}
                 onSaveEdit={saveEditing}
-                onDelete={deleteItemHandler}
+                onDelete={requestMoveToTrash}
                 onTogglePin={togglePin}
                 onToggleFavorite={toggleFavorite}
                 canEdit={!!onUpdateItem}
@@ -747,7 +761,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
           onDelete={
             onDeleteBookmark
               ? () => {
-                  void deleteItemHandler();
+                  requestMoveToTrash();
                   setItemContextMenu(null);
                 }
               : undefined
@@ -760,6 +774,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               : undefined
           }
         />
+      )}
+      {trashConfirmItem && (
+        <DeleteConfirmDialog item={trashConfirmItem} onResult={runTrashConfirm} />
       )}
     </div>
   );

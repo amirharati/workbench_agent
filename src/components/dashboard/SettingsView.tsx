@@ -3,6 +3,11 @@ import type { BackupStatusSnapshot, RestoreBackupResult } from '../../lib/backup
 import type { DbWorkerStatus } from '../../lib/storage/dbClient';
 import type { AISettings } from '../../lib/ai/types';
 import { clearAllLibraryData } from '../../lib/db';
+import {
+  listFolderSqliteBackups,
+  restoreFolderBackupIntoApp,
+  type FolderSqliteBackupInfo,
+} from '../../lib/backupSnapshots';
 import { formatRestoreSummary } from '../../lib/itemQuickAccess';
 import { EnrichmentPanel } from './EnrichmentPanel';
 import { PipelineDebugSection } from './PipelineDebugSection';
@@ -117,11 +122,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [aiError, setAiError] = React.useState<string | null>(null);
   const [clearLibraryConfirm, setClearLibraryConfirm] = React.useState('');
   const [clearingLibrary, setClearingLibrary] = React.useState(false);
+  const [folderBackups, setFolderBackups] = React.useState<FolderSqliteBackupInfo[]>([]);
+  const [folderBackupsLoading, setFolderBackupsLoading] = React.useState(false);
+  const [restoringFolderBackup, setRestoringFolderBackup] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (aiSettings) setAiForm(aiSettings);
   }, [aiSettings]);
 
+  const refreshFolderBackups = React.useCallback(async () => {
+    if (!backupFolderReady) {
+      setFolderBackups([]);
+      return;
+    }
+    setFolderBackupsLoading(true);
+    try {
+      const res = await listFolderSqliteBackups();
+      setFolderBackups(res.ok && res.backups ? res.backups : []);
+    } catch {
+      setFolderBackups([]);
+    } finally {
+      setFolderBackupsLoading(false);
+    }
+  }, [backupFolderReady]);
+
+  React.useEffect(() => {
+    void refreshFolderBackups();
+  }, [refreshFolderBackups, folderMirrorStatus?.lastMirrorAt]);
   // Re-render every 30s so the relative timestamps stay current without a
   // websocket / fancy state machine.
   React.useEffect(() => {
@@ -887,8 +914,160 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div>
             · <strong>Sync safety:</strong> if folder meta was written by another device, writes pause until you choose Load remote or Keep local; Load remote saves local first as <code>safety-before-import-…</code>.
           </div>
-          <div>· <strong>Scheduled rotations</strong> (e.g. daily snapshots) are coming next.</div>
+          <div>
+            · <strong>Auto snapshots:</strong> before each live overwrite, the app rotates{' '}
+            <code>workbench.prev.sqlite</code> / <code>workbench.prev2.sqlite</code> so you can roll back.
+          </div>
         </div>
+
+        {backupFolderReady && (
+          <div
+            style={{
+              fontSize: '0.82rem',
+              color: '#374151',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 8,
+              padding: '0.65rem',
+              lineHeight: 1.5,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.45rem',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
+              <div>
+                <strong>Backups in your folder</strong>
+                <div style={{ color: '#6b7280', fontSize: '0.78rem' }}>
+                  Live, automatic <code>prev</code> copies, and <code>manual-</code> /{' '}
+                  <code>safety-</code> files. <strong>Restore replaces</strong> the browser library
+                  with that file (not a merge). Current live is snapshotted into rotation first.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshFolderBackups()}
+                disabled={folderBackupsLoading || !!restoringFolderBackup}
+                style={{
+                  padding: '0.35rem 0.6rem',
+                  borderRadius: 6,
+                  border: '1px solid #cbd5e1',
+                  background: '#fff',
+                  cursor: folderBackupsLoading ? 'progress' : 'pointer',
+                  fontSize: '0.78rem',
+                }}
+              >
+                {folderBackupsLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
+            {folderBackups.length === 0 ? (
+              <div style={{ color: '#6b7280' }}>
+                No sqlite files found yet — add bookmarks so <code>workbench.sqlite</code> is created,
+                then use <strong>Backup now</strong> or wait for auto <code>prev</code> copies after edits.
+              </div>
+            ) : (
+              folderBackups.map((snap) => {
+                const sizeKb = Math.max(1, Math.round(snap.byteLength / 1024));
+                const kindLabel =
+                  snap.kind === 'live'
+                    ? 'Live'
+                    : snap.kind === 'undo'
+                      ? 'Undo last restore'
+                      : snap.kind === 'auto'
+                      ? snap.slot === 1
+                        ? 'Auto prev (−1)'
+                        : `Auto prev${snap.slot} (−${snap.slot})`
+                      : snap.kind === 'manual'
+                        ? 'Manual'
+                        : snap.kind === 'safety'
+                          ? 'Safety'
+                          : 'Other';
+                const isLive = snap.kind === 'live';
+                return (
+                  <div
+                    key={snap.filename}
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '0.5rem',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 6,
+                      padding: '0.45rem 0.55rem',
+                      background: '#fff',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600 }}>
+                        {kindLabel} · <code>{snap.filename}</code>
+                      </div>
+                      <div style={{ color: '#6b7280', fontSize: '0.78rem' }}>
+                        {sizeKb} KB
+                        {snap.mtime
+                          ? ` · ${formatRelative(snap.mtime)} (${formatAbsolute(snap.mtime)})`
+                          : ''}
+                      </div>
+                    </div>
+                    {isLive ? (
+                      <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>Current live file</span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!!restoringFolderBackup || conflictBlocking}
+                        title={
+                          conflictBlocking
+                            ? 'Resolve the sync conflict above first'
+                            : 'Snapshot current live, then restore this copy into workbench.sqlite'
+                        }
+                        onClick={async () => {
+                          if (
+                            !window.confirm(
+                              `Replace your current library with ${snap.filename}?\n\n` +
+                                `This is a full restore (not a merge). Items only in the browser that are not in this file will disappear.\n\n` +
+                                `Your current live database will be saved into the snapshot rotation first so you can undo.`
+                            )
+                          ) {
+                            return;
+                          }
+                          setRestoringFolderBackup(snap.filename);
+                          try {
+                            const res = await restoreFolderBackupIntoApp(snap.filename);
+                            if (!res.ok) {
+                              addToast({ type: 'error', message: res.error ?? 'Restore failed' });
+                              return;
+                            }
+                            await refreshFolderBackups();
+                            addToast({
+                              type: 'success',
+                              message: `Restored ${snap.filename} (full replace). Current live was snapshotted first.`,
+                            });
+                          } catch (e) {
+                            addToast({ type: 'error', message: String(e) });
+                          } finally {
+                            setRestoringFolderBackup(null);
+                          }
+                        }}
+                        style={{
+                          padding: '0.4rem 0.65rem',
+                          borderRadius: 6,
+                          border: '1px solid #b45309',
+                          background: restoringFolderBackup === snap.filename ? '#fde68a' : '#fffbeb',
+                          color: '#92400e',
+                          cursor: restoringFolderBackup || conflictBlocking ? 'not-allowed' : 'pointer',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {restoringFolderBackup === snap.filename ? 'Restoring…' : 'Restore'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
@@ -994,10 +1173,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             title={
               !backupFolderReady
                 ? 'Configure a backup folder first (needed for safety snapshot)'
-                : 'Restore from workbench.sqlite or latest.json — replaces current data after saving a safety snapshot'
+                : 'Pick a .sqlite/.json from disk (e.g. outside this folder). Folder copies are listed above.'
             }
           >
-            {restoringBackup ? 'Restoring…' : 'Restore from backup…'}
+            {restoringBackup ? 'Restoring…' : 'Restore from other file…'}
             <input
               type="file"
               accept=".sqlite,.json,application/json,application/x-sqlite3,application/vnd.sqlite3"

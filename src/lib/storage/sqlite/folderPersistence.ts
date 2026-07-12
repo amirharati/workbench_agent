@@ -55,6 +55,21 @@ export async function flushLiveDatabaseToFolder(): Promise<{ ok: boolean; error?
   }
 
   try {
+    // Never push an empty live library over an existing folder file (automatic path).
+    const { getIdbCompatStore } = await import('./store');
+    const { fingerprintFromStore } = await import('../importFingerprint');
+    const store = await getIdbCompatStore();
+    if (fingerprintFromStore(store).itemCount === 0) {
+      const existing = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
+      if (existing.ok && existing.data && existing.data.byteLength > 16) {
+        return {
+          ok: false,
+          error:
+            'Refusing to mirror an empty library to workbench.sqlite. Link your backup folder or restore from a .sqlite backup in Settings.',
+        };
+      }
+    }
+
     const { getConnection } = await import('./connection');
     const conn = await getConnection();
     const bytes = await conn.exportDatabase();

@@ -2942,6 +2942,37 @@ export const MainContent: React.FC<MainContentProps> = ({
             />
           </div>
         )}
+
+        {bookmarkDeleteTarget && onDeleteBookmark && (
+          <DeleteConfirmDialog
+            item={bookmarkDeleteTarget}
+            collectionId={getDeleteDialogCollectionContext(bookmarkDeleteTarget).id}
+            collectionName={getDeleteDialogCollectionContext(bookmarkDeleteTarget).name}
+            onResult={async (result) => {
+              const target = bookmarkDeleteTarget;
+              if (!target || !onDeleteBookmark) {
+                setBookmarkDeleteTarget(null);
+                setBookmarkDeleteExplicitCollectionId(undefined);
+                return;
+              }
+              const ctx = getDeleteDialogCollectionContext(target);
+              setBookmarkDeleteTarget(null);
+              setBookmarkDeleteExplicitCollectionId(undefined);
+              if (result.action === 'cancel') return;
+              try {
+                if (result.action === 'remove-from-collection' && ctx.id) {
+                  await onDeleteBookmark(target.id, ctx.id);
+                } else if (result.action === 'delete-everywhere') {
+                  await onDeleteBookmark(target.id);
+                }
+                if (onRefresh) await onRefresh();
+              } catch (e) {
+                console.error('Move to trash failed:', e);
+                window.alert(`Could not move to trash: ${e instanceof Error ? e.message : String(e)}`);
+              }
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -3054,14 +3085,19 @@ export const MainContent: React.FC<MainContentProps> = ({
             setBookmarkDeleteTarget(null);
             setBookmarkDeleteExplicitCollectionId(undefined);
             if (result.action === 'cancel') return;
-            if (result.action === 'remove-from-collection' && ctx.id) {
-              await onDeleteBookmark(target.id, ctx.id);
-            } else if (result.action === 'delete-everywhere') {
-              await onDeleteBookmark(target.id);
+            try {
+              if (result.action === 'remove-from-collection' && ctx.id) {
+                await onDeleteBookmark(target.id, ctx.id);
+              } else if (result.action === 'delete-everywhere') {
+                await onDeleteBookmark(target.id);
+              }
+              setViewingItem((v) => (v?.id === target.id ? null : v));
+              setSelectedNoteId((n) => (n === target.id ? null : n));
+              if (onRefresh) await onRefresh();
+            } catch (e) {
+              console.error('Move to trash failed:', e);
+              window.alert(`Could not move to trash: ${e instanceof Error ? e.message : String(e)}`);
             }
-            setViewingItem((v) => (v?.id === target.id ? null : v));
-            setSelectedNoteId((n) => (n === target.id ? null : n));
-            if (onRefresh) await onRefresh();
           }}
         />
       )}

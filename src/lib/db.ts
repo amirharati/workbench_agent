@@ -30,6 +30,7 @@ import type {
 } from './categorization/types';
 import type { TrashHistoryEntry } from './trashHistory';
 import { shouldPreferImportTitle } from './import/xImportHygiene';
+import { nowMs } from './time/clock';
 
 export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
 
@@ -144,7 +145,7 @@ export interface Workspace {
 // ============================================================================
 
 const ensureIncludes = (arr: string[], value: string) => (arr.includes(value) ? arr : [...arr, value]);
-const nowTs = () => Date.now();
+const nowTs = () => nowMs();
 
 const isHttpUrl = (url: string) => /^https?:\/\//i.test(url.trim());
 const isBookmarkUrl = (url: string) => {
@@ -671,6 +672,7 @@ export const deleteItem = async (id: string): Promise<{ deleted: boolean; placem
     console.warn('Enrichment cleanup on delete failed:', e);
   }
   store.deleteItem(id);
+  await commitPendingDbWrites();
   notifyDataChanged('item.delete');
   return { deleted: true, placementCount };
 };
@@ -952,7 +954,7 @@ export async function refreshPipelineCacheFromWorker(): Promise<void> {
 export const addSnapshot = async (tabs: Snapshot['tabs']) => {
   const store = await getDB();
   store.putSnapshot({
-    timestamp: Date.now(),
+    timestamp: nowTs(),
     tabCount: tabs.length,
     tabs,
   });
@@ -985,7 +987,7 @@ export const getAllWorkspaces = async () => {
 export const addWorkspace = async (name: string, windows: WorkspaceWindow[], projectId?: string) => {
   const store = await getDB();
   const id = crypto.randomUUID();
-  const now = Date.now();
+  const now = nowTs();
   const dedupedWindows = deduplicateWorkspaceTabs(windows);
   store.putWorkspace({ id, name, projectId, created_at: now, updated_at: now, windows: dedupedWindows });
   notifyDataChanged('workspace.add');
@@ -996,7 +998,7 @@ export const updateWorkspace = async (id: string, updates: Partial<Pick<Workspac
   const store = await getDB();
   const existing = store.getWorkspace(id);
   if (!existing) return false;
-  const now = Date.now();
+  const now = nowTs();
   
   const processedUpdates = { ...updates };
   if (processedUpdates.windows) {

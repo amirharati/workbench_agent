@@ -1,7 +1,7 @@
 import type { DbMutation } from './storage/dbMutations';
 import {
   applyBatchMutations,
-  deleteItem,
+  commitPendingDbWrites,
   getAllItems,
   getBookmarkOpenUrl,
   getDB,
@@ -230,16 +230,58 @@ export async function permanentlyDeleteItem(id: string): Promise<void> {
   const item = await getItem(id);
   if (item) {
     await markTrashHistoryPurged(item);
+    await commitPendingDbWrites();
   }
-  await deleteItem(id);
+  const { buildDeletedItemEntry } = await import('./deletedItems');
+  const { nowMs } = await import('./time/clock');
+  const ops: DbMutation[] = [
+    {
+      kind: 'put',
+      storeName: 'deleted_items',
+      value: buildDeletedItemEntry(id, item ? 'permanent_delete' : 'permanent_delete_missing', nowMs()),
+    },
+  ];
+  if (item) {
+    ops.push({ kind: 'delete', storeName: 'items', key: id });
+  }
+  try {
+    const { deleteEnrichmentForItem } = await import('./enrichment/fetchService');
+    await deleteEnrichmentForItem(id);
+  } catch (e) {
+    console.warn('Enrichment cleanup on permanent delete failed:', e);
+  }
+  await applyBatchMutations(ops);
+  notifyDataChanged('item.delete');
 }
 
 export async function emptyTrash(): Promise<number> {
   const trashed = await getTrashedItems();
+  if (!trashed.length) return 0;
+
+  const { buildDeletedItemEntry } = await import('./deletedItems');
+  const { nowMs } = await import('./time/clock');
+  const purgedAt = nowMs();
+  const ops: DbMutation[] = [];
+
   for (const item of trashed) {
     await markTrashHistoryPurged(item);
-    await deleteItem(item.id);
+    ops.push({
+      kind: 'put',
+      storeName: 'deleted_items',
+      value: buildDeletedItemEntry(item.id, 'empty_trash', purgedAt),
+    });
+    ops.push({ kind: 'delete', storeName: 'items', key: item.id });
+    try {
+      const { deleteEnrichmentForItem } = await import('./enrichment/fetchService');
+      await deleteEnrichmentForItem(item.id);
+    } catch (e) {
+      console.warn('Enrichment cleanup on empty trash failed:', e);
+    }
   }
+
+  await commitPendingDbWrites();
+  await applyBatchMutations(ops);
+  notifyDataChanged('item.delete');
   return trashed.length;
 }
 

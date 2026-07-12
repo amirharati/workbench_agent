@@ -9,12 +9,21 @@ interface BackupOnboardingModalProps {
   /** If false, onboarding cannot be skipped/dismissed. */
   allowSkip?: boolean;
   /**
+   * `choose` = first-time folder pick.
+   * `reconnect` = handle already saved; Chrome needs permission again (one click, no re-pick).
+   */
+  mode?: 'choose' | 'reconnect';
+  /** Shown in reconnect mode. */
+  folderName?: string | null;
+  /**
    * Some Chrome extension surfaces are unstable for showDirectoryPicker.
    * If provided, primary action opens full-page setup instead of invoking picker here.
    */
   onChooseInFullPage?: () => void;
   /** Folder picker + worker bootstrap (single code path — do not pick twice). */
   onChooseFolder: () => Promise<PickBackupFolderResult>;
+  /** Re-grant permission on the persisted handle (no directory picker). */
+  onReconnectFolder?: () => Promise<PickBackupFolderResult>;
   onSkip?: () => void;
 }
 
@@ -22,24 +31,28 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
   open,
   compact,
   allowSkip = false,
+  mode = 'choose',
+  folderName,
   onChooseInFullPage,
   onChooseFolder,
+  onReconnectFolder,
   onSkip,
 }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reconnect = mode === 'reconnect' && !!onReconnectFolder;
 
   if (!open) return null;
 
-  const chooseFolder = async () => {
-    if (onChooseInFullPage) {
+  const runAction = async () => {
+    if (!reconnect && onChooseInFullPage) {
       onChooseInFullPage();
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const r = await onChooseFolder();
+      const r = reconnect ? await onReconnectFolder!() : await onChooseFolder();
       if (r.ok) return;
       if (r.error === 'cancelled') {
         setError(null);
@@ -52,6 +65,40 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
       setBusy(false);
     }
   };
+
+  const title = reconnect ? 'Reconnect your data folder' : 'Choose your data folder';
+  const body = reconnect ? (
+    <>
+      We’ll use your already-selected folder
+      {folderName ? (
+        <>
+          {' '}
+          (<code style={{ fontSize: '0.9em' }}>{folderName}</code>)
+        </>
+      ) : null}
+      . Chrome blocks silent access after reload — one click continues with that
+      same folder (no picker). Choose “Allow on every visit” if Chrome offers it
+      so this can happen automatically next time.
+    </>
+  ) : (
+    <>
+      Homebase stores your live database as <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> in a
+      folder you pick—ideally inside Dropbox, iCloud Drive, or another sync service. The app cannot run without
+      this folder.
+    </>
+  );
+
+  const primaryLabel = reconnect
+    ? busy
+      ? 'Reconnecting…'
+      : folderName
+        ? `Continue with “${folderName}”`
+        : 'Continue with saved folder'
+    : onChooseInFullPage
+      ? 'Open full page setup'
+      : busy
+        ? 'Setting up…'
+        : 'Choose folder';
 
   return (
     <div
@@ -104,13 +151,9 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
             </div>
             <div>
               <h2 id="backup-onboarding-title" style={{ margin: 0, fontSize: compact ? '1rem' : '1.125rem', fontWeight: 700 }}>
-                Choose your data folder
+                {title}
               </h2>
-              <p style={{ margin: '8px 0 0', opacity: 0.85, lineHeight: 1.5 }}>
-                Homebase stores your live database as <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> in a
-                folder you pick—ideally inside Dropbox, iCloud Drive, or another sync service. The app cannot run without
-                this folder.
-              </p>
+              <p style={{ margin: '8px 0 0', opacity: 0.85, lineHeight: 1.5 }}>{body}</p>
             </div>
           </div>
           {allowSkip && onSkip ? (
@@ -135,11 +178,20 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
           ) : null}
         </div>
 
-        <ol style={{ margin: '0 0 16px', paddingLeft: '1.25rem', lineHeight: 1.6, opacity: 0.9 }}>
-          <li>{onChooseInFullPage ? 'Click "Open full page setup" below.' : 'Click "Choose folder" below.'}</li>
-          <li>Select or create a folder (e.g. your synced Dropbox folder).</li>
-          <li>We create <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> there as your live database.</li>
-        </ol>
+        {!reconnect ? (
+          <ol style={{ margin: '0 0 16px', paddingLeft: '1.25rem', lineHeight: 1.6, opacity: 0.9 }}>
+            <li>{onChooseInFullPage ? 'Click "Open full page setup" below.' : 'Click "Choose folder" below.'}</li>
+            <li>Select or create a folder (e.g. your synced Dropbox folder).</li>
+            <li>
+              We create <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> there as your live
+              database.
+            </li>
+          </ol>
+        ) : (
+          <p style={{ margin: '0 0 16px', lineHeight: 1.6, opacity: 0.9 }}>
+            You can also pick a different folder if you moved your data.
+          </p>
+        )}
 
         {error ? (
           <p style={{ color: 'var(--danger, #dc2626)', margin: '0 0 12px', fontSize: '0.875rem' }} role="alert">
@@ -167,9 +219,38 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
               Skip for now
             </button>
           ) : null}
+          {reconnect ? (
+            <button
+              type="button"
+              onClick={() => {
+                setBusy(true);
+                setError(null);
+                void onChooseFolder()
+                  .then((r) => {
+                    if (r.ok) return;
+                    if (r.error !== 'cancelled') setError(r.error ?? 'Something went wrong');
+                  })
+                  .catch((e) => setError(String(e)))
+                  .finally(() => setBusy(false));
+              }}
+              disabled={busy}
+              style={{
+                padding: '10px 16px',
+                borderRadius: 10,
+                border: '1px solid var(--border, #e5e7eb)',
+                background: 'transparent',
+                color: 'var(--text, #111)',
+                cursor: busy ? 'default' : 'pointer',
+                fontWeight: 500,
+                fontSize: '0.875rem',
+              }}
+            >
+              Choose different folder
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={chooseFolder}
+            onClick={() => void runAction()}
             disabled={busy}
             style={{
               display: 'inline-flex',
@@ -186,7 +267,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
             }}
           >
             <FolderOpen size={18} aria-hidden />
-            {onChooseInFullPage ? 'Open full page setup' : busy ? 'Setting up…' : 'Choose folder'}
+            {primaryLabel}
           </button>
         </div>
       </div>

@@ -10,15 +10,29 @@
  * file system primitives can later be reused by other sinks/scripts.
  */
 import { normalizeBinaryPayload } from './binaryPayload';
-import { wouldMirrorShrinkWorkbenchSqlite } from './folderMirrorGuard';
+import {
+  wouldMirrorLoseItems,
+  wouldMirrorShrinkWorkbenchSqlite,
+} from './folderMirrorGuard';
 import { getMetaDB } from './metaDb';
 
 const HANDLE_KEY = 'backup-directory';
+/** Display name mirror in chrome.storage (handle.name can be awkward to read after reload). */
+const FOLDER_NAME_KEY = 'backupFolderDisplayName';
+/** Stable id so Chrome remembers the last picked directory in the picker UI. */
+const DIRECTORY_PICKER_ID = 'homebase-backup-folder';
 
 /** Canonical live database file in the user backup folder. */
 export const WORKBENCH_DB_FILE = 'workbench.sqlite';
 /** Staging file for Settings restore — written in tab, imported by offscreen (avoids 64MiB sendMessage). */
 export const IMPORT_STAGING_FILE = 'import-staging.sqlite';
+/** Single undo slot for last Settings restore (outside prev/prev2 rotation). */
+export const WORKBENCH_UNDO_RESTORE_FILE = 'workbench.undo-restore.sqlite';
+/**
+ * Private restore pipeline temps (hidden from Settings list).
+ * Incoming = secured copy of the file being restored — never overwrite the user-visible source mid-restore.
+ */
+export const RESTORE_INCOMING_TEMP = '.workbench.restore-incoming.sqlite';
 /** Envelope sidecar for conflict detection (revision / deviceId only). */
 export const WORKBENCH_META_FILE = 'workbench.meta.json';
 /** Legacy filenames — read for migration only. */
@@ -58,6 +72,12 @@ export async function getBackupDirectoryHandle(): Promise<FileSystemDirectoryHan
 export async function setBackupDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
   const db = await getMetaDB();
   await db.put('handles', handle, HANDLE_KEY);
+  try {
+    const name = handle.name || null;
+    if (name) await chrome.storage.local.set({ [FOLDER_NAME_KEY]: name });
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function clearBackupDirectoryHandle(): Promise<void> {
@@ -67,25 +87,87 @@ export async function clearBackupDirectoryHandle(): Promise<void> {
   } catch {
     /* ignore */
   }
+  try {
+    await chrome.storage.local.remove(FOLDER_NAME_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True if a directory handle was previously persisted (permission may still be prompt). */
+export async function hasConfiguredBackupFolder(): Promise<boolean> {
+  return !!(await getBackupDirectoryHandle());
+}
+
+/**
+ * Permission state for the persisted backup folder handle.
+ * After reload Chrome often returns `prompt` even though the user already picked the folder.
+ */
+export async function getBackupFolderPermissionState(): Promise<
+  'none' | 'granted' | 'prompt' | 'denied'
+> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) return 'none';
+  try {
+    const perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted' || perm === 'denied' || perm === 'prompt') return perm;
+    return 'prompt';
+  } catch {
+    return 'prompt';
+  }
 }
 
 /** True if a handle exists and still has read/write permission. */
 export async function hasWritableBackupFolder(): Promise<boolean> {
+  return (await getBackupFolderPermissionState()) === 'granted';
+}
+
+/**
+ * Re-request read/write on the persisted handle (no folder picker).
+ * Call on startup (best-effort — may succeed while a click that opened the
+ * page still counts as user activation, or after "Allow on every visit") and
+ * from an explicit button when Chrome returns `prompt`.
+ */
+export async function regrantBackupFolderPermission(): Promise<{ ok: boolean; error?: string }> {
   const handle = await getBackupDirectoryHandle();
-  if (!handle) return false;
-  try {
-    const perm = await handle.queryPermission({ mode: 'readwrite' });
-    return perm === 'granted';
-  } catch {
-    return false;
+  if (!handle) return { ok: false, error: 'No backup folder configured' };
+  return ensureReadWritePermission(handle);
+}
+
+/**
+ * Best-effort: reuse the already-selected folder without showing the picker.
+ * Succeeds when permission is still granted, when Chrome persistent access
+ * auto-approves requestPermission, or when a recent user gesture is still active.
+ */
+export async function tryReuseConfiguredBackupFolder(): Promise<{
+  ok: boolean;
+  reused: boolean;
+  error?: string;
+}> {
+  if (!(await hasConfiguredBackupFolder())) {
+    return { ok: false, reused: false, error: 'No backup folder configured' };
   }
+  if (await hasWritableBackupFolder()) {
+    return { ok: true, reused: true };
+  }
+  const grant = await regrantBackupFolderPermission();
+  if (grant.ok) return { ok: true, reused: true };
+  return { ok: false, reused: false, error: grant.error };
 }
 
 export async function getBackupFolderName(): Promise<string | null> {
   const handle = await getBackupDirectoryHandle();
-  if (!handle) return null;
+  if (handle) {
+    try {
+      if (handle.name) return handle.name;
+    } catch {
+      /* fall through to storage */
+    }
+  }
   try {
-    return handle.name || null;
+    const r = await chrome.storage.local.get(FOLDER_NAME_KEY);
+    const n = r[FOLDER_NAME_KEY];
+    return typeof n === 'string' && n.length > 0 ? n : null;
   } catch {
     return null;
   }
@@ -104,11 +186,19 @@ async function ensureReadWritePermission(
   }
 
   try {
+    // Same folder as before — never opens the directory picker.
     const req = await handle.requestPermission({ mode: 'readwrite' });
     if (req !== 'granted') return { ok: false, error: 'Permission denied for backup folder' };
     return { ok: true };
-  } catch {
-    return { ok: false, error: 'Could not request backup folder permission' };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Typical without a user gesture: SecurityError. Caller may retry on click.
+    return {
+      ok: false,
+      error: msg.includes('User activation') || msg.includes('user gesture')
+        ? 'Click Continue to reconnect your saved folder'
+        : 'Could not request backup folder permission',
+    };
   }
 }
 
@@ -220,18 +310,38 @@ async function replaceFileAtomically(
 
   try {
     const tmpHandle = await handle.getFileHandle(tmpFilename);
-    const moveFn = (tmpHandle as FileSystemFileHandle & { move?: (name: string) => Promise<void> }).move;
+    const moveFn = (tmpHandle as FileSystemFileHandle & { move?: (name: string) => Promise<void> })
+      .move;
     if (typeof moveFn === 'function') {
       try {
         await removeEntryIfExists(handle, filename);
-      } catch (e) {
-        return { ok: false, error: String(e) };
+        await moveFn.call(tmpHandle, filename);
+        return { ok: true };
+      } catch (moveErr) {
+        // Chrome move() can fail on some folders (sync/cloud locks). Fall back to
+        // copy-over so live sync is not stuck with a leftover *.tmp.
+        console.warn(
+          `[backupFolder] atomic move failed for ${filename}, falling back to copy:`,
+          moveErr
+        );
       }
-      await moveFn.call(tmpHandle, filename);
-      return { ok: true };
     }
 
-    const finalRes = await finalizeFromTemp(tmpHandle, tmpFilename);
+    // Re-open tmp in case move partially consumed the handle.
+    let finalizeHandle = tmpHandle;
+    try {
+      finalizeHandle = await handle.getFileHandle(tmpFilename);
+    } catch {
+      // move may have succeeded despite throwing — verify final file
+      try {
+        await handle.getFileHandle(filename);
+        return { ok: true };
+      } catch {
+        return { ok: false, error: `Atomic write failed for ${filename}` };
+      }
+    }
+
+    const finalRes = await finalizeFromTemp(finalizeHandle, tmpFilename);
     if (!finalRes.ok) return finalRes;
     try {
       await removeEntryIfExists(handle, tmpFilename);
@@ -305,27 +415,45 @@ export async function writeJsonToBackupFolder(
 }
 
 /**
+ * Size + item-count clobber guard for live workbench.sqlite writes.
+ * Item fingerprinting is best-effort (dynamic import) when sizes alone pass.
+ */
+async function refuseUnsafeWorkbenchOverwrite(
+  existing: Uint8Array,
+  incoming: Uint8Array
+): Promise<string | null> {
+  let counts: { existingItemCount: number; incomingItemCount: number } | undefined;
+  try {
+    const { fingerprintSqliteBytes } = await import('./storage/importFingerprint');
+    const [existingFp, incomingFp] = await Promise.all([
+      fingerprintSqliteBytes(existing),
+      fingerprintSqliteBytes(incoming),
+    ]);
+    counts = {
+      existingItemCount: existingFp.itemCount,
+      incomingItemCount: incomingFp.itemCount,
+    };
+    const lost = wouldMirrorLoseItems(counts.existingItemCount, counts.incomingItemCount);
+    if (lost) return lost;
+  } catch (e) {
+    console.warn('[backupFolder] item-count guard skipped:', e);
+  }
+  return wouldMirrorShrinkWorkbenchSqlite(existing, incoming, counts);
+}
+
+/** Options for binary folder writes. */
+export type WriteBinaryToFolderOpts = {
+  /** Only for explicit user actions (e.g. conflict: keep local). Skips shrink guard on workbench.sqlite. */
+  allowWorkbenchShrink?: boolean;
+  /** Skip prev/prev2 rotation (rollback already rotated, or writing a snapshot slot). */
+  skipAutoSnapshotRotation?: boolean;
+};
+
+/**
  * Write binary data to the configured backup folder.
  * Used for SQLite database backups.
  */
 export async function writeBinaryToBackupFolder(
-  filename: string,
-  data: Uint8Array | ArrayBuffer
-): Promise<{ ok: boolean; error?: string }> {
-  const handle = await getBackupDirectoryHandle();
-  if (!handle) return { ok: false, error: 'No backup folder configured' };
-  const perm = await ensureReadWritePermission(handle);
-  if (!perm.ok) return perm;
-  return writeBinaryWithHandle(handle, filename, data);
-}
-
-/** Atomic replace — used for live mirror and manual sqlite snapshots. */
-export type WriteBinaryToFolderOpts = {
-  /** Only for explicit user actions (e.g. conflict: keep local). Skips shrink guard on workbench.sqlite. */
-  allowWorkbenchShrink?: boolean;
-};
-
-export async function writeBinaryAtomicallyToBackupFolder(
   filename: string,
   data: Uint8Array | ArrayBuffer,
   opts?: WriteBinaryToFolderOpts
@@ -344,7 +472,7 @@ export async function writeBinaryAtomicallyToBackupFolder(
   ) {
     const existing = await readBinaryWithHandle(handle, filename);
     if (existing.ok && existing.data && existing.data.byteLength > 16) {
-      const blocked = wouldMirrorShrinkWorkbenchSqlite(existing.data, payload);
+      const blocked = await refuseUnsafeWorkbenchOverwrite(existing.data, payload);
       if (blocked) {
         console.error('[backupFolder] blocked live write:', blocked);
         return { ok: false, error: blocked };
@@ -352,7 +480,52 @@ export async function writeBinaryAtomicallyToBackupFolder(
     }
   }
 
-  return writeBinaryAtomicallyWithHandle(handle, filename, data);
+  return writeBinaryWithHandle(handle, filename, data);
+}
+
+/** Atomic replace — used for live mirror and manual sqlite snapshots. */
+export async function writeBinaryAtomicallyToBackupFolder(
+  filename: string,
+  data: Uint8Array | ArrayBuffer,
+  opts?: WriteBinaryToFolderOpts
+): Promise<{ ok: boolean; error?: string }> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) return { ok: false, error: 'No backup folder configured' };
+  const perm = await ensureReadWritePermission(handle);
+  if (!perm.ok) return perm;
+
+  const payload = normalizeBinaryPayload(data);
+  if (filename === WORKBENCH_DB_FILE && payload && payload.byteLength >= 16) {
+    const existing = await readBinaryWithHandle(handle, filename);
+    if (existing.ok && existing.data && existing.data.byteLength > 16) {
+      if (!opts?.allowWorkbenchShrink) {
+        const blocked = await refuseUnsafeWorkbenchOverwrite(existing.data, payload);
+        if (blocked) {
+          console.error('[backupFolder] blocked live write:', blocked);
+          return { ok: false, error: blocked };
+        }
+      }
+      // No-op write: skip rotation and replace.
+      const { bytesEqual } = await import('./storage/importFingerprint');
+      if (bytesEqual(existing.data, payload)) {
+        return { ok: true };
+      }
+      if (!opts?.skipAutoSnapshotRotation) {
+        const { rotateAutoSnapshotsBeforeLiveWrite } = await import('./backupSnapshots');
+        const rot = await rotateAutoSnapshotsBeforeLiveWrite(handle, existing.data);
+        if (!rot.ok) {
+          // Snapshots are best-effort. Never block healing OPFS → folder live sync
+          // (e.g. after Finder replace left an older workbench.sqlite on disk).
+          console.error(
+            '[backupFolder] snapshot rotation failed (continuing live write):',
+            rot.error
+          );
+        }
+      }
+    }
+  }
+
+  return writeBinaryAtomicallyWithHandle(handle, filename, payload ?? data);
 }
 
 /** Atomic replace — used for workbench.meta.json sidecar writes. */
@@ -436,7 +609,12 @@ export async function pickAndPersistBackupFolder(): Promise<PickBackupFolderResu
     return { ok: false, error: 'Folder picker is not supported in this context' };
   }
   try {
-    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const existing = await getBackupDirectoryHandle();
+    const handle = await window.showDirectoryPicker({
+      mode: 'readwrite',
+      id: DIRECTORY_PICKER_ID,
+      ...(existing ? { startIn: existing } : {}),
+    });
     const perm = await ensureReadWritePermission(handle);
     if (!perm.ok) return perm;
 

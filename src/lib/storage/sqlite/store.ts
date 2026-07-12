@@ -25,6 +25,7 @@ import type {
   AiTaxonomyState,
 } from '../../categorization/types';
 import type { TrashHistoryEntry } from '../../trashHistory';
+import type { DeletedItemEntry } from '../../deletedItems';
 
 // ============================================================================
 // Row type mappers (snake_case DB -> camelCase TS)
@@ -226,6 +227,12 @@ interface TrashRow {
   item_id: string | null;
   trashed_at: number;
   purged_at: number | null;
+}
+
+interface DeletedItemRow {
+  id: string;
+  purged_at: number;
+  reason: string | null;
 }
 
 // ============================================================================
@@ -680,6 +687,22 @@ function trashToRow(t: TrashHistoryEntry): TrashRow {
     item_id: t.itemId ?? null,
     trashed_at: t.trashedAt,
     purged_at: t.purgedAt ?? null,
+  };
+}
+
+function rowToDeletedItem(row: DeletedItemRow): DeletedItemEntry {
+  return {
+    id: row.id,
+    purgedAt: row.purged_at,
+    reason: row.reason,
+  };
+}
+
+function deletedItemToRow(d: DeletedItemEntry): DeletedItemRow {
+  return {
+    id: d.id,
+    purged_at: d.purgedAt,
+    reason: d.reason ?? null,
   };
 }
 
@@ -1189,9 +1212,35 @@ export class SqliteStore {
     this.conn.exec('DELETE FROM trash_history WHERE normalized_url = ?', [normalizedUrl]);
   }
 
+  // --- Deleted items (permanent-delete tombstones) ---
+  getAllDeletedItems(): DeletedItemEntry[] {
+    const rows = this.conn.selectAll<DeletedItemRow>(
+      'SELECT * FROM deleted_items ORDER BY purged_at DESC'
+    );
+    return rows.map(rowToDeletedItem);
+  }
+
+  getDeletedItem(id: string): DeletedItemEntry | undefined {
+    const row = this.conn.selectOne<DeletedItemRow>('SELECT * FROM deleted_items WHERE id = ?', [id]);
+    return row ? rowToDeletedItem(row) : undefined;
+  }
+
+  putDeletedItem(entry: DeletedItemEntry): void {
+    const r = deletedItemToRow(entry);
+    this.conn.exec(
+      `INSERT OR REPLACE INTO deleted_items (id, purged_at, reason) VALUES (?, ?, ?)`,
+      [r.id, r.purged_at, r.reason]
+    );
+  }
+
+  deleteDeletedItem(id: string): void {
+    this.conn.exec('DELETE FROM deleted_items WHERE id = ?', [id]);
+  }
+
   // --- Bulk operations for import ---
   /** Caller should wrap in `withTransaction` when atomicity is required. */
   clearAllTables(): void {
+    this.conn.exec('DELETE FROM deleted_items');
     this.conn.exec('DELETE FROM trash_history');
     this.conn.exec('DELETE FROM ai_taxonomy_state');
     this.conn.exec('DELETE FROM ai_item_signals');
@@ -1251,6 +1300,7 @@ export class IdbCompatStore {
         return state ? [state] : [];
       }
       case 'trash_history': return this.store.getAllTrashHistory();
+      case 'deleted_items': return this.store.getAllDeletedItems();
       case 'pipeline_debug': return this.store.getAllPipelineDebug();
       default: return [];
     }
@@ -1291,6 +1341,7 @@ export class IdbCompatStore {
       case 'ai_item_signals': return this.store.getSignal(key);
       case 'ai_taxonomy_state': return this.store.getTaxonomyState();
       case 'trash_history': return this.store.getTrashEntry(key);
+      case 'deleted_items': return this.store.getDeletedItem(key);
       default: return undefined;
     }
   }
@@ -1309,6 +1360,7 @@ export class IdbCompatStore {
       case 'ai_item_signals': this.store.putSignal(value); break;
       case 'ai_taxonomy_state': this.store.putTaxonomyState(value); break;
       case 'trash_history': this.store.putTrashEntry(value); break;
+      case 'deleted_items': this.store.putDeletedItem(value); break;
       case 'pipeline_debug': this.store.putPipelineDebug(value); break;
     }
   }
@@ -1326,6 +1378,7 @@ export class IdbCompatStore {
       case 'ai_item_category_links': this.store.deleteLink(key); break;
       case 'ai_item_signals': this.store.deleteSignal(key); break;
       case 'trash_history': this.store.deleteTrashEntry(key); break;
+      case 'deleted_items': this.store.deleteDeletedItem(key); break;
     }
   }
 
@@ -1483,6 +1536,11 @@ export class IdbCompatStore {
   getTrashEntry(normalizedUrl: string) { return this.store.getTrashEntry(normalizedUrl); }
   putTrashEntry(entry: TrashHistoryEntry) { this.store.putTrashEntry(entry); }
   deleteTrashEntry(normalizedUrl: string) { this.store.deleteTrashEntry(normalizedUrl); }
+
+  getAllDeletedItems() { return this.store.getAllDeletedItems(); }
+  getDeletedItem(id: string) { return this.store.getDeletedItem(id); }
+  putDeletedItem(entry: DeletedItemEntry) { this.store.putDeletedItem(entry); }
+  deleteDeletedItem(id: string) { this.store.deleteDeletedItem(id); }
   
   clearAllTables() { this.store.clearAllTables(); }
   withTransaction<T>(fn: () => T): T { return this.store.withTransaction(fn); }

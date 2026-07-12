@@ -16,6 +16,8 @@ let lastMirrorError: string | null = null;
 let mirrorInFlight = false;
 let pendingForce = false;
 let pendingAllowEmptyMirror = false;
+/** When true, skip all mirrors (restore/replace must not be clobbered by stale OPFS export). */
+let mirrorSuspended = false;
 const mirrorWaiters: Array<(result: { ok: boolean; error?: string }) => void> = [];
 
 export type MirrorExportFn = () => Promise<Uint8Array>;
@@ -23,19 +25,23 @@ export type MirrorWriteFn = (
   bytes: Uint8Array,
   revision: number
 ) => Promise<{ ok: boolean; error?: string }>;
+export type MirrorFetchFolderFn = () => Promise<Uint8Array | null>;
 
 let exportFn: MirrorExportFn | null = null;
 let writeFn: MirrorWriteFn | null = null;
 let getRevisionFn: (() => number) | null = null;
+let fetchFolderFn: MirrorFetchFolderFn | null = null;
 
 export function configureFolderMirror(opts: {
   exportDatabase: MirrorExportFn;
   writeToFolder: MirrorWriteFn;
   getRevision: () => number;
+  fetchFolderBytes?: MirrorFetchFolderFn;
 }): void {
   exportFn = opts.exportDatabase;
   writeFn = opts.writeToFolder;
   getRevisionFn = opts.getRevision;
+  fetchFolderFn = opts.fetchFolderBytes ?? null;
 }
 
 function scheduleFolderMirrorAfter(delayMs: number): void {
@@ -48,7 +54,43 @@ function scheduleFolderMirrorAfter(delayMs: number): void {
 }
 
 export function scheduleFolderMirror(): void {
+  if (mirrorSuspended) return;
   scheduleFolderMirrorAfter(DEBOUNCE_MS);
+}
+
+/** Pause/resume automatic + forced mirrors during explicit restore/replace. */
+export function setMirrorSuspended(suspended: boolean): void {
+  mirrorSuspended = suspended;
+  if (suspended && debounceTimer != null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  if (suspended) {
+    pendingForce = false;
+    pendingAllowEmptyMirror = false;
+  }
+}
+
+export function isMirrorSuspended(): boolean {
+  return mirrorSuspended;
+}
+
+/**
+ * After a replace-restore, OPFS already matches folder live — do not mirror/rotate
+ * until the next real edit (avoids wiping prev undo because sqlite export ≠ file bytes).
+ */
+export function markFolderMirrorCurrent(): void {
+  if (debounceTimer != null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  pendingForce = false;
+  pendingAllowEmptyMirror = false;
+  lastMirrorError = null;
+  lastMirrorAt = Date.now();
+  if (getRevisionFn) {
+    lastMirroredRevision = getRevisionFn();
+  }
 }
 
 function notifyMirrorWaiters(result: { ok: boolean; error?: string }): void {
@@ -60,6 +102,9 @@ export async function mirrorNow(
   force = false,
   opts?: { allowEmptyMirror?: boolean }
 ): Promise<{ ok: boolean; error?: string }> {
+  if (mirrorSuspended) {
+    return { ok: false, error: 'Mirror suspended during restore' };
+  }
   if (debounceTimer != null) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
@@ -73,6 +118,9 @@ async function runFolderMirror(
   force: boolean,
   allowEmptyMirror = false
 ): Promise<{ ok: boolean; error?: string }> {
+  if (mirrorSuspended) {
+    return { ok: false, error: 'Mirror suspended during restore' };
+  }
   if (!exportFn || !writeFn || !getRevisionFn) {
     return { ok: false, error: 'Mirror not configured' };
   }
@@ -139,6 +187,24 @@ async function runFolderMirror(
         }
       } catch {
         /* if we cannot check, fall through — shrink guard still applies on write */
+      }
+    }
+
+    // Merge folder → live before export (not a blind replace of folder with live-only).
+    if (fetchFolderFn) {
+      try {
+        const folderBytes = await fetchFolderFn();
+        if (folderBytes && folderBytes.byteLength >= 16) {
+          const { getSqliteStore } = await import('../sqlite/store');
+          const { mergeFolderBytesIntoLiveStore } = await import('../applyFolderMerge');
+          const { workerDatabaseHasDomainDataSync } = await import('../sqlite/connectionOpfs');
+          if (workerDatabaseHasDomainDataSync()) {
+            const liveStore = await getSqliteStore();
+            await mergeFolderBytesIntoLiveStore(folderBytes, liveStore);
+          }
+        }
+      } catch (e) {
+        console.warn('[mirror] pre-export merge skipped:', e);
       }
     }
 

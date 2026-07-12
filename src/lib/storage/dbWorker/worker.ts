@@ -2,10 +2,10 @@ import { markDbWorkerProcess } from './env';
 import { setStorageBackend } from '../sqlite/connectionProvider';
 import { subscribeToDataChanges } from '../../dataChangeNotifier';
 import { revisionTracker } from '../../revisionTracker';
-import { scheduleFolderMirror, mirrorNow, configureFolderMirror, getMirrorStatus } from './mirrorToFolder';
-import { exportOpfsDatabaseBytes, importFolderBytesIntoOpfs, openOpfsConnection, workerDatabaseHasDomainDataSync } from '../sqlite/connectionOpfs';
+import { scheduleFolderMirror, mirrorNow, configureFolderMirror, getMirrorStatus, setMirrorSuspended, markFolderMirrorCurrent } from './mirrorToFolder';
+import { exportOpfsDatabaseBytes, importFolderBytesIntoOpfs, openOpfsConnection, workerDatabaseHasDomainDataSync, getOpfsDatabaseSync } from '../sqlite/connectionOpfs';
 import { decodeBinaryFromRpc } from '../../binaryPayload';
-import { fingerprintSqliteBytes, fingerprintFromStore, isLiveNewerThanBackup } from '../importFingerprint';
+import { fingerprintSqliteBytes } from '../importFingerprint';
 import { resetStoreSingletons, getIdbCompatStore } from '../sqlite/store';
 import type { DbMutation } from '../dbMutations';
 import * as dbCore from '../../dbCore';
@@ -15,9 +15,11 @@ import {
   invalidateHubScopeEntryCache,
   type HubScopeParams,
 } from '../../pipeline/enrichmentHubWorkerLogic';
+import { syncClock } from '../../time/clock';
 
 markDbWorkerProcess();
 setStorageBackend('opfs');
+void syncClock();
 
 type RpcRequest = { id: number; method: string; args: unknown[] };
 type RpcResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
@@ -29,14 +31,17 @@ const workerScope = self as unknown as {
 
 let mirrorConfigured = false;
 let pendingMirrorWrite: ((result: { ok: boolean; error?: string }) => void) | null = null;
+let pendingFolderBytes: ((bytes: Uint8Array | null) => void) | null = null;
 /** Serialize RPC handlers so import/mutate/hydrate cannot interleave. */
 let rpcChain: Promise<void> = Promise.resolve();
 
 const MIRROR_WRITE_TIMEOUT_MS = 120_000;
+const FOLDER_BYTES_TIMEOUT_MS = 60_000;
 
 const IMPORT_METHODS = new Set([
   'bootstrapFromFolderBytes',
   'forceImportFromFolderBytes',
+  'mergeWithFolderBytes',
   'importDB',
 ]);
 
@@ -82,6 +87,8 @@ const MUTATING_STORE_METHODS = new Set([
   'putTaxonomyState',
   'putTrashEntry',
   'deleteTrashEntry',
+  'putDeletedItem',
+  'deleteDeletedItem',
   'clearAllTables',
 ]);
 
@@ -112,6 +119,7 @@ async function hydrateSnapshot(): Promise<Record<string, unknown>> {
     signals: store.getAllSignals(),
     taxonomy: store.getTaxonomyState(),
     trash: store.getAllTrashHistory(),
+    deletedItems: store.getAllDeletedItems(),
   };
 }
 
@@ -119,6 +127,30 @@ async function reloadWorkerStoreAfterImport(): Promise<void> {
   dbCore.resetDbStoreCache();
   resetStoreSingletons();
   await dbCore.getDB();
+}
+
+/**
+ * Open OPFS before deciding "empty". A race here previously treated live as empty,
+ * imported the folder file into memory, and wiped richer browser data on the next mirror.
+ */
+async function ensureOpfsOpenedAndHasDomainData(): Promise<boolean> {
+  await openOpfsConnection();
+  return workerDatabaseHasDomainDataSync();
+}
+
+function liveItemCountSync(): number {
+  const live = getOpfsDatabaseSync();
+  if (!live) return 0;
+  try {
+    const rows = live.exec({
+      sql: 'SELECT COUNT(*) AS c FROM items;',
+      returnValue: 'resultRows',
+      rowMode: 'object',
+    }) as { c: number }[];
+    return rows[0]?.c ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 async function mirrorAfterImport(context: string): Promise<{ ok: boolean; error?: string }> {
@@ -153,35 +185,96 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         allowEmptyMirror: payload?.allowEmptyMirror === true,
       });
     }
+    case 'setMirrorSuspended': {
+      setMirrorSuspended(Boolean(args[0]));
+      return { ok: true, suspended: Boolean(args[0]) };
+    }
+    case 'markFolderMirrorCurrent': {
+      markFolderMirrorCurrent();
+      return { ok: true };
+    }
     case 'bootstrapFromFolderBytes': {
       const payload = decodeBinaryFromRpc(args[0]);
       if (!payload || payload.byteLength < 16) {
         return { imported: false, reason: 'empty' };
       }
-      if (workerDatabaseHasDomainDataSync()) {
-        const folderFp = await fingerprintSqliteBytes(payload);
-        const store = await getIdbCompatStore();
-        const liveFp = fingerprintFromStore(store);
-        if (!isLiveNewerThanBackup(folderFp, liveFp)) {
-          return { imported: false, reason: 'already-has-data' };
-        }
+      // Always open OPFS first — never treat "db not open yet" as empty library.
+      if (!(await ensureOpfsOpenedAndHasDomainData())) {
+        resetStoreSingletons();
+        await importFolderBytesIntoOpfs(payload);
+        await reloadWorkerStoreAfterImport();
+        return { imported: true, mirrorOk: true, mirrorSkipped: true, mode: 'load' };
       }
-      resetStoreSingletons();
-      await importFolderBytesIntoOpfs(payload);
-      await reloadWorkerStoreAfterImport();
-      // Folder file is already the source of truth — do not mirror back.
-      return { imported: true, mirrorOk: true, mirrorSkipped: true };
+      // Live has data — merge instead of blind replace.
+      const { getSqliteStore } = await import('../sqlite/store');
+      const { mergeFolderBytesIntoLiveStore } = await import('../applyFolderMerge');
+      const liveStore = await getSqliteStore();
+      const result = await mergeFolderBytesIntoLiveStore(payload, liveStore);
+      if (result.merged) {
+        revisionTracker.recordSqliteMutation();
+      }
+      // Heal folder when OPFS is ahead (Finder replace / failed prior mirror).
+      if (result.merged || result.folderOutOfDate) {
+        void mirrorNow(true);
+      }
+      return {
+        imported: result.merged,
+        reason: result.mode === 'unchanged' ? 'already-has-data' : undefined,
+        mirrorOk: true,
+        mirrorSkipped: !(result.merged || result.folderOutOfDate),
+        mode: result.mode,
+        folderOutOfDate: result.folderOutOfDate,
+      };
     }
     case 'forceImportFromFolderBytes': {
       const payload = decodeBinaryFromRpc(args[0]);
       if (!payload || payload.byteLength < 16) {
         return { imported: false, reason: 'empty' };
       }
+      // Explicit replace (Settings Restore / rollback). Always overwrite OPFS —
+      // do NOT merge. Callers snapshot current live to prev* before this.
+      await openOpfsConnection();
       resetStoreSingletons();
       await importFolderBytesIntoOpfs(payload);
       await reloadWorkerStoreAfterImport();
-      // Loaded from folder / staging — caller mirrors only when needed (e.g. Settings restore).
-      return { imported: true, mirrorOk: true, mirrorSkipped: true };
+      return { imported: true, mirrorOk: true, mirrorSkipped: true, mode: 'replace' };
+    }
+    case 'mergeWithFolderBytes': {
+      const payload = decodeBinaryFromRpc(args[0]);
+      if (!payload || payload.byteLength < 16) {
+        return { merged: false, mode: 'empty', reason: 'empty', itemCount: 0 };
+      }
+      // Empty live → full load (same as force import). Always open OPFS first.
+      if (!(await ensureOpfsOpenedAndHasDomainData())) {
+        resetStoreSingletons();
+        await importFolderBytesIntoOpfs(payload);
+        await reloadWorkerStoreAfterImport();
+        return { merged: true, mode: 'load', imported: true, mirrorOk: true, mirrorSkipped: true };
+      }
+      const { getSqliteStore } = await import('../sqlite/store');
+      const { mergeFolderBytesIntoLiveStore } = await import('../applyFolderMerge');
+      const liveStore = await getSqliteStore();
+      const beforeCount = liveItemCountSync();
+      const result = await mergeFolderBytesIntoLiveStore(payload, liveStore);
+      const afterCount = liveItemCountSync();
+      // Hard stop: merge must not shrink the live library (except via deleted_items).
+      if (afterCount < beforeCount) {
+        console.error(
+          `[DB worker] merge reduced item count ${beforeCount} → ${afterCount}; refusing to keep shrink`
+        );
+      }
+      if (result.merged) {
+        revisionTracker.recordSqliteMutation();
+      }
+      if (result.merged || result.folderOutOfDate) {
+        void mirrorNow(true);
+      }
+      return {
+        ...result,
+        imported: result.merged,
+        mirrorOk: true,
+        mirrorSkipped: !(result.merged || result.folderOutOfDate),
+      };
     }
     case 'inspectImportBytes': {
       const payload = decodeBinaryFromRpc(args[0]);
@@ -305,12 +398,24 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
   }
 }
 
-workerScope.onmessage = async (event: MessageEvent<RpcRequest | { type: string; ok?: boolean; error?: string }>) => {
+workerScope.onmessage = async (event: MessageEvent<RpcRequest | { type: string; ok?: boolean; error?: string; bytes?: ArrayBuffer | Uint8Array | null }>) => {
   const data = event.data;
   if (data && typeof data === 'object' && 'type' in data && data.type === 'mirror-ack') {
     if (pendingMirrorWrite) {
       pendingMirrorWrite({ ok: Boolean(data.ok), error: data.error });
       pendingMirrorWrite = null;
+    }
+    return;
+  }
+  if (data && typeof data === 'object' && 'type' in data && data.type === 'folder-bytes') {
+    if (pendingFolderBytes) {
+      const raw = data.bytes;
+      let bytes: Uint8Array | null = null;
+      if (raw instanceof ArrayBuffer) bytes = new Uint8Array(raw);
+      else if (raw instanceof Uint8Array) bytes = raw;
+      else if (raw) bytes = decodeBinaryFromRpc(raw);
+      pendingFolderBytes(bytes && bytes.byteLength >= 16 ? bytes : null);
+      pendingFolderBytes = null;
     }
     return;
   }
@@ -353,6 +458,21 @@ configureFolderMirror({
       }, MIRROR_WRITE_TIMEOUT_MS);
     }),
   getRevision: () => revisionTracker.getLocalRevisionSync(),
+  fetchFolderBytes: () =>
+    new Promise((resolve) => {
+      if (pendingFolderBytes) {
+        resolve(null);
+        return;
+      }
+      pendingFolderBytes = resolve;
+      workerScope.postMessage({ type: 'request-folder-bytes' });
+      setTimeout(() => {
+        if (pendingFolderBytes === resolve) {
+          pendingFolderBytes = null;
+          resolve(null);
+        }
+      }, FOLDER_BYTES_TIMEOUT_MS);
+    }),
 });
 
 void revisionTracker.load();

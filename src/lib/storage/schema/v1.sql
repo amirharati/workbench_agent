@@ -274,3 +274,14 @@ CREATE TABLE IF NOT EXISTS trash_history (
   purged_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_trash_trashed ON trash_history(trashed_at);
+
+-- ============================================================================
+-- Deleted-items registry (permanent delete tombstones for sync merge)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS deleted_items (
+  id TEXT PRIMARY KEY,
+  purged_at INTEGER NOT NULL,
+  reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_deleted_items_purged ON deleted_items(purged_at);

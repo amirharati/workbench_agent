@@ -36,5 +36,5 @@ export interface SqliteConnection {
 
 export const DEFAULT_CONFIG: SqliteConfig = {
   dbName: 'workbench.sqlite',
-  schemaVersion: 3,
+  schemaVersion: 4,
 };
