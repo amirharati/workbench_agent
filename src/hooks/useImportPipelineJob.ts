@@ -37,7 +37,7 @@ export function useImportPipelineJob(backupFolderReady?: boolean) {
 
   const isResumable = Boolean(
     job &&
-      (job.status === 'paused' || job.status === 'failed') &&
+      (job.status === 'paused' || job.status === 'failed' || job.status === 'running') &&
       IMPORT_WAVE_PIPELINE_ENABLED
   );
 

@@ -1,26 +1,28 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Loader2, Play, X } from 'lucide-react';
-import {
-  resumeImportPipelineJobStub,
-  type ImportPipelineJob,
-} from '../../lib/pipeline/importPipelineJob';
+import type { ImportPipelineJob } from '../../lib/pipeline/importPipelineJob';
 import { useToast } from '../ToastContainer';
+import { usePipelineProgress } from './PipelineProgressProvider';
 
 export type ImportPipelineJobBannerProps = {
   job: ImportPipelineJob | null;
   loading?: boolean;
   isResumable: boolean;
   onDismiss: () => Promise<void>;
+  /** Refresh banner job state after resume / dismiss. */
+  onJobChanged?: () => void | Promise<void>;
 };
 
 function formatJobSummary(job: ImportPipelineJob): string {
   const count = job.itemIds.length.toLocaleString();
-  const wavePart =
-    job.waveIndex > 0 ? ` · wave ${job.waveIndex}` : '';
+  const done = job.completedItemIds.length;
+  const wavePart = job.waveIndex > 0 ? ` · wave ${job.waveIndex}` : '';
+  const progressPart =
+    done > 0 ? ` · ${done.toLocaleString()} done` : '';
   const statusPart = job.lastError
     ? `${job.status}: ${job.lastError}`
     : job.status;
-  return `Large batch pipeline — ${count} link${job.itemIds.length === 1 ? '' : 's'}${wavePart} · ${statusPart}`;
+  return `Large batch pipeline — ${count} link${job.itemIds.length === 1 ? '' : 's'}${progressPart}${wavePart} · ${statusPart}`;
 }
 
 const ACTIVE_STATUSES = new Set<ImportPipelineJob['status']>(['paused', 'running', 'failed']);
@@ -30,8 +32,10 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
   loading,
   isResumable,
   onDismiss,
+  onJobChanged,
 }) => {
   const { addToast } = useToast();
+  const pipeline = usePipelineProgress();
   const [dismissOpen, setDismissOpen] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [resuming, setResuming] = useState(false);
@@ -41,9 +45,31 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
   }
 
   const handleResume = async () => {
+    if (pipeline.isRunning) {
+      addToast({
+        type: 'info',
+        message: 'Another pipeline is already running — wait for it to finish, then resume.',
+      });
+      return;
+    }
+    if (!isResumable) {
+      addToast({
+        type: 'info',
+        message: 'This job cannot be resumed yet. Dismiss it and start a new bulk digest from Hub.',
+      });
+      return;
+    }
     setResuming(true);
     try {
-      await resumeImportPipelineJobStub(addToast);
+      await pipeline.runResumePipelineJob({
+        onFinished: async () => {
+          await onJobChanged?.();
+        },
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not resume pipeline job.';
+      addToast({ type: 'error', message: msg });
+      await onJobChanged?.();
     } finally {
       setResuming(false);
     }
@@ -55,6 +81,7 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
       await onDismiss();
       setDismissOpen(false);
       addToast({ type: 'info', message: 'Pipeline job dismissed.' });
+      await onJobChanged?.();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Could not dismiss pipeline job.';
       addToast({ type: 'error', message: msg });
@@ -185,15 +212,27 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
           >
             {formatJobSummary(job)}
           </div>
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-muted)',
+              lineHeight: 1.4,
+            }}
+          >
+            Press Resume to continue with a progress dialog. Dismiss clears the saved job file.
+          </div>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <button
             type="button"
-            disabled={resuming}
+            disabled={resuming || pipeline.isRunning}
             title={
-              isResumable
-                ? 'Resume wave pipeline'
-                : 'Wave processing not enabled yet — click for details'
+              pipeline.isRunning
+                ? 'Wait for the current pipeline to finish'
+                : isResumable
+                  ? 'Resume wave pipeline with progress'
+                  : 'This job cannot be resumed'
             }
             onClick={() => void handleResume()}
             style={{
@@ -207,8 +246,8 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
               color: '#fff',
               fontSize: 'var(--text-xs)',
               fontWeight: 600,
-              cursor: resuming ? 'wait' : 'pointer',
-              opacity: resuming ? 0.8 : 1,
+              cursor: resuming || pipeline.isRunning ? 'wait' : 'pointer',
+              opacity: resuming || pipeline.isRunning ? 0.8 : 1,
             }}
           >
             {resuming ? <Loader2 size={13} className="spin" /> : <Play size={13} />}

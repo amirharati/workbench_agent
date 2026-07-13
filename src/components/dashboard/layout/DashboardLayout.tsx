@@ -846,6 +846,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               loading={importPipelineJob.loading}
               isResumable={importPipelineJob.isResumable}
               onDismiss={importPipelineJob.dismissJob}
+              onJobChanged={importPipelineJob.refresh}
             />
           ) : null}
 

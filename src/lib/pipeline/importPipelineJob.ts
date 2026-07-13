@@ -280,46 +280,14 @@ export type ImportPipelineToast = {
   message: string;
 };
 
-/** Resume stub — calls wave runner when IMPORT_WAVE_PIPELINE_ENABLED, else honest toast. */
+/** @deprecated Use PipelineProgressProvider.runResumePipelineJob for UI resume. */
 export async function resumeImportPipelineJobStub(
   addToast: (toast: ImportPipelineToast) => void
 ): Promise<void> {
-  const pre = await preflightImportPipelineStart();
-  if (!pre.ok) {
-    addToast({ type: 'error', message: pre.reason ?? 'Cannot start import pipeline.' });
-    return;
-  }
-  if (!IMPORT_WAVE_PIPELINE_ENABLED) {
-    addToast({
-      type: 'info',
-      message:
-        'Wave processing ships in the next update — use Import Studio digest for now.',
-    });
-    return;
-  }
-  // A5b-2: flag true — read job from disk and run the wave orchestrator
-  const job = await readImportPipelineJob();
-  if (!job) {
-    addToast({ type: 'error', message: 'No pipeline job found. Re-import to create one.' });
-    return;
-  }
-  try {
-    const { runScopedPipelineJob } = await import('./scopedPipelineJobRunner');
-    const { job: result } = await runScopedPipelineJob(job);
-    const dur = formatPipelineDurationMs(result.durationMs);
-    const durSuffix = dur ? ` in ${dur}` : '';
-    if (result.status === 'completed') {
-      addToast({
-        type: 'info',
-        message: `Pipeline run completed — ${result.completedItemIds.length} items processed${durSuffix}.`,
-      });
-    } else if (result.lastError && result.lastError !== 'Cancelled') {
-      addToast({ type: 'error', message: `Pipeline paused: ${result.lastError}${durSuffix}` });
-    }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Pipeline run failed';
-    addToast({ type: 'error', message: msg });
-  }
+  addToast({
+    type: 'info',
+    message: 'Use the dashboard Resume button — it opens the pipeline progress dialog.',
+  });
 }
 
 /** Remove import-pipeline-job.json from the backup folder if present. */

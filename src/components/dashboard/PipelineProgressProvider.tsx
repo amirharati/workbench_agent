@@ -182,6 +182,10 @@ interface PipelineProgressContextValue {
   ) => Promise<{ embedded: number; skipped: number; failed: number }>;
   runDiscover: (options?: RunDiscoverOptions) => Promise<RunDiscoverResult>;
   runClassify: (options?: RunClassifyOptions) => Promise<Awaited<ReturnType<typeof classifyIncremental>>>;
+  /** Resume paused/failed/interrupted import-pipeline-job.json with progress modal. */
+  runResumePipelineJob: (options?: {
+    onFinished?: () => void | Promise<void>;
+  }) => Promise<void>;
   closeModal: () => void;
 }
 
@@ -1150,6 +1154,147 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
     [onRefresh]
   );
 
+  const runResumePipelineJob = useCallback(
+    async (options?: { onFinished?: () => void | Promise<void> }) => {
+      const {
+        readImportPipelineJob,
+        preflightImportPipelineStart,
+        formatPipelineDurationMs,
+        IMPORT_WAVE_PIPELINE_ENABLED,
+      } = await import('../../lib/pipeline/importPipelineJob');
+
+      if (!IMPORT_WAVE_PIPELINE_ENABLED) {
+        setModal({
+          open: true,
+          phase: 'done',
+          title: 'Resume pipeline',
+          summary: 'Wave pipeline is not enabled in this build.',
+          tone: 'error',
+        });
+        return;
+      }
+
+      const pre = await preflightImportPipelineStart();
+      if (!pre.ok) {
+        setModal({
+          open: true,
+          phase: 'done',
+          title: 'Resume pipeline',
+          summary: pre.reason ?? 'Cannot start import pipeline.',
+          tone: 'error',
+        });
+        return;
+      }
+
+      const job = await readImportPipelineJob();
+      if (!job) {
+        setModal({
+          open: true,
+          phase: 'done',
+          title: 'Resume pipeline',
+          summary: 'No pipeline job found. Start a bulk digest from Hub or Import Studio.',
+          tone: 'error',
+        });
+        return;
+      }
+
+      if (job.status === 'completed') {
+        setModal({
+          open: true,
+          phase: 'done',
+          title: 'Resume pipeline',
+          summary: 'This pipeline job is already complete. Dismiss the banner to clear it.',
+          tone: 'info',
+        });
+        await options?.onFinished?.();
+        return;
+      }
+
+      const remaining = Math.max(0, job.itemIds.length - job.completedItemIds.length);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setIsRunning(true);
+      setIsCancellable(true);
+      setModal({
+        open: true,
+        phase: 'running',
+        title: `Resuming pipeline (${job.itemIds.length.toLocaleString()} links)`,
+        progressLabel:
+          remaining > 0
+            ? `Resuming — ${remaining.toLocaleString()} remaining…`
+            : 'Resuming pipeline…',
+        current: 0,
+        total: 100,
+        cancellable: true,
+      });
+
+      try {
+        const { runScopedPipelineJob } = await import(
+          '../../lib/pipeline/scopedPipelineJobRunner'
+        );
+        const { job: result } = await runScopedPipelineJob(job, {
+          signal: controller.signal,
+          onProgress: (p) =>
+            applyPipelineProgress(
+              setModal,
+              scopedProgressToItemProgress(p, job.itemIds.length)
+            ),
+        });
+
+        const cancelled =
+          result.lastError === 'Cancelled' || controller.signal.aborted;
+        const dur = formatPipelineDurationMs(result.durationMs);
+        const durSuffix = dur ? ` in ${dur}` : '';
+        const doneCount = result.completedItemIds.length;
+        const totalCount = result.itemIds.length;
+
+        let summary: string;
+        let tone: SummaryTone;
+        if (cancelled) {
+          summary = `Cancelled — ${doneCount.toLocaleString()} of ${totalCount.toLocaleString()} processed${durSuffix}.`;
+          tone = 'info';
+        } else if (result.status === 'completed') {
+          summary = `Pipeline complete — ${doneCount.toLocaleString()} of ${totalCount.toLocaleString()} processed${durSuffix}.`;
+          tone = 'success';
+        } else if (result.lastError) {
+          summary = `Paused: ${result.lastError} — ${doneCount.toLocaleString()} of ${totalCount.toLocaleString()} processed${durSuffix}.`;
+          tone = 'error';
+        } else {
+          summary = `Paused — ${doneCount.toLocaleString()} of ${totalCount.toLocaleString()} processed${durSuffix}.`;
+          tone = 'info';
+        }
+
+        setModal({
+          open: true,
+          phase: 'done',
+          title: cancelled ? 'Pipeline cancelled' : 'Pipeline resume — complete',
+          summary,
+          tone,
+        });
+
+        await refreshAfterPipeline(onRefresh, {
+          itemIds: result.completedItemIds.slice(-50),
+        });
+        await options?.onFinished?.();
+      } catch (e) {
+        const summary = e instanceof Error ? e.message : 'Resume failed';
+        setModal({
+          open: true,
+          phase: 'done',
+          title: 'Resume pipeline',
+          summary,
+          tone: 'error',
+        });
+        await options?.onFinished?.();
+      } finally {
+        setIsRunning(false);
+        setIsCancellable(false);
+        abortRef.current = null;
+      }
+    },
+    [onRefresh]
+  );
+
   return (
     <PipelineProgressContext.Provider
       value={{
@@ -1163,6 +1308,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         runEmbedBatch,
         runDiscover,
         runClassify,
+        runResumePipelineJob,
         closeModal,
       }}
     >
