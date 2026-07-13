@@ -118,26 +118,13 @@ export async function getScopedCategorizationStats(
   };
   if (!itemIds.length) return stats;
 
-  const db = await getDB();
-  const idSet = new Set(itemIds);
-  const items = (await db.getAll('items')).filter((i) => idSet.has(i.id));
-  const enrichments = db.objectStoreNames.contains('item_enrichment')
-    ? await db.getAll('item_enrichment')
-    : [];
-  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
-  const signals = db.objectStoreNames.contains('ai_item_signals')
-    ? await db.getAll('ai_item_signals')
-    : [];
-  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
-  const links = db.objectStoreNames.contains('ai_item_category_links')
-    ? await db.getAll('ai_item_category_links')
-    : [];
-  const primaryCategoryByItem = new Map<string, string>();
-  for (const l of links) {
-    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
-      primaryCategoryByItem.set(l.itemId, l.categoryId);
-    }
-  }
+  const { loadScopedPipelineRows } = await import('../pipeline/scopedPipelineRows');
+  const {
+    items,
+    enrichByItem,
+    signalByItem,
+    primaryCategoryByItem,
+  } = await loadScopedPipelineRows(itemIds);
 
   for (const item of items) {
     const enrichment = enrichByItem.get(item.id);
@@ -604,6 +591,13 @@ let lastEnsureFinishedAt = 0;
 const ENSURE_MIN_INTERVAL_MS = 90_000;
 
 export async function ensurePendingClassifySignals(opts?: { force?: boolean }): Promise<number> {
+  // Never run a full-library scan while a digest is burning memory.
+  try {
+    const { isAnyDigestInFlight } = await import('../pipeline/singleLinkDigest');
+    if (isAnyDigestInFlight()) return 0;
+  } catch {
+    /* ignore */
+  }
   const now = Date.now();
   if (!opts?.force && ensureInFlight) return ensureInFlight;
   if (!opts?.force && now - lastEnsureFinishedAt < ENSURE_MIN_INTERVAL_MS) return 0;
@@ -616,119 +610,9 @@ export async function ensurePendingClassifySignals(opts?: { force?: boolean }): 
 }
 
 async function ensurePendingClassifySignalsWork(): Promise<number> {
-  const db = await getDB();
-  if (!db.objectStoreNames.contains('ai_item_signals')) return 0;
-
-  const signals = await db.getAll('ai_item_signals');
-  const items = (await db.getAll('items')).filter((i) => !!i.url?.trim());
-  const itemById = new Map(items.map((i) => [i.id, i]));
-  const enrichments = db.objectStoreNames.contains('item_enrichment')
-    ? await db.getAll('item_enrichment')
-    : [];
-  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
-  const links = db.objectStoreNames.contains('ai_item_category_links')
-    ? await db.getAll('ai_item_category_links')
-    : [];
-  const primaryByItem = new Map<string, string>();
-  for (const l of links) {
-    if (l.source !== 'ai' || !l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
-    primaryByItem.set(l.itemId, l.categoryId);
-  }
-
-  const now = Date.now();
-  let updated = 0;
-  const signalTx = db.transaction(['ai_item_signals'], 'readwrite');
-  const signalStore = signalTx.objectStore('ai_item_signals');
-
-  for (const sig of signals) {
-    if (sig.classifyState === 'ineligible') {
-      const item = itemById.get(sig.itemId);
-      if (!item?.url?.trim()) continue;
-      if (hasSpecificPrimaryTopic(primaryByItem.get(sig.itemId), sig.classifyState)) continue;
-      const enrichment = enrichByItem.get(sig.itemId);
-      const eligibility = assessCategorizationEligibility(item, enrichment);
-      if (!eligibility.eligible) continue;
-      await signalStore.put({
-        ...sig,
-        signalStatus: 'ok',
-        classifyState: 'pending_classify',
-        eligibilityReason: undefined,
-        lastClassifySkipReason: undefined,
-        lastProcessedAt: now,
-      });
-      updated++;
-      continue;
-    }
-
-    if (sig.classifyState === 'skipped') {
-      if (hasSpecificPrimaryTopic(primaryByItem.get(sig.itemId), sig.classifyState)) continue;
-      const item = itemById.get(sig.itemId);
-      if (!item) continue;
-      const enrichment = enrichByItem.get(sig.itemId);
-      if (enrichment?.aiStatus !== 'ok') continue;
-      await signalStore.put({
-        ...sig,
-        classifyState: 'pending_discover',
-        discoverState: 'pending',
-        isNovelty: true,
-        lastClassifySkipReason: formatClassifySkipReason('pending_discover'),
-        lastProcessedAt: now,
-      });
-      updated++;
-      continue;
-    }
-
-    if (sig.classifyState === 'pending_classify') {
-      const primaryId = primaryByItem.get(sig.itemId);
-      if (hasSpecificPrimaryTopic(primaryId, sig.classifyState)) continue;
-      const enrichment = enrichByItem.get(sig.itemId);
-      if (enrichment?.aiStatus !== 'ok') continue;
-      const classifyAttempted = !!(
-        sig.lastClassifiedAt ||
-        sig.llmReview ||
-        sig.lastClassifySkipReason
-      );
-      if (!classifyAttempted) continue;
-      if (!isUnassignedClassifyAttempt(sig)) continue;
-      await signalStore.put({
-        ...sig,
-        classifyState: 'pending_discover',
-        discoverState: 'pending',
-        isNovelty: true,
-        lastClassifySkipReason: formatClassifySkipReason('pending_discover'),
-        lastProcessedAt: now,
-      });
-      updated++;
-    }
-  }
-  await signalTx.done;
-
-  if (!db.objectStoreNames.contains('item_enrichment')) {
-    if (updated > 0) {
-      notifyDataChanged('categorization.update');
-      const { invalidatePipelineCatalog } = await import('../pipeline/pipelineCatalog');
-      invalidatePipelineCatalog();
-    }
-    return updated;
-  }
-
-  const signalIds = new Set(signals.map((s) => s.itemId));
-  const toMark: string[] = [];
-  for (const item of items) {
-    const enrichment = enrichByItem.get(item.id);
-    if (enrichment?.aiStatus !== 'ok') continue;
-    if (signalIds.has(item.id)) continue;
-    if (hasSpecificPrimaryTopic(primaryByItem.get(item.id), undefined)) continue;
-    toMark.push(item.id);
-  }
-
-  if (toMark.length) await markItemsPendingClassify(toMark);
-  const total = updated + toMark.length;
-  if (total > 0) {
-    const { invalidatePipelineCatalog } = await import('../pipeline/pipelineCatalog');
-    invalidatePipelineCatalog();
-  }
-  return total;
+  // Disabled: full-library scan of ai_item_signals OOMs Chrome on large libraries.
+  // Enrich/post-process already calls markItemsPendingClassify for touched item ids.
+  return 0;
 }
 
 export async function ensureSeedTaxonomy(): Promise<void> {
@@ -1129,28 +1013,14 @@ export async function previewClassifyBatchItemIds(
 ): Promise<ClassifyBatchPreviewItem[]> {
   if (!itemIds.length) return [];
 
-  const db = await getDB();
-  const idSet = new Set(itemIds);
-  const items = (await db.getAll('items')).filter((i) => idSet.has(i.id));
+  const { loadScopedPipelineRows } = await import('../pipeline/scopedPipelineRows');
+  const {
+    items,
+    enrichByItem,
+    signalByItem,
+    primaryCategoryByItem,
+  } = await loadScopedPipelineRows(itemIds);
   const itemById = new Map(items.map((i) => [i.id, i]));
-
-  const enrichments = db.objectStoreNames.contains('item_enrichment')
-    ? await db.getAll('item_enrichment')
-    : [];
-  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
-  const signals = db.objectStoreNames.contains('ai_item_signals')
-    ? await db.getAll('ai_item_signals')
-    : [];
-  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
-  const allLinks = db.objectStoreNames.contains('ai_item_category_links')
-    ? await db.getAll('ai_item_category_links')
-    : [];
-  const primaryCategoryByItem = new Map<string, string>();
-  for (const l of allLinks) {
-    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
-      primaryCategoryByItem.set(l.itemId, l.categoryId);
-    }
-  }
 
   const preview: ClassifyBatchPreviewItem[] = [];
 
@@ -1264,27 +1134,37 @@ export async function classifyIncremental(
   const categoryIds = new Set(categories.map((c) => c.id));
   const leafById = new Map(categories.map((c) => [c.id, c]));
 
-  let items = await db.getAll('items');
-  if (opts.itemIds?.length) {
-    const idSet = new Set(opts.itemIds);
-    items = items.filter((i) => idSet.has(i.id));
-  }
+  let items: Item[];
+  let enrichByItem: Map<string, ItemEnrichment>;
+  let signalByItem: Map<string, AiItemSignal>;
+  let primaryCategoryByItem: Map<string, string>;
 
-  const enrichments = db.objectStoreNames.contains('item_enrichment')
-    ? await db.getAll('item_enrichment')
-    : [];
-  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
-  const signals = db.objectStoreNames.contains('ai_item_signals')
-    ? await db.getAll('ai_item_signals')
-    : [];
-  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
-  const allLinks = db.objectStoreNames.contains('ai_item_category_links')
-    ? await db.getAll('ai_item_category_links')
-    : [];
-  const primaryCategoryByItem = new Map<string, string>();
-  for (const l of allLinks) {
-    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
-      primaryCategoryByItem.set(l.itemId, l.categoryId);
+  if (opts.itemIds?.length) {
+    const { loadScopedPipelineRows } = await import('../pipeline/scopedPipelineRows');
+    const scoped = await loadScopedPipelineRows(opts.itemIds);
+    items = scoped.items;
+    enrichByItem = scoped.enrichByItem;
+    signalByItem = scoped.signalByItem;
+    primaryCategoryByItem = scoped.primaryCategoryByItem;
+  } else {
+    // Unscoped drain — still need full signal rows when writing classify state back.
+    items = await db.getAll('items');
+    const enrichments = db.objectStoreNames.contains('item_enrichment')
+      ? await db.getAll('item_enrichment')
+      : [];
+    enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+    const signals = db.objectStoreNames.contains('ai_item_signals')
+      ? await db.getAll('ai_item_signals')
+      : [];
+    signalByItem = new Map(signals.map((s) => [s.itemId, s]));
+    const allLinks = db.objectStoreNames.contains('ai_item_category_links')
+      ? await db.getAll('ai_item_category_links')
+      : [];
+    primaryCategoryByItem = new Map<string, string>();
+    for (const l of allLinks) {
+      if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+        primaryCategoryByItem.set(l.itemId, l.categoryId);
+      }
     }
   }
 
@@ -2105,20 +1985,33 @@ export async function discoverBatch(
   let categories = await db.getAll('ai_categories');
   const taxonomyLeafCountStart = categories.filter((c) => c.kind === 'leaf').length;
 
-  const signals = await db.getAll('ai_item_signals');
-  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
-  const allLinks = await db.getAll('ai_item_category_links');
-  const primaryCategoryByItem = new Map<string, string>();
-  for (const l of allLinks) {
-    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
-      primaryCategoryByItem.set(l.itemId, l.categoryId);
-    }
-  }
+  const scopeIds = opts.itemIds?.length ? [...new Set(opts.itemIds.filter(Boolean))] : null;
+  let signalByItem: Map<string, AiItemSignal>;
+  let primaryCategoryByItem: Map<string, string>;
+  let items: Item[];
+  let enrichByItem: Map<string, ItemEnrichment>;
 
-  const scopeIds = opts.itemIds?.length ? new Set(opts.itemIds) : null;
-  const items = await db.getAll('items');
-  const enrichments = await db.getAll('item_enrichment');
-  const enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  if (scopeIds?.length) {
+    const { loadScopedPipelineRows } = await import('../pipeline/scopedPipelineRows');
+    const scoped = await loadScopedPipelineRows(scopeIds);
+    items = scoped.items;
+    enrichByItem = scoped.enrichByItem;
+    signalByItem = scoped.signalByItem;
+    primaryCategoryByItem = scoped.primaryCategoryByItem;
+  } else {
+    const signals = await db.getAll('ai_item_signals');
+    signalByItem = new Map(signals.map((s) => [s.itemId, s]));
+    const allLinks = await db.getAll('ai_item_category_links');
+    primaryCategoryByItem = new Map<string, string>();
+    for (const l of allLinks) {
+      if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+        primaryCategoryByItem.set(l.itemId, l.categoryId);
+      }
+    }
+    items = await db.getAll('items');
+    const enrichments = await db.getAll('item_enrichment');
+    enrichByItem = new Map(enrichments.map((e) => [e.itemId, e]));
+  }
 
   const stuckOnly = opts.stuckOnly !== false;
   const onlyWithoutCategory = opts.onlyWithoutCategory === true;
@@ -2126,7 +2019,6 @@ export async function discoverBatch(
   const samples: DiscoverSampleItem[] = [];
 
   for (const item of items) {
-    if (scopeIds && !scopeIds.has(item.id)) continue;
     runSummary.totalConsidered++;
     const enrichment = enrichByItem.get(item.id);
     

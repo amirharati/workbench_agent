@@ -10,7 +10,7 @@ import type { TopicClassifySummary } from '../categorization/types';
 import type { EnrichmentResult } from '../enrichment';
 import { notifyDataChanged } from '../dataChangeNotifier';
 import { commitPendingDbWrites, refreshPipelineCacheFromWorker } from '../db';
-import { enrichBatch, getAllEnrichments } from '../enrichment';
+import { enrichBatch } from '../enrichment';
 import {
   prepBatchPipelineItems,
   runEnrichmentBatchPostProcess,
@@ -76,12 +76,12 @@ async function pollEnrichReady(
   completedSet: Set<string>,
   readySet: Set<string>
 ): Promise<boolean> {
-  const enrichments = await getAllEnrichments();
-  const byId = new Map(enrichments.map((e) => [e.itemId, e]));
+  const { getEnrichment } = await import('../enrichment');
   let added = false;
   for (const id of scopeIds) {
     if (completedSet.has(id) || readySet.has(id)) continue;
-    if (isDownstreamClassifyEligible(byId.get(id))) {
+    const enrichment = await getEnrichment(id);
+    if (isDownstreamClassifyEligible(enrichment)) {
       readySet.add(id);
       added = true;
     }
@@ -155,6 +155,28 @@ export async function runWaveDownstream(
  * 6. Resume: caller passes job loaded from disk; completedItemIds are skipped.
  */
 export async function runScopedPipelineJob(
+  job: ImportPipelineJob,
+  options: RunScopedPipelineJobOptions = {}
+): Promise<ScopedPipelineJobOutcome> {
+  try {
+    const { pauseAutoMirrorForDigest } = await import('../storage/dbClient');
+    await pauseAutoMirrorForDigest();
+  } catch {
+    /* ignore */
+  }
+  try {
+    return await runScopedPipelineJobBody(job, options);
+  } finally {
+    try {
+      const { resumeAutoMirrorAfterDigest } = await import('../storage/dbClient');
+      await resumeAutoMirrorAfterDigest();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function runScopedPipelineJobBody(
   job: ImportPipelineJob,
   options: RunScopedPipelineJobOptions = {}
 ): Promise<ScopedPipelineJobOutcome> {
@@ -383,10 +405,10 @@ export async function runScopedPipelineJob(
           await runWave(waveIds);
         }
 
-        const enrichById = new Map((await getAllEnrichments()).map((e) => [e.itemId, e]));
+        const { getEnrichment } = await import('../enrichment');
         for (const id of currentJob.itemIds) {
           if (completedSet.has(id) || readySet.has(id)) continue;
-          const enrichment = enrichById.get(id);
+          const enrichment = await getEnrichment(id);
           if (!fetchAttemptedForLinkQuality(enrichment)) {
             // Never enriched — leave incomplete for resume.
             continue;

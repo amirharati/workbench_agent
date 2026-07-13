@@ -1,11 +1,7 @@
-import {
-  markItemsPendingClassify,
-  reconcileOrphanClassifiedSignals,
-  reconcileStaleIneligibleSignals,
-} from '../categorization/classifyTopicExtract';
+import { markItemsPendingClassify } from '../categorization/classifyTopicExtract';
 import { commitPendingDbWrites, refreshPipelineCacheFromWorker } from '../db';
 import { embedIncrementalBatch, type EmbedBatchSummary, type EmbedBackfillProgress } from '../enrichment/embedItemSignal';
-import { getAllEnrichments } from '../enrichment/storage';
+import { getEnrichment } from '../enrichment/storage';
 
 export interface EnrichmentBatchPostProcessResult {
   embed: EmbedBatchSummary;
@@ -13,7 +9,7 @@ export interface EnrichmentBatchPostProcessResult {
   orphansReset: number;
 }
 
-/** Before a full import batch: flush pending writes and re-queue stale/orphan classify state. */
+/** Before a pipeline batch: flush pending writes only (no full-library scans). */
 export async function prepBatchPipelineItems(
   itemIds: string[],
   opts?: { queueClassify?: boolean }
@@ -21,11 +17,10 @@ export async function prepBatchPipelineItems(
   const uniqueIds = [...new Set(itemIds.filter(Boolean))];
   if (!uniqueIds.length) return;
   await commitPendingDbWrites();
-  await reconcileOrphanClassifiedSignals();
   void opts?.queueClassify;
 }
 
-/** Flush enrich writes, reset orphan classify states, queue classify, embed in API batches. */
+/** Flush enrich writes, queue classify, embed in API batches — scoped to itemIds. */
 export async function runEnrichmentBatchPostProcess(
   itemIds: string[],
   opts?: {
@@ -53,12 +48,17 @@ export async function runEnrichmentBatchPostProcess(
 
   await commitPendingDbWrites();
   await refreshPipelineCacheFromWorker();
-  // Orphan reconcile is handled in prepBatchPipelineItems before the pipeline run.
   const orphansReset = 0;
 
   const idSet = new Set(uniqueIds);
-  const enrichments = await getAllEnrichments();
-  const aiOkIds = enrichments
+  const enrichById = new Map<string, NonNullable<Awaited<ReturnType<typeof getEnrichment>>>>();
+  await Promise.all(
+    uniqueIds.map(async (id) => {
+      const row = await getEnrichment(id);
+      if (row) enrichById.set(id, row);
+    })
+  );
+  const aiOkIds = [...enrichById.values()]
     .filter((e) => idSet.has(e.itemId) && e.aiStatus === 'ok')
     .map((e) => e.itemId);
 
@@ -75,8 +75,6 @@ export async function runEnrichmentBatchPostProcess(
 
   await commitPendingDbWrites();
   await refreshPipelineCacheFromWorker();
-  await reconcileStaleIneligibleSignals();
-  await commitPendingDbWrites();
 
   return {
     embed,

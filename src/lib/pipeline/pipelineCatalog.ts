@@ -53,8 +53,11 @@ export async function loadPipelineCatalogFresh(): Promise<PipelineCatalog> {
   const enrichments = db.objectStoreNames.contains('item_enrichment')
     ? await db.getAll('item_enrichment')
     : [];
+  // Meta-only signals — catalog must never pin embedding vectors in its cache.
   const signals = db.objectStoreNames.contains('ai_item_signals')
-    ? await db.getAll('ai_item_signals')
+    ? (await db.getAll('ai_item_signals')).map((s) =>
+        s.embedding?.length ? { ...s, embedding: [] } : s
+      )
     : [];
   const links = db.objectStoreNames.contains('ai_item_category_links')
     ? await db.getAll('ai_item_category_links')
@@ -85,6 +88,15 @@ export async function loadPipelineCatalogFresh(): Promise<PipelineCatalog> {
 
 export async function getPipelineCatalog(opts?: { force?: boolean }): Promise<PipelineCatalog> {
   const now = Date.now();
+  try {
+    const { isAnyDigestInFlight } = await import('./singleLinkDigest');
+    if (isAnyDigestInFlight() && catalogCache) {
+      // Never rebuild a full catalog mid-digest.
+      return catalogCache.catalog;
+    }
+  } catch {
+    /* ignore */
+  }
   if (!opts?.force && catalogCache && now - catalogCache.at < CATALOG_TTL_MS) {
     return catalogCache.catalog;
   }

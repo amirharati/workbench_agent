@@ -99,13 +99,13 @@ function App() {
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const folderFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** Durable backup is the folder — schedule one full sqlite flush (debounced). */
+  /** Soft-schedule folder mirror after edits (debounced; folder catches up in seconds). */
   const scheduleFolderFlush = useCallback((delayMs = 800) => {
     if (folderFlushTimerRef.current) clearTimeout(folderFlushTimerRef.current);
     folderFlushTimerRef.current = setTimeout(() => {
       folderFlushTimerRef.current = null;
-      void import('./lib/storage/flushDurableBackup').then(({ flushDurableBackup }) =>
-        flushDurableBackup()
+      void import('./lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) =>
+        flushDurableBackupSoon()
       );
     }, delayMs);
   }, []);
@@ -293,26 +293,23 @@ function App() {
     };
   }, [backupFolderReady]);
 
-  /** Anything outside the backup folder can be lost — flush OPFS → folder on hide/exit. */
+  /** Soft-schedule folder catch-up on leave — never force-export (OOM on large libs). */
   useEffect(() => {
     if (!backupFolderReady) return;
-    const flush = () => {
+    const scheduleSoft = () => {
       if (folderFlushTimerRef.current) {
         clearTimeout(folderFlushTimerRef.current);
         folderFlushTimerRef.current = null;
       }
-      void import('./lib/storage/flushDurableBackup').then(({ flushDurableBackup }) =>
-        flushDurableBackup()
+      if (isAnyDigestInFlight()) return;
+      void import('./lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) =>
+        flushDurableBackupSoon()
       );
     };
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') flush();
-    };
-    window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', onVisibility);
+    // pagehide only — visibilitychange fires on every tab switch and was force-dumping sqlite.
+    window.addEventListener('pagehide', scheduleSoft);
     return () => {
-      window.removeEventListener('pagehide', flush);
-      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', scheduleSoft);
     };
   }, [backupFolderReady]);
 
@@ -355,8 +352,8 @@ function App() {
           return;
         }
 
-        // Linked handle may exist while Chrome paused write access after reload.
-        // Do not open the library until the folder is writable again.
+        // Linked handle may exist while Chrome paused write access after reload/crash.
+        // Open the library from OPFS anyway — do not force a reconnect wall.
         const writable = await hasWritableBackupFolder();
         if (!cancelled) {
           setBackupFolderReady(writable);
@@ -365,9 +362,6 @@ function App() {
           } catch {
             /* ignore */
           }
-        }
-        if (!writable) {
-          return;
         }
         await bootstrapAfterFolderReady();
         if (cancelled) return;
@@ -386,7 +380,13 @@ function App() {
           setBackupFolderReady(writable);
           setFolderLinkLost(!configured && (await wasBackupFolderLinked().catch(() => false)));
           setFolderGateResolved(true);
-          // Never open the library without a writable folder connection.
+          if (configured) {
+            try {
+              await bootstrapAfterFolderReady();
+            } catch {
+              /* OPFS bootstrap best-effort */
+            }
+          }
         }
       }
     })();
@@ -1196,9 +1196,10 @@ function App() {
       );
     }
 
-    // No writable folder connection — never open the library.
-    if (!folderConfigured || !backupFolderReady) {
-      const needsReconnect = folderConfigured && !backupFolderReady;
+    // No handle — never open the library without a link.
+    // Handle present but Chrome paused write access → still open OPFS library;
+    // quiet re-grant on first gesture (do not force a blocking reconnect screen).
+    if (!folderConfigured) {
       return (
         <div
           style={{
@@ -1221,82 +1222,29 @@ function App() {
             }}
           >
             <div style={{ fontSize: 'var(--text-sm)', lineHeight: 1.4 }}>
-              {needsReconnect
-                ? backupFolderName
-                  ? `Reconnect “${backupFolderName}” to open Homebase. Chrome paused folder access after reload.`
-                  : 'Reconnect your backup folder to open Homebase. Chrome paused folder access after reload.'
-                : folderLinkLost
-                  ? 'Your backup folder link was lost. Re-select the folder that contains '
-                  : 'Choose a data folder in full-page setup before using Homebase. Your live database is '}
-              {!needsReconnect ? (
-                <>
-                  <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code>
-                  {folderLinkLost ? '.' : ' in that folder.'}
-                </>
-              ) : null}
+              {folderLinkLost
+                ? 'Your backup folder link was lost. Re-select the folder that contains '
+                : 'Choose a data folder in full-page setup before using Homebase. Your live database is '}
+              <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code>
+              {folderLinkLost ? '.' : ' in that folder.'}
             </div>
-            {needsReconnect ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleReconnectBackupFolder();
-                  }}
-                  style={{
-                    padding: '0.4rem 0.6rem',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: 'Highlight',
-                    color: 'HighlightText',
-                    cursor: 'pointer',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 600,
-                  }}
-                >
-                  {backupFolderName ? `Continue with “${backupFolderName}”` : 'Continue with saved folder'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleChooseBackupFolder().then((r) => {
-                      if (r.ok || r.error === 'cancelled') return;
-                      // Side panel picker is flaky in some Chrome builds.
-                      void handleOpenFullPageForBackupSetup();
-                    });
-                  }}
-                  style={{
-                    padding: '0.4rem 0.6rem',
-                    borderRadius: '6px',
-                    border: '1px solid rgba(0,0,0,0.2)',
-                    background: 'transparent',
-                    color: 'CanvasText',
-                    cursor: 'pointer',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 500,
-                  }}
-                >
-                  Choose a new folder
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleOpenFullPageForBackupSetup}
-                style={{
-                  padding: '0.4rem 0.6rem',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: 'Highlight',
-                  color: 'HighlightText',
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 600,
-                  alignSelf: 'flex-start',
-                }}
-              >
-                Open full page setup
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleOpenFullPageForBackupSetup}
+              style={{
+                padding: '0.4rem 0.6rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: 'Highlight',
+                color: 'HighlightText',
+                cursor: 'pointer',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 600,
+                alignSelf: 'flex-start',
+              }}
+            >
+              Open full page setup
+            </button>
           </div>
         </div>
       );
@@ -1321,6 +1269,10 @@ function App() {
           ['--accent' as string]: 'Highlight',
           ['--accent-text' as string]: 'HighlightText',
           ['--accent-weak' as string]: 'rgba(0, 120, 215, 0.15)',
+        }}
+        onPointerDownCapture={() => {
+          if (backupFolderReady) return;
+          void handleReconnectBackupFolder({ quiet: true });
         }}
       >
         <PipelineProgressProvider onRefresh={refreshLibrary}>
@@ -1358,15 +1310,13 @@ function App() {
     );
   }
 
-  // No writable folder connection — never open the library.
-  if (!folderConfigured || !backupFolderReady) {
+  // No handle — block. Linked handle + Chrome permission pause must NOT block the library.
+  if (!folderConfigured) {
     return (
       <BackupOnboardingModal
         open
         allowSkip={false}
-        mode={
-          !folderConfigured ? (folderLinkLost ? 'recover' : 'choose') : 'reconnect'
-        }
+        mode={folderLinkLost ? 'recover' : 'choose'}
         folderName={backupFolderName}
         onChooseFolder={handleChooseBackupFolder}
         onReconnectFolder={handleReconnectBackupFolder}
@@ -1375,7 +1325,13 @@ function App() {
   }
 
   return (
-    <div>
+    <div
+      onPointerDownCapture={() => {
+        // Quiet re-grant after reload/crash — no blocking reconnect screen.
+        if (backupFolderReady) return;
+        void handleReconnectBackupFolder({ quiet: true });
+      }}
+    >
     <DashboardLayout
       windows={currentWindows}
       projects={projects}

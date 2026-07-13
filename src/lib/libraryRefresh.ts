@@ -1,11 +1,11 @@
-/** Max selection size for pipeline post-run refresh without full `loadData()`. */
-export const LIGHT_LIBRARY_REFRESH_MAX_ITEMS = 25;
-
+/** Scoped pipeline refresh: always patch touched items — never full `loadData()`. */
 export type LibraryRefreshScope = {
   itemIds?: string[];
 };
 
 export function shouldUseLightLibraryRefresh(scope?: LibraryRefreshScope): boolean {
-  const n = scope?.itemIds?.length ?? 0;
-  return n > 0 && n <= LIGHT_LIBRARY_REFRESH_MAX_ITEMS;
+  return (scope?.itemIds?.length ?? 0) > 0;
 }
+
+/** @deprecated Kept for callers; light refresh is always used when itemIds are present. */
+export const LIGHT_LIBRARY_REFRESH_MAX_ITEMS = Number.POSITIVE_INFINITY;

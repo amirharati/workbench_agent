@@ -20,6 +20,15 @@ import type {
 import type { HybridSearchResultWithRelated } from './searchRelated';
 
 export async function loadSearchIndexFromDb(): Promise<SearchIndex> {
+  try {
+    const { isAnyDigestInFlight } = await import('../pipeline/singleLinkDigest');
+    if (isAnyDigestInFlight()) {
+      // Digest already holds a hot heap — refuse to clone all embeddings for search.
+      return buildSearchIndex({ items: [] });
+    }
+  } catch {
+    /* ignore */
+  }
   await ensurePipelineHydrated();
   const db = await getDB();
 

@@ -1489,13 +1489,13 @@ export async function reextractAI(
 }
 
 async function resolveBatchItems(options: EnrichBatchOptions): Promise<Item[]> {
+  if (options.itemIds?.length) {
+    const rows = await Promise.all(options.itemIds.map((id) => getItem(id)));
+    return rows.filter((i): i is Item => !!i?.url?.trim());
+  }
+
   const all = await getAllItems();
   const bookmarks = all.filter((i) => i.url?.trim());
-
-  if (options.itemIds?.length) {
-    const set = new Set(options.itemIds);
-    return bookmarks.filter((i) => set.has(i.id));
-  }
 
   if (options.collectionId) {
     return bookmarks.filter((i) => (i.collectionIds || []).includes(options.collectionId!));
@@ -1519,9 +1519,32 @@ export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<Enr
   const mode = options.mode ?? 'smart';
 
   let items = await resolveBatchItems(options);
-  const enrichmentMap = new Map(
-    (await getAllEnrichments()).map((e) => [e.itemId, e])
-  );
+  const scopedIds = options.itemIds?.filter(Boolean) ?? [];
+  if (scopedIds.length === 0 && mode === 'full') {
+    // Unscoped full enrich would load every enrichment row — refuse (callers must pass ids).
+    console.warn('[enrichBatch] refusing unscoped full enrich — pass itemIds');
+    return {
+      runId: crypto.randomUUID(),
+      processed: 0,
+      skipped: 0,
+      failed: 0,
+      itemResults: options.collectItemResults ? [] : undefined,
+    };
+  }
+  const enrichmentMap = new Map<string, ItemEnrichment>();
+  if (scopedIds.length > 0) {
+    // Always scoped — getAllEnrichments OOMs on large libraries during bulk enrich.
+    await Promise.all(
+      scopedIds.map(async (id) => {
+        const e = await getEnrichment(id);
+        if (e) enrichmentMap.set(e.itemId, e);
+      })
+    );
+  } else {
+    for (const e of await getAllEnrichments()) {
+      enrichmentMap.set(e.itemId, e);
+    }
+  }
 
   if (mode === 'smart' && !options.force) {
     items = items

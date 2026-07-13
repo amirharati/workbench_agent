@@ -151,6 +151,29 @@ export async function mirrorNow(
   return dbRpc('mirrorNow', [{ force, allowEmptyMirror: opts?.allowEmptyMirror }]);
 }
 
+/** Soft-schedule the worker's debounced folder mirror (few seconds; not a forced dump). */
+export async function scheduleFolderMirror(): Promise<{ ok: boolean }> {
+  return dbRpc('scheduleFolderMirror', []);
+}
+
+/** Full ai_item_signals rows (including embeddings) for a small id set — worker only. */
+export async function getSignalsByItemIds<T = unknown>(itemIds: string[]): Promise<T[]> {
+  if (!itemIds.length) return [];
+  return dbRpc('getSignalsByItemIds', [itemIds]);
+}
+
+/** Block auto folder exports while a digest is running. */
+export async function pauseAutoMirrorForDigest(): Promise<{ ok: boolean }> {
+  return dbRpc('pauseAutoMirrorForDigest', []);
+}
+
+/** Resume auto mirrors after digest + cooldown, then soft catch-up. */
+export async function resumeAutoMirrorAfterDigest(
+  cooldownMs?: number
+): Promise<{ ok: boolean }> {
+  return dbRpc('resumeAutoMirrorAfterDigest', cooldownMs != null ? [cooldownMs] : []);
+}
+
 export type DbWorkerStatus = {
   storageMode: string;
   revision: number;

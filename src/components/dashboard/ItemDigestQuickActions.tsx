@@ -58,25 +58,25 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
     !!itemUrl &&
     shouldOfferTabSessionFetch(itemUrl, enrichment ?? null, badge?.kind ?? null);
 
-  const showActions =
-    !!itemUrl &&
-    (badge?.kind === 'failed' ||
-      badge?.kind === 'not_processed' ||
-      badge?.label === 'Pending classify' ||
-      badge?.kind === 'ready' ||
-      missing.length > 0 ||
-      stage?.level === 'summarized');
+  // Always offer digest for bookmarks — including verified / ready / partial.
+  if (!itemUrl) return null;
 
-  if (!showActions) return null;
+  const alreadyDigested =
+    badge?.kind === 'verified' ||
+    badge?.kind === 'ready' ||
+    badge?.kind === 'partial' ||
+    badge?.kind === 'needs_review' ||
+    badge?.label === 'Pending classify' ||
+    stage?.level === 'summarized' ||
+    enrichment?.status === 'ok' ||
+    !!enrichment?.summary;
 
   const primaryLabel =
     badge?.kind === 'failed'
       ? 'Retry digest'
-      : badge?.label === 'Pending classify'
-        ? 'Classify now'
-        : badge?.kind === 'ready' || stage?.level === 'summarized'
-          ? 'Re-digest'
-          : 'Run digest';
+      : alreadyDigested
+        ? 'Re-digest'
+        : 'Run digest';
 
   const after = () => {
     onDone?.();
@@ -131,13 +131,36 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
     }
   };
 
+  const runClassifyOnly = async () => {
+    if (running) return;
+    try {
+      await pipeline.runBatch([itemId], {
+        title: 'Classify now',
+        enrich: false,
+        classify: true,
+        processAll: true,
+        forceReclassify: true,
+        collectItemResults: true,
+        skipDiscover: true,
+        drainPendingClassifyQueue: false,
+        itemLabels: {
+          [itemId]: context?.item.title || itemUrl || itemId,
+        },
+      });
+      after();
+    } catch {
+      /* modal */
+    }
+  };
+
   const showMissingButton = missing.length > 0 && stage?.level === 'summarized';
+  const showClassifyNow = badge?.label === 'Pending classify';
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
       <button
         type="button"
-        onClick={() => void runFull({ forceEnrich: badge?.kind === 'failed' })}
+        onClick={() => void runFull({ forceEnrich: isRedigest || badge?.kind === 'failed' })}
         disabled={running}
         style={{
           ...actionBtnStyle,
@@ -147,6 +170,20 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
       >
         {running ? 'Working…' : primaryLabel}
       </button>
+      {showClassifyNow ? (
+        <button
+          type="button"
+          onClick={() => void runClassifyOnly()}
+          disabled={running}
+          style={{
+            ...secondaryBtnStyle,
+            cursor: running ? 'wait' : 'pointer',
+            opacity: running ? 0.7 : 1,
+          }}
+        >
+          Classify now
+        </button>
+      ) : null}
       {showMissingButton ? (
         <button
           type="button"

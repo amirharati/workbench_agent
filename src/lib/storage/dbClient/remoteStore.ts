@@ -101,6 +101,11 @@ function yieldToMain(): Promise<void> {
   });
 }
 
+function signalMetaOnlyForTab<T extends { embedding?: number[] }>(row: T): T {
+  if (!row.embedding?.length) return row;
+  return { ...row, embedding: [] };
+}
+
 function mergeHydrateTableRows(
   snapshot: HydrateSnapshot,
   storeName: string,
@@ -140,7 +145,11 @@ function mergeHydrateTableRows(
       put(snapshot.links, rows as HydrateSnapshot['links']);
       return;
     case 'ai_item_signals':
-      put(snapshot.signals, rows as HydrateSnapshot['signals']);
+      // Tab cache is meta-only — embedding vectors stay in the worker/OPFS.
+      put(
+        snapshot.signals,
+        (rows as HydrateSnapshot['signals']).map((s) => signalMetaOnlyForTab(s))
+      );
       return;
     case 'ai_taxonomy_state': {
       const state = (rows as NonNullable<HydrateSnapshot['taxonomy']>[])[0];
@@ -520,7 +529,10 @@ export class RemoteIdbCompatStore {
         return;
       }
       case 'ai_item_signals':
-        upsertByItemId(s.signals, value as Parameters<IdbCompatStore['putSignal']>[0]);
+        upsertByItemId(
+          s.signals,
+          signalMetaOnlyForTab(value as Parameters<IdbCompatStore['putSignal']>[0])
+        );
         return;
       case 'ai_taxonomy_state':
         s.taxonomy = value as Parameters<IdbCompatStore['putTaxonomyState']>[0];
@@ -613,10 +625,26 @@ export class RemoteIdbCompatStore {
   }
 
   get(storeName: string, key: string): unknown {
-    return this.getAll(storeName).find((row) => {
-      const r = row as { id?: string; itemId?: string; normalizedUrl?: string };
-      return r.id === key || r.itemId === key || r.normalizedUrl === key;
-    });
+    // Prefer keyed lookups — getAll().find on ai_item_signals walks every embedding.
+    switch (storeName) {
+      case 'items':
+        return this.getItem(key);
+      case 'item_enrichment':
+        return this.getEnrichment(key);
+      case 'ai_item_signals':
+        return this.getSignal(key);
+      case 'projects':
+        return this.getProject(key);
+      case 'collections':
+        return this.getCollection(key);
+      case 'notes':
+        return this.getNote(key);
+      default:
+        return this.getAll(storeName).find((row) => {
+          const r = row as { id?: string; itemId?: string; normalizedUrl?: string };
+          return r.id === key || r.itemId === key || r.normalizedUrl === key;
+        });
+    }
   }
 
   put(storeName: string, value: unknown): void {
@@ -864,10 +892,12 @@ export class RemoteIdbCompatStore {
     return this.read((s) => s.signals.filter((sig) => sig.classifyState === state));
   }
   putSignal(signal: Parameters<IdbCompatStore['putSignal']>[0]) {
+    // Worker gets full signal (with embedding); tab cache keeps meta only.
     this.write('putSignal', [signal], (s) => {
-      const i = s.signals.findIndex((sig) => sig.itemId === signal.itemId);
-      if (i >= 0) s.signals[i] = signal;
-      else s.signals.push(signal);
+      const lite = signalMetaOnlyForTab(signal);
+      const i = s.signals.findIndex((sig) => sig.itemId === lite.itemId);
+      if (i >= 0) s.signals[i] = lite;
+      else s.signals.push(lite);
     });
   }
   deleteSignal(itemId: string) {

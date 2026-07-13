@@ -14,6 +14,7 @@ import { LIBRARY_SEARCH_TAB_ID, useLibrarySearch } from '../../hooks/useLibraryS
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { EnrichmentContent, ItemPipelineBadge, ENRICHMENT_EMPTY_MESSAGE } from './PipelineDisplayBlocks';
+import { ItemDigestQuickActions } from './ItemDigestQuickActions';
 import { ItemContextMenu } from './ItemContextMenu';
 import { TabPaneFrame, TabScrollShell } from './TabScrollShell';
 import { DeleteConfirmDialog, type DeleteConfirmResult } from '../DeleteConfirmDialog';
@@ -1185,8 +1186,9 @@ const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 const ItemDetailEnrichment: React.FC<{ itemId: string }> = ({ itemId }) => {
-  const { context } = useItemPipelineContext(itemId);
+  const { context, reload } = useItemPipelineContext(itemId);
   const badge = context ? resolvePipelineBadge(context) : null;
+  const item = context?.item;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {badge && (
@@ -1194,6 +1196,16 @@ const ItemDetailEnrichment: React.FC<{ itemId: string }> = ({ itemId }) => {
           <ItemPipelineBadge badge={badge} />
         </div>
       )}
+      {item?.url ? (
+        <ItemDigestQuickActions
+          itemId={itemId}
+          itemUrl={item.url}
+          context={context}
+          badge={badge}
+          enrichment={context?.enrichment}
+          onDone={() => void reload()}
+        />
+      ) : null}
       <EnrichmentContent
         summary={context?.summary}
         keyPoints={context?.keyPoints ?? []}

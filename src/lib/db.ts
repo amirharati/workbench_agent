@@ -950,20 +950,14 @@ export async function commitPendingDbWrites(opts?: {
   }
 }
 
-const PIPELINE_CACHE_TABLES = [
-  'items',
-  'item_enrichment',
-  'ai_item_signals',
-  'ai_item_category_links',
-  'ai_categories',
-] as const;
-
-/** Sync pipeline-critical tables from worker before classify (read-your-writes). */
+/**
+ * Read-your-writes before classify: drain tab→worker writes only.
+ * Never hydrate/re-page pipeline tables mid-run — that OOMs Chrome on large libraries.
+ */
 export async function refreshPipelineCacheFromWorker(): Promise<void> {
   if (isDbWorkerProcess()) return;
   const store = getRemoteStore();
-  await store.ensurePipelineHydrated({ onProgress: emitLibraryHydrateProgress });
-  await store.refreshTablesFromWorker(PIPELINE_CACHE_TABLES);
+  await store.drainWrites();
 }
 
 // ============================================================================
@@ -1096,8 +1090,8 @@ export const bulkImportBookmarks = async (
     invalidateHubScopeCache();
     if (result.affectedItemIds.length > 0) {
       notifyDataChanged('import.bulk');
-      const { flushDurableBackup } = await import('./storage/flushDurableBackup');
-      await flushDurableBackup();
+      const { flushDurableBackupSoon } = await import('./storage/flushDurableBackup');
+      flushDurableBackupSoon();
     }
     return result;
   }

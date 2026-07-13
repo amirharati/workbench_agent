@@ -14,7 +14,7 @@ import {
   wouldMirrorLoseItems,
   wouldMirrorShrinkWorkbenchSqlite,
 } from './folderMirrorGuard';
-import { getMetaDB } from './metaDb';
+import { getMetaDB, kvGet, kvPut, kvDelete } from './metaDb';
 
 const HANDLE_KEY = 'backup-directory';
 /** Display name mirror in chrome.storage (handle.name can be awkward to read after reload). */
@@ -25,6 +25,9 @@ const FOLDER_NAME_KEY = 'backupFolderDisplayName';
  * force a re-pick UI instead of silently running without a folder.
  */
 const LINKED_FLAG_KEY = 'backupFolderLinked';
+/** Same facts in meta IndexedDB kv — second copy if chrome.storage is flaky after crash. */
+const META_LINKED_KEY = 'backup.folderLinked';
+const META_NAME_KEY = 'backup.folderDisplayName';
 /** Stable id so Chrome remembers the last picked directory in the picker UI. */
 const DIRECTORY_PICKER_ID = 'homebase-backup-folder';
 
@@ -124,17 +127,82 @@ export async function getBackupDirectoryHandle(): Promise<FileSystemDirectoryHan
   }
 }
 
-export async function setBackupDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-  const db = await getMetaDB();
-  await db.put('handles', handle, HANDLE_KEY);
+// --- sticky link meta (chrome.storage + meta IDB) -----------------------------
+
+type BackupFolderLinkMeta = {
+  linked: boolean;
+  displayName: string | null;
+};
+
+/**
+ * Persist “we have a backup folder” + display name in Chrome’s durable stores.
+ * The FileSystemDirectoryHandle lives in meta IDB `handles`; these flags survive
+ * even when permission is paused after reload/crash so we never forget the link.
+ */
+async function persistBackupFolderLinkMeta(meta: BackupFolderLinkMeta): Promise<void> {
+  const name = meta.displayName?.trim() || null;
   try {
-    const name = handle.name || null;
-    const payload: Record<string, unknown> = { [LINKED_FLAG_KEY]: true };
-    if (name) payload[FOLDER_NAME_KEY] = name;
-    await chrome.storage.local.set(payload);
+    const payload: Record<string, unknown> = { [LINKED_FLAG_KEY]: meta.linked };
+    if (meta.linked && name) payload[FOLDER_NAME_KEY] = name;
+    if (!meta.linked) {
+      await chrome.storage.local.remove([FOLDER_NAME_KEY, LINKED_FLAG_KEY]);
+    } else {
+      await chrome.storage.local.set(payload);
+    }
   } catch {
     /* ignore */
   }
+  try {
+    if (!meta.linked) {
+      await kvDelete(META_LINKED_KEY);
+      await kvDelete(META_NAME_KEY);
+    } else {
+      await kvPut(META_LINKED_KEY, true);
+      if (name) await kvPut(META_NAME_KEY, name);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+async function readBackupFolderLinkMeta(): Promise<BackupFolderLinkMeta> {
+  let linked = false;
+  let displayName: string | null = null;
+  try {
+    const r = await chrome.storage.local.get([LINKED_FLAG_KEY, FOLDER_NAME_KEY]);
+    if (r[LINKED_FLAG_KEY] === true) linked = true;
+    if (typeof r[FOLDER_NAME_KEY] === 'string' && r[FOLDER_NAME_KEY].length > 0) {
+      displayName = r[FOLDER_NAME_KEY];
+      linked = true;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (!linked && (await kvGet<boolean>(META_LINKED_KEY)) === true) linked = true;
+    if (!displayName) {
+      const n = await kvGet<string>(META_NAME_KEY);
+      if (typeof n === 'string' && n.length > 0) {
+        displayName = n;
+        linked = true;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return { linked, displayName };
+}
+
+export async function setBackupDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  const db = await getMetaDB();
+  await db.put('handles', handle, HANDLE_KEY);
+  let name: string | null = null;
+  try {
+    name = handle.name || null;
+  } catch {
+    name = null;
+  }
+  await persistBackupFolderLinkMeta({ linked: true, displayName: name });
 }
 
 export async function clearBackupDirectoryHandle(): Promise<void> {
@@ -144,11 +212,7 @@ export async function clearBackupDirectoryHandle(): Promise<void> {
   } catch {
     /* ignore */
   }
-  try {
-    await chrome.storage.local.remove([FOLDER_NAME_KEY, LINKED_FLAG_KEY]);
-  } catch {
-    /* ignore */
-  }
+  await persistBackupFolderLinkMeta({ linked: false, displayName: null });
 }
 
 /** True if a directory handle was previously persisted (permission may still be prompt). */
@@ -157,18 +221,13 @@ export async function hasConfiguredBackupFolder(): Promise<boolean> {
 }
 
 /**
- * True if the user has linked a folder before (handle and/or sticky chrome.storage flag).
+ * True if the user has linked a folder before (handle and/or sticky chrome.storage / meta kv).
  * If the handle is missing but this is true, the app must block and ask them to pick again.
  */
 export async function wasBackupFolderLinked(): Promise<boolean> {
   if (await hasConfiguredBackupFolder()) return true;
-  try {
-    const r = await chrome.storage.local.get([LINKED_FLAG_KEY, FOLDER_NAME_KEY]);
-    if (r[LINKED_FLAG_KEY] === true) return true;
-    if (typeof r[FOLDER_NAME_KEY] === 'string' && r[FOLDER_NAME_KEY].length > 0) return true;
-  } catch {
-    /* ignore */
-  }
+  const meta = await readBackupFolderLinkMeta();
+  if (meta.linked) return true;
   try {
     const { getBackupFolderOnboarding } = await import('./backupOnboarding');
     return (await getBackupFolderOnboarding()) === 'done';
@@ -179,11 +238,8 @@ export async function wasBackupFolderLinked(): Promise<boolean> {
 
 /** Persist sticky “folder was linked” evidence (safe to call whenever handle is present). */
 export async function markBackupFolderLinkedFlag(): Promise<void> {
-  try {
-    await chrome.storage.local.set({ [LINKED_FLAG_KEY]: true });
-  } catch {
-    /* ignore */
-  }
+  const name = await getBackupFolderName().catch(() => null);
+  await persistBackupFolderLinkMeta({ linked: true, displayName: name });
 }
 
 /**
@@ -246,18 +302,17 @@ export async function getBackupFolderName(): Promise<string | null> {
   const handle = await getBackupDirectoryHandle();
   if (handle) {
     try {
-      if (handle.name) return handle.name;
+      if (handle.name) {
+        // Keep chrome.storage / meta kv in sync whenever we can read the handle.
+        void persistBackupFolderLinkMeta({ linked: true, displayName: handle.name });
+        return handle.name;
+      }
     } catch {
       /* fall through to storage */
     }
   }
-  try {
-    const r = await chrome.storage.local.get(FOLDER_NAME_KEY);
-    const n = r[FOLDER_NAME_KEY];
-    return typeof n === 'string' && n.length > 0 ? n : null;
-  } catch {
-    return null;
-  }
+  const meta = await readBackupFolderLinkMeta();
+  return meta.displayName;
 }
 
 // --- low-level read/write ---------------------------------------------------

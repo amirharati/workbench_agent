@@ -2,7 +2,6 @@
  * Backup folder onboarding flags (chrome.storage.local).
  * Fresh installs start as `pending`. A backup folder is mandatory — no skip path.
  */
-import { hasWritableBackupFolder } from './backupFolder';
 
 export type BackupFolderOnboardingState = 'pending' | 'done';
 
@@ -38,7 +37,10 @@ export async function shouldShowBackupOnboarding(): Promise<boolean> {
   const forced = await consumeBackupOnboardingOpenRequest();
   if (forced) return true;
 
-  if (!(await hasWritableBackupFolder())) return true;
+  const { hasConfiguredBackupFolder, wasBackupFolderLinked } = await import('./backupFolder');
+  // Linked (handle or sticky chrome.storage/meta) — never treat permission pause as “not set up”.
+  if (await hasConfiguredBackupFolder()) return false;
+  if (await wasBackupFolderLinked()) return true; // recover: must re-pick
 
   const state = await getBackupFolderOnboarding();
   return state !== 'done';

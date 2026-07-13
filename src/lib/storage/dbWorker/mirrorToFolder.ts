@@ -8,6 +8,11 @@ import { normalizeBinaryPayload } from '../../binaryPayload';
 const DEBOUNCE_MS = 3000;
 /** Min time between automatic folder writes (forced mirrorNow bypasses this). */
 const MIN_INTERVAL_MS = 15_000;
+/**
+ * After a digest, wait before any auto export. Full sqlite dumps while the digest
+ * heap is still hot OOM-kill Chrome — even "soft" 3s debounce is not enough.
+ */
+const POST_DIGEST_COOLDOWN_MS = 180_000;
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastMirrorAt = 0;
@@ -18,6 +23,10 @@ let pendingForce = false;
 let pendingAllowEmptyMirror = false;
 /** When true, skip all mirrors (restore/replace must not be clobbered by stale OPFS export). */
 let mirrorSuspended = false;
+/** Digest in flight — drop auto schedules (updateItem must not dump sqlite mid-pipeline). */
+let autoMirrorPaused = false;
+/** Earliest time an auto mirror may run after digest. */
+let autoMirrorCooldownUntil = 0;
 const mirrorWaiters: Array<(result: { ok: boolean; error?: string }) => void> = [];
 
 export type MirrorExportFn = () => Promise<Uint8Array>;
@@ -50,8 +59,34 @@ function scheduleFolderMirrorAfter(delayMs: number): void {
 }
 
 export function scheduleFolderMirror(): void {
-  if (mirrorSuspended) return;
+  if (mirrorSuspended || autoMirrorPaused) return;
+  const now = Date.now();
+  if (now < autoMirrorCooldownUntil) {
+    scheduleFolderMirrorAfter(autoMirrorCooldownUntil - now);
+    return;
+  }
   scheduleFolderMirrorAfter(DEBOUNCE_MS);
+}
+
+/** Block auto folder exports for the whole digest (forced Settings mirror still allowed). */
+export function pauseAutoMirrorForDigest(): void {
+  autoMirrorPaused = true;
+  if (debounceTimer != null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+}
+
+/**
+ * Allow auto mirrors again after a cooldown, then soft-schedule one catch-up.
+ * Cooldown must be long enough that bulk enrich / report UI has released memory.
+ */
+export function resumeAutoMirrorAfterDigest(cooldownMs = POST_DIGEST_COOLDOWN_MS): void {
+  autoMirrorPaused = false;
+  autoMirrorCooldownUntil = Date.now() + Math.max(0, cooldownMs);
+  if (!mirrorSuspended) {
+    scheduleFolderMirrorAfter(Math.max(DEBOUNCE_MS, cooldownMs));
+  }
 }
 
 /** Pause/resume automatic + forced mirrors during explicit restore/replace. */
@@ -152,13 +187,11 @@ async function runFolderMirror(
   pendingAllowEmptyMirror = false;
   let result: { ok: boolean; error?: string } = { ok: true };
   try {
-    // allowEmptyMirror only creates a NEW file — never clobbers an existing one.
+    // Cheap emptiness check — do not fingerprint the whole library before every export.
     if (!useAllowEmpty) {
       const { getIdbCompatStore } = await import('../sqlite/store');
-      const { fingerprintFromStore } = await import('../importFingerprint');
       const store = await getIdbCompatStore();
-      const liveFp = fingerprintFromStore(store);
-      if (liveFp.itemCount === 0) {
+      if (store.getAllItems().length === 0) {
         result = {
           ok: false,
           error:

@@ -1,4 +1,4 @@
-import { ensurePipelineHydrated, getDB, type Item } from '../db';
+import { getDB, type Item } from '../db';
 import type { ItemEnrichment, EnrichmentReference } from '../enrichment/types';
 import { assessCategorizationEligibility } from '../enrichment/categorizationEligibility';
 import { getAiCategories } from '../categorization';
@@ -205,8 +205,11 @@ async function loadPipelineStores(db: Awaited<ReturnType<typeof getDB>>) {
   const enrichments = db.objectStoreNames.contains('item_enrichment')
     ? await db.getAll('item_enrichment')
     : [];
+  // Meta-only — badge/queue maps must not pin embedding vectors.
   const signals = db.objectStoreNames.contains('ai_item_signals')
-    ? await db.getAll('ai_item_signals')
+    ? (await db.getAll('ai_item_signals')).map((s) =>
+        s.embedding?.length ? { ...s, embedding: [] } : s
+      )
     : [];
   const links = db.objectStoreNames.contains('ai_item_category_links')
     ? await db.getAll('ai_item_category_links')
@@ -353,19 +356,31 @@ export function formatPipelineStageHint(ctx: ItemPipelineContext): string | unde
 }
 
 export async function loadItemPipelineContext(itemId: string): Promise<ItemPipelineContext | null> {
-  await ensurePipelineHydrated();
+  const { commitPendingDbWrites } = await import('../db');
+  await commitPendingDbWrites();
   const db = await getDB();
   const item = await db.get('items', itemId);
   if (!item) return null;
 
-  const stores = await loadPipelineStores(db);
+  const { loadScopedPipelineRows } = await import('./scopedPipelineRows');
+  const scoped = await loadScopedPipelineRows([itemId]);
+  const categories = db.objectStoreNames.contains('ai_categories')
+    ? await db.getAll('ai_categories')
+    : [];
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const linksByItem = new Map<string, AiItemCategoryLink[]>();
+  for (const link of scoped.links) {
+    const list = linksByItem.get(link.itemId) ?? [];
+    list.push(link);
+    linksByItem.set(link.itemId, list);
+  }
 
   let ctx = buildContextForItem(
     item,
-    stores.enrichByItem,
-    stores.signalByItem,
-    stores.linksByItem,
-    stores.categoryById
+    scoped.enrichByItem,
+    scoped.signalByItem,
+    linksByItem,
+    categoryById
   );
 
   const orphan =
@@ -394,13 +409,19 @@ export async function loadItemPipelineContext(itemId: string): Promise<ItemPipel
       llmReview: undefined,
       lastClassifiedAt: undefined,
     });
-    const refreshed = await loadPipelineStores(db);
+    const refreshed = await loadScopedPipelineRows([itemId]);
+    const refreshedLinks = new Map<string, AiItemCategoryLink[]>();
+    for (const link of refreshed.links) {
+      const list = refreshedLinks.get(link.itemId) ?? [];
+      list.push(link);
+      refreshedLinks.set(link.itemId, list);
+    }
     ctx = buildContextForItem(
       item,
       refreshed.enrichByItem,
       refreshed.signalByItem,
-      refreshed.linksByItem,
-      refreshed.categoryById
+      refreshedLinks,
+      categoryById
     );
   }
 

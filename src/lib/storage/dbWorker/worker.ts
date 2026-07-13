@@ -2,7 +2,16 @@ import { markDbWorkerProcess } from './env';
 import { setStorageBackend } from '../sqlite/connectionProvider';
 import { subscribeToDataChanges } from '../../dataChangeNotifier';
 import { revisionTracker } from '../../revisionTracker';
-import { scheduleFolderMirror, mirrorNow, configureFolderMirror, getMirrorStatus, setMirrorSuspended, markFolderMirrorCurrent } from './mirrorToFolder';
+import {
+  scheduleFolderMirror,
+  mirrorNow,
+  configureFolderMirror,
+  getMirrorStatus,
+  setMirrorSuspended,
+  markFolderMirrorCurrent,
+  pauseAutoMirrorForDigest,
+  resumeAutoMirrorAfterDigest,
+} from './mirrorToFolder';
 import { exportOpfsDatabaseBytes, importFolderBytesIntoOpfs, openOpfsConnection, workerDatabaseHasDomainDataSync, getOpfsDatabaseSync } from '../sqlite/connectionOpfs';
 import { decodeBinaryFromRpc } from '../../binaryPayload';
 import { fingerprintSqliteBytes } from '../importFingerprint';
@@ -55,6 +64,10 @@ const READ_ONLY_RPC_METHODS = new Set([
   'hubInvalidateScopeCache',
   'liveFingerprint',
   'inspectImportBytes',
+  'scheduleFolderMirror',
+  'pauseAutoMirrorForDigest',
+  'resumeAutoMirrorAfterDigest',
+  'getSignalsByItemIds',
 ]);
 
 const MUTATING_STORE_METHODS = new Set([
@@ -91,8 +104,8 @@ const MUTATING_STORE_METHODS = new Set([
 ]);
 
 /**
- * Pipeline satellite writes — update OPFS only. Folder flush happens once at
- * pipeline end (mirrorNow), not on every enrichment/signal/link put (full dump).
+ * Pipeline satellite writes — update OPFS only. Folder flush is paused during
+ * digest and soft-scheduled after a cooldown (never on every enrichment put).
  */
 const SATELLITE_MIRROR_SKIP = new Set([
   'putEnrichment',
@@ -233,6 +246,21 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         allowEmptyMirror: payload?.allowEmptyMirror === true,
       });
     }
+    case 'scheduleFolderMirror': {
+      // Soft debounced export — same path as post-write auto-mirror (seconds, not force).
+      scheduleFolderMirror();
+      return { ok: true };
+    }
+    case 'pauseAutoMirrorForDigest': {
+      pauseAutoMirrorForDigest();
+      return { ok: true };
+    }
+    case 'resumeAutoMirrorAfterDigest': {
+      const cooldownMs =
+        typeof args[0] === 'number' && Number.isFinite(args[0]) ? (args[0] as number) : undefined;
+      resumeAutoMirrorAfterDigest(cooldownMs);
+      return { ok: true };
+    }
     case 'setMirrorSuspended': {
       setMirrorSuspended(Boolean(args[0]));
       return { ok: true, suspended: Boolean(args[0]) };
@@ -339,7 +367,26 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const store = await getIdbCompatStore();
       const out: Record<string, unknown> = {};
       for (const name of storeNames) {
-        out[name] = store.getAll(name);
+        const rows = store.getAll(name);
+        // Never ship embedding vectors to the tab via bulk refresh.
+        if (name === 'ai_item_signals' && Array.isArray(rows)) {
+          out[name] = rows.map((s: { embedding?: number[] }) =>
+            s.embedding?.length ? { ...s, embedding: [] } : s
+          );
+        } else {
+          out[name] = rows;
+        }
+      }
+      return out;
+    }
+    case 'getSignalsByItemIds': {
+      const ids = Array.isArray(args[0]) ? (args[0] as string[]) : [];
+      const store = await getIdbCompatStore();
+      const out: unknown[] = [];
+      for (const id of ids) {
+        if (!id) continue;
+        const row = store.getSignal(id);
+        if (row) out.push(row);
       }
       return out;
     }
@@ -437,8 +484,8 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       );
       invalidateHubScopeEntryCache();
       revisionTracker.recordSqliteMutation();
-      // Checkpoint: one forced folder flush after the whole import, not mid-batch dumps.
-      void mirrorNow(true);
+      // Soft debounce after import — avoids OOM; folder catches up within seconds.
+      scheduleFolderMirror();
       return bulk;
     }
     default: {

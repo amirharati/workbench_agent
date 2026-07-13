@@ -857,7 +857,13 @@ export async function loadEnrichmentHubData(
 }
 
 export async function loadEmbedFailedIds(): Promise<Set<string>> {
-  const { failedIds } = await loadHubSignals();
+  const db = await getDB();
+  const failedIds = new Set<string>();
+  if (!db.objectStoreNames.contains('ai_item_signals')) return failedIds;
+  // Ids only — do not build a second map of every signal row.
+  for (const s of await db.getAll('ai_item_signals')) {
+    if (s.signalStatus === 'embed_failed') failedIds.add(s.itemId);
+  }
   return failedIds;
 }
 
@@ -885,9 +891,10 @@ async function loadHubSignals(): Promise<{
   if (!db.objectStoreNames.contains('ai_item_signals')) {
     return { byItem, failedIds };
   }
+  // Meta-only map — hub UI must never pin embedding vectors in extra structures.
   const signals = await db.getAll('ai_item_signals');
   for (const s of signals) {
-    byItem.set(s.itemId, s);
+    byItem.set(s.itemId, s.embedding?.length ? { ...s, embedding: [] } : s);
     if (s.signalStatus === 'embed_failed') failedIds.add(s.itemId);
   }
   return { byItem, failedIds };

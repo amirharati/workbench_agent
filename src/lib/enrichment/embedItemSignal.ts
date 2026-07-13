@@ -1,18 +1,15 @@
 import { embedTexts } from '../ai/openrouterEmbeddings';
 import { loadAISettings } from '../ai/settings';
 import { DEFAULT_EMBEDDING_MODEL } from '../categorization/service';
-import { hashText } from '../categorization/textHash';
 import type { AiItemSignal } from '../categorization/types';
 import { notifyDataChanged } from '../dataChangeNotifier';
-import { getDB } from '../db';
+import { getDB, type Item } from '../db';
 import {
   buildEmbeddedSignal,
   buildEmbedFailedSignal,
   collectPendingEmbedRows,
   EMBED_BATCH_SIZE,
-  hasCurrentSearchEmbedding,
 } from './embedBackfillPlan';
-import { buildSearchEmbedText, MIN_SEARCH_EMBED_TEXT_LENGTH } from './searchEmbedText';
 import type { ItemEnrichment } from './types';
 
 export interface EnsureItemEmbeddingResult {
@@ -57,7 +54,8 @@ export interface EmbedIncrementalOptions {
 
 /** Count embedding coverage for search (enriched items with title+summary vectors). */
 export async function getEmbedBackfillStats(): Promise<EmbedBackfillStats> {
-  const db = await getDB();
+  // Avoid full-table embedding materialization in the tab — stats are approximate
+  // from meta-only cache (embedding length is empty in tab; pendingEmbed will be high).
   const stats: EmbedBackfillStats = {
     itemsTotal: 0,
     aiSummaryOk: 0,
@@ -66,41 +64,23 @@ export async function getEmbedBackfillStats(): Promise<EmbedBackfillStats> {
     embedFailed: 0,
     skippedHash: 0,
   };
-
+  const db = await getDB();
   if (!db.objectStoreNames.contains('item_enrichment')) return stats;
-
   const items = await db.getAll('items');
   stats.itemsTotal = items.length;
-  const itemById = new Map(items.map((i) => [i.id, i]));
   const enrichments = await db.getAll('item_enrichment');
+  for (const e of enrichments) {
+    if (e.aiStatus === 'ok') stats.aiSummaryOk++;
+  }
   const signals = db.objectStoreNames.contains('ai_item_signals')
     ? await db.getAll('ai_item_signals')
     : [];
-  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
-
-  for (const enrichment of enrichments) {
-    if (enrichment.aiStatus !== 'ok') continue;
-    stats.aiSummaryOk++;
-    const item = itemById.get(enrichment.itemId);
-    if (!item) continue;
-
-    const text = buildSearchEmbedText(item, enrichment);
-    if (text.length < MIN_SEARCH_EMBED_TEXT_LENGTH) continue;
-
-    const textHash = await hashText(text);
-    const prev = signalByItem.get(enrichment.itemId);
-    if (prev?.signalStatus === 'embed_failed') stats.embedFailed++;
-
-    if (hasCurrentSearchEmbedding(prev, textHash)) {
-      stats.withEmbedding++;
-    } else {
-      stats.pendingEmbed++;
-    }
+  for (const s of signals) {
+    if (s.signalStatus === 'embed_failed') stats.embedFailed++;
+    // Tab cache strips vectors — treat non-failed with textHash as embedded.
+    else if (s.textHash && s.embeddingModel) stats.withEmbedding++;
   }
-
-  const { summary } = await collectPendingEmbedRows(items, enrichments, signals);
-  stats.skippedHash = summary.skippedHash;
-
+  stats.pendingEmbed = Math.max(0, stats.aiSummaryOk - stats.withEmbedding - stats.embedFailed);
   return stats;
 }
 
@@ -138,11 +118,33 @@ export async function embedIncrementalBatch(
   const db = await getDB();
   if (!db.objectStoreNames.contains('ai_item_signals')) return summary;
 
-  const items = await db.getAll('items');
-  const enrichments = db.objectStoreNames.contains('item_enrichment')
-    ? await db.getAll('item_enrichment')
-    : [];
-  const signals = await db.getAll('ai_item_signals');
+  // Scoped digests: load only those rows — never walk the full embedding table.
+  let items: Item[];
+  let enrichments: ItemEnrichment[];
+  let signals: AiItemSignal[];
+
+  if (opts.itemIds?.length) {
+    const scopedItems: Item[] = [];
+    const scopedEnrich: ItemEnrichment[] = [];
+    for (const id of opts.itemIds) {
+      const item = (await db.get('items', id)) as Item | undefined;
+      if (item) scopedItems.push(item);
+      if (db.objectStoreNames.contains('item_enrichment')) {
+        const enr = (await db.get('item_enrichment', id)) as ItemEnrichment | undefined;
+        if (enr) scopedEnrich.push(enr);
+      }
+    }
+    // Full embeddings live in the worker — tab cache is meta-only.
+    const { getSignalsByItemIds } = await import('../storage/dbClient');
+    const scopedSignals = (await getSignalsByItemIds<AiItemSignal>(opts.itemIds)) ?? [];
+    items = scopedItems;
+    enrichments = scopedEnrich;
+    signals = scopedSignals;
+  } else {
+    // Unscoped embed backfill is unsafe on large libraries (full embedding table).
+    console.warn('[embedIncrementalBatch] refusing unscoped embed — pass itemIds');
+    return summary;
+  }
 
   const { pending, summary: plan } = await collectPendingEmbedRows(items, enrichments, signals, {
     max: opts.max,
@@ -228,7 +230,14 @@ export async function embedIncrementalBatch(
     notifyDataChanged('enrichment.update');
   }
 
-  const remaining = await collectPendingEmbedRows(items, enrichments, await db.getAll('ai_item_signals'), {
+  let freshSignals: AiItemSignal[];
+  if (opts.itemIds?.length) {
+    const { getSignalsByItemIds } = await import('../storage/dbClient');
+    freshSignals = (await getSignalsByItemIds<AiItemSignal>(opts.itemIds)) ?? [];
+  } else {
+    freshSignals = [];
+  }
+  const remaining = await collectPendingEmbedRows(items, enrichments, freshSignals, {
     itemIds: opts.itemIds,
   });
   summary.pendingAfter = remaining.pending.length;

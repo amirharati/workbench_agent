@@ -1318,7 +1318,10 @@ export class IdbCompatStore {
       case 'item_enrichment':
         return this.store.getEnrichmentPage(off, lim);
       case 'ai_item_signals':
-        return this.store.getSignalsPage(off, lim);
+        // Strip embeddings before postMessage — tab hydrate must stay meta-only.
+        return this.store.getSignalsPage(off, lim).map((s) =>
+          s.embedding?.length ? { ...s, embedding: [] } : s
+        );
       case 'ai_item_category_links':
         return this.store.getLinksPage(off, lim);
       default: {

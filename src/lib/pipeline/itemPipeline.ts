@@ -8,7 +8,6 @@ import {
   APP_DISCOVER_MAP_BATCH_SIZE,
   listItemIdsWithoutCategory,
   listItemIdsWithGeneralCategory,
-  reconcileStaleIneligibleSignals,
 } from '../categorization';
 import { loadItemIdsForPipelineQueue } from './itemPipelineContext';
 import type { TopicClassifySummary } from '../categorization/types';
@@ -17,7 +16,6 @@ import { commitPendingDbWrites, refreshPipelineCacheFromWorker } from '../db';
 import {
   enrichBatch,
   enrichOne,
-  getAllEnrichments,
   getEnrichment,
   type EnrichmentResult,
 } from '../enrichment';
@@ -147,8 +145,6 @@ async function syncBeforeClassify(opts: RunItemPipelineOptions): Promise<void> {
   await yieldToUi();
   await commitPendingDbWrites();
   await refreshPipelineCacheFromWorker();
-  await reconcileStaleIneligibleSignals();
-  await commitPendingDbWrites();
 }
 
 async function runClassifyWithDiscover(
@@ -569,6 +565,30 @@ export async function runItemPipeline(
     };
   }
 
+  // Digest must never trigger full sqlite folder dumps (updateItem used to schedule them).
+  try {
+    const { pauseAutoMirrorForDigest } = await import('../storage/dbClient');
+    await pauseAutoMirrorForDigest();
+  } catch {
+    /* worker may not be up yet */
+  }
+
+  try {
+    return await runItemPipelineBody(options, uniqueIds);
+  } finally {
+    try {
+      const { resumeAutoMirrorAfterDigest } = await import('../storage/dbClient');
+      await resumeAutoMirrorAfterDigest();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function runItemPipelineBody(
+  options: RunItemPipelineOptions,
+  uniqueIds: string[]
+): Promise<ItemPipelineResult> {
   report(options, 'prep', 'Starting pipeline…', 0, 1);
   await yieldToUi();
 
@@ -752,7 +772,13 @@ export async function runItemPipeline(
       }
     }
 
-    const enrichById = new Map((await getAllEnrichments()).map((e) => [e.itemId, e]));
+    const enrichById = new Map<string, NonNullable<Awaited<ReturnType<typeof getEnrichment>>>>();
+    await Promise.all(
+      uniqueIds.map(async (id) => {
+        const row = await getEnrichment(id);
+        if (row) enrichById.set(id, row);
+      })
+    );
     const classifyIds = filterDownstreamClassifyEligible(uniqueIds, enrichById);
     const classifyOutcome = await runClassifyWithDiscover(classifyIds, {
       ...options,

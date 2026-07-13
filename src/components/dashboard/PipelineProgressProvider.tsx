@@ -206,14 +206,9 @@ async function refreshAfterPipeline(
   onRefresh: PipelineProgressProviderProps['onRefresh'],
   scope?: LibraryRefreshScope
 ): Promise<void> {
+  // Match main: UI refresh only. Never schedule a full sqlite folder dump here —
+  // digests already spike memory; export OOMs Chrome even when "soft"-debounced.
   await onRefresh?.(scope);
-  // Checkpoint: end of AI pipeline → durable folder flush.
-  try {
-    const { flushDurableBackup } = await import('../../lib/storage/flushDurableBackup');
-    await flushDurableBackup();
-  } catch (e) {
-    console.warn('[pipeline] folder flush after digest failed:', e);
-  }
 }
 
 function applyPipelineProgress(
@@ -353,9 +348,17 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         if (!cancelled && reportIds.length) {
           const enrichRun = options?.enrich !== false;
           if (enrichRun || batchAction === 'batch_full' || batchAction === 'full_digest') {
-            reportRows = await buildEnrichOutcomeReportRows(reportIds, itemLabels, {
+            // Cap rows — building a report for hundreds of ids walks signal/embed tables hard.
+            reportRowsTotal = reportIds.length;
+            const sampleIds =
+              reportIds.length > CLASSIFY_DONE_REPORT_SAMPLE_CAP
+                ? reportIds.slice(0, CLASSIFY_DONE_REPORT_SAMPLE_CAP)
+                : reportIds;
+            reportRows = await buildEnrichOutcomeReportRows(sampleIds, itemLabels, {
               action: batchAction,
-              enrichResults: result.itemEnrichResults,
+              enrichResults: result.itemEnrichResults?.filter((r) =>
+                sampleIds.includes(r.itemId)
+              ),
             });
           } else if (batchAction === 'batch_classify' && result.classifySummary) {
             reportRowsTotal = reportIds.length;

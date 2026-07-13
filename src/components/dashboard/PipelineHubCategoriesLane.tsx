@@ -11,6 +11,7 @@ import {
 import type { Collection, Item } from '../../lib/db';
 import { refreshPipelineCacheFromWorker } from '../../lib/db';
 import { ensurePendingClassifySignals } from '../../lib/categorization';
+import { isAnyDigestInFlight } from '../../lib/pipeline/singleLinkDigest';
 import {
   countPipelineQueueFilters,
   isClassifyPendingRunnable,
@@ -291,7 +292,10 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
     }
     try {
       await refreshPipelineCacheFromWorker();
-      await ensurePendingClassifySignals();
+      // Skip full-library ensure during/just after pipeline — reload UI from cache only.
+      if (!isAnyDigestInFlight()) {
+        await ensurePendingClassifySignals();
+      }
       invalidatePipelineCatalog();
       await refreshPipelineCacheFromWorker();
       const [list, embedFailed] = await Promise.all([
@@ -380,7 +384,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
       const holdCtx = processingHoldRef.current;
       processingHoldRef.current = null;
       void (async () => {
-        await ensurePendingClassifySignals({ force: true });
+        // Do NOT force full-library ensurePending here — that OOMs after bulk enrich.
+        // Soft reload only; queue heal runs on the normal debounced path.
         await refreshPipelineCacheFromWorker();
         invalidatePipelineCatalog();
         const fresh = await reload({ silent: true });
