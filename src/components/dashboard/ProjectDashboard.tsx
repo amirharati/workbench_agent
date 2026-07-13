@@ -1,7 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { Project, Collection, Item, Workspace } from '../../lib/db';
 import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItemWithMerge, getItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID, normalizeBookmarkUrl, type UpdateItemOptions } from '../../lib/db';
-import { usePipelineProgress } from './PipelineProgressProvider';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -34,7 +33,14 @@ interface ProjectDashboardProps {
   onBack: () => void;
   onUpdateItem?: (
     id: string,
-    data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }
+    data: {
+      title: string;
+      url?: string;
+      notes?: string;
+      collectionIds: string[];
+      tags?: string[];
+      notesPlacementCollectionId?: string;
+    }
   ) => Promise<void>;
   onDeleteItem?: (id: string, collectionId?: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -58,7 +64,6 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   onDeleteItem,
   onRefresh,
 }) => {
-  const pipeline = usePipelineProgress();
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [primaryTabs, setPrimaryTabs] = useState<Tab[]>([]);
@@ -669,13 +674,11 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       const projectUnsortedId = await ensureProjectUnsortedCollection(project.id);
       const finalCollectionIds = data.collectionIds.length > 0 ? data.collectionIds : [projectUnsortedId];
       let saveUrl = (data.url || '').trim();
-      let tabId: number | undefined;
       let source: Item['source'] = data.url ? 'bookmark' : 'manual';
       let title = data.title;
 
       const ctx = await getActiveTabBookmarkContext();
       if (ctx && saveUrl) {
-        tabId = ctx.tabId;
         saveUrl = await resolveTabBookmarkUrl(ctx.tabId, saveUrl);
         if (!title.trim() || title.trim() === data.url?.trim()) {
           title = ctx.title || title;
@@ -696,20 +699,14 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
 
       // Refresh data first to get the new item
       if (onRefresh) await onRefresh();
+      const { flushDurableBackupSoon } = await import('../../lib/storage/flushDurableBackup');
+      flushDurableBackupSoon();
 
       // Fetch the item (new or existing if merged)
       const newItem = await getItem(result.itemId);
       if (newItem) {
         // Open the item in a tab
         handleItemClick(newItem);
-      }
-
-      if (saveUrl && /^https?:\/\//i.test(saveUrl)) {
-        void pipeline.runSingle(result.itemId, {
-          title: 'Digesting new bookmark',
-          preferTabSession: true,
-          tabId,
-        });
       }
 
       return result.itemId;
@@ -791,7 +788,14 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
 
   const handleUpdateItem = async (
     id: string,
-    data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }
+    data: {
+      title: string;
+      url?: string;
+      notes?: string;
+      collectionIds: string[];
+      tags?: string[];
+      notesPlacementCollectionId?: string;
+    }
   ) => {
     try {
       // Get the project's unsorted collection if no collections selected
@@ -809,6 +813,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           url: data.url || '',
           notes: data.notes,
           collectionIds: finalCollectionIds,
+          ...(data.tags ? { tags: data.tags } : {}),
         },
         opts
       );

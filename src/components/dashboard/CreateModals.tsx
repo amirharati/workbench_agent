@@ -574,7 +574,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           id="new-item-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          rows={kind === 'note' ? 6 : 4}
+          rows={kind === 'note' ? 8 : 5}
           placeholder={kind === 'note' ? 'Write your note…' : 'Add a description'}
           style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.5 }}
         />

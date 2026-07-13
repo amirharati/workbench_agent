@@ -646,11 +646,12 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          rows={3}
+          rows={5}
           placeholder="Notes (optional)"
           style={{
             width: '100%',
             boxSizing: 'border-box',
+            minHeight: 120,
             padding: '0.5rem 0.6rem',
             borderRadius: 6,
             border: '1px solid var(--border)',
@@ -658,6 +659,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             color: 'var(--text)',
             fontSize: 'var(--text-sm)',
             fontFamily: 'inherit',
+            lineHeight: 1.5,
             resize: 'vertical',
           }}
         />

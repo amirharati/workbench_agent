@@ -25,23 +25,19 @@ export type MirrorWriteFn = (
   bytes: Uint8Array,
   revision: number
 ) => Promise<{ ok: boolean; error?: string }>;
-export type MirrorFetchFolderFn = () => Promise<Uint8Array | null>;
 
 let exportFn: MirrorExportFn | null = null;
 let writeFn: MirrorWriteFn | null = null;
 let getRevisionFn: (() => number) | null = null;
-let fetchFolderFn: MirrorFetchFolderFn | null = null;
 
 export function configureFolderMirror(opts: {
   exportDatabase: MirrorExportFn;
   writeToFolder: MirrorWriteFn;
   getRevision: () => number;
-  fetchFolderBytes?: MirrorFetchFolderFn;
 }): void {
   exportFn = opts.exportDatabase;
   writeFn = opts.writeToFolder;
   getRevisionFn = opts.getRevision;
-  fetchFolderFn = opts.fetchFolderBytes ?? null;
 }
 
 function scheduleFolderMirrorAfter(delayMs: number): void {
@@ -190,23 +186,10 @@ async function runFolderMirror(
       }
     }
 
-    // Merge folder → live before export (not a blind replace of folder with live-only).
-    if (fetchFolderFn) {
-      try {
-        const folderBytes = await fetchFolderFn();
-        if (folderBytes && folderBytes.byteLength >= 16) {
-          const { getSqliteStore } = await import('../sqlite/store');
-          const { mergeFolderBytesIntoLiveStore } = await import('../applyFolderMerge');
-          const { workerDatabaseHasDomainDataSync } = await import('../sqlite/connectionOpfs');
-          if (workerDatabaseHasDomainDataSync()) {
-            const liveStore = await getSqliteStore();
-            await mergeFolderBytesIntoLiveStore(folderBytes, liveStore);
-          }
-        }
-      } catch (e) {
-        console.warn('[mirror] pre-export merge skipped:', e);
-      }
-    }
+    // Routine mirror is OPFS → folder only (same as main).
+    // Do NOT merge folder→live here: digests/edits schedule mirrors often, and
+    // full-file merge+export on every write OOMs Chrome. Folder→live merge belongs
+    // on startup / reconnect / explicit import RPCs only.
 
     const raw = await exportFn();
     const bytes = normalizeBinaryPayload(raw);

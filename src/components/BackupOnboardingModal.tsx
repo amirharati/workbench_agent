@@ -10,10 +10,11 @@ interface BackupOnboardingModalProps {
   allowSkip?: boolean;
   /**
    * `choose` = first-time folder pick.
+   * `recover` = sticky link flag says we had a folder, but the handle is missing — must re-pick.
    * `reconnect` = handle already saved; Chrome needs permission again (one click, no re-pick).
    */
-  mode?: 'choose' | 'reconnect';
-  /** Shown in reconnect mode. */
+  mode?: 'choose' | 'recover' | 'reconnect';
+  /** Shown in reconnect / recover mode. */
   folderName?: string | null;
   /**
    * Some Chrome extension surfaces are unstable for showDirectoryPicker.
@@ -41,6 +42,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reconnect = mode === 'reconnect' && !!onReconnectFolder;
+  const recover = mode === 'recover';
 
   if (!open) return null;
 
@@ -66,7 +68,11 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
     }
   };
 
-  const title = reconnect ? 'Reconnect your data folder' : 'Choose your data folder';
+  const title = reconnect
+    ? 'Reconnect your data folder'
+    : recover
+      ? 'Re-select your data folder'
+      : 'Choose your data folder';
   const body = reconnect ? (
     <>
       We’ll use your already-selected folder
@@ -79,6 +85,18 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
       . Chrome blocks silent access after reload — one click continues with that
       same folder (no picker). Choose “Allow on every visit” if Chrome offers it
       so this can happen automatically next time.
+    </>
+  ) : recover ? (
+    <>
+      Homebase needs your backup folder again
+      {folderName ? (
+        <>
+          {' '}
+          (previously <code style={{ fontSize: '0.9em' }}>{folderName}</code>)
+        </>
+      ) : null}
+      . The link was lost — pick the same folder that contains{' '}
+      <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code>. The app cannot run without it.
     </>
   ) : (
     <>
@@ -98,7 +116,11 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
       ? 'Open full page setup'
       : busy
         ? 'Setting up…'
-        : 'Choose folder';
+        : recover
+          ? folderName
+            ? `Choose “${folderName}” again`
+            : 'Choose folder again'
+          : 'Choose folder';
 
   return (
     <div
@@ -180,16 +202,28 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
 
         {!reconnect ? (
           <ol style={{ margin: '0 0 16px', paddingLeft: '1.25rem', lineHeight: 1.6, opacity: 0.9 }}>
-            <li>{onChooseInFullPage ? 'Click "Open full page setup" below.' : 'Click "Choose folder" below.'}</li>
-            <li>Select or create a folder (e.g. your synced Dropbox folder).</li>
-            <li>
-              We create <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> there as your live
-              database.
-            </li>
+            {recover ? (
+              <>
+                <li>{onChooseInFullPage ? 'Click "Open full page setup" below.' : 'Click the button below.'}</li>
+                <li>Select the same folder that already has your data.</li>
+                <li>
+                  We load <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> from that folder.
+                </li>
+              </>
+            ) : (
+              <>
+                <li>{onChooseInFullPage ? 'Click "Open full page setup" below.' : 'Click "Choose folder" below.'}</li>
+                <li>Select or create a folder (e.g. your synced Dropbox folder).</li>
+                <li>
+                  We create <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> there as your live
+                  database.
+                </li>
+              </>
+            )}
           </ol>
         ) : (
           <p style={{ margin: '0 0 16px', lineHeight: 1.6, opacity: 0.9 }}>
-            You can also pick a different folder if you moved your data.
+            Prefer a different location? Use “Choose a new folder” below (same picker as first setup).
           </p>
         )}
 
@@ -223,6 +257,10 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
             <button
               type="button"
               onClick={() => {
+                if (onChooseInFullPage) {
+                  onChooseInFullPage();
+                  return;
+                }
                 setBusy(true);
                 setError(null);
                 void onChooseFolder()
@@ -245,7 +283,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
                 fontSize: '0.875rem',
               }}
             >
-              Choose different folder
+              Choose a new folder
             </button>
           ) : null}
           <button

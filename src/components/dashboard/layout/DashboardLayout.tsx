@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
-import { Workspace, Collection, Item, Project, UpdateItemOptions, getItem, normalizeBookmarkUrl } from '../../../lib/db';
-import { getActiveTabBookmarkContext } from '../../../lib/tabUrlCapture';
+import { Workspace, Collection, Item, Project, UpdateItemOptions, getItem } from '../../../lib/db';
 import type { BackupStatusSnapshot, RestoreBackupResult } from '../../../lib/backupCoordinator';
 import type { DbWorkerStatus } from '../../../lib/storage/dbClient';
 import type { AISettings } from '../../../lib/ai/types';
@@ -131,6 +130,7 @@ interface DashboardLayoutProps {
   onExportPipelineAnalysis?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
   onResolveConflictKeepLocal?: () => Promise<void>;
+  backupFolderLinked?: boolean;
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
   backupStatus?: BackupStatusSnapshot;
@@ -179,6 +179,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   onExportPipelineAnalysis,
   onResolveConflictLoadRemote,
   onResolveConflictKeepLocal,
+  backupFolderLinked = false,
   backupFolderReady,
   backupFolderName,
   backupStatus,
@@ -235,6 +236,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   /** Close tabs whose item/workspace ids no longer exist (e.g. after DB clear). */
   useEffect(() => {
     if (libraryLoading) return;
+    // Skip while any items exist and only metadata timestamps change — prune is for deletes/clear.
     let cancelled = false;
     void (async () => {
       try {
@@ -245,6 +247,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       const workspaceIds = new Set(workspaces.map((w) => w.id));
       setGlobalTabState((prev) => {
         const pruned = pruneGlobalTabs(prev, { itemIds, workspaceIds });
+        if (
+          pruned.tabs.length === prev.tabs.length &&
+          pruned.activeTabId === prev.activeTabId &&
+          pruned.tabs.every((t, i) => t.id === prev.tabs[i]?.id && t.kind === prev.tabs[i]?.kind)
+        ) {
+          return prev;
+        }
         if (
           JSON.stringify(pruned.tabs) === JSON.stringify(prev.tabs) &&
           pruned.activeTabId === prev.activeTabId
@@ -261,7 +270,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [items, workspaces, libraryLoading]);
+  }, [items.length, workspaces.length, libraryLoading]);
 
   useEffect(() => {
     const stored = localStorage.getItem('workbench-font-scale');
@@ -412,30 +421,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       return;
     }
     try {
-      let digestTabId: number | undefined;
-      const activeTabCtx = await getActiveTabBookmarkContext();
-      if (
-        activeTabCtx?.url &&
-        normalizeBookmarkUrl(activeTabCtx.url) === normalizeBookmarkUrl(url)
-      ) {
-        digestTabId = activeTabCtx.tabId;
-      }
-      const itemId = await onAddBookmark(url, title, collectionId);
+      await onAddBookmark(url, title, collectionId);
       addToast({ type: 'success', message: `Bookmark saved to ${collectionLabel(collectionId)}` });
-      if (itemId) {
-        void pipeline.runSingle(itemId, {
-          title: 'Digesting bookmark',
-          preferTabSession: true,
-          tabId: digestTabId,
-        });
-      }
     } catch (error) {
       addToast({
         type: 'error',
         message: error instanceof Error ? error.message : 'Could not add bookmark',
       });
     }
-  }, [onAddBookmark, addToast, addStatusMessage, collectionLabel, pipeline]);
+  }, [onAddBookmark, addToast, addStatusMessage, collectionLabel]);
 
   const handleUpdateBookmarkWithToast = useCallback(async (
     id: string,
@@ -443,8 +437,31 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     options?: UpdateItemOptions
   ) => {
     if (!onUpdateBookmark) return;
-    await onUpdateBookmark(id, updates, options);
-    addToast({ type: 'success', message: 'Changes saved' });
+    try {
+      await onUpdateBookmark(id, updates, options);
+      const keys = Object.keys(updates).filter((k) => k !== 'updated_at');
+      const orgOnly =
+        keys.length > 0 && keys.every((k) => k === 'collectionIds' || k === 'tags');
+      addToast({
+        type: 'success',
+        message: orgOnly
+          ? keys.includes('tags') && !keys.includes('collectionIds')
+            ? 'Tags updated'
+            : 'Collections updated'
+          : 'Changes saved',
+      });
+    } catch (error) {
+      const { isBackupFolderPermissionPaused } = await import('../../../lib/backupFolder');
+      if (isBackupFolderPermissionPaused(error)) {
+        // Folder is linked; Chrome sync pause is not a user-facing save error.
+        return;
+      }
+      addToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Could not save changes',
+      });
+      throw error;
+    }
   }, [onUpdateBookmark, addToast]);
 
   const handleDeleteBookmarkWithToast = useCallback(async (id: string, collectionId?: string) => {
@@ -862,6 +879,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onExportPipelineAnalysis={onExportPipelineAnalysis}
                 onResolveConflictLoadRemote={onResolveConflictLoadRemote}
                 onResolveConflictKeepLocal={onResolveConflictKeepLocal}
+                backupFolderLinked={backupFolderLinked}
                 backupFolderReady={backupFolderReady}
                 backupFolderName={backupFolderName}
                 backupStatus={backupStatus}
@@ -915,6 +933,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onExportPipelineAnalysis={onExportPipelineAnalysis}
               onResolveConflictLoadRemote={onResolveConflictLoadRemote}
               onResolveConflictKeepLocal={onResolveConflictKeepLocal}
+              backupFolderLinked={backupFolderLinked}
               backupFolderReady={backupFolderReady}
               backupFolderName={backupFolderName}
               backupStatus={backupStatus}
@@ -990,6 +1009,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onExportPipelineAnalysis={onExportPipelineAnalysis}
                   onResolveConflictLoadRemote={onResolveConflictLoadRemote}
                   onResolveConflictKeepLocal={onResolveConflictKeepLocal}
+                  backupFolderLinked={backupFolderLinked}
                   backupFolderReady={backupFolderReady}
                   backupFolderName={backupFolderName}
                   backupStatus={backupStatus}

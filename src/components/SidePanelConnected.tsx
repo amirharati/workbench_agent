@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
 import { addItemWithMerge, Collection, Item, Project, updateItem } from '../lib/db';
-import { preferTabSessionForDigest } from '../lib/enrichment/xFetchHeuristics';
 import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
 import { usePipelineProgress } from './dashboard/PipelineProgressProvider';
 import { SidePanelView } from './SidePanelView';
@@ -36,8 +35,6 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
 }) => {
   const pipeline = usePipelineProgress();
   const [status, setStatus] = useState('');
-  const [tabDigestItemId, setTabDigestItemId] = useState<string | null>(null);
-  const [tabDigestStatus, setTabDigestStatus] = useState('');
   const [externalLinks, setExternalLinks] = useState<SessionExternalLink[]>([]);
   const statusClearRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -47,81 +44,9 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
     statusClearRef.current = setTimeout(() => setStatus(''), holdMs);
   }, []);
 
-  const clearTabDigest = useCallback(() => {
-    setTabDigestItemId(null);
-    setTabDigestStatus('');
-  }, []);
-
   const clearExternalLinks = useCallback(() => {
     setExternalLinks([]);
   }, []);
-
-  const runTabDigest = useCallback(
-    async (
-      itemId: string,
-      opts?: { preferTabSession?: boolean; tabId?: number; statusPrefix?: string }
-    ) => {
-      const item = items.find((i) => i.id === itemId);
-      const itemLabel = item?.title?.trim() || item?.url || itemId;
-      setTabDigestItemId(itemId);
-      setTabDigestStatus('Starting digest…');
-      if (opts?.statusPrefix) {
-        showStatus(`${opts.statusPrefix} — digesting…`, 4000);
-      }
-      try {
-        const result = await pipeline.runSingle(itemId, {
-          title: 'Digesting bookmark',
-          preferTabSession: opts?.preferTabSession,
-          tabId: opts?.tabId,
-          itemLabel,
-          forceEnrich: true,
-        });
-        setTabDigestStatus(result.message);
-        return result;
-      } catch (error) {
-        const msg = toStatusMessage(error, 'Digest failed');
-        setTabDigestStatus(msg);
-        throw error;
-      }
-    },
-    [items, pipeline, showStatus]
-  );
-
-  const runExternalDigest = useCallback(
-    async (itemId: string, url: string, statusPrefix: string) => {
-      const item = items.find((i) => i.id === itemId);
-      const itemLabel = item?.title?.trim() || url;
-      setExternalLinks((prev) =>
-        prev.map((entry) =>
-          entry.itemId === itemId ? { ...entry, digestStatus: 'Starting digest…' } : entry
-        )
-      );
-      showStatus(`${statusPrefix} — digesting…`, 4000);
-      try {
-        const result = await pipeline.runSingle(itemId, {
-          title: 'Digesting external link',
-          preferTabSession: false,
-          itemLabel,
-          forceEnrich: true,
-        });
-        setExternalLinks((prev) =>
-          prev.map((entry) =>
-            entry.itemId === itemId ? { ...entry, digestStatus: result.message } : entry
-          )
-        );
-        return result;
-      } catch (error) {
-        const msg = toStatusMessage(error, 'Digest failed');
-        setExternalLinks((prev) =>
-          prev.map((entry) =>
-            entry.itemId === itemId ? { ...entry, digestStatus: msg } : entry
-          )
-        );
-        throw error;
-      }
-    },
-    [items, pipeline, showStatus]
-  );
 
   const handleSaveCurrentTab = useCallback(
     async (collectionId?: string) => {
@@ -146,12 +71,9 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           }
 
           await loadData();
-          const preferTab = preferTabSessionForDigest(ctx.url);
-          void runTabDigest(result.itemId, {
-            preferTabSession: preferTab,
-            tabId: preferTab ? ctx.tabId : undefined,
-            statusPrefix,
-          });
+          const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
+          flushDurableBackupSoon();
+          showStatus(statusPrefix);
         } catch (error) {
           showStatus(toStatusMessage(error, 'Could not save tab'));
         }
@@ -159,20 +81,18 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         showStatus('Cannot save this page');
       }
     },
-    [loadData, runTabDigest, showStatus]
+    [loadData, showStatus]
   );
 
   const handleCreateItem = useCallback(
     async (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => {
       try {
         const saveUrl = (data.url || '').trim();
-        let tabId: number | undefined;
         let source: Item['source'] = 'tab';
         let title = data.title;
 
         const ctx = await getActiveTabBookmarkContext();
         if (ctx) {
-          tabId = ctx.tabId;
           if (!title.trim() || title.trim() === saveUrl) {
             title = ctx.title || title;
           }
@@ -187,6 +107,8 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           ...(data.notes !== undefined ? { notes: data.notes } : {}),
         });
         await loadData();
+        const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
+        flushDurableBackupSoon();
 
         if (saveUrl && /^https?:\/\//i.test(saveUrl)) {
           let statusPrefix = 'Bookmark added';
@@ -197,12 +119,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           } else if (result.merged && result.addedToCollections.length > 0) {
             statusPrefix = 'Added to collection';
           }
-          const preferTab = preferTabSessionForDigest(saveUrl);
-          void runTabDigest(result.itemId, {
-            preferTabSession: preferTab,
-            tabId: preferTab ? tabId : undefined,
-            statusPrefix,
-          });
+          showStatus(statusPrefix);
         } else {
           showStatus('Note added');
         }
@@ -211,7 +128,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         throw error;
       }
     },
-    [loadData, runTabDigest, showStatus]
+    [loadData, showStatus]
   );
 
   const handleCreateExternalLink = useCallback(
@@ -236,17 +153,19 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
 
         setExternalLinks((prev) => [
           ...prev,
-          { itemId: result.itemId, url: saveUrl, digestStatus: 'Starting digest…' },
+          { itemId: result.itemId, url: saveUrl },
         ]);
 
-        void runExternalDigest(result.itemId, saveUrl, statusPrefix);
+        const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
+        flushDurableBackupSoon();
+        showStatus(statusPrefix);
         return result.itemId;
       } catch (error) {
         showStatus(toStatusMessage(error, 'Could not save external link'));
         throw error;
       }
     },
-    [loadData, runExternalDigest, showStatus]
+    [loadData, showStatus]
   );
 
   const handleUpdateItem = useCallback(
@@ -273,17 +192,12 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           : undefined
       );
       await loadData();
-      const url = (data.url || '').trim();
-      if (url && /^https?:\/\//i.test(url)) {
-        void runTabDigest(id, { statusPrefix: 'Bookmark updated' });
-      } else {
-        showStatus('Bookmark updated');
-      }
+      const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
+      flushDurableBackupSoon();
+      showStatus('Bookmark updated');
     },
-    [loadData, runTabDigest, showStatus]
+    [loadData, showStatus]
   );
-
-  const displayStatus = status || tabDigestStatus;
 
   return (
     <SidePanelView
@@ -299,12 +213,9 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       onCreateCollection={onCreateCollection}
       onOpenFullPage={onOpenFullPage}
       onSetAsBrowserHome={onSetAsBrowserHome}
-      status={displayStatus}
-      tabDigestItemId={tabDigestItemId}
-      tabDigestStatus={tabDigestStatus}
+      status={status}
       externalLinks={externalLinks}
       digestRunning={pipeline.isRunning}
-      onHostTabUrlChange={clearTabDigest}
       onHostTabNavigate={clearExternalLinks}
     />
   );

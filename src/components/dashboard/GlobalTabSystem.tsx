@@ -15,9 +15,9 @@ import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { EnrichmentContent, ItemPipelineBadge, ENRICHMENT_EMPTY_MESSAGE } from './PipelineDisplayBlocks';
 import { ItemContextMenu } from './ItemContextMenu';
-import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { TabPaneFrame, TabScrollShell } from './TabScrollShell';
 import { DeleteConfirmDialog, type DeleteConfirmResult } from '../DeleteConfirmDialog';
+import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 import {
   isScopeNarrowed,
   itemMatchesScope,
@@ -254,6 +254,12 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   const [editTitle, setEditTitle] = React.useState('');
   const [editUrl, setEditUrl] = React.useState('');
   const [editNotes, setEditNotes] = React.useState('');
+  const [editBaseline, setEditBaseline] = React.useState<{
+    title: string;
+    url: string;
+    notes: string;
+  } | null>(null);
+  const [editSavedFlash, setEditSavedFlash] = React.useState(false);
   
   const [isTabMenuOpen, setIsTabMenuOpen] = React.useState(false);
   const [maxVisibleTabs, setMaxVisibleTabs] = React.useState(5);
@@ -398,34 +404,86 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
 
   const startEditing = () => {
     if (!activeItemObj) return;
-    setEditTitle(activeItemObj.title || '');
-    setEditUrl(activeItemObj.url || '');
-    setEditNotes(activeItemObj.notes || '');
+    const baseline = {
+      title: activeItemObj.title || '',
+      url: activeItemObj.url || '',
+      notes: activeItemObj.notes || '',
+    };
+    setEditTitle(baseline.title);
+    setEditUrl(baseline.url);
+    setEditNotes(baseline.notes);
+    setEditBaseline(baseline);
+    setEditSavedFlash(false);
     setIsEditing(true);
   };
-  const cancelEditing = () => setIsEditing(false);
+  const finishEditing = () => {
+    setIsEditing(false);
+    setEditBaseline(null);
+    setEditSavedFlash(false);
+  };
+  const undoEditing = () => {
+    if (!editBaseline) return;
+    setEditTitle(editBaseline.title);
+    setEditUrl(editBaseline.url);
+    setEditNotes(editBaseline.notes);
+    setEditSavedFlash(false);
+  };
   const saveEditing = async () => {
-    if (!activeItemObj || !onUpdateItem) { setIsEditing(false); return; }
-    await onUpdateItem(activeItemObj.id, { title: editTitle, url: editUrl || undefined, notes: editNotes || undefined, updated_at: Date.now() });
-    // Keep note tabs in edit mode so the body stays a full editor after save.
-    if (activeItemObj.url) setIsEditing(false);
+    if (!activeItemObj || !onUpdateItem) {
+      finishEditing();
+      return;
+    }
+    const next = { title: editTitle, url: editUrl, notes: editNotes };
+    await onUpdateItem(activeItemObj.id, {
+      title: next.title,
+      url: next.url || undefined,
+      notes: next.notes || undefined,
+      updated_at: Date.now(),
+    });
+    // Stay in edit mode — user exits with Done. Baseline becomes last save for Undo.
+    setEditBaseline(next);
+    setEditSavedFlash(true);
+    window.setTimeout(() => setEditSavedFlash(false), 1800);
   };
 
-  // Notes open in edit mode so the body isn't a tiny read-only box.
+  const editDirty =
+    !!editBaseline &&
+    (editTitle !== editBaseline.title ||
+      editUrl !== editBaseline.url ||
+      editNotes !== editBaseline.notes);
+
+  // Enter edit for notes when switching items; bookmarks start in view.
+  // Depend only on item identity — not onUpdateItem (new fn each parent render used to kick out of edit).
+  const editingItemIdRef = useRef<string | null>(null);
   React.useEffect(() => {
+    const id = activeItemObj?.id ?? null;
+    if (id === editingItemIdRef.current) return;
+    editingItemIdRef.current = id;
+
     if (!activeItemObj) {
       setIsEditing(false);
+      setEditBaseline(null);
+      setEditSavedFlash(false);
       return;
     }
     if (!activeItemObj.url && onUpdateItem && !activeItemObj.deletedAt) {
-      setEditTitle(activeItemObj.title || '');
-      setEditUrl(activeItemObj.url || '');
-      setEditNotes(activeItemObj.notes || '');
+      const baseline = {
+        title: activeItemObj.title || '',
+        url: activeItemObj.url || '',
+        notes: activeItemObj.notes || '',
+      };
+      setEditTitle(baseline.title);
+      setEditUrl(baseline.url);
+      setEditNotes(baseline.notes);
+      setEditBaseline(baseline);
+      setEditSavedFlash(false);
       setIsEditing(true);
       return;
     }
     setIsEditing(false);
-  }, [activeItemObj?.id, activeItemObj?.url, activeItemObj?.deletedAt, onUpdateItem]);
+    setEditBaseline(null);
+    setEditSavedFlash(false);
+  }, [activeItemObj?.id, activeItemObj, onUpdateItem]);
   
   const requestMoveToTrash = () => {
     if (!activeItemObj || !onDeleteBookmark || activeItemObj.deletedAt) return;
@@ -752,12 +810,20 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                 onEditUrlChange={setEditUrl}
                 onEditNotesChange={setEditNotes}
                 onStartEdit={startEditing}
-                onCancelEdit={cancelEditing}
-                onSaveEdit={saveEditing}
+                onUndoEdit={undoEditing}
+                onDoneEdit={finishEditing}
+                onSaveEdit={() => void saveEditing()}
+                editDirty={editDirty}
+                editSavedFlash={editSavedFlash}
                 onDelete={requestMoveToTrash}
                 onTogglePin={togglePin}
                 onToggleFavorite={toggleFavorite}
                 canEdit={!!onUpdateItem}
+                onUpdateOrganization={
+                  onUpdateItem
+                    ? (updates) => onUpdateItem(activeItemObj.id, updates)
+                    : undefined
+                }
               />
             </div>
           ) : (
@@ -783,12 +849,20 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                 onEditUrlChange={setEditUrl}
                 onEditNotesChange={setEditNotes}
                 onStartEdit={startEditing}
-                onCancelEdit={cancelEditing}
-                onSaveEdit={saveEditing}
+                onUndoEdit={undoEditing}
+                onDoneEdit={finishEditing}
+                onSaveEdit={() => void saveEditing()}
+                editDirty={editDirty}
+                editSavedFlash={editSavedFlash}
                 onDelete={requestMoveToTrash}
                 onTogglePin={togglePin}
                 onToggleFavorite={toggleFavorite}
                 canEdit={!!onUpdateItem}
+                onUpdateOrganization={
+                  onUpdateItem
+                    ? (updates) => onUpdateItem(activeItemObj.id, updates)
+                    : undefined
+                }
               />
             </div>
           </TabScrollShell>
@@ -842,114 +916,262 @@ interface ItemDetailProps {
   item: Item; collections: Collection[]; projects: Project[];
   isEditing: boolean; editTitle: string; editUrl: string; editNotes: string;
   onEditTitleChange: (v: string) => void; onEditUrlChange: (v: string) => void; onEditNotesChange: (v: string) => void;
-  onStartEdit: () => void; onCancelEdit: () => void; onSaveEdit: () => void; onDelete: () => void;
+  onStartEdit: () => void;
+  onUndoEdit: () => void;
+  onDoneEdit: () => void;
+  onSaveEdit: () => void;
+  editDirty?: boolean;
+  editSavedFlash?: boolean;
+  onDelete: () => void;
   onTogglePin: () => void;
   onToggleFavorite: () => void;
   canEdit: boolean;
+  onUpdateOrganization?: (updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
 }
 
 const ItemDetail: React.FC<ItemDetailProps> = ({
   item, collections, projects, isEditing, editTitle, editUrl, editNotes,
   onEditTitleChange, onEditUrlChange, onEditNotesChange,
-  onStartEdit, onCancelEdit, onSaveEdit, onDelete, onTogglePin, onToggleFavorite, canEdit,
+  onStartEdit, onUndoEdit, onDoneEdit, onSaveEdit, editDirty = false, editSavedFlash = false,
+  onDelete, onTogglePin, onToggleFavorite, canEdit,
+  onUpdateOrganization,
 }) => {
   const isBookmark = !!item.url;
   const isNote = !isBookmark;
   const isTrashed = item.deletedAt != null;
-  const itemCollections = collections.filter(c => (item.collectionIds || []).includes(c.id));
+
+  // Same chrome in view + edit so switching modes doesn't reflow width/height.
+  const titleInputStyle: React.CSSProperties = {
+    width: '100%',
+    boxSizing: 'border-box',
+    fontSize: isNote ? '1.25rem' : 'var(--text-lg)',
+    fontWeight: 600,
+    padding: isNote ? '6px 0' : '6px 10px',
+    borderRadius: 'var(--radius-sm)',
+    border: isNote ? 'none' : '1px solid var(--border)',
+    background: isNote ? 'transparent' : 'var(--bg-input)',
+    color: 'var(--text)',
+    outline: 'none',
+    lineHeight: 1.3,
+  };
+  const urlInputStyle: React.CSSProperties = {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '6px 10px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border)',
+    background: 'var(--bg-input)',
+    color: isEditing ? 'var(--text)' : 'var(--accent)',
+    fontSize: 'var(--text-sm)',
+    outline: 'none',
+  };
+  const notesStyle: React.CSSProperties = {
+    flex: 1,
+    minHeight: isNote ? 0 : 180,
+    height: isNote ? '100%' : undefined,
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: isNote ? '8px 0' : '10px 12px',
+    borderRadius: 'var(--radius-sm)',
+    border: isNote ? 'none' : '1px solid var(--border)',
+    background: isNote ? 'transparent' : 'var(--bg-input)',
+    color: editNotes || isEditing ? 'var(--text)' : 'var(--text-faint)',
+    fontSize: isNote ? '0.95rem' : 'var(--text-sm)',
+    resize: isNote ? 'none' : 'vertical',
+    fontFamily: 'inherit',
+    lineHeight: 1.65,
+    outline: 'none',
+  };
+
   return (
-    <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: isNote ? 10 : 14 }}>
+    <div style={{ height: '100%', minHeight: 0, width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: isNote ? 10 : 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexShrink: 0 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          {isEditing
-            ? <input type="text" value={editTitle} onChange={e => onEditTitleChange(e.target.value)} placeholder={isNote ? 'Note title' : 'Title'} style={{ width: '100%', fontSize: isNote ? '1.25rem' : 'var(--text-lg)', fontWeight: 600, padding: isNote ? '6px 0' : '6px 10px', borderRadius: 'var(--radius-sm)', border: isNote ? 'none' : '1px solid var(--border)', background: isNote ? 'transparent' : 'var(--bg-input)', color: 'var(--text)', outline: isNote ? 'none' : undefined }} />
-            : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <h2 style={{ fontSize: isNote ? '1.25rem' : 'var(--text-lg)', fontWeight: 600, margin: 0, lineHeight: 1.3 }}>{item.title || (isNote ? 'Untitled note' : 'Untitled')}</h2>
-                <ItemQuickAccessMarkers item={item} size={14} hideWhenTrashed />
-                {isTrashed && (
-                  <span style={{ fontSize: 'var(--text-xs)', color: '#ef4444', fontWeight: 600 }}>In trash</span>
-                )}
-              </div>
-            )}
+          <input
+            type="text"
+            value={isEditing ? editTitle : (item.title || '')}
+            readOnly={!isEditing}
+            onChange={(e) => onEditTitleChange(e.target.value)}
+            placeholder={isNote ? 'Note title' : 'Title'}
+            style={{
+              ...titleInputStyle,
+              cursor: isEditing ? 'text' : 'default',
+            }}
+          />
+          {!isEditing && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+              <ItemQuickAccessMarkers item={item} size={14} hideWhenTrashed />
+              {isTrashed && (
+                <span style={{ fontSize: 'var(--text-xs)', color: '#ef4444', fontWeight: 600 }}>In trash</span>
+              )}
+            </div>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 6,
+            flexShrink: 0,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            justifyContent: 'flex-end',
+            // Stable toolbar footprint so Edit ↔ Save swap doesn't shove layout.
+            minWidth: isBookmark ? 220 : 160,
+          }}
+        >
+          {isBookmark && (
+            <button type="button" onClick={() => window.open(item.url, '_blank')} style={btnStyle('primary')}>
+              Open
+            </button>
+          )}
+          {!isTrashed && (
+            <button
+              type="button"
+              onClick={() => void onToggleFavorite()}
+              title={item.favoriteAt ? 'Remove from favorites' : 'Add to favorites'}
+              style={{
+                ...btnStyle('secondary'),
+                color: item.favoriteAt ? '#ef4444' : 'var(--text)',
+                background: item.favoriteAt ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+              }}
+            >
+              <Star size={14} fill={item.favoriteAt ? '#ef4444' : 'none'} />
+            </button>
+          )}
+          {!isTrashed && (
+            <button
+              type="button"
+              onClick={() => void onTogglePin()}
+              title={item.pinnedAt ? 'Unpin' : 'Pin'}
+              style={{
+                ...btnStyle('secondary'),
+                background: item.pinnedAt ? 'var(--accent-weak)' : 'transparent',
+              }}
+            >
+              <Pin size={14} style={{ opacity: item.pinnedAt ? 1 : 0.5 }} />
+            </button>
+          )}
           {!isEditing ? (
             <>
-              {isBookmark && <button onClick={() => window.open(item.url, '_blank')} style={btnStyle('primary')}>Open</button>}
-              {!isTrashed && (
-                <button
-                  onClick={() => void onToggleFavorite()}
-                  title={item.favoriteAt ? 'Remove from favorites' : 'Add to favorites'}
-                  style={{
-                    ...btnStyle('secondary'),
-                    color: item.favoriteAt ? '#ef4444' : 'var(--text)',
-                    background: item.favoriteAt ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
-                  }}
-                >
-                  <Star size={14} fill={item.favoriteAt ? '#ef4444' : 'none'} />
+              {canEdit && !isTrashed && (
+                <button type="button" onClick={onStartEdit} style={btnStyle('secondary')}>
+                  Edit
                 </button>
               )}
-              {!isTrashed && (
-                <button
-                  onClick={() => void onTogglePin()}
-                  title={item.pinnedAt ? 'Unpin' : 'Pin'}
-                  style={{
-                    ...btnStyle('secondary'),
-                    background: item.pinnedAt ? 'var(--accent-weak)' : 'transparent',
-                  }}
-                >
-                  <Pin size={14} style={{ opacity: item.pinnedAt ? 1 : 0.5 }} />
+              {canEdit && !isTrashed && (
+                <button type="button" onClick={onDelete} style={{ ...btnStyle('secondary'), color: '#ef4444' }}>
+                  Trash
                 </button>
               )}
-              {canEdit && !isTrashed && <button onClick={onStartEdit} style={btnStyle('secondary')}>Edit</button>}
-              {canEdit && !isTrashed && <button onClick={onDelete} style={{...btnStyle('secondary'), color: '#ef4444'}}>Trash</button>}
             </>
           ) : (
             <>
-              {!isNote && <button onClick={onCancelEdit} style={btnStyle('secondary')}>Cancel</button>}
-              <button onClick={onSaveEdit} style={btnStyle('primary')}>Save</button>
-              {isNote && canEdit && !isTrashed && <button onClick={onDelete} style={{...btnStyle('secondary'), color: '#ef4444'}}>Trash</button>}
+              {editSavedFlash && (
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--accent)', fontWeight: 600 }}>Saved</span>
+              )}
+              <button
+                type="button"
+                onClick={onUndoEdit}
+                disabled={!editDirty}
+                title="Restore last saved values"
+                style={{
+                  ...btnStyle('secondary'),
+                  opacity: editDirty ? 1 : 0.45,
+                  cursor: editDirty ? 'pointer' : 'default',
+                }}
+              >
+                Undo
+              </button>
+              {!isNote && (
+                <button type="button" onClick={onDoneEdit} style={btnStyle('secondary')}>
+                  Done
+                </button>
+              )}
+              <button type="button" onClick={onSaveEdit} style={btnStyle('primary')}>
+                {editDirty ? 'Save' : 'Saved'}
+              </button>
+              {canEdit && !isTrashed && (
+                <button type="button" onClick={onDelete} style={{ ...btnStyle('secondary'), color: '#ef4444' }}>
+                  Trash
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
-      {(isBookmark || (isEditing && !isNote)) && (
-        <div style={{ flexShrink: 0 }}><Label>URL</Label>
-          {isEditing
-            ? <input type="url" value={editUrl} onChange={e => onEditUrlChange(e.target.value)} placeholder="https://..." style={{ width: '100%', padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
-            : (
-                <ExtensionPageUrlLink
-                  url={item.url ?? ''}
-                  style={{ color: 'var(--accent)', fontSize: 'var(--text-sm)', wordBreak: 'break-all' }}
-                />
-              )}
+
+      {isBookmark && (
+        <div style={{ flexShrink: 0, width: '100%', minWidth: 0 }}>
+          <Label>URL</Label>
+          <input
+            type="url"
+            value={isEditing ? editUrl : (item.url || '')}
+            readOnly={!isEditing}
+            onChange={(e) => onEditUrlChange(e.target.value)}
+            placeholder="https://..."
+            style={{
+              ...urlInputStyle,
+              cursor: isEditing ? 'text' : 'pointer',
+            }}
+            onClick={() => {
+              if (isEditing) return;
+              const url = item.url;
+              if (url) window.open(url, '_blank');
+            }}
+          />
         </div>
       )}
-      {isBookmark && !isEditing && (
+
+      {isBookmark && (
         <ItemDetailEnrichment itemId={item.id} />
       )}
-      {itemCollections.length > 0 && (
-        <div style={{ flexShrink: 0 }}><Label>Saved in</Label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {itemCollections.map(c => {
-              const proj = projects.find(p => p.id === c.primaryProjectId);
-              return (
-                <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'var(--bg-glass)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 'var(--text-xs)' }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)', flexShrink: 0 }} />
-                  {proj?.name || 'Unassigned'} / {c.name}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {!isNote && <Label>Notes</Label>}
-        {isEditing
-          ? <textarea value={editNotes} onChange={e => onEditNotesChange(e.target.value)} placeholder={isNote ? 'Start writing…' : 'Add notes...'} style={{ flex: 1, minHeight: isNote ? 0 : 100, height: isNote ? '100%' : undefined, padding: isNote ? '8px 0' : '10px', borderRadius: 'var(--radius-sm)', border: isNote ? 'none' : '1px solid var(--border)', background: isNote ? 'transparent' : 'var(--bg-input)', color: 'var(--text)', fontSize: isNote ? '0.95rem' : 'var(--text-sm)', resize: isNote ? 'none' : 'vertical', fontFamily: 'inherit', lineHeight: 1.65, outline: isNote ? 'none' : undefined }} />
-          : <div style={{ flex: 1, padding: '10px 12px', background: 'var(--bg-panel)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)', whiteSpace: 'pre-wrap', overflowY: 'auto', color: item.notes ? 'var(--text)' : 'var(--text-faint)', minHeight: 60, lineHeight: 1.6 }}>{item.notes || (isNote ? 'Empty note.' : 'No notes yet.')}</div>}
+
+      <div style={{ flexShrink: 0, width: '100%', minWidth: 0, maxWidth: '100%' }}>
+        <ItemOrganizationEditor
+          item={
+            isEditing
+              ? {
+                  ...item,
+                  title: editTitle,
+                  url: editUrl || item.url,
+                  notes: editNotes,
+                }
+              : item
+          }
+          collections={collections}
+          projects={projects}
+          editable={canEdit && isEditing && !isTrashed && !!onUpdateOrganization}
+          compact
+          onUpdate={
+            onUpdateOrganization
+              ? async (patch) => {
+                  await onUpdateOrganization({
+                    ...(patch.collectionIds !== undefined
+                      ? { collectionIds: patch.collectionIds }
+                      : {}),
+                    ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
+                    updated_at: Date.now(),
+                  });
+                }
+              : undefined
+          }
+        />
       </div>
+
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', width: '100%' }}>
+        {!isNote && <Label>Notes</Label>}
+        <textarea
+          value={isEditing ? editNotes : (item.notes || '')}
+          readOnly={!isEditing}
+          onChange={(e) => onEditNotesChange(e.target.value)}
+          placeholder={isNote ? 'Start writing…' : 'Add notes...'}
+          style={{
+            ...notesStyle,
+            cursor: isEditing ? 'text' : 'default',
+          }}
+        />
+      </div>
+
       <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)', fontSize: 'var(--text-xs)', color: 'var(--text-faint)', display: 'flex', gap: 16, flexShrink: 0 }}>
         <span>Created: {new Date(item.created_at).toLocaleDateString()}</span>
         <span>Updated: {new Date(item.updated_at).toLocaleDateString()}</span>

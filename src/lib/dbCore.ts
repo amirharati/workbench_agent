@@ -265,8 +265,9 @@ async function ensureDefaultCollectionForProject(store: IdbCompatStore, projectI
 }
 
 export const getDB = async () => {
-  const { requireWritableBackupFolder } = await import('./backupFolder');
-  await requireWritableBackupFolder();
+  // Worker live DB is OPFS — folder write permission is only needed for mirror.
+  const { requireConfiguredBackupFolder } = await import('./backupFolder');
+  await requireConfiguredBackupFolder();
   if (!storePromise) {
     storePromise = (async () => {
       const store = await getIdbCompatStore();
@@ -277,19 +278,21 @@ export const getDB = async () => {
   return storePromise;
 };
 
-/** Re-read SQLite after another tab wrote to the backup folder. */
+/** Re-open / refresh the live store (OPFS in worker; folder only when writable). */
 export const reloadDB = async (): Promise<IdbCompatStore> => {
-  const { requireWritableBackupFolder } = await import('./backupFolder');
+  const { requireConfiguredBackupFolder, hasWritableBackupFolder } = await import('./backupFolder');
   const { resetStoreSingletons } = await import('./storage/sqlite/store');
   const { isDbWorkerProcess } = await import('./storage/dbWorker/env');
-  await requireWritableBackupFolder();
+  await requireConfiguredBackupFolder();
   storePromise = null;
   resetStoreSingletons();
   if (isDbWorkerProcess()) {
     return getDB();
   }
-  const { reloadConnectionFromFolderBytes } = await import('./storage/sqlite/connection');
-  await reloadConnectionFromFolderBytes();
+  if (await hasWritableBackupFolder()) {
+    const { reloadConnectionFromFolderBytes } = await import('./storage/sqlite/connection');
+    await reloadConnectionFromFolderBytes();
+  }
   return getDB();
 };
 

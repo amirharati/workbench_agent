@@ -110,7 +110,7 @@ export const BookmarkDetailPanel: React.FC<BookmarkDetailPanelProps> = ({
             placeholder="Add notes..."
             style={{
               width: '100%',
-              minHeight: '120px',
+              minHeight: '160px',
               padding: '0.5rem',
               border: '1px solid #d1d5db',
               borderRadius: '0.375rem',

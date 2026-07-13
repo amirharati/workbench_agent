@@ -5,6 +5,7 @@ import { formatDateTime } from '../../lib/utils';
 import { SearchBar } from './SearchBar';
 import { Resizer } from './Resizer';
 import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
+import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 
 const isNoteItem = (item: Item) => !item.url || item.url.trim().length === 0;
 
@@ -109,18 +110,6 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
     !!selected &&
     (editTitle.trim() !== (selected.title || '').trim() ||
       editBody !== (selected.notes || ''));
-
-  const placementLabel = useMemo(() => {
-    if (!selected) return null;
-    const cols = collections.filter((c) => (selected.collectionIds || []).includes(c.id));
-    if (cols.length === 0) return null;
-    return cols
-      .map((c) => {
-        const proj = projects.find((p) => p.id === c.primaryProjectId);
-        return proj ? `${proj.name} / ${c.name}` : c.name;
-      })
-      .join(' · ');
-  }, [selected, collections, projects]);
 
   const handleSave = useCallback(async () => {
     if (!selected || !onUpdateItem || !dirty || saving) return;
@@ -439,18 +428,41 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
                 </div>
               </div>
 
-              {(placementLabel || saveError) && (
+              {(saveError) && (
                 <div
                   style={{
                     padding: '6px 20px',
                     flexShrink: 0,
                     fontSize: 'var(--text-xs)',
-                    color: saveError ? '#ef4444' : 'var(--text-muted)',
+                    color: '#ef4444',
                   }}
                 >
-                  {saveError || placementLabel}
+                  {saveError}
                 </div>
               )}
+
+              <div style={{ padding: '8px 20px', flexShrink: 0, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+                <ItemOrganizationEditor
+                  item={selected}
+                  collections={collections}
+                  projects={projects}
+                  editable={!!onUpdateItem}
+                  compact
+                  onUpdate={
+                    onUpdateItem
+                      ? async (patch) => {
+                          await onUpdateItem(selected.id, {
+                            ...(patch.collectionIds !== undefined
+                              ? { collectionIds: patch.collectionIds }
+                              : {}),
+                            ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
+                            updated_at: Date.now(),
+                          });
+                        }
+                      : undefined
+                  }
+                />
+              </div>
 
               <div
                 style={{

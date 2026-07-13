@@ -34,7 +34,7 @@ import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { SidePanelConnected } from './components/SidePanelConnected';
 import { PipelineProgressProvider } from './components/dashboard/PipelineProgressProvider';
 import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from './lib/tabUrlCapture';
-import { isAnyDigestInFlight, runSingleLinkDigest } from './lib/pipeline/singleLinkDigest';
+import { isAnyDigestInFlight } from './lib/pipeline/singleLinkDigest';
 import { BackupOnboardingModal } from './components/BackupOnboardingModal';
 import {
   setBackupFolderOnboarding,
@@ -43,6 +43,8 @@ import {
 import {
   pickAndPersistBackupFolder,
   type PickBackupFolderResult,
+  wasBackupFolderLinked,
+  markBackupFolderLinkedFlag,
   hasWritableBackupFolder,
   hasConfiguredBackupFolder,
   getBackupFolderName,
@@ -82,17 +84,31 @@ function App() {
     useState<LibraryHydrateProgress | null>(null);
   const [isSidePanel, setIsSidePanel] = useState(false);
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
-  const [showBackupOnboarding, setShowBackupOnboarding] = useState(false);
   const [folderGateResolved, setFolderGateResolved] = useState(false);
+  /** Persisted handle exists — first-time pick is done (permission may still be revoked). */
+  const [folderConfigured, setFolderConfigured] = useState(false);
+  /** Sticky link flag / name / onboarding says we had a folder, but handle is missing. */
+  const [folderLinkLost, setFolderLinkLost] = useState(false);
+  /** Chrome currently grants read/write on the saved folder handle. */
   const [backupFolderReady, setBackupFolderReady] = useState(false);
-  /** Handle saved but Chrome wants permission again (not a first-time pick). */
-  const [folderReconnectNeeded, setFolderReconnectNeeded] = useState(false);
   const [backupFolderName, setBackupFolderName] = useState<string | null>(null);
   const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot>(() =>
     backupCoordinator.getStatus()
   );
   const [folderMirrorStatus, setFolderMirrorStatus] = useState<DbWorkerStatus | null>(null);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
+  const folderFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Durable backup is the folder — schedule one full sqlite flush (debounced). */
+  const scheduleFolderFlush = useCallback((delayMs = 800) => {
+    if (folderFlushTimerRef.current) clearTimeout(folderFlushTimerRef.current);
+    folderFlushTimerRef.current = setTimeout(() => {
+      folderFlushTimerRef.current = null;
+      void import('./lib/storage/flushDurableBackup').then(({ flushDurableBackup }) =>
+        flushDurableBackup()
+      );
+    }, delayMs);
+  }, []);
 
   const syncFileSystemSink = async () => {
     backupCoordinator.removeSink('file-system-sqlite');
@@ -125,19 +141,20 @@ function App() {
       }
       const name = await getBackupFolderName();
       const configured = await hasConfiguredBackupFolder();
+      setFolderConfigured(configured);
       setBackupFolderReady(ready);
       setBackupFolderName(name);
-      setFolderReconnectNeeded(!ready && configured);
-      setShowBackupOnboarding(!ready);
+      setFolderLinkLost(!configured && (await wasBackupFolderLinked()));
+      // Only force first-time pick UI when no folder was ever chosen.
       await syncFileSystemSink();
     } catch {
       // Keep reconnect mode if a folder was previously configured.
       const configured = await hasConfiguredBackupFolder().catch(() => false);
       const name = await getBackupFolderName().catch(() => null);
+      setFolderConfigured(configured);
       setBackupFolderReady(false);
       setBackupFolderName(name);
-      setFolderReconnectNeeded(configured);
-      setShowBackupOnboarding(true);
+      setFolderLinkLost(!configured && (await wasBackupFolderLinked().catch(() => false)));
       backupCoordinator.removeSink('file-system-manual');
       backupCoordinator.removeSink('file-system-sqlite');
       backupCoordinator.removeSink('file-system');
@@ -145,12 +162,16 @@ function App() {
     }
   };
 
-  /** Load library + taxonomy after folder access is confirmed. */
+  /**
+   * Load library from OPFS (and merge from folder when Chrome still grants access).
+   * After the folder is configured once, this must work even when permission is `prompt`.
+   */
   const bootstrapAfterFolderReady = async () => {
     const { purgeLegacyLocalDomainStorage } = await import('./lib/storage/legacyStorageCleanup');
     await purgeLegacyLocalDomainStorage();
     await ensureDbWorker();
-    if (await folderHasWorkbenchSqlite()) {
+    const folderWritable = await hasWritableBackupFolder();
+    if (folderWritable && (await folderHasWorkbenchSqlite())) {
       const loaded = await loadWorkbenchSqliteFromFolder();
       if (!loaded.ok) {
         notifyUser({
@@ -179,7 +200,9 @@ function App() {
         }
       }
     }
-    await runStartupConflictCheck();
+    if (folderWritable) {
+      await runStartupConflictCheck();
+    }
   };
 
   /**
@@ -270,6 +293,29 @@ function App() {
     };
   }, [backupFolderReady]);
 
+  /** Anything outside the backup folder can be lost — flush OPFS → folder on hide/exit. */
+  useEffect(() => {
+    if (!backupFolderReady) return;
+    const flush = () => {
+      if (folderFlushTimerRef.current) {
+        clearTimeout(folderFlushTimerRef.current);
+        folderFlushTimerRef.current = null;
+      }
+      void import('./lib/storage/flushDurableBackup').then(({ flushDurableBackup }) =>
+        flushDurableBackup()
+      );
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [backupFolderReady]);
+
   useEffect(() => {
     let cancelled = false;
     // Warm up the DB service worker immediately (Hub prewarm runs after loadData when library is ready).
@@ -279,11 +325,10 @@ function App() {
         // Reuse the saved folder ASAP — while a click that opened this page may
         // still count as user activation (avoids an extra "Continue" when possible).
         if (!cancelled && (await hasConfiguredBackupFolder())) {
+          setFolderConfigured(true);
           const early = await tryReuseConfiguredBackupFolder();
           if (early.ok && !cancelled) {
             setBackupFolderReady(true);
-            setFolderReconnectNeeded(false);
-            setShowBackupOnboarding(false);
             setBackupFolderName(await getBackupFolderName());
             await syncFileSystemSink();
           }
@@ -298,21 +343,32 @@ function App() {
         await refreshBackupFolderStatus();
         if (cancelled) return;
 
-        const ready = await hasWritableBackupFolder();
-        if (!ready) {
-          // Handle is saved but Chrome revoked access — reconnect, don't re-pick.
-          const configured = await hasConfiguredBackupFolder();
-          if (!cancelled) {
-            setFolderReconnectNeeded(configured);
-            setShowBackupOnboarding(true);
-            setFolderGateResolved(true);
-          }
+        const configured = await hasConfiguredBackupFolder();
+        if (!cancelled) {
+          setFolderConfigured(configured);
+          setFolderLinkLost(!configured && (await wasBackupFolderLinked()));
+          setFolderGateResolved(true);
+        }
+
+        if (!configured) {
+          // No handle — block until they pick (first-time or recover after lost handle).
           return;
         }
 
-        setShowBackupOnboarding(false);
-        setFolderReconnectNeeded(false);
-        if (!cancelled) setFolderGateResolved(true);
+        // Linked handle may exist while Chrome paused write access after reload.
+        // Do not open the library until the folder is writable again.
+        const writable = await hasWritableBackupFolder();
+        if (!cancelled) {
+          setBackupFolderReady(writable);
+          try {
+            await markBackupFolderLinkedFlag();
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!writable) {
+          return;
+        }
         await bootstrapAfterFolderReady();
         if (cancelled) return;
       } catch (e) {
@@ -323,9 +379,14 @@ function App() {
         });
         if (!cancelled) {
           const configured = await hasConfiguredBackupFolder().catch(() => false);
-          setFolderReconnectNeeded(configured);
+          const writable = configured
+            ? await hasWritableBackupFolder().catch(() => false)
+            : false;
+          setFolderConfigured(configured);
+          setBackupFolderReady(writable);
+          setFolderLinkLost(!configured && (await wasBackupFolderLinked().catch(() => false)));
           setFolderGateResolved(true);
-          setShowBackupOnboarding(true);
+          // Never open the library without a writable folder connection.
         }
       }
     })();
@@ -378,16 +439,19 @@ function App() {
   }, []);
 
   // Load data
-  const loadData = useCallback(async () => {
-    setLibraryLoading(true);
+  const loadData = useCallback(async (opts?: { quiet?: boolean }) => {
+    const quiet = opts?.quiet === true;
+    if (!quiet) {
+      setLibraryLoading(true);
+    }
     let lastError: unknown;
     try {
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          // Prefer folder-ready path, but never skip refresh when the DB cache is already live —
-          // otherwise trash/pin updates look like a no-op after permission flickers to "prompt".
-          const folderReady = await hasWritableBackupFolder();
-          if (!folderReady) {
+          // Live data is OPFS. Folder write permission may be `prompt` after reload —
+          // still load the library; mirror resumes after a quiet re-grant.
+          const configured = await hasConfiguredBackupFolder();
+          if (!configured) {
             try {
               const allItems = await getActiveItems();
               setItems(allItems.sort((a, b) => b.created_at - a.created_at));
@@ -429,8 +493,10 @@ function App() {
         });
       }
     } finally {
-      setLibraryLoading(false);
-      setLibraryHydrateProgress(null);
+      if (!quiet) {
+        setLibraryLoading(false);
+        setLibraryHydrateProgress(null);
+      }
     }
   }, []);
 
@@ -493,17 +559,36 @@ function App() {
     }
     let loadDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     const unsubDb = subscribeToDataChanges((event) => {
-      const delayMs =
-        event.reason === 'item.trash.bulk' ? 500 : event.reason === 'item.update' ? 200 : 0;
+      // Mid-digest enrichment/categorization writes must not reload the full library —
+      // that OOM-kills Chrome on large libraries. refreshAfterPipeline handles the end.
+      if (
+        isAnyDigestInFlight() &&
+        (event.reason === 'enrichment.update' ||
+          event.reason === 'categorization.update' ||
+          event.reason === 'categorization.review')
+      ) {
+        return;
+      }
+      // Keep the open editor stable: never flash libraryLoading on routine writes.
+      const quiet =
+        event.reason === 'item.update' ||
+        event.reason === 'item.add' ||
+        event.reason === 'enrichment.update' ||
+        event.reason === 'categorization.update' ||
+        event.reason === 'categorization.review';
+      // Same-tab item.update is already refreshed surgically by handleUpdateBookmark —
+      // skip the redundant full pull (still notify other documents via BroadcastChannel).
+      if (event.reason === 'item.update') return;
+      const delayMs = event.reason === 'item.trash.bulk' ? 500 : 0;
       if (delayMs > 0) {
         if (loadDebounceTimer) clearTimeout(loadDebounceTimer);
         loadDebounceTimer = setTimeout(() => {
           loadDebounceTimer = null;
-          void loadDataRef.current();
+          void loadDataRef.current({ quiet });
         }, delayMs);
         return;
       }
-      void loadDataRef.current();
+      void loadDataRef.current({ quiet });
     });
     return () => {
       if (loadDebounceTimer) clearTimeout(loadDebounceTimer);
@@ -531,29 +616,22 @@ function App() {
     /* Side panel status: SidePanelConnected. Dashboard: DashboardLayout toasts. */
   };
 
-  /** Dashboard-only silent digest (side panel uses PipelineProgressProvider modal). */
-  const startDashboardDigest = (
-    itemId: string,
-    opts?: { preferTabSession?: boolean; tabId?: number }
-  ) => {
-    void runSingleLinkDigest(itemId, {
-      preferTabSession: opts?.preferTabSession,
-      tabId: opts?.tabId,
-    })
-      .then(async () => {
-        await refreshLibraryRef.current({ itemIds: [itemId] });
-      })
-      .catch((error) => {
-        showStatus(toStatusMessage(error, 'Digest failed'), 5000);
-      });
-  };
-
   const toStatusMessage = (error: unknown, fallback: string) => {
-    if (error instanceof Error && error.message.trim()) return error.message;
+    if (error instanceof Error && error.message.trim()) {
+      // Never surface Chrome folder-permission pause as a user status error.
+      if (
+        /Reconnect your backup folder|paused folder access|folder sync paused|permission paused/i.test(
+          error.message
+        )
+      ) {
+        return fallback;
+      }
+      return error.message;
+    }
     return fallback;
   };
 
-  /** Full-app bookmark add (digest + toast run in DashboardLayout). Returns item id for http(s) saves. */
+  /** Full-app bookmark add (toasts run in DashboardLayout). Returns item id for http(s) saves. */
   const handleAddBookmark = async (
     url: string,
     title?: string,
@@ -573,28 +651,33 @@ function App() {
       collectionIds,
     });
     await loadData();
+    // Checkpoint: new link saved → folder.
+    scheduleFolderFlush(0);
     return result.itemId;
   };
 
-  const handleUpdateBookmark = async (
+  const handleUpdateBookmark = useCallback(async (
     id: string,
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
     options?: UpdateItemOptions
   ) => {
     try {
       await updateItem(id, updates, options);
-      await loadData();
-      const url = (updates.url ?? items.find((i) => i.id === id)?.url ?? '').trim();
-      if (url && /^https?:\/\//i.test(url)) {
-        showStatus('Bookmark updated — digesting…', 4000);
-        startDashboardDigest(id);
-      } else {
-        showStatus('Bookmark updated');
-      }
+      // Surgical UI refresh — never full libraryLoading flash while editing.
+      await refreshLibraryRef.current({ itemIds: [id] });
+      // Folder is durable truth — one debounced flush, not a dump per keystroke/chip.
+      scheduleFolderFlush();
     } catch (error) {
+      const { isBackupFolderPermissionPaused } = await import('./lib/backupFolder');
+      // Linked folder + Chrome permission pause must never look like a save failure.
+      if (isBackupFolderPermissionPaused(error)) {
+        await refreshLibraryRef.current({ itemIds: [id] });
+        return;
+      }
       showStatus(toStatusMessage(error, 'Could not update bookmark'));
+      throw error;
     }
-  };
+  }, [scheduleFolderFlush]);
 
   const handleDeleteBookmark = async (id: string, collectionId?: string) => {
     try {
@@ -707,13 +790,11 @@ function App() {
   }) => {
     try {
       let saveUrl = (data.url || '').trim();
-      let tabId: number | undefined;
       let source: Item['source'] = 'manual';
       let title = data.title;
 
       const ctx = await getActiveTabBookmarkContext();
       if (ctx && saveUrl) {
-        tabId = ctx.tabId;
         saveUrl = await resolveTabBookmarkUrl(ctx.tabId, saveUrl);
         if (!title.trim() || title.trim() === data.url?.trim()) {
           title = ctx.title || title;
@@ -732,18 +813,18 @@ function App() {
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
       });
       await loadData();
+      scheduleFolderFlush(0);
 
       if (saveUrl && /^https?:\/\//i.test(saveUrl)) {
         if (result.updatedPlacementNotes && result.addedToCollections.length === 0) {
-          showStatus('Notes saved — digesting…', 4000);
+          showStatus('Notes saved');
         } else if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
-          showStatus('Already saved in this collection — digesting…', 4000);
+          showStatus('Already saved in this collection');
         } else if (result.merged && result.addedToCollections.length > 0) {
-          showStatus('Added to collection — digesting…', 4000);
+          showStatus('Added to collection');
         } else {
-          showStatus('Bookmark added — digesting…', 4000);
+          showStatus('Bookmark added');
         }
-        startDashboardDigest(result.itemId, { preferTabSession: true, tabId });
       } else {
         showStatus('Note added');
       }
@@ -917,27 +998,33 @@ function App() {
       }
     }
     await setBackupFolderOnboarding('done');
-    setShowBackupOnboarding(false);
-    setFolderReconnectNeeded(false);
+    setFolderConfigured(true);
+    setFolderLinkLost(false);
+    await markBackupFolderLinkedFlag();
     await refreshBackupFolderStatus();
     await runStartupConflictCheck();
     return { ok: true };
   };
 
-  /** One-click continue when the folder handle is already saved. */
-  const handleReconnectBackupFolder = async (): Promise<PickBackupFolderResult> => {
+  /** Re-grant permission on the persisted handle (no directory picker). */
+  const handleReconnectBackupFolder = async (
+    opts?: { quiet?: boolean }
+  ): Promise<PickBackupFolderResult> => {
     const grant = await regrantBackupFolderPermission();
     if (!grant.ok) {
       return { ok: false, error: grant.error ?? 'Permission denied for backup folder' };
     }
     const name = await getBackupFolderName();
     await setBackupFolderOnboarding('done');
-    setFolderReconnectNeeded(false);
-    setShowBackupOnboarding(false);
+    setFolderConfigured(true);
+    setFolderLinkLost(false);
+    setBackupFolderReady(true);
     await refreshBackupFolderStatus();
     try {
       await bootstrapAfterFolderReady();
-      showStatus(name ? `Reconnected to folder “${name}”.` : 'Reconnected to your data folder.');
+      if (!opts?.quiet) {
+        showStatus(name ? `Reconnected to folder “${name}”.` : 'Reconnected to your data folder.');
+      }
       return { ok: true };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -1109,6 +1196,112 @@ function App() {
       );
     }
 
+    // No writable folder connection — never open the library.
+    if (!folderConfigured || !backupFolderReady) {
+      const needsReconnect = folderConfigured && !backupFolderReady;
+      return (
+        <div
+          style={{
+            fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+            minHeight: '100vh',
+            padding: '0.75rem',
+            background: 'Canvas',
+            color: 'CanvasText',
+          }}
+        >
+          <div
+            style={{
+              padding: '0.75rem',
+              background: 'ButtonFace',
+              border: '1px solid rgba(0,0,0,0.15)',
+              borderRadius: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+          >
+            <div style={{ fontSize: 'var(--text-sm)', lineHeight: 1.4 }}>
+              {needsReconnect
+                ? backupFolderName
+                  ? `Reconnect “${backupFolderName}” to open Homebase. Chrome paused folder access after reload.`
+                  : 'Reconnect your backup folder to open Homebase. Chrome paused folder access after reload.'
+                : folderLinkLost
+                  ? 'Your backup folder link was lost. Re-select the folder that contains '
+                  : 'Choose a data folder in full-page setup before using Homebase. Your live database is '}
+              {!needsReconnect ? (
+                <>
+                  <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code>
+                  {folderLinkLost ? '.' : ' in that folder.'}
+                </>
+              ) : null}
+            </div>
+            {needsReconnect ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleReconnectBackupFolder();
+                  }}
+                  style={{
+                    padding: '0.4rem 0.6rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: 'Highlight',
+                    color: 'HighlightText',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 600,
+                  }}
+                >
+                  {backupFolderName ? `Continue with “${backupFolderName}”` : 'Continue with saved folder'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleChooseBackupFolder().then((r) => {
+                      if (r.ok || r.error === 'cancelled') return;
+                      // Side panel picker is flaky in some Chrome builds.
+                      void handleOpenFullPageForBackupSetup();
+                    });
+                  }}
+                  style={{
+                    padding: '0.4rem 0.6rem',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(0,0,0,0.2)',
+                    background: 'transparent',
+                    color: 'CanvasText',
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 500,
+                  }}
+                >
+                  Choose a new folder
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpenFullPageForBackupSetup}
+                style={{
+                  padding: '0.4rem 0.6rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: 'Highlight',
+                  color: 'HighlightText',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: 600,
+                  alignSelf: 'flex-start',
+                }}
+              >
+                Open full page setup
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         style={{
@@ -1130,97 +1323,19 @@ function App() {
           ['--accent-weak' as string]: 'rgba(0, 120, 215, 0.15)',
         }}
       >
-        {showBackupOnboarding || !backupFolderReady ? (
-          <div
-            style={{
-              margin: '0.75rem',
-              padding: '0.75rem',
-              background: 'var(--bg-panel)',
-              border: '1px solid var(--border)',
-              borderRadius: '8px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.5rem',
-            }}
-          >
-            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', lineHeight: 1.4 }}>
-              {folderReconnectNeeded ? (
-                <>
-                  Reconnect to your saved data folder
-                  {backupFolderName ? (
-                    <>
-                      {' '}
-                      (<code style={{ fontSize: '0.9em' }}>{backupFolderName}</code>)
-                    </>
-                  ) : null}
-                  . Chrome clears access after reload — one click restores it (no re-select).
-                </>
-              ) : (
-                <>
-                  Choose a data folder in full-page setup before saving bookmarks. Your live database is{' '}
-                  <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code> in that folder.
-                </>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {folderReconnectNeeded ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleReconnectBackupFolder().then((r) => {
-                      if (!r.ok && r.error && r.error !== 'cancelled') {
-                        showStatus(r.error);
-                      }
-                    });
-                  }}
-                  style={{
-                    padding: '0.4rem 0.6rem',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: 'var(--accent)',
-                    color: 'var(--accent-text)',
-                    cursor: 'pointer',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 600,
-                  }}
-                >
-                  {backupFolderName ? `Continue with “${backupFolderName}”` : 'Continue with saved folder'}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={handleOpenFullPageForBackupSetup}
-                style={{
-                  padding: '0.4rem 0.6rem',
-                  borderRadius: '6px',
-                  border: folderReconnectNeeded ? '1px solid var(--border)' : 'none',
-                  background: folderReconnectNeeded ? 'transparent' : 'var(--accent)',
-                  color: folderReconnectNeeded ? 'var(--text)' : 'var(--accent-text)',
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 600,
-                }}
-              >
-                {folderReconnectNeeded ? 'Open full page' : 'Open full page setup'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-        {!showBackupOnboarding && backupFolderReady ? (
-          <PipelineProgressProvider onRefresh={refreshLibrary}>
-            <SidePanelConnected
-              projects={projects}
-              collections={collections}
-              items={items}
-              onDeleteItem={handleDeleteBookmark}
-              onCreateProject={handleCreateProject}
-              onCreateCollection={handleCreateCollection}
-              onOpenFullPage={handleOpenFullPage}
-              onSetAsBrowserHome={handleSetAsBrowserHome}
-              loadData={loadData}
-            />
-          </PipelineProgressProvider>
-        ) : null}
+        <PipelineProgressProvider onRefresh={refreshLibrary}>
+          <SidePanelConnected
+            projects={projects}
+            collections={collections}
+            items={items}
+            onDeleteItem={handleDeleteBookmark}
+            onCreateProject={handleCreateProject}
+            onCreateCollection={handleCreateCollection}
+            onOpenFullPage={handleOpenFullPage}
+            onSetAsBrowserHome={handleSetAsBrowserHome}
+            loadData={loadData}
+          />
+        </PipelineProgressProvider>
       </div>
     );
   }
@@ -1243,12 +1358,15 @@ function App() {
     );
   }
 
-  if (!backupFolderReady) {
+  // No writable folder connection — never open the library.
+  if (!folderConfigured || !backupFolderReady) {
     return (
       <BackupOnboardingModal
         open
         allowSkip={false}
-        mode={folderReconnectNeeded ? 'reconnect' : 'choose'}
+        mode={
+          !folderConfigured ? (folderLinkLost ? 'recover' : 'choose') : 'reconnect'
+        }
         folderName={backupFolderName}
         onChooseFolder={handleChooseBackupFolder}
         onReconnectFolder={handleReconnectBackupFolder}
@@ -1257,7 +1375,7 @@ function App() {
   }
 
   return (
-    <>
+    <div>
     <DashboardLayout
       windows={currentWindows}
       projects={projects}
@@ -1289,6 +1407,7 @@ function App() {
       folderMirrorStatus={folderMirrorStatus}
       onResolveConflictLoadRemote={handleResolveConflictLoadRemote}
       onResolveConflictKeepLocal={handleResolveConflictKeepLocal}
+      backupFolderLinked={folderConfigured}
       backupFolderReady={backupFolderReady}
       backupFolderName={backupFolderName}
       backupStatus={backupStatus}
@@ -1296,7 +1415,7 @@ function App() {
       onSaveAISettings={handleSaveAISettings}
       onTestAI={handleTestAI}
     />
-    </>
+    </div>
   );
 }
 

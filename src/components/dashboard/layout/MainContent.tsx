@@ -26,6 +26,7 @@ import { CollectionsView } from '../CollectionsView';
 import { sortItemsWithPinsFirst } from '../../../lib/itemQuickAccess';
 import { WorkspacesView } from '../WorkspacesView';
 import { NoteWorkspace } from '../NoteWorkspace';
+import { ItemOrganizationEditor } from '../ItemOrganizationEditor';
 import { SearchBar } from '../SearchBar';
 import { Resizer } from '../Resizer';
 import { Panel } from '../../../styles/primitives';
@@ -76,6 +77,7 @@ interface MainContentProps {
   onExportPipelineAnalysis?: () => Promise<void>;
   onResolveConflictLoadRemote?: () => Promise<void>;
   onResolveConflictKeepLocal?: () => Promise<void>;
+  backupFolderLinked?: boolean;
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
   backupStatus?: BackupStatusSnapshot;
@@ -147,6 +149,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   onExportPipelineAnalysis,
   onResolveConflictLoadRemote,
   onResolveConflictKeepLocal,
+  backupFolderLinked = false,
   backupFolderReady,
   backupFolderName,
   backupStatus,
@@ -200,7 +203,17 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editNotes, setEditNotes] = useState('');
-  const [editCollectionId, setEditCollectionId] = useState<string | undefined>(undefined);
+  const [editMembershipIds, setEditMembershipIds] = useState<string[]>([]);
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editNotesPlacementId, setEditNotesPlacementId] = useState<string | undefined>(undefined);
+  const [editBaseline, setEditBaseline] = useState<{
+    title: string;
+    notes: string;
+    membershipIds: string[];
+    tags: string[];
+    notesPlacementId?: string;
+  } | null>(null);
+  const [editSavedFlash, setEditSavedFlash] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedBookmarkProjectId, setSelectedBookmarkProjectId] = useState<string | 'all'>('all');
   const [bookmarkContextMenu, setBookmarkContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
@@ -344,7 +357,17 @@ export const MainContent: React.FC<MainContentProps> = ({
     if (!viewingItem) return;
     const stillVisible = filteredBookmarkItems.some((item) => item.id === viewingItem.id);
     if (!stillVisible) setViewingItem(null);
-  }, [activeView, filteredBookmarkItems, viewingItem]);
+  }, [activeView, filteredBookmarkItems, viewingItem?.id]);
+
+  // Refresh open detail after membership/tag updates (id + updated_at only — avoid object-dep loops).
+  useEffect(() => {
+    if (!viewingItem) return;
+    const fresh = items.find((i) => i.id === viewingItem.id);
+    if (!fresh) return;
+    if (fresh.updated_at !== viewingItem.updated_at) {
+      setViewingItem(fresh);
+    }
+  }, [items, viewingItem?.id, viewingItem?.updated_at]);
 
   // Reset placement selection when viewing item changes
   useEffect(() => {
@@ -415,42 +438,97 @@ export const MainContent: React.FC<MainContentProps> = ({
 
   const handleEditItem = (item: Item) => {
     setEditingItem(item);
-    setEditTitle(item.title || '');
+    const title = item.title || '';
+    const ids = item.collectionIds?.length ? [...item.collectionIds] : [];
+    const tags = item.tags ? [...item.tags] : [];
     const cid =
       item.id === viewingItem?.id
-        ? selectedPlacementId || item.collectionIds?.[0]
-        : item.collectionIds?.[0];
-    setEditCollectionId(cid);
+        ? selectedPlacementId || ids[0]
+        : ids[0];
     const placementNotes = cid ? item.placements?.[cid]?.notes : undefined;
-    setEditNotes(placementNotes ?? item.notes ?? '');
+    const notes = placementNotes ?? item.notes ?? '';
+    setEditTitle(title);
+    setEditMembershipIds(ids);
+    setEditTags(tags);
+    setEditNotesPlacementId(cid);
+    setEditNotes(notes);
+    setEditBaseline({
+      title,
+      notes,
+      membershipIds: ids,
+      tags,
+      notesPlacementId: cid,
+    });
+    setEditSavedFlash(false);
   };
 
   const closeEditModal = () => {
     setEditingItem(null);
     setEditTitle('');
     setEditNotes('');
-    setEditCollectionId(undefined);
+    setEditMembershipIds([]);
+    setEditTags([]);
+    setEditNotesPlacementId(undefined);
+    setEditBaseline(null);
+    setEditSavedFlash(false);
+  };
+
+  const undoEditModal = () => {
+    if (!editBaseline) return;
+    setEditTitle(editBaseline.title);
+    setEditNotes(editBaseline.notes);
+    setEditMembershipIds([...editBaseline.membershipIds]);
+    setEditTags([...editBaseline.tags]);
+    setEditNotesPlacementId(editBaseline.notesPlacementId);
+    setEditSavedFlash(false);
   };
 
   const handleSaveEdit = async () => {
     if (!editingItem || !onUpdateBookmark) return;
-    const ids =
-      editingItem.collectionIds && editingItem.collectionIds.length > 0
-        ? [...editingItem.collectionIds]
-        : editCollectionId
-          ? [editCollectionId]
-          : [];
+    const ids = editMembershipIds.length > 0 ? editMembershipIds : editingItem.collectionIds || [];
+    const next = {
+      title: editTitle || editingItem.title,
+      notes: editNotes,
+      membershipIds: ids,
+      tags: [...editTags],
+      notesPlacementId: editNotesPlacementId,
+    };
     await onUpdateBookmark(
       editingItem.id,
       {
-        title: editTitle || editingItem.title,
-        notes: editNotes,
-        collectionIds: ids,
+        title: next.title,
+        notes: next.notes,
+        collectionIds: next.membershipIds,
+        tags: next.tags,
       },
-      editCollectionId ? { notesPlacementCollectionId: editCollectionId } : undefined
+      next.notesPlacementId ? { notesPlacementCollectionId: next.notesPlacementId } : undefined
     );
-    closeEditModal();
+    setEditingItem({
+      ...editingItem,
+      title: next.title,
+      notes: next.notes,
+      collectionIds: next.membershipIds,
+      tags: next.tags,
+      updated_at: Date.now(),
+    });
+    setEditBaseline({
+      title: next.title,
+      notes: next.notes,
+      membershipIds: next.membershipIds,
+      tags: next.tags,
+      notesPlacementId: next.notesPlacementId,
+    });
+    setEditSavedFlash(true);
+    window.setTimeout(() => setEditSavedFlash(false), 1800);
   };
+
+  const editModalDirty =
+    !!editBaseline &&
+    (editTitle !== editBaseline.title ||
+      editNotes !== editBaseline.notes ||
+      (editNotesPlacementId || '') !== (editBaseline.notesPlacementId || '') ||
+      editTags.join('\0') !== editBaseline.tags.join('\0') ||
+      editMembershipIds.join('\0') !== editBaseline.membershipIds.join('\0'));
 
 
   // formatDate moved to utils - keeping for backward compatibility if needed
@@ -587,6 +665,7 @@ export const MainContent: React.FC<MainContentProps> = ({
       case 'settings':
         return (
           <SettingsView
+            backupFolderLinked={backupFolderLinked}
             backupFolderReady={backupFolderReady}
             backupFolderName={backupFolderName}
             onSetAsBrowserHome={onSetAsBrowserHome}
@@ -1583,10 +1662,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                           {onUpdateBookmark && (
                             <button
                               onClick={() => {
-                                setEditingItem(viewingItem);
-                                setEditTitle(viewingItem.title || '');
-                                setEditNotes(viewingItem.notes || '');
-                                setEditCollectionId(viewingItem.collectionIds?.[0]);
+                                handleEditItem(viewingItem);
                                 setViewingItem(null);
                               }}
                               style={{
@@ -1647,36 +1723,56 @@ export const MainContent: React.FC<MainContentProps> = ({
                         </ExtensionPageUrlLink>
                       )}
 
-                      {/* Saved In info */}
-                      {(() => {
-                        const itemCollections = collections.filter((c) => (viewingItem.collectionIds || []).includes(c.id));
-                        if (itemCollections.length === 0) return null;
-                        
-                        return (
-                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                            {itemCollections.map((c) => {
-                              const project = projects.find(p => p.id === c.primaryProjectId);
-                              return (
-                                <span
-                                  key={c.id}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 3,
-                                    padding: '2px 6px',
-                                    background: 'var(--bg-glass)',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: 3,
-                                  }}
-                                >
-                                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
-                                  {project?.name || '?'} / {c.name}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
+                      {/* Organization: collections + tags */}
+                      {onUpdateBookmark ? (
+                        <div style={{ marginBottom: 10, width: '100%', minWidth: 0, maxWidth: '100%' }}>
+                          <ItemOrganizationEditor
+                            item={viewingItem}
+                            collections={collections}
+                            projects={projects}
+                            editable
+                            compact
+                            onUpdate={async (patch) => {
+                              await onUpdateBookmark(viewingItem.id, {
+                                ...(patch.collectionIds !== undefined
+                                  ? { collectionIds: patch.collectionIds }
+                                  : {}),
+                                ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
+                                updated_at: Date.now(),
+                              });
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        (() => {
+                          const itemCollections = collections.filter((c) => (viewingItem.collectionIds || []).includes(c.id));
+                          if (itemCollections.length === 0) return null;
+                          return (
+                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {itemCollections.map((c) => {
+                                const project = projects.find(p => p.id === c.primaryProjectId);
+                                return (
+                                  <span
+                                    key={c.id}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 3,
+                                      padding: '2px 6px',
+                                      background: 'var(--bg-glass)',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: 3,
+                                    }}
+                                  >
+                                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
+                                    {project?.name || '?'} / {c.name}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()
+                      )}
                       
                       {/* Notes - with collection tabs */}
                       {(() => {
@@ -1730,13 +1826,15 @@ export const MainContent: React.FC<MainContentProps> = ({
                             {/* Notes panel */}
                             <div
                               style={{
-                                padding: '8px',
+                                padding: '10px 12px',
                                 background: 'var(--bg-glass)',
                                 borderRadius: hasMultipleCollections ? '0 0 4px 4px' : 4,
                                 fontSize: 'var(--text-sm)',
                                 lineHeight: 1.55,
                                 whiteSpace: 'pre-wrap',
-                                minHeight: 40,
+                                minHeight: 140,
+                                maxHeight: 280,
+                                overflowY: 'auto',
                                 color: displayNotes ? 'var(--text)' : 'var(--text-muted)',
                               }}
                             >
@@ -2439,43 +2537,62 @@ export const MainContent: React.FC<MainContentProps> = ({
               </div>
             )}
             
-            {/* Saved In - always show which collections */}
-            {(() => {
-              const itemCollections = collections.filter((c) => (viewingItem.collectionIds || []).includes(c.id));
-              if (itemCollections.length === 0) return null;
-              
-              return (
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Saved In
+            {/* Organization: collections + tags */}
+            {onUpdateBookmark ? (
+              <div style={{ marginBottom: '1rem', width: '100%', minWidth: 0, maxWidth: '100%' }}>
+                <ItemOrganizationEditor
+                  item={viewingItem}
+                  collections={collections}
+                  projects={projects}
+                  editable
+                  onUpdate={async (patch) => {
+                    await onUpdateBookmark(viewingItem.id, {
+                      ...(patch.collectionIds !== undefined
+                        ? { collectionIds: patch.collectionIds }
+                        : {}),
+                      ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
+                      updated_at: Date.now(),
+                    });
+                  }}
+                />
+              </div>
+            ) : (
+              (() => {
+                const itemCollections = collections.filter((c) => (viewingItem.collectionIds || []).includes(c.id));
+                if (itemCollections.length === 0) return null;
+                return (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Saved In
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      {itemCollections.map((c) => {
+                        const project = projects.find(p => p.id === c.primaryProjectId);
+                        return (
+                          <span
+                            key={c.id}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              padding: '0.25rem 0.5rem',
+                              background: 'var(--bg-glass)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 4,
+                              fontSize: 'var(--text-xs)',
+                              color: 'var(--text)',
+                            }}
+                          >
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
+                            {project?.name || 'Unassigned'} / {c.name}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    {itemCollections.map((c) => {
-                      const project = projects.find(p => p.id === c.primaryProjectId);
-                      return (
-                        <span
-                          key={c.id}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            padding: '0.25rem 0.5rem',
-                            background: 'var(--bg-glass)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 4,
-                            fontSize: 'var(--text-xs)',
-                            color: 'var(--text)',
-                          }}
-                        >
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
-                          {project?.name || 'Unassigned'} / {c.name}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
+                );
+              })()
+            )}
             
             {/* Notes - with collection tabs */}
             {(() => {
@@ -2536,7 +2653,9 @@ export const MainContent: React.FC<MainContentProps> = ({
                     padding: '0.75rem',
                     background: 'var(--bg-glass)',
                     borderRadius: hasMultipleCollections ? '0 0 0.5rem 0.5rem' : '0.5rem',
-                    minHeight: 60,
+                    minHeight: 140,
+                    maxHeight: 280,
+                    overflowY: 'auto',
                     fontSize: 'var(--text-sm)',
                     lineHeight: 1.6,
                     whiteSpace: 'pre-wrap',
@@ -2567,10 +2686,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               {onUpdateBookmark && (
                 <button
                   onClick={() => {
-                    setEditingItem(viewingItem);
-                    setEditTitle(viewingItem.title || '');
-                    setEditNotes(viewingItem.notes || '');
-                    setEditCollectionId(viewingItem.collectionIds?.[0]);
+                    handleEditItem(viewingItem);
                     setViewingItem(null);
                   }}
                   style={{ 
@@ -2603,18 +2719,28 @@ export const MainContent: React.FC<MainContentProps> = ({
           zIndex: 2000,
           padding: '1rem'
         }}>
-          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1rem', width: '440px', maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', border: '1px solid #e5e7eb' }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '0.75rem',
+            padding: '1rem',
+            width: 'min(36rem, 92vw)',
+            maxWidth: '100%',
+            minWidth: 0,
+            boxSizing: 'border-box',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+            border: '1px solid #e5e7eb',
+          }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
               <div style={{ fontWeight: 800, fontSize: '1rem', color: '#111827' }}>Edit bookmark</div>
               <button onClick={closeEditModal} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#6b7280', fontWeight: 700 }}>✕</button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', width: '100%', minWidth: 0 }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Title</label>
                 <input
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem' }}
                 />
               </div>
               <div>
@@ -2622,35 +2748,71 @@ export const MainContent: React.FC<MainContentProps> = ({
                 <textarea
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
-                  rows={4}
-                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem', resize: 'vertical' }}
+                  rows={6}
+                  style={{ width: '100%', boxSizing: 'border-box', minHeight: 140, padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem', resize: 'vertical', lineHeight: 1.5 }}
                 />
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Collection</label>
-                <select
-                  value={editCollectionId || ''}
-                  onChange={(e) => setEditCollectionId(e.target.value || undefined)}
-                  style={{ width: '100%', padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem', background: 'white' }}
+              {editingItem && (
+                <div style={{ width: '100%', minWidth: 0 }}>
+                  <ItemOrganizationEditor
+                    item={{ ...editingItem, collectionIds: editMembershipIds, tags: editTags }}
+                    collections={collections}
+                    projects={projects}
+                    editable
+                    collectionIds={editMembershipIds}
+                    tags={editTags}
+                    onLocalChange={({ collectionIds, tags }) => {
+                      setEditMembershipIds(collectionIds);
+                      setEditTags(tags);
+                      if (editNotesPlacementId && !collectionIds.includes(editNotesPlacementId)) {
+                        setEditNotesPlacementId(collectionIds[0]);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                {editSavedFlash && (
+                  <span style={{ fontSize: '0.8rem', color: '#2563eb', fontWeight: 600, marginRight: 'auto' }}>
+                    Saved
+                  </span>
+                )}
+                <button
+                  onClick={undoEditModal}
+                  disabled={!editModalDirty}
+                  title="Restore last saved values"
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #e5e7eb',
+                    background: 'white',
+                    cursor: editModalDirty ? 'pointer' : 'default',
+                    fontWeight: 700,
+                    opacity: editModalDirty ? 1 : 0.45,
+                  }}
                 >
-                  <option value="">Unsorted</option>
-                  {collections.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+                  Undo
+                </button>
                 <button
                   onClick={closeEditModal}
                   style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', fontWeight: 700 }}
                 >
-                  Cancel
+                  Done
                 </button>
                 <button
-                  onClick={handleSaveEdit}
-                  style={{ padding: '0.5rem 0.9rem', borderRadius: '0.5rem', border: '1px solid #111827', background: '#111827', color: 'white', cursor: 'pointer', fontWeight: 800 }}
+                  onClick={() => void handleSaveEdit()}
+                  disabled={!editModalDirty}
+                  style={{
+                    padding: '0.5rem 0.9rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #111827',
+                    background: editModalDirty ? '#111827' : '#9ca3af',
+                    color: 'white',
+                    cursor: editModalDirty ? 'pointer' : 'default',
+                    fontWeight: 800,
+                  }}
                 >
-                  Save changes
+                  {editModalDirty ? 'Save changes' : 'Saved'}
                 </button>
               </div>
             </div>

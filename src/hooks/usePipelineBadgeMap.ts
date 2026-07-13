@@ -35,9 +35,11 @@ export function usePipelineBadgeMap(itemIds: string[]) {
   useEffect(() => {
     if (!itemIds.length) return;
     return subscribeToDataChanges((event) => {
-      if (RELOAD_REASONS.has(event.reason)) {
+      if (!RELOAD_REASONS.has(event.reason)) return;
+      void import('../lib/pipeline/singleLinkDigest').then(({ isAnyDigestInFlight }) => {
+        if (isAnyDigestInFlight()) return;
         reload();
-      }
+      });
     });
   }, [itemIds.length, reload]);
 

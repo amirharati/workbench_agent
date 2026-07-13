@@ -16,6 +16,7 @@ import { Pencil, Trash2, ExternalLink, Calendar, FileText, Pin, Star } from 'luc
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { pinItem, unpinItem, favoriteItem, unfavoriteItem } from '../../lib/itemQuickAccess';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
+import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 
 interface TabContentProps {
   tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; workspaceId?: string; type?: 'item' | 'collection' | 'system' | 'workspace' }) | null;
@@ -35,7 +36,14 @@ interface TabContentProps {
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   onUpdateItem?: (
     id: string,
-    data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }
+    data: {
+      title: string;
+      url?: string;
+      notes?: string;
+      collectionIds: string[];
+      tags?: string[];
+      notesPlacementCollectionId?: string;
+    }
   ) => Promise<void>;
   onDeleteItem?: (item: Item, deleteCollectionContextId?: string) => void;
   /** When deleting, prefer "remove from this collection" context (e.g. collections browser or project scope). */
@@ -456,24 +464,8 @@ export const TabContent: React.FC<TabContentProps> = ({
       );
     }
 
-    // If in edit mode, show edit form
-    if (isEditingItem && onUpdateItem) {
-      return (
-        <EditItemTab
-          item={effectiveItem}
-          collections={collections}
-          projects={projects}
-          defaultProjectId={projectId && projectId !== '__all__' ? projectId : undefined}
-          onCreateProject={onCreateProject}
-          onCreateCollection={onCreateCollection}
-          onSave={async (id, data) => {
-            await onUpdateItem(id, data);
-            setIsEditingItem(false);
-          }}
-          onCancel={() => setIsEditingItem(false)}
-        />
-      );
-    }
+    // Stay on the same detail layout when editing — never swap to a different form page.
+    // (EditItemTab is only used for dedicated edit utility tabs.)
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -578,10 +570,10 @@ export const TabContent: React.FC<TabContentProps> = ({
           )}
           {onUpdateItem && (
             <button
-              onClick={() => setIsEditingItem(true)}
+              onClick={() => setIsEditingItem((v) => !v)}
               style={{
                 padding: '0.5rem',
-                background: 'transparent',
+                background: isEditingItem ? 'var(--accent-weak)' : 'transparent',
                 border: '1px solid var(--border)',
                 borderRadius: 8,
                 color: 'var(--text)',
@@ -590,18 +582,13 @@ export const TabContent: React.FC<TabContentProps> = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 transition: 'all 0.15s ease',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                minWidth: 36,
               }}
-              title="Edit item"
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--bg-glass)';
-                e.currentTarget.style.borderColor = 'var(--accent)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.borderColor = 'var(--border)';
-              }}
+              title={isEditingItem ? 'Done editing' : 'Edit item'}
             >
-              <Pencil size={16} />
+              {isEditingItem ? 'Done' : <Pencil size={16} />}
             </button>
           )}
           {onDeleteItem && !effectiveItem.deletedAt && (
@@ -635,41 +622,61 @@ export const TabContent: React.FC<TabContentProps> = ({
         </div>
       </div>
 
-      {/* Saved In - always show which collections this item belongs to */}
-      {(() => {
-        const itemCollections = collections.filter((c) => (effectiveItem.collectionIds || []).includes(c.id));
-        if (itemCollections.length === 0) return null;
-        
-        return (
-          <div style={{ marginTop: '1rem' }}>
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Saved In</h3>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              {itemCollections.map((c) => {
-                const project = projects.find(p => p.id === c.primaryProjectId);
-                return (
-                  <span
-                    key={c.id}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.25rem 0.5rem',
-                      background: 'var(--bg-glass)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 4,
-                      fontSize: '0.8rem',
-                      color: 'var(--text)',
-                    }}
-                  >
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
-                    {project?.name || 'Unassigned'} / {c.name}
-                  </span>
-                );
-              })}
+      {/* Organization: same chrome in view + edit (controls enable when editing). */}
+      {onUpdateItem ? (
+        <div style={{ marginTop: '1rem', width: '100%', minWidth: 0 }}>
+          <ItemOrganizationEditor
+            item={effectiveItem}
+            collections={collections}
+            projects={projects}
+            editable={isEditingItem && !effectiveItem.deletedAt}
+            compact
+            onUpdate={async (patch: { collectionIds?: string[]; tags?: string[] }) => {
+              await onUpdateItem(effectiveItem.id, {
+                title: effectiveItem.title,
+                url: effectiveItem.url || undefined,
+                notes: effectiveItem.notes,
+                collectionIds: patch.collectionIds ?? effectiveItem.collectionIds ?? [],
+                tags: patch.tags ?? effectiveItem.tags ?? [],
+              });
+            }}
+          />
+        </div>
+      ) : (
+        (() => {
+          const itemCollections = collections.filter((c) => (effectiveItem.collectionIds || []).includes(c.id));
+          if (itemCollections.length === 0) return null;
+          return (
+            <div style={{ marginTop: '1rem' }}>
+              <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Saved In</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {itemCollections.map((c) => {
+                  const project = projects.find(p => p.id === c.primaryProjectId);
+                  return (
+                    <span
+                      key={c.id}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        padding: '0.25rem 0.5rem',
+                        background: 'var(--bg-glass)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 4,
+                        fontSize: '0.8rem',
+                        color: 'var(--text)',
+                      }}
+                    >
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color || 'var(--accent)' }} />
+                      {project?.name || 'Unassigned'} / {c.name}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()
+      )}
       
       {/* Notes - with collection tabs for per-collection notes */}
       {(() => {
@@ -740,7 +747,9 @@ export const TabContent: React.FC<TabContentProps> = ({
               padding: '0.75rem',
               background: 'var(--bg-glass)',
               borderRadius: hasMultipleCollections ? '0 0 8px 8px' : 8,
-              minHeight: 60,
+              minHeight: 140,
+              maxHeight: 280,
+              overflowY: 'auto',
               lineHeight: 1.6,
               whiteSpace: 'pre-wrap',
               fontSize: '0.85rem',

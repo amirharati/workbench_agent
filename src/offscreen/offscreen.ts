@@ -8,6 +8,7 @@ import { normalizeBinaryPayload } from '../lib/binaryPayload';
 import {
   WORKBENCH_DB_FILE,
   WORKBENCH_META_FILE,
+  hasConfiguredBackupFolder,
   hasWritableBackupFolder,
   readBinaryFromBackupFolder,
   writeBinaryAtomicallyToBackupFolder,
@@ -39,7 +40,13 @@ async function writeMirrorToFolder(
   revision: number
 ): Promise<{ ok: boolean; error?: string }> {
   if (!(await hasWritableBackupFolder())) {
-    return { ok: false, error: 'No backup folder configured' };
+    const linked = await hasConfiguredBackupFolder();
+    return {
+      ok: false,
+      error: linked
+        ? 'Backup folder permission paused — click the page once to resume sync'
+        : 'No backup folder configured',
+    };
   }
   const payload = normalizeBinaryPayload(bytes);
   if (!payload || payload.byteLength < 16) {

@@ -31,12 +31,10 @@ const workerScope = self as unknown as {
 
 let mirrorConfigured = false;
 let pendingMirrorWrite: ((result: { ok: boolean; error?: string }) => void) | null = null;
-let pendingFolderBytes: ((bytes: Uint8Array | null) => void) | null = null;
 /** Serialize RPC handlers so import/mutate/hydrate cannot interleave. */
 let rpcChain: Promise<void> = Promise.resolve();
 
 const MIRROR_WRITE_TIMEOUT_MS = 120_000;
-const FOLDER_BYTES_TIMEOUT_MS = 60_000;
 
 const IMPORT_METHODS = new Set([
   'bootstrapFromFolderBytes',
@@ -92,14 +90,64 @@ const MUTATING_STORE_METHODS = new Set([
   'clearAllTables',
 ]);
 
+/**
+ * Pipeline satellite writes — update OPFS only. Folder flush happens once at
+ * pipeline end (mirrorNow), not on every enrichment/signal/link put (full dump).
+ */
+const SATELLITE_MIRROR_SKIP = new Set([
+  'putEnrichment',
+  'deleteEnrichment',
+  'putPipelineDebug',
+  'clearAllPipelineDebug',
+  'putCategory',
+  'deleteCategory',
+  'putLink',
+  'deleteLink',
+  'deleteLinksByItem',
+  'putSignal',
+  'deleteSignal',
+  'putTaxonomyState',
+]);
+
+const SATELLITE_STORE_NAMES = new Set([
+  'item_enrichment',
+  'pipeline_debug',
+  'ai_categories',
+  'ai_item_category_links',
+  'ai_item_signals',
+  'ai_taxonomy_state',
+]);
+
 function isMutatingStoreMethod(method: string): boolean {
   return MUTATING_STORE_METHODS.has(method);
+}
+
+function shouldScheduleFolderMirrorForMethod(method: string): boolean {
+  return isMutatingStoreMethod(method) && !SATELLITE_MIRROR_SKIP.has(method);
+}
+
+function shouldScheduleFolderMirrorForBatch(ops: DbMutation[]): boolean {
+  return ops.some((op) => {
+    if (op.kind === 'put' || op.kind === 'delete') {
+      return !SATELLITE_STORE_NAMES.has(op.storeName);
+    }
+    return true;
+  });
 }
 
 function ensureMirrorHooks(): void {
   if (mirrorConfigured) return;
   mirrorConfigured = true;
-  subscribeToDataChanges(() => {
+  // User-data mutations schedule mirrors in storeInvoke/batchMutate.
+  // Do not also mirror on every enrichment.notify from the tab — that full-dumps.
+  subscribeToDataChanges((event) => {
+    if (
+      event.reason === 'enrichment.update' ||
+      event.reason === 'categorization.update' ||
+      event.reason === 'categorization.review'
+    ) {
+      return;
+    }
     scheduleFolderMirror();
   });
 }
@@ -348,7 +396,9 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         }
       });
       invalidateHubScopeEntryCache();
-      scheduleFolderMirror();
+      if (shouldScheduleFolderMirrorForBatch(ops)) {
+        scheduleFolderMirror();
+      }
       return {
         applied: ops.length,
         revision: revisionTracker.recordSqliteMutation(),
@@ -365,7 +415,9 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const result = fn.apply(store, storeArgs);
       if (isMutatingStoreMethod(storeMethod)) {
         invalidateHubScopeEntryCache();
-        scheduleFolderMirror();
+        if (shouldScheduleFolderMirrorForMethod(storeMethod)) {
+          scheduleFolderMirror();
+        }
         revisionTracker.recordSqliteMutation();
       }
       return result;
@@ -385,7 +437,8 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       );
       invalidateHubScopeEntryCache();
       revisionTracker.recordSqliteMutation();
-      scheduleFolderMirror();
+      // Checkpoint: one forced folder flush after the whole import, not mid-batch dumps.
+      void mirrorNow(true);
       return bulk;
     }
     default: {
@@ -404,18 +457,6 @@ workerScope.onmessage = async (event: MessageEvent<RpcRequest | { type: string; 
     if (pendingMirrorWrite) {
       pendingMirrorWrite({ ok: Boolean(data.ok), error: data.error });
       pendingMirrorWrite = null;
-    }
-    return;
-  }
-  if (data && typeof data === 'object' && 'type' in data && data.type === 'folder-bytes') {
-    if (pendingFolderBytes) {
-      const raw = data.bytes;
-      let bytes: Uint8Array | null = null;
-      if (raw instanceof ArrayBuffer) bytes = new Uint8Array(raw);
-      else if (raw instanceof Uint8Array) bytes = raw;
-      else if (raw) bytes = decodeBinaryFromRpc(raw);
-      pendingFolderBytes(bytes && bytes.byteLength >= 16 ? bytes : null);
-      pendingFolderBytes = null;
     }
     return;
   }
@@ -458,21 +499,6 @@ configureFolderMirror({
       }, MIRROR_WRITE_TIMEOUT_MS);
     }),
   getRevision: () => revisionTracker.getLocalRevisionSync(),
-  fetchFolderBytes: () =>
-    new Promise((resolve) => {
-      if (pendingFolderBytes) {
-        resolve(null);
-        return;
-      }
-      pendingFolderBytes = resolve;
-      workerScope.postMessage({ type: 'request-folder-bytes' });
-      setTimeout(() => {
-        if (pendingFolderBytes === resolve) {
-          pendingFolderBytes = null;
-          resolve(null);
-        }
-      }, FOLDER_BYTES_TIMEOUT_MS);
-    }),
 });
 
 void revisionTracker.load();

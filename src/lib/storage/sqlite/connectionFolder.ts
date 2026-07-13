@@ -2,7 +2,12 @@
  * Folder-backed SQLite: deserialize workbench.sqlite from user backup folder.
  */
 
-import { BackupFolderRequiredError, hasWritableBackupFolder } from '../../backupFolder';
+import {
+  BackupFolderPermissionPausedError,
+  BackupFolderRequiredError,
+  getBackupDirectoryHandle,
+  hasWritableBackupFolder,
+} from '../../backupFolder';
 import {
   normalizeSqliteFileBytes,
   readLiveDatabaseBytes,
@@ -26,6 +31,9 @@ async function openFolderDatabase(config: SqliteConfig): Promise<Database> {
   const dbPath = `/${config.dbName}`;
 
   if (!(await hasWritableBackupFolder())) {
+    if (await getBackupDirectoryHandle()) {
+      throw new BackupFolderPermissionPausedError();
+    }
     throw new BackupFolderRequiredError();
   }
 
@@ -55,6 +63,9 @@ export async function openFolderConnection(
 
 export async function reloadFolderConnectionFromBytes(): Promise<SqliteConnection> {
   if (!(await hasWritableBackupFolder())) {
+    if (await getBackupDirectoryHandle()) {
+      throw new BackupFolderPermissionPausedError();
+    }
     throw new BackupFolderRequiredError();
   }
   const bytes = await readLiveDatabaseBytes();

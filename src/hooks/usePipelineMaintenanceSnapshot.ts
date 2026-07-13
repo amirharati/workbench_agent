@@ -53,10 +53,12 @@ export function usePipelineMaintenanceSnapshot(opts?: {
 
   useEffect(() => {
     return subscribeToDataChanges((event) => {
-      if (RELOAD_REASONS.has(event.reason)) {
-        if (opts?.pauseWhileRunning && opts.isRunning) return;
+      if (!RELOAD_REASONS.has(event.reason)) return;
+      if (opts?.pauseWhileRunning && opts.isRunning) return;
+      void import('../lib/pipeline/singleLinkDigest').then(({ isAnyDigestInFlight }) => {
+        if (isAnyDigestInFlight()) return;
         setRevision((r) => r + 1);
-      }
+      });
     });
   }, [opts?.isRunning, opts?.pauseWhileRunning]);
 

@@ -240,7 +240,16 @@ function normalizeJobForWrite(job: ImportPipelineJob): ImportPipelineJob {
 export async function writeScopedPipelineRunSummary(
   summary: ScopedPipelineRunSummary
 ): Promise<void> {
-  await requireWritableBackupFolder();
+  try {
+    await requireWritableBackupFolder();
+  } catch (e) {
+    const { isBackupFolderPermissionPaused } = await import('../backupFolder');
+    if (isBackupFolderPermissionPaused(e)) {
+      console.warn('[scoped-pipeline] folder sync paused — skipped run summary write');
+      return;
+    }
+    throw e;
+  }
   const json = JSON.stringify(summary, null, 2);
   const res = await writeJsonToBackupFolder(SCOPED_PIPELINE_RUN_LATEST, json);
   if (!res.ok) {
@@ -250,7 +259,15 @@ export async function writeScopedPipelineRunSummary(
 
 export async function writeImportPipelineJob(job: ImportPipelineJob): Promise<void> {
   const normalized = normalizeJobForWrite(job);
-  await requireWritableBackupFolder();
+  try {
+    await requireWritableBackupFolder();
+  } catch (e) {
+    const { isBackupFolderPermissionPaused } = await import('../backupFolder');
+    if (isBackupFolderPermissionPaused(e)) {
+      throw new Error('Folder sync paused — click the page once, then retry');
+    }
+    throw e;
+  }
   const json = JSON.stringify(normalized, null, 2);
   const res = await writeJsonToBackupFolder(IMPORT_PIPELINE_JOB_FILE, json);
   if (!res.ok) {

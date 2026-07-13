@@ -43,9 +43,11 @@ export function useItemPipelineContext(itemId: string | null | undefined) {
   useEffect(() => {
     if (!itemId) return;
     return subscribeToDataChanges((event) => {
-      if (PIPELINE_RELOAD_REASONS.has(event.reason)) {
+      if (!PIPELINE_RELOAD_REASONS.has(event.reason)) return;
+      void import('../lib/pipeline/singleLinkDigest').then(({ isAnyDigestInFlight }) => {
+        if (isAnyDigestInFlight()) return;
         setRevision((r) => r + 1);
-      }
+      });
     });
   }, [itemId]);
 

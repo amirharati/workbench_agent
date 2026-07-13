@@ -12,11 +12,17 @@ export async function getEnrichment(itemId: string): Promise<ItemEnrichment | un
 
 export async function putEnrichment(
   record: ItemEnrichment,
-  opts?: { deferPostProcess?: boolean }
+  opts?: { deferPostProcess?: boolean; silent?: boolean }
 ): Promise<void> {
   const db = await getDB();
   await db.put('item_enrichment', record);
-  notifyDataChanged('enrichment.update');
+  // Intermediate pending writes during digest — don't fan out UI full-library reloads.
+  const silent =
+    opts?.silent === true ||
+    (opts?.deferPostProcess === true && record.status === 'pending');
+  if (!silent) {
+    notifyDataChanged('enrichment.update');
+  }
   if (opts?.deferPostProcess) return;
   if (record.aiStatus === 'ok') {
     await ensureItemEmbedding(record.itemId, record);

@@ -207,6 +207,13 @@ async function refreshAfterPipeline(
   scope?: LibraryRefreshScope
 ): Promise<void> {
   await onRefresh?.(scope);
+  // Checkpoint: end of AI pipeline → durable folder flush.
+  try {
+    const { flushDurableBackup } = await import('../../lib/storage/flushDurableBackup');
+    await flushDurableBackup();
+  } catch (e) {
+    console.warn('[pipeline] folder flush after digest failed:', e);
+  }
 }
 
 function applyPipelineProgress(

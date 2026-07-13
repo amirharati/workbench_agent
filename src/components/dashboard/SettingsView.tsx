@@ -22,6 +22,9 @@ const FONT_SCALE_VALUES: Record<FontScalePreset, string> = {
 };
 
 interface SettingsViewProps {
+  /** Handle is persisted — folder was linked (permission may still be paused). */
+  backupFolderLinked?: boolean;
+  /** Chrome currently grants read/write on the linked folder. */
   backupFolderReady?: boolean;
   backupFolderName?: string | null;
   onSetAsBrowserHome?: () => Promise<void>;
@@ -71,6 +74,7 @@ const shortDevice = (id: string | null | undefined): string => {
 };
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
+  backupFolderLinked = false,
   backupFolderReady,
   backupFolderName,
   onSetAsBrowserHome,
@@ -701,9 +705,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <CategorizationSetupSection />
         <PipelineDebugSection />
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {!backupFolderReady && (
+          {!backupFolderLinked && (
             <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
-              Configure backup folder below for disk cache.
+              Choose a backup folder below for disk cache.
             </span>
           )}
         </div>
@@ -723,9 +727,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Backup Settings</div>
         <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>
           Status:{' '}
-          {backupFolderReady
-            ? `Configured${backupFolderName ? ` (${backupFolderName})` : ''}`
-            : 'Not configured'}
+          {!backupFolderLinked
+            ? 'Not linked'
+            : backupFolderReady
+              ? `Linked${backupFolderName ? ` (${backupFolderName})` : ''} — syncing`
+              : `Linked${backupFolderName ? ` (${backupFolderName})` : ''} — sync paused until you click the page once`}
         </div>
 
         {/* Conflict banner — shown when coordinator paused due to remote/different-device write */}
@@ -1084,7 +1090,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               fontWeight: 600,
             }}
           >
-            {backupFolderReady ? 'Change backup folder' : 'Choose backup folder'}
+            {backupFolderLinked ? 'Change backup folder' : 'Choose backup folder'}
           </button>
 
           <button
@@ -1092,8 +1098,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onClick={() => onManualBackup?.()}
             disabled={manualDisabled}
             title={
-              !backupFolderReady
-                ? 'Configure a backup folder first'
+              !backupFolderLinked
+                ? 'Link a backup folder first'
+                : !backupFolderReady
+                ? 'Click the page once to resume folder access, then try again'
                 : conflictBlocking
                 ? 'Resolve the sync conflict above first'
                 : inFlight
@@ -1120,8 +1128,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onClick={handleExportJson}
             disabled={jsonExportDisabled || !onExportJsonSnapshot}
             title={
-              !backupFolderReady
-                ? 'Configure a backup folder first'
+              !backupFolderLinked
+                ? 'Link a backup folder first'
+                : !backupFolderReady
+                ? 'Click the page once to resume folder access, then try again'
                 : conflictBlocking
                 ? 'Resolve the sync conflict above first'
                 : 'Write a portable manual-YYYY-MM-DD_HHMMSS.json snapshot'
@@ -1165,14 +1175,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               border: '1px solid #d1d5db',
               background: restoringBackup ? '#f3f4f6' : '#fff',
               color: restoringBackup ? '#9ca3af' : '#374151',
-              cursor: restoringBackup || !backupFolderReady ? 'not-allowed' : 'pointer',
+              cursor: restoringBackup || !backupFolderLinked || !backupFolderReady ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem',
               fontWeight: 500,
-              opacity: !backupFolderReady ? 0.7 : 1,
+              opacity: !backupFolderLinked || !backupFolderReady ? 0.7 : 1,
             }}
             title={
-              !backupFolderReady
-                ? 'Configure a backup folder first (needed for safety snapshot)'
+              !backupFolderLinked
+                ? 'Link a backup folder first (needed for safety snapshot)'
+                : !backupFolderReady
+                ? 'Click the page once to resume folder access, then try again'
                 : 'Pick a .sqlite/.json from disk (e.g. outside this folder). Folder copies are listed above.'
             }
           >
@@ -1182,7 +1194,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               accept=".sqlite,.json,application/json,application/x-sqlite3,application/vnd.sqlite3"
               style={{ display: 'none' }}
               onChange={handleRestoreInput}
-              disabled={restoringBackup || !backupFolderReady || !onRestoreBackupFile || restoreMode === 'merge'}
+              disabled={restoringBackup || !backupFolderLinked || !backupFolderReady || !onRestoreBackupFile || restoreMode === 'merge'}
             />
           </label>
         </div>
@@ -1289,11 +1301,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {clearingLibrary ? 'Clearing…' : 'Clear all library data'}
             </button>
           </div>
-          {!backupFolderReady && (
+          {!backupFolderLinked ? (
             <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
-              Choose a backup folder first so the empty database can be mirrored to disk.
+              Link a backup folder first so the empty database can be mirrored to disk.
             </span>
-          )}
+          ) : !backupFolderReady ? (
+            <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
+              Click the page once to resume folder access before clearing.
+            </span>
+          ) : null}
         </div>
       </div>
     </div>

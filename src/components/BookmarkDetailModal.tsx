@@ -117,7 +117,7 @@ export const BookmarkDetailModal: React.FC<BookmarkDetailModalProps> = ({
               placeholder="Add notes about this bookmark..."
               style={{
                 width: '100%',
-                minHeight: '100px',
+                minHeight: '160px',
                 padding: '0.625rem',
                 border: '1px solid #d1d5db',
                 borderRadius: '0.375rem',

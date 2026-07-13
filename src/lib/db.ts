@@ -16,6 +16,7 @@ import {
 } from './storage/dbClient';
 import { notifyDataChanged } from './dataChangeNotifier';
 import { countRestoreSummaryStats } from './itemQuickAccess';
+import { syncItemPlacementsWithCollectionIds } from './itemPlacements';
 import { normalizeBinaryPayload } from './binaryPayload';
 import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
 import { collectBackupVerifyWarnings } from './backupVerify';
@@ -301,8 +302,10 @@ export async function ensurePipelineHydrated(): Promise<void> {
 }
 
 export const getDB = async (): Promise<IdbCompatStore> => {
-  const { requireWritableBackupFolder } = await import('./backupFolder');
-  await requireWritableBackupFolder();
+  // OPFS is live truth — do not require folder *write* permission (Chrome often
+  // resets to `prompt` after reload). First-time pick is gated in App.
+  const { requireConfiguredBackupFolder } = await import('./backupFolder');
+  await requireConfiguredBackupFolder();
   if (isDbWorkerProcess()) {
     if (!storePromise) {
       storePromise = (async () => {
@@ -325,8 +328,8 @@ export const getDB = async (): Promise<IdbCompatStore> => {
 
 /** Refresh tab cache from the shared OPFS DB worker. */
 export const reloadDB = async (): Promise<IdbCompatStore> => {
-  const { requireWritableBackupFolder } = await import('./backupFolder');
-  await requireWritableBackupFolder();
+  const { requireConfiguredBackupFolder } = await import('./backupFolder');
+  await requireConfiguredBackupFolder();
   if (isDbWorkerProcess()) {
     const { resetStoreSingletons } = await import('./storage/sqlite/store');
     storePromise = null;
@@ -808,9 +811,16 @@ export const updateItemCollection = async (itemId: string, collectionId: string 
   const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(store);
   const item = store.getItem(itemId);
   if (item) {
-    const next = typeof collectionId === 'string' ? [collectionId] : [defaultUnsortedCollectionId];
-    assertNoBookmarkDuplicateInCollections(store, item.url || '', next, item.id);
-    store.putItem({ ...item, collectionIds: next, updated_at: nowTs() });
+    const nextIds = typeof collectionId === 'string' ? [collectionId] : [defaultUnsortedCollectionId];
+    assertNoBookmarkDuplicateInCollections(store, item.url || '', nextIds, item.id);
+    const now = nowTs();
+    const synced = syncItemPlacementsWithCollectionIds(item, nextIds, now);
+    store.putItem({
+      ...item,
+      collectionIds: synced.collectionIds,
+      placements: synced.placements,
+      updated_at: now,
+    });
     notifyDataChanged('item.update');
   }
 };
@@ -836,6 +846,7 @@ export const updateItem = async (
 
   const now = nowTs();
   const hasNotesUpdate = Object.prototype.hasOwnProperty.call(updates, 'notes');
+  const hasCollectionIdsUpdate = Object.prototype.hasOwnProperty.call(updates, 'collectionIds');
   const notesValue = hasNotesUpdate ? updates.notes : undefined;
   const restUpdates = { ...updates } as Partial<Item>;
   if (hasNotesUpdate) delete restUpdates.notes;
@@ -846,22 +857,30 @@ export const updateItem = async (
     next.collectionIds = [defaultUnsortedCollectionId];
   }
 
+  // When membership changes (or was empty), keep placements in lockstep with collectionIds.
+  if (hasCollectionIdsUpdate || !item.placements || Object.keys(item.placements).length === 0) {
+    const synced = syncItemPlacementsWithCollectionIds(
+      { ...item, ...next },
+      next.collectionIds,
+      now
+    );
+    next.collectionIds = synced.collectionIds;
+    next.placements = synced.placements;
+  }
+
   if (hasNotesUpdate) {
-    const multi = (item.collectionIds?.length ?? 0) > 1 || Object.keys(item.placements || {}).length > 1;
+    const multi = (next.collectionIds?.length ?? 0) > 1 || Object.keys(next.placements || {}).length > 1;
 
     let placementId = options?.notesPlacementCollectionId;
     if (!placementId && !multi) {
-      placementId = item.collectionIds?.[0] || Object.keys(item.placements || {})[0];
+      placementId = next.collectionIds?.[0] || Object.keys(next.placements || {})[0];
     }
     if (!placementId && multi && updates.collectionIds?.length === 1) {
       const only = updates.collectionIds[0];
-      if ((item.collectionIds || []).includes(only)) placementId = only;
+      if ((next.collectionIds || []).includes(only)) placementId = only;
     }
 
-    if (placementId && ((next.collectionIds || []).includes(placementId) || (item.collectionIds || []).includes(placementId))) {
-      if (!(next.collectionIds || []).includes(placementId)) {
-        next.collectionIds = [...new Set([...(next.collectionIds || []), placementId])];
-      }
+    if (placementId && (next.collectionIds || []).includes(placementId)) {
       const placements = { ...(next.placements || {}) };
       const prev = placements[placementId];
       placements[placementId] = {
@@ -1077,6 +1096,8 @@ export const bulkImportBookmarks = async (
     invalidateHubScopeCache();
     if (result.affectedItemIds.length > 0) {
       notifyDataChanged('import.bulk');
+      const { flushDurableBackup } = await import('./storage/flushDurableBackup');
+      await flushDurableBackup();
     }
     return result;
   }

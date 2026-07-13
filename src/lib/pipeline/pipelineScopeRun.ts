@@ -6,7 +6,6 @@ import type { BatchDigestResult } from './batchDigest';
 import type { ItemPipelineProgress } from './itemPipeline';
 import {
   createImportPipelineJob,
-  IMPORT_WAVE_PIPELINE_ENABLED,
   writeImportPipelineJob,
 } from './importPipelineJob';
 import {
@@ -27,18 +26,16 @@ export function isFullPipelineBatch(options?: {
   return options?.enrich !== false && options?.classify !== false;
 }
 
-/** Full single-link digest can use scoped wave unless tab-session fetch is required. */
-export function shouldUseScopedPipelineForSingle(options?: {
+/** Full single-link digest stays on the light runItemPipeline path (not the wave runner). */
+export function shouldUseScopedPipelineForSingle(_options?: {
   skipClassify?: boolean;
   skipAi?: boolean;
   preferTabSession?: boolean;
   tabId?: number;
   tabSessionOnly?: boolean;
 }): boolean {
-  if (!IMPORT_WAVE_PIPELINE_ENABLED) return false;
-  if (options?.skipClassify === true || options?.skipAi === true) return false;
-  if (options?.preferTabSession || options?.tabSessionOnly || options?.tabId != null) return false;
-  return true;
+  // Wave runner + pollEnrichReady(getAll) OOMs Chrome on large libraries for 1-item digests.
+  return false;
 }
 
 export function scopedProgressToItemProgress(

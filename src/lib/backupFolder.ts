@@ -19,6 +19,12 @@ import { getMetaDB } from './metaDb';
 const HANDLE_KEY = 'backup-directory';
 /** Display name mirror in chrome.storage (handle.name can be awkward to read after reload). */
 const FOLDER_NAME_KEY = 'backupFolderDisplayName';
+/**
+ * Sticky “user linked a folder” flag in chrome.storage.
+ * Survives even if the IndexedDB handle entry is temporarily unreadable — used to
+ * force a re-pick UI instead of silently running without a folder.
+ */
+const LINKED_FLAG_KEY = 'backupFolderLinked';
 /** Stable id so Chrome remembers the last picked directory in the picker UI. */
 const DIRECTORY_PICKER_ID = 'homebase-backup-folder';
 
@@ -39,7 +45,7 @@ export const WORKBENCH_META_FILE = 'workbench.meta.json';
 export const LEGACY_LATEST_JSON = 'latest.json';
 export const LEGACY_LATEST_SQLITE = 'latest.sqlite';
 
-/** Thrown when the app is used without a configured, writable backup folder. */
+/** Thrown when the user has never picked a backup folder. */
 export class BackupFolderRequiredError extends Error {
   constructor(
     message = 'Choose a backup folder before using Homebase. Your data lives in workbench.sqlite in that folder.'
@@ -49,13 +55,62 @@ export class BackupFolderRequiredError extends Error {
   }
 }
 
-/** Fail fast if no backup folder is configured (required for all domain data). */
-export async function requireWritableBackupFolder(): Promise<FileSystemDirectoryHandle> {
+/**
+ * Linked folder exists but Chrome has paused read/write (typical after reload).
+ * Not a “pick folder again” problem — quiet re-grant on user gesture resumes sync.
+ * Callers must soft-fail (no user-facing reconnect toasts).
+ */
+export class BackupFolderPermissionPausedError extends Error {
+  constructor(message = 'Backup folder sync paused until the next click') {
+    super(message);
+    this.name = 'BackupFolderPermissionPausedError';
+  }
+}
+
+export function isBackupFolderPermissionPaused(error: unknown): boolean {
+  if (
+    error instanceof BackupFolderPermissionPausedError ||
+    (error instanceof Error && error.name === 'BackupFolderPermissionPausedError')
+  ) {
+    return true;
+  }
+  // Legacy throw from older builds / callers that reused BackupFolderRequiredError.
+  if (error instanceof Error) {
+    return /Reconnect your backup folder|paused folder access|folder sync paused|permission paused/i.test(
+      error.message
+    );
+  }
+  return false;
+}
+
+/**
+ * Fail fast only when the user has never picked a backup folder.
+ * Live reads/writes use OPFS; folder write permission may be `prompt` after reload.
+ */
+export async function requireConfiguredBackupFolder(): Promise<FileSystemDirectoryHandle> {
   const handle = await getBackupDirectoryHandle();
-  if (!handle || !(await hasWritableBackupFolder())) {
+  if (!handle) {
     throw new BackupFolderRequiredError();
   }
   return handle;
+}
+
+/**
+ * For ops that must write the folder (mirror, restore, pipeline artifacts).
+ * Tries a silent re-grant first. If still paused, throws PermissionPausedError
+ * (soft — do not toast as “reconnect / choose folder”).
+ */
+export async function requireWritableBackupFolder(): Promise<FileSystemDirectoryHandle> {
+  const handle = await getBackupDirectoryHandle();
+  if (!handle) {
+    throw new BackupFolderRequiredError();
+  }
+  if (await hasWritableBackupFolder()) {
+    return handle;
+  }
+  const grant = await ensureReadWritePermission(handle);
+  if (grant.ok) return handle;
+  throw new BackupFolderPermissionPausedError();
 }
 
 // --- handle persistence -----------------------------------------------------
@@ -74,7 +129,9 @@ export async function setBackupDirectoryHandle(handle: FileSystemDirectoryHandle
   await db.put('handles', handle, HANDLE_KEY);
   try {
     const name = handle.name || null;
-    if (name) await chrome.storage.local.set({ [FOLDER_NAME_KEY]: name });
+    const payload: Record<string, unknown> = { [LINKED_FLAG_KEY]: true };
+    if (name) payload[FOLDER_NAME_KEY] = name;
+    await chrome.storage.local.set(payload);
   } catch {
     /* ignore */
   }
@@ -88,7 +145,7 @@ export async function clearBackupDirectoryHandle(): Promise<void> {
     /* ignore */
   }
   try {
-    await chrome.storage.local.remove(FOLDER_NAME_KEY);
+    await chrome.storage.local.remove([FOLDER_NAME_KEY, LINKED_FLAG_KEY]);
   } catch {
     /* ignore */
   }
@@ -97,6 +154,36 @@ export async function clearBackupDirectoryHandle(): Promise<void> {
 /** True if a directory handle was previously persisted (permission may still be prompt). */
 export async function hasConfiguredBackupFolder(): Promise<boolean> {
   return !!(await getBackupDirectoryHandle());
+}
+
+/**
+ * True if the user has linked a folder before (handle and/or sticky chrome.storage flag).
+ * If the handle is missing but this is true, the app must block and ask them to pick again.
+ */
+export async function wasBackupFolderLinked(): Promise<boolean> {
+  if (await hasConfiguredBackupFolder()) return true;
+  try {
+    const r = await chrome.storage.local.get([LINKED_FLAG_KEY, FOLDER_NAME_KEY]);
+    if (r[LINKED_FLAG_KEY] === true) return true;
+    if (typeof r[FOLDER_NAME_KEY] === 'string' && r[FOLDER_NAME_KEY].length > 0) return true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const { getBackupFolderOnboarding } = await import('./backupOnboarding');
+    return (await getBackupFolderOnboarding()) === 'done';
+  } catch {
+    return false;
+  }
+}
+
+/** Persist sticky “folder was linked” evidence (safe to call whenever handle is present). */
+export async function markBackupFolderLinkedFlag(): Promise<void> {
+  try {
+    await chrome.storage.local.set({ [LINKED_FLAG_KEY]: true });
+  } catch {
+    /* ignore */
+  }
 }
 
 /**

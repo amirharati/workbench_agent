@@ -1,7 +1,7 @@
 import type { TopicClassifySummary, AiItemCategoryLink, AiItemSignal, ClassifyState } from '../categorization/types';
 import { getDB } from '../db';
 import type { EnrichmentResult } from '../enrichment';
-import { getAllEnrichments } from '../enrichment/storage';
+import { getEnrichment } from '../enrichment/storage';
 import {
   FAILURE_CATEGORY_LABELS,
   isEnrichmentFailure,
@@ -311,19 +311,29 @@ async function loadReportHubStageInputs(
   if (!itemIds.length) return map;
 
   const db = await getDB();
-  const signals: AiItemSignal[] = db.objectStoreNames.contains('ai_item_signals')
-    ? (await db.getAll('ai_item_signals')).filter((s) => itemIds.includes(s.itemId))
-    : [];
-  const links: AiItemCategoryLink[] = db.objectStoreNames.contains('ai_item_category_links')
-    ? (await db.getAll('ai_item_category_links')).filter((l) => itemIds.includes(l.itemId))
-    : [];
-
-  const signalByItem = new Map(signals.map((s) => [s.itemId, s]));
+  const signalByItem = new Map<string, AiItemSignal>();
   const linksByItem = new Map<string, AiItemCategoryLink[]>();
-  for (const link of links) {
-    const list = linksByItem.get(link.itemId) ?? [];
-    list.push(link);
-    linksByItem.set(link.itemId, list);
+
+  if (db.objectStoreNames.contains('ai_item_signals')) {
+    await Promise.all(
+      itemIds.map(async (id) => {
+        const signal = await db.get('ai_item_signals', id);
+        if (signal) signalByItem.set(id, signal);
+      })
+    );
+  }
+
+  if (db.objectStoreNames.contains('ai_item_category_links')) {
+    await Promise.all(
+      itemIds.map(async (id) => {
+        try {
+          const itemLinks = await db.getAllFromIndex('ai_item_category_links', 'by-item', id);
+          if (itemLinks.length) linksByItem.set(id, itemLinks);
+        } catch {
+          /* index may be missing in older stores */
+        }
+      })
+    );
   }
 
   for (const itemId of itemIds) {
@@ -351,20 +361,22 @@ export async function buildEnrichOutcomeReportRows(
   const byResult = new Map((options?.enrichResults ?? []).map((r) => [r.itemId, r]));
   const { labels, urls } = await hydrateItemMeta(itemIds, itemLabels);
 
-  const enrichments = await getAllEnrichments();
-  const enrichById = new Map(
-    enrichments.filter((e) => itemIds.includes(e.itemId)).map((e) => [e.itemId, e])
-  );
+  const enrichRows = await Promise.all(itemIds.map((id) => getEnrichment(id)));
+  const enrichById = new Map<string, ItemEnrichment>();
+  for (let i = 0; i < itemIds.length; i++) {
+    const row = enrichRows[i];
+    if (row) enrichById.set(itemIds[i]!, row);
+  }
 
   const db = await getDB();
   const embedFailedIds = new Set<string>();
   if (db.objectStoreNames.contains('ai_item_signals')) {
-    const signals = await db.getAll('ai_item_signals');
-    for (const s of signals) {
-      if (itemIds.includes(s.itemId) && s.signalStatus === 'embed_failed') {
-        embedFailedIds.add(s.itemId);
-      }
-    }
+    await Promise.all(
+      itemIds.map(async (id) => {
+        const s = await db.get('ai_item_signals', id);
+        if (s?.signalStatus === 'embed_failed') embedFailedIds.add(id);
+      })
+    );
   }
 
   const stageByItem = await loadReportHubStageInputs(itemIds);
@@ -546,10 +558,12 @@ export async function buildClassifyOutcomeReportRows(
 
   const db = await getDB();
   const { labels, urls } = await hydrateItemMeta(itemIds, itemLabels);
-  const enrichments = await getAllEnrichments();
-  const enrichById = new Map(
-    enrichments.filter((e) => itemIds.includes(e.itemId)).map((e) => [e.itemId, e])
-  );
+  const enrichRows = await Promise.all(itemIds.map((id) => getEnrichment(id)));
+  const enrichById = new Map<string, ItemEnrichment>();
+  for (let i = 0; i < itemIds.length; i++) {
+    const row = enrichRows[i];
+    if (row) enrichById.set(itemIds[i]!, row);
+  }
   const categories = db.objectStoreNames.contains('ai_categories')
     ? await db.getAll('ai_categories')
     : [];

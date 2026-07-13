@@ -58,9 +58,12 @@ export function useHomePipelineStats() {
 
   useEffect(() => {
     return subscribeToDataChanges((event) => {
-      if (RELOAD_REASONS.has(event.reason)) {
+      if (!RELOAD_REASONS.has(event.reason)) return;
+      // Avoid full-library digest/stats scans during an in-flight digest.
+      void import('../lib/pipeline/singleLinkDigest').then(({ isAnyDigestInFlight }) => {
+        if (isAnyDigestInFlight()) return;
         setRevision((r) => r + 1);
-      }
+      });
     });
   }, []);
 

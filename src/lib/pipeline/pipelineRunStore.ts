@@ -1,4 +1,9 @@
-import { requireWritableBackupFolder, writeJsonToBackupFolder } from '../backupFolder';
+import {
+  BackupFolderRequiredError,
+  isBackupFolderPermissionPaused,
+  requireWritableBackupFolder,
+  writeJsonToBackupFolder,
+} from '../backupFolder';
 import { isPipelineDebugEnabled } from '../enrichment/pipelineDebug';
 import {
   formatPipelineRunAnalysisMarkdown,
@@ -47,7 +52,14 @@ async function writeJsonBesideSqlite(
   filename: string,
   json: string
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireWritableBackupFolder();
+  try {
+    await requireWritableBackupFolder();
+  } catch (e) {
+    if (isBackupFolderPermissionPaused(e) || e instanceof BackupFolderRequiredError) {
+      return { ok: false, error: e instanceof Error ? e.message : 'Backup folder not writable' };
+    }
+    throw e;
+  }
   return writeJsonToBackupFolder(filename, json);
 }
 

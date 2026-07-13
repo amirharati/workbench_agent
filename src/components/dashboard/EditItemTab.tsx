@@ -3,6 +3,7 @@ import type { Collection, Item, Project } from '../../lib/db';
 import { isValidBookmarkUrl } from '../../lib/utils';
 import { Input, ButtonGhost } from '../../styles/primitives';
 import { X } from 'lucide-react';
+import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 
 interface EditItemTabProps {
   item: Item;
@@ -18,13 +19,12 @@ interface EditItemTabProps {
       url?: string;
       notes?: string;
       collectionIds: string[];
+      tags?: string[];
       notesPlacementCollectionId?: string;
     }
   ) => Promise<void>;
   onCancel?: () => void;
 }
-
-const isUnsorted = (c: Collection) => c.isDefault || /^unsorted$/i.test(c.name);
 
 export const EditItemTab: React.FC<EditItemTabProps> = ({
   item,
@@ -36,16 +36,6 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
   onSave,
   onCancel,
 }) => {
-  const initialProjectId = useMemo(() => {
-    if (defaultProjectId && projects.some((p) => p.id === defaultProjectId)) return defaultProjectId;
-    const firstCollectionId = (item.collectionIds || [])[0];
-    if (firstCollectionId) {
-      const c = collections.find((cc) => cc.id === firstCollectionId);
-      if (c?.primaryProjectId) return c.primaryProjectId;
-    }
-    return projects.find((p) => p.isDefault)?.id || projects[0]?.id || '';
-  }, [defaultProjectId, item.collectionIds, collections, projects]);
-
   const placementNotesForCollection = (collectionId: string) => {
     if (!collectionId) return item.notes || '';
     return item.placements?.[collectionId]?.notes ?? item.notes ?? '';
@@ -53,47 +43,93 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
 
   const [title, setTitle] = useState(item.title);
   const [url, setUrl] = useState(item.url || '');
-  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
-  const [selectedCollectionId, setSelectedCollectionId] = useState(item.collectionIds?.[0] || '');
+  const [membershipIds, setMembershipIds] = useState<string[]>(
+    item.collectionIds?.length ? [...item.collectionIds] : []
+  );
+  const [tags, setTags] = useState<string[]>(item.tags ? [...item.tags] : []);
+  const [notesPlacementId, setNotesPlacementId] = useState(item.collectionIds?.[0] || '');
   const [notes, setNotes] = useState(placementNotesForCollection(item.collectionIds?.[0] || ''));
   const [newProjectName, setNewProjectName] = useState('');
   const [newCollectionName, setNewCollectionName] = useState('');
+  const [inlineProjectId, setInlineProjectId] = useState(
+    defaultProjectId || projects.find((p) => p.isDefault)?.id || projects[0]?.id || ''
+  );
   const [creatingProject, setCreatingProject] = useState(false);
   const [creatingCollection, setCreatingCollection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [baseline, setBaseline] = useState(() => ({
+    title: item.title,
+    url: item.url || '',
+    membershipIds: item.collectionIds?.length ? [...item.collectionIds] : ([] as string[]),
+    tags: item.tags ? [...item.tags] : ([] as string[]),
+    notesPlacementId: item.collectionIds?.[0] || '',
+    notes: placementNotesForCollection(item.collectionIds?.[0] || ''),
+  }));
 
-  const collectionsForProject = useMemo(
+  const collectionsForInlineProject = useMemo(
     () =>
       collections.filter(
         (c) =>
-          c.primaryProjectId === selectedProjectId ||
-          (Array.isArray(c.projectIds) && c.projectIds.includes(selectedProjectId))
+          c.primaryProjectId === inlineProjectId ||
+          (Array.isArray(c.projectIds) && c.projectIds.includes(inlineProjectId))
       ),
-    [collections, selectedProjectId]
+    [collections, inlineProjectId]
   );
 
   useEffect(() => {
-    setTitle(item.title);
-    setUrl(item.url || '');
-    const cid = item.collectionIds?.[0] || '';
-    setSelectedProjectId(initialProjectId);
-    setSelectedCollectionId(cid);
-    setNotes(placementNotesForCollection(cid));
-  }, [item.id, item.title, item.url, item.notes, item.collectionIds, item.placements, initialProjectId]);
+    const ids = item.collectionIds?.length ? [...item.collectionIds] : [];
+    const cid = ids[0] || '';
+    const next = {
+      title: item.title,
+      url: item.url || '',
+      membershipIds: ids,
+      tags: item.tags ? [...item.tags] : [],
+      notesPlacementId: cid,
+      notes: placementNotesForCollection(cid),
+    };
+    setTitle(next.title);
+    setUrl(next.url);
+    setMembershipIds(next.membershipIds);
+    setTags(next.tags);
+    setNotesPlacementId(next.notesPlacementId);
+    setNotes(next.notes);
+    setBaseline(next);
+    setSavedFlash(false);
+  }, [item.id]);
 
-  // When user switches collection in the form, show notes for that placement only.
   useEffect(() => {
-    setNotes(placementNotesForCollection(selectedCollectionId));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- placementNotesForCollection reads latest item
-  }, [selectedCollectionId, item.id, item.placements, item.notes]);
+    if (!notesPlacementId || !membershipIds.includes(notesPlacementId)) {
+      setNotesPlacementId(membershipIds[0] || '');
+    }
+  }, [membershipIds, notesPlacementId]);
 
+  // When switching notes placement, load that collection's notes from the item
+  // only if the field still matches the previous placement's stored value.
   useEffect(() => {
-    if (!selectedProjectId) return;
-    if (collectionsForProject.some((c) => c.id === selectedCollectionId)) return;
-    const unsorted = collectionsForProject.find(isUnsorted);
-    setSelectedCollectionId(unsorted?.id || collectionsForProject[0]?.id || '');
-  }, [selectedProjectId, collectionsForProject, selectedCollectionId]);
+    setNotes(placementNotesForCollection(notesPlacementId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads latest item placements
+  }, [notesPlacementId]);
+
+  const dirty =
+    title !== baseline.title ||
+    url !== baseline.url ||
+    notes !== baseline.notes ||
+    notesPlacementId !== baseline.notesPlacementId ||
+    tags.join('\0') !== baseline.tags.join('\0') ||
+    membershipIds.join('\0') !== baseline.membershipIds.join('\0');
+
+  const handleUndo = () => {
+    setTitle(baseline.title);
+    setUrl(baseline.url);
+    setMembershipIds([...baseline.membershipIds]);
+    setTags([...baseline.tags]);
+    setNotesPlacementId(baseline.notesPlacementId);
+    setNotes(baseline.notes);
+    setError(null);
+    setSavedFlash(false);
+  };
 
   const handleCreateProjectInline = async () => {
     const name = newProjectName.trim();
@@ -102,7 +138,7 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
     setCreatingProject(true);
     try {
       const createdId = await onCreateProject({ name });
-      if (createdId) setSelectedProjectId(createdId);
+      if (createdId) setInlineProjectId(createdId);
       setNewProjectName('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create project');
@@ -113,12 +149,14 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
 
   const handleCreateCollectionInline = async () => {
     const name = newCollectionName.trim();
-    if (!name || !selectedProjectId || !onCreateCollection || creatingCollection) return;
+    if (!name || !inlineProjectId || !onCreateCollection || creatingCollection) return;
     setError(null);
     setCreatingCollection(true);
     try {
-      const createdId = await onCreateCollection({ name, projectId: selectedProjectId });
-      if (createdId) setSelectedCollectionId(createdId);
+      const createdId = await onCreateCollection({ name, projectId: inlineProjectId });
+      if (createdId && !membershipIds.includes(createdId)) {
+        setMembershipIds([...membershipIds, createdId]);
+      }
       setNewCollectionName('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create collection');
@@ -138,26 +176,34 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
       setError('URL must be http(s) or a local file (file://)');
       return;
     }
+    if (membershipIds.length === 0) {
+      setError('Pick at least one collection');
+      return;
+    }
     setIsSaving(true);
     try {
-      let preservedCollectionIds =
-        item.collectionIds && item.collectionIds.length > 0 ? [...item.collectionIds] : [];
-      if (selectedCollectionId && !preservedCollectionIds.includes(selectedCollectionId)) {
-        preservedCollectionIds = [...preservedCollectionIds, selectedCollectionId];
-      }
-      if (preservedCollectionIds.length === 0 && selectedCollectionId) {
-        preservedCollectionIds = [selectedCollectionId];
-      }
-
-      const notesPlacementId = selectedCollectionId || item.collectionIds?.[0];
-
-      await onSave(item.id, {
+      const nextBaseline = {
         title: title.trim(),
-        url: url.trim() || undefined,
-        notes: notes.trim() || undefined,
-        collectionIds: preservedCollectionIds,
-        notesPlacementCollectionId: notesPlacementId || undefined,
+        url: url.trim(),
+        membershipIds: [...membershipIds],
+        tags: [...tags],
+        notesPlacementId: notesPlacementId || membershipIds[0] || '',
+        notes: notes.trim(),
+      };
+      await onSave(item.id, {
+        title: nextBaseline.title,
+        url: nextBaseline.url || undefined,
+        notes: nextBaseline.notes || undefined,
+        collectionIds: nextBaseline.membershipIds,
+        tags: nextBaseline.tags,
+        notesPlacementCollectionId: nextBaseline.notesPlacementId || nextBaseline.membershipIds[0],
       });
+      setBaseline(nextBaseline);
+      setTitle(nextBaseline.title);
+      setUrl(nextBaseline.url);
+      setNotes(nextBaseline.notes);
+      setSavedFlash(true);
+      window.setTimeout(() => setSavedFlash(false), 1800);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update item');
     } finally {
@@ -181,7 +227,7 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>Edit Item</h2>
         {onCancel && (
-          <ButtonGhost onClick={onCancel} style={{ padding: '0.25rem' }} title="Close">
+          <ButtonGhost onClick={onCancel} style={{ padding: '0.25rem' }} title="Done">
             <X size={16} />
           </ButtonGhost>
         )}
@@ -206,6 +252,97 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
             </div>
           </div>
 
+          <div style={{ width: '100%', minWidth: 0 }}>
+            <ItemOrganizationEditor
+              item={item}
+              collections={collections}
+              projects={projects}
+              editable
+              collectionIds={membershipIds}
+              tags={tags}
+              onLocalChange={({ collectionIds, tags: nextTags }) => {
+                setMembershipIds(collectionIds);
+                setTags(nextTags);
+              }}
+            />
+          </div>
+
+          {(onCreateProject || onCreateCollection) && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              {onCreateProject && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    New project
+                  </label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      value={newProjectName}
+                      onChange={(e) => setNewProjectName(e.target.value)}
+                      placeholder="Name"
+                      style={{ flex: 1, padding: '0.35rem 0.5rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-glass)', color: 'var(--text)', fontSize: '0.8rem' }}
+                    />
+                    <button type="button" onClick={() => void handleCreateProjectInline()} disabled={!newProjectName.trim() || creatingProject} style={{ padding: '0.35rem 0.5rem', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--accent-text)' }}>
+                      +
+                    </button>
+                  </div>
+                </div>
+              )}
+              {onCreateCollection && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    New collection
+                  </label>
+                  <select
+                    value={inlineProjectId}
+                    onChange={(e) => setInlineProjectId(e.target.value)}
+                    style={{ width: '100%', marginBottom: 6, padding: '0.35rem 0.5rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-glass)', color: 'var(--text)', fontSize: '0.8rem' }}
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      value={newCollectionName}
+                      onChange={(e) => setNewCollectionName(e.target.value)}
+                      placeholder="Name"
+                      style={{ flex: 1, padding: '0.35rem 0.5rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-glass)', color: 'var(--text)', fontSize: '0.8rem' }}
+                    />
+                    <button type="button" onClick={() => void handleCreateCollectionInline()} disabled={!newCollectionName.trim() || creatingCollection || !inlineProjectId} style={{ padding: '0.35rem 0.5rem', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--accent-text)' }}>
+                      +
+                    </button>
+                  </div>
+                  {collectionsForInlineProject.length === 0 && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-faint)', marginTop: 4 }}>No collections in this project yet</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {membershipIds.length > 1 && (
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>
+                Notes for collection
+              </label>
+              <select
+                value={notesPlacementId}
+                onChange={(e) => setNotesPlacementId(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem 0.65rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.9rem', background: 'var(--bg-glass)', color: 'var(--text)' }}
+              >
+                {membershipIds.map((cid) => {
+                  const c = collections.find((col) => col.id === cid);
+                  const p = c ? projects.find((proj) => proj.id === c.primaryProjectId) : undefined;
+                  return (
+                    <option key={cid} value={cid}>
+                      {p?.name || '?'} / {c?.name || cid}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>
               Notes (optional)
@@ -213,9 +350,10 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              rows={6}
+              rows={8}
               style={{
                 width: '100%',
+                minHeight: 160,
                 padding: '0.75rem',
                 background: 'var(--bg-glass)',
                 border: '1px solid var(--border)',
@@ -224,71 +362,9 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
                 fontSize: '0.9rem',
                 fontFamily: 'inherit',
                 resize: 'vertical',
+                lineHeight: 1.5,
               }}
             />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>
-                Project
-              </label>
-              <select
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem 0.65rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.9rem', background: 'var(--bg-glass)', color: 'var(--text)' }}
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              {onCreateProject && (
-                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                  <input
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    placeholder="New project"
-                    style={{ flex: 1, padding: '0.35rem 0.5rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-glass)', color: 'var(--text)', fontSize: '0.8rem' }}
-                  />
-                  <button type="button" onClick={() => void handleCreateProjectInline()} disabled={!newProjectName.trim() || creatingProject} style={{ padding: '0.35rem 0.5rem', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--accent-text)' }}>
-                    +
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>
-                Collection
-              </label>
-              <select
-                value={selectedCollectionId}
-                onChange={(e) => setSelectedCollectionId(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem 0.65rem', border: '1px solid var(--border)', borderRadius: 8, fontSize: '0.9rem', background: 'var(--bg-glass)', color: 'var(--text)' }}
-              >
-                <option value="">Unsorted (default)</option>
-                {collectionsForProject.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              {onCreateCollection && selectedProjectId && (
-                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                  <input
-                    value={newCollectionName}
-                    onChange={(e) => setNewCollectionName(e.target.value)}
-                    placeholder="New collection"
-                    style={{ flex: 1, padding: '0.35rem 0.5rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-glass)', color: 'var(--text)', fontSize: '0.8rem' }}
-                  />
-                  <button type="button" onClick={() => void handleCreateCollectionInline()} disabled={!newCollectionName.trim() || creatingCollection} style={{ padding: '0.35rem 0.5rem', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--accent-text)' }}>
-                    +
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
 
           {error && (
@@ -297,27 +373,50 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {savedFlash && (
+              <span style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, marginRight: 'auto' }}>
+                Saved
+              </span>
+            )}
+            <ButtonGhost
+              type="button"
+              onClick={handleUndo}
+              disabled={!dirty || isSaving}
+              style={{ padding: '0.5rem 1rem', opacity: dirty ? 1 : 0.45 }}
+              title="Restore last saved values"
+            >
+              Undo
+            </ButtonGhost>
             {onCancel && (
               <ButtonGhost type="button" onClick={onCancel} style={{ padding: '0.5rem 1rem' }}>
-                Cancel
+                Done
               </ButtonGhost>
             )}
             <button
               type="submit"
-              disabled={isSaving || !title.trim()}
+              disabled={isSaving || !title.trim() || membershipIds.length === 0 || !dirty}
               style={{
                 padding: '0.5rem 1.5rem',
-                background: isSaving || !title.trim() ? 'var(--bg-glass)' : 'var(--accent)',
-                color: isSaving || !title.trim() ? 'var(--text-muted)' : '#fff',
+                background:
+                  isSaving || !title.trim() || membershipIds.length === 0 || !dirty
+                    ? 'var(--bg-glass)'
+                    : 'var(--accent)',
+                color:
+                  isSaving || !title.trim() || membershipIds.length === 0 || !dirty
+                    ? 'var(--text-muted)'
+                    : '#fff',
                 border: 'none',
                 borderRadius: 8,
-                cursor: isSaving || !title.trim() ? 'not-allowed' : 'pointer',
+                cursor:
+                  isSaving || !title.trim() || membershipIds.length === 0 || !dirty
+                    ? 'not-allowed'
+                    : 'pointer',
                 fontSize: '0.9rem',
                 fontWeight: 600,
               }}
             >
-              {isSaving ? 'Saving...' : 'Save Changes'}
+              {isSaving ? 'Saving…' : dirty ? 'Save Changes' : 'Saved'}
             </button>
           </div>
         </div>
