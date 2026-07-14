@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -11,9 +12,10 @@ import {
   X,
   Database,
   Layers,
+  Bookmark,
   type LucideIcon,
 } from 'lucide-react';
-import type { Item } from '../../lib/db';
+import type { Collection, Item } from '../../lib/db';
 import {
   AI_STATUS_HINTS,
   clearItemPipelineStage,
@@ -41,6 +43,8 @@ interface PipelineItemInspectorPanelProps {
   item: Item;
   enrichment?: ItemEnrichment;
   embedFailed: boolean;
+  /** Optional — shows collection names in the Bookmark drawer. */
+  collections?: Collection[];
   /** All selected item ids — actions run on every id when length > 1. */
   targetIds?: string[];
   itemLabels?: Record<string, string>;
@@ -201,6 +205,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
   item,
   enrichment,
   embedFailed,
+  collections,
   targetIds: targetIdsProp,
   itemLabels: itemLabelsProp,
   navIndex = 0,
@@ -226,6 +231,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
   const [embedBusy, setEmbedBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
   const [pendingClearStage, setPendingClearStage] = useState<PipelineStageClear | null>(null);
+  const [bookmarkOpen, setBookmarkOpen] = useState(true);
 
   const enrich = enrichment ?? context?.enrichment;
   const references = context?.references ?? enrich?.references ?? [];
@@ -261,6 +267,10 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
       setRawLoading(false);
     }
   }, [enrich?.rawRef]);
+
+  useEffect(() => {
+    setBookmarkOpen(true);
+  }, [item.id]);
 
   useEffect(() => {
     setRawDump(null);
@@ -621,8 +631,8 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           {onOpenInTab ? (
-            <button type="button" onClick={onOpenInTab} style={actionBtnStyle} title="Open in Inspector tab">
-              Inspector tab
+            <button type="button" onClick={onOpenInTab} style={actionBtnStyle} title="Open in right Inspector sidebar">
+              Inspector
             </button>
           ) : null}
           <button type="button" onClick={onClose} aria-label="Close" style={actionBtnStyle}>
@@ -641,6 +651,166 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           }}
         >
           {localMessage}
+        </div>
+      ) : null}
+
+      {/* Bookmark / link details — same info users expect from the Inspector sidebar */}
+      {!isBulk ? (
+        <div
+          style={{
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--bg)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setBookmarkOpen((v) => !v)}
+            style={{
+              all: 'unset',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '10px 16px',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 600,
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: 0.4,
+            }}
+          >
+            {bookmarkOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            <Bookmark size={12} />
+            Bookmark
+          </button>
+          {bookmarkOpen ? (
+            <div
+              style={{
+                padding: '0 16px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text)',
+                lineHeight: 1.45,
+              }}
+            >
+              {item.favicon || item.title ? (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  {item.favicon ? (
+                    <img
+                      src={item.favicon}
+                      alt=""
+                      width={18}
+                      height={18}
+                      style={{ borderRadius: 3, marginTop: 2, flexShrink: 0 }}
+                    />
+                  ) : null}
+                  <div style={{ minWidth: 0, fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                    {item.title || 'Untitled'}
+                  </div>
+                </div>
+              ) : null}
+              {item.url ? (
+                <BookmarkUrlLink
+                  item={item}
+                  style={{
+                    color: 'var(--text-muted)',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-all',
+                  }}
+                />
+              ) : null}
+              {collections && item.collectionIds?.length ? (
+                <div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: 'var(--text-faint)',
+                      textTransform: 'uppercase',
+                      marginBottom: 4,
+                    }}
+                  >
+                    Collections
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {item.collectionIds.map((cid) => {
+                      const col = collections.find((c) => c.id === cid);
+                      return (
+                        <span
+                          key={cid}
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: 999,
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg-panel)',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
+                          {col?.name ?? cid}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {item.tags && item.tags.length > 0 ? (
+                <div style={{ color: 'var(--text-muted)' }}>
+                  Tags: {item.tags.join(', ')}
+                </div>
+              ) : null}
+              {item.notes ||
+              Object.values(item.placements ?? {}).some((p) => p.notes?.trim()) ? (
+                <div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: 'var(--text-faint)',
+                      textTransform: 'uppercase',
+                      marginBottom: 4,
+                    }}
+                  >
+                    Notes
+                  </div>
+                  <div
+                    style={{
+                      whiteSpace: 'pre-wrap',
+                      color: 'var(--text-muted)',
+                      maxHeight: 120,
+                      overflow: 'auto',
+                    }}
+                    className="scrollbar"
+                  >
+                    {item.notes?.trim() ||
+                      Object.values(item.placements ?? {})
+                        .map((p) => p.notes?.trim())
+                        .filter(Boolean)
+                        .join('\n\n')}
+                  </div>
+                </div>
+              ) : null}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, color: 'var(--text-faint)' }}>
+                <span>Added: {new Date(item.created_at).toLocaleDateString()}</span>
+                <span>Updated: {new Date(item.updated_at).toLocaleDateString()}</span>
+                {item.source ? <span>Source: {item.source}</span> : null}
+              </div>
+              {onOpenInTab ? (
+                <button
+                  type="button"
+                  onClick={onOpenInTab}
+                  style={{ ...actionBtnStyle, alignSelf: 'flex-start' }}
+                  title="Open in right Inspector sidebar"
+                >
+                  <ExternalLink size={13} />
+                  Open in Inspector sidebar
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

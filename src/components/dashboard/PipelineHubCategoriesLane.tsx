@@ -1164,6 +1164,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                         item={inspectRow.item}
                         enrichment={inspectRow.enrichment}
                         embedFailed={embedFailedIds.has(inspectRow.item.id)}
+                        collections={collections}
                         targetIds={inspectState!.ids}
                         itemLabels={{ [inspectRow.item.id]: inspectRow.item.title || inspectRow.item.url }}
                         navIndex={0}

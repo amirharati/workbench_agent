@@ -87,10 +87,10 @@ const FULL_PAGE_VIEWS = new Set<DashboardView>([
   'trash',
   'tab-commander',
   'import-studio',
-  'pipeline',
   'help',
 ]);
-const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'notes']);
+/** Keep right Inspector visible (Home, Search, Enrichment Hub). */
+const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'notes', 'pipeline']);
 
 interface DashboardLayoutProps {
   windows: WindowGroup[];
@@ -617,6 +617,12 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     });
   };
 
+  /** Open item and focus the right-side Inspector (Hub / search). */
+  const handleOpenItemInInspector = (item: Item) => {
+    handleOpenItemTab(item);
+    patchShellLayoutState({ rightPanelCollapsed: false, rightPanelTab: 'inspector' });
+  };
+
   const handleOpenWorkspaceTab = (workspace: Workspace) => {
     const tabId = 'workspace-' + workspace.id;
     setGlobalTabState(prev => {
@@ -900,7 +906,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onBatchProcessQueue={handleBatchProcessQueue}
                 onOpenPipelineHub={() => handleOpenPipelineHub({ filter: 'needs_attention' })}
                 onSelectView={handleSelectView}
-                onOpenItemFromSearch={handleOpenItemTab}
+                onOpenItemFromSearch={handleOpenItemInInspector}
                 onClearProjectScope={handleClearProjectScope}
                 onClearCollectionScope={handleClearCollectionScope}
                 onResetScope={handleResetScope}
@@ -953,7 +959,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               librarySearch={librarySearch}
               onLibrarySearch={openLibrarySearch}
               onLibrarySearchInTab={openLibrarySearchInTab}
-              onOpenItemFromSearch={handleOpenItemTab}
+              onOpenItemFromSearch={handleOpenItemInInspector}
               categoryBrowse={categoryBrowse}
               onClearCategoryBrowse={handleClearCategoryBrowse}
               onBrowseCategory={handleBrowseCategory}
@@ -1078,7 +1084,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                     renderListTab={renderListTab}
                     statusBar={statusBar}
                     librarySearch={librarySearch}
-                    onOpenItemFromSearch={handleOpenItemTab}
+                    onOpenItemFromSearch={handleOpenItemInInspector}
                     scopeProjectId={scopeProjectId}
                     scopeCollectionId={scopeCollectionId}
                     onSwitchScopeForItem={handleSwitchScopeForItem}

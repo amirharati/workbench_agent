@@ -1989,6 +1989,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                       item={item}
                       enrichment={enrichment}
                       embedFailed={row.embedFailed}
+                      collections={collections}
                       targetIds={inspectState.ids}
                       itemLabels={inspectItemLabels}
                       navIndex={inspectState.index}
