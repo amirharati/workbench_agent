@@ -785,6 +785,14 @@ export class SqliteStore {
     return row ? rowToItem(row) : undefined;
   }
 
+  getActiveItemsByExactUrl(url: string): Item[] {
+    const rows = this.conn.selectAll<ItemRow>(
+      'SELECT * FROM items WHERE url = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 5',
+      [url]
+    );
+    return rows.map(rowToItem);
+  }
+
   getItemsByCollection(collectionId: string): Item[] {
     // Filter items that contain this collection ID in their collectionIds array
     const allItems = this.getAllItems();
@@ -907,6 +915,46 @@ export class SqliteStore {
       itemIds
     );
     return rows.map(rowToLink);
+  }
+
+  getCategoryLinkCounts(): Array<{
+    categoryId: string;
+    itemCount: number;
+    primaryItemCount: number;
+    secondaryItemCount: number;
+  }> {
+    const leafRows = this.conn.selectAll<{
+      categoryId: string;
+      itemCount: number;
+      primaryItemCount: number;
+      secondaryItemCount: number;
+    }>(
+      `SELECT category_id AS categoryId,
+              COUNT(DISTINCT item_id) AS itemCount,
+              COUNT(DISTINCT CASE WHEN is_primary = 1 THEN item_id END) AS primaryItemCount,
+              COUNT(DISTINCT CASE WHEN is_primary = 0 THEN item_id END) AS secondaryItemCount
+         FROM ai_item_category_links
+        WHERE status IN ('suggested', 'accepted')
+        GROUP BY category_id`
+    );
+    const parentRows = this.conn.selectAll<{
+      categoryId: string;
+      itemCount: number;
+      primaryItemCount: number;
+      secondaryItemCount: number;
+    }>(
+      `SELECT c.parent_id AS categoryId,
+              COUNT(DISTINCT l.item_id) AS itemCount,
+              COUNT(DISTINCT CASE WHEN l.is_primary = 1 THEN l.item_id END) AS primaryItemCount,
+              COUNT(DISTINCT CASE WHEN l.is_primary = 0 THEN l.item_id END) AS secondaryItemCount
+         FROM ai_item_category_links l
+         JOIN ai_categories c ON c.id = l.category_id
+        WHERE l.status IN ('suggested', 'accepted')
+          AND c.kind = 'leaf'
+          AND c.parent_id IS NOT NULL
+        GROUP BY c.parent_id`
+    );
+    return [...leafRows, ...parentRows];
   }
 
   // --- Notes ---
@@ -1451,6 +1499,7 @@ export class IdbCompatStore {
   
   getAllItems() { return this.store.getAllItems(); }
   getItem(id: string) { return this.store.getItem(id); }
+  getActiveItemsByExactUrl(url: string) { return this.store.getActiveItemsByExactUrl(url); }
   putItem(item: Item) { this.store.putItem(item); }
   deleteItem(id: string) { this.store.deleteItem(id); }
 
@@ -1488,6 +1537,10 @@ export class IdbCompatStore {
 
   getLinksForItemIds(itemIds: string[]) {
     return this.store.getLinksForItemIds(itemIds);
+  }
+
+  getCategoryLinkCounts() {
+    return this.store.getCategoryLinkCounts();
   }
   
   getAllNotes() { return this.store.getAllNotes(); }

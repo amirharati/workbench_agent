@@ -23,6 +23,27 @@ type HydrateSnapshot = {
   deletedItems: ReturnType<IdbCompatStore['getAllDeletedItems']>;
 };
 
+/** Warm pipeline state transferred from a page to the offscreen bulk realm. */
+export type PipelineCacheSeed = Pick<
+  HydrateSnapshot,
+  | 'projects'
+  | 'collections'
+  | 'items'
+  | 'workspaces'
+  | 'enrichment'
+  | 'categories'
+  | 'links'
+  | 'signals'
+  | 'taxonomy'
+> & { revision: number };
+
+export type CategoryLinkCountRow = {
+  categoryId: string;
+  itemCount: number;
+  primaryItemCount: number;
+  secondaryItemCount: number;
+};
+
 /** Chrome structured-clone cap per worker postMessage (~64MiB). */
 const HYDRATE_PAGE_SIZE = 1000;
 
@@ -234,6 +255,7 @@ export class RemoteIdbCompatStore {
   private essentialReady = false;
   private pipelineHydrated = false;
   private pipelineHydratePromise: Promise<void> | null = null;
+  private pendingWriteError: unknown = null;
 
   isEssentialReady(): boolean {
     return this.essentialReady;
@@ -241,6 +263,50 @@ export class RemoteIdbCompatStore {
 
   isPipelineHydrated(): boolean {
     return this.pipelineHydrated;
+  }
+
+  async createPipelineCacheSeed(itemIds: string[]): Promise<PipelineCacheSeed> {
+    const uniqueIds = [...new Set(itemIds.filter(Boolean))];
+    if (!uniqueIds.length) throw new Error('Pipeline scope is empty');
+    await this.drainWrites();
+    return rpc<PipelineCacheSeed>('getPipelineSeedRows', [uniqueIds]);
+  }
+
+  async getCategoryLinkCounts(): Promise<CategoryLinkCountRow[]> {
+    await this.drainWrites();
+    return rpc<CategoryLinkCountRow[]>('getCategoryLinkCounts', []);
+  }
+
+  async getPersistedItem(
+    itemId: string
+  ): Promise<ReturnType<IdbCompatStore['getItem']>> {
+    return rpc<ReturnType<IdbCompatStore['getItem']>>('getItemById', [itemId]);
+  }
+
+  async getPersistedItemsByUrl(
+    url: string,
+    normalizedUrl: string
+  ): Promise<ReturnType<IdbCompatStore['getAllItems']>> {
+    return rpc<ReturnType<IdbCompatStore['getAllItems']>>('getItemsByUrl', [url, normalizedUrl]);
+  }
+
+  installPipelineCacheSeed(seed: PipelineCacheSeed): void {
+    this.snapshot = {
+      ...emptyHydrateSnapshot(),
+      projects: seed.projects,
+      collections: seed.collections,
+      items: seed.items,
+      workspaces: seed.workspaces,
+      enrichment: seed.enrichment,
+      categories: seed.categories,
+      links: seed.links,
+      signals: seed.signals.map((signal) => signalMetaOnlyForTab(signal)),
+      taxonomy: seed.taxonomy,
+    };
+    this.revision = seed.revision;
+    this.essentialReady = true;
+    this.pipelineHydrated = true;
+    this.pipelineHydratePromise = null;
   }
 
   async hydrate(opts?: boolean | HydrateOptions): Promise<void> {
@@ -336,6 +402,11 @@ export class RemoteIdbCompatStore {
   /** Wait for queued write RPCs to finish (used before cross-tab hydrate). */
   async drainWrites(): Promise<void> {
     await this.chain;
+    if (this.pendingWriteError) {
+      const error = this.pendingWriteError;
+      this.pendingWriteError = null;
+      throw error instanceof Error ? error : new Error(String(error));
+    }
   }
 
   getRevision(): number {
@@ -396,6 +467,7 @@ export class RemoteIdbCompatStore {
     this.chain = next.then(
       () => undefined,
       (err) => {
+        this.pendingWriteError = err;
         this.writesInFlight = Math.max(0, this.writesInFlight - 1);
         console.error('[RemoteStore] write RPC failed:', err);
         return undefined;
@@ -446,6 +518,7 @@ export class RemoteIdbCompatStore {
     this.chain = next.then(
       () => undefined,
       (err) => {
+        this.pendingWriteError = err;
         console.error('[RemoteStore] batchMutate failed:', err);
         return undefined;
       }

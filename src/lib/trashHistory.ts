@@ -132,6 +132,7 @@ export async function clearTrashHistoryForItem(
   if (!normalizedUrl) return;
   const store = await getDB();
   store.deleteTrashEntry(normalizedUrl);
+  await commitPendingDbWrites();
   notifyDataChanged('item.update');
 }
 
@@ -166,6 +167,7 @@ export async function markTrashHistoryPurged(
       purgedAt: now,
     });
   }
+  await commitPendingDbWrites();
   notifyDataChanged('item.delete');
 }
 

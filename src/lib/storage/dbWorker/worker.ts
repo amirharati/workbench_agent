@@ -69,6 +69,10 @@ const READ_ONLY_RPC_METHODS = new Set([
   'hydrate',
   'refreshTables',
   'refreshTablePage',
+  'getPipelineSeedRows',
+  'getCategoryLinkCounts',
+  'getItemById',
+  'getItemsByUrl',
   'hubEnrichmentPage',
   'hubEnrichmentCounts',
   'hubInvalidateScopeCache',
@@ -399,6 +403,68 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         if (row) out.push(row);
       }
       return out;
+    }
+    case 'getPipelineSeedRows': {
+      const ids = [...new Set(Array.isArray(args[0]) ? (args[0] as string[]).filter(Boolean) : [])];
+      const store = await getIdbCompatStore();
+      const items = [];
+      const enrichment = [];
+      for (const id of ids) {
+        const item = store.getItem(id);
+        if (item) items.push(item);
+        const row = store.getEnrichment(id);
+        if (row) enrichment.push(row);
+      }
+      return {
+        projects: store.getAllProjects(),
+        collections: store.getAllCollections(),
+        items,
+        workspaces: store.getAllWorkspaces(),
+        enrichment,
+        categories: store.getAllCategories(),
+        links: store.getLinksForItemIds(ids),
+        signals: store.getSignalsForItemIds(ids).map((signal) =>
+          signal.embedding?.length ? { ...signal, embedding: [] } : signal
+        ),
+        taxonomy: store.getTaxonomyState(),
+        revision: revisionTracker.getLocalRevisionSync(),
+      };
+    }
+    case 'getCategoryLinkCounts': {
+      const store = await getIdbCompatStore();
+      return store.getCategoryLinkCounts();
+    }
+    case 'getItemById': {
+      const id = typeof args[0] === 'string' ? args[0] : '';
+      if (!id) return undefined;
+      const store = await getIdbCompatStore();
+      return store.getItem(id);
+    }
+    case 'getItemsByUrl': {
+      const url = typeof args[0] === 'string' ? args[0].trim() : '';
+      const normalizedUrl = typeof args[1] === 'string' ? args[1] : url;
+      if (!url) return [];
+      const store = await getIdbCompatStore();
+      const exact = store.getActiveItemsByExactUrl(url);
+      if (exact.length) return exact;
+      const trackingParams = [
+        'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+        'ref', 'fbclid', 'gclid', 'mc_cid', 'mc_eid', 'msclkid', 'zanpid',
+        '_ga', '_gl', 'yclid', 'dclid',
+      ];
+      const normalize = (value: string) => {
+        try {
+          const parsed = new URL(value.trim());
+          for (const key of trackingParams) parsed.searchParams.delete(key);
+          return parsed.toString();
+        } catch {
+          return value.trim();
+        }
+      };
+      return store
+        .getAllItems()
+        .filter((item) => item.deletedAt == null && item.url && normalize(item.url) === normalizedUrl)
+        .slice(0, 5);
     }
     case 'refreshTablePage': {
       const storeName = args[0] as string;

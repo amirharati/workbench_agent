@@ -698,44 +698,10 @@ async function persistClassifyResults(
 ): Promise<AiCategory[]> {
   const db = await getDB();
   const now = Date.now();
-  const allLinks = db.objectStoreNames.contains('ai_item_category_links')
-    ? await db.getAll('ai_item_category_links')
-    : [];
-
-  // Compute updated category counts in memory BEFORE opening the transaction
-  // so we can write categories → links in the correct FK order.
-  const linkSnapshot = [...allLinks];
-  for (const w of itemWrites) {
-    if (w.removeAiSuggested) {
-      let idx = linkSnapshot.findIndex(
-        (l) => l.itemId === w.itemId && l.source === 'ai' && l.status === 'suggested'
-      );
-      while (idx >= 0) {
-        linkSnapshot.splice(idx, 1);
-        idx = linkSnapshot.findIndex(
-          (l) => l.itemId === w.itemId && l.source === 'ai' && l.status === 'suggested'
-        );
-      }
-    }
-    linkSnapshot.push(...w.links);
-  }
-
-  const counts = linkCountsForCategories(categories, linkSnapshot);
-  const updated = applyCountsToCategories(categories, counts, now);
-  const categoryById = new Map(categories.map((c) => [c.id, c]));
-  // Use DB snapshot to identify categories not yet persisted (e.g. newly promoted leaves).
-  const catsToWrite = updated.filter((cat) => {
-    const inDbSnapshot = db.get('ai_categories', cat.id) !== undefined;
-    if (!inDbSnapshot) return true;
-    const prev = categoryById.get(cat.id);
-    if (!prev) return true;
-    return (
-      prev.itemCount !== cat.itemCount ||
-      prev.primaryItemCount !== cat.primaryItemCount ||
-      prev.secondaryItemCount !== cat.secondaryItemCount ||
-      prev.childLeafCount !== cat.childLeafCount
-    );
-  });
+  let updated = categories;
+  const newCategories = categories.filter(
+    (category) => db.get('ai_categories', category.id) === undefined
+  );
 
   const expectedPrimary = new Set(
     itemWrites
@@ -746,10 +712,10 @@ async function persistClassifyResults(
   const { commitPendingDbWrites } = await import('../db');
 
   try {
-    // Phase 1: all categories (FK targets for links) — one flush before any links.
-    if (catsToWrite.length) {
+    // Phase 1: persist newly promoted FK targets before their assignment links.
+    if (newCategories.length) {
       const catTx = db.transaction(['ai_categories'], 'readwrite');
-      for (const cat of catsToWrite) {
+      for (const cat of newCategories) {
         await catTx.objectStore('ai_categories').put(cat);
       }
       await catTx.done;
@@ -781,6 +747,43 @@ async function persistClassifyResults(
       await itemTx.done;
     }
     await commitPendingDbWrites();
+
+    // Count in SQLite and transfer one compact row per category. Loading every
+    // assignment into the offscreen cache stalls large libraries.
+    let counts: Map<
+      string,
+      { itemCount: number; primaryItemCount: number; secondaryItemCount: number }
+    >;
+    const { getRemoteStore, isDbWorkerProcess } = await import('../storage/dbClient');
+    if (isDbWorkerProcess()) {
+      const allLinks = db.objectStoreNames.contains('ai_item_category_links')
+        ? await db.getAll('ai_item_category_links')
+        : [];
+      counts = linkCountsForCategories(categories, allLinks);
+    } else {
+      const rows = await getRemoteStore().getCategoryLinkCounts();
+      counts = new Map(rows.map((row) => [row.categoryId, row]));
+    }
+    updated = applyCountsToCategories(categories, counts, now);
+    const categoryById = new Map(categories.map((category) => [category.id, category]));
+    const changedCategories = updated.filter((category) => {
+      const prev = categoryById.get(category.id);
+      return (
+        !prev ||
+        prev.itemCount !== category.itemCount ||
+        prev.primaryItemCount !== category.primaryItemCount ||
+        prev.secondaryItemCount !== category.secondaryItemCount ||
+        prev.childLeafCount !== category.childLeafCount
+      );
+    });
+    if (changedCategories.length) {
+      const categoryTx = db.transaction(['ai_categories'], 'readwrite');
+      for (const category of changedCategories) {
+        await categoryTx.objectStore('ai_categories').put(category);
+      }
+      await categoryTx.done;
+      await commitPendingDbWrites();
+    }
 
     if (expectedPrimary.size > 0) {
       const persisted = await countPrimaryLinksForItems(expectedPrimary);

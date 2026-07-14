@@ -1,5 +1,12 @@
-import React, { useCallback, useState } from 'react';
-import { addItemWithMerge, Collection, Item, Project, updateItem } from '../lib/db';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import {
+  addItemWithMerge,
+  Collection,
+  getActiveItemsByUrlFast,
+  Item,
+  Project,
+  updateItem,
+} from '../lib/db';
 import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
 import { usePipelineProgress } from './dashboard/PipelineProgressProvider';
 import { SidePanelView } from './SidePanelView';
@@ -36,6 +43,9 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
   const pipeline = usePipelineProgress();
   const [status, setStatus] = useState('');
   const [externalLinks, setExternalLinks] = useState<SessionExternalLink[]>([]);
+  const [fastItems, setFastItems] = useState<Item[]>([]);
+  const [savedStatePending, setSavedStatePending] = useState(true);
+  const lookupSeqRef = useRef(0);
   const statusClearRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showStatus = useCallback((message: string, holdMs = 2500) => {
@@ -46,6 +56,25 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
 
   const clearExternalLinks = useCallback(() => {
     setExternalLinks([]);
+  }, []);
+
+  const visibleItems = useMemo(() => {
+    const byId = new Map(items.map((item) => [item.id, item]));
+    for (const item of fastItems) byId.set(item.id, item);
+    return [...byId.values()];
+  }, [items, fastItems]);
+
+  const handleHostTabContext = useCallback(async (tabUrl: string) => {
+    const seq = ++lookupSeqRef.current;
+    setSavedStatePending(true);
+    try {
+      const matches = await getActiveItemsByUrlFast(tabUrl);
+      if (seq === lookupSeqRef.current) setFastItems(matches);
+    } catch {
+      if (seq === lookupSeqRef.current) setFastItems([]);
+    } finally {
+      if (seq === lookupSeqRef.current) setSavedStatePending(false);
+    }
   }, []);
 
   const handleSaveCurrentTab = useCallback(
@@ -249,7 +278,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
     <SidePanelView
       projects={projects}
       collections={collections}
-      items={items}
+      items={visibleItems}
       onSaveTab={handleSaveCurrentTab}
       onCreateItem={handleCreateItem}
       onCreateExternalLink={handleCreateExternalLink}
@@ -262,6 +291,8 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       status={status}
       externalLinks={externalLinks}
       onHostTabNavigate={clearExternalLinks}
+      onHostTabContext={handleHostTabContext}
+      savedStatePending={savedStatePending}
     />
   );
 };

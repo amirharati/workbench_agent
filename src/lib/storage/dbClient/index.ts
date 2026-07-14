@@ -18,7 +18,6 @@ let localDbRpcTransport: LocalDbRpcTransport | null = null;
 
 export function setLocalDbRpcTransport(transport: LocalDbRpcTransport | null): void {
   localDbRpcTransport = transport;
-  if (transport) markDbOwnerReady();
 }
 
 export function markDbOwnerReady(): void {
@@ -130,7 +129,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
 
 export async function ensureDbWorker(): Promise<void> {
   if (localDbRpcTransport) {
-    markDbOwnerReady();
+    if (!ownerReady) await waitForDbOwnerReady(60_000);
     return;
   }
   if (ownerReady) return;
@@ -173,8 +172,7 @@ export async function dbRpc<T>(
         id,
         method,
         args,
-        // UI path: high unless hydrate-like or caller overrides.
-        priority: opts?.priority ?? (hydrateLike ? 'low' : 'high'),
+        priority,
       });
       if (!response?.ok) {
         throw new Error(response?.error ?? `RPC ${method} failed`);

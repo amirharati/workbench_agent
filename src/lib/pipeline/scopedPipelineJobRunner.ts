@@ -25,6 +25,7 @@ import {
   writeImportPipelineJob,
   writeScopedPipelineRunSummary,
 } from './importPipelineJob';
+import { isPipelineHardCancel } from './pipelineRunLock';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -213,7 +214,7 @@ async function runScopedPipelineJobBody(
     const cancelled: ImportPipelineJob = {
       ...job,
       status: 'paused',
-      lastError: 'Paused for single digest',
+      lastError: isPipelineHardCancel(signal) ? 'Cancelled' : 'Paused for single digest',
     };
     try {
       await writeImportPipelineJob(cancelled);
@@ -382,7 +383,9 @@ async function runScopedPipelineJobBody(
     while (true) {
       if (signal?.aborted) {
         currentJob.status = 'paused';
-        currentJob.lastError = 'Paused for single digest';
+        currentJob.lastError = isPipelineHardCancel(signal)
+          ? 'Cancelled'
+          : 'Paused for single digest';
         break;
       }
 
@@ -459,7 +462,7 @@ async function runScopedPipelineJobBody(
   } else if (signal?.aborted || currentJob.lastError === 'Cancelled') {
     currentJob.status = 'paused';
     currentJob.lastError =
-      currentJob.lastError === 'Cancelled'
+      isPipelineHardCancel(signal) || currentJob.lastError === 'Cancelled'
         ? 'Cancelled'
         : 'Paused for single digest';
   } else if (enrichError) {
@@ -493,7 +496,7 @@ async function runScopedPipelineJobBody(
     }
   } else if (signal?.aborted) {
     const { hasActivePipelineCancelSignal } = await import('./pipelineRunLock');
-    if (await hasActivePipelineCancelSignal()) {
+    if (isPipelineHardCancel(signal) || (await hasActivePipelineCancelSignal())) {
       try {
         await clearImportPipelineJob();
       } catch {

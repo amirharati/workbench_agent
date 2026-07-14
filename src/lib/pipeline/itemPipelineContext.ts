@@ -358,6 +358,27 @@ export function formatPipelineStageHint(ctx: ItemPipelineContext): string | unde
 export async function loadItemPipelineContext(itemId: string): Promise<ItemPipelineContext | null> {
   const { commitPendingDbWrites } = await import('../db');
   await commitPendingDbWrites();
+  const { getRemoteStore, isDbWorkerProcess } = await import('../storage/dbClient');
+  if (!isDbWorkerProcess()) {
+    const seed = await getRemoteStore().createPipelineCacheSeed([itemId]);
+    const item = seed.items.find((row) => row.id === itemId);
+    if (!item) return null;
+    const enrichByItem = new Map(seed.enrichment.map((row) => [row.itemId, row]));
+    const signalByItem = new Map(seed.signals.map((row) => [row.itemId, row]));
+    const linksByItem = new Map<string, AiItemCategoryLink[]>();
+    for (const link of seed.links) {
+      const list = linksByItem.get(link.itemId) ?? [];
+      list.push(link);
+      linksByItem.set(link.itemId, list);
+    }
+    return buildContextForItem(
+      item,
+      enrichByItem,
+      signalByItem,
+      linksByItem,
+      new Map(seed.categories.map((category) => [category.id, category]))
+    );
+  }
   const db = await getDB();
   const item = await db.get('items', itemId);
   if (!item) return null;

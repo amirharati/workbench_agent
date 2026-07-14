@@ -1,11 +1,12 @@
 /**
- * Dashboard ↔ offscreen pipeline messages.
- * Singles run on offscreen (parallel with in-page bulk). Bulk stays in-page for now.
+ * Dashboard <-> offscreen pipeline messages.
+ * Bulk runs offscreen. Singles use the invoking page's separate, warm lane.
  */
 
 import type { AISettings } from '../ai/types';
 import type { BatchDigestProgress, BatchDigestResult } from './batchDigest';
 import type { SingleLinkDigestResult } from './singleLinkDigest';
+import type { PipelineCacheSeed } from '../storage/dbClient/remoteStore';
 
 export const PIPELINE_OFFSCREEN_TARGET = 'pipeline-offscreen';
 export const PIPELINE_OFFSCREEN_OWNER = 'pipeline-offscreen-owner';
@@ -44,6 +45,7 @@ export type PipelineOffscreenStartBatch = {
   requestId: string;
   itemIds: string[];
   options: OffscreenBatchJobOptions;
+  cacheSeed: PipelineCacheSeed;
 };
 
 export type PipelineOffscreenStartSingle = {
@@ -58,6 +60,7 @@ export type PipelineOffscreenCancel = {
   target: typeof PIPELINE_OFFSCREEN_TARGET | typeof PIPELINE_OFFSCREEN_OWNER;
   action: 'cancel';
   requestId: string;
+  reason?: string;
 };
 
 export type PipelineOffscreenProgressEvent = {

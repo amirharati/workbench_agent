@@ -10,6 +10,11 @@
  */
 
 export type PipelineRunKind = 'single' | 'bulk';
+export const PIPELINE_HARD_CANCEL_REASON = 'pipeline-hard-cancel';
+
+export function isPipelineHardCancel(signal?: AbortSignal): boolean {
+  return signal?.aborted === true && signal.reason === PIPELINE_HARD_CANCEL_REASON;
+}
 
 export type PipelineRunLock = {
   ownerId: string;

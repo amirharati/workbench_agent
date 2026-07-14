@@ -27,6 +27,8 @@ interface SidePanelViewProps {
   externalLinks?: SessionExternalLink[];
   onHostTabUrlChange?: () => void;
   onHostTabNavigate?: () => void;
+  onHostTabContext?: (url: string) => void;
+  savedStatePending?: boolean;
 }
 
 function itemPlacementCount(item: Item): number {
@@ -107,6 +109,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   externalLinks = [],
   onHostTabUrlChange,
   onHostTabNavigate,
+  onHostTabContext,
+  savedStatePending = false,
 }) => {
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
@@ -476,8 +480,9 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       setUrl(trimmedUrl);
       setTitle(trimmedTitle);
       syncedItemTitleRef.current = trimmedTitle;
+      onHostTabContext?.(trimmedUrl);
     },
-    [onHostTabNavigate, onHostTabUrlChange]
+    [onHostTabContext, onHostTabNavigate, onHostTabUrlChange]
   );
 
   const prefillFromHostTab = useCallback(async () => {
@@ -575,8 +580,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
 
       <ButtonPrimary
         onClick={() => {
-          if (hasExistingForUrl && selectedExistingItemId) {
-            void submitItem();
+          if (hasExistingForUrl) {
+            if (selectedExistingItemId) void submitItem();
             return;
           }
           void (async () => {
@@ -589,7 +594,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             }
           })();
         }}
-        disabled={false}
+        disabled={savedStatePending || (hasExistingForUrl && !selectedExistingItemId)}
         style={{
           width: '100%',
           display: 'flex',
@@ -602,7 +607,14 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           fontWeight: 500,
         }}
       >
-        <Save size={16} /> {hasExistingForUrl && selectedExistingItemId ? 'Update Selected' : 'Save This Tab'}
+        <Save size={16} />{' '}
+        {savedStatePending
+          ? 'Checking saved state…'
+          : hasExistingForUrl
+            ? selectedExistingItemId
+              ? 'Update Selected'
+              : 'Already saved'
+            : 'Save This Tab'}
       </ButtonPrimary>
 
       {status && (
@@ -1032,11 +1044,19 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
 
         <ButtonPrimary
           onClick={() => void submitItem()}
-          disabled={submitting}
+          disabled={
+            submitting ||
+            savedStatePending ||
+            (hasExistingForUrl && !forceNewCopyMode && !selectedExistingItem)
+          }
           style={{ width: '100%', padding: '0.5rem', fontWeight: 600, fontSize: 'var(--text-sm)' }}
         >
-          {submitting
+          {savedStatePending
+            ? 'Checking saved state…'
+            : submitting
             ? 'Saving…'
+            : hasExistingForUrl && !forceNewCopyMode && !selectedExistingItem
+              ? 'Already saved'
             : forceNewCopyMode
               ? 'Save new copy'
               : selectedExistingItem

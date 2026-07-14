@@ -22,6 +22,7 @@ import { parseBackupText, BackupEnvelopeMeta } from './backupEnvelope';
 import { collectBackupVerifyWarnings } from './backupVerify';
 import { revisionTracker } from './revisionTracker';
 import type { DbMutation } from './storage/dbMutations';
+import type { PipelineCacheSeed } from './storage/dbClient/remoteStore';
 import type { ItemEnrichment } from './enrichment/types';
 import type {
   AiCategory,
@@ -326,6 +327,16 @@ export const getDB = async (): Promise<IdbCompatStore> => {
   return storePromise;
 };
 
+/** Install a page-warmed cache before starting an offscreen pipeline job. */
+export function installPipelineCacheSeed(seed: PipelineCacheSeed): void {
+  if (isDbWorkerProcess()) {
+    throw new Error('Pipeline cache seeds are for remote execution realms only');
+  }
+  const store = getRemoteStore();
+  store.installPipelineCacheSeed(seed);
+  storePromise = Promise.resolve(store as unknown as IdbCompatStore);
+}
+
 /** Refresh tab cache from the shared OPFS DB worker. */
 export const reloadDB = async (): Promise<IdbCompatStore> => {
   const { requireConfiguredBackupFolder } = await import('./backupFolder');
@@ -457,6 +468,24 @@ export const addItem = async (
   return result.itemId;
 };
 
+async function commitAndVerifyItem(itemId: string): Promise<void> {
+  await commitPendingDbWrites();
+  if (isDbWorkerProcess()) return;
+  const persisted = await getRemoteStore().getPersistedItem(itemId);
+  if (!persisted || persisted.id !== itemId) {
+    throw new Error('The database did not confirm this bookmark was saved');
+  }
+}
+
+async function commitAndVerifyItemDeleted(itemId: string): Promise<void> {
+  await commitPendingDbWrites();
+  if (isDbWorkerProcess()) return;
+  const persisted = await getRemoteStore().getPersistedItem(itemId);
+  if (persisted) {
+    throw new Error('The database did not confirm this bookmark was deleted');
+  }
+}
+
 export const addItemWithMerge = async (
   item: Omit<Item, 'id' | 'created_at' | 'updated_at'> & Partial<Pick<Item, 'updated_at'>>
 ): Promise<AddItemResult> => {
@@ -487,6 +516,7 @@ export const addItemWithMerge = async (
       collectionIds,
       placements
     } as Item);
+    await commitAndVerifyItem(id);
     notifyDataChanged('item.add');
     return { itemId: id, merged: false, addedToCollections: collectionIds, alreadyInCollections: [] };
   }
@@ -562,6 +592,7 @@ export const addItemWithMerge = async (
       store.deleteTrashEntry(dedupeKey);
     }
 
+    await commitAndVerifyItem(existing.id);
     notifyDataChanged('item.update');
     return {
       itemId: existing.id,
@@ -593,7 +624,8 @@ export const addItemWithMerge = async (
     collectionIds,
     placements
   } as Item);
-  
+
+  await commitAndVerifyItem(id);
   notifyDataChanged('item.add');
   return { itemId: id, merged: false, addedToCollections: collectionIds, alreadyInCollections: [] };
 };
@@ -607,6 +639,25 @@ export const getItem = async (id: string): Promise<Item | undefined> => {
   const store = await getDB();
   return store.getItem(id);
 };
+
+/** Cold-start side-panel lookup that bypasses full library hydration. */
+export async function getActiveItemsByUrlFast(url: string): Promise<Item[]> {
+  const trimmed = url.trim();
+  if (!trimmed || !isBookmarkUrl(trimmed)) return [];
+  if (isDbWorkerProcess()) {
+    const store = await getDB();
+    return store
+      .getAllItems()
+      .filter(
+        (item) =>
+          item.deletedAt == null &&
+          !!item.url &&
+          normalizeBookmarkUrl(item.url) === normalizeBookmarkUrl(trimmed)
+      )
+      .slice(0, 5);
+  }
+  return getRemoteStore().getPersistedItemsByUrl(trimmed, normalizeBookmarkUrl(trimmed));
+}
 
 export const getItemPlacementCount = async (id: string): Promise<number> => {
   const store = await getDB();
@@ -643,7 +694,8 @@ export const removeItemFromCollection = async (
     await recordTrashHistory(item, {
       reason: 'Removed from last collection',
       reasonCode: 'remove_last_collection',
-    });
+    }, { notify: false });
+    await commitAndVerifyItem(itemId);
     notifyDataChanged('item.update');
     return { removed: true, itemDeleted: false, itemTrashed: true, remainingPlacements: 0 };
   }
@@ -654,7 +706,8 @@ export const removeItemFromCollection = async (
     placements,
     updated_at: nowTs()
   });
-  
+
+  await commitAndVerifyItem(itemId);
   notifyDataChanged('item.update');
   return { removed: true, itemDeleted: false, itemTrashed: false, remainingPlacements: newCollectionIds.length };
 };
@@ -675,7 +728,7 @@ export const deleteItem = async (id: string): Promise<{ deleted: boolean; placem
     console.warn('Enrichment cleanup on delete failed:', e);
   }
   store.deleteItem(id);
-  await commitPendingDbWrites();
+  await commitAndVerifyItemDeleted(id);
   notifyDataChanged('item.delete');
   return { deleted: true, placementCount };
 };
@@ -706,6 +759,7 @@ export const addProject = async (name: string, description?: string) => {
     updated_at: now,
   });
   await ensureDefaultCollectionForProject(store, id);
+  await commitPendingDbWrites();
   notifyDataChanged('project.add');
   return id;
 };
@@ -716,6 +770,7 @@ export const updateProject = async (id: string, updates: Partial<Omit<Project, '
   if (!existing) return false;
   const now = nowTs();
   store.putProject({ ...existing, ...updates, updated_at: now });
+  await commitPendingDbWrites();
   notifyDataChanged('project.update');
   return true;
 };
@@ -747,6 +802,7 @@ export const deleteProject = async (id: string) => {
   }
 
   store.deleteProject(id);
+  await commitPendingDbWrites();
   notifyDataChanged('project.delete');
   return true;
 };
@@ -776,6 +832,7 @@ export const addCollection = async (name: string, color?: string, projectId?: st
     isDefault: false,
     color: color || '#3b82f6',
   });
+  await commitPendingDbWrites();
   notifyDataChanged('collection.add');
   return id;
 };
@@ -794,6 +851,7 @@ export const deleteCollection = async (id: string) => {
     });
   }
   store.deleteCollection(id);
+  await commitPendingDbWrites();
   notifyDataChanged('collection.delete');
 };
 
@@ -802,6 +860,7 @@ export const updateCollection = async (id: string, updates: Partial<Omit<Collect
   const collection = store.getCollection(id);
   if (collection) {
     store.putCollection({ ...collection, ...updates, updated_at: nowTs() });
+    await commitPendingDbWrites();
     notifyDataChanged('collection.update');
   }
 };
@@ -821,6 +880,7 @@ export const updateItemCollection = async (itemId: string, collectionId: string 
       placements: synced.placements,
       updated_at: now,
     });
+    await commitAndVerifyItem(itemId);
     notifyDataChanged('item.update');
   }
 };
@@ -907,7 +967,7 @@ export const updateItem = async (
 
   assertNoBookmarkDuplicateInCollections(store, next.url || '', next.collectionIds, id);
   store.putItem(next);
-  await commitPendingDbWrites();
+  await commitAndVerifyItem(id);
   notifyDataChanged('item.update');
 };
 
@@ -971,6 +1031,7 @@ export const addSnapshot = async (tabs: Snapshot['tabs']) => {
     tabCount: tabs.length,
     tabs,
   });
+  await commitPendingDbWrites();
   notifyDataChanged('snapshot.add');
 };
 
@@ -1003,6 +1064,7 @@ export const addWorkspace = async (name: string, windows: WorkspaceWindow[], pro
   const now = nowTs();
   const dedupedWindows = deduplicateWorkspaceTabs(windows);
   store.putWorkspace({ id, name, projectId, created_at: now, updated_at: now, windows: dedupedWindows });
+  await commitPendingDbWrites();
   notifyDataChanged('workspace.add');
   return id;
 };
@@ -1019,6 +1081,7 @@ export const updateWorkspace = async (id: string, updates: Partial<Pick<Workspac
   }
   
   store.putWorkspace({ ...existing, ...processedUpdates, updated_at: now });
+  await commitPendingDbWrites();
   notifyDataChanged('workspace.update');
   return true;
 };
@@ -1026,6 +1089,7 @@ export const updateWorkspace = async (id: string, updates: Partial<Pick<Workspac
 export const deleteWorkspace = async (id: string) => {
   const store = await getDB();
   store.deleteWorkspace(id);
+  await commitPendingDbWrites();
   notifyDataChanged('workspace.delete');
 };
 

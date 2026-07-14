@@ -1,5 +1,6 @@
 import { getEnrichment } from '../enrichment';
 import type { EnrichmentResult } from '../enrichment';
+import { notifyDataChanged } from '../dataChangeNotifier';
 import { PIPELINE_STAGE_LABELS } from './pipelineDictionary';
 import {
   runPipelineScopeBatch,
@@ -162,5 +163,8 @@ export async function runSingleLinkDigest(
     };
   } finally {
     inFlight.delete(itemId);
+    // Pipeline writes notify while this item is still marked in-flight. Emit once
+    // more after clearing the guard so digest views can load the committed result.
+    notifyDataChanged('enrichment.update');
   }
 }

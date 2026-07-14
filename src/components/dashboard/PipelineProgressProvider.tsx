@@ -57,6 +57,7 @@ import type { LibraryRefreshScope } from '../../lib/libraryRefresh';
 import {
   createPipelineOwnerId,
   isPipelineRunLockFresh,
+  PIPELINE_HARD_CANCEL_REASON,
   type PipelineRunKind,
   type PipelineRunLock,
   releasePipelineRunLock,
@@ -329,7 +330,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
     waitAbortRef.current = null;
     const ac = abortRef.current;
     abortRef.current = null;
-    ac?.abort();
+    ac?.abort(PIPELINE_HARD_CANCEL_REASON);
   }, [clearSlotQueue]);
 
   useEffect(() => {
@@ -624,7 +625,8 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
     stopHeartbeatRef.current = null;
     currentKindRef.current = null;
 
-    // Signal the owner window (may be this one or another), clear job, release if we own.
+    // Signal the owner window and clear the persisted job immediately. The
+    // active runner owns lock release after it has observed hard cancellation.
     void (async () => {
       try {
         const { clearImportPipelineJob, notifyImportPipelineJobChanged } = await import(
@@ -637,11 +639,6 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       } catch {
         /* ignore */
       } finally {
-        try {
-          await releasePipelineRunLock(ownerIdRef.current);
-        } catch {
-          /* ignore */
-        }
         if (!hadLocalRun) {
           suppressPipelineUiRef.current = false;
           userCancelRef.current = false;
@@ -702,7 +699,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       }
       try {
         const scopedSelection = itemIds.length > 0 && itemIds.length <= 25;
-        // Memory-first digest (warm UI cache); SQLite drain is low-priority.
+        // Bulk executes offscreen with its own warm cache; SQLite drain is low-priority.
         const { runBatchOnOffscreen } = await import(
           '../../lib/pipeline/offscreenPipelineClient'
         );
@@ -907,7 +904,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       options?: RunSingleWithProgressOptions
     ): Promise<SingleLinkDigestResult> => {
       const title = options?.title ?? 'Running digest';
-      // Parallel path: offscreen process, no shared lock, no soft-pause of bulk.
+      // Immediate page lane, separate from offscreen bulk; no soft-pause of bulk.
       parallelSingleRef.current = true;
       setModalState({
         open: true,

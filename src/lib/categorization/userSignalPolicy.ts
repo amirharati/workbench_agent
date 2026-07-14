@@ -1,4 +1,4 @@
-import { getDB, getItem } from '../db';
+import { commitPendingDbWrites, getDB, getItem } from '../db';
 import { notifyDataChanged } from '../dataChangeNotifier';
 import { assessCategorizationEligibility } from '../enrichment/categorizationEligibility';
 import { getEnrichment } from '../enrichment/storage';
@@ -132,6 +132,7 @@ async function handleCategoryAccepted(itemId: string, categoryId: string): Promi
     classifyState: 'manual_only',
     discoverState: 'none',
   });
+  await commitPendingDbWrites();
   notifyDataChanged('categorization.review');
 }
 
@@ -156,6 +157,7 @@ async function handleCategoryRejected(itemId: string, categoryId: string): Promi
       classifyState,
       discoverState: 'none',
     });
+    await commitPendingDbWrites();
     notifyDataChanged('categorization.review');
     return;
   }
@@ -174,6 +176,7 @@ async function handleCategoryRejected(itemId: string, categoryId: string): Promi
     classifyState: next,
     discoverState: next === 'pending_discover' ? 'pending' : 'none',
   });
+  await commitPendingDbWrites();
   notifyDataChanged('categorization.review');
 }
 
