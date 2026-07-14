@@ -447,6 +447,11 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const store = await getIdbCompatStore();
       const exact = store.getActiveItemsByExactUrl(url);
       if (exact.length) return exact;
+      if (normalizedUrl && normalizedUrl !== url) {
+        const byNormalized = store.getActiveItemsByExactUrl(normalizedUrl);
+        if (byNormalized.length) return byNormalized;
+      }
+      // Last resort — avoid unless URLs differ only by tracking params not stored as exact.
       const trackingParams = [
         'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
         'ref', 'fbclid', 'gclid', 'mc_cid', 'mc_eid', 'msclkid', 'zanpid',
@@ -461,9 +466,10 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
           return value.trim();
         }
       };
+      const target = normalize(normalizedUrl || url);
       return store
         .getAllItems()
-        .filter((item) => item.deletedAt == null && item.url && normalize(item.url) === normalizedUrl)
+        .filter((item) => item.deletedAt == null && item.url && normalize(item.url) === target)
         .slice(0, 5);
     }
     case 'refreshTablePage': {

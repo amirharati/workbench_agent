@@ -26,42 +26,76 @@ async function ensureOffscreenDocument() {
   }
 }
 
-// Keep side panel disabled by default; enable it only for the tab where
-// the user explicitly clicks the extension action.
-let sidePanelEnabledTabId = null;
+// Side panel starts disabled globally; enable per-tab when the user clicks the
+// action. Multiple tabs may keep the panel enabled — do not close others.
+const enabledSidePanelTabIds = new Set();
+/** Last tab where the user opened the panel (fallback for host-tab queries). */
+let lastSidePanelHostTabId = null;
 const SIDE_PANEL_HOST_TAB_KEY = 'sidePanelHostTabId';
+const SIDE_PANEL_ENABLED_TABS_KEY = 'sidePanelEnabledTabIds';
 
-async function setSidePanelHostTabId(tabId) {
-  sidePanelEnabledTabId = tabId;
+async function persistSidePanelTabs() {
   try {
-    await chrome.storage.session.set({ [SIDE_PANEL_HOST_TAB_KEY]: tabId });
+    await chrome.storage.session.set({
+      [SIDE_PANEL_HOST_TAB_KEY]: lastSidePanelHostTabId,
+      [SIDE_PANEL_ENABLED_TABS_KEY]: [...enabledSidePanelTabIds],
+    });
   } catch {
     /* session storage unavailable */
   }
 }
 
-async function clearSidePanelHostTabId() {
-  sidePanelEnabledTabId = null;
-  try {
-    await chrome.storage.session.remove(SIDE_PANEL_HOST_TAB_KEY);
-  } catch {
-    /* ignore */
+async function setSidePanelHostTabId(tabId) {
+  lastSidePanelHostTabId = tabId;
+  enabledSidePanelTabIds.add(tabId);
+  await persistSidePanelTabs();
+}
+
+async function clearSidePanelHostTabId(tabId) {
+  if (typeof tabId === 'number') {
+    enabledSidePanelTabIds.delete(tabId);
+    if (lastSidePanelHostTabId === tabId) {
+      lastSidePanelHostTabId = enabledSidePanelTabIds.values().next().value ?? null;
+    }
+  } else {
+    enabledSidePanelTabIds.clear();
+    lastSidePanelHostTabId = null;
   }
+  await persistSidePanelTabs();
 }
 
 async function readSidePanelHostTabId() {
-  if (typeof sidePanelEnabledTabId === 'number') return sidePanelEnabledTabId;
+  if (enabledSidePanelTabIds.size === 0) {
+    try {
+      const data = await chrome.storage.session.get([
+        SIDE_PANEL_HOST_TAB_KEY,
+        SIDE_PANEL_ENABLED_TABS_KEY,
+      ]);
+      const ids = data[SIDE_PANEL_ENABLED_TABS_KEY];
+      if (Array.isArray(ids)) {
+        for (const id of ids) {
+          if (typeof id === 'number') enabledSidePanelTabIds.add(id);
+        }
+      }
+      const host = data[SIDE_PANEL_HOST_TAB_KEY];
+      if (typeof host === 'number') lastSidePanelHostTabId = host;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Prefer the focused active tab if we enabled the panel there.
   try {
-    const data = await chrome.storage.session.get(SIDE_PANEL_HOST_TAB_KEY);
-    const id = data[SIDE_PANEL_HOST_TAB_KEY];
-    if (typeof id === 'number') {
-      sidePanelEnabledTabId = id;
-      return id;
+    const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (typeof active?.id === 'number' && enabledSidePanelTabIds.has(active.id)) {
+      return active.id;
     }
   } catch {
     /* ignore */
   }
-  return null;
+
+  if (typeof lastSidePanelHostTabId === 'number') return lastSidePanelHostTabId;
+  return enabledSidePanelTabIds.values().next().value ?? null;
 }
 
 chrome.sidePanel
@@ -70,11 +104,7 @@ chrome.sidePanel
 
 chrome.action.onClicked.addListener((tab) => {
   if (typeof tab.id !== 'number') return;
-  if (typeof sidePanelEnabledTabId === 'number' && sidePanelEnabledTabId !== tab.id) {
-    chrome.sidePanel
-      .setOptions({ tabId: sidePanelEnabledTabId, enabled: false })
-      .catch((error) => console.error(error));
-  }
+  // Enable + open on this tab only — leave other tabs' panels alone.
   chrome.sidePanel
     .setOptions({ tabId: tab.id, enabled: true, path: 'index.html' })
     .catch((error) => console.error(error));
@@ -85,8 +115,8 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (sidePanelEnabledTabId === tabId) {
-    void clearSidePanelHostTabId();
+  if (enabledSidePanelTabIds.has(tabId)) {
+    void clearSidePanelHostTabId(tabId);
   }
 });
 

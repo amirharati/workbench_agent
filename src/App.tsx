@@ -414,6 +414,10 @@ function App() {
           tabs: w.tabs!.filter((t) => t.url && !t.url.startsWith('chrome://')),
         }));
       setCurrentWindows(windowGroups);
+      const { syncOpenTabUrls } = await import('./lib/storage/workingSetCache');
+      syncOpenTabUrls(
+        windowGroups.flatMap((g) => g.tabs.map((t) => t.url).filter((u): u is string => Boolean(u)))
+      );
     } catch (e) {
       console.error('Failed to load windows:', e);
     }

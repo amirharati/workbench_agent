@@ -477,6 +477,21 @@ async function commitAndVerifyItem(itemId: string): Promise<void> {
   }
 }
 
+/** Fire-and-forget durability — UI already has write-through memory. */
+function commitAndVerifyItemInBackground(itemId: string, urlForWorkingSet?: string): void {
+  void commitAndVerifyItem(itemId)
+    .then(() => {
+      if (urlForWorkingSet) {
+        void import('./storage/workingSetCache').then(({ markUrlDurable }) => {
+          markUrlDurable(urlForWorkingSet);
+        });
+      }
+    })
+    .catch((err) => {
+      console.error('[db] background durable commit failed:', err);
+    });
+}
+
 async function commitAndVerifyItemDeleted(itemId: string): Promise<void> {
   await commitPendingDbWrites();
   if (isDbWorkerProcess()) return;
@@ -486,15 +501,37 @@ async function commitAndVerifyItemDeleted(itemId: string): Promise<void> {
   }
 }
 
+export type AddItemWithMergeOptions = {
+  /**
+   * When false, return after memory write-through; DB ack runs in background.
+   * Side panel / interactive save should use false for instant UX.
+   */
+  awaitDurable?: boolean;
+};
+
 export const addItemWithMerge = async (
-  item: Omit<Item, 'id' | 'created_at' | 'updated_at'> & Partial<Pick<Item, 'updated_at'>>
+  item: Omit<Item, 'id' | 'created_at' | 'updated_at'> & Partial<Pick<Item, 'updated_at'>>,
+  opts?: AddItemWithMergeOptions
 ): Promise<AddItemResult> => {
+  const awaitDurable = opts?.awaitDurable !== false;
   const store = await getDB();
   const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(store);
   const now = nowTs();
   const collectionIds = Array.isArray(item.collectionIds) && item.collectionIds.length > 0 
     ? item.collectionIds 
     : [defaultUnsortedCollectionId];
+
+  const finishCommit = async (itemId: string, url?: string) => {
+    if (awaitDurable) {
+      await commitAndVerifyItem(itemId);
+      if (url) {
+        const { markUrlDurable } = await import('./storage/workingSetCache');
+        markUrlDurable(url);
+      }
+      return;
+    }
+    commitAndVerifyItemInBackground(itemId, url);
+  };
   
   if (!item.url?.trim() || !isBookmarkUrl(item.url)) {
     const id = crypto.randomUUID();
@@ -516,7 +553,7 @@ export const addItemWithMerge = async (
       collectionIds,
       placements
     } as Item);
-    await commitAndVerifyItem(id);
+    await finishCommit(id);
     notifyDataChanged('item.add');
     return { itemId: id, merged: false, addedToCollections: collectionIds, alreadyInCollections: [] };
   }
@@ -592,7 +629,13 @@ export const addItemWithMerge = async (
       store.deleteTrashEntry(dedupeKey);
     }
 
-    await commitAndVerifyItem(existing.id);
+    const mergedItem = store.getItem(existing.id);
+    if (mergedItem) {
+      const { pinSavedItem } = await import('./storage/workingSetCache');
+      pinSavedItem(savedUrl, mergedItem, { durable: awaitDurable });
+    }
+
+    await finishCommit(existing.id, savedUrl);
     notifyDataChanged('item.update');
     return {
       itemId: existing.id,
@@ -615,7 +658,7 @@ export const addItemWithMerge = async (
     };
   }
   
-  store.putItem({ 
+  const created = { 
     ...item, 
     id, 
     url: savedUrl,
@@ -623,9 +666,15 @@ export const addItemWithMerge = async (
     updated_at: item.updated_at ?? now, 
     collectionIds,
     placements
-  } as Item);
+  } as Item;
+  store.putItem(created);
 
-  await commitAndVerifyItem(id);
+  {
+    const { pinSavedItem } = await import('./storage/workingSetCache');
+    pinSavedItem(savedUrl, created, { durable: awaitDurable });
+  }
+
+  await finishCommit(id, savedUrl);
   notifyDataChanged('item.add');
   return { itemId: id, merged: false, addedToCollections: collectionIds, alreadyInCollections: [] };
 };
@@ -640,13 +689,52 @@ export const getItem = async (id: string): Promise<Item | undefined> => {
   return store.getItem(id);
 };
 
-/** Cold-start side-panel lookup that bypasses full library hydration. */
+/**
+ * Instant read-buffer lookup (no RPC). Uses warm RemoteStore snapshot when ready.
+ */
+export function findActiveItemsByUrlInReadBuffer(url: string): Item[] {
+  const trimmed = url.trim();
+  if (!trimmed || !isBookmarkUrl(trimmed)) return [];
+  const target = normalizeBookmarkUrl(trimmed);
+  try {
+    const store = getRemoteStore();
+    if (!store.isEssentialReady()) return [];
+    return store
+      .getAllItems()
+      .filter(
+        (item) =>
+          item.deletedAt == null &&
+          !!item.url &&
+          normalizeBookmarkUrl(item.url) === target
+      )
+      .slice(0, 5);
+  } catch {
+    return [];
+  }
+}
+
+/** Cold-start / confirm path — prefers memory + working set, then DB worker. */
 export async function getActiveItemsByUrlFast(url: string): Promise<Item[]> {
   const trimmed = url.trim();
   if (!trimmed || !isBookmarkUrl(trimmed)) return [];
+
+  const { lookupWorkingSetByUrl, pinItemsForUrl, markOpenTabUrl } = await import(
+    './storage/workingSetCache'
+  );
+  markOpenTabUrl(trimmed);
+
+  const cached = lookupWorkingSetByUrl(trimmed);
+  if (cached && cached.length > 0) return cached;
+
+  const fromMemory = findActiveItemsByUrlInReadBuffer(trimmed);
+  if (fromMemory.length > 0) {
+    pinItemsForUrl(trimmed, fromMemory, { durable: true });
+    return fromMemory;
+  }
+
   if (isDbWorkerProcess()) {
     const store = await getDB();
-    return store
+    const matches = store
       .getAllItems()
       .filter(
         (item) =>
@@ -655,8 +743,17 @@ export async function getActiveItemsByUrlFast(url: string): Promise<Item[]> {
           normalizeBookmarkUrl(item.url) === normalizeBookmarkUrl(trimmed)
       )
       .slice(0, 5);
+    pinItemsForUrl(trimmed, matches, { durable: true });
+    return matches;
   }
-  return getRemoteStore().getPersistedItemsByUrl(trimmed, normalizeBookmarkUrl(trimmed));
+
+  const matches = await getRemoteStore().getPersistedItemsByUrl(
+    trimmed,
+    normalizeBookmarkUrl(trimmed)
+  );
+  const active = matches.filter((item) => item.deletedAt == null).slice(0, 5);
+  pinItemsForUrl(trimmed, active, { durable: true });
+  return active;
 }
 
 export const getItemPlacementCount = async (id: string): Promise<number> => {
