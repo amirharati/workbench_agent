@@ -29,6 +29,8 @@ interface HomeViewProps {
   onHomeStateChange: (next: GlobalTabState) => void;
   onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>, options?: UpdateItemOptions) => Promise<void>;
   onDeleteBookmark?: (id: string, collectionId?: string) => Promise<void>;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   onLibrarySearchInTab?: (query: string) => void;
@@ -52,7 +54,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const topPctRef = useRef(topPct);
@@ -526,6 +528,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onTabStateChange={onHomeStateChange} 
           onUpdateItem={onUpdateItem} 
           onDeleteBookmark={onDeleteBookmark}
+          onCreateProject={onCreateProject}
+          onCreateCollection={onCreateCollection}
           renderListTab={renderListTab}
           statusBar={statusBar}
           librarySearch={librarySearch}

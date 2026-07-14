@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Collection, Item, Project } from '../../lib/db';
 import { isValidBookmarkUrl } from '../../lib/utils';
 import { Input, ButtonGhost } from '../../styles/primitives';
@@ -30,7 +30,6 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
   item,
   collections,
   projects,
-  defaultProjectId,
   onCreateProject,
   onCreateCollection,
   onSave,
@@ -49,13 +48,6 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
   const [tags, setTags] = useState<string[]>(item.tags ? [...item.tags] : []);
   const [notesPlacementId, setNotesPlacementId] = useState(item.collectionIds?.[0] || '');
   const [notes, setNotes] = useState(placementNotesForCollection(item.collectionIds?.[0] || ''));
-  const [newProjectName, setNewProjectName] = useState('');
-  const [newCollectionName, setNewCollectionName] = useState('');
-  const [inlineProjectId, setInlineProjectId] = useState(
-    defaultProjectId || projects.find((p) => p.isDefault)?.id || projects[0]?.id || ''
-  );
-  const [creatingProject, setCreatingProject] = useState(false);
-  const [creatingCollection, setCreatingCollection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -67,16 +59,6 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
     notesPlacementId: item.collectionIds?.[0] || '',
     notes: placementNotesForCollection(item.collectionIds?.[0] || ''),
   }));
-
-  const collectionsForInlineProject = useMemo(
-    () =>
-      collections.filter(
-        (c) =>
-          c.primaryProjectId === inlineProjectId ||
-          (Array.isArray(c.projectIds) && c.projectIds.includes(inlineProjectId))
-      ),
-    [collections, inlineProjectId]
-  );
 
   useEffect(() => {
     const ids = item.collectionIds?.length ? [...item.collectionIds] : [];
@@ -129,40 +111,6 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
     setNotes(baseline.notes);
     setError(null);
     setSavedFlash(false);
-  };
-
-  const handleCreateProjectInline = async () => {
-    const name = newProjectName.trim();
-    if (!name || !onCreateProject || creatingProject) return;
-    setError(null);
-    setCreatingProject(true);
-    try {
-      const createdId = await onCreateProject({ name });
-      if (createdId) setInlineProjectId(createdId);
-      setNewProjectName('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create project');
-    } finally {
-      setCreatingProject(false);
-    }
-  };
-
-  const handleCreateCollectionInline = async () => {
-    const name = newCollectionName.trim();
-    if (!name || !inlineProjectId || !onCreateCollection || creatingCollection) return;
-    setError(null);
-    setCreatingCollection(true);
-    try {
-      const createdId = await onCreateCollection({ name, projectId: inlineProjectId });
-      if (createdId && !membershipIds.includes(createdId)) {
-        setMembershipIds([...membershipIds, createdId]);
-      }
-      setNewCollectionName('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create collection');
-    } finally {
-      setCreatingCollection(false);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -260,65 +208,14 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
               editable
               collectionIds={membershipIds}
               tags={tags}
+              onCreateProject={onCreateProject}
+              onCreateCollection={onCreateCollection}
               onLocalChange={({ collectionIds, tags: nextTags }) => {
                 setMembershipIds(collectionIds);
                 setTags(nextTags);
               }}
             />
           </div>
-
-          {(onCreateProject || onCreateCollection) && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              {onCreateProject && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    New project
-                  </label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input
-                      value={newProjectName}
-                      onChange={(e) => setNewProjectName(e.target.value)}
-                      placeholder="Name"
-                      style={{ flex: 1, padding: '0.35rem 0.5rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-glass)', color: 'var(--text)', fontSize: '0.8rem' }}
-                    />
-                    <button type="button" onClick={() => void handleCreateProjectInline()} disabled={!newProjectName.trim() || creatingProject} style={{ padding: '0.35rem 0.5rem', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--accent-text)' }}>
-                      +
-                    </button>
-                  </div>
-                </div>
-              )}
-              {onCreateCollection && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    New collection
-                  </label>
-                  <select
-                    value={inlineProjectId}
-                    onChange={(e) => setInlineProjectId(e.target.value)}
-                    style={{ width: '100%', marginBottom: 6, padding: '0.35rem 0.5rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-glass)', color: 'var(--text)', fontSize: '0.8rem' }}
-                  >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input
-                      value={newCollectionName}
-                      onChange={(e) => setNewCollectionName(e.target.value)}
-                      placeholder="Name"
-                      style={{ flex: 1, padding: '0.35rem 0.5rem', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg-glass)', color: 'var(--text)', fontSize: '0.8rem' }}
-                    />
-                    <button type="button" onClick={() => void handleCreateCollectionInline()} disabled={!newCollectionName.trim() || creatingCollection || !inlineProjectId} style={{ padding: '0.35rem 0.5rem', borderRadius: 6, border: 'none', background: 'var(--accent)', color: 'var(--accent-text)' }}>
-                      +
-                    </button>
-                  </div>
-                  {collectionsForInlineProject.length === 0 && (
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-faint)', marginTop: 4 }}>No collections in this project yet</div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
 
           {membershipIds.length > 1 && (
             <div>

@@ -30,6 +30,8 @@ export interface NoteWorkspaceProps {
   ) => Promise<void>;
   onRequestDelete?: (item: Item) => void;
   onNewNote?: () => void;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   scopeChips?: React.ReactNode;
 }
 
@@ -44,6 +46,8 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
   onUpdateItem,
   onRequestDelete,
   onNewNote,
+  onCreateProject,
+  onCreateCollection,
   scopeChips,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -448,6 +452,8 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
                   projects={projects}
                   editable={!!onUpdateItem}
                   compact
+                  onCreateProject={onCreateProject}
+                  onCreateCollection={onCreateCollection}
                   onUpdate={
                     onUpdateItem
                       ? async (patch) => {

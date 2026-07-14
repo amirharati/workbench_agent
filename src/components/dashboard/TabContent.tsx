@@ -622,15 +622,17 @@ export const TabContent: React.FC<TabContentProps> = ({
         </div>
       </div>
 
-      {/* Organization: same chrome in view + edit (controls enable when editing). */}
+      {/* Organization: collections + tags — always live when writable (Edit is for title/URL/notes). */}
       {onUpdateItem ? (
         <div style={{ marginTop: '1rem', width: '100%', minWidth: 0 }}>
           <ItemOrganizationEditor
             item={effectiveItem}
             collections={collections}
             projects={projects}
-            editable={isEditingItem && !effectiveItem.deletedAt}
+            editable={!effectiveItem.deletedAt}
             compact
+            onCreateProject={onCreateProject}
+            onCreateCollection={onCreateCollection}
             onUpdate={async (patch: { collectionIds?: string[]; tags?: string[] }) => {
               await onUpdateItem(effectiveItem.id, {
                 title: effectiveItem.title,

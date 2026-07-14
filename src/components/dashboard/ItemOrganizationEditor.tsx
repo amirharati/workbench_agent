@@ -24,6 +24,9 @@ export interface ItemOrganizationEditorProps {
   collectionIds?: string[];
   tags?: string[];
   onLocalChange?: (patch: { collectionIds: string[]; tags: string[] }) => void;
+  /** Inline create — shown as "+ New" next to project/collection selects when provided. */
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   compact?: boolean;
 }
 
@@ -52,6 +55,8 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   collectionIds: controlledCollectionIds,
   tags: controlledTags,
   onLocalChange,
+  onCreateProject,
+  onCreateCollection,
   compact = false,
 }) => {
   // Write path exists → always render the same chrome (view/edit won't reflow).
@@ -67,6 +72,12 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [showNewCollection, setShowNewCollection] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [creatingCollection, setCreatingCollection] = useState(false);
 
   const memberships = useMemo(() => {
     return membershipIds
@@ -175,6 +186,45 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
     void applyPatch({ tags: tagList.filter((t) => t !== tag) });
   };
 
+  const createProjectInline = async () => {
+    const name = newProjectName.trim();
+    if (!name || !onCreateProject || creatingProject || !canMutate) return;
+    setError(null);
+    setCreatingProject(true);
+    try {
+      const createdId = await onCreateProject({ name });
+      if (createdId) setAddProjectId(createdId);
+      setNewProjectName('');
+      setShowNewProject(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create project');
+    } finally {
+      setCreatingProject(false);
+    }
+  };
+
+  const createCollectionInline = async () => {
+    const name = newCollectionName.trim();
+    if (!name || !addProjectId || !onCreateCollection || creatingCollection || !canMutate) return;
+    setError(null);
+    setCreatingCollection(true);
+    try {
+      const createdId = await onCreateCollection({ name, projectId: addProjectId });
+      if (createdId) {
+        setAddCollectionId(createdId);
+        if (!membershipIds.includes(createdId)) {
+          await applyPatch({ collectionIds: [...membershipIds, createdId] });
+        }
+      }
+      setNewCollectionName('');
+      setShowNewCollection(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create collection');
+    } finally {
+      setCreatingCollection(false);
+    }
+  };
+
   const labelStyle: React.CSSProperties = {
     fontSize: 'var(--text-xs)',
     fontWeight: 500,
@@ -260,7 +310,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                     type="button"
                     title={
                       !canMutate
-                        ? 'Switch to Edit to change collections'
+                        ? 'Cannot change collections'
                         : membershipIds.length <= 1
                           ? 'Keep at least one collection'
                           : 'Remove'
@@ -291,69 +341,215 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
       {hasWritePath && (
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
+            display: 'flex',
+            flexDirection: 'column',
             gap: 6,
             width: '100%',
             minWidth: 0,
-            alignItems: 'center',
             opacity: canMutate ? 1 : 0.55,
           }}
         >
-          <select
-            value={addProjectId}
-            onChange={(e) => setAddProjectId(e.target.value)}
-            disabled={!canMutate || busy}
-            style={selectStyle}
-            aria-label="Project"
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={addCollectionId}
-            onChange={(e) => setAddCollectionId(e.target.value)}
-            disabled={!canMutate || busy || collectionsForAddProject.length === 0}
-            style={selectStyle}
-            aria-label="Collection"
-          >
-            {collectionsForAddProject.map((c) => (
-              <option key={c.id} value={c.id} disabled={membershipIds.includes(c.id)}>
-                {c.name}
-                {membershipIds.includes(c.id) ? ' (already)' : ''}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={addMembership}
-            disabled={!canMutate || busy || !addCollectionId || membershipIds.includes(addCollectionId)}
+          <div
             style={{
-              display: 'inline-flex',
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
+              gap: 6,
+              width: '100%',
+              minWidth: 0,
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              padding: compact ? '4px 8px' : '6px 10px',
-              borderRadius: 6,
-              border: 'none',
-              background: 'var(--accent)',
-              color: 'var(--accent-text, #fff)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: !canMutate ? 'default' : 'pointer',
-              opacity:
-                !canMutate || busy || !addCollectionId || membershipIds.includes(addCollectionId)
-                  ? 0.5
-                  : 1,
-              flexShrink: 0,
-              whiteSpace: 'nowrap',
             }}
           >
-            <Plus size={12} /> Add
-          </button>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Project</span>
+                {onCreateProject && canMutate ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowNewProject((v) => !v)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--accent)',
+                      cursor: 'pointer',
+                      fontSize: 'var(--text-xs)',
+                      padding: 0,
+                    }}
+                  >
+                    + New
+                  </button>
+                ) : null}
+              </div>
+              <select
+                value={addProjectId}
+                onChange={(e) => setAddProjectId(e.target.value)}
+                disabled={!canMutate || busy}
+                style={selectStyle}
+                aria-label="Project"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Collection</span>
+                {onCreateCollection && canMutate ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowNewCollection((v) => !v)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--accent)',
+                      cursor: 'pointer',
+                      fontSize: 'var(--text-xs)',
+                      padding: 0,
+                    }}
+                  >
+                    + New
+                  </button>
+                ) : null}
+              </div>
+              <select
+                value={addCollectionId}
+                onChange={(e) => setAddCollectionId(e.target.value)}
+                disabled={!canMutate || busy || collectionsForAddProject.length === 0}
+                style={selectStyle}
+                aria-label="Collection"
+              >
+                {collectionsForAddProject.map((c) => (
+                  <option key={c.id} value={c.id} disabled={membershipIds.includes(c.id)}>
+                    {c.name}
+                    {membershipIds.includes(c.id) ? ' (already)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={addMembership}
+              disabled={!canMutate || busy || !addCollectionId || membershipIds.includes(addCollectionId)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                padding: compact ? '4px 8px' : '6px 10px',
+                borderRadius: 6,
+                border: 'none',
+                background: 'var(--accent)',
+                color: 'var(--accent-text, #fff)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                cursor: !canMutate ? 'default' : 'pointer',
+                opacity:
+                  !canMutate || busy || !addCollectionId || membershipIds.includes(addCollectionId)
+                    ? 0.5
+                    : 1,
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
+                alignSelf: 'end',
+                height: compact ? 28 : 32,
+              }}
+            >
+              <Plus size={12} /> Add
+            </button>
+          </div>
+
+          {showNewProject && onCreateProject && canMutate ? (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="Project name"
+                disabled={creatingProject}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void createProjectInline();
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: compact ? '4px 6px' : '6px 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-input, var(--bg-glass))',
+                  color: 'var(--text)',
+                  fontSize: 'var(--text-xs)',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void createProjectInline()}
+                disabled={!newProjectName.trim() || creatingProject}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: 'var(--accent)',
+                  color: 'var(--accent-text, #fff)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  opacity: !newProjectName.trim() || creatingProject ? 0.5 : 1,
+                }}
+              >
+                {creatingProject ? '…' : 'Add'}
+              </button>
+            </div>
+          ) : null}
+
+          {showNewCollection && onCreateCollection && canMutate ? (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input
+                value={newCollectionName}
+                onChange={(e) => setNewCollectionName(e.target.value)}
+                placeholder={addProjectId ? 'Collection name' : 'Pick a project first'}
+                disabled={creatingCollection || !addProjectId}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void createCollectionInline();
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: compact ? '4px 6px' : '6px 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-input, var(--bg-glass))',
+                  color: 'var(--text)',
+                  fontSize: 'var(--text-xs)',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void createCollectionInline()}
+                disabled={!newCollectionName.trim() || creatingCollection || !addProjectId}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: 'var(--accent)',
+                  color: 'var(--accent-text, #fff)',
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  opacity: !newCollectionName.trim() || creatingCollection || !addProjectId ? 0.5 : 1,
+                }}
+              >
+                {creatingCollection ? '…' : 'Add'}
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -390,7 +586,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                   type="button"
                   onClick={() => removeTag(tag)}
                   disabled={!canMutate || busy}
-                  title={!canMutate ? 'Switch to Edit to change tags' : 'Remove tag'}
+                  title={!canMutate ? 'Cannot change tags' : 'Remove tag'}
                   style={{
                     border: 'none',
                     background: 'transparent',
@@ -412,7 +608,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
               type="text"
               value={tagDraft}
               disabled={!canMutate || busy}
-              placeholder={canMutate ? 'Add tag…' : 'Edit to add tags'}
+              placeholder={canMutate ? 'Add tag…' : 'Tags locked'}
               onChange={(e) => setTagDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (!canMutate) return;

@@ -218,6 +218,8 @@ interface GlobalTabSystemProps {
   onTabStateChange: (next: GlobalTabState) => void;
   onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>, options?: UpdateItemOptions) => Promise<void>;
   onDeleteBookmark?: (id: string, collectionId?: string) => Promise<void>;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   // For rendering lists
   renderListTab?: (tab: GlobalTabList) => React.ReactNode;
   statusBar?: React.ReactNode;
@@ -236,6 +238,8 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   onTabStateChange,
   onUpdateItem,
   onDeleteBookmark,
+  onCreateProject,
+  onCreateCollection,
   renderListTab,
   statusBar,
   librarySearch,
@@ -825,6 +829,8 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                     ? (updates) => onUpdateItem(activeItemObj.id, updates)
                     : undefined
                 }
+                onCreateProject={onCreateProject}
+                onCreateCollection={onCreateCollection}
               />
             </div>
           ) : (
@@ -864,6 +870,8 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                     ? (updates) => onUpdateItem(activeItemObj.id, updates)
                     : undefined
                 }
+                onCreateProject={onCreateProject}
+                onCreateCollection={onCreateCollection}
               />
             </div>
           </TabScrollShell>
@@ -928,6 +936,8 @@ interface ItemDetailProps {
   onToggleFavorite: () => void;
   canEdit: boolean;
   onUpdateOrganization?: (updates: Partial<Omit<Item, 'id' | 'created_at'>>) => Promise<void>;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
 }
 
 const ItemDetail: React.FC<ItemDetailProps> = ({
@@ -936,6 +946,8 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
   onStartEdit, onUndoEdit, onDoneEdit, onSaveEdit, editDirty = false, editSavedFlash = false,
   onDelete, onTogglePin, onToggleFavorite, canEdit,
   onUpdateOrganization,
+  onCreateProject,
+  onCreateCollection,
 }) => {
   const isBookmark = !!item.url;
   const isNote = !isBookmark;
@@ -1141,8 +1153,10 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
           }
           collections={collections}
           projects={projects}
-          editable={canEdit && isEditing && !isTrashed && !!onUpdateOrganization}
+          editable={canEdit && !isTrashed && !!onUpdateOrganization}
           compact
+          onCreateProject={onCreateProject}
+          onCreateCollection={onCreateCollection}
           onUpdate={
             onUpdateOrganization
               ? async (patch) => {

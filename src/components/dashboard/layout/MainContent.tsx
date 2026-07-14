@@ -610,6 +610,8 @@ export const MainContent: React.FC<MainContentProps> = ({
             onHomeStateChange={onGlobalTabStateChange ?? (() => {})}
             onUpdateItem={onUpdateBookmark}
             onDeleteBookmark={onDeleteBookmark}
+            onCreateProject={onCreateProject}
+            onCreateCollection={onCreateCollection}
             searchQuery={globalTabState?.searchQuery ?? ''}
             onSearchQueryChange={(q) => onGlobalTabStateChange?.({ ...globalTabState!, searchQuery: q })}
             onLibrarySearchInTab={(q) => onLibrarySearchInTab?.(q)}
@@ -1732,6 +1734,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                             projects={projects}
                             editable
                             compact
+                            onCreateProject={onCreateProject}
+                            onCreateCollection={onCreateCollection}
                             onUpdate={async (patch) => {
                               await onUpdateBookmark(viewingItem.id, {
                                 ...(patch.collectionIds !== undefined
@@ -1888,6 +1892,8 @@ export const MainContent: React.FC<MainContentProps> = ({
             onUpdateItem={onUpdateBookmark}
             onRequestDelete={onDeleteBookmark ? (item) => openBookmarkDeleteDialog(item) : undefined}
             onNewNote={onCreateItem ? () => setShowAddNote(true) : undefined}
+            onCreateProject={onCreateProject}
+            onCreateCollection={onCreateCollection}
             scopeChips={renderScopeChipsBar()}
           />
         );
@@ -2545,6 +2551,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                   collections={collections}
                   projects={projects}
                   editable
+                  onCreateProject={onCreateProject}
+                  onCreateCollection={onCreateCollection}
                   onUpdate={async (patch) => {
                     await onUpdateBookmark(viewingItem.id, {
                       ...(patch.collectionIds !== undefined
@@ -2761,6 +2769,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                     editable
                     collectionIds={editMembershipIds}
                     tags={editTags}
+                    onCreateProject={onCreateProject}
+                    onCreateCollection={onCreateCollection}
                     onLocalChange={({ collectionIds, tags }) => {
                       setEditMembershipIds(collectionIds);
                       setEditTags(tags);
