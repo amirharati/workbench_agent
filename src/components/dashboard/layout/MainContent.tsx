@@ -195,6 +195,26 @@ export const MainContent: React.FC<MainContentProps> = ({
     onShellLayoutPatch?.(patch);
   };
 
+  /** Item currently open in the detail tab strip — drives list-pane highlight. */
+  const activeDetailItemId = useMemo(() => {
+    if (!globalTabState?.activeTabId) return null;
+    const tab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
+    if (!tab || tab.kind !== 'item') return null;
+    if (tab.itemId) return tab.itemId;
+    // Legacy tabs may only encode the item on `id` (`item-<id>`).
+    return tab.id.startsWith('item-') ? tab.id.slice('item-'.length) : null;
+  }, [globalTabState?.activeTabId, globalTabState?.tabs]);
+
+  /** Optimistic list selection so highlight sticks immediately on click. */
+  const [listSelectionId, setListSelectionId] = useState<string | null>(null);
+  const [listHoverId, setListHoverId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setListSelectionId(activeDetailItemId);
+  }, [activeDetailItemId]);
+
+  const highlightedListItemId = activeDetailItemId ?? listSelectionId;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUrl, setNewUrl] = useState('');
@@ -2136,33 +2156,45 @@ export const MainContent: React.FC<MainContentProps> = ({
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {listItems.map((item) => (
+              {listItems.map((item) => {
+                const isActive = highlightedListItemId === item.id;
+                const isHovered = !isActive && listHoverId === item.id;
+                return (
                 <button
                   key={item.id}
-                  onClick={() => onOpenItem?.(item)}
+                  type="button"
+                  aria-current={isActive ? 'true' : undefined}
+                  onClick={() => {
+                    setListSelectionId(item.id);
+                    onOpenItem?.(item);
+                  }}
+                  onMouseEnter={() => setListHoverId(item.id)}
+                  onMouseLeave={() => setListHoverId((id) => (id === item.id ? null : id))}
                   style={{
                     width: '100%',
                     padding: '8px 10px',
                     borderRadius: 6,
-                    border: 'none',
-                    background: 'transparent',
+                    borderTop: isActive ? '1px solid var(--accent)' : '1px solid transparent',
+                    borderRight: isActive ? '1px solid var(--accent)' : '1px solid transparent',
+                    borderBottom: isActive ? '1px solid var(--accent)' : '1px solid transparent',
+                    borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
+                    background: isActive
+                      ? 'color-mix(in srgb, var(--accent) 22%, transparent)'
+                      : isHovered
+                        ? 'var(--bg-hover)'
+                        : 'transparent',
                     textAlign: 'left',
                     cursor: 'pointer',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 2,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--bg-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
+                    boxSizing: 'border-box',
                   }}
                 >
                   <span style={{ 
                     fontSize: 'var(--text-sm)', 
-                    fontWeight: 500, 
-                    color: 'var(--text)',
+                    fontWeight: isActive ? 700 : 500, 
+                    color: isActive ? 'var(--accent)' : 'var(--text)',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
@@ -2180,7 +2212,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                   {item.url && (
                     <span style={{ 
                       fontSize: 'var(--text-xs)', 
-                      color: 'var(--text-faint)',
+                      color: isActive ? 'var(--accent)' : 'var(--text-faint)',
+                      opacity: isActive ? 0.85 : 1,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -2189,7 +2222,8 @@ export const MainContent: React.FC<MainContentProps> = ({
                     </span>
                   )}
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

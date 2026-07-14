@@ -265,35 +265,43 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
                   <button
                     key={item.id}
                     type="button"
+                    aria-current={active ? 'true' : undefined}
                     onClick={() => selectNote(item)}
                     style={{
                       width: '100%',
                       textAlign: 'left',
                       padding: '10px 10px',
                       marginBottom: 2,
-                      border: 'none',
+                      borderTop: active ? '1px solid var(--accent)' : '1px solid transparent',
+                      borderRight: active ? '1px solid var(--accent)' : '1px solid transparent',
+                      borderBottom: active ? '1px solid var(--accent)' : '1px solid transparent',
+                      borderLeft: active
+                        ? '3px solid var(--accent)'
+                        : '3px solid transparent',
                       borderRadius: 8,
                       cursor: 'pointer',
-                      background: active ? 'var(--accent-weak)' : 'transparent',
-                      borderLeft: active
-                        ? '2px solid var(--accent)'
-                        : '2px solid transparent',
+                      background: active
+                        ? 'color-mix(in srgb, var(--accent) 22%, transparent)'
+                        : 'transparent',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 4,
+                      boxSizing: 'border-box',
                     }}
                     onMouseEnter={(e) => {
                       if (!active) e.currentTarget.style.background = 'var(--bg-hover)';
                     }}
                     onMouseLeave={(e) => {
-                      if (!active) e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.background = active
+                        ? 'color-mix(in srgb, var(--accent) 22%, transparent)'
+                        : 'transparent';
                     }}
                   >
                     <span
                       style={{
                         fontSize: 'var(--text-sm)',
-                        fontWeight: active ? 600 : 500,
-                        color: 'var(--text)',
+                        fontWeight: active ? 700 : 500,
+                        color: active ? 'var(--accent)' : 'var(--text)',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
