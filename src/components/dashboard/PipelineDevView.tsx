@@ -31,7 +31,7 @@ const stateColor: Record<string, string> = {
   ineligible: 'var(--text-faint)',
   skipped: 'var(--text-muted)',
   classified: 'var(--er-ok, #3fb950)',
-  manual_only: 'var(--text-muted)',
+  manual_only: '#a371f7',
   none: 'var(--text-faint)',
 };
 

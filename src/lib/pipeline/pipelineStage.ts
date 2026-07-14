@@ -27,7 +27,11 @@ function isSummarized(enrichment?: ItemEnrichment): boolean {
 
 function isEmbedded(signal?: AiItemSignal, embedFailed = false): boolean {
   if (embedFailed || signal?.signalStatus === 'embed_failed') return false;
-  return Boolean(signal?.embedding?.length && signal.signalStatus === 'ok');
+  if (signal?.signalStatus !== 'ok') return false;
+  if (signal.embedding?.length) return true;
+  // Tab/scoped caches deliberately strip vectors after worker persistence to
+  // avoid hauling large embeddings through Chrome messaging.
+  return Boolean(signal?.textHash && signal?.embeddingModel);
 }
 
 function isClassified(input: {

@@ -38,6 +38,27 @@ function runTests(): void {
   assert(enriched.kind === 'ready', 'specific topic complete → Enriched');
   assert(enriched.label === 'Enriched', 'specific topic label');
 
+  const metaOnlySignal = {
+    signalStatus: 'ok',
+    embedding: [],
+    embeddingModel: 'openai/text-embedding-3-small',
+    textHash: 'abc123',
+  } as AiItemSignal;
+  const enrichedMetaOnly = resolvePipelineStatus({
+    ...completeInput,
+    signal: metaOnlySignal,
+  });
+  assert(enrichedMetaOnly.kind === 'ready', 'meta-only signal still counts as Enriched');
+  assert(enrichedMetaOnly.label === 'Enriched', 'meta-only complete label');
+
+  const verifiedMetaOnly = resolvePipelineStatus({
+    ...completeInput,
+    signal: metaOnlySignal,
+    verifiedPrimaryCategoryId: 'seed_machine-learning',
+  });
+  assert(verifiedMetaOnly.kind === 'verified', 'accepted primary + meta-only signal → Verified');
+  assert(verifiedMetaOnly.label === 'Verified', 'verified label survives meta-only signal');
+
   const removal = resolveSpecialClassificationBadge({
     primaryCategoryId: 'seed_page-not-found',
     classifyState: 'classified_removal',

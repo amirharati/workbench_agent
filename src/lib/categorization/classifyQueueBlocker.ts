@@ -218,6 +218,7 @@ export function displayClassifyStateLabel(
   enrichmentStatusLabel?: string | null
 ): string {
   if (enrichmentStatusLabel) return enrichmentStatusLabel;
+  if (classifyState === 'manual_only') return 'Verified';
   if (ENRICHMENT_QUEUE_BLOCKERS.has(blocker.code)) {
     return blocker.stateLabel;
   }
