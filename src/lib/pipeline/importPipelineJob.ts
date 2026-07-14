@@ -10,6 +10,16 @@ export const IMPORT_WAVE_PIPELINE_ENABLED = true;
 
 /** Beside workbench.sqlite in the backup folder. */
 export const IMPORT_PIPELINE_JOB_FILE = 'import-pipeline-job.json';
+export const IMPORT_PIPELINE_JOB_CHANGED_EVENT = 'homebase:import-pipeline-job-changed';
+
+/** Notify UI (banner) that the job file was cleared or rewritten. */
+export function notifyImportPipelineJobChanged(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(IMPORT_PIPELINE_JOB_CHANGED_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
 /** Compact timing summary for dogfood comparisons (wave path only). */
 export const SCOPED_PIPELINE_RUN_LATEST = 'scoped-pipeline-run-latest.json';
 export const IMPORT_PIPELINE_JOB_VERSION = 1 as const;
@@ -206,12 +216,60 @@ export function createImportPipelineJob(
   };
 }
 
+/**
+ * Heal orphaned / fully-done job files so the Resume banner does not stick around
+ * after a finished run or a crashed window that left status: running.
+ */
+export async function reconcileImportPipelineJob(
+  job: ImportPipelineJob
+): Promise<ImportPipelineJob | null> {
+  const done =
+    job.itemIds.length > 0 &&
+    job.completedItemIds.length >= job.itemIds.length &&
+    job.itemIds.every((id) => job.completedItemIds.includes(id));
+
+  if (done || job.status === 'completed') {
+    try {
+      await clearImportPipelineJob();
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  if (job.status === 'running') {
+    const { isPipelineRunLockFresh, readPipelineRunLock } = await import('./pipelineRunLock');
+    const lock = await readPipelineRunLock();
+    const lockAlive =
+      isPipelineRunLockFresh(lock) &&
+      (lock?.importRunId == null || lock.importRunId === job.importRunId);
+    if (!lockAlive) {
+      const healed: ImportPipelineJob = {
+        ...job,
+        status: 'paused',
+        lastError: job.lastError ?? 'Interrupted — window closed or lock expired',
+        updatedAt: Date.now(),
+      };
+      try {
+        await writeImportPipelineJob(healed);
+      } catch {
+        /* still return healed for UI */
+      }
+      return healed;
+    }
+  }
+
+  return job;
+}
+
 export async function readImportPipelineJob(): Promise<ImportPipelineJob | null> {
   try {
     const res = await readJsonFromBackupFolder(IMPORT_PIPELINE_JOB_FILE);
     if (!res.ok || res.notFound || !res.json) return null;
     const parsed: unknown = JSON.parse(res.json);
-    return parseImportPipelineJob(parsed);
+    const job = parseImportPipelineJob(parsed);
+    if (!job) return null;
+    return reconcileImportPipelineJob(job);
   } catch {
     return null;
   }
@@ -298,4 +356,5 @@ export async function clearImportPipelineJob(): Promise<void> {
   } catch {
     /* file or folder may not exist */
   }
+  notifyImportPipelineJobChanged();
 }

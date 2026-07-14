@@ -1,6 +1,25 @@
+import { getDbRpcPriority, type DbRpcPriority } from '../dbRpcPriority';
+
 let ownerReady = false;
 const ownerReadyWaiters = new Set<() => void>();
 const ownerReadyRejecters = new Set<(err: Error) => void>();
+
+/**
+ * When the offscreen document runs pipeline code, it must not call db-rpc via
+ * chrome.runtime (that nests SW → db-owner back into the same document and deadlocks).
+ * Offscreen registers a direct transport to the SQLite worker instead.
+ */
+export type LocalDbRpcTransport = (
+  method: string,
+  args: unknown[],
+  priority: DbRpcPriority
+) => Promise<unknown>;
+let localDbRpcTransport: LocalDbRpcTransport | null = null;
+
+export function setLocalDbRpcTransport(transport: LocalDbRpcTransport | null): void {
+  localDbRpcTransport = transport;
+  if (transport) markDbOwnerReady();
+}
 
 export function markDbOwnerReady(): void {
   if (ownerReady) return;
@@ -66,6 +85,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+  let hydrateDebounceTimer: number | undefined;
+  let pendingHydrateRevision: number | undefined;
+
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === 'db-owner-ready') {
       markDbOwnerReady();
@@ -81,19 +103,36 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
       return;
     }
     if (message?.type === 'db-data-changed') {
-      void import('./remoteStore').then(({ getRemoteStore }) => {
-        const store = getRemoteStore();
-        const remoteRev = typeof message.revision === 'number' ? message.revision : undefined;
-        void store.drainWrites().then(() => {
-          if (store.hasWritesInFlight()) return;
-          void store.hydrateIfBehind(remoteRev);
+      // Debounce — pipeline writes must not trigger a full hydrate per row.
+      const remoteRev = typeof message.revision === 'number' ? message.revision : undefined;
+      if (typeof remoteRev === 'number') {
+        pendingHydrateRevision =
+          pendingHydrateRevision == null
+            ? remoteRev
+            : Math.max(pendingHydrateRevision, remoteRev);
+      }
+      if (hydrateDebounceTimer != null) window.clearTimeout(hydrateDebounceTimer);
+      hydrateDebounceTimer = window.setTimeout(() => {
+        hydrateDebounceTimer = undefined;
+        const rev = pendingHydrateRevision;
+        pendingHydrateRevision = undefined;
+        void import('./remoteStore').then(({ getRemoteStore }) => {
+          const store = getRemoteStore();
+          void store.drainWrites().then(() => {
+            if (store.hasWritesInFlight()) return;
+            void store.hydrateIfBehind(rev);
+          });
         });
-      });
+      }, 750);
     }
   });
 }
 
 export async function ensureDbWorker(): Promise<void> {
+  if (localDbRpcTransport) {
+    markDbOwnerReady();
+    return;
+  }
   if (ownerReady) return;
   const readyWait = waitForDbOwnerReady(60_000);
   const response = await chrome.runtime.sendMessage({
@@ -108,7 +147,22 @@ export async function ensureDbWorker(): Promise<void> {
   await readyWait;
 }
 
-export async function dbRpc<T>(method: string, args: unknown[]): Promise<T> {
+export async function dbRpc<T>(
+  method: string,
+  args: unknown[],
+  opts?: { priority?: DbRpcPriority }
+): Promise<T> {
+  // Hydrate/refresh is background catch-up — never jump ahead of save/single.
+  const hydrateLike =
+    method === 'hydrate' ||
+    method === 'refreshTables' ||
+    method === 'refreshTablePage' ||
+    method === 'getStatus';
+  const priority =
+    opts?.priority ?? (hydrateLike ? 'low' : getDbRpcPriority());
+  if (localDbRpcTransport) {
+    return (await localDbRpcTransport(method, args, priority)) as T;
+  }
   const maxAttempts = 4;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -119,6 +173,8 @@ export async function dbRpc<T>(method: string, args: unknown[]): Promise<T> {
         id,
         method,
         args,
+        // UI path: high unless hydrate-like or caller overrides.
+        priority: opts?.priority ?? (hydrateLike ? 'low' : 'high'),
       });
       if (!response?.ok) {
         throw new Error(response?.error ?? `RPC ${method} failed`);

@@ -231,7 +231,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
   const references = context?.references ?? enrich?.references ?? [];
   const failureLabel = enrich ? resolveEnrichmentFailureLabel(enrich, embedFailed) : null;
   const badge = context ? resolvePipelineBadge(context) : null;
-  const running = pipeline.isRunning || embedBusy || clearBusy;
+  const running = pipeline.isLocalRunning || embedBusy || clearBusy;
 
   const showTabFetch = shouldOfferTabSessionFetch(
     item.url ?? '',

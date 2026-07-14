@@ -142,12 +142,15 @@ type BackupFolderLinkMeta = {
 async function persistBackupFolderLinkMeta(meta: BackupFolderLinkMeta): Promise<void> {
   const name = meta.displayName?.trim() || null;
   try {
-    const payload: Record<string, unknown> = { [LINKED_FLAG_KEY]: meta.linked };
-    if (meta.linked && name) payload[FOLDER_NAME_KEY] = name;
-    if (!meta.linked) {
-      await chrome.storage.local.remove([FOLDER_NAME_KEY, LINKED_FLAG_KEY]);
-    } else {
-      await chrome.storage.local.set(payload);
+    const local = chrome?.storage?.local;
+    if (local) {
+      const payload: Record<string, unknown> = { [LINKED_FLAG_KEY]: meta.linked };
+      if (meta.linked && name) payload[FOLDER_NAME_KEY] = name;
+      if (!meta.linked) {
+        await local.remove([FOLDER_NAME_KEY, LINKED_FLAG_KEY]);
+      } else {
+        await local.set(payload);
+      }
     }
   } catch {
     /* ignore */
@@ -169,11 +172,14 @@ async function readBackupFolderLinkMeta(): Promise<BackupFolderLinkMeta> {
   let linked = false;
   let displayName: string | null = null;
   try {
-    const r = await chrome.storage.local.get([LINKED_FLAG_KEY, FOLDER_NAME_KEY]);
-    if (r[LINKED_FLAG_KEY] === true) linked = true;
-    if (typeof r[FOLDER_NAME_KEY] === 'string' && r[FOLDER_NAME_KEY].length > 0) {
-      displayName = r[FOLDER_NAME_KEY];
-      linked = true;
+    const local = chrome?.storage?.local;
+    if (local) {
+      const r = await local.get([LINKED_FLAG_KEY, FOLDER_NAME_KEY]);
+      if (r[LINKED_FLAG_KEY] === true) linked = true;
+      if (typeof r[FOLDER_NAME_KEY] === 'string' && r[FOLDER_NAME_KEY].length > 0) {
+        displayName = r[FOLDER_NAME_KEY];
+        linked = true;
+      }
     }
   } catch {
     /* ignore */

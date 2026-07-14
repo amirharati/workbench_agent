@@ -25,7 +25,6 @@ interface SidePanelViewProps {
   tabDigestItemId?: string | null;
   tabDigestStatus?: string;
   externalLinks?: SessionExternalLink[];
-  digestRunning?: boolean;
   onHostTabUrlChange?: () => void;
   onHostTabNavigate?: () => void;
 }
@@ -106,7 +105,6 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   tabDigestItemId,
   tabDigestStatus,
   externalLinks = [],
-  digestRunning = false,
   onHostTabUrlChange,
   onHostTabNavigate,
 }) => {
@@ -584,11 +582,14 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           void (async () => {
             setForceNewCopyMode(false);
             setSelectedExistingItemId(null);
-            await onSaveTab(collectionId || undefined);
-            await prefillFromHostTab();
+            try {
+              await onSaveTab(collectionId || undefined);
+            } finally {
+              void prefillFromHostTab();
+            }
           })();
         }}
-        disabled={digestRunning}
+        disabled={false}
         style={{
           width: '100%',
           display: 'flex',
@@ -1031,18 +1032,16 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
 
         <ButtonPrimary
           onClick={() => void submitItem()}
-          disabled={submitting || digestRunning}
+          disabled={submitting}
           style={{ width: '100%', padding: '0.5rem', fontWeight: 600, fontSize: 'var(--text-sm)' }}
         >
-          {digestRunning
-            ? 'Digesting…'
-            : submitting
-              ? 'Saving…'
-              : forceNewCopyMode
-                ? 'Save new copy'
-                : selectedExistingItem
-                  ? 'Update this page'
-                  : 'Save this page'}
+          {submitting
+            ? 'Saving…'
+            : forceNewCopyMode
+              ? 'Save new copy'
+              : selectedExistingItem
+                ? 'Update this page'
+                : 'Save this page'}
         </ButtonPrimary>
       </Panel>
 

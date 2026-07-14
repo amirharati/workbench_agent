@@ -505,7 +505,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const [statusHelpItemId, setStatusHelpItemId] = useState<string | null>(null);
   const [showStatusGuide, setShowStatusGuide] = useState(false);
   const [trashConfirmIds, setTrashConfirmIds] = useState<string[] | null>(null);
-  const [frozenRows, setFrozenRows] = useState<EnrichmentHubRow[] | null>(null);
   const [pageLimit, setPageLimit] = useState(PAGE_SIZE);
   const [selectingAllInScope, setSelectingAllInScope] = useState(false);
   const wasProcessingRef = useRef(false);
@@ -592,7 +591,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   }, [scopeProjectId, scopeCollectionId, hubFilters]);
 
   const reload = useCallback(async (opts?: { silent?: boolean; force?: boolean }) => {
-    if (isRunningRef.current) return undefined;
+    // Allow filter/label clicks while a pipeline job runs. Background data-change
+    // spam is still suppressed in the subscribeToDataChanges effect below.
     if (!opts?.force && Date.now() < skipHubReloadUntilRef.current) return undefined;
     const hasCachedRows = rows.length > 0;
     const silent = opts?.silent === true && hasCachedRows;
@@ -810,6 +810,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       if (HUB_CACHE_INVALIDATION_REASONS.has(event.reason)) {
         invalidateHubCache();
       }
+      // While a job runs, skip auto-reload from every item write (too chatty).
+      // Explicit filter/chip clicks still reload via hubFetchKey → reload().
       if (isRunningRef.current) return;
       debouncedReload();
     });
@@ -818,11 +820,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   useEffect(() => {
     if (isProcessing && !wasProcessingRef.current) {
       wasProcessingRef.current = true;
-      setFrozenRows(
-        rows.filter((row) =>
-          itemMatchesScope(row.item, scopeProjectId, scopeCollectionId, collections)
-        )
-      );
       const order = tableRowsForListRef.current.map((r) => r.item.id);
       const targets = [
         ...selectedIdsRef.current,
@@ -835,7 +832,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     }
     if (!isProcessing && wasProcessingRef.current) {
       wasProcessingRef.current = false;
-      setFrozenRows(null);
       const holdCtx = processingHoldRef.current;
       processingHoldRef.current = null;
       void (async () => {
@@ -847,16 +843,12 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     }
   }, [
     isProcessing,
-    rows,
-    scopeProjectId,
-    scopeCollectionId,
-    collections,
     reload,
     applyRecentHolds,
     hubFilters,
   ]);
 
-  const tableRows = isProcessing && frozenRows ? frozenRows : rows;
+  const tableRows = rows;
 
   const scopedRows = useMemo(
     () =>
@@ -1133,7 +1125,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
   const handleBulkRedigest = async () => {
     const ids = [...selectedIds];
-    if (!ids.length || pipeline.isRunning) return;
+    if (!ids.length) return;
     const itemLabels = Object.fromEntries(
       scopedRows
         .filter((r) => selectedIds.has(r.item.id))
@@ -1160,7 +1152,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
   const handleMoveSelectedToTrash = async (idsOverride?: string[]) => {
     const ids = idsOverride ?? getOrderedSelectedIds();
-    if (!ids.length || pipeline.isRunning) return;
+    if (!ids.length) return;
     setTrashConfirmIds(ids);
   };
 
@@ -1536,7 +1528,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           </span>
           <button
             type="button"
-            disabled={pipeline.isRunning || trashSuggestionCount === 0}
+            disabled={trashSuggestionCount === 0}
             onClick={handleSelectAllTrashSuggestions}
             style={{
               padding: '5px 12px',
@@ -1552,7 +1544,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           </button>
           <button
             type="button"
-            disabled={pipeline.isRunning || trashSuggestionCount === 0}
+            disabled={trashSuggestionCount === 0}
             onClick={handleTrashAllSuggestions}
             style={{
               display: 'inline-flex',
@@ -1631,7 +1623,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           }}
         >
           <Loader2 size={16} className="spin" />
-          Processing… the table is frozen until complete. Results will appear in the report when done.
+          {pipeline.queuedCount > 0
+            ? `Job running · ${pipeline.queuedCount} queued — you can still select links and submit; new runs join the queue.`
+            : 'Job running — you can still select links and submit; new runs join the queue.'}
         </div>
       ) : null}
 
@@ -1659,7 +1653,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               const ids = getOrderedSelectedIds();
               if (ids.length) setInspectState({ ids, index: 0 });
             }}
-            disabled={pipeline.isRunning}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -1671,21 +1664,16 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               color: 'var(--text)',
               fontSize: 'var(--text-xs)',
               fontWeight: 600,
-              cursor: pipeline.isRunning ? 'wait' : 'pointer',
-              opacity: pipeline.isRunning ? 0.7 : 1,
+              cursor: 'pointer',
             }}
           >
             <Eye size={13} />
             Inspect
           </button>
-          <HubBulkStagedActions
-            selectedRows={selectedHubRows}
-            disabled={pipeline.isRunning}
-          />
+          <HubBulkStagedActions selectedRows={selectedHubRows} />
           <button
             type="button"
             onClick={() => void handleBulkRedigest()}
-            disabled={pipeline.isRunning}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -1697,18 +1685,20 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               color: '#fff',
               fontSize: 'var(--text-xs)',
               fontWeight: 600,
-              cursor: pipeline.isRunning ? 'wait' : 'pointer',
-              opacity: pipeline.isRunning ? 0.7 : 1,
+              cursor: 'pointer',
             }}
-            title="Force full pipeline (fetch, AI, embed, classify) on every selected item"
+            title={
+              pipeline.isRunning
+                ? 'Queues a full re-digest behind the current job'
+                : 'Force full pipeline (fetch, AI, embed, classify) on every selected item'
+            }
           >
             <RotateCcw size={13} />
-            Re-digest
+            {pipeline.isRunning ? 'Queue re-digest' : 'Re-digest'}
           </button>
           <button
             type="button"
             onClick={() => void handleMoveSelectedToTrash()}
-            disabled={pipeline.isRunning}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -1720,8 +1710,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               color: '#ef4444',
               fontSize: 'var(--text-xs)',
               fontWeight: 600,
-              cursor: pipeline.isRunning ? 'wait' : 'pointer',
-              opacity: pipeline.isRunning ? 0.7 : 1,
+              cursor: 'pointer',
             }}
             title="Move selected bookmarks to trash"
           >
@@ -1753,9 +1742,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           borderRadius: 8,
           overflow: 'hidden',
           background: 'var(--bg-panel)',
-          opacity: isProcessing ? 0.72 : 1,
-          pointerEvents: isProcessing ? 'none' : 'auto',
-          transition: 'opacity 0.15s ease',
         }}
       >
         <div

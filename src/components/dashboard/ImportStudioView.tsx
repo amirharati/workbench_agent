@@ -27,6 +27,12 @@ import {
   writeImportPipelineJob,
   type ImportReport,
 } from '../../lib/pipeline';
+import {
+  createPipelineOwnerId,
+  releasePipelineRunLock,
+  startPipelineLockHeartbeat,
+  tryAcquirePipelineRunLock,
+} from '../../lib/pipeline/pipelineRunLock';
 import { useToast } from '../ToastContainer';
 import {
   formatAllImportSchemaHelp,
@@ -247,14 +253,45 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       message: `Running fetch + AI + classify on ${ids.length} link${ids.length === 1 ? '' : 's'} — progress is checkpointed. Keep this tab open.`,
     });
 
+    const ownerId = createPipelineOwnerId();
+    let stopHeartbeat: (() => void) | null = null;
     try {
       console.info('[import-studio] pipeline path: scoped_wave', {
         selected: ids.length,
       });
       const job = createImportPipelineJob(ids);
-      await writeImportPipelineJob(job);
+      const acq = await tryAcquirePipelineRunLock({
+        ownerId,
+        title: `Import pipeline (${ids.length} links)`,
+        itemCount: ids.length,
+        importRunId: job.importRunId,
+        kind: 'bulk',
+      });
+      if (!acq.ok) {
+        addToast({
+          type: 'info',
+          message: `Queued behind “${acq.lock.title}” — wait for that job to finish, or cancel it from the other window.`,
+        });
+        // Wait until the other window releases, then continue.
+        const { waitAndAcquirePipelineRunLock } = await import(
+          '../../lib/pipeline/pipelineRunLock'
+        );
+        const waited = await waitAndAcquirePipelineRunLock({
+          ownerId,
+          title: `Import pipeline (${ids.length} links)`,
+          itemCount: ids.length,
+          importRunId: job.importRunId,
+          kind: 'bulk',
+        });
+        if (!waited.ok) {
+          addToast({ type: 'error', message: 'Could not start import pipeline.' });
+          return;
+        }
+      }
       const ac = new AbortController();
       pipelineAbortRef.current = ac;
+      stopHeartbeat = startPipelineLockHeartbeat(ownerId, () => ac.abort());
+      await writeImportPipelineJob(job);
       const { job: result } = await runScopedPipelineJob(job, {
         signal: ac.signal,
         onProgress: (p) => {
@@ -290,6 +327,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       addToast({ type: 'error', message: msg });
       setCommitError(msg);
     } finally {
+      stopHeartbeat?.();
+      await releasePipelineRunLock(ownerId);
       setProcessing(false);
       setWavePipelineRunning(false);
       setProcessProgress('');

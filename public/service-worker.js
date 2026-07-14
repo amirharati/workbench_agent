@@ -111,8 +111,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           id: message.id,
           method: message.method,
           args: message.args ?? [],
+          priority: message.priority === 'low' ? 'low' : 'high',
         });
         sendResponse(response ?? { ok: false, error: 'No response from DB owner' });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e) });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.target === 'pipeline-offscreen') {
+    (async () => {
+      try {
+        await ensureOffscreenDocument();
+        const response = await chrome.runtime.sendMessage({
+          ...message,
+          target: 'pipeline-offscreen-owner',
+        });
+        sendResponse(response ?? { ok: false, error: 'No response from pipeline host' });
       } catch (e) {
         sendResponse({ ok: false, error: String(e) });
       }

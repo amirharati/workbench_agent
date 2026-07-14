@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   clearImportPipelineJob,
+  IMPORT_PIPELINE_JOB_CHANGED_EVENT,
   IMPORT_WAVE_PIPELINE_ENABLED,
   readImportPipelineJob,
   type ImportPipelineJob,
@@ -28,6 +29,16 @@ export function useImportPipelineJob(backupFolderReady?: boolean) {
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const onChanged = () => {
+      // Immediate clear in UI; refresh will confirm from disk.
+      setJob(null);
+      void refresh();
+    };
+    window.addEventListener(IMPORT_PIPELINE_JOB_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(IMPORT_PIPELINE_JOB_CHANGED_EVENT, onChanged);
   }, [refresh]);
 
   const dismissJob = useCallback(async () => {

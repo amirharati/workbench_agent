@@ -20,6 +20,7 @@ import { isDownstreamClassifyEligible } from './downstreamEligible';
 import {
   type ImportPipelineJob,
   type ImportPipelineWaveCheckpoint,
+  clearImportPipelineJob,
   preflightImportPipelineStart,
   writeImportPipelineJob,
   writeScopedPipelineRunSummary,
@@ -124,6 +125,7 @@ export async function runWaveDownstream(
 ): Promise<TopicClassifySummary | undefined> {
   const signal = opts?.signal;
   if (waveIds.length === 0) return undefined;
+  if (signal?.aborted) return undefined;
   await runEnrichmentBatchPostProcess(waveIds, { forceEmbed: opts?.forceEmbed });
   if (signal?.aborted) return undefined;
   const classifyResult = await classifyIncremental({
@@ -208,8 +210,16 @@ async function runScopedPipelineJobBody(
   }
 
   if (signal?.aborted) {
-    const cancelled: ImportPipelineJob = { ...job, status: 'paused', lastError: 'Cancelled' };
-    await writeImportPipelineJob(cancelled);
+    const cancelled: ImportPipelineJob = {
+      ...job,
+      status: 'paused',
+      lastError: 'Paused for single digest',
+    };
+    try {
+      await writeImportPipelineJob(cancelled);
+    } catch {
+      /* ignore */
+    }
     return { job: cancelled, enriched: 0, skipped: 0, failed: 0 };
   }
 
@@ -372,8 +382,7 @@ async function runScopedPipelineJobBody(
     while (true) {
       if (signal?.aborted) {
         currentJob.status = 'paused';
-        currentJob.lastError = 'Cancelled';
-        await checkpoint();
+        currentJob.lastError = 'Paused for single digest';
         break;
       }
 
@@ -442,16 +451,21 @@ async function runScopedPipelineJobBody(
   // ── Final status ──
   const allCompleted = completedSet.size >= currentJob.itemIds.length;
 
-  if (signal?.aborted || currentJob.lastError === 'Cancelled') {
+  // Prefer "completed" over abort: a late cancel after the last item must not
+  // leave a finished job stuck as paused/running (banner would keep showing).
+  if (allCompleted) {
+    currentJob.status = 'completed';
+    currentJob.lastError = null;
+  } else if (signal?.aborted || currentJob.lastError === 'Cancelled') {
     currentJob.status = 'paused';
-    currentJob.lastError = 'Cancelled';
+    currentJob.lastError =
+      currentJob.lastError === 'Cancelled'
+        ? 'Cancelled'
+        : 'Paused for single digest';
   } else if (enrichError) {
     const msg = enrichError instanceof Error ? enrichError.message : String(enrichError);
     currentJob.status = 'paused';
     currentJob.lastError = msg === 'Cancelled' ? 'Cancelled' : msg;
-  } else if (allCompleted) {
-    currentJob.status = 'completed';
-    currentJob.lastError = null;
   } else {
     // Partial — some ids not completed (shouldn't normally happen but handle gracefully)
     currentJob.status = 'paused';
@@ -469,7 +483,30 @@ async function runScopedPipelineJobBody(
     currentJob.durationMs = finishedAt - runStartedAt;
   }
 
-  await writeImportPipelineJob(currentJob);
+  // Complete → remove job file. Soft-yield keeps a paused job for resume.
+  // Hard Cancel leaves a cancel signal — clear instead of rewriting the job.
+  if (currentJob.status === 'completed') {
+    try {
+      await clearImportPipelineJob();
+    } catch {
+      /* best-effort */
+    }
+  } else if (signal?.aborted) {
+    const { hasActivePipelineCancelSignal } = await import('./pipelineRunLock');
+    if (await hasActivePipelineCancelSignal()) {
+      try {
+        await clearImportPipelineJob();
+      } catch {
+        /* best-effort */
+      }
+    } else {
+      currentJob.status = 'paused';
+      currentJob.lastError = 'Paused for single digest';
+      await writeImportPipelineJob(currentJob);
+    }
+  } else {
+    await writeImportPipelineJob(currentJob);
+  }
 
   if (currentJob.runner === 'scoped_wave' && currentJob.startedAt != null && currentJob.durationMs != null) {
     const summary = {

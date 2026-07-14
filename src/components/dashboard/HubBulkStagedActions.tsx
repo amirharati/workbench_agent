@@ -50,7 +50,9 @@ export const HubBulkStagedActions: React.FC<HubBulkStagedActionsProps> = ({
   disabled = false,
 }) => {
   const pipeline = usePipelineProgress();
-  const running = pipeline.isRunning || disabled;
+  /** Allow staging/submit while another job runs — acquireSharedRun queues it. */
+  const running = disabled;
+  const jobBusy = pipeline.isRunning;
 
   const [expanded, setExpanded] = useState(false);
   const [scopeMode, setScopeMode] = useState<HubBulkScopeMode>('missing');
@@ -361,9 +363,14 @@ export const HubBulkStagedActions: React.FC<HubBulkStagedActionsProps> = ({
                 opacity: running || !runPreview ? 0.6 : 1,
                 cursor: running || !runPreview ? 'not-allowed' : 'pointer',
               }}
+              title={
+                jobBusy
+                  ? 'Queues these steps behind the current job'
+                  : undefined
+              }
             >
               <Play size={13} />
-              Run checked steps
+              {jobBusy ? 'Queue checked steps' : 'Run checked steps'}
             </button>
             {runPreview ? (
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>

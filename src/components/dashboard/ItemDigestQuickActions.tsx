@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { ItemEnrichment } from '../../lib/enrichment/types';
 import { shouldOfferTabSessionFetch } from '../../lib/enrichment/tabSessionExtract';
 import type { ItemPipelineContext } from '../../lib/pipeline/itemPipelineContext';
@@ -50,7 +50,9 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
   onDone,
 }) => {
   const pipeline = usePipelineProgress();
-  const running = pipeline.isRunning;
+  /** Singles soft-preempt / jump the queue — keep clickable while a bulk job runs. */
+  const [starting, setStarting] = useState(false);
+  const busy = starting;
   const stage = context ? resolvePipelineStage(context) : null;
   const missing = stage?.missing ?? [];
 
@@ -86,7 +88,8 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
     primaryLabel === 'Re-digest' || primaryLabel === 'Retry digest';
 
   const runFull = async (opts?: { forceEnrich?: boolean; tabSessionOnly?: boolean }) => {
-    if (running) return;
+    if (starting) return;
+    setStarting(true);
     try {
       await pipeline.runSingle(itemId, {
         title: opts?.tabSessionOnly ? 'Fetch in browser' : primaryLabel,
@@ -100,12 +103,15 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
       after();
     } catch {
       /* modal */
+    } finally {
+      setStarting(false);
     }
   };
 
   const runMissingSteps = async () => {
-    if (running || missing.length === 0) return;
+    if (starting || missing.length === 0) return;
     const title = missingStepLabel(missing);
+    setStarting(true);
     try {
       if (missing.includes('embed') && !missing.includes('classify')) {
         await pipeline.runEmbedBatch([itemId], { title });
@@ -128,11 +134,14 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
       after();
     } catch {
       /* modal */
+    } finally {
+      setStarting(false);
     }
   };
 
   const runClassifyOnly = async () => {
-    if (running) return;
+    if (starting) return;
+    setStarting(true);
     try {
       await pipeline.runBatch([itemId], {
         title: 'Classify now',
@@ -150,35 +159,43 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
       after();
     } catch {
       /* modal */
+    } finally {
+      setStarting(false);
     }
   };
 
   const showMissingButton = missing.length > 0 && stage?.level === 'summarized';
   const showClassifyNow = badge?.label === 'Pending classify';
+  const priorityHint =
+    pipeline.isRunning && !starting
+      ? 'Runs in parallel — bulk keeps going'
+      : undefined;
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
       <button
         type="button"
         onClick={() => void runFull({ forceEnrich: isRedigest || badge?.kind === 'failed' })}
-        disabled={running}
+        disabled={starting}
+        title={priorityHint}
         style={{
           ...actionBtnStyle,
-          cursor: running ? 'wait' : 'pointer',
-          opacity: running ? 0.7 : 1,
+          cursor: starting ? 'wait' : 'pointer',
+          opacity: starting ? 0.7 : 1,
         }}
       >
-        {running ? 'Working…' : primaryLabel}
+        {busy ? 'Working…' : primaryLabel}
       </button>
       {showClassifyNow ? (
         <button
           type="button"
           onClick={() => void runClassifyOnly()}
-          disabled={running}
+          disabled={starting}
+          title={priorityHint}
           style={{
             ...secondaryBtnStyle,
-            cursor: running ? 'wait' : 'pointer',
-            opacity: running ? 0.7 : 1,
+            cursor: starting ? 'wait' : 'pointer',
+            opacity: starting ? 0.7 : 1,
           }}
         >
           Classify now
@@ -188,12 +205,12 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
         <button
           type="button"
           onClick={() => void runMissingSteps()}
-          disabled={running}
+          disabled={starting}
           title={formatImportSchemaHelpForMissing(missing)}
           style={{
             ...secondaryBtnStyle,
-            cursor: running ? 'wait' : 'pointer',
-            opacity: running ? 0.7 : 1,
+            cursor: starting ? 'wait' : 'pointer',
+            opacity: starting ? 0.7 : 1,
           }}
         >
           {missingStepLabel(missing)}
@@ -203,12 +220,12 @@ export const ItemDigestQuickActions: React.FC<ItemDigestQuickActionsProps> = ({
         <button
           type="button"
           onClick={() => void runFull({ tabSessionOnly: true, forceEnrich: true })}
-          disabled={running}
+          disabled={starting}
           title="Open in Chrome and read the page (skips headless fetch)"
           style={{
             ...secondaryBtnStyle,
-            cursor: running ? 'wait' : 'pointer',
-            opacity: running ? 0.7 : 1,
+            cursor: starting ? 'wait' : 'pointer',
+            opacity: starting ? 0.7 : 1,
           }}
         >
           Fetch in browser

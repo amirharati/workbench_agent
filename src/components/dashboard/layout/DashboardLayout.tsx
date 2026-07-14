@@ -563,9 +563,11 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         });
       } catch {
         // Summary shown in modal
+      } finally {
+        void importPipelineJob.refresh();
       }
     },
-    [batchConfirm, pipeline]
+    [batchConfirm, importPipelineJob, pipeline]
   );
 
   const handleSelectProjectScope = (projectId: string | 'all') => {

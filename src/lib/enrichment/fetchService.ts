@@ -1606,6 +1606,8 @@ export async function enrichBatch(options: EnrichBatchOptions = {}): Promise<Enr
           });
         }
       }
+      // Yield so side-panel save / UI clicks can run between items.
+      await new Promise<void>((r) => setTimeout(r, 0));
     }
   };
 

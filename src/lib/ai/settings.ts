@@ -86,13 +86,32 @@ export function aiSettingsForBatchJob(
 
 export const getDefaultAISettings = (): AISettings => ({ ...DEFAULT_AI_SETTINGS });
 
+/** Offscreen/pipeline host can inject settings so jobs don't depend on chrome.storage there. */
+let settingsOverride: AISettings | null = null;
+
+export function setAISettingsOverride(settings: AISettings | null): void {
+  settingsOverride = settings ? sanitizeSettings(settings) : null;
+}
+
 export const loadAISettings = async (): Promise<AISettings> => {
-  const result = await chrome.storage.local.get(AI_SETTINGS_STORAGE_KEY);
-  return sanitizeSettings(result[AI_SETTINGS_STORAGE_KEY] as Partial<AISettings> | undefined);
+  if (settingsOverride) return { ...settingsOverride };
+  try {
+    const local = chrome?.storage?.local;
+    if (!local) return getDefaultAISettings();
+    const result = await local.get(AI_SETTINGS_STORAGE_KEY);
+    return sanitizeSettings(result[AI_SETTINGS_STORAGE_KEY] as Partial<AISettings> | undefined);
+  } catch {
+    return getDefaultAISettings();
+  }
 };
 
 export const saveAISettings = async (settings: AISettings): Promise<AISettings> => {
   const clean = sanitizeSettings(settings);
-  await chrome.storage.local.set({ [AI_SETTINGS_STORAGE_KEY]: clean });
+  try {
+    const local = chrome?.storage?.local;
+    if (local) await local.set({ [AI_SETTINGS_STORAGE_KEY]: clean });
+  } catch {
+    /* ignore — UI may still hold settings in memory */
+  }
   return clean;
 };

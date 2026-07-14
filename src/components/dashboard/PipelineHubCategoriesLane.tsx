@@ -228,14 +228,12 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   const [recentUpdateIds, setRecentUpdateIds] = useState<string[]>([]);
   const recentUpdateIdSet = useMemo(() => new Set(recentUpdateIds), [recentUpdateIds]);
   const wasProcessingRef = useRef(false);
-  const isRunningRef = useRef(pipeline.isRunning);
   const tableRowsForListRef = useRef<PipelineQueueItemRow[]>([]);
   const processingHoldRef = useRef<{ order: string[]; targets: string[] } | null>(null);
   const selectedIdsRef = useRef(selectedIds);
   const inspectStateRef = useRef(inspectState);
   selectedIdsRef.current = selectedIds;
   inspectStateRef.current = inspectState;
-  isRunningRef.current = pipeline.isRunning;
 
   useEffect(() => {
     patchNavigationState({
@@ -284,7 +282,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   );
 
   const reload = useCallback(async (opts?: { silent?: boolean }) => {
-    if (isRunningRef.current) return undefined;
+    // Allow search/filter while a pipeline job runs. Auto data-change reloads
+    // stay suppressed while busy (see subscribeToDataChanges below).
     const silent = opts?.silent === true && allRows.length > 0;
     if (!silent) {
       if (allRows.length === 0) setInitialLoading(true);
@@ -352,22 +351,17 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
 
   useEffect(() => {
     return subscribeToDataChanges(() => {
+      // Don't thrash Categories lane on every bulk item write; search/filter still reload.
       if (pipeline.isRunning) return;
       void reload({ silent: true });
     });
   }, [pipeline.isRunning, reload]);
 
-  const [frozenRows, setFrozenRows] = useState<PipelineQueueItemRow[] | null>(null);
   const isProcessing = pipeline.isRunning;
 
   useEffect(() => {
     if (isProcessing && !wasProcessingRef.current) {
       wasProcessingRef.current = true;
-      setFrozenRows(
-        allRows.filter((row) =>
-          itemMatchesScope(row.item, scopeProjectId, scopeCollectionId, collections)
-        )
-      );
       const order = tableRowsForListRef.current.map((r) => r.item.id);
       const targets = [
         ...selectedIdsRef.current,
@@ -380,7 +374,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
     }
     if (!isProcessing && wasProcessingRef.current) {
       wasProcessingRef.current = false;
-      setFrozenRows(null);
       const holdCtx = processingHoldRef.current;
       processingHoldRef.current = null;
       void (async () => {
@@ -394,9 +387,9 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
         }
       })();
     }
-  }, [isProcessing, allRows, scopeProjectId, scopeCollectionId, collections, reload, applyRecentHolds]);
+  }, [isProcessing, reload, applyRecentHolds]);
 
-  const tableRows = isProcessing && frozenRows ? frozenRows : allRows;
+  const tableRows = allRows;
 
   const scopedRows = useMemo(
     () =>
@@ -550,8 +543,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   }, [maintenanceSnapshot, discoverScopeIds, selectedIds, scopeActive]);
 
   const handleDiscover = (scope: DiscoverInputScope, andClassify: boolean, batches: number) => {
-    if (pipeline.isRunning) return;
-    
     // Use the SAME IDs that were shown in the modal - no recalculation
     let targetIds: string[];
     
@@ -584,8 +575,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   };
 
   const handleClassifyPending = () => {
-    if (pipeline.isRunning) return;
-    
     const baseRows = selectedIds.size > 0 
       ? filteredRows.filter(r => selectedIds.has(r.item.id))
       : scopedRows;
@@ -605,8 +594,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   };
 
   const handleReclassifyAll = () => {
-    if (pipeline.isRunning) return;
-    
     const baseRows = selectedIds.size > 0 
       ? filteredRows.filter(r => selectedIds.has(r.item.id))
       : scopedRows;
@@ -627,8 +614,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   };
 
   const handleRetryManualRequest = () => {
-    if (pipeline.isRunning) return;
-    setRetryManualLoading(true);
+        setRetryManualLoading(true);
     setRetryManualRows([]);
     void (async () => {
       try {
@@ -652,7 +638,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
 
   const handleRetryManualConfirm = (selectedIds: string[]) => {
     setRetryManualRows(null);
-    if (!selectedIds.length || pipeline.isRunning) return;
+    if (!selectedIds.length) return;
     const itemLabels = Object.fromEntries(
       selectedIds.map((id) => {
         const row = allRows.find((r) => r.item.id === id);
@@ -682,7 +668,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
 
   const handleBulkClassify = async (forceReclassify?: boolean) => {
     const ids = getOrderedSelectedIds();
-    if (!ids.length || pipeline.isRunning) return;
+    if (!ids.length) return;
     const itemLabels = Object.fromEntries(
       filteredRows
         .filter((r) => selectedIds.has(r.item.id))
@@ -749,7 +735,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
         snapshot={maintenanceSnapshot}
         loading={maintenanceLoading}
         refreshing={maintenanceRefreshing}
-        disabled={pipeline.isRunning}
         scopeLabel={
           scopeActive
             ? 'Current scope (project/collection)'
@@ -894,7 +879,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
               <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{selectedIds.size} selected</span>
               <button
                 type="button"
-                disabled={pipeline.isRunning}
                 onClick={() => void handleBulkClassify(false)}
                 style={{
                   display: 'inline-flex',
@@ -909,13 +893,17 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                   fontWeight: 600,
                   cursor: 'pointer',
                 }}
+                title={
+                  pipeline.isRunning
+                    ? 'Queues classify behind the current job'
+                    : undefined
+                }
               >
                 <Tags size={13} />
-                Classify
+                {pipeline.isRunning ? 'Queue classify' : 'Classify'}
               </button>
               <button
                 type="button"
-                disabled={pipeline.isRunning}
                 onClick={() => void handleBulkClassify(true)}
                 style={{
                   display: 'inline-flex',
@@ -928,13 +916,12 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                   color: '#fff',
                   fontSize: 'var(--text-xs)',
                   fontWeight: 600,
-                  cursor: pipeline.isRunning ? 'wait' : 'pointer',
-                  opacity: pipeline.isRunning ? 0.7 : 1,
+                  cursor: 'pointer',
                 }}
                 title="Re-run topic LLM even when already classified"
               >
                 <RotateCcw size={13} />
-                Force reclassify
+                {pipeline.isRunning ? 'Queue reclassify' : 'Force reclassify'}
               </button>
               <button
                 type="button"
@@ -959,8 +946,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
               borderRadius: 8,
               overflow: 'hidden',
               background: 'var(--bg-panel)',
-              opacity: pipeline.isRunning ? 0.72 : 1,
-              pointerEvents: pipeline.isRunning ? 'none' : 'auto',
             }}
           >
             <div

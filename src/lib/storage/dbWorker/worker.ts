@@ -30,7 +30,14 @@ markDbWorkerProcess();
 setStorageBackend('opfs');
 void syncClock();
 
-type RpcRequest = { id: number; method: string; args: unknown[] };
+type DbRpcPriority = 'high' | 'low';
+type RpcRequest = {
+  id: number;
+  method: string;
+  args: unknown[];
+  /** high = save/UI/single; low = bulk. Default high. */
+  priority?: DbRpcPriority;
+};
 type RpcResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 
 const workerScope = self as unknown as {
@@ -40,8 +47,11 @@ const workerScope = self as unknown as {
 
 let mirrorConfigured = false;
 let pendingMirrorWrite: ((result: { ok: boolean; error?: string }) => void) | null = null;
-/** Serialize RPC handlers so import/mutate/hydrate cannot interleave. */
-let rpcChain: Promise<void> = Promise.resolve();
+
+/** In-memory priority queues — high drains before low; work is never cancelled. */
+const highRpcQueue: RpcRequest[] = [];
+const lowRpcQueue: RpcRequest[] = [];
+let rpcPumpRunning = false;
 
 const MIRROR_WRITE_TIMEOUT_MS = 120_000;
 
@@ -498,6 +508,35 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
   }
 }
 
+async function runOneRpc(req: RpcRequest): Promise<void> {
+  const { id, method, args } = req;
+  try {
+    const result = await handleMethod(method, args ?? []);
+    const response: RpcResponse = { id, ok: true, result };
+    workerScope.postMessage(response);
+    if (!READ_ONLY_RPC_METHODS.has(method) && !IMPORT_METHODS.has(method)) {
+      workerScope.postMessage({
+        type: 'data-changed',
+        revision: revisionTracker.getLocalRevisionSync(),
+      });
+    }
+  } catch (e) {
+    const response: RpcResponse = { id, ok: false, error: String(e) };
+    workerScope.postMessage(response);
+  }
+}
+
+function pumpRpcQueue(): void {
+  if (rpcPumpRunning) return;
+  const next = highRpcQueue.shift() ?? lowRpcQueue.shift();
+  if (!next) return;
+  rpcPumpRunning = true;
+  void runOneRpc(next).finally(() => {
+    rpcPumpRunning = false;
+    pumpRpcQueue();
+  });
+}
+
 workerScope.onmessage = async (event: MessageEvent<RpcRequest | { type: string; ok?: boolean; error?: string; bytes?: ArrayBuffer | Uint8Array | null }>) => {
   const data = event.data;
   if (data && typeof data === 'object' && 'type' in data && data.type === 'mirror-ack') {
@@ -508,24 +547,10 @@ workerScope.onmessage = async (event: MessageEvent<RpcRequest | { type: string; 
     return;
   }
 
-  const { id, method, args } = event.data as RpcRequest;
-  const run = rpcChain.then(async () => {
-    try {
-      const result = await handleMethod(method, args ?? []);
-      const response: RpcResponse = { id, ok: true, result };
-      workerScope.postMessage(response);
-      if (!READ_ONLY_RPC_METHODS.has(method) && !IMPORT_METHODS.has(method)) {
-        workerScope.postMessage({ type: 'data-changed', revision: revisionTracker.getLocalRevisionSync() });
-      }
-    } catch (e) {
-      const response: RpcResponse = { id, ok: false, error: String(e) };
-      workerScope.postMessage(response);
-    }
-  });
-  rpcChain = run.then(
-    () => undefined,
-    () => undefined
-  );
+  const req = event.data as RpcRequest;
+  if (req.priority === 'low') lowRpcQueue.push(req);
+  else highRpcQueue.push(req);
+  pumpRpcQueue();
 };
 
 configureFolderMirror({

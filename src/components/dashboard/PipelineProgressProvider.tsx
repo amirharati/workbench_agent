@@ -2,19 +2,17 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from 'react';
 import { X } from 'lucide-react';
 import {
   runItemPipeline,
-  runBatchDigest,
-  runSingleLinkDigest,
   formatItemPipelineProgress,
   pipelineProgressBar,
   loadItemIdsForPipelineQueue,
   isFullPipelineBatch,
-  runPipelineScopeBatch,
   scopedProgressToItemProgress,
   type BatchDigestResult,
   type SingleLinkDigestResult,
@@ -56,6 +54,18 @@ import {
   resolvePipelineSummaryTone,
 } from '../../lib/pipeline/pipelineDictionary';
 import type { LibraryRefreshScope } from '../../lib/libraryRefresh';
+import {
+  createPipelineOwnerId,
+  isPipelineRunLockFresh,
+  type PipelineRunKind,
+  type PipelineRunLock,
+  releasePipelineRunLock,
+  requestCancelPipelineRun,
+  startPipelineLockHeartbeat,
+  subscribePipelineRunLock,
+  tryAcquirePipelineRunLock,
+  waitAndAcquirePipelineRunLock,
+} from '../../lib/pipeline/pipelineRunLock';
 
 type SummaryTone = 'success' | 'error' | 'info';
 
@@ -125,6 +135,11 @@ export interface RunSingleWithProgressOptions {
   tabId?: number;
   /** Display title for the results report. */
   itemLabel?: string;
+  /**
+   * user (default): may soft-pause a bulk job and jump the local queue.
+   * background: auto-digest on save — queues behind bulk, never preempts.
+   */
+  priority?: 'user' | 'background';
 }
 
 export interface RunDiscoverOptions {
@@ -158,6 +173,10 @@ export interface RunClassifyOptions {
 
 interface PipelineProgressContextValue {
   isRunning: boolean;
+  /** True only while this window owns an active progress-modal run. */
+  isLocalRunning: boolean;
+  /** Depth of local jobs waiting (singles jump the front; bulks append). */
+  queuedCount: number;
   isCancellable: boolean;
   cancel: () => void;
   runBatch: (
@@ -253,30 +272,395 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
   children,
   onRefresh,
 }) => {
-  const [modal, setModal] = useState<ModalState>({ open: false });
+  const [modal, setModalState] = useState<ModalState>({ open: false });
   const [isRunning, setIsRunning] = useState(false);
   const [isCancellable, setIsCancellable] = useState(false);
+  const [queuedCount, setQueuedCount] = useState(0);
+  const [sharedLock, setSharedLock] = useState<PipelineRunLock | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const ownerIdRef = useRef(createPipelineOwnerId());
+  const stopHeartbeatRef = useRef<(() => void) | null>(null);
+  const currentKindRef = useRef<PipelineRunKind | null>(null);
+  const isRunningRef = useRef(false);
+  const resumeBulkAfterSingleRef = useRef(false);
+  /** User hit Cancel — drop queued jobs and skip auto-resume / pump. */
+  const userCancelRef = useRef(false);
+  /** After Cancel, ignore progress/done modal updates while work winds down. */
+  const suppressPipelineUiRef = useRef(false);
+  /** Aborts waitAndAcquire while queued behind another window. */
+  const waitAbortRef = useRef<AbortController | null>(null);
+  type SlotWaiter = {
+    id: string;
+    kind: PipelineRunKind;
+    title: string;
+    resolve: (ok: boolean) => void;
+  };
+  const slotWaitersRef = useRef<SlotWaiter[]>([]);
+  const pumpScheduledRef = useRef(false);
+  /** Single digest on offscreen — don't let bulk progress clobber its modal. */
+  const parallelSingleRef = useRef(false);
 
-  const closeModal = useCallback(() => {
-    if (isRunning) return;
-    setModal({ open: false });
+  const setModal: React.Dispatch<React.SetStateAction<ModalState>> = useCallback(
+    (update) => {
+      if (suppressPipelineUiRef.current) return;
+      if (parallelSingleRef.current) return;
+      setModalState(update);
+    },
+    []
+  );
+
+  const clearSlotQueue = useCallback(() => {
+    const pending = slotWaitersRef.current.splice(0);
+    setQueuedCount(0);
+    for (const w of pending) w.resolve(false);
+  }, []);
+
+  /** Immediate UI + abort for this window (local Cancel or remote cancel signal). */
+  const applyLocalCancelUiAndAbort = useCallback(() => {
+    suppressPipelineUiRef.current = true;
+    userCancelRef.current = true;
+    resumeBulkAfterSingleRef.current = false;
+    clearSlotQueue();
+    setModalState({ open: false });
+    setIsRunning(false);
+    setIsCancellable(false);
+    isRunningRef.current = false;
+    waitAbortRef.current?.abort();
+    waitAbortRef.current = null;
+    const ac = abortRef.current;
+    abortRef.current = null;
+    ac?.abort();
+  }, [clearSlotQueue]);
+
+  useEffect(() => {
+    return subscribePipelineRunLock((lock) => {
+      setSharedLock(lock);
+      // Another window requested cancel — if we own the run, stop it now.
+      if (
+        lock?.cancelRequested &&
+        lock.ownerId === ownerIdRef.current &&
+        (isRunningRef.current || abortRef.current)
+      ) {
+        applyLocalCancelUiAndAbort();
+        stopHeartbeatRef.current?.();
+        stopHeartbeatRef.current = null;
+        currentKindRef.current = null;
+        void import('../../lib/pipeline/importPipelineJob')
+          .then(({ clearImportPipelineJob, notifyImportPipelineJobChanged }) => {
+            notifyImportPipelineJobChanged();
+            return clearImportPipelineJob();
+          })
+          .catch(() => {});
+      }
+    });
+  }, [applyLocalCancelUiAndAbort]);
+
+  useEffect(() => {
+    isRunningRef.current = isRunning;
   }, [isRunning]);
 
-  const cancel = useCallback(() => {
-    abortRef.current?.abort();
-    setModal((prev) =>
-      prev.open && prev.phase === 'running'
-        ? {
-            open: true,
-            phase: 'done',
-            title: `${prev.title} — cancelled`,
-            summary: 'Cancelled — partial progress may have been saved.',
-            tone: 'info',
-          }
-        : prev
-    );
+  const remoteBulkHeld =
+    Boolean(sharedLock) &&
+    isPipelineRunLockFresh(sharedLock) &&
+    sharedLock!.ownerId !== ownerIdRef.current &&
+    sharedLock!.kind === 'bulk';
+  const remoteAnyHeld =
+    Boolean(sharedLock) &&
+    isPipelineRunLockFresh(sharedLock) &&
+    sharedLock!.ownerId !== ownerIdRef.current;
+  /** Hub/bulk UI: busy while local run, queued local work, or remote bulk lock. */
+  const pipelineBusy = isRunning || queuedCount > 0 || remoteBulkHeld;
+
+  const releaseSharedRun = useCallback(async () => {
+    stopHeartbeatRef.current?.();
+    stopHeartbeatRef.current = null;
+    currentKindRef.current = null;
+    await releasePipelineRunLock(ownerIdRef.current);
   }, []);
+
+  const takeSlotLock = useCallback(
+    async (
+      title: string,
+      kind: PipelineRunKind,
+      itemCount: number,
+      importRunId?: string | null,
+      opts?: { preemptBulk?: boolean }
+    ): Promise<boolean> => {
+      if (userCancelRef.current) return false;
+      void opts?.preemptBulk; // legacy opt — soft-preempt removed (priority queue only)
+
+      const waitWithCancel = async (
+        progressLabel: string,
+        delayModalMs = 0,
+        maxWaitMs?: number
+      ): Promise<boolean> => {
+        waitAbortRef.current?.abort();
+        const waitAc = new AbortController();
+        waitAbortRef.current = waitAc;
+        let modalTimer: number | undefined;
+        const showWaitModal = () => {
+          if (userCancelRef.current || waitAc.signal.aborted) return;
+          setModal({
+            open: true,
+            phase: 'running',
+            title,
+            progressLabel,
+            current: 0,
+            total: 100,
+            cancellable: true,
+          });
+        };
+        // Brief handoffs (same-window yield) often finish <400ms — avoid flashing a block message.
+        if (delayModalMs > 0) {
+          modalTimer = window.setTimeout(showWaitModal, delayModalMs);
+        } else {
+          showWaitModal();
+        }
+        try {
+          const waited = await waitAndAcquirePipelineRunLock(
+            {
+              ownerId: ownerIdRef.current,
+              title,
+              kind,
+              itemCount,
+              importRunId: importRunId ?? null,
+            },
+            { signal: waitAc.signal, maxWaitMs }
+          );
+          return waited.ok && !userCancelRef.current;
+        } finally {
+          if (modalTimer != null) window.clearTimeout(modalTimer);
+          if (waitAbortRef.current === waitAc) waitAbortRef.current = null;
+        }
+      };
+
+      // Never soft-pause/abort bulk for priority — waiters stay in memory and drain in order
+      // (singles jump the local slot queue; offscreen digests skip this lock entirely).
+      {
+        const acq = await tryAcquirePipelineRunLock({
+          ownerId: ownerIdRef.current,
+          title,
+          kind,
+          itemCount,
+          importRunId: importRunId ?? null,
+        });
+        if (!acq.ok) {
+          const label =
+            kind === 'single'
+              ? `Queued — will start after “${acq.lock.title}”…`
+              : `Queued behind “${acq.lock.title}”…`;
+          const ok = await waitWithCancel(
+            label,
+            kind === 'single' ? 450 : 0,
+            kind === 'single' ? 12_000 : undefined
+          );
+          if (!ok) return false;
+        }
+      }
+      if (userCancelRef.current) {
+        await releasePipelineRunLock(ownerIdRef.current);
+        return false;
+      }
+      stopHeartbeatRef.current?.();
+      stopHeartbeatRef.current = startPipelineLockHeartbeat(
+        ownerIdRef.current,
+        () => {
+          // Hard cancel from another window
+          applyLocalCancelUiAndAbort();
+        },
+        () => {
+          // Ignore yield — priority queue handles singles; do not abort bulk.
+        }
+      );
+      currentKindRef.current = kind;
+      return true;
+    },
+    [applyLocalCancelUiAndAbort, setModal]
+  );
+
+  const pumpSlotQueue = useCallback(() => {
+    if (userCancelRef.current) return;
+    if (pumpScheduledRef.current) return;
+    pumpScheduledRef.current = true;
+    queueMicrotask(() => {
+      pumpScheduledRef.current = false;
+      if (userCancelRef.current) return;
+      if (isRunningRef.current && abortRef.current) return;
+      const next = slotWaitersRef.current.shift();
+      setQueuedCount(slotWaitersRef.current.length);
+      if (!next) {
+        if (resumeBulkAfterSingleRef.current) {
+          resumeBulkAfterSingleRef.current = false;
+          // Keep Hub busy chrome while auto-resume starts.
+          setIsRunning(true);
+          void (async () => {
+            try {
+              const { readImportPipelineJob, IMPORT_WAVE_PIPELINE_ENABLED } = await import(
+                '../../lib/pipeline/importPipelineJob'
+              );
+              if (!IMPORT_WAVE_PIPELINE_ENABLED) {
+                setIsRunning(false);
+                return;
+              }
+              const job = await readImportPipelineJob();
+              if (!job || job.status === 'completed') {
+                setIsRunning(false);
+                return;
+              }
+              autoResumeBulkRef.current?.();
+            } catch {
+              setIsRunning(false);
+            }
+          })();
+          return;
+        }
+        setIsRunning(false);
+        return;
+      }
+      // Next queued job is about to take the lock — keep busy chrome continuous.
+      setIsRunning(true);
+      next.resolve(true);
+    });
+  }, []);
+
+  const autoResumeBulkRef = useRef<(() => void) | null>(null);
+
+  /**
+   * Gate for in-page pipeline entry points that still share the lock.
+   * - single: jumps the in-memory waiter queue (no soft-pause / abort of bulk)
+   * - bulk: appends when busy
+   * Digests prefer offscreen (parallel); this gate is for remaining in-page jobs.
+   */
+  const acquireSharedRun = useCallback(
+    async (
+      title: string,
+      itemCount = 0,
+      importRunId?: string | null,
+      kind: PipelineRunKind = itemCount <= 1 ? 'single' : 'bulk',
+      _opts?: { preemptBulk?: boolean }
+    ): Promise<boolean> => {
+      userCancelRef.current = false;
+      suppressPipelineUiRef.current = false;
+      const jumpQueue = kind === 'single';
+      const needsQueue = Boolean(abortRef.current) || slotWaitersRef.current.length > 0;
+
+      if (!needsQueue) {
+        return takeSlotLock(title, kind, itemCount, importRunId, {
+          preemptBulk: false,
+        });
+      }
+
+      if (jumpQueue) {
+        setModal({
+          open: true,
+          phase: 'running',
+          title,
+          progressLabel: 'Queued ahead of bulk…',
+          current: 0,
+          total: 100,
+          cancellable: true,
+        });
+      }
+
+      const ok = await new Promise<boolean>((resolve) => {
+        const waiter: SlotWaiter = {
+          id: `${kind}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          kind,
+          title,
+          resolve,
+        };
+        if (jumpQueue) {
+          slotWaitersRef.current.unshift(waiter);
+        } else {
+          slotWaitersRef.current.push(waiter);
+        }
+        setQueuedCount(slotWaitersRef.current.length);
+        if (!abortRef.current) pumpSlotQueue();
+      });
+
+      if (!ok || userCancelRef.current) {
+        if (!abortRef.current && slotWaitersRef.current.length === 0) {
+          setIsRunning(false);
+        }
+        return false;
+      }
+      const locked = await takeSlotLock(title, kind, itemCount, importRunId, {
+        preemptBulk: false,
+      });
+      if (!locked && !abortRef.current && slotWaitersRef.current.length === 0) {
+        setIsRunning(false);
+      }
+      return locked;
+    },
+    [pumpSlotQueue, setModal, takeSlotLock]
+  );
+
+  const releaseSharedRunAndPump = useCallback(async () => {
+    await releaseSharedRun();
+    if (userCancelRef.current) {
+      // Cancel drops the rest of the queue; don't auto-start the next job.
+      clearSlotQueue();
+      resumeBulkAfterSingleRef.current = false;
+      userCancelRef.current = false;
+      setIsRunning(false);
+      return;
+    }
+    pumpSlotQueue();
+  }, [clearSlotQueue, pumpSlotQueue, releaseSharedRun]);
+
+  const closeModal = useCallback(() => {
+    setModalState((prev) => {
+      if (!prev.open) return prev;
+      if (prev.phase === 'running' && !suppressPipelineUiRef.current) return prev;
+      return { open: false };
+    });
+  }, []);
+
+  const cancel = useCallback(() => {
+    const hadLocalRun = isRunningRef.current || Boolean(abortRef.current);
+    applyLocalCancelUiAndAbort();
+
+    stopHeartbeatRef.current?.();
+    stopHeartbeatRef.current = null;
+    currentKindRef.current = null;
+
+    // Signal the owner window (may be this one or another), clear job, release if we own.
+    void (async () => {
+      try {
+        const { clearImportPipelineJob, notifyImportPipelineJobChanged } = await import(
+          '../../lib/pipeline/importPipelineJob'
+        );
+        // Signal owner window first, then clear local banner/job file.
+        await requestCancelPipelineRun();
+        notifyImportPipelineJobChanged();
+        await clearImportPipelineJob();
+      } catch {
+        /* ignore */
+      } finally {
+        try {
+          await releasePipelineRunLock(ownerIdRef.current);
+        } catch {
+          /* ignore */
+        }
+        if (!hadLocalRun) {
+          suppressPipelineUiRef.current = false;
+          userCancelRef.current = false;
+        }
+      }
+    })();
+  }, [applyLocalCancelUiAndAbort]);
+
+  const endPipelineRun = useCallback(() => {
+    setIsCancellable(false);
+    abortRef.current = null;
+    // Do not clear isRunning here — pumpSlotQueue keeps Hub chrome continuous
+    // across queued handoffs, and clears it only when the queue is empty.
+    void releaseSharedRunAndPump();
+    // Re-enable modal updates after cancel wind-down.
+    if (suppressPipelineUiRef.current) {
+      suppressPipelineUiRef.current = false;
+    }
+  }, [releaseSharedRunAndPump]);
 
   const runBatch = useCallback(
     async (
@@ -284,8 +668,18 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       options?: RunBatchWithProgressOptions
     ): Promise<BatchDigestResult> => {
       const title = options?.title ?? 'Processing batch';
-      const cancellable = options?.cancellable === true;
-      const controller = cancellable ? new AbortController() : null;
+      // Hub / batch APIs never soft-preempt — even a 1-item batch queues behind a running job.
+      if (!(await acquireSharedRun(title, itemIds.length, null, 'bulk'))) {
+        return {
+          enriched: 0,
+          skipped: 0,
+          failed: 0,
+          classified: 0,
+          message: 'Pipeline already running in another window',
+        };
+      }
+      const cancellable = options?.cancellable !== false;
+      const controller = new AbortController();
       abortRef.current = controller;
 
       setIsRunning(true);
@@ -308,39 +702,35 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       }
       try {
         const scopedSelection = itemIds.length > 0 && itemIds.length <= 25;
-        const result = isFullPipelineBatch(options)
-          ? await runPipelineScopeBatch(itemIds, {
-              signal: controller?.signal,
-              forceEnrich: options?.forceEnrich,
-              forceReclassify: options?.forceReclassify,
-              refetchCompare: options?.refetchCompare,
-              collectItemResults: options?.collectItemResults,
-              writeJobFile: true,
-              onProgress: (p) =>
-                applyPipelineProgress(
-                  setModal,
-                  scopedProgressToItemProgress(p, itemIds.length)
-                ),
-            })
-          : await runBatchDigest(itemIds, {
-              enrich: options?.enrich,
-              classify: options?.classify,
-              maxEnrich: options?.maxEnrich,
-              maxClassify: options?.maxClassify,
-              processAll: options?.processAll,
-              refetchCompare: options?.refetchCompare,
-              forceEnrich: options?.forceEnrich,
-              skipAi: options?.skipAi,
-              forceReclassify: options?.forceReclassify,
-              collectItemResults: options?.collectItemResults,
-              skipDiscover:
-                options?.skipDiscover ?? (scopedSelection ? true : undefined),
-              drainPendingClassifyQueue: options?.drainPendingClassifyQueue,
-              signal: controller?.signal,
-              onProgress: (p) => applyPipelineProgress(setModal, p),
-            });
+        // Memory-first digest (warm UI cache); SQLite drain is low-priority.
+        const { runBatchOnOffscreen } = await import(
+          '../../lib/pipeline/offscreenPipelineClient'
+        );
+        const result = await runBatchOnOffscreen(itemIds, {
+          enrich: options?.enrich,
+          classify: options?.classify,
+          maxEnrich: options?.maxEnrich,
+          maxClassify: options?.maxClassify,
+          processAll: options?.processAll,
+          refetchCompare: options?.refetchCompare,
+          forceEnrich: options?.forceEnrich,
+          skipAi: options?.skipAi,
+          forceReclassify: options?.forceReclassify,
+          collectItemResults: options?.collectItemResults,
+          skipDiscover:
+            options?.skipDiscover ?? (scopedSelection ? true : undefined),
+          drainPendingClassifyQueue: options?.drainPendingClassifyQueue,
+          useScopedWave: isFullPipelineBatch(options) && itemIds.length > 1,
+          signal: controller.signal,
+          onProgress: (p) => applyPipelineProgress(setModal, p),
+        });
 
-        const cancelled = result.enrichCancelled || controller?.signal.aborted || result.classifyError === 'classification cancelled';
+        const yielded = resumeBulkAfterSingleRef.current;
+        const cancelled =
+          !yielded &&
+          (result.enrichCancelled ||
+            controller?.signal.aborted ||
+            result.classifyError === 'classification cancelled');
         const itemLabels = options?.itemLabels ?? {};
         const batchAction = resolveBatchReportAction(options);
         const reportIds =
@@ -349,7 +739,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
             : (result.itemEnrichResults?.map((r) => r.itemId) ?? []);
         let reportRows: PipelineReportRow[] | undefined;
         let reportRowsTotal: number | undefined;
-        if (!cancelled && reportIds.length) {
+        if (!cancelled && !yielded && reportIds.length) {
           const enrichRun = options?.enrich !== false;
           if (enrichRun || batchAction === 'batch_full' || batchAction === 'full_digest') {
             // Cap rows — building a report for hundreds of ids walks signal/embed tables hard.
@@ -430,20 +820,22 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
               }
             : undefined;
 
-        setModal({
-          open: true,
-          phase: 'done',
-          title: cancelled ? title : `${title} — complete`,
-          summary,
-          tone,
-          reportRows,
-          reportScopeCount: itemIds.length > 0 ? itemIds.length : undefined,
-          reportRowsTotal,
-          queueOutcome,
-        });
+        if (!yielded) {
+          setModal({
+            open: true,
+            phase: 'done',
+            title: cancelled ? title : `${title} — complete`,
+            summary,
+            tone,
+            reportRows,
+            reportScopeCount: itemIds.length > 0 ? itemIds.length : undefined,
+            reportRowsTotal,
+            queueOutcome,
+          });
+        }
         await refreshAfterPipeline(onRefresh, { itemIds });
 
-        if (result.pipelineDebugSavedTo && itemIds.length > 0 && !cancelled) {
+        if (result.pipelineDebugSavedTo && itemIds.length > 0 && !cancelled && !yielded) {
           setModal((prev) =>
             prev.open && prev.phase === 'done'
               ? { ...prev, analysisSavedTo: result.pipelineDebugSavedTo }
@@ -472,20 +864,25 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         return result;
       } catch (e) {
         if (controller?.signal.aborted) {
-          setModal({
-            open: true,
-            phase: 'done',
-            title,
-            summary: 'Cancelled',
-            tone: 'info',
-          });
+          // Soft-yield for a user single — don't flash a Cancelled modal over the digest.
+          if (!resumeBulkAfterSingleRef.current) {
+            setModal({
+              open: true,
+              phase: 'done',
+              title,
+              summary: 'Cancelled',
+              tone: 'info',
+            });
+          }
           return {
             enriched: 0,
             skipped: 0,
             failed: 0,
             classified: 0,
             enrichCancelled: true,
-            message: 'Cancelled',
+            message: resumeBulkAfterSingleRef.current
+              ? 'Paused for single digest'
+              : 'Cancelled',
           };
         }
         const summary = e instanceof Error ? e.message : 'Batch processing failed';
@@ -498,12 +895,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         });
         throw e;
       } finally {
-        setIsRunning(false);
-        setIsCancellable(false);
-        abortRef.current = null;
+        endPipelineRun();
       }
     },
-    [onRefresh]
+    [acquireSharedRun, endPipelineRun, onRefresh]
   );
 
   const runSingle = useCallback(
@@ -512,10 +907,9 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       options?: RunSingleWithProgressOptions
     ): Promise<SingleLinkDigestResult> => {
       const title = options?.title ?? 'Running digest';
-
-      setIsRunning(true);
-      setIsCancellable(false);
-      setModal({
+      // Parallel path: offscreen process, no shared lock, no soft-pause of bulk.
+      parallelSingleRef.current = true;
+      setModalState({
         open: true,
         phase: 'running',
         title,
@@ -525,8 +919,16 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         cancellable: false,
       });
 
+      const singleSetModal: React.Dispatch<React.SetStateAction<ModalState>> = (update) => {
+        if (suppressPipelineUiRef.current) return;
+        setModalState(update);
+      };
+
       try {
-        const result = await runSingleLinkDigest(itemId, {
+        const { runSingleOnOffscreen } = await import(
+          '../../lib/pipeline/offscreenPipelineClient'
+        );
+        const result = await runSingleOnOffscreen(itemId, {
           forceEnrich: options?.forceEnrich,
           skipClassify: options?.skipClassify,
           skipAi: options?.skipAi,
@@ -534,7 +936,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           tabSessionOnly: options?.tabSessionOnly,
           preferTabSession: options?.preferTabSession,
           tabId: options?.tabId,
-          onProgress: (p) => applyPipelineProgress(setModal, p),
+          onProgress: (p) => applyPipelineProgress(singleSetModal, p),
         });
 
         const reportAction =
@@ -545,7 +947,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           { action: reportAction, enrichResults: [result.enrich] }
         );
         const tone: SummaryTone = resolveReportRowsSummaryTone(reportRows);
-        setModal({
+        setModalState({
           open: true,
           phase: 'done',
           title: `${title} — complete`,
@@ -557,7 +959,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         return result;
       } catch (e) {
         const summary = e instanceof Error ? e.message : 'Digest failed';
-        setModal({
+        setModalState({
           open: true,
           phase: 'done',
           title,
@@ -566,8 +968,8 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         });
         throw e;
       } finally {
-        setIsRunning(false);
-        setIsCancellable(false);
+        parallelSingleRef.current = false;
+        // Do not endPipelineRun — bulk may still own the shared lock.
       }
     },
     [onRefresh]
@@ -580,6 +982,9 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
     ) => {
       const title =
         options?.title ?? (options?.force ? 'Run AI anyway' : 'Re-run AI');
+      if (!(await acquireSharedRun(title, 1, null, 'single'))) {
+        throw new Error('Pipeline already running in another window');
+      }
 
       setIsRunning(true);
       setIsCancellable(false);
@@ -622,11 +1027,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         });
         throw e;
       } finally {
-        setIsRunning(false);
-        setIsCancellable(false);
+        endPipelineRun();
       }
     },
-    [onRefresh]
+    [acquireSharedRun, endPipelineRun, onRefresh]
   );
 
   const runReextractBatch = useCallback(
@@ -641,6 +1045,9 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           ? `Run AI anyway (${uniqueIds.length})`
           : `Re-run AI (${uniqueIds.length})`);
       const itemLabels = options?.itemLabels ?? {};
+      if (!(await acquireSharedRun(title, uniqueIds.length, null, 'bulk'))) {
+        return [];
+      }
 
       setIsRunning(true);
       setIsCancellable(false);
@@ -693,11 +1100,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         });
         throw e;
       } finally {
-        setIsRunning(false);
-        setIsCancellable(false);
+        endPipelineRun();
       }
     },
-    [onRefresh]
+    [acquireSharedRun, endPipelineRun, onRefresh]
   );
 
   const runEmbedBatch = useCallback(
@@ -707,6 +1113,9 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
     ): Promise<{ embedded: number; skipped: number; failed: number }> => {
       const uniqueIds = [...new Set(itemIds.filter(Boolean))];
       const title = options?.title ?? `Re-embed (${uniqueIds.length})`;
+      if (!(await acquireSharedRun(title, uniqueIds.length, null, 'bulk'))) {
+        return { embedded: 0, skipped: 0, failed: 0 };
+      }
 
       setIsRunning(true);
       setIsCancellable(false);
@@ -764,11 +1173,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         });
         throw e;
       } finally {
-        setIsRunning(false);
-        setIsCancellable(false);
+        endPipelineRun();
       }
     },
-    [onRefresh]
+    [acquireSharedRun, endPipelineRun, onRefresh]
   );
 
   const runDiscover = useCallback(
@@ -777,6 +1185,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       const title =
         options?.title ??
         (andClassify ? 'Discover + classify' : 'Discover taxonomy gap-fill');
+
+      if (!(await acquireSharedRun(title, 0, null, 'bulk'))) {
+        throw new Error('Pipeline already running in another window');
+      }
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -993,12 +1405,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           },
         };
       } finally {
-        setIsRunning(false);
-        setIsCancellable(false);
-        abortRef.current = null;
+        endPipelineRun();
       }
     },
-    [onRefresh]
+    [acquireSharedRun, endPipelineRun, onRefresh]
   );
 
   const runClassify = useCallback(
@@ -1011,6 +1421,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       const maxItems =
         options?.maxItems ??
         (itemIds?.length ? itemIds.length : 200);
+
+      if (!(await acquireSharedRun(title, itemIds?.length ?? 0, null, 'bulk'))) {
+        throw new Error('Pipeline already running in another window');
+      }
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -1146,12 +1560,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         if (!cancelled) throw e;
         return { summary: emptyTopicClassifySummary(), categories: [] };
       } finally {
-        setIsRunning(false);
-        setIsCancellable(false);
-        abortRef.current = null;
+        endPipelineRun();
       }
     },
-    [onRefresh]
+    [acquireSharedRun, endPipelineRun, onRefresh]
   );
 
   const runResumePipelineJob = useCallback(
@@ -1211,6 +1623,10 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       }
 
       const remaining = Math.max(0, job.itemIds.length - job.completedItemIds.length);
+      const resumeTitle = `Resuming pipeline (${job.itemIds.length.toLocaleString()} links)`;
+      if (!(await acquireSharedRun(resumeTitle, job.itemIds.length, job.importRunId, 'bulk'))) {
+        return;
+      }
       const controller = new AbortController();
       abortRef.current = controller;
       setIsRunning(true);
@@ -1218,7 +1634,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       setModal({
         open: true,
         phase: 'running',
-        title: `Resuming pipeline (${job.itemIds.length.toLocaleString()} links)`,
+        title: resumeTitle,
         progressLabel:
           remaining > 0
             ? `Resuming — ${remaining.toLocaleString()} remaining…`
@@ -1241,21 +1657,28 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
             ),
         });
 
+        const yielded =
+          resumeBulkAfterSingleRef.current ||
+          result.lastError === 'Paused for single digest';
         const cancelled =
-          result.lastError === 'Cancelled' || controller.signal.aborted;
+          !yielded &&
+          (result.lastError === 'Cancelled' || controller.signal.aborted);
         const dur = formatPipelineDurationMs(result.durationMs);
         const durSuffix = dur ? ` in ${dur}` : '';
         const doneCount = result.completedItemIds.length;
         const totalCount = result.itemIds.length;
+        const fullyDone =
+          result.status === 'completed' ||
+          (doneCount >= totalCount && totalCount > 0);
 
         let summary: string;
         let tone: SummaryTone;
-        if (cancelled) {
-          summary = `Cancelled — ${doneCount.toLocaleString()} of ${totalCount.toLocaleString()} processed${durSuffix}.`;
-          tone = 'info';
-        } else if (result.status === 'completed') {
+        if (fullyDone) {
           summary = `Pipeline complete — ${doneCount.toLocaleString()} of ${totalCount.toLocaleString()} processed${durSuffix}.`;
           tone = 'success';
+        } else if (cancelled) {
+          summary = `Cancelled — ${doneCount.toLocaleString()} of ${totalCount.toLocaleString()} processed${durSuffix}.`;
+          tone = 'info';
         } else if (result.lastError) {
           summary = `Paused: ${result.lastError} — ${doneCount.toLocaleString()} of ${totalCount.toLocaleString()} processed${durSuffix}.`;
           tone = 'error';
@@ -1264,13 +1687,31 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           tone = 'info';
         }
 
-        setModal({
-          open: true,
-          phase: 'done',
-          title: cancelled ? 'Pipeline cancelled' : 'Pipeline resume — complete',
-          summary,
-          tone,
-        });
+        // Soft-yield for a user single — keep modal for the digest; job file stays paused.
+        if (!yielded) {
+          setModal({
+            open: true,
+            phase: 'done',
+            title: fullyDone
+              ? 'Pipeline complete'
+              : cancelled
+                ? 'Pipeline cancelled'
+                : 'Pipeline paused',
+            summary,
+            tone,
+          });
+        }
+
+        if (fullyDone) {
+          try {
+            const { clearImportPipelineJob } = await import(
+              '../../lib/pipeline/importPipelineJob'
+            );
+            await clearImportPipelineJob();
+          } catch {
+            /* ignore */
+          }
+        }
 
         await refreshAfterPipeline(onRefresh, {
           itemIds: result.completedItemIds.slice(-50),
@@ -1287,19 +1728,26 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         });
         await options?.onFinished?.();
       } finally {
-        setIsRunning(false);
-        setIsCancellable(false);
-        abortRef.current = null;
+        endPipelineRun();
       }
     },
-    [onRefresh]
+    [acquireSharedRun, endPipelineRun, onRefresh]
   );
+
+  // After a priority single soft-preempts a bulk wave job, resume it automatically.
+  useEffect(() => {
+    autoResumeBulkRef.current = () => {
+      void runResumePipelineJob();
+    };
+  }, [runResumePipelineJob]);
 
   return (
     <PipelineProgressContext.Provider
       value={{
-        isRunning,
-        isCancellable,
+        isRunning: pipelineBusy,
+        isLocalRunning: isRunning,
+        queuedCount,
+        isCancellable: isCancellable || remoteAnyHeld,
         cancel,
         runBatch,
         runSingle,

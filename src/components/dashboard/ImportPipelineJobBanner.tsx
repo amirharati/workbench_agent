@@ -1,6 +1,11 @@
-import React, { useState } from 'react';
-import { AlertTriangle, Loader2, Play, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertTriangle, Loader2, Play, Square, X } from 'lucide-react';
 import type { ImportPipelineJob } from '../../lib/pipeline/importPipelineJob';
+import {
+  isPipelineRunLockFresh,
+  type PipelineRunLock,
+  subscribePipelineRunLock,
+} from '../../lib/pipeline/pipelineRunLock';
 import { useToast } from '../ToastContainer';
 import { usePipelineProgress } from './PipelineProgressProvider';
 
@@ -39,16 +44,33 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
   const [dismissOpen, setDismissOpen] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [lock, setLock] = useState<PipelineRunLock | null>(null);
+
+  useEffect(() => subscribePipelineRunLock(setLock), []);
 
   if (loading || !job || !ACTIVE_STATUSES.has(job.status)) {
     return null;
   }
 
+  const lockFresh = isPipelineRunLockFresh(lock);
+  const lockForThisJob =
+    lockFresh &&
+    Boolean(lock) &&
+    (lock!.importRunId === job.importRunId ||
+      (job.status === 'running' && lock!.importRunId == null));
+  const thisJobInProgress = lockForThisJob || (pipeline.isLocalRunning && job.status === 'running');
+  const otherPipelineBusy = pipeline.isRunning && !thisJobInProgress;
+  const showResume = !thisJobInProgress && !otherPipelineBusy && isResumable;
+  const showInProgressChrome = thisJobInProgress;
+
   const handleResume = async () => {
-    if (pipeline.isRunning) {
+    if (thisJobInProgress || otherPipelineBusy) {
       addToast({
         type: 'info',
-        message: 'Another pipeline is already running — wait for it to finish, then resume.',
+        message: thisJobInProgress
+          ? 'This pipeline is already running — use Cancel if you need to stop it.'
+          : 'Another pipeline is already running — wait for it to finish, then resume.',
       });
       return;
     }
@@ -75,6 +97,17 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
     }
   };
 
+  const handleCancel = async () => {
+    setCancelling(true);
+    try {
+      // Immediate UI + background abort/clear (handled inside cancel).
+      pipeline.cancel();
+      await onJobChanged?.();
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const handleDismissConfirm = async () => {
     setDismissing(true);
     try {
@@ -89,6 +122,14 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
       setDismissing(false);
     }
   };
+
+  const helperText = showInProgressChrome
+    ? pipeline.isLocalRunning
+      ? 'Job in progress in this window. Cancel stops the run; saved progress can be resumed later if needed.'
+      : 'Running in another Homebase window. You can request Cancel from here — Resume stays hidden while it’s active.'
+    : otherPipelineBusy
+      ? 'Another enrichment job is running — Resume unlocks when it finishes.'
+      : 'Press Resume to continue with a progress dialog. Dismiss clears the saved job file.';
 
   return (
     <>
@@ -208,9 +249,15 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
               fontWeight: 600,
               color: 'var(--text)',
               lineHeight: 1.45,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
             }}
           >
-            {formatJobSummary(job)}
+            {showInProgressChrome ? <Loader2 size={14} className="spin" /> : null}
+            {showInProgressChrome
+              ? `Job in progress — ${formatJobSummary(job)}`
+              : formatJobSummary(job)}
           </div>
           <div
             style={{
@@ -220,41 +267,72 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
               lineHeight: 1.4,
             }}
           >
-            Press Resume to continue with a progress dialog. Dismiss clears the saved job file.
+            {helperText}
           </div>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          {showInProgressChrome ? (
+            <button
+              type="button"
+              disabled={cancelling}
+              title="Cancel the in-progress pipeline"
+              onClick={() => void handleCancel()}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-glass)',
+                color: 'var(--text)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                cursor: cancelling ? 'wait' : 'pointer',
+              }}
+            >
+              {cancelling ? <Loader2 size={13} className="spin" /> : <Square size={13} />}
+              Cancel
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={resuming || !showResume}
+              title={
+                otherPipelineBusy
+                  ? 'Wait for the current pipeline to finish'
+                  : showResume
+                    ? 'Resume wave pipeline with progress'
+                    : 'This job cannot be resumed'
+              }
+              onClick={() => void handleResume()}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: 'none',
+                background: 'var(--accent)',
+                color: '#fff',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+                cursor: resuming || !showResume ? 'not-allowed' : 'pointer',
+                opacity: resuming || !showResume ? 0.8 : 1,
+              }}
+            >
+              {resuming ? <Loader2 size={13} className="spin" /> : <Play size={13} />}
+              Resume
+            </button>
+          )}
           <button
             type="button"
-            disabled={resuming || pipeline.isRunning}
+            disabled={showInProgressChrome}
             title={
-              pipeline.isRunning
-                ? 'Wait for the current pipeline to finish'
-                : isResumable
-                  ? 'Resume wave pipeline with progress'
-                  : 'This job cannot be resumed'
+              showInProgressChrome
+                ? 'Dismiss is disabled while the job is running — cancel first'
+                : 'Dismiss saved job file'
             }
-            onClick={() => void handleResume()}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: 'none',
-              background: 'var(--accent)',
-              color: '#fff',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: resuming || pipeline.isRunning ? 'wait' : 'pointer',
-              opacity: resuming || pipeline.isRunning ? 0.8 : 1,
-            }}
-          >
-            {resuming ? <Loader2 size={13} className="spin" /> : <Play size={13} />}
-            Resume
-          </button>
-          <button
-            type="button"
             onClick={() => setDismissOpen(true)}
             style={{
               display: 'inline-flex',
@@ -267,7 +345,8 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
               color: 'var(--text)',
               fontSize: 'var(--text-xs)',
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: showInProgressChrome ? 'not-allowed' : 'pointer',
+              opacity: showInProgressChrome ? 0.55 : 1,
             }}
           >
             <X size={13} />

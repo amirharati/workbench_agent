@@ -17,6 +17,8 @@ import {
 import { revisionTracker } from '../lib/revisionTracker';
 import { wouldMirrorShrinkWorkbenchSqlite } from '../lib/folderMirrorGuard';
 import { syncClock } from '../lib/time/clock';
+import { markDbOwnerReady, setLocalDbRpcTransport } from '../lib/storage/dbClient';
+import { installOffscreenPipelineHost } from '../lib/pipeline/offscreenPipelineHost';
 
 void syncClock();
 
@@ -89,7 +91,11 @@ async function bootstrapFromFolderIfNeeded(): Promise<void> {
   await workerRpcBinary('mergeWithFolderBytes', bytes);
 }
 
-function workerRpc(method: string, args: unknown[]): Promise<unknown> {
+function workerRpc(
+  method: string,
+  args: unknown[],
+  priority: 'high' | 'low' = 'high'
+): Promise<unknown> {
   const id = rpcId++;
   return new Promise((resolve, reject) => {
     pendingRpc.set(id, (msg) => {
@@ -98,12 +104,16 @@ function workerRpc(method: string, args: unknown[]): Promise<unknown> {
         else reject(new Error(msg.error));
       }
     });
-    worker.postMessage({ id, method, args });
+    worker.postMessage({ id, method, args, priority });
   });
 }
 
 /** Import/inspect large sqlite bytes via transferable buffer (no base64 bloat). */
-function workerRpcBinary(method: string, bytes: Uint8Array): Promise<unknown> {
+function workerRpcBinary(
+  method: string,
+  bytes: Uint8Array,
+  priority: 'high' | 'low' = 'high'
+): Promise<unknown> {
   const id = rpcId++;
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
@@ -114,7 +124,7 @@ function workerRpcBinary(method: string, bytes: Uint8Array): Promise<unknown> {
         else reject(new Error(msg.error));
       }
     });
-    worker.postMessage({ id, method, args: [copy.buffer] }, [copy.buffer]);
+    worker.postMessage({ id, method, args: [copy.buffer], priority }, [copy.buffer]);
   });
 }
 
@@ -152,6 +162,24 @@ async function rpcFromBackupFolderFile(
   return workerRpcBinary(workerMethod, primary.data);
 }
 
+// Pipeline on this document must talk to SQLite directly — never via chrome.runtime
+// db-rpc (that nests SW → db-owner into the same page and deadlocks on "Starting…").
+setLocalDbRpcTransport(async (method, args, priority) => {
+  const folderRpc = typeof method === 'string' ? FOLDER_FILE_RPC[method] : undefined;
+  if (folderRpc) {
+    const filename = String(args?.[0] ?? WORKBENCH_DB_FILE);
+    const result = await rpcFromBackupFolderFile(method, filename);
+    if (method !== 'inspectImportFromBackupFolderFile') {
+      chrome.runtime.sendMessage({ type: 'db-data-changed' }).catch(() => {});
+    }
+    return result;
+  }
+  // Worker already broadcasts data-changed for mutations — don't double-notify.
+  return workerRpc(method, args ?? [], priority);
+});
+
+installOffscreenPipelineHost();
+
 worker.onmessage = async (event: MessageEvent<WorkerResponse>) => {
   const msg = event.data;
   if (msg && typeof msg === 'object' && 'type' in msg) {
@@ -160,6 +188,7 @@ worker.onmessage = async (event: MessageEvent<WorkerResponse>) => {
       try {
         await bootstrapFromFolderIfNeeded();
         bootstrapComplete = true;
+        markDbOwnerReady();
         chrome.runtime.sendMessage({ type: 'db-owner-ready' }).catch(() => {});
       } catch (e) {
         console.error('[DB owner] bootstrap failed:', e);
@@ -214,7 +243,8 @@ worker.onmessage = async (event: MessageEvent<WorkerResponse>) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.target !== 'db-owner') return false;
-  const { id, method, args } = message;
+  const { id, method, args, priority } = message;
+  const rpcPriority = priority === 'low' ? 'low' : 'high';
   if (method === 'ping' && bootstrapComplete && !bootstrapInFlight) {
     chrome.runtime.sendMessage({ type: 'db-owner-ready' }).catch(() => {});
   }
@@ -235,20 +265,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  workerRpc(method, args ?? [])
+  workerRpc(method, args ?? [], rpcPriority)
     .then((result) => {
       sendResponse({ id, ok: true, result });
-      const readOnly =
-        method === 'ping' ||
-        method === 'getStatus' ||
-        method === 'hydrate' ||
-        method === 'refreshTables' ||
-        method === 'refreshTablePage' ||
-        method === 'liveFingerprint' ||
-        method === 'inspectImportBytes';
-      if (!readOnly) {
-        chrome.runtime.sendMessage({ type: 'db-data-changed' }).catch(() => {});
-      }
+      // Worker already posts data-changed → forwarded below; no second notify.
     })
     .catch((e) => {
       sendResponse({ id, ok: false, error: String(e) });

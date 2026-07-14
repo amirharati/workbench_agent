@@ -19,7 +19,7 @@ export interface SidePanelConnectedProps {
   onCreateCollection: (data: { name: string; projectId: string }) => Promise<string | void>;
   onOpenFullPage: () => void;
   onSetAsBrowserHome: () => Promise<void>;
-  loadData: () => Promise<void>;
+  loadData: (opts?: { quiet?: boolean }) => Promise<void>;
 }
 
 export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
@@ -50,6 +50,10 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
 
   const handleSaveCurrentTab = useCallback(
     async (collectionId?: string) => {
+      // Paint immediately — bulk on the UI thread can delay the first await by seconds.
+      showStatus('Saving…');
+      await new Promise<void>((r) => setTimeout(r, 0));
+
       const ctx = await getActiveTabBookmarkContext();
       if (ctx?.url && (/^https?:\/\//i.test(ctx.url) || /^file:\/\//i.test(ctx.url))) {
         const collectionIds = collectionId ? [collectionId] : [];
@@ -70,10 +74,26 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
             statusPrefix = 'Added to collection';
           }
 
-          await loadData();
-          const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
-          flushDurableBackupSoon();
           showStatus(statusPrefix);
+          void loadData({ quiet: true }).then(() => {
+            void import('../lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) => {
+              flushDurableBackupSoon();
+            });
+          });
+
+          if (result.itemId && /^https?:\/\//i.test(ctx.url)) {
+            // Defer digest so save feedback isn't blocked by offscreen handshake.
+            window.setTimeout(() => {
+              void pipeline
+                .runSingle(result.itemId, {
+                  title: 'Digest',
+                  preferTabSession: true,
+                  tabId: ctx.tabId,
+                  itemLabel: ctx.title || ctx.url,
+                })
+                .catch(() => {});
+            }, 0);
+          }
         } catch (error) {
           showStatus(toStatusMessage(error, 'Could not save tab'));
         }
@@ -81,7 +101,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         showStatus('Cannot save this page');
       }
     },
-    [loadData, showStatus]
+    [loadData, pipeline, showStatus]
   );
 
   const handleCreateItem = useCallback(
@@ -106,9 +126,6 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           collectionIds: data.collectionIds,
           ...(data.notes !== undefined ? { notes: data.notes } : {}),
         });
-        await loadData();
-        const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
-        flushDurableBackupSoon();
 
         if (saveUrl && /^https?:\/\//i.test(saveUrl)) {
           let statusPrefix = 'Bookmark added';
@@ -120,15 +137,35 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
             statusPrefix = 'Added to collection';
           }
           showStatus(statusPrefix);
+          void loadData({ quiet: true }).then(() => {
+            void import('../lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) => {
+              flushDurableBackupSoon();
+            });
+          });
+          window.setTimeout(() => {
+            void pipeline
+              .runSingle(result.itemId, {
+                title: 'Digest',
+                preferTabSession: true,
+                tabId: ctx?.tabId,
+                itemLabel: title || saveUrl,
+              })
+              .catch(() => {});
+          }, 0);
         } else {
           showStatus('Note added');
+          void loadData({ quiet: true }).then(() => {
+            void import('../lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) => {
+              flushDurableBackupSoon();
+            });
+          });
         }
       } catch (error) {
         showStatus(toStatusMessage(error, 'Could not add item'));
         throw error;
       }
     },
-    [loadData, showStatus]
+    [loadData, pipeline, showStatus]
   );
 
   const handleCreateExternalLink = useCallback(
@@ -142,7 +179,6 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           source: 'manual',
           collectionIds: data.collectionIds,
         });
-        await loadData();
 
         let statusPrefix = 'External link saved';
         if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
@@ -155,17 +191,27 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           ...prev,
           { itemId: result.itemId, url: saveUrl },
         ]);
-
-        const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
-        flushDurableBackupSoon();
         showStatus(statusPrefix);
+        void loadData().then(() => {
+          void import('../lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) => {
+            flushDurableBackupSoon();
+          });
+        });
+        if (/^https?:\/\//i.test(saveUrl)) {
+          void pipeline
+            .runSingle(result.itemId, {
+              title: 'Digest',
+              itemLabel: saveUrl,
+            })
+            .catch(() => {});
+        }
         return result.itemId;
       } catch (error) {
         showStatus(toStatusMessage(error, 'Could not save external link'));
         throw error;
       }
     },
-    [loadData, showStatus]
+    [loadData, pipeline, showStatus]
   );
 
   const handleUpdateItem = useCallback(
@@ -215,7 +261,6 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       onSetAsBrowserHome={onSetAsBrowserHome}
       status={status}
       externalLinks={externalLinks}
-      digestRunning={pipeline.isRunning}
       onHostTabNavigate={clearExternalLinks}
     />
   );
