@@ -4,6 +4,7 @@ import {
   Collection,
   findActiveItemsByUrlInReadBuffer,
   getActiveItemsByUrlFast,
+  getItem,
   Item,
   normalizeBookmarkUrl,
   Project,
@@ -12,6 +13,7 @@ import {
 import {
   lookupWorkingSetByUrl,
   pinItemsForUrl,
+  pinSavedItem,
   syncOpenTabUrls,
 } from '../lib/storage/workingSetCache';
 import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
@@ -35,14 +37,12 @@ function mergeItemsById(...lists: Item[][]): Item[] {
 function itemsMatchingUrl(items: Item[], tabUrl: string): Item[] {
   const target = normalizeBookmarkUrl(tabUrl.trim());
   if (!target) return [];
-  return items
-    .filter(
-      (item) =>
-        item.deletedAt == null &&
-        !!item.url &&
-        normalizeBookmarkUrl(item.url) === target
-    )
-    .slice(0, 5);
+  return items.filter(
+    (item) =>
+      item.deletedAt == null &&
+      !!item.url &&
+      normalizeBookmarkUrl(item.url) === target
+  );
 }
 
 async function refreshOpenTabsIntoWorkingSet(): Promise<void> {
@@ -54,6 +54,17 @@ async function refreshOpenTabsIntoWorkingSet(): Promise<void> {
   } catch {
     /* ignore — side panel may lack tabs permission briefly */
   }
+}
+
+function mergePreferNewer(base: Item[], overlay: Item[]): Item[] {
+  const byId = new Map(base.map((item) => [item.id, item]));
+  for (const item of overlay) {
+    const prev = byId.get(item.id);
+    if (!prev || (item.updated_at ?? 0) >= (prev.updated_at ?? 0)) {
+      byId.set(item.id, item);
+    }
+  }
+  return [...byId.values()];
 }
 
 export interface SidePanelConnectedProps {
@@ -83,6 +94,8 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
   const [status, setStatus] = useState('');
   const [externalLinks, setExternalLinks] = useState<SessionExternalLink[]>([]);
   const [fastItems, setFastItems] = useState<Item[]>([]);
+  const [localCollections, setLocalCollections] = useState<Collection[]>([]);
+  const [localProjects, setLocalProjects] = useState<Project[]>([]);
   /** Only true on true cold start with empty memory — never block on DB round-trip. */
   const [savedStatePending, setSavedStatePending] = useState(false);
   const lookupSeqRef = useRef(0);
@@ -99,10 +112,83 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
   }, []);
 
   const visibleItems = useMemo(() => {
-    const byId = new Map(items.map((item) => [item.id, item]));
-    for (const item of fastItems) byId.set(item.id, item);
-    return [...byId.values()];
+    // Prefer fresher rows — stale fastItems must not clobber loadData after org edits.
+    return mergePreferNewer(items, fastItems);
   }, [items, fastItems]);
+
+  const visibleCollections = useMemo(() => {
+    if (localCollections.length === 0) return collections;
+    const byId = new Map(collections.map((c) => [c.id, c]));
+    for (const c of localCollections) {
+      if (!byId.has(c.id)) byId.set(c.id, c);
+    }
+    return [...byId.values()];
+  }, [collections, localCollections]);
+
+  const visibleProjects = useMemo(() => {
+    if (localProjects.length === 0) return projects;
+    const byId = new Map(projects.map((p) => [p.id, p]));
+    for (const p of localProjects) {
+      if (!byId.has(p.id)) byId.set(p.id, p);
+    }
+    return [...byId.values()];
+  }, [projects, localProjects]);
+
+  useEffect(() => {
+    if (localCollections.length === 0) return;
+    setLocalCollections((prev) => prev.filter((c) => !collections.some((x) => x.id === c.id)));
+  }, [collections, localCollections.length]);
+
+  useEffect(() => {
+    if (localProjects.length === 0) return;
+    setLocalProjects((prev) => prev.filter((p) => !projects.some((x) => x.id === p.id)));
+  }, [projects, localProjects.length]);
+
+  const handleCreateProjectLocal = useCallback(
+    async (data: { name: string; description?: string }) => {
+      const id = await onCreateProject(data);
+      if (id) {
+        const now = Date.now();
+        setLocalProjects((prev) => [
+          ...prev.filter((p) => p.id !== id),
+          {
+            id,
+            name: data.name.trim(),
+            description: data.description,
+            isDefault: false,
+            created_at: now,
+            updated_at: now,
+          },
+        ]);
+      }
+      return id;
+    },
+    [onCreateProject]
+  );
+
+  const handleCreateCollectionLocal = useCallback(
+    async (data: { name: string; projectId: string }) => {
+      const id = await onCreateCollection(data);
+      if (id) {
+        const now = Date.now();
+        setLocalCollections((prev) => [
+          ...prev.filter((c) => c.id !== id),
+          {
+            id,
+            name: data.name.trim(),
+            created_at: now,
+            updated_at: now,
+            primaryProjectId: data.projectId,
+            projectIds: [data.projectId],
+            isDefault: false,
+            color: '#3b82f6',
+          },
+        ]);
+      }
+      return id;
+    },
+    [onCreateCollection]
+  );
 
   useEffect(() => {
     void refreshOpenTabsIntoWorkingSet();
@@ -117,7 +203,8 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         itemsMatchingUrl(items, tabUrl)
       );
       if (seq === lookupSeqRef.current) {
-        setFastItems(instant);
+        // Merge — never replace; optimistic org edits must survive tab-context refresh.
+        setFastItems((prev) => mergePreferNewer(prev, instant));
         // Never gate Save on DB — memory answer is enough (empty = not saved yet).
         setSavedStatePending(false);
       }
@@ -127,7 +214,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         .then((matches) => {
           if (seq !== lookupSeqRef.current) return;
           pinItemsForUrl(tabUrl, matches, { durable: true });
-          setFastItems(matches);
+          setFastItems((prev) => mergePreferNewer(prev, matches));
         })
         .catch(() => {
           /* keep instant answer */
@@ -323,41 +410,76 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         url?: string;
         notes?: string;
         collectionIds: string[];
+        tags?: string[];
         notesPlacementCollectionId?: string;
       }
     ) => {
+      // Paint membership / notes changes immediately (Already saved + org chips).
+      setFastItems((prev) => {
+        const cur =
+          prev.find((i) => i.id === id) ??
+          items.find((i) => i.id === id) ??
+          (data.url
+            ? findActiveItemsByUrlInReadBuffer(data.url).find((i) => i.id === id)
+            : undefined);
+        if (!cur) return prev;
+        const optimistic: Item = {
+          ...cur,
+          title: data.title,
+          url: data.url || cur.url,
+          ...(data.notes !== undefined ? { notes: data.notes } : {}),
+          collectionIds: data.collectionIds,
+          ...(data.tags !== undefined ? { tags: data.tags } : {}),
+          updated_at: Date.now(),
+        };
+        if (optimistic.url) pinSavedItem(optimistic.url, optimistic, { durable: true });
+        return mergePreferNewer(
+          prev.filter((i) => i.id !== id),
+          [optimistic]
+        );
+      });
+
       await updateItem(
         id,
         {
           title: data.title,
           url: data.url || '',
-          notes: data.notes,
+          ...(data.notes !== undefined ? { notes: data.notes } : {}),
           collectionIds: data.collectionIds,
+          ...(data.tags !== undefined ? { tags: data.tags } : {}),
         },
         data.notesPlacementCollectionId
           ? { notesPlacementCollectionId: data.notesPlacementCollectionId }
           : undefined
       );
-      await loadData();
+      const fresh = await getItem(id);
+      if (fresh?.url) {
+        pinSavedItem(fresh.url, fresh, { durable: true });
+        setFastItems((prev) => {
+          const others = prev.filter((i) => i.id !== fresh.id);
+          return mergePreferNewer(others, [fresh]);
+        });
+      }
+      await loadData({ quiet: true });
       const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
       flushDurableBackupSoon();
       showStatus('Saved');
     },
-    [loadData, showStatus]
+    [items, loadData, showStatus]
   );
 
   return (
     <SidePanelView
-      projects={projects}
-      collections={collections}
+      projects={visibleProjects}
+      collections={visibleCollections}
       items={visibleItems}
       onSaveTab={handleSaveCurrentTab}
       onCreateItem={handleCreateItem}
       onCreateExternalLink={handleCreateExternalLink}
       onUpdateItem={handleUpdateItem}
       onDeleteItem={onDeleteItem}
-      onCreateProject={onCreateProject}
-      onCreateCollection={onCreateCollection}
+      onCreateProject={handleCreateProjectLocal}
+      onCreateCollection={handleCreateCollectionLocal}
       onOpenFullPage={onOpenFullPage}
       onSetAsBrowserHome={onSetAsBrowserHome}
       status={status}

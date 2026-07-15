@@ -63,9 +63,6 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   const hasWritePath = !!onUpdate || !!onLocalChange;
   const canMutate = editable && hasWritePath;
 
-  const membershipIds = controlledCollectionIds ?? item.collectionIds ?? [];
-  const tagList = controlledTags ?? item.tags ?? [];
-
   const [addProjectId, setAddProjectId] = useState('');
   const [addCollectionId, setAddCollectionId] = useState('');
   const [tagDraft, setTagDraft] = useState('');
@@ -78,40 +75,109 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   const [newCollectionName, setNewCollectionName] = useState('');
   const [creatingProject, setCreatingProject] = useState(false);
   const [creatingCollection, setCreatingCollection] = useState(false);
+  /** Optimistic rows until parent `collections`/`projects` props catch up after create. */
+  const [pendingCollections, setPendingCollections] = useState<Collection[]>([]);
+  const [pendingProjects, setPendingProjects] = useState<Project[]>([]);
+  /** Keep chips in sync immediately after persist while parent item props catch up. */
+  const [optimisticMembershipIds, setOptimisticMembershipIds] = useState<string[] | null>(null);
+  const [optimisticTags, setOptimisticTags] = useState<string[] | null>(null);
+
+  const effectiveCollections = useMemo(() => {
+    if (pendingCollections.length === 0) return collections;
+    const byId = new Map(collections.map((c) => [c.id, c]));
+    for (const c of pendingCollections) {
+      if (!byId.has(c.id)) byId.set(c.id, c);
+    }
+    return [...byId.values()];
+  }, [collections, pendingCollections]);
+
+  const effectiveProjects = useMemo(() => {
+    if (pendingProjects.length === 0) return projects;
+    const byId = new Map(projects.map((p) => [p.id, p]));
+    for (const p of pendingProjects) {
+      if (!byId.has(p.id)) byId.set(p.id, p);
+    }
+    return [...byId.values()];
+  }, [projects, pendingProjects]);
+
+  useEffect(() => {
+    if (pendingCollections.length === 0) return;
+    setPendingCollections((prev) => prev.filter((c) => !collections.some((x) => x.id === c.id)));
+  }, [collections, pendingCollections.length]);
+
+  useEffect(() => {
+    if (pendingProjects.length === 0) return;
+    setPendingProjects((prev) => prev.filter((p) => !projects.some((x) => x.id === p.id)));
+  }, [projects, pendingProjects.length]);
+
+  const propMembershipIds = controlledCollectionIds ?? item.collectionIds ?? [];
+  const propTags = controlledTags ?? item.tags ?? [];
+
+  useEffect(() => {
+    if (!optimisticMembershipIds) return;
+    const prop = controlledCollectionIds ?? item.collectionIds ?? [];
+    const same =
+      prop.length === optimisticMembershipIds.length &&
+      optimisticMembershipIds.every((id) => prop.includes(id));
+    if (same) setOptimisticMembershipIds(null);
+  }, [controlledCollectionIds, item.collectionIds, optimisticMembershipIds]);
+
+  useEffect(() => {
+    if (!optimisticTags) return;
+    const prop = controlledTags ?? item.tags ?? [];
+    const same =
+      prop.length === optimisticTags.length &&
+      optimisticTags.every((t, i) => prop[i] === t);
+    if (same) setOptimisticTags(null);
+  }, [controlledTags, item.tags, optimisticTags]);
+
+  const membershipIds = controlledCollectionIds ?? optimisticMembershipIds ?? propMembershipIds;
+  const tagList = controlledTags ?? optimisticTags ?? propTags;
 
   const memberships = useMemo(() => {
-    return membershipIds
-      .map((cid) => {
-        const collection = collections.find((c) => c.id === cid);
-        if (!collection) return null;
-        const project = projects.find((p) => p.id === collection.primaryProjectId);
-        return { collection, project };
-      })
-      .filter(Boolean) as { collection: Collection; project: Project | undefined }[];
-  }, [membershipIds, collections, projects]);
+    return membershipIds.map((cid) => {
+      const collection = effectiveCollections.find((c) => c.id === cid);
+      if (!collection) {
+        return {
+          collection: {
+            id: cid,
+            name: 'Saving…',
+            created_at: 0,
+            updated_at: 0,
+            primaryProjectId: addProjectId || '',
+            projectIds: addProjectId ? [addProjectId] : [],
+            isDefault: false,
+          } satisfies Collection,
+          project: effectiveProjects.find((p) => p.id === addProjectId),
+        };
+      }
+      const project = effectiveProjects.find((p) => p.id === collection.primaryProjectId);
+      return { collection, project };
+    });
+  }, [membershipIds, effectiveCollections, effectiveProjects, addProjectId]);
 
   const collectionsForAddProject = useMemo(
     () =>
-      collections.filter(
+      effectiveCollections.filter(
         (c) =>
           c.primaryProjectId === addProjectId ||
           (Array.isArray(c.projectIds) && c.projectIds.includes(addProjectId))
       ),
-    [collections, addProjectId]
+    [effectiveCollections, addProjectId]
   );
 
   useEffect(() => {
     if (!hasWritePath) return;
-    if (!addProjectId && projects.length > 0) {
+    if (!addProjectId && effectiveProjects.length > 0) {
       const firstMember = memberships[0];
       setAddProjectId(
         firstMember?.project?.id ||
-          projects.find((p) => p.isDefault)?.id ||
-          projects[0]?.id ||
+          effectiveProjects.find((p) => p.isDefault)?.id ||
+          effectiveProjects[0]?.id ||
           ''
       );
     }
-  }, [addProjectId, projects, memberships, hasWritePath]);
+  }, [addProjectId, effectiveProjects, memberships, hasWritePath]);
 
   useEffect(() => {
     if (!hasWritePath) return;
@@ -138,6 +204,8 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
 
     busyRef.current = true;
     setBusy(true);
+    if (patch.collectionIds) setOptimisticMembershipIds(nextCollectionIds);
+    if (patch.tags) setOptimisticTags(nextTags);
     try {
       await onUpdate(patch);
       // Parent props are source of truth after persist; only sync local draft if form also tracks it.
@@ -145,6 +213,8 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
         onLocalChange({ collectionIds: nextCollectionIds, tags: nextTags });
       }
     } catch (e) {
+      setOptimisticMembershipIds(null);
+      setOptimisticTags(null);
       setError(e instanceof Error ? e.message : 'Update failed');
     } finally {
       busyRef.current = false;
@@ -193,7 +263,20 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
     setCreatingProject(true);
     try {
       const createdId = await onCreateProject({ name });
-      if (createdId) setAddProjectId(createdId);
+      if (createdId) {
+        const now = Date.now();
+        setPendingProjects((prev) => [
+          ...prev.filter((p) => p.id !== createdId),
+          {
+            id: createdId,
+            name,
+            isDefault: false,
+            created_at: now,
+            updated_at: now,
+          },
+        ]);
+        setAddProjectId(createdId);
+      }
       setNewProjectName('');
       setShowNewProject(false);
     } catch (e) {
@@ -211,6 +294,20 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
     try {
       const createdId = await onCreateCollection({ name, projectId: addProjectId });
       if (createdId) {
+        const now = Date.now();
+        setPendingCollections((prev) => [
+          ...prev.filter((c) => c.id !== createdId),
+          {
+            id: createdId,
+            name,
+            created_at: now,
+            updated_at: now,
+            primaryProjectId: addProjectId,
+            projectIds: [addProjectId],
+            isDefault: false,
+            color: '#3b82f6',
+          },
+        ]);
         setAddCollectionId(createdId);
         if (!membershipIds.includes(createdId)) {
           await applyPatch({ collectionIds: [...membershipIds, createdId] });
@@ -386,7 +483,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                 style={selectStyle}
                 aria-label="Project"
               >
-                {projects.map((p) => (
+                {effectiveProjects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>

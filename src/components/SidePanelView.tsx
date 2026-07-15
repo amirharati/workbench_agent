@@ -7,6 +7,7 @@ import { Panel, Input, ButtonGhost, ButtonPrimary, Divider } from '../styles/pri
 import { isValidBookmarkUrl } from '../lib/utils';
 import { SidePanelDigestPanel } from './SidePanelDigestPanel';
 import { SidePanelExternalSection, type SessionExternalLink } from './SidePanelExternalSection';
+import { ItemOrganizationEditor } from './dashboard/ItemOrganizationEditor';
 
 interface SidePanelViewProps {
   projects: Project[];
@@ -15,7 +16,14 @@ interface SidePanelViewProps {
   onSaveTab: (collectionId?: string) => Promise<void>;
   onCreateItem: (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => Promise<void>;
   onCreateExternalLink: (data: { url: string; collectionIds: string[] }) => Promise<string | void>;
-  onUpdateItem: (id: string, data: { title: string; url?: string; notes?: string; collectionIds: string[]; notesPlacementCollectionId?: string }) => Promise<void>;
+  onUpdateItem: (id: string, data: {
+    title: string;
+    url?: string;
+    notes?: string;
+    collectionIds: string[];
+    tags?: string[];
+    notesPlacementCollectionId?: string;
+  }) => Promise<void>;
   onDeleteItem: (id: string, collectionId?: string) => Promise<void>;
   onCreateProject: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection: (data: { name: string; projectId: string }) => Promise<string | void>;
@@ -186,9 +194,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     const trimmed = url.trim();
     if (!trimmed || !isValidBookmarkUrl(trimmed)) return [];
     const target = normalizeBookmarkUrl(trimmed);
-    return items
-      .filter((item) => item.url && normalizeBookmarkUrl(item.url) === target)
-      .slice(0, 5);
+    return items.filter((item) => item.url && normalizeBookmarkUrl(item.url) === target);
   }, [items, url]);
 
   // Expand matching items into placement rows - one per (item, collection) pair
@@ -203,9 +209,25 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     for (const item of matchingItems) {
       const collectionIds = item.collectionIds || [];
       for (const cid of collectionIds) {
-        const collection = collections.find(c => c.id === cid);
-        const project = collection ? projects.find(p => p.id === collection.primaryProjectId) : undefined;
-        rows.push({ item, collectionId: cid, collection, project });
+        const collection = collections.find((c) => c.id === cid);
+        const project = collection
+          ? projects.find((p) => p.id === collection.primaryProjectId)
+          : undefined;
+        // Still list the placement while a just-created collection is catching up in props.
+        rows.push({
+          item,
+          collectionId: cid,
+          collection: collection ?? {
+            id: cid,
+            name: 'Saving…',
+            created_at: 0,
+            updated_at: 0,
+            primaryProjectId: '',
+            projectIds: [],
+            isDefault: false,
+          },
+          project,
+        });
       }
     }
     return rows;
@@ -439,11 +461,26 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const persistExistingIfDirty = useCallback(async () => {
     if (forceNewCopyMode || !selectedExistingItemId || submitting) return;
     if (autoSaveInFlightRef.current) return;
-    if (!projectId) return;
-    if (!collectionId) return;
 
     const trimmedUrl = url.trim();
     if (!trimmedUrl || !isValidBookmarkUrl(trimmedUrl)) return;
+
+    const existingItem =
+      items.find((i) => i.id === selectedExistingItemId) ??
+      matchingItems.find((i) => i.id === selectedExistingItemId);
+    const membershipIds = existingItem?.collectionIds?.length
+      ? existingItem.collectionIds
+      : collectionId
+        ? [collectionId]
+        : [];
+    if (membershipIds.length === 0) return;
+
+    const notesPlacementId =
+      (selectedPlacementCollectionId && membershipIds.includes(selectedPlacementCollectionId)
+        ? selectedPlacementCollectionId
+        : null) ||
+      (collectionId && membershipIds.includes(collectionId) ? collectionId : null) ||
+      membershipIds[0];
 
     const trimmedTitle = (title.trim() || trimmedUrl).trim();
     const trimmedNotes = notes.trim();
@@ -453,18 +490,10 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       baseline.itemId === selectedExistingItemId &&
       baseline.title === trimmedTitle &&
       baseline.notes === trimmedNotes &&
-      baseline.collectionId === collectionId
+      baseline.collectionId === notesPlacementId
     ) {
       return;
     }
-
-    const existingItem =
-      items.find((i) => i.id === selectedExistingItemId) ??
-      matchingItems.find((i) => i.id === selectedExistingItemId);
-    const existingCollectionIds = existingItem?.collectionIds || [];
-    const updatedCollectionIds = existingCollectionIds.includes(collectionId)
-      ? existingCollectionIds
-      : [...existingCollectionIds, collectionId];
 
     autoSaveInFlightRef.current = true;
     setAutoSaving(true);
@@ -474,16 +503,17 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         title: trimmedTitle,
         url: trimmedUrl,
         notes: trimmedNotes || undefined,
-        collectionIds: updatedCollectionIds,
-        notesPlacementCollectionId: collectionId,
+        collectionIds: membershipIds,
+        notesPlacementCollectionId: notesPlacementId,
       });
       editBaselineRef.current = {
         itemId: selectedExistingItemId,
         title: trimmedTitle,
         notes: trimmedNotes,
-        collectionId,
+        collectionId: notesPlacementId,
       };
-      setSelectedPlacementCollectionId(collectionId);
+      setSelectedPlacementCollectionId(notesPlacementId);
+      if (notesPlacementId) setCollectionId(notesPlacementId);
       flashAutoSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update bookmark');
@@ -495,8 +525,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     forceNewCopyMode,
     selectedExistingItemId,
     submitting,
-    projectId,
     collectionId,
+    selectedPlacementCollectionId,
     url,
     title,
     notes,
@@ -506,21 +536,80 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     flashAutoSaved,
   ]);
 
-  // Autosave edits for an already-saved link (title / notes / collection).
+  const persistOrganizationPatch = useCallback(
+    async (patch: { collectionIds?: string[]; tags?: string[] }) => {
+      if (forceNewCopyMode || !selectedExistingItemId) return;
+      const existingItem =
+        items.find((i) => i.id === selectedExistingItemId) ??
+        matchingItems.find((i) => i.id === selectedExistingItemId);
+      if (!existingItem) return;
+
+      const trimmedUrl = (url.trim() || existingItem.url || '').trim();
+      const trimmedTitle = (title.trim() || existingItem.title || trimmedUrl).trim();
+      const nextCollectionIds = patch.collectionIds ?? existingItem.collectionIds ?? [];
+      if (nextCollectionIds.length === 0) {
+        setError('Keep at least one collection');
+        return;
+      }
+
+      const notesPlacementId =
+        (selectedPlacementCollectionId && nextCollectionIds.includes(selectedPlacementCollectionId)
+          ? selectedPlacementCollectionId
+          : null) || nextCollectionIds[0];
+
+      // Optimistic item membership so "Already saved" list updates before loadData.
+      setSelectedPlacementCollectionId(notesPlacementId);
+      setCollectionId(notesPlacementId);
+      const col = collections.find((c) => c.id === notesPlacementId);
+      if (col) setProjectId(col.primaryProjectId);
+
+      setAutoSaving(true);
+      setError(null);
+      try {
+        await onUpdateItem(selectedExistingItemId, {
+          title: trimmedTitle,
+          url: trimmedUrl || undefined,
+          collectionIds: nextCollectionIds,
+          ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
+          notesPlacementCollectionId: notesPlacementId,
+        });
+        editBaselineRef.current = {
+          itemId: selectedExistingItemId,
+          title: trimmedTitle,
+          notes: notes.trim(),
+          collectionId: notesPlacementId,
+        };
+        flashAutoSaved();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update organization');
+        throw err;
+      } finally {
+        setAutoSaving(false);
+      }
+    },
+    [
+      forceNewCopyMode,
+      selectedExistingItemId,
+      items,
+      matchingItems,
+      url,
+      title,
+      notes,
+      selectedPlacementCollectionId,
+      collections,
+      onUpdateItem,
+      flashAutoSaved,
+    ]
+  );
+
+  // Autosave title/notes for an already-saved link (membership via organization editor).
   useEffect(() => {
     if (!selectedExistingItemId || forceNewCopyMode) return;
     const handle = window.setTimeout(() => {
       void persistExistingIfDirty();
     }, 450);
     return () => window.clearTimeout(handle);
-  }, [
-    title,
-    notes,
-    collectionId,
-    selectedExistingItemId,
-    forceNewCopyMode,
-    persistExistingIfDirty,
-  ]);
+  }, [title, notes, selectedExistingItemId, forceNewCopyMode, persistExistingIfDirty]);
 
   useEffect(() => {
     return () => {
@@ -823,7 +912,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
               ? 'Saving changes…'
               : autoSaveFlash
                 ? 'Saved'
-                : 'Editing saved bookmark — title, notes, project/collection changes save automatically.'}
+                : 'Editing saved bookmark — title, notes, and organization save automatically.'}
           </div>
         ) : null}
 
@@ -847,6 +936,24 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           </div>
         ) : null}
 
+        {selectedItemLive && selectedExistingItemId && !forceNewCopyMode ? (
+          <div style={{ width: '100%', minWidth: 0 }}>
+            <ItemOrganizationEditor
+              item={selectedItemLive}
+              collections={collections}
+              projects={projects}
+              editable
+              compact
+              onCreateProject={onCreateProject}
+              onCreateCollection={onCreateCollection}
+              onUpdate={persistOrganizationPatch}
+            />
+            <div style={{ fontSize: '10px', color: 'var(--text-faint)', marginTop: 4, lineHeight: 1.35 }}>
+              Add the link to more projects/collections here — same as the dashboard. Notes below apply to the
+              selected copy in the list.
+            </div>
+          </div>
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -968,6 +1075,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             )}
           </div>
         </div>
+        )}
 
         {forceNewCopyMode && matchingPlacements.length > 0 && (
           <Panel
@@ -1173,7 +1281,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
               }}
               style={{ padding: '0.35rem 0.5rem', fontSize: 'var(--text-xs)' }}
             >
-              Add a new copy
+              Add a new copy with different notes
             </ButtonGhost>
           </Panel>
         )}

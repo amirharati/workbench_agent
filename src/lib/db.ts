@@ -706,8 +706,7 @@ export function findActiveItemsByUrlInReadBuffer(url: string): Item[] {
           item.deletedAt == null &&
           !!item.url &&
           normalizeBookmarkUrl(item.url) === target
-      )
-      .slice(0, 5);
+      );
   } catch {
     return [];
   }
@@ -741,8 +740,7 @@ export async function getActiveItemsByUrlFast(url: string): Promise<Item[]> {
           item.deletedAt == null &&
           !!item.url &&
           normalizeBookmarkUrl(item.url) === normalizeBookmarkUrl(trimmed)
-      )
-      .slice(0, 5);
+      );
     pinItemsForUrl(trimmed, matches, { durable: true });
     return matches;
   }
@@ -751,7 +749,7 @@ export async function getActiveItemsByUrlFast(url: string): Promise<Item[]> {
     trimmed,
     normalizeBookmarkUrl(trimmed)
   );
-  const active = matches.filter((item) => item.deletedAt == null).slice(0, 5);
+  const active = matches.filter((item) => item.deletedAt == null);
   pinItemsForUrl(trimmed, active, { durable: true });
   return active;
 }

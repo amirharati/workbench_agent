@@ -469,8 +469,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const target = normalize(normalizedUrl || url);
       return store
         .getAllItems()
-        .filter((item) => item.deletedAt == null && item.url && normalize(item.url) === target)
-        .slice(0, 5);
+        .filter((item) => item.deletedAt == null && item.url && normalize(item.url) === target);
     }
     case 'refreshTablePage': {
       const storeName = args[0] as string;
