@@ -124,6 +124,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const [creatingProject, setCreatingProject] = useState(false);
   const [creatingCollection, setCreatingCollection] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [autoSaveFlash, setAutoSaveFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedExistingItemId, setSelectedExistingItemId] = useState<string | null>(null);
   const [selectedPlacementCollectionId, setSelectedPlacementCollectionId] = useState<string | null>(null);
@@ -135,6 +137,15 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const activeTabUrlRef = useRef('');
   /** Last item title mirrored into the form — used to apply digest tier2 upgrades without clobbering edits. */
   const syncedItemTitleRef = useRef('');
+  /** Snapshot of last persisted edit fields — skips no-op autosaves after load/select. */
+  const editBaselineRef = useRef<{
+    itemId: string;
+    title: string;
+    notes: string;
+    collectionId: string;
+  } | null>(null);
+  const autoSaveFlashTimerRef = useRef<number | null>(null);
+  const autoSaveInFlightRef = useRef(false);
 
   const themedSelectStyle: React.CSSProperties = {
     width: '100%',
@@ -248,7 +259,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     setSelectedPlacementCollectionId(targetCollectionId || null);
 
     const placementNotes = targetCollectionId ? item.placements?.[targetCollectionId]?.notes : undefined;
-    setNotes(placementNotes || item.notes || '');
+    const nextNotes = placementNotes || item.notes || '';
+    setNotes(nextNotes);
 
     if (targetCollectionId) {
       setCollectionId(targetCollectionId);
@@ -263,6 +275,12 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         });
       }
     }
+    editBaselineRef.current = {
+      itemId: item.id,
+      title: (itemTitle || item.url || '').trim(),
+      notes: nextNotes.trim(),
+      collectionId: targetCollectionId || '',
+    };
     setError(null);
   }, [collections]);
 
@@ -287,6 +305,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       if (selectedExistingItemId !== null || selectedPlacementCollectionId !== null) {
         setSelectedExistingItemId(null);
         setSelectedPlacementCollectionId(null);
+        editBaselineRef.current = null;
       }
       return;
     }
@@ -305,6 +324,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         if (selectedExistingItemId !== null || selectedPlacementCollectionId !== null) {
           setSelectedExistingItemId(null);
           setSelectedPlacementCollectionId(null);
+          editBaselineRef.current = null;
         }
         return;
       }
@@ -317,12 +337,23 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       return;
     }
 
+    // Collection has no placement yet — keep editing the current item so changing
+    // project/collection can add membership and autosave (don't drop selection).
+    if (
+      selectedExistingItemId &&
+      matchingItems.some((i) => i.id === selectedExistingItemId)
+    ) {
+      return;
+    }
+
     if (selectedExistingItemId !== null || selectedPlacementCollectionId !== null) {
       setSelectedExistingItemId(null);
       setSelectedPlacementCollectionId(null);
+      editBaselineRef.current = null;
     }
   }, [
     matchingPlacements,
+    matchingItems,
     collectionId,
     forceNewCopyMode,
     url,
@@ -394,6 +425,111 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     }
   };
 
+  const flashAutoSaved = useCallback(() => {
+    setAutoSaveFlash(true);
+    if (autoSaveFlashTimerRef.current != null) {
+      window.clearTimeout(autoSaveFlashTimerRef.current);
+    }
+    autoSaveFlashTimerRef.current = window.setTimeout(() => {
+      setAutoSaveFlash(false);
+      autoSaveFlashTimerRef.current = null;
+    }, 1600);
+  }, []);
+
+  const persistExistingIfDirty = useCallback(async () => {
+    if (forceNewCopyMode || !selectedExistingItemId || submitting) return;
+    if (autoSaveInFlightRef.current) return;
+    if (!projectId) return;
+    if (!collectionId) return;
+
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl || !isValidBookmarkUrl(trimmedUrl)) return;
+
+    const trimmedTitle = (title.trim() || trimmedUrl).trim();
+    const trimmedNotes = notes.trim();
+    const baseline = editBaselineRef.current;
+    if (
+      baseline &&
+      baseline.itemId === selectedExistingItemId &&
+      baseline.title === trimmedTitle &&
+      baseline.notes === trimmedNotes &&
+      baseline.collectionId === collectionId
+    ) {
+      return;
+    }
+
+    const existingItem =
+      items.find((i) => i.id === selectedExistingItemId) ??
+      matchingItems.find((i) => i.id === selectedExistingItemId);
+    const existingCollectionIds = existingItem?.collectionIds || [];
+    const updatedCollectionIds = existingCollectionIds.includes(collectionId)
+      ? existingCollectionIds
+      : [...existingCollectionIds, collectionId];
+
+    autoSaveInFlightRef.current = true;
+    setAutoSaving(true);
+    setError(null);
+    try {
+      await onUpdateItem(selectedExistingItemId, {
+        title: trimmedTitle,
+        url: trimmedUrl,
+        notes: trimmedNotes || undefined,
+        collectionIds: updatedCollectionIds,
+        notesPlacementCollectionId: collectionId,
+      });
+      editBaselineRef.current = {
+        itemId: selectedExistingItemId,
+        title: trimmedTitle,
+        notes: trimmedNotes,
+        collectionId,
+      };
+      setSelectedPlacementCollectionId(collectionId);
+      flashAutoSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update bookmark');
+    } finally {
+      autoSaveInFlightRef.current = false;
+      setAutoSaving(false);
+    }
+  }, [
+    forceNewCopyMode,
+    selectedExistingItemId,
+    submitting,
+    projectId,
+    collectionId,
+    url,
+    title,
+    notes,
+    items,
+    matchingItems,
+    onUpdateItem,
+    flashAutoSaved,
+  ]);
+
+  // Autosave edits for an already-saved link (title / notes / collection).
+  useEffect(() => {
+    if (!selectedExistingItemId || forceNewCopyMode) return;
+    const handle = window.setTimeout(() => {
+      void persistExistingIfDirty();
+    }, 450);
+    return () => window.clearTimeout(handle);
+  }, [
+    title,
+    notes,
+    collectionId,
+    selectedExistingItemId,
+    forceNewCopyMode,
+    persistExistingIfDirty,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveFlashTimerRef.current != null) {
+        window.clearTimeout(autoSaveFlashTimerRef.current);
+      }
+    };
+  }, []);
+
   const submitItem = async () => {
     setError(null);
     const trimmedTitle = title.trim();
@@ -417,38 +553,21 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       return;
     }
 
+    // Existing copy: flush any pending edits (same path as autosave).
+    if (selectedExistingItemId && !forceNewCopyMode) {
+      await persistExistingIfDirty();
+      return;
+    }
+
     setSubmitting(true);
     try {
-      // "Add a new copy" must always go through merge/create so notes attach to the
-      // dropdown collection — never the update path (stale selection would drop notes).
-      if (selectedExistingItemId && !forceNewCopyMode) {
-        // Update: preserve existing collectionIds, just update title/notes
-        const existingItem =
-          items.find((i) => i.id === selectedExistingItemId) ??
-          matchingItems.find((i) => i.id === selectedExistingItemId);
-        const existingCollectionIds = existingItem?.collectionIds || [];
-        // Add current collection if not already present
-        const updatedCollectionIds = existingCollectionIds.includes(collectionId)
-          ? existingCollectionIds
-          : [...existingCollectionIds, collectionId];
-        
-        await onUpdateItem(selectedExistingItemId, {
-          title: trimmedTitle || trimmedUrl,
-          url: trimmedUrl,
-          notes: trimmedNotes || undefined,
-          collectionIds: updatedCollectionIds,
-          notesPlacementCollectionId: collectionId,
-        });
-      } else {
-        // Create: use just the selected collection
-        await onCreateItem({
-          title: trimmedTitle || trimmedUrl,
-          url: trimmedUrl,
-          collectionIds: [collectionId],
-          ...(trimmedNotes.length > 0 ? { notes: trimmedNotes } : {}),
-        });
-        setForceNewCopyMode(false);
-      }
+      await onCreateItem({
+        title: trimmedTitle || trimmedUrl,
+        url: trimmedUrl,
+        collectionIds: [collectionId],
+        ...(trimmedNotes.length > 0 ? { notes: trimmedNotes } : {}),
+      });
+      setForceNewCopyMode(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add item');
     } finally {
@@ -469,6 +588,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         setForceNewCopyMode(false);
         setSelectedExistingItemId(null);
         setSelectedPlacementCollectionId(null);
+        editBaselineRef.current = null;
         setNotes('');
         syncedItemTitleRef.current = '';
         onHostTabNavigate?.();
@@ -587,6 +707,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           void (async () => {
             setForceNewCopyMode(false);
             setSelectedExistingItemId(null);
+            editBaselineRef.current = null;
             try {
               await onSaveTab(collectionId || undefined);
             } finally {
@@ -594,7 +715,12 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             }
           })();
         }}
-        disabled={savedStatePending || (hasExistingForUrl && !selectedExistingItemId)}
+        disabled={
+          savedStatePending ||
+          autoSaving ||
+          submitting ||
+          (hasExistingForUrl && !selectedExistingItemId && !forceNewCopyMode)
+        }
         style={{
           width: '100%',
           display: 'flex',
@@ -610,11 +736,15 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         <Save size={16} />{' '}
         {savedStatePending
           ? 'Checking saved state…'
-          : hasExistingForUrl
-            ? selectedExistingItemId
-              ? 'Update Selected'
-              : 'Already saved'
-            : 'Save This Tab'}
+          : autoSaving || submitting
+            ? 'Saving…'
+            : hasExistingForUrl && !forceNewCopyMode
+              ? selectedExistingItemId
+                ? autoSaveFlash
+                  ? 'Saved'
+                  : 'Saved — edits auto-save'
+                : 'Already saved'
+              : 'Save This Tab'}
       </ButtonPrimary>
 
       {status && (
@@ -635,6 +765,11 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => {
+            if (selectedExistingItemId && !forceNewCopyMode) {
+              void persistExistingIfDirty();
+            }
+          }}
           placeholder="Page title (optional)"
           style={{ height: 30, fontSize: 'var(--text-sm)' }}
         />
@@ -659,6 +794,11 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          onBlur={() => {
+            if (selectedExistingItemId && !forceNewCopyMode) {
+              void persistExistingIfDirty();
+            }
+          }}
           rows={5}
           placeholder="Notes (optional)"
           style={{
@@ -676,6 +816,16 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             resize: 'vertical',
           }}
         />
+
+        {selectedExistingItemId && !forceNewCopyMode ? (
+          <div style={{ fontSize: '10px', color: 'var(--text-faint)', lineHeight: 1.35 }}>
+            {autoSaving
+              ? 'Saving changes…'
+              : autoSaveFlash
+                ? 'Saved'
+                : 'Editing saved bookmark — title, notes, project/collection changes save automatically.'}
+          </div>
+        ) : null}
 
         {selectedItemLive && !forceNewCopyMode ? (
           <div
@@ -1014,6 +1164,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                 setForceNewCopyMode(true);
                 setSelectedExistingItemId(null);
                 setSelectedPlacementCollectionId(null);
+                editBaselineRef.current = null;
                 setNotes('');
                 // Clear project/collection so user must pick where to save the new copy
                 setProjectId('');
@@ -1046,6 +1197,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           onClick={() => void submitItem()}
           disabled={
             submitting ||
+            autoSaving ||
             savedStatePending ||
             (hasExistingForUrl && !forceNewCopyMode && !selectedExistingItem)
           }
@@ -1053,14 +1205,16 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         >
           {savedStatePending
             ? 'Checking saved state…'
-            : submitting
+            : submitting || autoSaving
             ? 'Saving…'
             : hasExistingForUrl && !forceNewCopyMode && !selectedExistingItem
               ? 'Already saved'
             : forceNewCopyMode
               ? 'Save new copy'
               : selectedExistingItem
-                ? 'Update this page'
+                ? autoSaveFlash
+                  ? 'Saved'
+                  : 'Saved — edits auto-save'
                 : 'Save this page'}
         </ButtonPrimary>
       </Panel>

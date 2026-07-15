@@ -341,7 +341,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       await loadData();
       const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
       flushDurableBackupSoon();
-      showStatus('Bookmark updated');
+      showStatus('Saved');
     },
     [loadData, showStatus]
   );
