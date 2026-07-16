@@ -26,6 +26,7 @@ function LinkRow({
   score,
   url,
   onSelect,
+  onOpenInTab,
   hideScore,
 }: {
   title: string;
@@ -34,6 +35,7 @@ function LinkRow({
   score?: number;
   url?: string;
   onSelect?: () => void;
+  onOpenInTab?: () => void;
   hideScore?: boolean;
 }) {
   return (
@@ -78,6 +80,26 @@ function LinkRow({
         >
           <ExternalLink size={14} />
         </ExtensionPageUrlLink>
+      ) : null}
+      {onOpenInTab ? (
+        <button
+          type="button"
+          onClick={onOpenInTab}
+          style={{
+            flexShrink: 0,
+            marginTop: 2,
+            padding: '4px 8px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-glass)',
+            color: 'var(--text)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Open tab
+        </button>
       ) : null}
     </div>
   );
@@ -221,12 +243,14 @@ export function SimilarItemsBlock({
   loading,
   error,
   onItemClick,
+  onOpenInTab,
   compact,
 }: {
   similar: FindSimilarResult | null;
   loading?: boolean;
   error?: string | null;
   onItemClick?: (itemId: string, title: string) => void;
+  onOpenInTab?: (itemId: string) => void;
   compact?: boolean;
 }) {
   if (loading) {
@@ -290,7 +314,12 @@ export function SimilarItemsBlock({
             </p>
           ) : null}
           {similar.results.map((row) => (
-            <SimilarRow key={row.itemId} row={row} onItemClick={onItemClick} />
+            <SimilarRow
+              key={row.itemId}
+              row={row}
+              onItemClick={onItemClick}
+              onOpenInTab={onOpenInTab}
+            />
           ))}
         </>
       )}
@@ -301,9 +330,11 @@ export function SimilarItemsBlock({
 function SimilarRow({
   row,
   onItemClick,
+  onOpenInTab,
 }: {
   row: SimilarItemResult;
   onItemClick?: (itemId: string, title: string) => void;
+  onOpenInTab?: (itemId: string) => void;
 }) {
   return (
     <LinkRow
@@ -315,6 +346,7 @@ function SimilarRow({
       onSelect={
         onItemClick ? () => onItemClick(row.itemId, row.title || row.itemId) : undefined
       }
+      onOpenInTab={onOpenInTab ? () => onOpenInTab(row.itemId) : undefined}
     />
   );
 }
@@ -393,7 +425,13 @@ export function InlineSimilarPanel({
 }
 
 /** Loads similar bookmarks for one item (enrichment detail, etc.). */
-export function ItemSimilarSection({ itemId }: { itemId: string }) {
+export function ItemSimilarSection({
+  itemId,
+  onOpenInTab,
+}: {
+  itemId: string;
+  onOpenInTab?: (itemId: string) => void;
+}) {
   const [similar, setSimilar] = useState<FindSimilarResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -423,6 +461,11 @@ export function ItemSimilarSection({ itemId }: { itemId: string }) {
   }, [itemId]);
 
   return (
-    <SimilarItemsBlock similar={similar} loading={loading} error={error} />
+    <SimilarItemsBlock
+      similar={similar}
+      loading={loading}
+      error={error}
+      onOpenInTab={onOpenInTab}
+    />
   );
 }

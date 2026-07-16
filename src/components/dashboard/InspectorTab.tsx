@@ -19,6 +19,8 @@ interface InspectorTabProps {
   recentQueries?: string[];
   onRerunSearch?: (query: string) => void;
   onOpenItemInTab?: (item: Item) => void;
+  /** Open a related/similar bookmark by id (workspace tab). */
+  onOpenItemIdInTab?: (itemId: string) => void;
 }
 
 function SearchHistorySection({
@@ -207,6 +209,7 @@ function ItemInspectorBody({
   currentQuery,
   onRerunSearch,
   onOpenItemInTab,
+  onOpenItemIdInTab,
 }: {
   item: Item;
   isSearchSurface: boolean;
@@ -215,6 +218,7 @@ function ItemInspectorBody({
   currentQuery?: string;
   onRerunSearch?: (query: string) => void;
   onOpenItemInTab?: (item: Item) => void;
+  onOpenItemIdInTab?: (itemId: string) => void;
 }) {
   const { context, loading, reload } = useItemPipelineContext(item.id);
   const [summaryOpen, setSummaryOpen] = useState(!enrichmentPrimaryInItemTab);
@@ -413,7 +417,9 @@ function ItemInspectorBody({
             )}
           </section>
 
-          {item.url && <ItemSimilarSection itemId={item.id} />}
+          {item.url && (
+            <ItemSimilarSection itemId={item.id} onOpenInTab={onOpenItemIdInTab} />
+          )}
         </>
       )}
 
@@ -443,6 +449,7 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
   recentQueries = [],
   onRerunSearch,
   onOpenItemInTab,
+  onOpenItemIdInTab,
 }) => {
   if (!activeItem && !isSearchSurface) {
     return (
@@ -489,6 +496,7 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
       currentQuery={currentQuery}
       onRerunSearch={onRerunSearch}
       onOpenItemInTab={onOpenItemInTab}
+      onOpenItemIdInTab={onOpenItemIdInTab}
     />
   );
 };

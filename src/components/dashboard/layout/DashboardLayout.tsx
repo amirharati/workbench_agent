@@ -617,10 +617,38 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     });
   };
 
+  /** Dedicated Search has no GlobalTabSystem — switch to Home so the open tab is visible. */
+  const revealWorkspaceTabsIfNeeded = () => {
+    if (activeView !== 'search') return;
+    setActiveView('home');
+    patchNavigationState({ activeView: 'home' });
+  };
+
   /** Open item and focus the right-side Inspector (Hub / search). */
   const handleOpenItemInInspector = (item: Item) => {
     handleOpenItemTab(item);
     patchShellLayoutState({ rightPanelCollapsed: false, rightPanelTab: 'inspector' });
+    revealWorkspaceTabsIfNeeded();
+  };
+
+  /** Search surface Inspector “Open in tab” — same tab reveal as result-row Open tab. */
+  const handleOpenItemTabFromSearchSurface = (item: Item) => {
+    handleOpenItemTab(item);
+    revealWorkspaceTabsIfNeeded();
+  };
+
+  const handleOpenItemIdInTab = (itemId: string) => {
+    const fromList = items.find((i) => i.id === itemId);
+    if (fromList) {
+      handleOpenItemTab(fromList);
+      revealWorkspaceTabsIfNeeded();
+      return;
+    }
+    void getItem(itemId).then((item) => {
+      if (!item || item.deletedAt != null) return;
+      handleOpenItemTab(item);
+      revealWorkspaceTabsIfNeeded();
+    });
   };
 
   const handleOpenWorkspaceTab = (workspace: Workspace) => {
@@ -1114,7 +1142,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
             recentQueries={librarySearch.state.recentQueries}
             currentSearchQuery={librarySearch.state.query}
             onRerunSearch={handleRerunSearch}
-            onOpenItemInTab={isSearchSurface ? handleOpenItemTab : undefined}
+            onOpenItemInTab={isSearchSurface ? handleOpenItemTabFromSearchSurface : undefined}
+            onOpenItemIdInTab={handleOpenItemIdInTab}
             onTestAI={onTestAI}
           />
         )}
