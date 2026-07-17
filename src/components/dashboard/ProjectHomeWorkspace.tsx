@@ -18,6 +18,7 @@ interface ProjectHomeWorkspaceProps {
   selectedCollectionId: string | 'all';
   onSelectCollection: (collectionId: string | 'all') => void;
   sessionTabs: GlobalTab[];
+  activeSessionTabId?: string | null;
   onAddItemToSession: (item: Item) => void;
   onRemoveSessionTab: (tabId: string) => void;
   onFocusSession: (tabId?: string) => void;
@@ -25,6 +26,8 @@ interface ProjectHomeWorkspaceProps {
   workspaces: Workspace[];
   activeWorkspaceKey: string;
   onActivateWorkspace: (workspace: Workspace | null) => void;
+  onSelectedItemChange?: (item: Item | null) => void;
+  onSelectSessionEntry?: (tab: GlobalTab) => void;
   onUpdateItem?: (
     id: string,
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
@@ -39,6 +42,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   selectedCollectionId,
   onSelectCollection,
   sessionTabs,
+  activeSessionTabId,
   onAddItemToSession,
   onRemoveSessionTab,
   onFocusSession,
@@ -46,6 +50,8 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   workspaces,
   activeWorkspaceKey,
   onActivateWorkspace,
+  onSelectedItemChange,
+  onSelectSessionEntry,
   onUpdateItem,
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -89,20 +95,34 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
 
   useEffect(() => {
     setSelectedItemId(null);
-  }, [project.id, selectedCollectionId]);
+    onSelectedItemChange?.(null);
+  }, [project.id, selectedCollectionId, onSelectedItemChange]);
 
   useEffect(() => {
     setSelectedSessionTabId(null);
   }, [project.id, activeWorkspaceKey]);
 
+  useEffect(() => {
+    setSelectedSessionTabId(
+      activeSessionTabId && sessionTabs.some((tab) => tab.id === activeSessionTabId)
+        ? activeSessionTabId
+        : null
+    );
+  }, [activeSessionTabId, sessionTabs]);
+
   const selectSessionTab = (tab: GlobalTab) => {
     setSelectedSessionTabId(tab.id);
     setSelectedItemId(tab.kind === 'item' ? tab.itemId : null);
+    onSelectedItemChange?.(
+      tab.kind === 'item' ? items.find((item) => item.id === tab.itemId) ?? null : null
+    );
+    onSelectSessionEntry?.(tab);
   };
 
   const selectProjectItem = (item: Item) => {
     setSelectedSessionTabId(null);
     setSelectedItemId(item.id);
+    onSelectedItemChange?.(item);
   };
 
   const toggleProjectPin = async (item: Item) => {

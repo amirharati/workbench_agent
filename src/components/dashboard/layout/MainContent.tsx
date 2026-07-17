@@ -124,6 +124,7 @@ interface MainContentProps {
   onCloseProjectScope?: (projectId: string) => void;
   onSelectCollectionScope?: (collectionId: string, projectId?: string) => void;
   onSwitchScopeForItem?: (item: Item) => void;
+  onSelectedBrowseItemChange?: (item: Item | null) => void;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -198,6 +199,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   onCloseProjectScope,
   onSelectCollectionScope,
   onSwitchScopeForItem,
+  onSelectedBrowseItemChange,
 }) => {
   const resolvedShellLayout = shellLayout ?? SHELL_LAYOUT_DEFAULTS;
   const bookmarkListWidth = resolvedShellLayout.bookmarkListWidth;
@@ -679,6 +681,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onSelectCollectionScope={onSelectCollectionScope}
             onResetScope={onResetScope}
             onSwitchScopeForItem={onSwitchScopeForItem}
+            onSelectedBrowseItemChange={onSelectedBrowseItemChange}
           />
           </div>
         );

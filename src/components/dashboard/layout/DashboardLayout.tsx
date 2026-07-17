@@ -220,6 +220,14 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const [activeView, setActiveView] = useState<DashboardView>(() => initialNav.activeView as DashboardView);
   const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>(() => initialNav.scopeProjectId);
   const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>(() => initialNav.scopeCollectionId);
+  const [selectedBrowseItemId, setSelectedBrowseItemId] = useState<string | null>(null);
+  const handleSelectedBrowseItemChange = useCallback((item: Item | null) => {
+    setSelectedBrowseItemId(item?.id ?? null);
+  }, []);
+
+  useEffect(() => {
+    setSelectedBrowseItemId(null);
+  }, [activeView, scopeProjectId, scopeCollectionId]);
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() =>
     initialNav.scopeProjectId === 'all'
       ? initialNav.recentProjectIds
@@ -886,10 +894,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     }
     const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
     if (activeGlobalTab?.kind === 'item') return activeGlobalTab.itemId;
+    if (activeView === 'home' && activeGlobalTab == null) return selectedBrowseItemId;
     return null;
   }, [
     isSearchSurface,
     activeSearch.state.selectedItemId,
+    activeView,
+    selectedBrowseItemId,
     globalTabState.tabs,
     globalTabState.activeTabId,
   ]);
@@ -1151,6 +1162,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onCloseProjectScope={handleCloseProjectScope}
               onSelectCollectionScope={handleSelectCollectionScope}
               onSwitchScopeForItem={handleSwitchScopeForItem}
+              onSelectedBrowseItemChange={handleSelectedBrowseItemChange}
             />
           ) : (
             // Split view: List pane (left) + Tabbed detail pane (right)

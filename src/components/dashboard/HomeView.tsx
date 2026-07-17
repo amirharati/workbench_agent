@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
-import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon, Folder, ChevronRight, GripVertical, X } from 'lucide-react';
+import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon, Folder, ChevronRight, GripVertical, X, Layers3, Maximize2, ExternalLink, Link2, FileText } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { getHomeQuickAccessItems } from '../../lib/itemQuickAccess';
-import { GlobalTabSystem, type GlobalTabState, type GlobalTabList, type GlobalTabSearch } from './GlobalTabSystem';
+import { GlobalTabSystem, type GlobalTab, type GlobalTabState, type GlobalTabList, type GlobalTabSearch } from './GlobalTabSystem';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { useHomePipelineStats } from '../../hooks/useHomePipelineStats';
@@ -19,6 +19,7 @@ import {
   getActiveProjectWorkspaceKey,
   getProjectSessionResumeTabId,
   getProjectSessionTabs,
+  getSavedWorkspaceSessionKey,
 } from './workspaceSession';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
@@ -59,6 +60,7 @@ interface HomeViewProps {
   onSelectCollectionScope?: (collectionId: string, projectId?: string) => void;
   onResetScope?: () => void;
   onSwitchScopeForItem?: (item: Item) => void;
+  onSelectedBrowseItemChange?: (item: Item | null) => void;
   renderListTab?: (tab: any) => React.ReactNode;
   statusBar?: React.ReactNode;
   libraryLoading?: boolean;
@@ -66,7 +68,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, onSelectedBrowseItemChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const {
     digest,
@@ -251,20 +253,69 @@ export const HomeView: React.FC<HomeViewProps> = ({
       onLibrarySearchInTab?.(librarySearch.state.query);
       return;
     }
+    const query = librarySearch.state.query.trim();
+    if (!query) return;
+    const filters = { ...librarySearch.state.filters };
+    const mode = librarySearch.state.mode;
+    const existing = currentSessionTabs.find(
+      (tab): tab is GlobalTabSearch =>
+        tab.kind === 'search' &&
+        tab.query.trim().toLowerCase() === query.toLowerCase() &&
+        (tab.mode === 'lexical-only' ? 'lexical-only' : 'hybrid') === mode &&
+        JSON.stringify(tab.filters ?? {}) === JSON.stringify(filters)
+    );
+    if (existing) {
+      onHomeStateChange({
+        ...homeState,
+        activeTabId: null,
+        lastActiveTabByProject: {
+          ...(homeState.lastActiveTabByProject ?? {}),
+          [scopeProjectId]: existing.id,
+        },
+      });
+      return;
+    }
     const id = `search-${crypto.randomUUID()}@project:${scopeProjectId}`;
     const searchTab: GlobalTabSearch = {
       kind: 'search',
       id,
-      query: librarySearch.state.query.trim(),
-      filters: { ...librarySearch.state.filters },
-      mode: librarySearch.state.mode,
+      query,
+      filters,
+      mode,
       ...currentTabScope,
     };
     onHomeStateChange({
       ...homeState,
       tabs: [...homeState.tabs, searchTab],
       activeTabId: null,
+      lastActiveTabByProject: {
+        ...(homeState.lastActiveTabByProject ?? {}),
+        [scopeProjectId]: id,
+      },
     });
+  };
+
+  const selectCurrentWorkspaceEntry = (tab: GlobalTab) => {
+    const nextState: GlobalTabState = {
+      ...homeState,
+      activeTabId: null,
+      lastActiveTabByProject: {
+        ...(homeState.lastActiveTabByProject ?? {}),
+        [scopeProjectId]: tab.id,
+      },
+    };
+    if (tab.kind === 'search' && librarySearch) {
+      librarySearch.openSearch({
+        query: tab.query,
+        filters: { ...(tab.filters ?? {}) },
+        mode: tab.mode === 'lexical-only' ? 'lexical-only' : 'hybrid',
+      });
+      nextState.homeSection = 'search';
+      nextState.searchQuery = tab.query;
+    } else if (tab.kind === 'item') {
+      librarySearch?.setSelectedItemId(tab.itemId);
+    }
+    onHomeStateChange(nextState);
   };
 
   const focusCurrentSession = (requestedTabId?: string) => {
@@ -592,6 +643,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             else openCollectionScope(collectionId, activeProject.id);
           }}
           sessionTabs={currentSessionTabs}
+          activeSessionTabId={homeState.lastActiveTabByProject?.[scopeProjectId] ?? null}
           onAddItemToSession={addItemToCurrentSession}
           onRemoveSessionTab={removeCurrentSessionTab}
           onFocusSession={focusCurrentSession}
@@ -600,6 +652,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           workspaces={projectWorkspaces}
           activeWorkspaceKey={activeWorkspaceKey}
           onActivateWorkspace={activateWorkspace}
+          onSelectedItemChange={onSelectedBrowseItemChange}
+          onSelectSessionEntry={selectCurrentWorkspaceEntry}
         />
       ) : (
       <div
@@ -1000,6 +1054,42 @@ export const HomeView: React.FC<HomeViewProps> = ({
         )}
       </div>
       ) : librarySearch ? (
+        <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {activeProject && (
+          <section style={{ flexShrink: 0, margin: '12px 20px 0', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }} aria-label="Active project workspace">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ width: 25, height: 25, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: 'var(--accent-weak)', color: 'var(--accent)' }}><Layers3 size={12} /></span>
+                <span style={{ minWidth: 0 }}>
+                  <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-xs)' }}>{projectWorkspaces.find((workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeWorkspaceKey)?.name ?? 'Project session'}</strong>
+                  <span style={{ display: 'block', marginTop: 1, color: 'var(--text-faint)', fontSize: 10 }}>{currentSessionTabs.length} workspace entr{currentSessionTabs.length === 1 ? 'y' : 'ies'} · {activeProject.name}</span>
+                </span>
+              </div>
+              <button type="button" disabled={currentSessionTabs.length === 0} onClick={() => focusCurrentSession()} style={{ minHeight: 27, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, opacity: currentSessionTabs.length === 0 ? 0.45 : 1, cursor: currentSessionTabs.length === 0 ? 'default' : 'pointer' }}><Maximize2 size={11} /> Focus</button>
+            </div>
+            {currentSessionTabs.length === 0 ? (
+              <div style={{ marginTop: 8, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Add this search to begin the active workspace.</div>
+            ) : (
+              <div className="hide-scrollbar" style={{ display: 'flex', gap: 6, marginTop: 8, overflowX: 'auto', paddingBottom: 1 }}>
+                {currentSessionTabs.map((tab) => {
+                  const item = tab.kind === 'item' ? items.find((candidate) => candidate.id === tab.itemId) : undefined;
+                  const label = tab.kind === 'search' ? tab.query || 'Search' : tab.kind === 'url' ? tab.title || tab.url : tab.kind === 'list' ? tab.title : item?.title || 'Untitled';
+                  const selected = homeState.lastActiveTabByProject?.[scopeProjectId] === tab.id;
+                  return (
+                    <div key={tab.id} style={{ minWidth: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', border: '1px solid', borderColor: selected ? 'var(--border-active)' : 'var(--border)', borderRadius: 999, background: selected ? 'var(--accent-weak)' : 'var(--bg)', color: selected ? 'var(--accent)' : 'var(--text-muted)' }}>
+                      <button type="button" onClick={() => selectCurrentWorkspaceEntry(tab)} title={label} style={{ minWidth: 0, maxWidth: 210, height: 27, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 7px 0 9px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 'var(--text-xs)', fontWeight: selected ? 650 : 550, cursor: 'pointer' }}>
+                        {tab.kind === 'search' ? <Search size={10} /> : tab.kind === 'url' ? <ExternalLink size={10} /> : item?.url ? <Link2 size={10} /> : <FileText size={10} />}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                      </button>
+                      <button type="button" onClick={() => removeCurrentSessionTab(tab.id)} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={{ width: 23, height: 23, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderLeft: '1px solid var(--border)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' }}><X size={10} /></button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+        <div style={{ flex: 1, minHeight: 0 }}>
         <ProductSearchView
           items={scopedItems}
           collections={scopeProjectId === 'all' ? collections : projectCollections}
@@ -1019,6 +1109,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onOpenInTab={addSearchToCurrentWorkspace}
           openInTabLabel={scopeProjectId === 'all' ? 'Open in tab' : 'Add search to workspace'}
         />
+        </div>
+        </div>
       ) : (
         <div style={{ padding: 24, color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
           Library search is unavailable.
