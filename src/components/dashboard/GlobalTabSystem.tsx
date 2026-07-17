@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft, Pin, Star, Globe2, Eye, EyeOff, List } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft, Pin, Star, Globe2, Eye, EyeOff, List } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { getItem } from '../../lib/db';
@@ -48,6 +48,13 @@ export interface GlobalTabSearch {
   scopeCollectionId?: string;
   pinnedGlobally?: boolean;
 }
+export interface GlobalTabUrl extends GlobalTabScope {
+  kind: 'url';
+  id: string;
+  url: string;
+  title?: string;
+  favIconUrl?: string;
+}
 // Add list tabs to support legacy DashboardLayout tabs
 export interface GlobalTabList extends GlobalTabScope { kind: 'list'; id: string; listType: 'bookmark-list' | 'note-list' | 'common-list' | 'workspace' | 'favorites' | 'pinned' | 'quick-access' | 'trash' | 'recent'; title: string; itemIds?: string[]; workspaceId?: string; }
 
@@ -58,15 +65,11 @@ export type PruneGlobalTabsContext = {
   workspaceIds: ReadonlySet<string>;
 };
 
-/** Drop tabs that point at rows removed from SQLite (localStorage survives DB wipe). */
-export function pruneGlobalTabs(
-  state: GlobalTabState,
-  ctx: PruneGlobalTabsContext
-): GlobalTabState {
+function pruneTabCollection(sourceTabs: readonly GlobalTab[], ctx: PruneGlobalTabsContext): GlobalTab[] {
   const tabs: GlobalTab[] = [];
 
-  for (const tab of state.tabs) {
-    if (tab.kind === 'search') {
+  for (const tab of sourceTabs) {
+    if (tab.kind === 'search' || tab.kind === 'url') {
       tabs.push(tab);
       continue;
     }
@@ -94,15 +97,31 @@ export function pruneGlobalTabs(
     }
   }
 
+  return tabs;
+}
+
+/** Drop tabs that point at rows removed from SQLite (localStorage survives DB wipe). */
+export function pruneGlobalTabs(
+  state: GlobalTabState,
+  ctx: PruneGlobalTabsContext
+): GlobalTabState {
+  const tabs = pruneTabCollection(state.tabs, ctx);
+  const workspaceSessionSnapshots = Object.fromEntries(
+    Object.entries(state.workspaceSessionSnapshots ?? {}).map(([key, snapshotTabs]) => [
+      key,
+      pruneTabCollection(snapshotTabs, ctx),
+    ])
+  );
+
   const activeTabId =
     state.activeTabId && tabs.some((t) => t.id === state.activeTabId)
       ? state.activeTabId
-      : tabs[tabs.length - 1]?.id ?? null;
+      : null;
 
-  return { ...state, tabs, activeTabId };
+  return { ...state, tabs, activeTabId, workspaceSessionSnapshots };
 }
 
-export type GlobalTab = GlobalTabItem | GlobalTabSearch | GlobalTabList;
+export type GlobalTab = GlobalTabItem | GlobalTabSearch | GlobalTabUrl | GlobalTabList;
 
 export function getGlobalTabProjectId(tab: GlobalTab): string | 'all' {
   return tab.scopeProjectId?.trim() || 'all';
@@ -126,6 +145,12 @@ export interface GlobalTabState {
   showAllTabs?: boolean;
   topPct?: number;
   searchQuery?: string;
+  /** Last focused tab for each project session. `all` is the global session. */
+  lastActiveTabByProject?: Record<string, string>;
+  /** Workspace currently active in each project. Values are stable session keys. */
+  activeWorkspaceKeyByProject?: Record<string, string>;
+  /** Auto-saved live tab sets for inactive project/saved workspaces. */
+  workspaceSessionSnapshots?: Record<string, GlobalTab[]>;
 }
 
 export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
@@ -137,6 +162,9 @@ export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
   showAllTabs: false,
   topPct: 40,
   searchQuery: '',
+  lastActiveTabByProject: {},
+  activeWorkspaceKeyByProject: {},
+  workspaceSessionSnapshots: {},
 };
 
 const LS_KEY = 'workbench-global-tabs';
@@ -178,10 +206,15 @@ export function loadGlobalTabState(): GlobalTabState {
     if (!raw) return GLOBAL_TAB_STATE_DEFAULT;
     const parsed = JSON.parse(raw) as Partial<GlobalTabState>;
     const tabs = normalizeGlobalTabs(Array.isArray(parsed.tabs) ? parsed.tabs : []);
+    const workspaceSessionSnapshots = Object.fromEntries(
+      Object.entries(parsed.workspaceSessionSnapshots ?? {})
+        .filter(([, snapshotTabs]) => Array.isArray(snapshotTabs))
+        .map(([key, snapshotTabs]) => [key, normalizeGlobalTabs(snapshotTabs as unknown[])])
+    );
     const activeTabId =
       parsed.activeTabId && tabs.some((t) => t.id === parsed.activeTabId)
         ? parsed.activeTabId
-        : tabs[tabs.length - 1]?.id ?? null;
+        : null;
     return {
       tabs,
       activeTabId,
@@ -191,6 +224,15 @@ export function loadGlobalTabState(): GlobalTabState {
       showAllTabs: !!parsed.showAllTabs,
       topPct: typeof parsed.topPct === 'number' ? parsed.topPct : 40,
       searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : '',
+      lastActiveTabByProject:
+        parsed.lastActiveTabByProject && typeof parsed.lastActiveTabByProject === 'object'
+          ? parsed.lastActiveTabByProject
+          : {},
+      activeWorkspaceKeyByProject:
+        parsed.activeWorkspaceKeyByProject && typeof parsed.activeWorkspaceKeyByProject === 'object'
+          ? parsed.activeWorkspaceKeyByProject
+          : {},
+      workspaceSessionSnapshots,
     };
   } catch {
     return GLOBAL_TAB_STATE_DEFAULT;
@@ -208,6 +250,7 @@ function getTabLabel(tab: GlobalTab, items: Item[]): string {
     return q.length > 28 ? `🔍 ${q.slice(0, 28)}…` : `🔍 ${q}`;
   }
   if (tab.kind === 'list') return tab.title || 'List';
+  if (tab.kind === 'url') return tab.title?.trim() || tab.url || 'Web page';
 
   const item = items.find(i => i.id === tab.itemId);
   if (!item) return 'Untitled';
@@ -287,6 +330,11 @@ interface GlobalTabSystemProps {
   homeContent?: React.ReactNode;
   /** Home activity + scope navigation, kept above working tabs and their content. */
   workspaceHeader?: React.ReactNode;
+  /** Home/project focus mode: replaces the generic Open work label with an explicit return action. */
+  focusContextLabel?: string;
+  onExitFocus?: () => void;
+  /** Show only tabs belonging to the active project workspace unless All is requested. */
+  strictProjectScope?: boolean;
 }
 
 export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
@@ -308,9 +356,25 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   onSwitchScopeForItem,
   homeContent,
   workspaceHeader,
+  focusContextLabel,
+  onExitFocus,
+  strictProjectScope = false,
 }) => {
   const { tabs, activeTabId, bottomLayout, isSidebarCollapsed, showAllTabs = false } = tabState;
-  const set = (patch: Partial<GlobalTabState>) => onTabStateChange({ ...tabState, ...patch });
+  const set = (patch: Partial<GlobalTabState>) => {
+    const next = { ...tabState, ...patch };
+    if (typeof patch.activeTabId === 'string') {
+      const focusedTab = next.tabs.find((tab) => tab.id === patch.activeTabId);
+      if (focusedTab) {
+        const projectId = getGlobalTabProjectId(focusedTab);
+        next.lastActiveTabByProject = {
+          ...(tabState.lastActiveTabByProject ?? {}),
+          [projectId]: focusedTab.id,
+        };
+      }
+    }
+    onTabStateChange(next);
+  };
 
   const tabStripRef = useRef<HTMLDivElement>(null);
   const tabStripContainerRef = useRef<HTMLDivElement>(null);
@@ -347,11 +411,15 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   }, [bottomLayout]);
 
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
+  const isTabVisible = (tab: GlobalTab, showAll = showAllTabs) =>
+    strictProjectScope && scopeProjectId !== 'all'
+      ? showAll || getGlobalTabProjectId(tab) === scopeProjectId
+      : isGlobalTabVisible(tab, scopeProjectId, showAll);
   const scopedTabs = useMemo(
-    () => tabs.filter((tab) => isGlobalTabVisible(tab, scopeProjectId, showAllTabs)),
-    [tabs, scopeProjectId, showAllTabs]
+    () => tabs.filter((tab) => isTabVisible(tab, showAllTabs)),
+    [tabs, scopeProjectId, showAllTabs, strictProjectScope]
   );
-  const hiddenScopeTabCount = tabs.length - tabs.filter((tab) => isGlobalTabVisible(tab, scopeProjectId, false)).length;
+  const hiddenScopeTabCount = tabs.length - tabs.filter((tab) => isTabVisible(tab, false)).length;
   const prevActiveTabIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -425,7 +493,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
 
   const closeTab = (id: string) => {
     const next = tabs.filter(t => t.id !== id);
-    const nextVisible = next.filter((tab) => isGlobalTabVisible(tab, scopeProjectId, showAllTabs));
+    const nextVisible = next.filter((tab) => isTabVisible(tab, showAllTabs));
     const nextActiveId = activeTabId === id ? (nextVisible[nextVisible.length - 1]?.id ?? null) : activeTabId;
     set({ tabs: next, activeTabId: nextActiveId });
     setIsEditing(false);
@@ -455,7 +523,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   }, [scopedTabs, maxVisibleTabs, activeTabId]);
 
   useEffect(() => {
-    if (!activeTab || isGlobalTabVisible(activeTab, scopeProjectId, showAllTabs)) return;
+    if (!activeTab || isTabVisible(activeTab, showAllTabs)) return;
     set({ activeTabId: null });
   }, [activeTab, scopeProjectId, showAllTabs]);
 
@@ -744,7 +812,22 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       {bottomLayout === 'sidebar' && (
         <div style={{ width: isSidebarCollapsed ? 48 : 220, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-panel)', transition: 'width 200ms ease', overflow: 'hidden', flexShrink: 0 }}>
           <div style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', padding: isSidebarCollapsed ? 0 : '0 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            {!isSidebarCollapsed && <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-muted)' }}>Open work</span>}
+            {!isSidebarCollapsed && (
+              onExitFocus ? (
+                <button
+                  type="button"
+                  data-focus-entry
+                  onClick={onExitFocus}
+                  title={`Return to ${focusContextLabel || 'Home'}`}
+                  style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0, border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650, cursor: 'pointer' }}
+                >
+                  <ArrowLeft size={14} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{focusContextLabel || 'Home'}</span>
+                </button>
+              ) : (
+                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-muted)' }}>Open work</span>
+              )
+            )}
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => set({ isSidebarCollapsed: !isSidebarCollapsed })} title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 4 }}>
                 {isSidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
@@ -762,6 +845,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               const label = getTabLabel(tab, items);
               const isSearch = tab.kind === 'search';
               const isList = tab.kind === 'list';
+              const isUrl = tab.kind === 'url';
               return (
                 <div
                   key={tab.id}
@@ -795,7 +879,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
                 >
                   <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20 }}>
-                    {isSearch ? <Search size={14} /> : isList ? <Layout size={14} /> : <FileText size={14} />}
+                    {isSearch ? <Search size={14} /> : isList ? <Layout size={14} /> : isUrl ? <ExternalLink size={14} /> : <FileText size={14} />}
                   </div>
                   {!isSidebarCollapsed && (
                     <>
@@ -829,7 +913,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               {(hiddenScopeTabCount > 0 || showAllTabs) && (
                 <button
                   type="button"
-                  onClick={() => set({ showAllTabs: !showAllTabs, activeTabId: showAllTabs && activeTab && !isGlobalTabVisible(activeTab, scopeProjectId, false) ? null : activeTabId })}
+                  onClick={() => set({ showAllTabs: !showAllTabs, activeTabId: showAllTabs && activeTab && !isTabVisible(activeTab, false) ? null : activeTabId })}
                   style={{ height: 32, border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
                 >
                   {showAllTabs ? 'Show current project' : `Show all · ${hiddenScopeTabCount} hidden`}
@@ -856,16 +940,41 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       {bottomLayout === 'tabs' && (
         <div ref={tabStripContainerRef} style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)', flexShrink: 0, height: 40, position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0 9px', borderRight: '1px solid var(--border)', background: 'var(--bg-panel)', zIndex: 2, flexShrink: 0 }}>
-            <button 
-              onClick={() => set({ bottomLayout: 'sidebar' })}
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              title="Switch to Sidebar Layout"
-            >
-              <Sidebar size={14} />
-            </button>
-            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Open work</span>
+            {onExitFocus ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => set({ bottomLayout: 'sidebar' })}
+                  title="Switch to sidebar tabs"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-faint)', cursor: 'pointer', padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Sidebar size={13} />
+                </button>
+                <button
+                  type="button"
+                  data-focus-entry
+                  onClick={onExitFocus}
+                  title={`Return to ${focusContextLabel || 'Home'}`}
+                  style={{ minWidth: 0, maxWidth: 150, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 2px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' }}
+                >
+                  <ArrowLeft size={14} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{focusContextLabel || 'Home'}</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => set({ bottomLayout: 'sidebar' })}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  title="Switch to Sidebar Layout"
+                >
+                  <Sidebar size={14} />
+                </button>
+                <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Open work</span>
+              </>
+            )}
           </div>
           <div ref={tabStripRef} style={{ display: 'flex', alignItems: 'flex-end', gap: 2, paddingLeft: 8, flex: 1, overflowX: 'auto', scrollbarWidth: 'none' }} className="hide-scrollbar">
             {visibleTabs.map(tab => {
@@ -931,7 +1040,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', padding: '0 6px', borderLeft: '1px solid var(--border)', flexShrink: 0 }}>
               <button
                 type="button"
-                onClick={() => set({ showAllTabs: !showAllTabs, activeTabId: showAllTabs && activeTab && !isGlobalTabVisible(activeTab, scopeProjectId, false) ? null : activeTabId })}
+                onClick={() => set({ showAllTabs: !showAllTabs, activeTabId: showAllTabs && activeTab && !isTabVisible(activeTab, false) ? null : activeTabId })}
                 title={showAllTabs ? 'Hide tabs from other projects' : `Show ${hiddenScopeTabCount} tabs from other projects`}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: showAllTabs ? 'var(--bg-active)' : 'transparent', color: showAllTabs ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer', whiteSpace: 'nowrap' }}
               >
@@ -965,7 +1074,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             {tabs.map(tab => {
               const isActive = tab.id === activeTabId;
               const label = getTabLabel(tab, items);
-              const hiddenInCurrentProject = !isGlobalTabVisible(tab, scopeProjectId, false);
+              const hiddenInCurrentProject = !isTabVisible(tab, false);
               return (
                 <div
                   key={tab.id}
@@ -1045,6 +1154,24 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
         {activeTab?.kind === 'search' && !librarySearch && (
           <div style={{ padding: 20, color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>
             Search is unavailable.
+          </div>
+        )}
+        {activeTab?.kind === 'url' && (
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 28, background: 'var(--bg)' }}>
+            <div style={{ width: '100%', maxWidth: 620, padding: '28px', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }}>
+              <span style={{ width: 38, height: 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-md)', background: 'var(--accent-weak)', color: 'var(--accent)' }}>
+                <ExternalLink size={18} />
+              </span>
+              <h2 style={{ margin: '16px 0 0', color: 'var(--text)', fontSize: 'var(--text-xl)', lineHeight: 1.3 }}>{activeTab.title || 'Web page'}</h2>
+              <p style={{ margin: '8px 0 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.55, overflowWrap: 'anywhere' }}>{activeTab.url}</p>
+              <button
+                type="button"
+                onClick={() => chrome.tabs.create({ url: activeTab.url })}
+                style={{ marginTop: 20, minHeight: 32, display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 12px', border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff', fontSize: 'var(--text-sm)', fontWeight: 650, cursor: 'pointer' }}
+              >
+                <ExternalLink size={14} /> Open in browser
+              </button>
+            </div>
           </div>
         )}
         {activeTab?.kind === 'item' && activeItemObj && (

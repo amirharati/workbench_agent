@@ -40,6 +40,20 @@ describe('loadGlobalTabState Home workspace state', () => {
     expect(state.searchQuery).toBe('local-first AI');
   });
 
+  it('keeps Browse mode active when persisted workspaces contain tabs', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        tabs: [{ kind: 'item', id: 'project-item', itemId: 'item-1', scopeProjectId: 'project-a' }],
+        activeTabId: null,
+        bottomLayout: 'tabs',
+        isSidebarCollapsed: false,
+      })
+    );
+
+    expect(loadGlobalTabState().activeTabId).toBeNull();
+  });
+
   it('normalizes unknown Home sections back to Overview', () => {
     localStorage.setItem(
       STORAGE_KEY,

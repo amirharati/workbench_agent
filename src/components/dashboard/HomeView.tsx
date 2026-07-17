@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon, Folder, ChevronRight, GripVertical, X } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
-import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
+import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { getHomeQuickAccessItems } from '../../lib/itemQuickAccess';
-import { GlobalTabSystem, type GlobalTabState, type GlobalTabList } from './GlobalTabSystem';
+import { GlobalTabSystem, type GlobalTabState, type GlobalTabList, type GlobalTabSearch } from './GlobalTabSystem';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { useHomePipelineStats } from '../../hooks/useHomePipelineStats';
@@ -14,6 +14,12 @@ import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { ProductSearchView } from './ProductSearchView';
 import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary, reorderProjectSwitcher } from './homeScope';
 import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
+import {
+  activateProjectWorkspace,
+  getActiveProjectWorkspaceKey,
+  getProjectSessionResumeTabId,
+  getProjectSessionTabs,
+} from './workspaceSession';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -25,6 +31,7 @@ interface HomeViewProps {
   items: Item[];
   collections: Collection[];
   projects: Project[];
+  workspaces: Workspace[];
   homeState: GlobalTabState;
   onHomeStateChange: (next: GlobalTabState) => void;
   onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>, options?: UpdateItemOptions) => Promise<void>;
@@ -59,7 +66,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const {
     digest,
@@ -76,6 +83,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
     y: number;
   } | null>(null);
   const [draggedProjectId, setDraggedProjectId] = React.useState<string | null>(null);
+  const focusLayerRef = React.useRef<HTMLDivElement>(null);
+  const lastBrowseFocusRef = React.useRef<HTMLElement | null>(null);
+  const wasFocusOpenRef = React.useRef(false);
 
   const handleProcessNotEnriched = () => {
     if (!onBatchProcessQueue || batchRunning || !digest?.notEnriched) return;
@@ -107,6 +117,22 @@ export const HomeView: React.FC<HomeViewProps> = ({
     () => getHomeScopeItems(items, collections, scopeProjectId, 'all'),
     [items, collections, scopeProjectId]
   );
+  const projectWorkspaces = useMemo(
+    () =>
+      activeProject
+        ? workspaces
+            .filter((workspace) => workspace.projectId === activeProject.id)
+            .sort((a, b) => b.updated_at - a.updated_at)
+        : [],
+    [activeProject, workspaces]
+  );
+  const currentSessionTabs = useMemo(
+    () => getProjectSessionTabs(homeState.tabs, scopeProjectId),
+    [homeState.tabs, scopeProjectId]
+  );
+  const activeWorkspaceKey = activeProject
+    ? getActiveProjectWorkspaceKey(homeState, activeProject.id)
+    : '';
   const projectSummaries = useMemo(
     () =>
       [...projects]
@@ -150,6 +176,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const scopedTabId = (baseId: string) =>
     scopeProjectId === 'all' ? baseId : `${baseId}@project:${scopeProjectId}`;
 
+  const focusSessionTab = (tabs: GlobalTabState['tabs'], activeTabId: string) => {
+    onHomeStateChange({
+      ...homeState,
+      tabs,
+      activeTabId,
+      showAllTabs: false,
+      lastActiveTabByProject: {
+        ...(homeState.lastActiveTabByProject ?? {}),
+        [scopeProjectId]: activeTabId,
+      },
+    });
+  };
+
   const HOME_UTIL_META: Record<HomeUtilTabId, { listType: GlobalTabList['listType']; title: string }> = {
     'util-pinned': { listType: 'pinned', title: 'Pinned' },
     'util-favorites': { listType: 'favorites', title: 'Favorites' },
@@ -163,17 +202,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
     const id = scopedTabId(tabId);
     const existing = homeState.tabs.find((t) => t.id === id);
     if (existing) {
-      onHomeStateChange({ ...homeState, activeTabId: id });
+      focusSessionTab(homeState.tabs, id);
       return;
     }
-    onHomeStateChange({
-      ...homeState,
-      tabs: [
+    focusSessionTab(
+      [
         ...homeState.tabs,
         { kind: 'list' as const, id, listType: meta.listType, title: meta.title, ...currentTabScope },
       ],
-      activeTabId: id,
-    });
+      id
+    );
   };
 
   const openItemTab = (item: Item) => {
@@ -183,11 +221,79 @@ export const HomeView: React.FC<HomeViewProps> = ({
         tab.itemId === item.id &&
         (tab.scopeProjectId ?? 'all') === scopeProjectId
     );
-    if (existing) { onHomeStateChange({ ...homeState, activeTabId: existing.id }); return; }
+    if (existing) { focusSessionTab(homeState.tabs, existing.id); return; }
     const id = scopedTabId('item-' + item.id);
     // ensure new tab is at the end
     const nextTabs = [...homeState.tabs, { kind: 'item' as const, id, itemId: item.id, ...currentTabScope }];
-    onHomeStateChange({ ...homeState, tabs: nextTabs, activeTabId: id });
+    focusSessionTab(nextTabs, id);
+  };
+
+  const addItemToCurrentSession = (item: Item) => {
+    const existing = homeState.tabs.find(
+      (tab) =>
+        tab.kind === 'item' &&
+        tab.itemId === item.id &&
+        (tab.scopeProjectId ?? 'all') === scopeProjectId
+    );
+    if (existing) return;
+    const id = scopedTabId('item-' + item.id);
+    onHomeStateChange({
+      ...homeState,
+      tabs: [...homeState.tabs, { kind: 'item', id, itemId: item.id, ...currentTabScope }],
+      activeTabId: null,
+    });
+  };
+
+  const addSearchToCurrentWorkspace = () => {
+    if (!librarySearch) return;
+    if (scopeProjectId === 'all') {
+      onLibrarySearchInTab?.(librarySearch.state.query);
+      return;
+    }
+    const id = `search-${crypto.randomUUID()}@project:${scopeProjectId}`;
+    const searchTab: GlobalTabSearch = {
+      kind: 'search',
+      id,
+      query: librarySearch.state.query.trim(),
+      filters: { ...librarySearch.state.filters },
+      mode: librarySearch.state.mode,
+      ...currentTabScope,
+    };
+    onHomeStateChange({
+      ...homeState,
+      tabs: [...homeState.tabs, searchTab],
+      activeTabId: null,
+    });
+  };
+
+  const focusCurrentSession = (requestedTabId?: string) => {
+    const activeTabId =
+      requestedTabId && currentSessionTabs.some((tab) => tab.id === requestedTabId)
+        ? requestedTabId
+        : getProjectSessionResumeTabId(homeState, scopeProjectId);
+    if (!activeTabId) return;
+    focusSessionTab(homeState.tabs, activeTabId);
+  };
+
+  const removeCurrentSessionTab = (tabId: string) => {
+    const lastActiveTabByProject = { ...(homeState.lastActiveTabByProject ?? {}) };
+    if (lastActiveTabByProject[scopeProjectId] === tabId) delete lastActiveTabByProject[scopeProjectId];
+    onHomeStateChange({
+      ...homeState,
+      tabs: homeState.tabs.filter((tab) => tab.id !== tabId),
+      activeTabId: homeState.activeTabId === tabId ? null : homeState.activeTabId,
+      lastActiveTabByProject,
+    });
+  };
+
+  const activateWorkspace = (workspace: Workspace | null) => {
+    if (!activeProject) return;
+    onHomeStateChange(activateProjectWorkspace({
+      state: homeState,
+      projectId: activeProject.id,
+      workspace,
+      items,
+    }));
   };
 
   const openCategoryBrowseTab = async (categoryId: string, name: string) => {
@@ -484,9 +590,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
             if (collectionId === 'all') openProjectScope(activeProject.id);
             else openCollectionScope(collectionId, activeProject.id);
           }}
-          onOpenItem={openItemTab}
+          sessionTabs={currentSessionTabs}
+          onAddItemToSession={addItemToCurrentSession}
+          onRemoveSessionTab={removeCurrentSessionTab}
+          onFocusSession={focusCurrentSession}
           onOpenSearch={() => selectHomeSection('search')}
           onUpdateItem={onUpdateItem}
+          workspaces={projectWorkspaces}
+          activeWorkspaceKey={activeWorkspaceKey}
+          onActivateWorkspace={activateWorkspace}
         />
       ) : (
       <div
@@ -888,11 +1000,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onModeChange={librarySearch.setMode}
           onSelectedItemIdChange={librarySearch.setSelectedItemId}
           onRunSearch={librarySearch.runSearch}
-          onOpenItem={openItemTab}
+          onOpenItem={scopeProjectId === 'all' ? openItemTab : addItemToCurrentSession}
           onClearRecentQueries={librarySearch.clearRecentQueries}
           scopeLabel={scopeProjectId === 'all' ? undefined : scopeLabel}
           showOpenInTab
-          onOpenInTab={() => onLibrarySearchInTab?.(librarySearch.state.query)}
+          onOpenInTab={addSearchToCurrentWorkspace}
+          openInTabLabel={scopeProjectId === 'all' ? 'Open in tab' : 'Add search to workspace'}
         />
       ) : (
         <div style={{ padding: 24, color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
@@ -921,36 +1034,64 @@ export const HomeView: React.FC<HomeViewProps> = ({
     </div>
   );
 
-  if (homeState.tabs.length === 0) {
-    return (
-      <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+  const focusOpen = !!homeState.activeTabId && homeState.tabs.some((tab) => tab.id === homeState.activeTabId);
+
+  React.useEffect(() => {
+    let frame: number | undefined;
+    if (focusOpen && !wasFocusOpenRef.current) {
+      frame = window.requestAnimationFrame(() => {
+        focusLayerRef.current?.querySelector<HTMLElement>('[data-focus-entry], button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')?.focus();
+      });
+    } else if (!focusOpen && wasFocusOpenRef.current) {
+      frame = window.requestAnimationFrame(() => {
+        const previousFocus = lastBrowseFocusRef.current;
+        if (previousFocus?.isConnected) previousFocus.focus();
+      });
+    }
+    wasFocusOpenRef.current = focusOpen;
+    return () => {
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+    };
+  }, [focusOpen]);
+
+  return (
+    <div style={{ height: '100%', minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+      <div
+        {...(focusOpen ? { inert: '' } : {})}
+        onFocusCapture={(event) => {
+          lastBrowseFocusRef.current = event.target as HTMLElement;
+        }}
+        style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', visibility: focusOpen ? 'hidden' : 'visible', pointerEvents: focusOpen ? 'none' : 'auto' }}
+      >
         {workspaceHeader}
         <div style={{ flex: 1, minHeight: 0 }}>{homeContent}</div>
       </div>
-    );
-  }
-
-  return (
-    <GlobalTabSystem
-      items={items}
-      collections={collections}
-      projects={projects}
-      tabState={homeState}
-      onTabStateChange={onHomeStateChange}
-      onUpdateItem={onUpdateItem}
-      onDeleteBookmark={onDeleteBookmark}
-      onCreateProject={onCreateProject}
-      onCreateCollection={onCreateCollection}
-      renderListTab={renderListTab}
-      statusBar={statusBar}
-      librarySearch={workingSearch ?? librarySearch}
-      onOpenItemFromSearch={onOpenItemFromSearch}
-      scopeProjectId={scopeProjectId}
-      scopeCollectionId={scopeCollectionId}
-      onSwitchScopeForItem={onSwitchScopeForItem}
-      workspaceHeader={workspaceHeader}
-      homeContent={homeContent}
-    />
+      {focusOpen && (
+        <div ref={focusLayerRef} style={{ position: 'absolute', inset: 0, zIndex: 5, display: 'flex', minHeight: 0, minWidth: 0, background: 'var(--bg)' }}>
+          <GlobalTabSystem
+            items={items}
+            collections={collections}
+            projects={projects}
+            tabState={homeState}
+            onTabStateChange={onHomeStateChange}
+            onUpdateItem={onUpdateItem}
+            onDeleteBookmark={onDeleteBookmark}
+            onCreateProject={onCreateProject}
+            onCreateCollection={onCreateCollection}
+            renderListTab={renderListTab}
+            statusBar={statusBar}
+            librarySearch={workingSearch ?? librarySearch}
+            onOpenItemFromSearch={onOpenItemFromSearch}
+            scopeProjectId={scopeProjectId}
+            scopeCollectionId={scopeCollectionId}
+            onSwitchScopeForItem={onSwitchScopeForItem}
+            focusContextLabel={scopeLabel}
+            onExitFocus={() => onHomeStateChange({ ...homeState, activeTabId: null })}
+            strictProjectScope={scopeProjectId !== 'all'}
+          />
+        </div>
+      )}
+    </div>
   );
 };
 

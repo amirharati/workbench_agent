@@ -27,6 +27,7 @@ interface ProductSearchViewProps {
   embedded?: boolean;
   showOpenInTab?: boolean;
   onOpenInTab?: () => void;
+  openInTabLabel?: string;
 }
 
 function getMatchReason(row: SearchResult): string {
@@ -64,6 +65,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   embedded = false,
   showOpenInTab = false,
   onOpenInTab,
+  openInTabLabel = 'Open in tab',
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
@@ -140,7 +142,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                   flexShrink: 0,
                 }}
               >
-                Open in tab
+                {openInTabLabel}
               </button>
             )}
           </div>
@@ -379,7 +381,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
           {state.result.mode === 'hybrid' ? 'hybrid' : 'text only'}
           {hasResults && (
             <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
-              Click to inspect · Double-click or Enter to open in tab
+              Click to inspect · Click the URL to open the website · Double-click or Enter to open in tab
             </span>
           )}
         </div>
@@ -421,9 +423,6 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                 if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
                   e.preventDefault();
                   item && onOpenItem(item);
-                } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && row.url) {
-                  e.preventDefault();
-                  window.open(row.url, '_blank');
                 }
               }}
               style={{
@@ -450,6 +449,26 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                   >
                     {row.title || 'Untitled'}
                   </div>
+                  {row.url && isValidBookmarkUrl(row.url) && (
+                    <ExtensionPageUrlLink
+                      url={row.url}
+                      stopPropagation
+                      style={{
+                        maxWidth: '100%',
+                        marginBottom: 6,
+                        color: 'var(--accent)',
+                        fontSize: 'var(--text-xs)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        textDecoration: 'none',
+                      }}
+                      title={`Open ${row.url}`}
+                    >
+                      <ExternalLink size={12} style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.url}</span>
+                    </ExtensionPageUrlLink>
+                  )}
                   <div
                     style={{
                       fontSize: 'var(--text-xs)',
@@ -507,16 +526,6 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                     </div>
                   )}
                 </div>
-                {row.url && isValidBookmarkUrl(row.url) && (
-                  <ExtensionPageUrlLink
-                    url={row.url}
-                    stopPropagation
-                    style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2, display: 'inline-flex' }}
-                    title="Open URL"
-                  >
-                    <ExternalLink size={14} />
-                  </ExtensionPageUrlLink>
-                )}
                 {isSelected && item && (
                   <button
                     type="button"

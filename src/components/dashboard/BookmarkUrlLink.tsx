@@ -33,7 +33,8 @@ const defaultStyle: React.CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
-  display: 'block',
+  display: 'inline-block',
+  maxWidth: '100%',
   marginTop: 2,
   textDecoration: 'none',
   cursor: 'pointer',
@@ -95,6 +96,9 @@ export function ExtensionPageUrlLink({
         }
         wrapEvent(e, open);
       }}
+      onDoubleClick={(e) => {
+        if (stopPropagation) e.stopPropagation();
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -107,7 +111,7 @@ export function ExtensionPageUrlLink({
           wrapEvent(e, open);
         }
       }}
-      style={{ cursor: 'pointer', ...style }}
+      style={{ cursor: 'pointer', width: 'fit-content', maxWidth: '100%', ...style }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >

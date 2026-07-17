@@ -647,6 +647,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             items={items}
             collections={collections}
             projects={projects}
+            workspaces={workspaces}
             libraryLoading={libraryLoading}
             libraryHydrateProgress={libraryHydrateProgress}
             homeState={globalTabState ?? { tabs: [], activeTabId: null, homeSection: 'overview', searchQuery: '', bottomLayout: 'tabs', isSidebarCollapsed: false }}
