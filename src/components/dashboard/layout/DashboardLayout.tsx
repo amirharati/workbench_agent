@@ -25,6 +25,7 @@ import { CommandPalette } from '../CommandPalette';
 import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID, loadLastSearchQuery } from '../../../hooks/useLibrarySearch';
 import { useImportPipelineJob } from '../../../hooks/useImportPipelineJob';
 import { ImportPipelineJobBanner } from '../ImportPipelineJobBanner';
+import { rememberRecentCollection, rememberRecentProject } from '../homeScope';
 import {
   loadItemIdsForCategory,
   loadItemIdsForPipelineQueue,
@@ -219,6 +220,23 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const [activeView, setActiveView] = useState<DashboardView>(() => initialNav.activeView as DashboardView);
   const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>(() => initialNav.scopeProjectId);
   const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>(() => initialNav.scopeCollectionId);
+  const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() =>
+    initialNav.scopeProjectId === 'all'
+      ? initialNav.recentProjectIds
+      : rememberRecentProject(initialNav.recentProjectIds, initialNav.scopeProjectId)
+  );
+  const [recentCollectionIdsByProject, setRecentCollectionIdsByProject] = useState<Record<string, string[]>>(() => {
+    if (initialNav.scopeProjectId === 'all' || initialNav.scopeCollectionId === 'all') {
+      return initialNav.recentCollectionIdsByProject;
+    }
+    return {
+      ...initialNav.recentCollectionIdsByProject,
+      [initialNav.scopeProjectId]: rememberRecentCollection(
+        initialNav.recentCollectionIdsByProject[initialNav.scopeProjectId] ?? [],
+        initialNav.scopeCollectionId
+      ),
+    };
+  });
   const [categoryBrowse, setCategoryBrowse] = useState<CategoryBrowseFilter | null>(null);
   const [pipelineBrowse, setPipelineBrowse] = useState<PipelineBrowseFilter | null>(null);
   const [batchConfirm, setBatchConfirm] = useState<{
@@ -227,6 +245,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   } | null>(null);
   const [globalTabState, setGlobalTabState] = useState<GlobalTabState>(() => loadGlobalTabState());
   const prevSearchViewRef = useRef(false);
+
+  useEffect(() => {
+    librarySearch.setFilters({
+      ...librarySearch.state.filters,
+      projectId: scopeProjectId === 'all' ? undefined : scopeProjectId,
+      collectionId: scopeCollectionId === 'all' ? undefined : scopeCollectionId,
+    });
+  }, [scopeProjectId, scopeCollectionId]);
+
   const handleGlobalTabStateChange = (next: GlobalTabState) => {
     setGlobalTabState(next);
     saveGlobalTabState(next);
@@ -579,9 +606,29 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     [batchConfirm, importPipelineJob, pipeline]
   );
 
+  const rememberProjectScope = (projectId: string) => {
+    setRecentProjectIds((previous) => {
+      const next = rememberRecentProject(previous, projectId);
+      patchNavigationState({ recentProjectIds: next });
+      return next;
+    });
+  };
+
+  const rememberCollectionScope = (projectId: string, collectionId: string) => {
+    setRecentCollectionIdsByProject((previous) => {
+      const next = {
+        ...previous,
+        [projectId]: rememberRecentCollection(previous[projectId] ?? [], collectionId),
+      };
+      patchNavigationState({ recentCollectionIdsByProject: next });
+      return next;
+    });
+  };
+
   const handleSelectProjectScope = (projectId: string | 'all') => {
     setScopeProjectId(projectId);
     setScopeCollectionId('all');
+    if (projectId !== 'all') rememberProjectScope(projectId);
     patchNavigationState({ scopeProjectId: projectId, scopeCollectionId: 'all' });
   };
 
@@ -589,6 +636,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     setScopeCollectionId(collectionId);
     const nextProjectId = projectId ?? scopeProjectId;
     if (projectId) setScopeProjectId(projectId);
+    if (nextProjectId !== 'all') rememberProjectScope(nextProjectId);
+    if (nextProjectId !== 'all' && collectionId !== 'all') {
+      rememberCollectionScope(nextProjectId, collectionId);
+    }
     patchNavigationState({
       scopeProjectId: nextProjectId,
       scopeCollectionId: collectionId,
@@ -1002,6 +1053,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onTestAI={onTestAI}
               scopeProjectId={scopeProjectId}
               scopeCollectionId={scopeCollectionId}
+              recentProjectIds={recentProjectIds}
+              recentCollectionIds={
+                scopeProjectId === 'all' ? [] : recentCollectionIdsByProject[scopeProjectId] ?? []
+              }
               globalTabState={globalTabState}
               onGlobalTabStateChange={handleGlobalTabStateChange}
               renderListTab={renderListTab}
@@ -1027,6 +1082,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onClearProjectScope={handleClearProjectScope}
               onClearCollectionScope={handleClearCollectionScope}
               onResetScope={handleResetScope}
+              onSelectProjectScope={handleSelectProjectScope}
+              onSelectCollectionScope={handleSelectCollectionScope}
               onSwitchScopeForItem={handleSwitchScopeForItem}
             />
           ) : (

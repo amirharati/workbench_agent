@@ -32,6 +32,8 @@ export type NavigationPersistedState = {
   activeView: PersistedDashboardView;
   scopeProjectId: string;
   scopeCollectionId: string;
+  recentProjectIds: string[];
+  recentCollectionIdsByProject: Record<string, string[]>;
   pipelineHub: PipelineHubPersistedState;
 };
 
@@ -54,6 +56,8 @@ export const NAVIGATION_STATE_DEFAULT: NavigationPersistedState = {
   activeView: 'home',
   scopeProjectId: 'all',
   scopeCollectionId: 'all',
+  recentProjectIds: [],
+  recentCollectionIdsByProject: {},
   pipelineHub: PIPELINE_HUB_STATE_DEFAULT,
 };
 
@@ -112,6 +116,22 @@ function normalizeNavigationState(
     activeView: normalizeView(rawView),
     scopeProjectId: typeof raw?.scopeProjectId === 'string' ? raw.scopeProjectId : 'all',
     scopeCollectionId: typeof raw?.scopeCollectionId === 'string' ? raw.scopeCollectionId : 'all',
+    recentProjectIds: Array.isArray(raw?.recentProjectIds)
+      ? Array.from(new Set(raw.recentProjectIds.filter((id): id is string => typeof id === 'string'))).slice(0, 5)
+      : [],
+    recentCollectionIdsByProject:
+      raw?.recentCollectionIdsByProject &&
+      typeof raw.recentCollectionIdsByProject === 'object' &&
+      !Array.isArray(raw.recentCollectionIdsByProject)
+        ? Object.fromEntries(
+            Object.entries(raw.recentCollectionIdsByProject)
+              .filter(([projectId, ids]) => projectId.length > 0 && Array.isArray(ids))
+              .map(([projectId, ids]) => [
+                projectId,
+                Array.from(new Set(ids.filter((id): id is string => typeof id === 'string'))).slice(0, 5),
+              ])
+          )
+        : {},
     pipelineHub: hub,
   };
 }

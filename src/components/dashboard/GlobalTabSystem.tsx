@@ -885,6 +885,13 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             onRunSearch={librarySearch.runSearch}
             onOpenItem={onOpenItemFromSearch ?? (() => {})}
             onClearRecentQueries={librarySearch.clearRecentQueries}
+            scopeLabel={
+              activeTab.filters?.collectionId
+                ? collections.find((collection) => collection.id === activeTab.filters?.collectionId)?.name
+                : activeTab.filters?.projectId
+                  ? projects.find((project) => project.id === activeTab.filters?.projectId)?.name
+                  : undefined
+            }
             autofocus={false}
           />
         )}

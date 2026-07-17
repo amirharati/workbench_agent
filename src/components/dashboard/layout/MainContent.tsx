@@ -43,6 +43,8 @@ interface MainContentProps {
   activeView: DashboardView;
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
+  recentProjectIds?: string[];
+  recentCollectionIds?: string[];
   projects: Project[];
   items: Item[];
   collections: Collection[];
@@ -118,6 +120,8 @@ interface MainContentProps {
   onClearProjectScope?: () => void;
   onClearCollectionScope?: () => void;
   onResetScope?: () => void;
+  onSelectProjectScope?: (projectId: string | 'all') => void;
+  onSelectCollectionScope?: (collectionId: string, projectId?: string) => void;
   onSwitchScopeForItem?: (item: Item) => void;
 }
 
@@ -125,6 +129,8 @@ export const MainContent: React.FC<MainContentProps> = ({
   activeView, 
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
+  recentProjectIds = [],
+  recentCollectionIds = [],
   projects,
   items, 
   collections, 
@@ -187,6 +193,8 @@ export const MainContent: React.FC<MainContentProps> = ({
   onClearProjectScope,
   onClearCollectionScope,
   onResetScope,
+  onSelectProjectScope,
+  onSelectCollectionScope,
   onSwitchScopeForItem,
 }) => {
   const resolvedShellLayout = shellLayout ?? SHELL_LAYOUT_DEFAULTS;
@@ -661,6 +669,11 @@ export const MainContent: React.FC<MainContentProps> = ({
             onCancelBatch={onCancelBatch}
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
+            recentProjectIds={recentProjectIds}
+            recentCollectionIds={recentCollectionIds}
+            onSelectProjectScope={onSelectProjectScope}
+            onSelectCollectionScope={onSelectCollectionScope}
+            onResetScope={onResetScope}
             onSwitchScopeForItem={onSwitchScopeForItem}
           />
           </div>

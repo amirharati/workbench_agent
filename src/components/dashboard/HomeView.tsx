@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon } from 'lucide-react';
+import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon, Folder, Layers, ChevronRight } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { getHomeQuickAccessItems } from '../../lib/itemQuickAccess';
@@ -12,6 +12,7 @@ import { MIN_DISCOVER_POOL } from '../../lib/categorization/discoverPolicy';
 import { loadItemIdsForCategory, loadItemIdsForPipelineQueue, PIPELINE_QUEUE_LABELS, PIPELINE_QUEUE_HINTS } from '../../lib/pipeline';
 import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { ProductSearchView } from './ProductSearchView';
+import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary } from './homeScope';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -43,6 +44,11 @@ interface HomeViewProps {
   onCancelBatch?: () => void;
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
+  recentProjectIds?: string[];
+  recentCollectionIds?: string[];
+  onSelectProjectScope?: (projectId: string | 'all') => void;
+  onSelectCollectionScope?: (collectionId: string, projectId?: string) => void;
+  onResetScope?: () => void;
   onSwitchScopeForItem?: (item: Item) => void;
   renderListTab?: (tab: any) => React.ReactNode;
   statusBar?: React.ReactNode;
@@ -51,7 +57,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], recentCollectionIds = [], onSelectProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const {
     digest,
@@ -78,18 +84,57 @@ export const HomeView: React.FC<HomeViewProps> = ({
     void onBatchProcessQueue('pending_classify');
   };
 
+  const activeProject = useMemo(
+    () => (scopeProjectId === 'all' ? undefined : projects.find((project) => project.id === scopeProjectId)),
+    [projects, scopeProjectId]
+  );
+  const activeCollection = useMemo(
+    () => (scopeCollectionId === 'all' ? undefined : collections.find((collection) => collection.id === scopeCollectionId)),
+    [collections, scopeCollectionId]
+  );
+  const projectCollections = useMemo(
+    () => getProjectCollections(collections, scopeProjectId),
+    [collections, scopeProjectId]
+  );
+  const scopedItems = useMemo(
+    () => getHomeScopeItems(items, collections, scopeProjectId, scopeCollectionId),
+    [items, collections, scopeProjectId, scopeCollectionId]
+  );
+  const projectSummaries = useMemo(
+    () =>
+      [...projects]
+        .sort((a, b) => b.updated_at - a.updated_at)
+        .slice(0, 6)
+        .map((project) => getProjectHomeSummary(project, items, collections)),
+    [projects, items, collections]
+  );
+  const recentProjects = useMemo(
+    () =>
+      recentProjectIds
+        .map((projectId) => projects.find((project) => project.id === projectId))
+        .filter((project): project is Project => project != null),
+    [recentProjectIds, projects]
+  );
+  const recentCollections = useMemo(
+    () =>
+      recentCollectionIds
+        .map((collectionId) => projectCollections.find((collection) => collection.id === collectionId))
+        .filter((collection): collection is Collection => collection != null),
+    [recentCollectionIds, projectCollections]
+  );
+
   const recentItems = useMemo(
     () =>
-      [...items]
+      [...scopedItems]
         .sort(
           (a, b) =>
             (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at)
         )
         .slice(0, RECENTLY_ADDED_LIMIT),
-    [items]
+    [scopedItems]
   );
 
-  const quickAccessItems = useMemo(() => getHomeQuickAccessItems(items, 8), [items]);
+  const quickAccessItems = useMemo(() => getHomeQuickAccessItems(scopedItems, 8), [scopedItems]);
   const recentSearches = librarySearch?.state.recentQueries.slice(0, RECENT_SEARCH_LIMIT) ?? [];
 
   type HomeUtilTabId =
@@ -204,7 +249,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const reopenRecentSearch = (query: string) => {
     if (!librarySearch) return;
-    librarySearch.openSearch({ query, filters: {}, mode: 'hybrid' });
+    librarySearch.openSearch({
+      query,
+      filters: {
+        projectId: scopeProjectId === 'all' ? undefined : scopeProjectId,
+        collectionId: scopeCollectionId === 'all' ? undefined : scopeCollectionId,
+      },
+      mode: 'hybrid',
+    });
     onSearchQueryChange(query);
     onHomeStateChange({
       ...homeState,
@@ -218,6 +270,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const selectHomeSection = (section: 'overview' | 'search') => {
     onHomeStateChange({ ...homeState, activeTabId: null, homeSection: section });
   };
+
+  const openAllLibraryScope = () => {
+    onHomeStateChange({ ...homeState, activeTabId: null, homeSection: 'overview' });
+    onResetScope?.();
+  };
+
+  const openProjectScope = (projectId: string) => {
+    onHomeStateChange({ ...homeState, activeTabId: null, homeSection: 'overview' });
+    onSelectProjectScope?.(projectId);
+  };
+
+  const openCollectionScope = (collectionId: string, projectId: string) => {
+    onHomeStateChange({ ...homeState, activeTabId: null, homeSection: 'overview' });
+    onSelectCollectionScope?.(collectionId, projectId);
+  };
+
+  const scopeLabel = activeCollection?.name ?? activeProject?.name ?? 'All Library';
 
   const homeContent = (
     <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -269,6 +338,68 @@ export const HomeView: React.FC<HomeViewProps> = ({
         })}
       </div>
 
+      <div
+        style={{
+          minHeight: 40,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '0 12px',
+          borderBottom: '1px solid var(--border)',
+          background: 'var(--bg)',
+          color: 'var(--text-muted)',
+          fontSize: 'var(--text-xs)',
+          minWidth: 0,
+        }}
+      >
+        <div
+          className="hide-scrollbar"
+          style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto' }}
+          aria-label="Open project scopes"
+        >
+          <button type="button" onClick={openAllLibraryScope} style={scopeSwitcherButton(scopeProjectId === 'all')}>
+            <HomeIcon size={12} />
+            All Library
+          </button>
+          {recentProjects.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              onClick={() => openProjectScope(project.id)}
+              style={scopeSwitcherButton(scopeProjectId === project.id)}
+              title={`Switch Home to ${project.name}`}
+            >
+              <Folder size={12} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {project.name}
+              </span>
+            </button>
+          ))}
+          {activeProject && recentCollections.length > 0 && (
+            <span aria-hidden="true" style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0, margin: '0 3px' }} />
+          )}
+          {activeProject &&
+            recentCollections.map((collection) => (
+              <button
+                key={collection.id}
+                type="button"
+                onClick={() => openCollectionScope(collection.id, activeProject.id)}
+                style={collectionSwitcherButton(scopeCollectionId === collection.id)}
+                title={`Switch ${activeProject.name} to ${collection.name}`}
+              >
+                <Layers size={11} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {collection.name}
+                </span>
+              </button>
+            ))}
+        </div>
+        <span style={{ color: 'var(--text-faint)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {scopedItems.length} item{scopedItems.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
       {homeSection === 'overview' ? (
       <div
         style={{
@@ -283,6 +414,38 @@ export const HomeView: React.FC<HomeViewProps> = ({
         }}
         className="scrollbar"
       >
+        {(activeProject || activeCollection) && (
+          <div style={{ width: '100%', maxWidth: 1000 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'var(--accent-weak)',
+                  color: 'var(--accent)',
+                  flexShrink: 0,
+                }}
+              >
+                {activeCollection ? <Layers size={18} /> : <Folder size={18} />}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <h2 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-xl)', lineHeight: 1.25 }}>
+                  {scopeLabel}
+                </h2>
+                <p style={{ margin: '5px 0 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
+                  {activeCollection
+                    ? `Collection in ${activeProject?.name ?? 'this project'}`
+                    : activeProject?.description || `${projectCollections.length} collection${projectCollections.length !== 1 ? 's' : ''}`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Hero search */}
         <div style={{ maxWidth: 640, width: '100%' }}>
           <form onSubmit={handleHeroSearch}>
@@ -292,7 +455,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={e => onSearchQueryChange(e.target.value)}
-                placeholder="Search your library..."
+                placeholder={scopeProjectId === 'all' ? 'Search your library...' : `Search in ${scopeLabel}...`}
                 autoFocus
                 style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 'var(--text-lg)', fontFamily: 'var(--font-sans)' }}
               />
@@ -305,7 +468,96 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </form>
         </div>
 
+        {scopeProjectId === 'all' && projectSummaries.length > 0 && (
+          <section style={{ width: '100%', maxWidth: 1000 }} aria-labelledby="home-projects-heading">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+              <div>
+                <h2 id="home-projects-heading" style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text)', fontWeight: 650 }}>
+                  Your projects
+                </h2>
+                <p style={{ margin: '3px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                  Choose a project to focus Home and Search.
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
+              {projectSummaries.map(({ project, collectionCount, itemCount }) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  onClick={() => openProjectScope(project.id)}
+                  style={scopeLauncherStyle}
+                >
+                  <Folder size={16} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 1 }} />
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'block', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {project.name}
+                    </span>
+                    <span style={{ display: 'block', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', marginTop: 3 }}>
+                      {itemCount} item{itemCount !== 1 ? 's' : ''} · {collectionCount} collection{collectionCount !== 1 ? 's' : ''}
+                    </span>
+                  </span>
+                  <ChevronRight size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {activeProject && scopeCollectionId === 'all' && (
+          <section style={{ width: '100%', maxWidth: 1000 }} aria-labelledby="home-collections-heading">
+            <div style={{ marginBottom: 10 }}>
+              <h2 id="home-collections-heading" style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text)', fontWeight: 650 }}>
+                Collections
+              </h2>
+              <p style={{ margin: '3px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                Narrow this project without opening another tab.
+              </p>
+            </div>
+            {projectCollections.length === 0 ? (
+              <div style={{ padding: '12px 14px', border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                This project has no collections yet.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+                {projectCollections.map((collection) => {
+                  const count = scopedItems.filter((item) => (item.collectionIds || []).includes(collection.id)).length;
+                  return (
+                    <button
+                      key={collection.id}
+                      type="button"
+                      onClick={() => openCollectionScope(collection.id, activeProject.id)}
+                      style={scopeLauncherStyle}
+                    >
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 3,
+                          background: collection.color || 'var(--accent)',
+                          flexShrink: 0,
+                          marginTop: 3,
+                        }}
+                      />
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <span style={{ display: 'block', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {collection.name}
+                        </span>
+                        <span style={{ display: 'block', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', marginTop: 3 }}>
+                          {count} item{count !== 1 ? 's' : ''}
+                        </span>
+                      </span>
+                      <ChevronRight size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Quick access links */}
+        {scopeProjectId === 'all' && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', maxWidth: 640, width: '100%' }}>
           {(
             [
@@ -346,6 +598,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           ))}
         </div>
+        )}
 
         {libraryLoading ? (
           <div style={{ width: '100%', maxWidth: 1000 }}>
@@ -532,6 +785,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             )}
           </HomeCard>
 
+          {scopeProjectId === 'all' && (
           <HomeCard icon={<Zap size={14} />} title="Processing Digest">
             {showPipelineCardsLoading ? (
               <LibraryLoadingPlaceholder variant="inline" message="Loading…" />
@@ -560,7 +814,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </div>
             )}
           </HomeCard>
+          )}
 
+          {scopeProjectId === 'all' && (
           <HomeCard icon={<BarChart2 size={14} />} title="Library Overview">
             {showPipelineCardsLoading ? (
               <LibraryLoadingPlaceholder variant="inline" message="Loading…" />
@@ -605,19 +861,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </div>
             )}
           </HomeCard>
+          )}
         </div>
         )}
 
-        {items.length > 0 && !libraryLoading && (
+        {scopedItems.length > 0 && !libraryLoading && (
           <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center', marginTop: 16 }}>
-            {items.length} item{items.length !== 1 ? 's' : ''} in your library
+            {scopedItems.length} item{scopedItems.length !== 1 ? 's' : ''} in {scopeLabel}
           </div>
         )}
       </div>
       ) : librarySearch ? (
         <ProductSearchView
-          items={items}
-          collections={collections}
+          items={scopedItems}
+          collections={scopeProjectId === 'all' ? collections : projectCollections}
           state={librarySearch.state}
           onQueryChange={(query) => {
             librarySearch.setQuery(query);
@@ -629,6 +886,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onRunSearch={librarySearch.runSearch}
           onOpenItem={openItemTab}
           onClearRecentQueries={librarySearch.clearRecentQueries}
+          scopeLabel={scopeProjectId === 'all' ? undefined : scopeLabel}
           showOpenInTab
           onOpenInTab={() => onLibrarySearchInTab?.(librarySearch.state.query)}
         />
@@ -682,6 +940,44 @@ export const HomeView: React.FC<HomeViewProps> = ({
       homeContent={homeContent}
     />
   );
+};
+
+const scopeSwitcherButton = (active: boolean): React.CSSProperties => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 5,
+  height: 28,
+  maxWidth: 150,
+  flexShrink: 0,
+  border: 'none',
+  background: active ? 'var(--bg-active)' : 'transparent',
+  color: active ? 'var(--accent)' : 'var(--text-muted)',
+  borderRadius: 'var(--radius-sm)',
+  padding: '0 8px',
+  fontSize: 'var(--text-xs)',
+  fontWeight: active ? 600 : 500,
+  cursor: 'pointer',
+});
+
+const collectionSwitcherButton = (active: boolean): React.CSSProperties => ({
+  ...scopeSwitcherButton(active),
+  background: active ? 'var(--accent-weak)' : 'var(--bg-hover)',
+  color: active ? 'var(--accent)' : 'var(--text-muted)',
+  maxWidth: 135,
+});
+
+const scopeLauncherStyle: React.CSSProperties = {
+  width: '100%',
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 10,
+  padding: '11px 12px',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-md)',
+  background: 'var(--bg-panel)',
+  boxShadow: 'var(--shadow-sm)',
+  textAlign: 'left',
+  cursor: 'pointer',
 };
 
 // ===== Shared card =====

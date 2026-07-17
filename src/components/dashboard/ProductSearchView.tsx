@@ -22,6 +22,7 @@ interface ProductSearchViewProps {
   onRunSearch: (query?: string) => Promise<void>;
   onOpenItem: (item: Item) => void;
   onClearRecentQueries?: () => void;
+  scopeLabel?: string;
   autofocus?: boolean;
   embedded?: boolean;
   showOpenInTab?: boolean;
@@ -58,6 +59,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onRunSearch,
   onOpenItem,
   onClearRecentQueries,
+  scopeLabel,
   autofocus = true,
   embedded = false,
   showOpenInTab = false,
@@ -236,6 +238,22 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             alignItems: 'center',
           }}
         >
+          {scopeLabel && (
+            <span
+              style={{
+                padding: '4px 9px',
+                borderRadius: 999,
+                border: '1px solid var(--accent)',
+                background: 'var(--accent-weak)',
+                color: 'var(--accent)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 600,
+              }}
+              title={`Search scope: ${scopeLabel}`}
+            >
+              {scopeLabel}
+            </span>
+          )}
           <select
             value={collectionFilter}
             onChange={(e) => {

@@ -119,8 +119,11 @@ export function useLibrarySearch(onError?: (message: string) => void) {
   const executeSearch = useCallback(
     async ({ query, mode, filters }: LibrarySearchSnapshot) => {
       try {
-        const filterPayload: SearchFilters | undefined =
-          filters.collectionId || filters.domain ? { ...filters } : undefined;
+        const filterPayload: SearchFilters | undefined = Object.values(filters).some(
+          (value) => value !== undefined && value !== ''
+        )
+          ? { ...filters }
+          : undefined;
         const res = await runAppHybridSearchWithRelated({
           query,
           mode,
