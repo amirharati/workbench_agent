@@ -98,6 +98,7 @@ interface MainContentProps {
   renderListTab?: (tab: any) => React.ReactNode;
   statusBar?: React.ReactNode;
   librarySearch?: LibrarySearchApi;
+  workingLibrarySearch?: LibrarySearchApi;
   onLibrarySearch?: (query?: string) => void;
   onLibrarySearchInTab?: (query?: string) => void;
   onOpenItemFromSearch?: (item: Item) => void;
@@ -167,6 +168,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   renderListTab,
   statusBar,
   librarySearch,
+  workingLibrarySearch,
   onLibrarySearchInTab,
   onOpenItemFromSearch,
   categoryBrowse,
@@ -619,14 +621,25 @@ export const MainContent: React.FC<MainContentProps> = ({
     switch (activeView) {
       case 'home':
         return (
-          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', height: '100%' }}>
+          <div
+            style={{
+              height: '100%',
+              width: '100%',
+              flex: 1,
+              minHeight: 0,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
             <HomeView
             items={items}
             collections={collections}
             projects={projects}
             libraryLoading={libraryLoading}
             libraryHydrateProgress={libraryHydrateProgress}
-            homeState={globalTabState ?? { tabs: [], activeTabId: null, topPct: 40, searchQuery: '', bottomLayout: 'tabs', isSidebarCollapsed: false }}
+            homeState={globalTabState ?? { tabs: [], activeTabId: null, homeSection: 'overview', searchQuery: '', bottomLayout: 'tabs', isSidebarCollapsed: false }}
             onHomeStateChange={onGlobalTabStateChange ?? (() => {})}
             onUpdateItem={onUpdateBookmark}
             onDeleteBookmark={onDeleteBookmark}
@@ -636,9 +649,8 @@ export const MainContent: React.FC<MainContentProps> = ({
             onSearchQueryChange={(q) => onGlobalTabStateChange?.({ ...globalTabState!, searchQuery: q })}
             onLibrarySearchInTab={(q) => onLibrarySearchInTab?.(q)}
             librarySearch={librarySearch}
+            workingSearch={workingLibrarySearch}
             onOpenItemFromSearch={onOpenItemFromSearch}
-            topPct={globalTabState?.topPct ?? 40}
-            onTopPctChange={(pct) => onGlobalTabStateChange?.({ ...globalTabState!, topPct: pct })}
             renderListTab={renderListTab}
             statusBar={statusBar}
             onBrowseCategory={onBrowseCategory}
@@ -674,6 +686,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onSelectedItemIdChange={librarySearch.setSelectedItemId}
             onRunSearch={librarySearch.runSearch}
             onOpenItem={onOpenItemFromSearch ?? (() => {})}
+            onClearRecentQueries={librarySearch.clearRecentQueries}
             showOpenInTab
             onOpenInTab={() => onLibrarySearchInTab?.(librarySearch.state.query)}
           />

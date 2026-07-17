@@ -1,24 +1,22 @@
-import React, { useMemo, useRef } from 'react';
-import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2 } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { getHomeQuickAccessItems } from '../../lib/itemQuickAccess';
 import { GlobalTabSystem, type GlobalTabState, type GlobalTabList } from './GlobalTabSystem';
 import { ItemContextMenu } from './ItemContextMenu';
-import { Resizer } from './Resizer';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { useHomePipelineStats } from '../../hooks/useHomePipelineStats';
 import type { PipelineQueueKind, ProcessingDigest, PipelineMaintenanceSnapshot } from '../../lib/pipeline';
 import { MIN_DISCOVER_POOL } from '../../lib/categorization/discoverPolicy';
 import { loadItemIdsForCategory, loadItemIdsForPipelineQueue, PIPELINE_QUEUE_LABELS, PIPELINE_QUEUE_HINTS } from '../../lib/pipeline';
 import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
+import { ProductSearchView } from './ProductSearchView';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
-const MIN_TOP_PX = 72;
-const MIN_BOTTOM_PX = 44;
-const DIVIDER_PX = 8;
 const RECENTLY_ADDED_LIMIT = 15;
+const RECENT_SEARCH_LIMIT = 6;
 
 // ===== Props =====
 interface HomeViewProps {
@@ -35,6 +33,7 @@ interface HomeViewProps {
   onSearchQueryChange: (query: string) => void;
   onLibrarySearchInTab?: (query: string) => void;
   librarySearch?: LibrarySearchApi;
+  workingSearch?: LibrarySearchApi;
   onOpenItemFromSearch?: (item: Item) => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
@@ -45,8 +44,6 @@ interface HomeViewProps {
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   onSwitchScopeForItem?: (item: Item) => void;
-  topPct: number;
-  onTopPctChange: (pct: number) => void;
   renderListTab?: (tab: any) => React.ReactNode;
   statusBar?: React.ReactNode;
   libraryLoading?: boolean;
@@ -54,11 +51,8 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, topPct, onTopPctChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', onSwitchScopeForItem, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const topPctRef = useRef(topPct);
-  topPctRef.current = topPct;
   const {
     digest,
     maintenance,
@@ -96,6 +90,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   );
 
   const quickAccessItems = useMemo(() => getHomeQuickAccessItems(items, 8), [items]);
+  const recentSearches = librarySearch?.state.recentQueries.slice(0, RECENT_SEARCH_LIMIT) ?? [];
 
   type HomeUtilTabId =
     | 'util-pinned'
@@ -196,41 +191,85 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const handleHeroSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const q = searchQuery.trim();
-    if (q) onLibrarySearchInTab?.(q);
+    if (!q || !librarySearch) return;
+    librarySearch.setQuery(q);
+    void librarySearch.runSearch(q);
+    onHomeStateChange({
+      ...homeState,
+      activeTabId: null,
+      homeSection: 'search',
+      searchQuery: q,
+    });
   };
 
-  const onDividerResize = (delta: number) => {
-    if (!containerRef.current) return;
-    const containerH = containerRef.current.getBoundingClientRect().height;
-    const available = containerH - DIVIDER_PX;
-    if (available <= 0) return;
-    const maxTop = available - MIN_BOTTOM_PX;
-    // Use stored split ratio — not DOM height (content was forcing the top pane larger).
-    const currentTopPx = (topPctRef.current / 100) * available;
-    const newTop = Math.max(MIN_TOP_PX, Math.min(maxTop, currentTopPx + delta));
-    const nextPct = (newTop / available) * 100;
-    topPctRef.current = nextPct;
-    onTopPctChange(nextPct);
+  const reopenRecentSearch = (query: string) => {
+    if (!librarySearch) return;
+    librarySearch.openSearch({ query, filters: {}, mode: 'hybrid' });
+    onSearchQueryChange(query);
+    onHomeStateChange({
+      ...homeState,
+      activeTabId: null,
+      homeSection: 'search',
+      searchQuery: query,
+    });
   };
 
-  const hasBottomRow = homeState.tabs.length > 0;
-  const bottomPct = Math.max(0, 100 - topPct);
+  const homeSection = homeState.homeSection === 'search' ? 'search' : 'overview';
+  const selectHomeSection = (section: 'overview' | 'search') => {
+    onHomeStateChange({ ...homeState, activeTabId: null, homeSection: section });
+  };
 
-  return (
-    <div
-      ref={containerRef}
-      style={{
-        height: '100%',
-        minHeight: 0,
-        display: 'grid',
-        gridTemplateRows: hasBottomRow
-          ? `minmax(${MIN_TOP_PX}px, ${topPct}fr) ${DIVIDER_PX}px minmax(${MIN_BOTTOM_PX}px, ${bottomPct}fr)`
-          : '1fr',
-        overflow: 'hidden',
-      }}
-    >
+  const homeContent = (
+    <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div
+        style={{
+          height: 44,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '0 16px',
+          borderBottom: '1px solid var(--border)',
+          background: 'var(--bg-panel)',
+        }}
+      >
+        {(
+          [
+            { id: 'overview' as const, label: 'Overview', Icon: HomeIcon },
+            { id: 'search' as const, label: 'Search', Icon: Search },
+          ]
+        ).map(({ id, label, Icon }) => {
+          const active = homeSection === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => selectHomeSection(id)}
+              style={{
+                height: 30,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                padding: '0 11px',
+                border: '1px solid',
+                borderColor: active ? 'var(--border-active)' : 'transparent',
+                borderRadius: 'var(--radius-md)',
+                background: active ? 'var(--bg-active)' : 'transparent',
+                color: active ? 'var(--text)' : 'var(--text-muted)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: active ? 600 : 400,
+                cursor: 'pointer',
+              }}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* ===== TOP PANE (landing) — scrolls independently of split size ===== */}
+      {homeSection === 'overview' ? (
       <div
         style={{
           minHeight: 0,
@@ -408,6 +447,91 @@ export const HomeView: React.FC<HomeViewProps> = ({
             )}
           </HomeCard>
 
+          <HomeCard
+            icon={<Search size={14} />}
+            title="Recent searches"
+            headerExtra={
+              recentSearches.length > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => selectHomeSection('search')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: 'var(--accent)',
+                      fontSize: 'var(--text-xs)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Open
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => librarySearch?.clearRecentQueries()}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: 'var(--text-faint)',
+                      fontSize: 'var(--text-xs)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              ) : null
+            }
+          >
+            {recentSearches.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '4px 0' }}>
+                Your recent library searches will appear here.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 4 }}>
+                {recentSearches.map((query) => (
+                  <button
+                    key={query}
+                    type="button"
+                    onClick={() => reopenRecentSearch(query)}
+                    title={`Search again for ${query}`}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 6px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      color: 'var(--text)',
+                      fontSize: 'var(--text-xs)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      borderRadius: 'var(--radius-sm)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--bg-hover)';
+                      e.currentTarget.style.color = 'var(--accent)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'none';
+                      e.currentTarget.style.color = 'var(--text)';
+                    }}
+                  >
+                    <Search size={11} style={{ flexShrink: 0, color: 'var(--text-faint)' }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {query}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </HomeCard>
+
           <HomeCard icon={<Zap size={14} />} title="Processing Digest">
             {showPipelineCardsLoading ? (
               <LibraryLoadingPlaceholder variant="inline" message="Loading…" />
@@ -484,60 +608,33 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
         )}
 
-        {items.length > 0 && !hasBottomRow && !libraryLoading && (
+        {items.length > 0 && !libraryLoading && (
           <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center', marginTop: 16 }}>
             {items.length} item{items.length !== 1 ? 's' : ''} in your library
           </div>
         )}
       </div>
-
-      {/* ===== DIVIDER ===== */}
-      {hasBottomRow && (
-        <div
-          style={{
-            height: DIVIDER_PX,
-            minHeight: DIVIDER_PX,
-            display: 'flex',
-            alignItems: 'stretch',
-            borderTop: '1px solid var(--border)',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg-panel)',
+      ) : librarySearch ? (
+        <ProductSearchView
+          items={items}
+          collections={collections}
+          state={librarySearch.state}
+          onQueryChange={(query) => {
+            librarySearch.setQuery(query);
+            onSearchQueryChange(query);
           }}
-          title="Drag to resize landing and tabs"
-        >
-          <Resizer direction="horizontal" onResize={onDividerResize} thickness={DIVIDER_PX} />
-        </div>
-      )}
-
-      {/* ===== BOTTOM PANE (tabs) — scrolls inside GlobalTabSystem ===== */}
-      {hasBottomRow && (
-        <div
-          style={{
-            minHeight: 0,
-            minWidth: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          <GlobalTabSystem
-          items={items} 
-          collections={collections} 
-          projects={projects} 
-          tabState={homeState} 
-          onTabStateChange={onHomeStateChange} 
-          onUpdateItem={onUpdateItem} 
-          onDeleteBookmark={onDeleteBookmark}
-          onCreateProject={onCreateProject}
-          onCreateCollection={onCreateCollection}
-          renderListTab={renderListTab}
-          statusBar={statusBar}
-          librarySearch={librarySearch}
-          onOpenItemFromSearch={onOpenItemFromSearch}
-          scopeProjectId={scopeProjectId}
-          scopeCollectionId={scopeCollectionId}
-          onSwitchScopeForItem={onSwitchScopeForItem}
-          />
+          onFiltersChange={librarySearch.setFilters}
+          onModeChange={librarySearch.setMode}
+          onSelectedItemIdChange={librarySearch.setSelectedItemId}
+          onRunSearch={librarySearch.runSearch}
+          onOpenItem={openItemTab}
+          onClearRecentQueries={librarySearch.clearRecentQueries}
+          showOpenInTab
+          onOpenInTab={() => onLibrarySearchInTab?.(librarySearch.state.query)}
+        />
+      ) : (
+        <div style={{ padding: 24, color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+          Library search is unavailable.
         </div>
       )}
       {homeItemContextMenu && (
@@ -560,6 +657,30 @@ export const HomeView: React.FC<HomeViewProps> = ({
         />
       )}
     </div>
+  );
+
+  if (homeState.tabs.length === 0) return homeContent;
+
+  return (
+    <GlobalTabSystem
+      items={items}
+      collections={collections}
+      projects={projects}
+      tabState={homeState}
+      onTabStateChange={onHomeStateChange}
+      onUpdateItem={onUpdateItem}
+      onDeleteBookmark={onDeleteBookmark}
+      onCreateProject={onCreateProject}
+      onCreateCollection={onCreateCollection}
+      renderListTab={renderListTab}
+      statusBar={statusBar}
+      librarySearch={workingSearch ?? librarySearch}
+      onOpenItemFromSearch={onOpenItemFromSearch}
+      scopeProjectId={scopeProjectId}
+      scopeCollectionId={scopeCollectionId}
+      onSwitchScopeForItem={onSwitchScopeForItem}
+      homeContent={homeContent}
+    />
   );
 };
 

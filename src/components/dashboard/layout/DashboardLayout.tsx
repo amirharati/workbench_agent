@@ -195,6 +195,9 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const librarySearch = useLibrarySearch((message) => {
     addToast({ type: 'error', message: `Search failed: ${message}` });
   });
+  const workingLibrarySearch = useLibrarySearch((message) => {
+    addToast({ type: 'error', message: `Search tab failed: ${message}` });
+  });
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [shellLayout, setShellLayout] = useState<ShellLayoutState>(() => loadShellLayout());
   const patchShellLayoutState = useCallback((patch: Partial<ShellLayoutState>) => {
@@ -316,7 +319,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   const openLibrarySearch = useCallback(
     (query?: string) => {
-      setActiveView('search');
+      setActiveView('home');
+      patchNavigationState({ activeView: 'home' });
+      setGlobalTabState((prev) => {
+        const next = { ...prev, activeTabId: null, homeSection: 'search' as const };
+        saveGlobalTabState(next);
+        return next;
+      });
       if (query?.trim()) {
         librarySearch.setQuery(query.trim());
         void librarySearch.runSearch(query.trim());
@@ -328,30 +337,32 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const openLibrarySearchInTab = useCallback(
     (query?: string) => {
       const q = (query ?? librarySearch.state.query).trim();
-      if (q) {
-        librarySearch.setQuery(q);
-        void librarySearch.runSearch(q);
-      }
+      const filters = { ...librarySearch.state.filters };
+      const mode = librarySearch.state.mode;
+      workingLibrarySearch.openSearch({ query: q, filters, mode });
 
       setGlobalTabState((prev) => {
-        const withoutSearch = prev.tabs.filter((t) => t.kind !== 'search');
+        const searchTabId = `search-${crypto.randomUUID()}`;
         const searchTab: GlobalTabSearch = {
           kind: 'search',
-          id: LIBRARY_SEARCH_TAB_ID,
+          id: searchTabId,
           query: q,
+          filters,
+          mode,
         };
         const next = {
           ...prev,
-          tabs: [...withoutSearch, searchTab],
-          activeTabId: LIBRARY_SEARCH_TAB_ID,
+          tabs: [...prev.tabs, searchTab],
+          activeTabId: searchTabId,
         };
         saveGlobalTabState(next);
         return next;
       });
 
       setActiveView('home');
+      patchNavigationState({ activeView: 'home' });
     },
-    [librarySearch]
+    [librarySearch.state.filters, librarySearch.state.mode, librarySearch.state.query, workingLibrarySearch]
   );
 
   useEffect(() => {
@@ -389,25 +400,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     librarySearch.state.loading,
     librarySearch.state.recentQueries,
   ]);
-
-  useEffect(() => {
-    const q = librarySearch.state.query.trim();
-    if (!q) return;
-    setGlobalTabState((prev) => {
-      const searchTab = prev.tabs.find(
-        (t) => t.kind === 'search' && t.id === LIBRARY_SEARCH_TAB_ID
-      );
-      if (!searchTab || searchTab.kind !== 'search' || searchTab.query === q) return prev;
-      const next = {
-        ...prev,
-        tabs: prev.tabs.map((t) =>
-          t.kind === 'search' && t.id === LIBRARY_SEARCH_TAB_ID ? { ...t, query: q } : t
-        ),
-      };
-      saveGlobalTabState(next);
-      return next;
-    });
-  }, [librarySearch.state.query]);
 
   const collectionLabel = useCallback((collectionId?: string) => {
     if (!collectionId) return 'library';
@@ -480,6 +472,23 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       setPipelineBrowse(null);
       setCategoryBrowse(null);
       return;
+    }
+    if (view === 'search') {
+      setGlobalTabState((prev) => {
+        const next = { ...prev, activeTabId: null, homeSection: 'search' as const };
+        saveGlobalTabState(next);
+        return next;
+      });
+      setActiveView('home');
+      patchNavigationState({ activeView: 'home' });
+      return;
+    }
+    if (view === 'home') {
+      setGlobalTabState((prev) => {
+        const next = { ...prev, activeTabId: null };
+        saveGlobalTabState(next);
+        return next;
+      });
     }
     setActiveView(view);
     patchNavigationState({ activeView: view as PersistedDashboardView });
@@ -736,20 +745,33 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   const isSearchSurface = useMemo(() => {
     if (activeView === 'search') return true;
+    if (
+      activeView === 'home' &&
+      globalTabState.activeTabId == null &&
+      globalTabState.homeSection === 'search'
+    ) {
+      return true;
+    }
     const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
     return activeGlobalTab?.kind === 'search';
-  }, [activeView, globalTabState.tabs, globalTabState.activeTabId]);
+  }, [activeView, globalTabState.tabs, globalTabState.activeTabId, globalTabState.homeSection]);
+
+  const activeGlobalTab = useMemo(
+    () => globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId) ?? null,
+    [globalTabState.tabs, globalTabState.activeTabId]
+  );
+  const activeSearch = activeGlobalTab?.kind === 'search' ? workingLibrarySearch : librarySearch;
 
   const inspectorItemId = useMemo(() => {
     if (isSearchSurface) {
-      return librarySearch.state.selectedItemId;
+      return activeSearch.state.selectedItemId;
     }
     const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
     if (activeGlobalTab?.kind === 'item') return activeGlobalTab.itemId;
     return null;
   }, [
     isSearchSurface,
-    librarySearch.state.selectedItemId,
+    activeSearch.state.selectedItemId,
     globalTabState.tabs,
     globalTabState.activeTabId,
   ]);
@@ -778,13 +800,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const inspectorItem = inspectorItemId ? inspectorResolvedItem : null;
 
   const searchContext = useMemo(() => {
-    if (!isSearchSurface || !librarySearch.state.result?.results.length) return null;
+    if (!isSearchSurface || !activeSearch.state.result?.results.length) return null;
     return {
-      query: librarySearch.state.query,
-      resultItemIds: librarySearch.state.result.results.slice(0, 20).map((r) => r.itemId),
+      query: activeSearch.state.query,
+      resultItemIds: activeSearch.state.result.results.slice(0, 20).map((r) => r.itemId),
       items,
     };
-  }, [isSearchSurface, librarySearch.state.result, librarySearch.state.query, items]);
+  }, [isSearchSurface, activeSearch.state.result, activeSearch.state.query, items]);
 
   const enrichmentPrimaryInItemTab = useMemo(() => {
     const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
@@ -794,10 +816,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   const handleRerunSearch = useCallback(
     (query: string) => {
-      librarySearch.setQuery(query);
-      void librarySearch.runSearch(query);
+      activeSearch.setQuery(query);
+      void activeSearch.runSearch(query);
     },
-    [librarySearch]
+    [activeSearch]
   );
 
   const handleSwitchScopeForItem = useCallback(
@@ -985,6 +1007,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               renderListTab={renderListTab}
               statusBar={statusBar}
               librarySearch={librarySearch}
+              workingLibrarySearch={workingLibrarySearch}
               onLibrarySearch={openLibrarySearch}
               onLibrarySearchInTab={openLibrarySearchInTab}
               onOpenItemFromSearch={handleOpenItemInInspector}
@@ -1113,7 +1136,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                     onCreateCollection={onCreateCollection}
                     renderListTab={renderListTab}
                     statusBar={statusBar}
-                    librarySearch={librarySearch}
+                    librarySearch={workingLibrarySearch}
                     onOpenItemFromSearch={handleOpenItemInInspector}
                     scopeProjectId={scopeProjectId}
                     scopeCollectionId={scopeCollectionId}
@@ -1139,8 +1162,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
             activeTab={shellLayout.rightPanelTab}
             onCollapsedChange={(collapsed) => patchShellLayoutState({ rightPanelCollapsed: collapsed })}
             onActiveTabChange={(tab) => patchShellLayoutState({ rightPanelTab: tab })}
-            recentQueries={librarySearch.state.recentQueries}
-            currentSearchQuery={librarySearch.state.query}
+            recentQueries={activeSearch.state.recentQueries}
+            currentSearchQuery={activeSearch.state.query}
             onRerunSearch={handleRerunSearch}
             onOpenItemInTab={isSearchSurface ? handleOpenItemTabFromSearchSurface : undefined}
             onOpenItemIdInTab={handleOpenItemIdInTab}

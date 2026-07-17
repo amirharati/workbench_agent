@@ -21,6 +21,7 @@ interface ProductSearchViewProps {
   onSelectedItemIdChange: (id: string | null) => void;
   onRunSearch: (query?: string) => Promise<void>;
   onOpenItem: (item: Item) => void;
+  onClearRecentQueries?: () => void;
   autofocus?: boolean;
   embedded?: boolean;
   showOpenInTab?: boolean;
@@ -56,6 +57,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onSelectedItemIdChange,
   onRunSearch,
   onOpenItem,
+  onClearRecentQueries,
   autofocus = true,
   embedded = false,
   showOpenInTab = false,
@@ -282,6 +284,23 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
           />
 
           <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+            {state.recentQueries.length > 0 && onClearRecentQueries && (
+              <button
+                type="button"
+                onClick={onClearRecentQueries}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  border: '1px solid var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  fontSize: 'var(--text-xs)',
+                  cursor: 'pointer',
+                }}
+              >
+                Clear recent
+              </button>
+            )}
             {(['hybrid', 'lexical-only'] as const).map((m) => (
               <button
                 key={m}

@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft, Pin, Star } from 'lucide-react';
+import { Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft, Pin, Star, Home as HomeIcon } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { getItem } from '../../lib/db';
@@ -10,7 +10,8 @@ import { PinnedTab } from './PinnedTab';
 import { QuickAccessTab } from './QuickAccessTab';
 import { TrashTab } from './TrashTab';
 import { RecentTab } from './RecentTab';
-import { LIBRARY_SEARCH_TAB_ID, useLibrarySearch } from '../../hooks/useLibrarySearch';
+import { useLibrarySearch } from '../../hooks/useLibrarySearch';
+import type { SearchFilters } from '../../lib/search';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { EnrichmentContent, ItemPipelineBadge, ENRICHMENT_EMPTY_MESSAGE } from './PipelineDisplayBlocks';
@@ -28,7 +29,13 @@ type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
 // ===== Persistent state shape =====
 export interface GlobalTabItem { kind: 'item'; id: string; itemId: string; }
-export interface GlobalTabSearch { kind: 'search'; id: string; query: string; }
+export interface GlobalTabSearch {
+  kind: 'search';
+  id: string;
+  query: string;
+  filters?: SearchFilters;
+  mode?: 'hybrid' | 'lexical-only';
+}
 // Add list tabs to support legacy DashboardLayout tabs
 export interface GlobalTabList { kind: 'list'; id: string; listType: 'bookmark-list' | 'note-list' | 'common-list' | 'workspace' | 'favorites' | 'pinned' | 'quick-access' | 'trash' | 'recent'; title: string; itemIds?: string[]; workspaceId?: string; }
 
@@ -90,6 +97,7 @@ export interface GlobalTabState {
   activeTabId: string | null;
   bottomLayout: 'tabs' | 'sidebar';
   isSidebarCollapsed: boolean;
+  homeSection?: 'overview' | 'search';
   topPct?: number;
   searchQuery?: string;
 }
@@ -99,6 +107,7 @@ export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
   activeTabId: null,
   bottomLayout: 'tabs',
   isSidebarCollapsed: false,
+  homeSection: 'overview',
   topPct: 40,
   searchQuery: '',
 };
@@ -110,11 +119,16 @@ function normalizeGlobalTabs(tabs: unknown[]): GlobalTab[] {
     (t): t is GlobalTab =>
       t != null && typeof t === 'object' && 'kind' in t && typeof (t as GlobalTab).kind === 'string'
   );
-  const nonSearch = valid.filter((t) => t.kind !== 'search');
-  const searchTabs = valid.filter((t): t is GlobalTabSearch => t.kind === 'search');
-  if (searchTabs.length === 0) return nonSearch;
-  const query = searchTabs[searchTabs.length - 1]?.query || '';
-  return [...nonSearch, { kind: 'search', id: LIBRARY_SEARCH_TAB_ID, query }];
+  return valid.map((tab) =>
+    tab.kind === 'search'
+      ? {
+          ...tab,
+          query: tab.query || '',
+          filters: tab.filters ?? {},
+          mode: tab.mode === 'lexical-only' ? 'lexical-only' : 'hybrid',
+        }
+      : tab
+  );
 }
 
 export function loadGlobalTabState(): GlobalTabState {
@@ -124,16 +138,15 @@ export function loadGlobalTabState(): GlobalTabState {
     const parsed = JSON.parse(raw) as Partial<GlobalTabState>;
     const tabs = normalizeGlobalTabs(Array.isArray(parsed.tabs) ? parsed.tabs : []);
     const activeTabId =
-      parsed.activeTabId === LIBRARY_SEARCH_TAB_ID && tabs.some((t) => t.id === LIBRARY_SEARCH_TAB_ID)
-        ? LIBRARY_SEARCH_TAB_ID
-        : parsed.activeTabId && tabs.some((t) => t.id === parsed.activeTabId)
-          ? parsed.activeTabId
-          : tabs[tabs.length - 1]?.id ?? null;
+      parsed.activeTabId && tabs.some((t) => t.id === parsed.activeTabId)
+        ? parsed.activeTabId
+        : tabs[tabs.length - 1]?.id ?? null;
     return {
       tabs,
       activeTabId,
       bottomLayout: parsed.bottomLayout === 'sidebar' ? 'sidebar' : 'tabs',
       isSidebarCollapsed: !!parsed.isSidebarCollapsed,
+      homeSection: parsed.homeSection === 'search' ? 'search' : 'overview',
       topPct: typeof parsed.topPct === 'number' ? parsed.topPct : 40,
       searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : '',
     };
@@ -228,6 +241,8 @@ interface GlobalTabSystemProps {
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   onSwitchScopeForItem?: (item: Item) => void;
+  /** Optional fixed, non-closeable Home workspace rendered when activeTabId is null. */
+  homeContent?: React.ReactNode;
 }
 
 export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
@@ -247,6 +262,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
   onSwitchScopeForItem,
+  homeContent,
 }) => {
   const { tabs, activeTabId, bottomLayout, isSidebarCollapsed } = tabState;
   const set = (patch: Partial<GlobalTabState>) => onTabStateChange({ ...tabState, ...patch });
@@ -286,12 +302,13 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   }, [bottomLayout]);
 
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
+  const hasHomeTab = homeContent != null;
+  const homeActive = hasHomeTab && activeTabId == null;
   const prevActiveTabIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const switchedToSearch =
-      activeTabId === LIBRARY_SEARCH_TAB_ID &&
-      prevActiveTabIdRef.current !== LIBRARY_SEARCH_TAB_ID;
+      activeTab?.kind === 'search' && prevActiveTabIdRef.current !== activeTabId;
 
     if (!librarySearch || activeTab?.kind !== 'search') {
       prevActiveTabIdRef.current = activeTabId;
@@ -305,7 +322,13 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     }
 
     const current = librarySearch.state.query.trim();
-    const needsRestore = current === '' || (switchedToSearch && current !== tabQuery);
+    const tabMode = activeTab.mode === 'lexical-only' ? 'lexical-only' : 'hybrid';
+    const tabFilters = activeTab.filters ?? {};
+    const filtersMatch = JSON.stringify(librarySearch.state.filters) === JSON.stringify(tabFilters);
+    const needsRestore =
+      current === '' ||
+      (switchedToSearch &&
+        (current !== tabQuery || librarySearch.state.mode !== tabMode || !filtersMatch));
 
     if (!needsRestore) {
       if (current === tabQuery && !librarySearch.state.result && !librarySearch.state.loading) {
@@ -315,8 +338,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       return;
     }
 
-    librarySearch.setQuery(tabQuery);
-    void librarySearch.runSearch(tabQuery);
+    librarySearch.openSearch({ query: tabQuery, filters: tabFilters, mode: tabMode });
     prevActiveTabIdRef.current = activeTabId;
   }, [
     activeTabId,
@@ -550,7 +572,18 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   React.useEffect(() => { setIsEditing(false); }, [activeTabId]);
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: bottomLayout === 'sidebar' ? 'row' : 'column', overflow: 'hidden', minHeight: 0 }}>
+    <div
+      style={{
+        height: '100%',
+        width: '100%',
+        flex: 1,
+        display: 'flex',
+        flexDirection: bottomLayout === 'sidebar' ? 'row' : 'column',
+        overflow: 'hidden',
+        minHeight: 0,
+        minWidth: 0,
+      }}
+    >
       {/* --- SIDEBAR LAYOUT --- */}
       {bottomLayout === 'sidebar' && (
         <div style={{ width: isSidebarCollapsed ? 48 : 220, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-panel)', transition: 'width 200ms ease', overflow: 'hidden', flexShrink: 0 }}>
@@ -568,6 +601,31 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             </div>
           </div>
           <div ref={sidebarListRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }} className="scrollbar">
+            {hasHomeTab && (
+              <button
+                type="button"
+                onClick={() => set({ activeTabId: null })}
+                title="Home"
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
+                  gap: 8,
+                  padding: isSidebarCollapsed ? '8px 0' : '8px 12px',
+                  border: 'none',
+                  borderLeft: homeActive ? '3px solid var(--accent)' : '3px solid transparent',
+                  background: homeActive ? 'var(--bg-active)' : 'transparent',
+                  color: homeActive ? 'var(--accent)' : 'var(--text-muted)',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: homeActive ? 600 : 400,
+                  cursor: 'pointer',
+                }}
+              >
+                <HomeIcon size={14} />
+                {!isSidebarCollapsed && <span>Home</span>}
+              </button>
+            )}
             {tabs.map(tab => {
               const isActive = tab.id === activeTabId;
               const label = getTabLabel(tab, items);
@@ -657,6 +715,33 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             </button>
           </div>
           <div ref={tabStripRef} style={{ display: 'flex', alignItems: 'flex-end', gap: 2, paddingLeft: 8, flex: 1, overflowX: 'auto', scrollbarWidth: 'none' }} className="hide-scrollbar">
+            {hasHomeTab && (
+              <button
+                type="button"
+                onClick={() => set({ activeTabId: null })}
+                title="Home"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  height: 34,
+                  padding: '0 12px',
+                  border: 'none',
+                  borderTop: homeActive ? '2px solid var(--accent)' : '2px solid transparent',
+                  borderBottom: homeActive ? '1px solid var(--bg)' : '1px solid transparent',
+                  borderRadius: '6px 6px 0 0',
+                  background: homeActive ? 'var(--bg)' : 'var(--bg-hover)',
+                  color: homeActive ? 'var(--text)' : 'var(--text-muted)',
+                  fontSize: 'var(--text-sm)',
+                  fontWeight: homeActive ? 600 : 400,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <HomeIcon size={13} />
+                <span>Home</span>
+              </button>
+            )}
             {visibleTabs.map(tab => {
               const isActive = tab.id === activeTabId;
               const label = getTabLabel(tab, items);
@@ -765,18 +850,41 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
         {statusBar}
         <TabPaneFrame>
+        {!activeTab && homeContent}
         {activeTab?.kind === 'search' && librarySearch && (
           <ProductSearchView
             embedded
             items={items}
             collections={collections}
             state={librarySearch.state}
-            onQueryChange={librarySearch.setQuery}
-            onFiltersChange={librarySearch.setFilters}
-            onModeChange={librarySearch.setMode}
+            onQueryChange={(query) => {
+              librarySearch.setQuery(query);
+              set({
+                tabs: tabs.map((tab) =>
+                  tab.id === activeTab.id && tab.kind === 'search' ? { ...tab, query } : tab
+                ),
+              });
+            }}
+            onFiltersChange={(filters) => {
+              librarySearch.setFilters(filters);
+              set({
+                tabs: tabs.map((tab) =>
+                  tab.id === activeTab.id && tab.kind === 'search' ? { ...tab, filters } : tab
+                ),
+              });
+            }}
+            onModeChange={(mode) => {
+              librarySearch.setMode(mode);
+              set({
+                tabs: tabs.map((tab) =>
+                  tab.id === activeTab.id && tab.kind === 'search' ? { ...tab, mode } : tab
+                ),
+              });
+            }}
             onSelectedItemIdChange={librarySearch.setSelectedItemId}
             onRunSearch={librarySearch.runSearch}
             onOpenItem={onOpenItemFromSearch ?? (() => {})}
+            onClearRecentQueries={librarySearch.clearRecentQueries}
             autofocus={false}
           />
         )}
@@ -994,10 +1102,23 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
     fontFamily: 'inherit',
     lineHeight: 1.65,
     outline: 'none',
+    overflowY: 'auto',
   };
 
   return (
-    <div style={{ height: '100%', minHeight: 0, width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: isNote ? 10 : 14 }}>
+    <div
+      style={{
+        height: isNote ? '100%' : 'auto',
+        minHeight: isNote ? 0 : '100%',
+        width: '100%',
+        minWidth: 0,
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: isNote ? 10 : 14,
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexShrink: 0 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <input
