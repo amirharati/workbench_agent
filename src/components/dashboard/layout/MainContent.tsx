@@ -44,7 +44,6 @@ interface MainContentProps {
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   recentProjectIds?: string[];
-  recentCollectionIds?: string[];
   projects: Project[];
   items: Item[];
   collections: Collection[];
@@ -103,7 +102,7 @@ interface MainContentProps {
   workingLibrarySearch?: LibrarySearchApi;
   onLibrarySearch?: (query?: string) => void;
   onLibrarySearchInTab?: (query?: string) => void;
-  onOpenItemFromSearch?: (item: Item) => void;
+  onOpenItemFromSearch?: (item: Item, origin?: { projectId?: string; collectionId?: string }) => void;
   categoryBrowse?: CategoryBrowseFilter | null;
   onClearCategoryBrowse?: () => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
@@ -121,6 +120,8 @@ interface MainContentProps {
   onClearCollectionScope?: () => void;
   onResetScope?: () => void;
   onSelectProjectScope?: (projectId: string | 'all') => void;
+  onReorderProjectScopes?: (projectIds: string[]) => void;
+  onCloseProjectScope?: (projectId: string) => void;
   onSelectCollectionScope?: (collectionId: string, projectId?: string) => void;
   onSwitchScopeForItem?: (item: Item) => void;
 }
@@ -130,7 +131,6 @@ export const MainContent: React.FC<MainContentProps> = ({
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
   recentProjectIds = [],
-  recentCollectionIds = [],
   projects,
   items, 
   collections, 
@@ -194,6 +194,8 @@ export const MainContent: React.FC<MainContentProps> = ({
   onClearCollectionScope,
   onResetScope,
   onSelectProjectScope,
+  onReorderProjectScopes,
+  onCloseProjectScope,
   onSelectCollectionScope,
   onSwitchScopeForItem,
 }) => {
@@ -670,8 +672,9 @@ export const MainContent: React.FC<MainContentProps> = ({
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
             recentProjectIds={recentProjectIds}
-            recentCollectionIds={recentCollectionIds}
             onSelectProjectScope={onSelectProjectScope}
+            onReorderProjectScopes={onReorderProjectScopes}
+            onCloseProjectScope={onCloseProjectScope}
             onSelectCollectionScope={onSelectCollectionScope}
             onResetScope={onResetScope}
             onSwitchScopeForItem={onSwitchScopeForItem}

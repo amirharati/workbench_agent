@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft, Pin, Star, Home as HomeIcon } from 'lucide-react';
+import { Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft, Pin, Star, Globe2, Eye, EyeOff, List } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { getItem } from '../../lib/db';
@@ -28,16 +28,28 @@ import {
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
 // ===== Persistent state shape =====
-export interface GlobalTabItem { kind: 'item'; id: string; itemId: string; }
+interface GlobalTabScope {
+  /** Temporary workspace origin. Missing means the tab was opened from All Library. */
+  scopeProjectId?: string;
+  /** Informational origin only; collection changes do not hide project tabs. */
+  scopeCollectionId?: string;
+  /** Project tabs can be made visible in every Home scope without changing item membership. */
+  pinnedGlobally?: boolean;
+}
+
+export interface GlobalTabItem extends GlobalTabScope { kind: 'item'; id: string; itemId: string; }
 export interface GlobalTabSearch {
   kind: 'search';
   id: string;
   query: string;
   filters?: SearchFilters;
   mode?: 'hybrid' | 'lexical-only';
+  scopeProjectId?: string;
+  scopeCollectionId?: string;
+  pinnedGlobally?: boolean;
 }
 // Add list tabs to support legacy DashboardLayout tabs
-export interface GlobalTabList { kind: 'list'; id: string; listType: 'bookmark-list' | 'note-list' | 'common-list' | 'workspace' | 'favorites' | 'pinned' | 'quick-access' | 'trash' | 'recent'; title: string; itemIds?: string[]; workspaceId?: string; }
+export interface GlobalTabList extends GlobalTabScope { kind: 'list'; id: string; listType: 'bookmark-list' | 'note-list' | 'common-list' | 'workspace' | 'favorites' | 'pinned' | 'quick-access' | 'trash' | 'recent'; title: string; itemIds?: string[]; workspaceId?: string; }
 
 const UTILITY_LIST_TYPES = new Set(['favorites', 'pinned', 'quick-access', 'trash', 'recent']);
 
@@ -92,12 +104,26 @@ export function pruneGlobalTabs(
 
 export type GlobalTab = GlobalTabItem | GlobalTabSearch | GlobalTabList;
 
+export function getGlobalTabProjectId(tab: GlobalTab): string | 'all' {
+  return tab.scopeProjectId?.trim() || 'all';
+}
+
+export function isGlobalTabVisible(
+  tab: GlobalTab,
+  currentProjectId: string | 'all',
+  showAllTabs = false
+): boolean {
+  if (showAllTabs || tab.pinnedGlobally || getGlobalTabProjectId(tab) === 'all') return true;
+  return getGlobalTabProjectId(tab) === currentProjectId;
+}
+
 export interface GlobalTabState {
   tabs: GlobalTab[];
   activeTabId: string | null;
   bottomLayout: 'tabs' | 'sidebar';
   isSidebarCollapsed: boolean;
   homeSection?: 'overview' | 'search';
+  showAllTabs?: boolean;
   topPct?: number;
   searchQuery?: string;
 }
@@ -108,6 +134,7 @@ export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
   bottomLayout: 'tabs',
   isSidebarCollapsed: false,
   homeSection: 'overview',
+  showAllTabs: false,
   topPct: 40,
   searchQuery: '',
 };
@@ -119,16 +146,30 @@ function normalizeGlobalTabs(tabs: unknown[]): GlobalTab[] {
     (t): t is GlobalTab =>
       t != null && typeof t === 'object' && 'kind' in t && typeof (t as GlobalTab).kind === 'string'
   );
-  return valid.map((tab) =>
-    tab.kind === 'search'
+  return valid.map((tab) => {
+    const scopeProjectId =
+      typeof tab.scopeProjectId === 'string' && tab.scopeProjectId !== 'all'
+        ? tab.scopeProjectId
+        : undefined;
+    const scopeCollectionId =
+      scopeProjectId && typeof tab.scopeCollectionId === 'string' && tab.scopeCollectionId !== 'all'
+        ? tab.scopeCollectionId
+        : undefined;
+    const normalizedScope = {
+      scopeProjectId,
+      scopeCollectionId,
+      pinnedGlobally: tab.pinnedGlobally || undefined,
+    };
+    return tab.kind === 'search'
       ? {
           ...tab,
+          ...normalizedScope,
           query: tab.query || '',
           filters: tab.filters ?? {},
           mode: tab.mode === 'lexical-only' ? 'lexical-only' : 'hybrid',
         }
-      : tab
-  );
+      : { ...tab, ...normalizedScope };
+  });
 }
 
 export function loadGlobalTabState(): GlobalTabState {
@@ -147,6 +188,7 @@ export function loadGlobalTabState(): GlobalTabState {
       bottomLayout: parsed.bottomLayout === 'sidebar' ? 'sidebar' : 'tabs',
       isSidebarCollapsed: !!parsed.isSidebarCollapsed,
       homeSection: parsed.homeSection === 'search' ? 'search' : 'overview',
+      showAllTabs: !!parsed.showAllTabs,
       topPct: typeof parsed.topPct === 'number' ? parsed.topPct : 40,
       searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : '',
     };
@@ -237,12 +279,14 @@ interface GlobalTabSystemProps {
   renderListTab?: (tab: GlobalTabList) => React.ReactNode;
   statusBar?: React.ReactNode;
   librarySearch?: LibrarySearchApi;
-  onOpenItemFromSearch?: (item: Item) => void;
+  onOpenItemFromSearch?: (item: Item, origin?: { projectId?: string; collectionId?: string }) => void;
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   onSwitchScopeForItem?: (item: Item) => void;
   /** Optional fixed, non-closeable Home workspace rendered when activeTabId is null. */
   homeContent?: React.ReactNode;
+  /** Home activity + scope navigation, kept above working tabs and their content. */
+  workspaceHeader?: React.ReactNode;
 }
 
 export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
@@ -263,8 +307,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   scopeCollectionId = 'all',
   onSwitchScopeForItem,
   homeContent,
+  workspaceHeader,
 }) => {
-  const { tabs, activeTabId, bottomLayout, isSidebarCollapsed } = tabState;
+  const { tabs, activeTabId, bottomLayout, isSidebarCollapsed, showAllTabs = false } = tabState;
   const set = (patch: Partial<GlobalTabState>) => onTabStateChange({ ...tabState, ...patch });
 
   const tabStripRef = useRef<HTMLDivElement>(null);
@@ -302,8 +347,11 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   }, [bottomLayout]);
 
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
-  const hasHomeTab = homeContent != null;
-  const homeActive = hasHomeTab && activeTabId == null;
+  const scopedTabs = useMemo(
+    () => tabs.filter((tab) => isGlobalTabVisible(tab, scopeProjectId, showAllTabs)),
+    [tabs, scopeProjectId, showAllTabs]
+  );
+  const hiddenScopeTabCount = tabs.length - tabs.filter((tab) => isGlobalTabVisible(tab, scopeProjectId, false)).length;
   const prevActiveTabIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -377,35 +425,39 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
 
   const closeTab = (id: string) => {
     const next = tabs.filter(t => t.id !== id);
-    const nextActiveId = activeTabId === id ? (next[next.length - 1]?.id ?? null) : activeTabId;
+    const nextVisible = next.filter((tab) => isGlobalTabVisible(tab, scopeProjectId, showAllTabs));
+    const nextActiveId = activeTabId === id ? (nextVisible[nextVisible.length - 1]?.id ?? null) : activeTabId;
     set({ tabs: next, activeTabId: nextActiveId });
     setIsEditing(false);
     if (next.length === 0) setIsTabMenuOpen(false);
   };
 
-  const { visibleTabs, dropdownTabs } = useMemo(() => {
-    if (tabs.length <= maxVisibleTabs) {
-      return { visibleTabs: tabs, dropdownTabs: [] };
+  const { visibleTabs } = useMemo(() => {
+    if (scopedTabs.length <= maxVisibleTabs) {
+      return { visibleTabs: scopedTabs, dropdownTabs: [] };
     }
 
-    const activeIndex = activeTabId ? tabs.findIndex((t) => t.id === activeTabId) : -1;
+    const activeIndex = activeTabId ? scopedTabs.findIndex((t) => t.id === activeTabId) : -1;
     if (activeIndex === -1 || activeIndex < maxVisibleTabs) {
       return {
-        visibleTabs: tabs.slice(0, maxVisibleTabs),
-        dropdownTabs: tabs.slice(maxVisibleTabs),
+        visibleTabs: scopedTabs.slice(0, maxVisibleTabs),
+        dropdownTabs: scopedTabs.slice(maxVisibleTabs),
       };
     }
 
     // Keep the active tab in the visible strip even when it would overflow.
-    const activeTabEntry = tabs[activeIndex];
-    const others = tabs.filter((t) => t.id !== activeTabId);
+    const activeTabEntry = scopedTabs[activeIndex];
+    const others = scopedTabs.filter((t) => t.id !== activeTabId);
     const visible = [...others.slice(0, maxVisibleTabs - 1), activeTabEntry];
     const visibleIds = new Set(visible.map((t) => t.id));
-    const hidden = tabs.filter((t) => !visibleIds.has(t.id));
+    const hidden = scopedTabs.filter((t) => !visibleIds.has(t.id));
     return { visibleTabs: visible, dropdownTabs: hidden };
-  }, [tabs, maxVisibleTabs, activeTabId]);
+  }, [scopedTabs, maxVisibleTabs, activeTabId]);
 
-  const isDropdownActive = dropdownTabs.some((t) => t.id === activeTabId);
+  useEffect(() => {
+    if (!activeTab || isGlobalTabVisible(activeTab, scopeProjectId, showAllTabs)) return;
+    set({ activeTabId: null });
+  }, [activeTab, scopeProjectId, showAllTabs]);
 
   const scrollActiveTabIntoView = React.useCallback(() => {
     if (!activeTabId) return;
@@ -542,14 +594,50 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     else await favoriteItem(activeItemObj.id);
   };
 
+  const toggleTabGlobalPin = (tab: GlobalTab) => {
+    if (getGlobalTabProjectId(tab) === 'all') return;
+    const pinnedGlobally = !tab.pinnedGlobally;
+    set({
+      tabs: tabs.map((candidate) =>
+        candidate.id === tab.id
+          ? { ...candidate, pinnedGlobally: pinnedGlobally || undefined }
+          : candidate
+      ),
+    });
+  };
+
+  const tabOrigin = (tab: GlobalTab | null = activeTab) => {
+    const projectId = tab
+      ? tab.scopeProjectId
+      : scopeProjectId !== 'all'
+        ? scopeProjectId
+        : undefined;
+    const collectionId = tab
+      ? tab.scopeCollectionId
+      : projectId && scopeCollectionId !== 'all'
+        ? scopeCollectionId
+        : undefined;
+    return {
+      ...(projectId ? { scopeProjectId: projectId } : {}),
+      ...(projectId && collectionId ? { scopeCollectionId: collectionId } : {}),
+    };
+  };
+
   const openItemFromUtilityList = (item: Item) => {
-    const id = `item-${item.id}`;
-    const existing = tabs.find((t) => t.kind === 'item' && t.itemId === item.id);
+    const origin = tabOrigin();
+    const projectId = origin.scopeProjectId;
+    const id = `item-${item.id}${projectId ? `@project:${projectId}` : ''}`;
+    const existing = tabs.find(
+      (tab) =>
+        tab.kind === 'item' &&
+        tab.itemId === item.id &&
+        tab.scopeProjectId === projectId
+    );
     if (existing) {
       set({ activeTabId: existing.id });
       return;
     }
-    set({ tabs: [...tabs, { kind: 'item', id, itemId: item.id }], activeTabId: id });
+    set({ tabs: [...tabs, { kind: 'item', id, itemId: item.id, ...origin }], activeTabId: id });
   };
 
   const renderUtilityListTab = (listType: GlobalTabList['listType']) => {
@@ -569,6 +657,62 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     }
   };
 
+  const renderTabScope = (tab: GlobalTab, compact = false, forceLabel = false) => {
+    const projectId = getGlobalTabProjectId(tab);
+    const projectName =
+      projectId === 'all' ? 'Global' : projects.find((project) => project.id === projectId)?.name ?? 'Project';
+    const showScopeLabel = showAllTabs || forceLabel;
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+        {showScopeLabel && (
+          <span
+            title={projectName}
+            style={{
+              maxWidth: compact ? 58 : 78,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              padding: '1px 4px',
+              borderRadius: 4,
+              background: projectId === 'all' ? 'var(--bg-hover)' : 'var(--accent-weak)',
+              color: projectId === 'all' ? 'var(--text-faint)' : 'var(--accent)',
+              fontSize: 9,
+              fontWeight: 600,
+            }}
+          >
+            {projectName}
+          </span>
+        )}
+        {projectId !== 'all' && (
+          <button
+            type="button"
+            aria-label={tab.pinnedGlobally ? `Unpin ${projectName} tab from all projects` : `Pin ${projectName} tab globally`}
+            title={tab.pinnedGlobally ? 'Visible everywhere — return to project only' : 'Make visible in every project'}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleTabGlobalPin(tab);
+            }}
+            style={{
+              width: 18,
+              height: 18,
+              padding: 0,
+              border: 'none',
+              borderRadius: 4,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: tab.pinnedGlobally ? 'var(--accent-weak)' : 'transparent',
+              color: tab.pinnedGlobally ? 'var(--accent)' : 'var(--text-faint)',
+              cursor: 'pointer',
+            }}
+          >
+            <Globe2 size={compact ? 10 : 11} />
+          </button>
+        )}
+      </span>
+    );
+  };
+
   React.useEffect(() => { setIsEditing(false); }, [activeTabId]);
 
   return (
@@ -578,17 +722,29 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
         width: '100%',
         flex: 1,
         display: 'flex',
-        flexDirection: bottomLayout === 'sidebar' ? 'row' : 'column',
+        flexDirection: 'column',
         overflow: 'hidden',
         minHeight: 0,
         minWidth: 0,
       }}
     >
+      {workspaceHeader}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: bottomLayout === 'sidebar' ? 'row' : 'column',
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
       {/* --- SIDEBAR LAYOUT --- */}
       {bottomLayout === 'sidebar' && (
         <div style={{ width: isSidebarCollapsed ? 48 : 220, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-panel)', transition: 'width 200ms ease', overflow: 'hidden', flexShrink: 0 }}>
           <div style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', padding: isSidebarCollapsed ? 0 : '0 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            {!isSidebarCollapsed && <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-muted)' }}>Open Tabs</span>}
+            {!isSidebarCollapsed && <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-muted)' }}>Open work</span>}
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => set({ isSidebarCollapsed: !isSidebarCollapsed })} title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 4 }}>
                 {isSidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
@@ -601,32 +757,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             </div>
           </div>
           <div ref={sidebarListRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }} className="scrollbar">
-            {hasHomeTab && (
-              <button
-                type="button"
-                onClick={() => set({ activeTabId: null })}
-                title="Home"
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
-                  gap: 8,
-                  padding: isSidebarCollapsed ? '8px 0' : '8px 12px',
-                  border: 'none',
-                  borderLeft: homeActive ? '3px solid var(--accent)' : '3px solid transparent',
-                  background: homeActive ? 'var(--bg-active)' : 'transparent',
-                  color: homeActive ? 'var(--accent)' : 'var(--text-muted)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: homeActive ? 600 : 400,
-                  cursor: 'pointer',
-                }}
-              >
-                <HomeIcon size={14} />
-                {!isSidebarCollapsed && <span>Home</span>}
-              </button>
-            )}
-            {tabs.map(tab => {
+            {scopedTabs.map(tab => {
               const isActive = tab.id === activeTabId;
               const label = getTabLabel(tab, items);
               const isSearch = tab.kind === 'search';
@@ -678,6 +809,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                         onSwitchScopeForItem={onSwitchScopeForItem}
                         compact
                       />
+                      {renderTabScope(tab, true)}
                       <span
                         onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
                         style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 4, color: 'var(--text-faint)', cursor: 'pointer', flexShrink: 0 }}
@@ -692,6 +824,26 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               );
             })}
           </div>
+          {!isSidebarCollapsed && (
+            <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
+              {(hiddenScopeTabCount > 0 || showAllTabs) && (
+                <button
+                  type="button"
+                  onClick={() => set({ showAllTabs: !showAllTabs, activeTabId: showAllTabs && activeTab && !isGlobalTabVisible(activeTab, scopeProjectId, false) ? null : activeTabId })}
+                  style={{ height: 32, border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
+                >
+                  {showAllTabs ? 'Show current project' : `Show all · ${hiddenScopeTabCount} hidden`}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsTabMenuOpen(!isTabMenuOpen)}
+                style={{ height: 32, border: 'none', background: isTabMenuOpen ? 'var(--bg-active)' : 'transparent', color: isTabMenuOpen ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
+              >
+                All open · {tabs.length}
+              </button>
+            </div>
+          )}
           {isSidebarCollapsed && (
              <div style={{ padding: '8px 0', display: 'flex', justifyContent: 'center', borderTop: '1px solid var(--border)' }}>
                <button onClick={() => set({ bottomLayout: 'tabs' })} title="Switch to Top Tabs Layout" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, borderRadius: 4 }}><Layout size={16} /></button>
@@ -703,7 +855,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       {/* --- TOP TABS LAYOUT --- */}
       {bottomLayout === 'tabs' && (
         <div ref={tabStripContainerRef} style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)', flexShrink: 0, height: 40, position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px', borderRight: '1px solid var(--border)', background: 'var(--bg-panel)', zIndex: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0 9px', borderRight: '1px solid var(--border)', background: 'var(--bg-panel)', zIndex: 2, flexShrink: 0 }}>
             <button 
               onClick={() => set({ bottomLayout: 'sidebar' })}
               style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -713,35 +865,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             >
               <Sidebar size={14} />
             </button>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Open work</span>
           </div>
           <div ref={tabStripRef} style={{ display: 'flex', alignItems: 'flex-end', gap: 2, paddingLeft: 8, flex: 1, overflowX: 'auto', scrollbarWidth: 'none' }} className="hide-scrollbar">
-            {hasHomeTab && (
-              <button
-                type="button"
-                onClick={() => set({ activeTabId: null })}
-                title="Home"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  height: 34,
-                  padding: '0 12px',
-                  border: 'none',
-                  borderTop: homeActive ? '2px solid var(--accent)' : '2px solid transparent',
-                  borderBottom: homeActive ? '1px solid var(--bg)' : '1px solid transparent',
-                  borderRadius: '6px 6px 0 0',
-                  background: homeActive ? 'var(--bg)' : 'var(--bg-hover)',
-                  color: homeActive ? 'var(--text)' : 'var(--text-muted)',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: homeActive ? 600 : 400,
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              >
-                <HomeIcon size={13} />
-                <span>Home</span>
-              </button>
-            )}
             {visibleTabs.map(tab => {
               const isActive = tab.id === activeTabId;
               const label = getTabLabel(tab, items);
@@ -788,6 +914,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                     onSwitchScopeForItem={onSwitchScopeForItem}
                     compact
                   />
+                  {renderTabScope(tab, true)}
                   <span
                     onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
                     style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 4, color: 'var(--text-faint)', cursor: 'pointer', flexShrink: 0 }}
@@ -800,50 +927,67 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               );
             })}
           </div>
-          {dropdownTabs.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px', borderLeft: '1px solid var(--border)', background: 'var(--bg-panel)', zIndex: 2 }}>
-            <button 
+          {(hiddenScopeTabCount > 0 || showAllTabs) && (
+            <div style={{ display: 'flex', alignItems: 'center', padding: '0 6px', borderLeft: '1px solid var(--border)', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => set({ showAllTabs: !showAllTabs, activeTabId: showAllTabs && activeTab && !isGlobalTabVisible(activeTab, scopeProjectId, false) ? null : activeTabId })}
+                title={showAllTabs ? 'Hide tabs from other projects' : `Show ${hiddenScopeTabCount} tabs from other projects`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: showAllTabs ? 'var(--bg-active)' : 'transparent', color: showAllTabs ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                {showAllTabs ? <EyeOff size={12} /> : <Eye size={12} />}
+                {showAllTabs ? 'Current' : `All · ${tabs.length}`}
+              </button>
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', padding: '0 6px', borderLeft: '1px solid var(--border)', flexShrink: 0 }}>
+            <button
+              type="button"
               onClick={() => setIsTabMenuOpen(!isTabMenuOpen)}
-              style={{ background: isTabMenuOpen || isDropdownActive ? 'var(--bg-active)' : 'transparent', border: '1px solid', borderColor: isDropdownActive ? 'var(--accent)' : 'transparent', color: isDropdownActive ? 'var(--accent)' : 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: isDropdownActive ? '0 0 0 1px var(--accent)' : 'none' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-              onMouseLeave={e => e.currentTarget.style.background = isTabMenuOpen || isDropdownActive ? 'var(--bg-active)' : 'transparent'}
-              title="Show all tabs"
+              title={`Show all ${tabs.length} open tabs`}
+              aria-expanded={isTabMenuOpen}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: isTabMenuOpen ? 'var(--bg-active)' : 'transparent', color: isTabMenuOpen ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer', whiteSpace: 'nowrap' }}
             >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'currentColor' }} />
-                <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'currentColor' }} />
-                <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'currentColor' }} />
-              </div>
+              <List size={12} />
+              All open · {tabs.length}
             </button>
           </div>
-          )}
-          {isTabMenuOpen && (
-            <>
-              <div onClick={() => setIsTabMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99, pointerEvents: draggedTabId ? 'none' : 'auto' }} />
-              <div style={{ position: 'absolute', top: 40, right: 8, background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: '6px 0', minWidth: 200, zIndex: 100, maxHeight: '50vh', overflowY: 'auto' }} className="scrollbar">
-                {dropdownTabs.map(tab => {
-                  const isActive = tab.id === activeTabId;
-                  const label = getTabLabel(tab, items);
-                  return (
-                    <div
-                      key={tab.id}
-                      onClick={() => { set({ activeTabId: tab.id }); setIsTabMenuOpen(false); }}
-                      draggable
-                      onDragStart={(e) => { setDraggedTabId(tab.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', tab.id); }}
-                      onDragEnd={() => { setDraggedTabId(null); setIsTabMenuOpen(false); }}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: isActive ? 'var(--bg-active)' : 'transparent', color: isActive ? 'var(--accent)' : 'var(--text-muted)', fontWeight: isActive ? 600 : 400, fontSize: 'var(--text-sm)', cursor: 'pointer', borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent', opacity: draggedTabId === tab.id ? 0.4 : 1 }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = isActive ? 'var(--bg-active)' : 'transparent'}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{label}</span>
-                      <X size={12} style={{ marginLeft: 8, color: 'var(--text-muted)' }} onClick={(e) => { e.stopPropagation(); closeTab(tab.id); if(tabs.length === 1) setIsTabMenuOpen(false); }} />
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
         </div>
+      )}
+
+      {isTabMenuOpen && (
+        <>
+          <div onClick={() => setIsTabMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99, pointerEvents: draggedTabId ? 'none' : 'auto' }} />
+          <div style={{ position: 'absolute', top: bottomLayout === 'tabs' ? 40 : 8, right: 8, background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: '6px 0', width: 320, maxWidth: 'calc(100% - 16px)', zIndex: 100, maxHeight: '60%', overflowY: 'auto' }} className="scrollbar">
+            <div style={{ padding: '6px 12px 8px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>
+              All open work · {tabs.length}
+            </div>
+            {tabs.map(tab => {
+              const isActive = tab.id === activeTabId;
+              const label = getTabLabel(tab, items);
+              const hiddenInCurrentProject = !isGlobalTabVisible(tab, scopeProjectId, false);
+              return (
+                <div
+                  key={tab.id}
+                  onClick={() => {
+                    set({ activeTabId: tab.id, ...(hiddenInCurrentProject ? { showAllTabs: true } : {}) });
+                    setIsTabMenuOpen(false);
+                  }}
+                  draggable
+                  onDragStart={(e) => { setDraggedTabId(tab.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', tab.id); }}
+                  onDragEnd={() => { setDraggedTabId(null); setIsTabMenuOpen(false); }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', background: isActive ? 'var(--bg-active)' : 'transparent', color: isActive ? 'var(--accent)' : 'var(--text-muted)', fontWeight: isActive ? 600 : 400, fontSize: 'var(--text-sm)', cursor: 'pointer', borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent', opacity: draggedTabId === tab.id ? 0.4 : 1 }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = isActive ? 'var(--bg-active)' : 'transparent'}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{label}</span>
+                  {renderTabScope(tab, true, true)}
+                  <X size={12} style={{ marginLeft: 2, color: 'var(--text-muted)', flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); closeTab(tab.id); if(tabs.length === 1) setIsTabMenuOpen(false); }} />
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* --- TAB CONTENT --- */}
@@ -883,7 +1027,10 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             }}
             onSelectedItemIdChange={librarySearch.setSelectedItemId}
             onRunSearch={librarySearch.runSearch}
-            onOpenItem={onOpenItemFromSearch ?? (() => {})}
+            onOpenItem={(item) => onOpenItemFromSearch?.(item, {
+              projectId: activeTab.scopeProjectId,
+              collectionId: activeTab.scopeCollectionId,
+            })}
             onClearRecentQueries={librarySearch.clearRecentQueries}
             scopeLabel={
               activeTab.filters?.collectionId
@@ -1032,6 +1179,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       {trashConfirmItem && (
         <DeleteConfirmDialog item={trashConfirmItem} onResult={runTrashConfirm} />
       )}
+      </div>
     </div>
   );
 };

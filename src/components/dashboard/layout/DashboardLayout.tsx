@@ -25,7 +25,7 @@ import { CommandPalette } from '../CommandPalette';
 import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID, loadLastSearchQuery } from '../../../hooks/useLibrarySearch';
 import { useImportPipelineJob } from '../../../hooks/useImportPipelineJob';
 import { ImportPipelineJobBanner } from '../ImportPipelineJobBanner';
-import { rememberRecentCollection, rememberRecentProject } from '../homeScope';
+import { addProjectToSwitcher, rememberRecentCollection } from '../homeScope';
 import {
   loadItemIdsForCategory,
   loadItemIdsForPipelineQueue,
@@ -223,9 +223,9 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() =>
     initialNav.scopeProjectId === 'all'
       ? initialNav.recentProjectIds
-      : rememberRecentProject(initialNav.recentProjectIds, initialNav.scopeProjectId)
+      : addProjectToSwitcher(initialNav.recentProjectIds, initialNav.scopeProjectId)
   );
-  const [recentCollectionIdsByProject, setRecentCollectionIdsByProject] = useState<Record<string, string[]>>(() => {
+  const [, setRecentCollectionIdsByProject] = useState<Record<string, string[]>>(() => {
     if (initialNav.scopeProjectId === 'all' || initialNav.scopeCollectionId === 'all') {
       return initialNav.recentCollectionIdsByProject;
     }
@@ -376,6 +376,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
           query: q,
           filters,
           mode,
+          ...(scopeProjectId !== 'all' ? { scopeProjectId } : {}),
+          ...(scopeProjectId !== 'all' && scopeCollectionId !== 'all' ? { scopeCollectionId } : {}),
         };
         const next = {
           ...prev,
@@ -389,7 +391,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       setActiveView('home');
       patchNavigationState({ activeView: 'home' });
     },
-    [librarySearch.state.filters, librarySearch.state.mode, librarySearch.state.query, workingLibrarySearch]
+    [librarySearch.state.filters, librarySearch.state.mode, librarySearch.state.query, scopeCollectionId, scopeProjectId, workingLibrarySearch]
   );
 
   useEffect(() => {
@@ -608,10 +610,38 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   const rememberProjectScope = (projectId: string) => {
     setRecentProjectIds((previous) => {
-      const next = rememberRecentProject(previous, projectId);
+      const next = addProjectToSwitcher(previous, projectId);
       patchNavigationState({ recentProjectIds: next });
       return next;
     });
+  };
+
+  const handleReorderProjectScopes = (projectIds: string[]) => {
+    const validIds = Array.from(new Set(projectIds.filter((id) => projects.some((project) => project.id === id)))).slice(0, 5);
+    setRecentProjectIds(validIds);
+    patchNavigationState({ recentProjectIds: validIds });
+  };
+
+  const handleCloseProjectScope = (projectId: string) => {
+    setRecentProjectIds((previous) => {
+      const next = previous.filter((id) => id !== projectId);
+      patchNavigationState({
+        recentProjectIds: next,
+        ...(scopeProjectId === projectId
+          ? { scopeProjectId: 'all', scopeCollectionId: 'all' }
+          : {}),
+      });
+      return next;
+    });
+    if (scopeProjectId === projectId) {
+      setScopeProjectId('all');
+      setScopeCollectionId('all');
+      setGlobalTabState((previous) => {
+        const next = { ...previous, activeTabId: null };
+        saveGlobalTabState(next);
+        return next;
+      });
+    }
   };
 
   const rememberCollectionScope = (projectId: string, collectionId: string) => {
@@ -666,12 +696,48 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   };
 
 
-  const handleOpenItemTab = (item: Item) => {
+  const handleOpenItemTab = (
+    item: Item,
+    origin?: { projectId?: string; collectionId?: string }
+  ) => {
+    const projectId = origin
+      ? origin.projectId
+      : scopeProjectId === 'all'
+        ? undefined
+        : scopeProjectId;
+    const collectionId = origin
+      ? origin.collectionId
+      : projectId && scopeCollectionId !== 'all'
+        ? scopeCollectionId
+        : undefined;
+    const scopeKey = projectId ? `@project:${projectId}` : '';
     setGlobalTabState(prev => {
-      const existing = prev.tabs.find(t => t.kind === 'item' && t.itemId === item.id);
-      if (existing) return { ...prev, activeTabId: existing.id };
-      const id = 'item-' + item.id;
-      const next = { ...prev, tabs: [...prev.tabs, { kind: 'item' as const, id, itemId: item.id }], activeTabId: id };
+      const existing = prev.tabs.find(
+        (tab) =>
+          tab.kind === 'item' &&
+          tab.itemId === item.id &&
+          (tab.scopeProjectId ?? undefined) === projectId
+      );
+      if (existing) {
+        const next = { ...prev, activeTabId: existing.id };
+        saveGlobalTabState(next);
+        return next;
+      }
+      const id = 'item-' + item.id + scopeKey;
+      const next = {
+        ...prev,
+        tabs: [
+          ...prev.tabs,
+          {
+            kind: 'item' as const,
+            id,
+            itemId: item.id,
+            ...(projectId ? { scopeProjectId: projectId } : {}),
+            ...(projectId && collectionId ? { scopeCollectionId: collectionId } : {}),
+          },
+        ],
+        activeTabId: id,
+      };
       saveGlobalTabState(next);
       return next;
     });
@@ -685,15 +751,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   };
 
   /** Open item and focus the right-side Inspector (Hub / search). */
-  const handleOpenItemInInspector = (item: Item) => {
-    handleOpenItemTab(item);
+  const handleOpenItemInInspector = (item: Item, origin?: { projectId?: string; collectionId?: string }) => {
+    handleOpenItemTab(item, origin);
     patchShellLayoutState({ rightPanelCollapsed: false, rightPanelTab: 'inspector' });
     revealWorkspaceTabsIfNeeded();
   };
 
   /** Search surface Inspector “Open in tab” — same tab reveal as result-row Open tab. */
-  const handleOpenItemTabFromSearchSurface = (item: Item) => {
-    handleOpenItemTab(item);
+  const handleOpenItemTabFromSearchSurface = (item: Item, origin?: { projectId?: string; collectionId?: string }) => {
+    handleOpenItemTab(item, origin);
     revealWorkspaceTabsIfNeeded();
   };
 
@@ -712,11 +778,11 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   };
 
   const handleOpenWorkspaceTab = (workspace: Workspace) => {
-    const tabId = 'workspace-' + workspace.id;
+    const tabId = 'workspace-' + workspace.id + (scopeProjectId === 'all' ? '' : `@project:${scopeProjectId}`);
     setGlobalTabState(prev => {
       const existing = prev.tabs.find(t => t.id === tabId);
       if (existing) return { ...prev, activeTabId: existing.id };
-      const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: 'workspace' as const, title: workspace.name, workspaceId: workspace.id }], activeTabId: tabId };
+      const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: 'workspace' as const, title: workspace.name, workspaceId: workspace.id, ...(scopeProjectId !== 'all' ? { scopeProjectId } : {}), ...(scopeProjectId !== 'all' && scopeCollectionId !== 'all' ? { scopeCollectionId } : {}) }], activeTabId: tabId };
       saveGlobalTabState(next);
       return next;
     });
@@ -724,22 +790,22 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   const handleOpenListTab = (type: 'bookmark-list' | 'note-list', itemIds: string[], title: string) => {
     const titleKey = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const tabId = `${type}-${titleKey}-${itemIds.slice(0, 5).join('-')}-${itemIds.length}`;
+    const tabId = `${type}-${titleKey}-${itemIds.slice(0, 5).join('-')}-${itemIds.length}${scopeProjectId === 'all' ? '' : `@project:${scopeProjectId}`}`;
     setGlobalTabState(prev => {
       const existing = prev.tabs.find(t => t.id === tabId);
       if (existing) return { ...prev, activeTabId: existing.id };
-      const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: type as any, title, itemIds }], activeTabId: tabId };
+      const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: type as any, title, itemIds, ...(scopeProjectId !== 'all' ? { scopeProjectId } : {}), ...(scopeProjectId !== 'all' && scopeCollectionId !== 'all' ? { scopeCollectionId } : {}) }], activeTabId: tabId };
       saveGlobalTabState(next);
       return next;
     });
   };
 
   const handleAddToCommonListTab = (_type: 'bookmark-list' | 'note-list', itemIds: string[], _title: string) => {
-    const tabId = 'common-list';
+    const tabId = `common-list${scopeProjectId === 'all' ? '' : `@project:${scopeProjectId}`}`;
     setGlobalTabState(prev => {
       const existingIdx = prev.tabs.findIndex(t => t.id === tabId);
       if (existingIdx === -1) {
-        const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: 'common-list' as const, title: 'Common tab', itemIds }], activeTabId: tabId };
+        const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: 'common-list' as const, title: 'Common tab', itemIds, ...(scopeProjectId !== 'all' ? { scopeProjectId } : {}), ...(scopeProjectId !== 'all' && scopeCollectionId !== 'all' ? { scopeCollectionId } : {}) }], activeTabId: tabId };
         saveGlobalTabState(next);
         return next;
       }
@@ -1054,9 +1120,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               scopeProjectId={scopeProjectId}
               scopeCollectionId={scopeCollectionId}
               recentProjectIds={recentProjectIds}
-              recentCollectionIds={
-                scopeProjectId === 'all' ? [] : recentCollectionIdsByProject[scopeProjectId] ?? []
-              }
               globalTabState={globalTabState}
               onGlobalTabStateChange={handleGlobalTabStateChange}
               renderListTab={renderListTab}
@@ -1083,6 +1146,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onClearCollectionScope={handleClearCollectionScope}
               onResetScope={handleResetScope}
               onSelectProjectScope={handleSelectProjectScope}
+              onReorderProjectScopes={handleReorderProjectScopes}
+              onCloseProjectScope={handleCloseProjectScope}
               onSelectCollectionScope={handleSelectCollectionScope}
               onSwitchScopeForItem={handleSwitchScopeForItem}
             />

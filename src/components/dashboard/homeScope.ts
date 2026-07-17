@@ -3,12 +3,28 @@ import type { Collection, Item, Project } from '../../lib/db';
 export type HomeScopeId = string | 'all';
 export const HOME_RECENT_SCOPE_LIMIT = 5;
 
-export function rememberRecentProject(
+export function addProjectToSwitcher(
   projectIds: string[],
   projectId: string,
   limit = HOME_RECENT_SCOPE_LIMIT
 ): string[] {
-  return [projectId, ...projectIds.filter((id) => id !== projectId)].slice(0, limit);
+  if (projectIds.includes(projectId)) return projectIds.slice(0, limit);
+  return [...projectIds, projectId].slice(-limit);
+}
+
+export function reorderProjectSwitcher(
+  projectIds: string[],
+  draggedProjectId: string,
+  targetProjectId: string
+): string[] {
+  if (draggedProjectId === targetProjectId) return projectIds;
+  const fromIndex = projectIds.indexOf(draggedProjectId);
+  const targetIndex = projectIds.indexOf(targetProjectId);
+  if (fromIndex === -1 || targetIndex === -1) return projectIds;
+  const next = [...projectIds];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(targetIndex, 0, moved);
+  return next;
 }
 
 export function rememberRecentCollection(

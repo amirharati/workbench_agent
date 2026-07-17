@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon, Folder, Layers, ChevronRight } from 'lucide-react';
+import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon, Folder, ChevronRight, GripVertical, X } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { getHomeQuickAccessItems } from '../../lib/itemQuickAccess';
@@ -12,7 +12,8 @@ import { MIN_DISCOVER_POOL } from '../../lib/categorization/discoverPolicy';
 import { loadItemIdsForCategory, loadItemIdsForPipelineQueue, PIPELINE_QUEUE_LABELS, PIPELINE_QUEUE_HINTS } from '../../lib/pipeline';
 import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { ProductSearchView } from './ProductSearchView';
-import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary } from './homeScope';
+import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary, reorderProjectSwitcher } from './homeScope';
+import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -35,7 +36,7 @@ interface HomeViewProps {
   onLibrarySearchInTab?: (query: string) => void;
   librarySearch?: LibrarySearchApi;
   workingSearch?: LibrarySearchApi;
-  onOpenItemFromSearch?: (item: Item) => void;
+  onOpenItemFromSearch?: (item: Item, origin?: { projectId?: string; collectionId?: string }) => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
   onOpenPipelineHub?: () => void;
@@ -45,8 +46,9 @@ interface HomeViewProps {
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   recentProjectIds?: string[];
-  recentCollectionIds?: string[];
   onSelectProjectScope?: (projectId: string | 'all') => void;
+  onReorderProjectScopes?: (projectIds: string[]) => void;
+  onCloseProjectScope?: (projectId: string) => void;
   onSelectCollectionScope?: (collectionId: string, projectId?: string) => void;
   onResetScope?: () => void;
   onSwitchScopeForItem?: (item: Item) => void;
@@ -57,7 +59,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], recentCollectionIds = [], onSelectProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const {
     digest,
@@ -73,6 +75,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     x: number;
     y: number;
   } | null>(null);
+  const [draggedProjectId, setDraggedProjectId] = React.useState<string | null>(null);
 
   const handleProcessNotEnriched = () => {
     if (!onBatchProcessQueue || batchRunning || !digest?.notEnriched) return;
@@ -100,6 +103,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
     () => getHomeScopeItems(items, collections, scopeProjectId, scopeCollectionId),
     [items, collections, scopeProjectId, scopeCollectionId]
   );
+  const projectItems = useMemo(
+    () => getHomeScopeItems(items, collections, scopeProjectId, 'all'),
+    [items, collections, scopeProjectId]
+  );
   const projectSummaries = useMemo(
     () =>
       [...projects]
@@ -115,14 +122,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
         .filter((project): project is Project => project != null),
     [recentProjectIds, projects]
   );
-  const recentCollections = useMemo(
-    () =>
-      recentCollectionIds
-        .map((collectionId) => projectCollections.find((collection) => collection.id === collectionId))
-        .filter((collection): collection is Collection => collection != null),
-    [recentCollectionIds, projectCollections]
-  );
-
   const recentItems = useMemo(
     () =>
       [...scopedItems]
@@ -144,6 +143,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
     | 'util-recent'
     | 'util-trash';
 
+  const currentTabScope = {
+    ...(scopeProjectId !== 'all' ? { scopeProjectId } : {}),
+    ...(scopeProjectId !== 'all' && scopeCollectionId !== 'all' ? { scopeCollectionId } : {}),
+  };
+  const scopedTabId = (baseId: string) =>
+    scopeProjectId === 'all' ? baseId : `${baseId}@project:${scopeProjectId}`;
+
   const HOME_UTIL_META: Record<HomeUtilTabId, { listType: GlobalTabList['listType']; title: string }> = {
     'util-pinned': { listType: 'pinned', title: 'Pinned' },
     'util-favorites': { listType: 'favorites', title: 'Favorites' },
@@ -154,33 +160,39 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const openUtilityTab = (tabId: HomeUtilTabId) => {
     const meta = HOME_UTIL_META[tabId];
-    const existing = homeState.tabs.find((t) => t.id === tabId);
+    const id = scopedTabId(tabId);
+    const existing = homeState.tabs.find((t) => t.id === id);
     if (existing) {
-      onHomeStateChange({ ...homeState, activeTabId: tabId });
+      onHomeStateChange({ ...homeState, activeTabId: id });
       return;
     }
     onHomeStateChange({
       ...homeState,
       tabs: [
         ...homeState.tabs,
-        { kind: 'list' as const, id: tabId, listType: meta.listType, title: meta.title },
+        { kind: 'list' as const, id, listType: meta.listType, title: meta.title, ...currentTabScope },
       ],
-      activeTabId: tabId,
+      activeTabId: id,
     });
   };
 
   const openItemTab = (item: Item) => {
-    const existing = homeState.tabs.find(t => t.kind === 'item' && t.itemId === item.id);
+    const existing = homeState.tabs.find(
+      (tab) =>
+        tab.kind === 'item' &&
+        tab.itemId === item.id &&
+        (tab.scopeProjectId ?? 'all') === scopeProjectId
+    );
     if (existing) { onHomeStateChange({ ...homeState, activeTabId: existing.id }); return; }
-    const id = 'item-' + item.id;
+    const id = scopedTabId('item-' + item.id);
     // ensure new tab is at the end
-    const nextTabs = [...homeState.tabs, { kind: 'item' as const, id, itemId: item.id }];
+    const nextTabs = [...homeState.tabs, { kind: 'item' as const, id, itemId: item.id, ...currentTabScope }];
     onHomeStateChange({ ...homeState, tabs: nextTabs, activeTabId: id });
   };
 
   const openCategoryBrowseTab = async (categoryId: string, name: string) => {
     const itemIds = await loadItemIdsForCategory(categoryId);
-    const tabId = `category-${categoryId}`;
+    const tabId = scopedTabId(`category-${categoryId}`);
     const existing = homeState.tabs.find((t) => t.id === tabId);
     if (existing) {
       onHomeStateChange({ ...homeState, activeTabId: tabId });
@@ -196,6 +208,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           listType: 'bookmark-list' as const,
           title: name,
           itemIds,
+          ...currentTabScope,
         },
       ],
       activeTabId: tabId,
@@ -205,7 +218,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const openPipelineBrowseTab = async (kind: PipelineQueueKind) => {
     const itemIds = await loadItemIdsForPipelineQueue(kind);
     const title = PIPELINE_QUEUE_LABELS[kind];
-    const tabId = `pipeline-${kind}`;
+    const tabId = scopedTabId(`pipeline-${kind}`);
     const existing = homeState.tabs.find((t) => t.id === tabId);
     if (existing) {
       onHomeStateChange({ ...homeState, activeTabId: tabId });
@@ -221,6 +234,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           listType: 'bookmark-list' as const,
           title,
           itemIds,
+          ...currentTabScope,
         },
       ],
       activeTabId: tabId,
@@ -288,8 +302,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const scopeLabel = activeCollection?.name ?? activeProject?.name ?? 'All Library';
 
-  const homeContent = (
-    <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+  const workspaceHeader = (
+    <>
       <div
         style={{
           height: 44,
@@ -362,45 +376,119 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <HomeIcon size={12} />
             All Library
           </button>
-          {recentProjects.map((project) => (
-            <button
+          {recentProjects.map((project) => {
+            const active = scopeProjectId === project.id;
+            return (
+            <div
               key={project.id}
-              type="button"
-              onClick={() => openProjectScope(project.id)}
-              style={scopeSwitcherButton(scopeProjectId === project.id)}
+              draggable
+              onDragStart={(event) => {
+                setDraggedProjectId(project.id);
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', project.id);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (!draggedProjectId || draggedProjectId === project.id) return;
+                onReorderProjectScopes?.(
+                  reorderProjectSwitcher(
+                    recentProjects.map((candidate) => candidate.id),
+                    draggedProjectId,
+                    project.id
+                  )
+                );
+                setDraggedProjectId(null);
+              }}
+              onDragEnd={() => setDraggedProjectId(null)}
+              style={{
+                ...scopeSwitcherButton(active),
+                padding: 0,
+                maxWidth: 175,
+                overflow: 'hidden',
+                opacity: draggedProjectId === project.id ? 0.45 : 1,
+                cursor: 'grab',
+              }}
               title={`Switch Home to ${project.name}`}
             >
-              <Folder size={12} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {project.name}
-              </span>
-            </button>
-          ))}
-          {activeProject && recentCollections.length > 0 && (
-            <span aria-hidden="true" style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0, margin: '0 3px' }} />
-          )}
-          {activeProject &&
-            recentCollections.map((collection) => (
+              <GripVertical size={11} style={{ marginLeft: 5, color: 'var(--text-faint)', flexShrink: 0 }} />
               <button
-                key={collection.id}
                 type="button"
-                onClick={() => openCollectionScope(collection.id, activeProject.id)}
-                style={collectionSwitcherButton(scopeCollectionId === collection.id)}
-                title={`Switch ${activeProject.name} to ${collection.name}`}
+                onClick={() => openProjectScope(project.id)}
+                style={{
+                  minWidth: 0,
+                  flex: 1,
+                  alignSelf: 'stretch',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '0 4px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'inherit',
+                  font: 'inherit',
+                  cursor: 'pointer',
+                }}
               >
-                <Layers size={11} />
+                <Folder size={12} style={{ flexShrink: 0 }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {collection.name}
+                  {project.name}
                 </span>
               </button>
-            ))}
+              <button
+                type="button"
+                aria-label={`Close ${project.name} from project switcher`}
+                title={`Close ${project.name} from this switcher`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCloseProjectScope?.(project.id);
+                }}
+                style={{
+                  width: 23,
+                  alignSelf: 'stretch',
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  background: 'transparent',
+                  color: active ? 'var(--accent)' : 'var(--text-faint)',
+                  cursor: 'pointer',
+                }}
+              >
+                <X size={11} />
+              </button>
+            </div>
+            );
+          })}
         </div>
         <span style={{ color: 'var(--text-faint)', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {scopedItems.length} item{scopedItems.length !== 1 ? 's' : ''}
         </span>
       </div>
+    </>
+  );
 
-      {homeSection === 'overview' ? (
+  const homeContent = (
+    <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {homeSection === 'overview' ? activeProject ? (
+        <ProjectHomeWorkspace
+          project={activeProject}
+          items={projectItems}
+          collections={projectCollections}
+          selectedCollectionId={scopeCollectionId}
+          onSelectCollection={(collectionId) => {
+            if (collectionId === 'all') openProjectScope(activeProject.id);
+            else openCollectionScope(collectionId, activeProject.id);
+          }}
+          onOpenItem={openItemTab}
+          onOpenSearch={() => selectHomeSection('search')}
+          onUpdateItem={onUpdateItem}
+        />
+      ) : (
       <div
         style={{
           minHeight: 0,
@@ -414,38 +502,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
         }}
         className="scrollbar"
       >
-        {(activeProject || activeCollection) && (
-          <div style={{ width: '100%', maxWidth: 1000 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 'var(--radius-md)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'var(--accent-weak)',
-                  color: 'var(--accent)',
-                  flexShrink: 0,
-                }}
-              >
-                {activeCollection ? <Layers size={18} /> : <Folder size={18} />}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <h2 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-xl)', lineHeight: 1.25 }}>
-                  {scopeLabel}
-                </h2>
-                <p style={{ margin: '5px 0 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
-                  {activeCollection
-                    ? `Collection in ${activeProject?.name ?? 'this project'}`
-                    : activeProject?.description || `${projectCollections.length} collection${projectCollections.length !== 1 ? 's' : ''}`}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Hero search */}
         <div style={{ maxWidth: 640, width: '100%' }}>
           <form onSubmit={handleHeroSearch}>
@@ -501,58 +557,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </button>
               ))}
             </div>
-          </section>
-        )}
-
-        {activeProject && scopeCollectionId === 'all' && (
-          <section style={{ width: '100%', maxWidth: 1000 }} aria-labelledby="home-collections-heading">
-            <div style={{ marginBottom: 10 }}>
-              <h2 id="home-collections-heading" style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--text)', fontWeight: 650 }}>
-                Collections
-              </h2>
-              <p style={{ margin: '3px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
-                Narrow this project without opening another tab.
-              </p>
-            </div>
-            {projectCollections.length === 0 ? (
-              <div style={{ padding: '12px 14px', border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-                This project has no collections yet.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
-                {projectCollections.map((collection) => {
-                  const count = scopedItems.filter((item) => (item.collectionIds || []).includes(collection.id)).length;
-                  return (
-                    <button
-                      key={collection.id}
-                      type="button"
-                      onClick={() => openCollectionScope(collection.id, activeProject.id)}
-                      style={scopeLauncherStyle}
-                    >
-                      <span
-                        style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: 3,
-                          background: collection.color || 'var(--accent)',
-                          flexShrink: 0,
-                          marginTop: 3,
-                        }}
-                      />
-                      <span style={{ minWidth: 0, flex: 1 }}>
-                        <span style={{ display: 'block', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {collection.name}
-                        </span>
-                        <span style={{ display: 'block', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', marginTop: 3 }}>
-                          {count} item{count !== 1 ? 's' : ''}
-                        </span>
-                      </span>
-                      <ChevronRight size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </section>
         )}
 
@@ -638,7 +642,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 4 }}>
                 {quickAccessItems.map((item) => {
-                  const tabId = 'item-' + item.id;
+                  const tabId = scopedTabId('item-' + item.id);
                   const isActive = homeState.activeTabId === tabId;
                   return (
                     <button
@@ -680,7 +684,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 4 }}>
                 {recentItems.map(item => {
-                  const tabId = 'item-' + item.id;
+                  const tabId = scopedTabId('item-' + item.id);
                   const isActive = homeState.activeTabId === tabId;
                   return (
                     <button
@@ -917,7 +921,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
     </div>
   );
 
-  if (homeState.tabs.length === 0) return homeContent;
+  if (homeState.tabs.length === 0) {
+    return (
+      <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {workspaceHeader}
+        <div style={{ flex: 1, minHeight: 0 }}>{homeContent}</div>
+      </div>
+    );
+  }
 
   return (
     <GlobalTabSystem
@@ -937,6 +948,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       scopeProjectId={scopeProjectId}
       scopeCollectionId={scopeCollectionId}
       onSwitchScopeForItem={onSwitchScopeForItem}
+      workspaceHeader={workspaceHeader}
       homeContent={homeContent}
     />
   );
@@ -957,13 +969,6 @@ const scopeSwitcherButton = (active: boolean): React.CSSProperties => ({
   fontSize: 'var(--text-xs)',
   fontWeight: active ? 600 : 500,
   cursor: 'pointer',
-});
-
-const collectionSwitcherButton = (active: boolean): React.CSSProperties => ({
-  ...scopeSwitcherButton(active),
-  background: active ? 'var(--accent-weak)' : 'var(--bg-hover)',
-  color: active ? 'var(--accent)' : 'var(--text-muted)',
-  maxWidth: 135,
 });
 
 const scopeLauncherStyle: React.CSSProperties = {
