@@ -1,23 +1,53 @@
 // Background service worker
 
 const OFFSCREEN_URL = 'offscreen.html';
+// Increment when the dashboard requires new DB-owner/worker RPC capabilities.
+// Keep this in sync with src/offscreen/offscreen.ts and the DB worker response.
+const DB_OWNER_PROTOCOL_VERSION = 2;
 let offscreenCreating = null;
+let offscreenProtocolVerified = false;
+
+async function notifyDbOwnerLost() {
+  try {
+    await chrome.runtime.sendMessage({ type: 'db-owner-lost' });
+  } catch {
+    // no listeners yet
+  }
+}
+
+async function hasCurrentDbOwnerProtocol() {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      target: 'db-owner-control',
+      type: 'get-protocol-version',
+    });
+    return response?.version === DB_OWNER_PROTOCOL_VERSION;
+  } catch {
+    return false;
+  }
+}
 
 async function ensureOffscreenDocument() {
   if (offscreenCreating) return offscreenCreating;
   offscreenCreating = (async () => {
     const exists = await chrome.offscreen.hasDocument();
-    if (exists) return;
-    try {
-      await chrome.runtime.sendMessage({ type: 'db-owner-lost' });
-    } catch {
-      // no listeners yet
+    if (exists) {
+      if (offscreenProtocolVerified || await hasCurrentDbOwnerProtocol()) {
+        offscreenProtocolVerified = true;
+        return;
+      }
+      // Chrome may preserve an offscreen document across a rebuilt/reloaded
+      // dashboard. Replace it before a new caller reaches an older RPC table.
+      await chrome.offscreen.closeDocument();
+      offscreenProtocolVerified = false;
     }
+    await notifyDbOwnerLost();
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_URL,
       reasons: ['WORKERS'],
       justification: 'Shared SQLite database worker with OPFS persistence',
     });
+    offscreenProtocolVerified = true;
   })();
   try {
     await offscreenCreating;
@@ -218,4 +248,3 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 });
-

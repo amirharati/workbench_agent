@@ -260,8 +260,9 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   };
 
   useEffect(() => {
+    if (libraryLoading) return;
     void ensurePendingClassifySignals();
-  }, []);
+  }, [libraryLoading]);
 
   /** Close tabs whose item/workspace ids no longer exist (e.g. after DB clear). */
   useEffect(() => {

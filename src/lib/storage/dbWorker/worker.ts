@@ -25,6 +25,10 @@ import {
   type HubScopeParams,
 } from '../../pipeline/enrichmentHubWorkerLogic';
 import { syncClock } from '../../time/clock';
+import {
+  createDashboardStartupProjection,
+  type DashboardStartupProjection,
+} from '../../dashboardStartupProjection';
 
 markDbWorkerProcess();
 setStorageBackend('opfs');
@@ -47,6 +51,7 @@ const workerScope = self as unknown as {
 
 let mirrorConfigured = false;
 let pendingMirrorWrite: ((result: { ok: boolean; error?: string }) => void) | null = null;
+let dashboardStartupProjectionCache: DashboardStartupProjection | null = null;
 
 /** In-memory priority queues — high drains before low; work is never cancelled. */
 const highRpcQueue: RpcRequest[] = [];
@@ -65,6 +70,7 @@ const IMPORT_METHODS = new Set([
 /** Read-only RPCs — must not broadcast data-changed (hydrate uses many calls). */
 const READ_ONLY_RPC_METHODS = new Set([
   'ping',
+  'getProtocolVersion',
   'getStatus',
   'hydrate',
   'refreshTables',
@@ -82,6 +88,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'pauseAutoMirrorForDigest',
   'resumeAutoMirrorAfterDigest',
   'getSignalsByItemIds',
+  'getDashboardStartupProjection',
 ]);
 
 const MUTATING_STORE_METHODS = new Set([
@@ -240,6 +247,8 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
   switch (method) {
     case 'ping':
       return 'pong';
+    case 'getProtocolVersion':
+      return 2;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -253,6 +262,22 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         mirrorPending: mirror.pending,
         lastMirrorError: mirror.lastMirrorError,
       };
+    }
+    case 'getDashboardStartupProjection': {
+      await revisionTracker.load();
+      const revision = revisionTracker.getLocalRevisionSync();
+      if (dashboardStartupProjectionCache?.revision === revision) {
+        return dashboardStartupProjectionCache;
+      }
+      const store = await getIdbCompatStore();
+      dashboardStartupProjectionCache = createDashboardStartupProjection({
+        revision,
+        projects: store.getAllProjects(),
+        collections: store.getAllCollections(),
+        workspaces: store.getAllWorkspaces(),
+        items: store.getDashboardStartupItems(),
+      });
+      return dashboardStartupProjectionCache;
     }
     case 'mirrorNow': {
       const payload = args[0] as { force?: boolean; allowEmptyMirror?: boolean } | undefined;

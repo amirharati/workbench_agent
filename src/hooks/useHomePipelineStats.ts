@@ -22,7 +22,7 @@ const RELOAD_REASONS = new Set([
   'import.replace',
 ]);
 
-export function useHomePipelineStats() {
+export function useHomePipelineStats(enabled = true) {
   const [digest, setDigest] = useState<ProcessingDigest | null>(null);
   const [maintenance, setMaintenance] = useState<PipelineMaintenanceSnapshot | null>(null);
   const [categories, setCategories] = useState<CategoryOverviewTile[]>([]);
@@ -32,6 +32,10 @@ export function useHomePipelineStats() {
   const [classifyRunnableLoading, setClassifyRunnableLoading] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(true);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     void ensurePipelineHydrated()
@@ -54,7 +58,7 @@ export function useHomePipelineStats() {
     return () => {
       cancelled = true;
     };
-  }, [revision]);
+  }, [enabled, revision]);
 
   useEffect(() => {
     return subscribeToDataChanges((event) => {

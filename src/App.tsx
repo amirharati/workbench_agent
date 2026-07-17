@@ -65,9 +65,13 @@ import { isTransientDbRpcError } from './lib/storage/dbClient';
 import { buildPipelineSnapshotExport } from './lib/pipeline/pipelineRunAnalysis';
 import { saveAndDownloadPipelineRun } from './lib/pipeline/pipelineRunStore';
 import {
-  folderHasWorkbenchSqlite,
-  loadWorkbenchSqliteFromFolder,
-} from './lib/linkBackupFolder';
+  createDashboardStartupProjection,
+  loadPersistedDashboardStartupProjection,
+  persistDashboardStartupProjection,
+  requestSharedDashboardStartupProjection,
+  type DashboardStartupProjection,
+} from './lib/dashboardStartupProjection';
+import { loadWorkbenchSqliteFromFolder } from './lib/linkBackupFolder';
 
 export interface WindowGroup {
   windowId: number;
@@ -79,6 +83,7 @@ function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [startupProjectionReady, setStartupProjectionReady] = useState(false);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryHydrateProgress, setLibraryHydrateProgress] =
     useState<LibraryHydrateProgress | null>(null);
@@ -98,6 +103,40 @@ function App() {
   const [folderMirrorStatus, setFolderMirrorStatus] = useState<DbWorkerStatus | null>(null);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const folderFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fullLibraryReadyRef = useRef(false);
+
+  const applyStartupProjection = useCallback((projection: DashboardStartupProjection) => {
+    setStartupProjectionReady(true);
+    if (fullLibraryReadyRef.current) return;
+    setProjects(projection.projects);
+    setCollections(projection.collections);
+    setWorkspaces(projection.workspaces);
+    setItems(projection.items);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const startedAt = performance.now();
+    void (async () => {
+      const persisted = await loadPersistedDashboardStartupProjection();
+      if (persisted && !cancelled) {
+        applyStartupProjection(persisted);
+        console.info(`[startup] persisted dashboard projection in ${Math.round(performance.now() - startedAt)}ms`);
+      }
+      try {
+        const shared = await requestSharedDashboardStartupProjection();
+        if (cancelled) return;
+        applyStartupProjection(shared);
+        console.info(`[startup] shared dashboard projection in ${Math.round(performance.now() - startedAt)}ms`);
+        void persistDashboardStartupProjection(shared);
+      } catch (error) {
+        console.warn('[startup] Shared dashboard projection unavailable; full hydrate will continue:', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyStartupProjection]);
 
   /** Soft-schedule folder mirror after edits (debounced; folder catches up in seconds). */
   const scheduleFolderFlush = useCallback((delayMs = 800) => {
@@ -167,22 +206,16 @@ function App() {
    * After the folder is configured once, this must work even when permission is `prompt`.
    */
   const bootstrapAfterFolderReady = async () => {
-    const { purgeLegacyLocalDomainStorage } = await import('./lib/storage/legacyStorageCleanup');
-    await purgeLegacyLocalDomainStorage();
     await ensureDbWorker();
     const folderWritable = await hasWritableBackupFolder();
-    if (folderWritable && (await folderHasWorkbenchSqlite())) {
-      const loaded = await loadWorkbenchSqliteFromFolder();
-      if (!loaded.ok) {
-        notifyUser({
-          type: 'error',
-          message: `Could not load workbench.sqlite from backup folder: ${loaded.error}`,
-        });
-      }
-    }
     await loadData();
     void prewarmHubCache();
-    {
+    // Cleanup, taxonomy checks, and remote conflict work are not required for
+    // the first usable Home screen. Keep them behind live OPFS loading.
+    void import('./lib/storage/legacyStorageCleanup')
+      .then(({ purgeLegacyLocalDomainStorage }) => purgeLegacyLocalDomainStorage())
+      .catch((error) => console.warn('[startup] legacy cleanup failed:', error));
+    void (async () => {
       const { ensureSeedTaxonomy } = await import('./lib/categorization/classifyTopicExtract');
       const { ensureTaxonomyPatches } = await import('./lib/categorization/seedImport');
       try {
@@ -199,9 +232,9 @@ function App() {
           console.error('[startup] ensureSeedTaxonomy retry also failed:', e2);
         }
       }
-    }
+    })();
     if (folderWritable) {
-      await runStartupConflictCheck();
+      void runStartupConflictCheck();
     }
   };
 
@@ -471,10 +504,24 @@ function App() {
             getAllWorkspaces(),
             getActiveItems(),
           ]);
+          fullLibraryReadyRef.current = true;
           setProjects(allProjects);
           setCollections(allCollections);
           setWorkspaces(allWorkspaces);
           setItems(allItems.sort((a, b) => b.created_at - a.created_at));
+          void getDbWorkerStatus()
+            .then((status) =>
+              persistDashboardStartupProjection(
+                createDashboardStartupProjection({
+                  revision: status.revision,
+                  projects: allProjects,
+                  collections: allCollections,
+                  workspaces: allWorkspaces,
+                  items: allItems,
+                })
+              )
+            )
+            .catch((error) => console.warn('[startup] Could not refresh dashboard projection:', error));
           return;
         } catch (e) {
           lastError = e;
@@ -1297,7 +1344,7 @@ function App() {
   }
 
   // Full Page View
-  if (!folderGateResolved) {
+  if (!folderGateResolved && !startupProjectionReady) {
     return (
       <div
         style={{
@@ -1315,7 +1362,7 @@ function App() {
   }
 
   // No handle — block. Linked handle + Chrome permission pause must NOT block the library.
-  if (!folderConfigured) {
+  if (folderGateResolved && !folderConfigured) {
     return (
       <BackupOnboardingModal
         open

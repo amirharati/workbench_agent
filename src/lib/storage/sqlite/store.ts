@@ -70,6 +70,22 @@ interface ItemRow {
   deleted_at: number | null;
 }
 
+type DashboardStartupItemRow = Pick<
+  ItemRow,
+  | 'id'
+  | 'url'
+  | 'url_raw'
+  | 'title'
+  | 'favicon'
+  | 'collection_ids'
+  | 'created_at'
+  | 'updated_at'
+  | 'source'
+  | 'metadata'
+  | 'pinned_at'
+  | 'favorite_at'
+>;
+
 interface NoteRow {
   id: string;
   title: string;
@@ -778,6 +794,40 @@ export class SqliteStore {
       [limit, offset]
     );
     return rows.map(rowToItem);
+  }
+
+  /** Lean active rows for first paint; avoids reading notes, tags, and placements. */
+  getDashboardStartupItems(): Item[] {
+    const rows = this.conn.selectAll<DashboardStartupItemRow>(
+      `SELECT id, url, url_raw, title, favicon, collection_ids,
+              created_at, updated_at, source, metadata, pinned_at, favorite_at
+       FROM items
+       WHERE deleted_at IS NULL
+       ORDER BY created_at DESC`
+    );
+    return rows.map((row) => {
+      const metadata = row.metadata
+        ? parseJson<Record<string, unknown>>(row.metadata, {})
+        : undefined;
+      const projectPins = metadata?.projectPins;
+      return {
+        id: row.id,
+        url: row.url,
+        ...(row.url_raw ? { urlRaw: row.url_raw } : {}),
+        title: row.title,
+        ...(row.favicon ? { favicon: row.favicon } : {}),
+        collectionIds: parseJson<string[]>(row.collection_ids, []),
+        tags: [],
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        source: row.source,
+        ...(projectPins && typeof projectPins === 'object'
+          ? { metadata: { projectPins } }
+          : {}),
+        ...(row.pinned_at != null ? { pinnedAt: row.pinned_at } : {}),
+        ...(row.favorite_at != null ? { favoriteAt: row.favorite_at } : {}),
+      } satisfies Item;
+    });
   }
 
   getItem(id: string): Item | undefined {
@@ -1498,6 +1548,7 @@ export class IdbCompatStore {
   deleteCollection(id: string) { this.store.deleteCollection(id); }
   
   getAllItems() { return this.store.getAllItems(); }
+  getDashboardStartupItems() { return this.store.getDashboardStartupItems(); }
   getItem(id: string) { return this.store.getItem(id); }
   getActiveItemsByExactUrl(url: string) { return this.store.getActiveItemsByExactUrl(url); }
   putItem(item: Item) { this.store.putItem(item); }

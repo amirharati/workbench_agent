@@ -75,7 +75,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     loading: pipelineLoading,
     classifyRunnable,
     classifyRunnableLoading,
-  } = useHomePipelineStats();
+  } = useHomePipelineStats(!libraryLoading);
   const showPipelineCardsLoading = libraryLoading || pipelineLoading;
   const [homeItemContextMenu, setHomeItemContextMenu] = React.useState<{
     item: Item;
@@ -161,6 +161,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const quickAccessItems = useMemo(() => getHomeQuickAccessItems(scopedItems, 8), [scopedItems]);
   const recentSearches = librarySearch?.state.recentQueries.slice(0, RECENT_SEARCH_LIMIT) ?? [];
+  const hasStartupContent = projects.length > 0 || collections.length > 0 || items.length > 0;
 
   type HomeUtilTabId =
     | 'util-pinned'
@@ -716,7 +717,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
         )}
 
-        {libraryLoading ? (
+        {libraryLoading && !hasStartupContent ? (
           <div style={{ width: '100%', maxWidth: 1000 }}>
             <LibraryLoadingPlaceholder
               message="Loading library…"
@@ -724,6 +725,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
             />
           </div>
         ) : (
+        <>
+        {libraryLoading && (
+          <div style={{ width: '100%', maxWidth: 1000, display: 'flex', justifyContent: 'center' }}>
+            <LibraryLoadingPlaceholder
+              variant="inline"
+              message="Refreshing library in the background…"
+              progress={libraryHydrateProgress}
+            />
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, width: '100%', maxWidth: 1000 }}>
           <HomeCard
             icon={<Star size={14} />}
@@ -979,9 +990,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </HomeCard>
           )}
         </div>
+        </>
         )}
 
-        {scopedItems.length > 0 && !libraryLoading && (
+        {scopedItems.length > 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center', marginTop: 16 }}>
             {scopedItems.length} item{scopedItems.length !== 1 ? 's' : ''} in {scopeLabel}
           </div>
