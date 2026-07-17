@@ -8,6 +8,7 @@ import {
   getProjectSessionWorkspaceKey,
   getSavedWorkspaceSessionKey,
   getProjectSessionTabs,
+  getVisibleWorkspaceTabs,
   loadWorkspaceIntoProjectSession,
 } from './workspaceSession';
 
@@ -49,6 +50,8 @@ describe('project workspace sessions', () => {
 
     expect(getProjectSessionTabs(tabs, 'project-a').map((tab) => tab.id)).toEqual(['a']);
     expect(getProjectSessionTabs(tabs, 'all').map((tab) => tab.id)).toEqual(['global']);
+    expect(getVisibleWorkspaceTabs(tabs, 'project-a').map((tab) => tab.id)).toEqual(['a']);
+    expect(getVisibleWorkspaceTabs(tabs, 'project-a', true).map((tab) => tab.id)).toEqual(['a', 'global']);
   });
 
   it('resumes the remembered project tab and falls back safely', () => {

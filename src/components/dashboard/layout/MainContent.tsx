@@ -660,7 +660,6 @@ export const MainContent: React.FC<MainContentProps> = ({
             onCreateCollection={onCreateCollection}
             searchQuery={globalTabState?.searchQuery ?? ''}
             onSearchQueryChange={(q) => onGlobalTabStateChange?.({ ...globalTabState!, searchQuery: q })}
-            onLibrarySearchInTab={(q) => onLibrarySearchInTab?.(q)}
             librarySearch={librarySearch}
             workingSearch={workingLibrarySearch}
             onOpenItemFromSearch={onOpenItemFromSearch}

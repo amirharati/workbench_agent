@@ -190,12 +190,12 @@ function SearchInspectorChrome({
             alignSelf: 'flex-start',
           }}
         >
-          Open in tab
+          Add to workspace
         </button>
       ) : null}
 
       <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.5 }}>
-        Click a result to inspect here. Double-click or press Enter to open in tab.
+        Click a result to inspect here. Add it when it becomes part of your active work.
       </p>
     </section>
   );
@@ -309,6 +309,15 @@ function ItemInspectorBody({
               whiteSpace: 'nowrap',
             }}
           />
+        )}
+        {!isSearchSurface && onOpenItemInTab && (
+          <button
+            type="button"
+            onClick={() => onOpenItemInTab(item)}
+            style={{ marginTop: 8, padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-glass)', color: 'var(--text)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' }}
+          >
+            Add to workspace
+          </button>
         )}
       </div>
 

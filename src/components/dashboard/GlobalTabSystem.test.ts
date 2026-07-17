@@ -127,6 +127,19 @@ describe('loadGlobalTabState Home workspace state', () => {
     });
   });
 
+  it('restores per-project include-global workspace preferences', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        tabs: [],
+        activeTabId: null,
+        includeGlobalWorkByProject: { 'project-a': true },
+      })
+    );
+
+    expect(loadGlobalTabState().includeGlobalWorkByProject).toEqual({ 'project-a': true });
+  });
+
   it('keeps multiple promoted searches as independent working tabs', () => {
     localStorage.setItem(
       STORAGE_KEY,
@@ -170,7 +183,7 @@ describe('loadGlobalTabState Home workspace state', () => {
     expect(markup).toContain('min-height:0;min-width:0');
   });
 
-  it('shows global, pinned, and matching-project tabs across every collection in a project', () => {
+  it('hides global work in projects by default while keeping pinned and matching-project tabs', () => {
     const tabs: GlobalTab[] = [
       { kind: 'search', id: 'global', query: 'global' },
       { kind: 'search', id: 'project-a-one', query: 'a one', scopeProjectId: 'project-a', scopeCollectionId: 'collection-a' },
@@ -180,7 +193,6 @@ describe('loadGlobalTabState Home workspace state', () => {
     ];
 
     expect(tabs.filter((tab) => isGlobalTabVisible(tab, 'project-a')).map((tab) => tab.id)).toEqual([
-      'global',
       'project-a-one',
       'project-a-two',
       'project-b-pinned',
@@ -217,5 +229,33 @@ describe('loadGlobalTabState Home workspace state', () => {
     expect(markup).toContain('Show 1 tabs from other projects');
     expect(markup).toContain('All open · 2');
     expect(markup).toContain('Show all 2 open tabs');
+  });
+
+  it('includes only global plus current-project entries when strict project Focus opts in', () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(GlobalTabSystem, {
+        items: [],
+        collections: [],
+        projects: [],
+        scopeProjectId: 'project-a',
+        strictProjectScope: true,
+        includeGlobalWork: true,
+        tabState: {
+          tabs: [
+            { kind: 'search', id: 'global', query: 'global query' },
+            { kind: 'search', id: 'project-a', query: 'project query', scopeProjectId: 'project-a' },
+            { kind: 'search', id: 'project-b', query: 'other project query', scopeProjectId: 'project-b' },
+          ],
+          activeTabId: null,
+          bottomLayout: 'tabs',
+          isSidebarCollapsed: false,
+        },
+        onTabStateChange: vi.fn(),
+      })
+    );
+
+    expect(markup).toContain('global query');
+    expect(markup).toContain('project query');
+    expect(markup).not.toContain('other project query');
   });
 });

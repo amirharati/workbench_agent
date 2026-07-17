@@ -1,0 +1,144 @@
+import React from 'react';
+import { ExternalLink, FileText, Layers3, Link2, Maximize2, Search, X } from 'lucide-react';
+import type { Item } from '../../lib/db';
+import type { GlobalTab } from './GlobalTabSystem';
+
+function workspaceEntryLabel(tab: GlobalTab, items: readonly Item[]): string {
+  if (tab.kind === 'search') return tab.query.trim() || 'Search';
+  if (tab.kind === 'url') return tab.title?.trim() || tab.url;
+  if (tab.kind === 'list') return tab.title || 'List';
+  return items.find((item) => item.id === tab.itemId)?.title?.trim() || 'Untitled';
+}
+
+export interface ActiveWorkspaceCardProps {
+  title: string;
+  contextLabel: string;
+  tabs: GlobalTab[];
+  items: Item[];
+  activeEntryId?: string | null;
+  emptyMessage: string;
+  onSelectEntry: (tab: GlobalTab) => void;
+  onRemoveEntry: (tabId: string) => void;
+  onFocus: (tabId?: string) => void;
+  trailingControl?: React.ReactNode;
+  getEntryScopeLabel?: (tab: GlobalTab) => string | undefined;
+  allowRemove?: boolean;
+  showFocus?: boolean;
+  /** Bounds compact placements such as Search; null lets the parent own scrolling. */
+  maxListHeight?: number | null;
+}
+
+export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
+  title,
+  contextLabel,
+  tabs,
+  items,
+  activeEntryId,
+  emptyMessage,
+  onSelectEntry,
+  onRemoveEntry,
+  onFocus,
+  trailingControl,
+  getEntryScopeLabel,
+  allowRemove = true,
+  showFocus = true,
+  maxListHeight = 224,
+}) => (
+  <section
+    style={{
+      padding: '10px 12px',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-md)',
+      background: 'var(--bg-panel)',
+      boxShadow: 'var(--shadow-sm)',
+    }}
+    aria-label={`${contextLabel} active workspace`}
+  >
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+        <span style={{ width: 25, height: 25, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: 'var(--accent-weak)', color: 'var(--accent)' }}>
+          <Layers3 size={12} />
+        </span>
+        <span style={{ minWidth: 0 }}>
+          <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-xs)' }}>{title}</strong>
+          <span style={{ display: 'block', marginTop: 1, color: 'var(--text-faint)', fontSize: 10 }}>
+            {tabs.length} workspace entr{tabs.length === 1 ? 'y' : 'ies'} · {contextLabel}
+          </span>
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {trailingControl}
+        {showFocus && <button
+          type="button"
+          disabled={tabs.length === 0}
+          onClick={() => onFocus()}
+          style={{ minHeight: 27, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, opacity: tabs.length === 0 ? 0.45 : 1, cursor: tabs.length === 0 ? 'default' : 'pointer' }}
+        >
+          <Maximize2 size={11} /> Focus
+        </button>}
+      </div>
+    </div>
+
+    {tabs.length === 0 ? (
+      <div style={{ marginTop: 8, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{emptyMessage}</div>
+    ) : (
+      <div
+        className="scrollbar"
+        style={{
+          marginTop: 8,
+          overflowY: maxListHeight == null ? 'visible' : 'auto',
+          maxHeight: maxListHeight ?? undefined,
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--bg)',
+        }}
+      >
+        {tabs.map((tab) => {
+          const item = tab.kind === 'item' ? items.find((candidate) => candidate.id === tab.itemId) : undefined;
+          const label = workspaceEntryLabel(tab, items);
+          const selected = activeEntryId === tab.id;
+          const scopeLabel = getEntryScopeLabel?.(tab);
+          return (
+            <div
+              key={tab.id}
+              style={{
+                width: '100%',
+                minWidth: 0,
+                minHeight: 40,
+                display: 'flex',
+                alignItems: 'stretch',
+                borderBottom: '1px solid var(--border)',
+                background: selected ? 'var(--bg-active)' : 'transparent',
+                color: selected ? 'var(--accent)' : 'var(--text-muted)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => onSelectEntry(tab)}
+                title={label}
+                style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', fontSize: 'var(--text-xs)', fontWeight: selected ? 650 : 550, cursor: 'pointer' }}
+              >
+                <span style={{ width: 24, height: 24, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, background: selected ? 'var(--accent-weak)' : 'var(--bg-hover)', color: selected ? 'var(--accent)' : 'var(--text-faint)' }}>
+                  {tab.kind === 'search' ? <Search size={11} /> : tab.kind === 'url' ? <ExternalLink size={11} /> : item?.url ? <Link2 size={11} /> : <FileText size={11} />}
+                </span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                  {scopeLabel && <span style={{ display: 'block', marginTop: 1, color: 'var(--text-faint)', fontSize: 10, fontWeight: 500 }}>{scopeLabel}</span>}
+                </span>
+              </button>
+              {allowRemove && <button
+                type="button"
+                onClick={() => onRemoveEntry(tab.id)}
+                title={`Remove ${label} from workspace`}
+                aria-label={`Remove ${label} from workspace`}
+                style={{ width: 34, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderLeft: '1px solid var(--border)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' }}
+              >
+                <X size={10} />
+              </button>}
+            </div>
+          );
+        })}
+      </div>
+    )}
+  </section>
+);

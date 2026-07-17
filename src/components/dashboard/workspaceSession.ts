@@ -10,6 +10,18 @@ export function getProjectSessionTabs(
   return tabs.filter((tab) => getGlobalTabProjectId(tab) === projectId);
 }
 
+export function getVisibleWorkspaceTabs(
+  tabs: readonly GlobalTab[],
+  projectId: string | 'all',
+  includeGlobalWork = false
+): GlobalTab[] {
+  if (projectId === 'all') return getProjectSessionTabs(tabs, 'all');
+  return tabs.filter((tab) => {
+    const tabProjectId = getGlobalTabProjectId(tab);
+    return tabProjectId === projectId || (includeGlobalWork && tabProjectId === 'all');
+  });
+}
+
 export function getProjectSessionWorkspaceKey(projectId: string): string {
   return `project-session:${projectId}`;
 }

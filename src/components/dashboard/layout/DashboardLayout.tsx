@@ -766,10 +766,53 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     revealWorkspaceTabsIfNeeded();
   };
 
-  /** Search surface Inspector “Open in tab” — same tab reveal as result-row Open tab. */
-  const handleOpenItemTabFromSearchSurface = (item: Item, origin?: { projectId?: string; collectionId?: string }) => {
-    handleOpenItemTab(item, origin);
-    revealWorkspaceTabsIfNeeded();
+  const handleAddItemToWorkspace = (
+    item: Item,
+    origin?: { projectId?: string; collectionId?: string }
+  ) => {
+    const projectId = origin
+      ? origin.projectId
+      : scopeProjectId === 'all'
+        ? undefined
+        : scopeProjectId;
+    const collectionId = origin
+      ? origin.collectionId
+      : projectId && scopeCollectionId !== 'all'
+        ? scopeCollectionId
+        : undefined;
+    setGlobalTabState((prev) => {
+      const existing = prev.tabs.find(
+        (tab) =>
+          tab.kind === 'item' &&
+          tab.itemId === item.id &&
+          (tab.scopeProjectId ?? undefined) === projectId
+      );
+      const tabId = existing?.id ?? `item-${item.id}${projectId ? `@project:${projectId}` : ''}`;
+      const tabs = existing
+        ? prev.tabs
+        : [
+            ...prev.tabs,
+            {
+              kind: 'item' as const,
+              id: tabId,
+              itemId: item.id,
+              ...(projectId ? { scopeProjectId: projectId } : {}),
+              ...(projectId && collectionId ? { scopeCollectionId: collectionId } : {}),
+            },
+          ];
+      const sessionKey = projectId ?? 'all';
+      const next = {
+        ...prev,
+        tabs,
+        activeTabId: null,
+        lastActiveTabByProject: {
+          ...(prev.lastActiveTabByProject ?? {}),
+          [sessionKey]: tabId,
+        },
+      };
+      saveGlobalTabState(next);
+      return next;
+    });
   };
 
   const handleOpenItemIdInTab = (itemId: string) => {
@@ -1300,7 +1343,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
             recentQueries={activeSearch.state.recentQueries}
             currentSearchQuery={activeSearch.state.query}
             onRerunSearch={handleRerunSearch}
-            onOpenItemInTab={isSearchSurface ? handleOpenItemTabFromSearchSurface : undefined}
+            onOpenItemInTab={activeView === 'home' || isSearchSurface ? handleAddItemToWorkspace : undefined}
             onOpenItemIdInTab={handleOpenItemIdInTab}
             onTestAI={onTestAI}
           />

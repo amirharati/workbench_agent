@@ -28,6 +28,10 @@ interface ProductSearchViewProps {
   showOpenInTab?: boolean;
   onOpenInTab?: () => void;
   openInTabLabel?: string;
+  itemActionLabel?: string;
+  scopeOptions?: Array<{ value: string; label: string }>;
+  scopeValue?: string;
+  onScopeValueChange?: (value: string) => void;
 }
 
 function getMatchReason(row: SearchResult): string {
@@ -66,6 +70,10 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   showOpenInTab = false,
   onOpenInTab,
   openInTabLabel = 'Open in tab',
+  itemActionLabel = 'Open tab',
+  scopeOptions,
+  scopeValue,
+  onScopeValueChange,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
@@ -240,7 +248,17 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             alignItems: 'center',
           }}
         >
-          {scopeLabel && (
+          {scopeOptions && scopeOptions.length > 1 && scopeValue && onScopeValueChange ? (
+            <select
+              aria-label="Search scope"
+              value={scopeValue}
+              onChange={(event) => onScopeValueChange(event.target.value)}
+              style={{ padding: '5px 9px', borderRadius: 999, border: '1px solid var(--accent)', background: 'var(--accent-weak)', color: 'var(--accent)', fontSize: 'var(--text-xs)', fontWeight: 600 }}
+              title={`Search scope: ${scopeLabel ?? 'All Library'}`}
+            >
+              {scopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          ) : scopeLabel ? (
             <span
               style={{
                 padding: '4px 9px',
@@ -255,7 +273,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             >
               {scopeLabel}
             </span>
-          )}
+          ) : null}
           <select
             value={collectionFilter}
             onChange={(e) => {
@@ -381,7 +399,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
           {state.result.mode === 'hybrid' ? 'hybrid' : 'text only'}
           {hasResults && (
             <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
-              Click to inspect · Click the URL to open the website · Double-click or Enter to open in tab
+              Click to inspect · Click the URL to open the website · Double-click, Enter, or use {itemActionLabel.toLowerCase()}
             </span>
           )}
         </div>
@@ -546,7 +564,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                       cursor: 'pointer',
                     }}
                   >
-                    Open tab
+                    {itemActionLabel}
                   </button>
                 )}
               </div>

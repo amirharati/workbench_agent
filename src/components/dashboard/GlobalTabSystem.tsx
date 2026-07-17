@@ -132,7 +132,7 @@ export function isGlobalTabVisible(
   currentProjectId: string | 'all',
   showAllTabs = false
 ): boolean {
-  if (showAllTabs || tab.pinnedGlobally || getGlobalTabProjectId(tab) === 'all') return true;
+  if (showAllTabs || tab.pinnedGlobally) return true;
   return getGlobalTabProjectId(tab) === currentProjectId;
 }
 
@@ -147,6 +147,8 @@ export interface GlobalTabState {
   searchQuery?: string;
   /** Last focused tab for each project session. `all` is the global session. */
   lastActiveTabByProject?: Record<string, string>;
+  /** Project-local preference to temporarily include global workspace entries. */
+  includeGlobalWorkByProject?: Record<string, boolean>;
   /** Workspace currently active in each project. Values are stable session keys. */
   activeWorkspaceKeyByProject?: Record<string, string>;
   /** Auto-saved live tab sets for inactive project/saved workspaces. */
@@ -163,6 +165,7 @@ export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
   topPct: 40,
   searchQuery: '',
   lastActiveTabByProject: {},
+  includeGlobalWorkByProject: {},
   activeWorkspaceKeyByProject: {},
   workspaceSessionSnapshots: {},
 };
@@ -227,6 +230,10 @@ export function loadGlobalTabState(): GlobalTabState {
       lastActiveTabByProject:
         parsed.lastActiveTabByProject && typeof parsed.lastActiveTabByProject === 'object'
           ? parsed.lastActiveTabByProject
+          : {},
+      includeGlobalWorkByProject:
+        parsed.includeGlobalWorkByProject && typeof parsed.includeGlobalWorkByProject === 'object'
+          ? parsed.includeGlobalWorkByProject
           : {},
       activeWorkspaceKeyByProject:
         parsed.activeWorkspaceKeyByProject && typeof parsed.activeWorkspaceKeyByProject === 'object'
@@ -335,6 +342,8 @@ interface GlobalTabSystemProps {
   onExitFocus?: () => void;
   /** Show only tabs belonging to the active project workspace unless All is requested. */
   strictProjectScope?: boolean;
+  /** In strict project Focus, also reveal entries from the global workspace. */
+  includeGlobalWork?: boolean;
 }
 
 export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
@@ -359,6 +368,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   focusContextLabel,
   onExitFocus,
   strictProjectScope = false,
+  includeGlobalWork = false,
 }) => {
   const { tabs, activeTabId, bottomLayout, isSidebarCollapsed, showAllTabs = false } = tabState;
   const set = (patch: Partial<GlobalTabState>) => {
@@ -413,11 +423,13 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
   const isTabVisible = (tab: GlobalTab, showAll = showAllTabs) =>
     strictProjectScope && scopeProjectId !== 'all'
-      ? showAll || getGlobalTabProjectId(tab) === scopeProjectId
+      ? showAll ||
+        getGlobalTabProjectId(tab) === scopeProjectId ||
+        (includeGlobalWork && getGlobalTabProjectId(tab) === 'all')
       : isGlobalTabVisible(tab, scopeProjectId, showAll);
   const scopedTabs = useMemo(
     () => tabs.filter((tab) => isTabVisible(tab, showAllTabs)),
-    [tabs, scopeProjectId, showAllTabs, strictProjectScope]
+    [tabs, scopeProjectId, showAllTabs, strictProjectScope, includeGlobalWork]
   );
   const hiddenScopeTabCount = tabs.length - tabs.filter((tab) => isTabVisible(tab, false)).length;
   const prevActiveTabIdRef = useRef<string | null>(null);
@@ -525,7 +537,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   useEffect(() => {
     if (!activeTab || isTabVisible(activeTab, showAllTabs)) return;
     set({ activeTabId: null });
-  }, [activeTab, scopeProjectId, showAllTabs]);
+  }, [activeTab, scopeProjectId, showAllTabs, strictProjectScope, includeGlobalWork]);
 
   const scrollActiveTabIntoView = React.useCallback(() => {
     if (!activeTabId) return;

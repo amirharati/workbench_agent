@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon, Folder, ChevronRight, GripVertical, X, Layers3, Maximize2, ExternalLink, Link2, FileText } from 'lucide-react';
+import { Search, Star, Clock, Zap, BarChart2, Pin, Trash2, Home as HomeIcon, Folder, ChevronRight, GripVertical, X, Globe2 } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { getHomeQuickAccessItems } from '../../lib/itemQuickAccess';
@@ -14,12 +14,15 @@ import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { ProductSearchView } from './ProductSearchView';
 import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary, reorderProjectSwitcher } from './homeScope';
 import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
+import { ActiveWorkspaceCard } from './ActiveWorkspaceCard';
+import { AllLibraryWorkspaceOverview, type WorkspaceViewGroup } from './AllLibraryWorkspaceOverview';
 import {
   activateProjectWorkspace,
   getActiveProjectWorkspaceKey,
-  getProjectSessionResumeTabId,
   getProjectSessionTabs,
+  getProjectSessionResumeTabId,
   getSavedWorkspaceSessionKey,
+  getVisibleWorkspaceTabs,
 } from './workspaceSession';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
@@ -41,7 +44,6 @@ interface HomeViewProps {
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
-  onLibrarySearchInTab?: (query: string) => void;
   librarySearch?: LibrarySearchApi;
   workingSearch?: LibrarySearchApi;
   onOpenItemFromSearch?: (item: Item, origin?: { projectId?: string; collectionId?: string }) => void;
@@ -68,7 +70,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, onLibrarySearchInTab, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, onSelectedBrowseItemChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, librarySearch, workingSearch, onOpenItemFromSearch, onBatchProcessQueue, onOpenPipelineHub, batchRunning = false, batchCancellable = false, onCancelBatch, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, onSelectedBrowseItemChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const {
     digest,
@@ -85,9 +87,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
     y: number;
   } | null>(null);
   const [draggedProjectId, setDraggedProjectId] = React.useState<string | null>(null);
+  const [selectedOverviewItemId, setSelectedOverviewItemId] = React.useState<string | null>(null);
+  const [selectedAllLibraryWorkspaceTabId, setSelectedAllLibraryWorkspaceTabId] = React.useState<string | null>(null);
+  const [allLibraryWorkspaceView, setAllLibraryWorkspaceView] = React.useState('global');
   const focusLayerRef = React.useRef<HTMLDivElement>(null);
   const lastBrowseFocusRef = React.useRef<HTMLElement | null>(null);
   const wasFocusOpenRef = React.useRef(false);
+
+  React.useEffect(() => {
+    setSelectedOverviewItemId(null);
+  }, [scopeProjectId, scopeCollectionId]);
 
   const handleProcessNotEnriched = () => {
     if (!onBatchProcessQueue || batchRunning || !digest?.notEnriched) return;
@@ -128,9 +137,57 @@ export const HomeView: React.FC<HomeViewProps> = ({
         : [],
     [activeProject, workspaces]
   );
+  const allLibraryWorkspaceGroups = useMemo<WorkspaceViewGroup[]>(() => {
+    const globalTabs = getProjectSessionTabs(homeState.tabs, 'all');
+    const projectGroups = projects
+      .map((project) => {
+        const tabs = getProjectSessionTabs(homeState.tabs, project.id);
+        const activeKey = getActiveProjectWorkspaceKey(homeState, project.id);
+        const savedWorkspace = workspaces.find(
+          (workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeKey
+        );
+        return {
+          key: `project:${project.id}`,
+          title: savedWorkspace?.name ?? 'Project session',
+          contextLabel: project.name,
+          projectId: project.id,
+          tabs,
+        } satisfies WorkspaceViewGroup;
+      })
+      .filter((group) => group.tabs.length > 0);
+    return [
+      {
+        key: 'global',
+        title: 'Global workspace',
+        contextLabel: 'All Library',
+        projectId: 'all',
+        tabs: globalTabs,
+      },
+      ...projectGroups,
+    ];
+  }, [homeState, projects, workspaces]);
+  const selectedAllLibraryWorkspaceTab = useMemo(
+    () => homeState.tabs.find((tab) => tab.id === selectedAllLibraryWorkspaceTabId) ?? null,
+    [homeState.tabs, selectedAllLibraryWorkspaceTabId]
+  );
+  const selectedOverviewItem = useMemo(
+    () => items.find((item) => item.id === selectedOverviewItemId) ?? null,
+    [items, selectedOverviewItemId]
+  );
+
+  React.useEffect(() => {
+    if (
+      allLibraryWorkspaceView.startsWith('project:') &&
+      !allLibraryWorkspaceGroups.some((group) => group.key === allLibraryWorkspaceView)
+    ) {
+      setAllLibraryWorkspaceView('global');
+    }
+  }, [allLibraryWorkspaceGroups, allLibraryWorkspaceView]);
+  const includeGlobalWork =
+    scopeProjectId !== 'all' && Boolean(homeState.includeGlobalWorkByProject?.[scopeProjectId]);
   const currentSessionTabs = useMemo(
-    () => getProjectSessionTabs(homeState.tabs, scopeProjectId),
-    [homeState.tabs, scopeProjectId]
+    () => getVisibleWorkspaceTabs(homeState.tabs, scopeProjectId, includeGlobalWork),
+    [homeState.tabs, scopeProjectId, includeGlobalWork]
   );
   const activeWorkspaceKey = activeProject
     ? getActiveProjectWorkspaceKey(homeState, activeProject.id)
@@ -217,20 +274,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     );
   };
 
-  const openItemTab = (item: Item) => {
-    const existing = homeState.tabs.find(
-      (tab) =>
-        tab.kind === 'item' &&
-        tab.itemId === item.id &&
-        (tab.scopeProjectId ?? 'all') === scopeProjectId
-    );
-    if (existing) { focusSessionTab(homeState.tabs, existing.id); return; }
-    const id = scopedTabId('item-' + item.id);
-    // ensure new tab is at the end
-    const nextTabs = [...homeState.tabs, { kind: 'item' as const, id, itemId: item.id, ...currentTabScope }];
-    focusSessionTab(nextTabs, id);
-  };
-
   const addItemToCurrentSession = (item: Item) => {
     const existing = homeState.tabs.find(
       (tab) =>
@@ -238,21 +281,31 @@ export const HomeView: React.FC<HomeViewProps> = ({
         tab.itemId === item.id &&
         (tab.scopeProjectId ?? 'all') === scopeProjectId
     );
-    if (existing) return;
+    if (existing) {
+      onHomeStateChange({
+        ...homeState,
+        activeTabId: null,
+        lastActiveTabByProject: {
+          ...(homeState.lastActiveTabByProject ?? {}),
+          [scopeProjectId]: existing.id,
+        },
+      });
+      return;
+    }
     const id = scopedTabId('item-' + item.id);
     onHomeStateChange({
       ...homeState,
       tabs: [...homeState.tabs, { kind: 'item', id, itemId: item.id, ...currentTabScope }],
       activeTabId: null,
+      lastActiveTabByProject: {
+        ...(homeState.lastActiveTabByProject ?? {}),
+        [scopeProjectId]: id,
+      },
     });
   };
 
   const addSearchToCurrentWorkspace = () => {
     if (!librarySearch) return;
-    if (scopeProjectId === 'all') {
-      onLibrarySearchInTab?.(librarySearch.state.query);
-      return;
-    }
     const query = librarySearch.state.query.trim();
     if (!query) return;
     const filters = { ...librarySearch.state.filters };
@@ -260,6 +313,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     const existing = currentSessionTabs.find(
       (tab): tab is GlobalTabSearch =>
         tab.kind === 'search' &&
+        (tab.scopeProjectId ?? 'all') === scopeProjectId &&
         tab.query.trim().toLowerCase() === query.toLowerCase() &&
         (tab.mode === 'lexical-only' ? 'lexical-only' : 'hybrid') === mode &&
         JSON.stringify(tab.filters ?? {}) === JSON.stringify(filters)
@@ -275,7 +329,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       });
       return;
     }
-    const id = `search-${crypto.randomUUID()}@project:${scopeProjectId}`;
+    const id = `search-${crypto.randomUUID()}${scopeProjectId === 'all' ? '' : `@project:${scopeProjectId}`}`;
     const searchTab: GlobalTabSearch = {
       kind: 'search',
       id,
@@ -296,12 +350,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const selectCurrentWorkspaceEntry = (tab: GlobalTab) => {
+    const tabProjectId = tab.scopeProjectId ?? 'all';
     const nextState: GlobalTabState = {
       ...homeState,
       activeTabId: null,
       lastActiveTabByProject: {
         ...(homeState.lastActiveTabByProject ?? {}),
-        [scopeProjectId]: tab.id,
+        [tabProjectId]: tab.id,
       },
     };
     if (tab.kind === 'search' && librarySearch) {
@@ -318,13 +373,116 @@ export const HomeView: React.FC<HomeViewProps> = ({
     onHomeStateChange(nextState);
   };
 
+  const selectOverviewItem = (item: Item) => {
+    setSelectedOverviewItemId(item.id);
+    setSelectedAllLibraryWorkspaceTabId(null);
+    onSelectedBrowseItemChange?.(item);
+  };
+
+  const selectAllLibraryWorkspaceEntry = (tab: GlobalTab) => {
+    const projectId = tab.scopeProjectId ?? 'all';
+    setSelectedAllLibraryWorkspaceTabId(tab.id);
+    setSelectedOverviewItemId(null);
+    onSelectedBrowseItemChange?.(
+      tab.kind === 'item' ? items.find((item) => item.id === tab.itemId) ?? null : null
+    );
+    onHomeStateChange({
+      ...homeState,
+      activeTabId: null,
+      lastActiveTabByProject: {
+        ...(homeState.lastActiveTabByProject ?? {}),
+        [projectId]: tab.id,
+      },
+    });
+  };
+
+  const effectiveSearchScopeLabel = librarySearch?.state.filters.collectionId
+    ? collections.find((collection) => collection.id === librarySearch.state.filters.collectionId)?.name ?? 'Collection'
+    : librarySearch?.state.filters.projectId
+      ? projects.find((project) => project.id === librarySearch.state.filters.projectId)?.name ?? 'Project'
+      : 'All Library';
+  const filteredSearchCollection = librarySearch?.state.filters.collectionId
+    ? collections.find((collection) => collection.id === librarySearch.state.filters.collectionId)
+    : undefined;
+  const filteredSearchProject = librarySearch?.state.filters.projectId
+    ? projects.find((project) => project.id === librarySearch.state.filters.projectId)
+    : undefined;
+  const searchScopeOptions = [
+    ...(filteredSearchCollection ? [{ value: `collection:${filteredSearchCollection.id}`, label: filteredSearchCollection.name }] : []),
+    ...(activeCollection && activeCollection.id !== filteredSearchCollection?.id ? [{ value: `collection:${activeCollection.id}`, label: activeCollection.name }] : []),
+    ...(activeProject ? [{ value: `project:${activeProject.id}`, label: activeProject.name }] : []),
+    ...(filteredSearchProject && filteredSearchProject.id !== activeProject?.id ? [{ value: `project:${filteredSearchProject.id}`, label: filteredSearchProject.name }] : []),
+    { value: 'all', label: 'All Library' },
+  ];
+  const searchScopeValue = filteredSearchCollection
+    ? `collection:${filteredSearchCollection.id}`
+    : filteredSearchProject
+      ? `project:${filteredSearchProject.id}`
+      : 'all';
+  const changeSearchScope = (value: string) => {
+    if (!librarySearch) return;
+    const projectId = value.startsWith('project:') ? value.slice('project:'.length) : undefined;
+    const collectionId = value.startsWith('collection:') ? value.slice('collection:'.length) : undefined;
+    const filters = {
+      ...librarySearch.state.filters,
+      projectId,
+      collectionId,
+    };
+    const snapshot = {
+      query: librarySearch.state.query,
+      filters,
+      mode: librarySearch.state.mode,
+    };
+    if (snapshot.query.trim()) librarySearch.openSearch(snapshot);
+    else librarySearch.setFilters(filters);
+  };
+  const getWorkspaceEntryScopeLabel = (tab: GlobalTab) => {
+    if (tab.kind !== 'search') return tab.scopeProjectId ? undefined : 'Global';
+    if (tab.filters?.collectionId) {
+      return collections.find((collection) => collection.id === tab.filters?.collectionId)?.name ?? 'Collection';
+    }
+    if (tab.filters?.projectId) {
+      return projects.find((project) => project.id === tab.filters?.projectId)?.name ?? 'Project';
+    }
+    return 'All Library';
+  };
+
   const focusCurrentSession = (requestedTabId?: string) => {
+    const rememberedTabId = homeState.lastActiveTabByProject?.[scopeProjectId];
     const activeTabId =
       requestedTabId && currentSessionTabs.some((tab) => tab.id === requestedTabId)
         ? requestedTabId
+        : rememberedTabId && currentSessionTabs.some((tab) => tab.id === rememberedTabId)
+          ? rememberedTabId
         : getProjectSessionResumeTabId(homeState, scopeProjectId);
     if (!activeTabId) return;
     focusSessionTab(homeState.tabs, activeTabId);
+  };
+
+  const focusWorkspaceEntry = (tab: GlobalTab) => {
+    const projectId = tab.scopeProjectId ?? 'all';
+    if (projectId !== 'all') onSelectProjectScope?.(projectId);
+    onHomeStateChange({
+      ...homeState,
+      activeTabId: tab.id,
+      showAllTabs: false,
+      lastActiveTabByProject: {
+        ...(homeState.lastActiveTabByProject ?? {}),
+        [projectId]: tab.id,
+      },
+    });
+  };
+
+  const toggleIncludeGlobalWork = () => {
+    if (scopeProjectId === 'all') return;
+    onHomeStateChange({
+      ...homeState,
+      activeTabId: null,
+      includeGlobalWorkByProject: {
+        ...(homeState.includeGlobalWorkByProject ?? {}),
+        [scopeProjectId]: !includeGlobalWork,
+      },
+    });
   };
 
   const removeCurrentSessionTab = (tabId: string) => {
@@ -440,6 +598,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const homeSection = homeState.homeSection === 'search' ? 'search' : 'overview';
   const selectHomeSection = (section: 'overview' | 'search') => {
+    if (section === 'search' && librarySearch?.state.query.trim()) {
+      librarySearch.openSearch({
+        query: librarySearch.state.query,
+        filters: { ...librarySearch.state.filters },
+        mode: librarySearch.state.mode,
+      });
+    }
     onHomeStateChange({ ...homeState, activeTabId: null, homeSection: section });
   };
 
@@ -654,6 +819,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onActivateWorkspace={activateWorkspace}
           onSelectedItemChange={onSelectedBrowseItemChange}
           onSelectSessionEntry={selectCurrentWorkspaceEntry}
+          includeGlobalWork={includeGlobalWork}
+          onToggleIncludeGlobalWork={toggleIncludeGlobalWork}
         />
       ) : (
       <div
@@ -690,6 +857,29 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
           </form>
         </div>
+
+        {scopeProjectId === 'all' && (
+          <AllLibraryWorkspaceOverview
+            groups={allLibraryWorkspaceGroups}
+            selectedView={allLibraryWorkspaceView}
+            onSelectedViewChange={(view) => {
+              setAllLibraryWorkspaceView(view);
+              setSelectedAllLibraryWorkspaceTabId(null);
+            }}
+            selectedTab={selectedAllLibraryWorkspaceTab}
+            selectedItem={selectedOverviewItem}
+            items={items}
+            projects={projects}
+            collections={collections}
+            onSelectTab={selectAllLibraryWorkspaceEntry}
+            onRemoveGlobalTab={removeCurrentSessionTab}
+            onFocusTab={focusWorkspaceEntry}
+            onFocusGlobal={focusCurrentSession}
+            onAddItemToGlobal={addItemToCurrentSession}
+            onViewSearch={selectCurrentWorkspaceEntry}
+            getEntryScopeLabel={getWorkspaceEntryScopeLabel}
+          />
+        )}
 
         {scopeProjectId === 'all' && projectSummaries.length > 0 && (
           <section style={{ width: '100%', maxWidth: 1000 }} aria-labelledby="home-projects-heading">
@@ -819,12 +1009,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 4 }}>
                 {quickAccessItems.map((item) => {
-                  const tabId = scopedTabId('item-' + item.id);
-                  const isActive = homeState.activeTabId === tabId;
+                  const isActive = selectedOverviewItemId === item.id;
                   return (
                     <button
                       key={item.id}
-                      onClick={() => openItemTab(item)}
+                      onClick={() => selectOverviewItem(item)}
                       onContextMenu={(e) => showHomeItemContextMenu(e, item)}
                       title={item.title || 'Untitled'}
                       style={{
@@ -861,12 +1050,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 4 }}>
                 {recentItems.map(item => {
-                  const tabId = scopedTabId('item-' + item.id);
-                  const isActive = homeState.activeTabId === tabId;
+                  const isActive = selectedOverviewItemId === item.id;
                   return (
                     <button
                       key={item.id}
-                      onClick={() => openItemTab(item)}
+                      onClick={() => selectOverviewItem(item)}
                       onContextMenu={(e) => showHomeItemContextMenu(e, item)}
                       title={item.title || 'Untitled'}
                       style={{ background: isActive ? 'var(--bg-active)' : 'none', border: 'none', padding: '4px 6px', textAlign: 'left', cursor: 'pointer', color: isActive ? 'var(--accent)' : 'var(--text)', fontSize: 'var(--text-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRadius: 'var(--radius-sm)' }}
@@ -1055,40 +1243,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </div>
       ) : librarySearch ? (
         <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {activeProject && (
-          <section style={{ flexShrink: 0, margin: '12px 20px 0', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }} aria-label="Active project workspace">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={{ width: 25, height: 25, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: 'var(--accent-weak)', color: 'var(--accent)' }}><Layers3 size={12} /></span>
-                <span style={{ minWidth: 0 }}>
-                  <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-xs)' }}>{projectWorkspaces.find((workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeWorkspaceKey)?.name ?? 'Project session'}</strong>
-                  <span style={{ display: 'block', marginTop: 1, color: 'var(--text-faint)', fontSize: 10 }}>{currentSessionTabs.length} workspace entr{currentSessionTabs.length === 1 ? 'y' : 'ies'} · {activeProject.name}</span>
-                </span>
-              </div>
-              <button type="button" disabled={currentSessionTabs.length === 0} onClick={() => focusCurrentSession()} style={{ minHeight: 27, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, opacity: currentSessionTabs.length === 0 ? 0.45 : 1, cursor: currentSessionTabs.length === 0 ? 'default' : 'pointer' }}><Maximize2 size={11} /> Focus</button>
-            </div>
-            {currentSessionTabs.length === 0 ? (
-              <div style={{ marginTop: 8, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Add this search to begin the active workspace.</div>
-            ) : (
-              <div className="hide-scrollbar" style={{ display: 'flex', gap: 6, marginTop: 8, overflowX: 'auto', paddingBottom: 1 }}>
-                {currentSessionTabs.map((tab) => {
-                  const item = tab.kind === 'item' ? items.find((candidate) => candidate.id === tab.itemId) : undefined;
-                  const label = tab.kind === 'search' ? tab.query || 'Search' : tab.kind === 'url' ? tab.title || tab.url : tab.kind === 'list' ? tab.title : item?.title || 'Untitled';
-                  const selected = homeState.lastActiveTabByProject?.[scopeProjectId] === tab.id;
-                  return (
-                    <div key={tab.id} style={{ minWidth: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', border: '1px solid', borderColor: selected ? 'var(--border-active)' : 'var(--border)', borderRadius: 999, background: selected ? 'var(--accent-weak)' : 'var(--bg)', color: selected ? 'var(--accent)' : 'var(--text-muted)' }}>
-                      <button type="button" onClick={() => selectCurrentWorkspaceEntry(tab)} title={label} style={{ minWidth: 0, maxWidth: 210, height: 27, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 7px 0 9px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 'var(--text-xs)', fontWeight: selected ? 650 : 550, cursor: 'pointer' }}>
-                        {tab.kind === 'search' ? <Search size={10} /> : tab.kind === 'url' ? <ExternalLink size={10} /> : item?.url ? <Link2 size={10} /> : <FileText size={10} />}
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-                      </button>
-                      <button type="button" onClick={() => removeCurrentSessionTab(tab.id)} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={{ width: 23, height: 23, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderLeft: '1px solid var(--border)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' }}><X size={10} /></button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        )}
+        <div style={{ flexShrink: 0, margin: '12px 20px 0' }}>
+          <ActiveWorkspaceCard
+            title={activeProject ? projectWorkspaces.find((workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeWorkspaceKey)?.name ?? 'Project session' : 'Global workspace'}
+            contextLabel={activeProject?.name ?? 'All Library'}
+            tabs={currentSessionTabs}
+            items={items}
+            activeEntryId={homeState.lastActiveTabByProject?.[scopeProjectId] ?? null}
+            emptyMessage={activeProject ? 'Add this search to begin the active workspace.' : 'Add this search or selected library material to begin the global workspace.'}
+            onSelectEntry={selectCurrentWorkspaceEntry}
+            onRemoveEntry={removeCurrentSessionTab}
+            onFocus={focusCurrentSession}
+            getEntryScopeLabel={getWorkspaceEntryScopeLabel}
+            trailingControl={activeProject ? (
+              <button type="button" onClick={toggleIncludeGlobalWork} aria-pressed={includeGlobalWork} style={{ minHeight: 27, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', border: '1px solid', borderColor: includeGlobalWork ? 'var(--border-active)' : 'var(--border)', borderRadius: 'var(--radius-sm)', background: includeGlobalWork ? 'var(--accent-weak)' : 'transparent', color: includeGlobalWork ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' }}><Globe2 size={11} /> {includeGlobalWork ? 'Including global' : 'Include global'}</button>
+            ) : undefined}
+          />
+        </div>
         <div style={{ flex: 1, minHeight: 0 }}>
         <ProductSearchView
           items={scopedItems}
@@ -1102,12 +1273,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onModeChange={librarySearch.setMode}
           onSelectedItemIdChange={librarySearch.setSelectedItemId}
           onRunSearch={librarySearch.runSearch}
-          onOpenItem={scopeProjectId === 'all' ? openItemTab : addItemToCurrentSession}
+          onOpenItem={addItemToCurrentSession}
           onClearRecentQueries={librarySearch.clearRecentQueries}
-          scopeLabel={scopeProjectId === 'all' ? undefined : scopeLabel}
+          scopeLabel={effectiveSearchScopeLabel}
+          scopeOptions={searchScopeOptions}
+          scopeValue={searchScopeValue}
+          onScopeValueChange={changeSearchScope}
           showOpenInTab
           onOpenInTab={addSearchToCurrentWorkspace}
-          openInTabLabel={scopeProjectId === 'all' ? 'Open in tab' : 'Add search to workspace'}
+          openInTabLabel="Add search to workspace"
+          itemActionLabel="Add to workspace"
         />
         </div>
         </div>
@@ -1192,6 +1367,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             focusContextLabel={scopeLabel}
             onExitFocus={() => onHomeStateChange({ ...homeState, activeTabId: null })}
             strictProjectScope={scopeProjectId !== 'all'}
+            includeGlobalWork={includeGlobalWork}
           />
         </div>
       )}

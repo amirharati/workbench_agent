@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ExternalLink, FileText, Folder, Layers3, Link2, Maximize2, Pin, Plus, Search, X } from 'lucide-react';
+import { Check, ExternalLink, FileText, Folder, Globe2, Layers3, Link2, Maximize2, Pin, Plus, Search, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
@@ -28,6 +28,8 @@ interface ProjectHomeWorkspaceProps {
   onActivateWorkspace: (workspace: Workspace | null) => void;
   onSelectedItemChange?: (item: Item | null) => void;
   onSelectSessionEntry?: (tab: GlobalTab) => void;
+  includeGlobalWork?: boolean;
+  onToggleIncludeGlobalWork?: () => void;
   onUpdateItem?: (
     id: string,
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
@@ -52,6 +54,8 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   onActivateWorkspace,
   onSelectedItemChange,
   onSelectSessionEntry,
+  includeGlobalWork = false,
+  onToggleIncludeGlobalWork,
   onUpdateItem,
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -178,9 +182,16 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <h2 id="project-workspaces-heading" style={sectionHeadingStyle}><Layers3 size={13} /> Workspaces</h2>
             <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Switch working sets here. The workspace you leave is preserved automatically.</p>
           </div>
-          <button type="button" disabled={sessionTabs.length === 0} onClick={() => onFocusSession(selectedSessionTab?.id)} style={{ ...primaryButtonStyle, opacity: sessionTabs.length === 0 ? 0.45 : 1, cursor: sessionTabs.length === 0 ? 'default' : 'pointer' }}>
-            <Maximize2 size={12} /> Focus workspace
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {onToggleIncludeGlobalWork && (
+              <button type="button" onClick={onToggleIncludeGlobalWork} aria-pressed={includeGlobalWork} style={{ ...secondaryButtonStyle, borderColor: includeGlobalWork ? 'var(--border-active)' : 'var(--border)', background: includeGlobalWork ? 'var(--accent-weak)' : 'transparent', color: includeGlobalWork ? 'var(--accent)' : 'var(--text-muted)' }}>
+                <Globe2 size={12} /> {includeGlobalWork ? 'Including global' : 'Include global work'}
+              </button>
+            )}
+            <button type="button" disabled={sessionTabs.length === 0} onClick={() => onFocusSession(selectedSessionTab?.id)} style={{ ...primaryButtonStyle, opacity: sessionTabs.length === 0 ? 0.45 : 1, cursor: sessionTabs.length === 0 ? 'default' : 'pointer' }}>
+              <Maximize2 size={12} /> Focus workspace
+            </button>
+          </div>
         </div>
         <div className="hide-scrollbar" style={{ display: 'flex', alignItems: 'center', gap: 6, overflowX: 'auto', paddingBottom: 9 }} aria-label="Project workspaces">
           <button type="button" onClick={() => onActivateWorkspace(null)} style={workspaceSwitchStyle(activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id))}>
@@ -211,7 +222,14 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
               {sessionTabs.map((tab) => {
                 const item = tab.kind === 'item' ? items.find((candidate) => candidate.id === tab.itemId) : undefined;
                 const label = item?.title || (tab.kind === 'url' ? tab.title || tab.url : tab.kind === 'search' ? tab.query || 'Search' : tab.kind === 'list' ? tab.title : 'Untitled');
-                const detail = tab.kind === 'url' ? tab.url : tab.kind === 'search' ? 'Search' : tab.kind === 'list' ? 'List' : item?.url || 'Note';
+                const searchScope = tab.kind === 'search'
+                  ? tab.filters?.collectionId
+                    ? collections.find((collection) => collection.id === tab.filters?.collectionId)?.name ?? 'Collection'
+                    : tab.filters?.projectId
+                      ? tab.filters.projectId === project.id ? project.name : 'Project'
+                      : 'All Library'
+                  : undefined;
+                const detail = tab.kind === 'url' ? tab.url : tab.kind === 'search' ? `Search · ${searchScope}` : tab.kind === 'list' ? 'List' : item?.url || 'Note';
                 const selected = selectedSessionTabId === tab.id;
                 return (
                   <div key={tab.id} role="button" tabIndex={0} onClick={() => selectSessionTab(tab)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectSessionTab(tab); } }} style={{ minHeight: 42, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 11px', borderBottom: '1px solid var(--border)', background: selected ? 'var(--bg-active)' : 'transparent', cursor: 'pointer' }}>
@@ -429,7 +447,7 @@ const CollectionCard: React.FC<{ title: string; count: number; active: boolean; 
   </button>
 );
 
-const panelStyle: React.CSSProperties = { minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };
+const panelStyle: React.CSSProperties = { height: 420, minHeight: 360, maxHeight: 420, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };
 const panelHeaderStyle: React.CSSProperties = { minHeight: 48, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)' };
 const sectionHeadingStyle: React.CSSProperties = { margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 650 };
 const miniCardStyle: React.CSSProperties = { minWidth: 155, maxWidth: 210, height: 34, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer', boxShadow: 'var(--shadow-sm)' };
