@@ -279,7 +279,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         </section>
       )}
 
-      <section style={{ width: '100%', maxWidth: 1120, margin: '0 auto' }} aria-labelledby="project-collections-heading">
+      {!project.isDefault && <section style={{ width: '100%', maxWidth: 1120, margin: '0 auto' }} aria-labelledby="project-collections-heading">
         <h2 id="project-collections-heading" style={{ ...sectionHeadingStyle, marginBottom: 8 }}><Folder size={13} /> Collections</h2>
         <div className="hide-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
           <CollectionCard
@@ -304,13 +304,13 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             );
           })}
         </div>
-      </section>
+      </section>}
 
       <section style={{ width: '100%', maxWidth: 1120, margin: '0 auto', minHeight: 360, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14, alignItems: 'stretch' }}>
         <div style={panelStyle}>
           <div style={panelHeaderStyle}>
             <div>
-              <h2 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650 }}>{selectedCollection?.name ?? 'All items'}</h2>
+              <h2 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650 }}>{project.isDefault ? 'Incoming' : selectedCollection?.name ?? 'All items'}</h2>
               <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{orderedItems.length} item{orderedItems.length !== 1 ? 's' : ''}</span>
             </div>
             <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Select to preview</span>

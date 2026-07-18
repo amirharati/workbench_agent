@@ -75,7 +75,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
         <div>
           <h2 id="all-library-workspace-heading" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 650 }}>
-            <Layers3 size={13} /> Active work
+            <Layers3 size={13} /> Continue working
           </h2>
           <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
             Look across working sets without merging or moving their contents.

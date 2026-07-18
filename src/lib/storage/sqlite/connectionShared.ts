@@ -12,6 +12,7 @@ import type {
 } from './types';
 import { DEFAULT_CONFIG } from './types';
 import { nowMs } from '../../time/clock';
+import { INBOX_PROJECT_NAME, INCOMING_COLLECTION_NAME } from '../../systemDataModel';
 
 function runSchemaMigrations(database: Database, from: number, to: number): void {
   if (from < 3 && to >= 3) {
@@ -140,15 +141,15 @@ export function ensureDefaultData(database: Database): void {
   })[0]?.[0] as number;
 
   if (projectCount === 0) {
-    console.log('[SQLite] Creating default project and collection...');
+    console.log('[SQLite] Creating Inbox and Incoming collection...');
     database.exec({
       sql: `INSERT INTO projects (id, name, is_default, created_at, updated_at)
-            VALUES ('project_default', 'Default', 1, ?, ?);`,
+            VALUES ('project_default', '${INBOX_PROJECT_NAME}', 1, ?, ?);`,
       bind: [now, now],
     });
     database.exec({
       sql: `INSERT INTO collections (id, name, color, is_default, created_at, updated_at, primary_project_id, project_ids)
-            VALUES ('collection_project_default_unsorted', 'Unsorted', '#3b82f6', 1, ?, ?, 'project_default', '["project_default"]');`,
+            VALUES ('collection_project_default_unsorted', '${INCOMING_COLLECTION_NAME}', '#3b82f6', 1, ?, ?, 'project_default', '["project_default"]');`,
       bind: [now, now],
     });
   }

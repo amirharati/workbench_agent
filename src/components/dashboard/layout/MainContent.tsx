@@ -813,22 +813,21 @@ export const MainContent: React.FC<MainContentProps> = ({
           
           // For "All" virtual project, show all non-default collections
           if (pid === ALL_PROJECTS_ID) {
-            return collections.filter((c) => !c.isDefault && c.name !== 'Unsorted');
+            return collections.filter((c) => !c.isDefault);
           }
           
-          const projectUnsortedId = `collection_${pid}_unsorted`;
+          const projectUnfiledId = `collection_${pid}_unsorted`;
           return collections.filter((c) => {
             // Must belong to this project
             const belongsToProject =
               c.primaryProjectId === pid || (Array.isArray(c.projectIds) && c.projectIds.includes(pid));
             if (!belongsToProject) return false;
 
-            // Include the current project's unsorted collection
-            if (c.id === projectUnsortedId) return true;
+            // Include the current project's Unfiled collection.
+            if (c.id === projectUnfiledId) return true;
 
-            // Exclude other unsorted/default collections
-            if (c.isDefault && c.id !== projectUnsortedId) return false;
-            if (c.name === 'Unsorted' && c.id !== projectUnsortedId) return false;
+            // Exclude other system collections.
+            if (c.isDefault && c.id !== projectUnfiledId) return false;
 
             // Include all other collections
             return true;

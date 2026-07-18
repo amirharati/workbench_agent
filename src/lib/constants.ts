@@ -16,7 +16,7 @@ export const DB_CONSTANTS = {
 export const DEFAULT_VALUES = {
   PROJECT_ID: 'project_all',
   PROJECT_NAME: 'All',
-  UNSORTED_COLLECTION_NAME: 'Unsorted',
+  UNSORTED_COLLECTION_NAME: 'Incoming',
   COLLECTION_COLOR: '#3b82f6',
 } as const;
 
@@ -37,4 +37,3 @@ export const COLORS = {
   GRAY_800: '#1f2937',
   GRAY_900: '#111827',
 } as const;
-

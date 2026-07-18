@@ -799,7 +799,7 @@ function App() {
     try {
       const target = projects.find((p) => p.id === projectId);
       if (target?.isDefault) {
-        showStatus('Default project cannot be removed');
+        showStatus('Inbox cannot be removed');
         return false;
       }
       const deleted = await deleteProject(projectId);
@@ -820,7 +820,7 @@ function App() {
     try {
       const target = collections.find((c) => c.id === collectionId);
       if (target?.isDefault) {
-        showStatus('Unsorted default collections cannot be removed');
+        showStatus('System collections cannot be removed');
         return false;
       }
       await deleteCollection(collectionId);

@@ -33,13 +33,14 @@ import type {
 import type { TrashHistoryEntry } from './trashHistory';
 import { shouldPreferImportTitle } from './import/xImportHygiene';
 import { nowMs } from './time/clock';
+import { INBOX_PROJECT_NAME, INCOMING_COLLECTION_NAME, UNFILED_COLLECTION_NAME } from './systemDataModel';
 
 export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
 
 const DEFAULT_PROJECT_ID = 'project_default';
-const DEFAULT_PROJECT_NAME = 'Default';
+const DEFAULT_PROJECT_NAME = INBOX_PROJECT_NAME;
 const DEFAULT_UNSORTED_COLLECTION_ID = `collection_${DEFAULT_PROJECT_ID}_unsorted`;
-const DEFAULT_UNSORTED_COLLECTION_NAME = 'Unsorted';
+const DEFAULT_UNSORTED_COLLECTION_NAME = INCOMING_COLLECTION_NAME;
 
 export const ALL_PROJECTS_ID = '__all__';
 
@@ -402,7 +403,7 @@ async function ensureDefaultCollectionForProject(store: IdbCompatStore, projectI
   if (!existing) {
     store.putCollection({
       id,
-      name: 'Unsorted',
+      name: UNFILED_COLLECTION_NAME,
       color: '#3b82f6',
       isDefault: true,
       created_at: now,

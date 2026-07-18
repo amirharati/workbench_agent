@@ -149,7 +149,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     if (!onDeleteProject) return;
     const project = projects.find((p) => p.id === projectId);
     if (project?.isDefault) {
-      setDialogError('Default project cannot be removed.');
+      setDialogError('Inbox cannot be removed.');
       return;
     }
     const deleted = await onDeleteProject(projectId);
@@ -171,7 +171,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     if (!onDeleteCollection) return;
     const collection = collections.find((c) => c.id === collectionId);
     if (collection?.isDefault) {
-      setDialogError('Unsorted default collections cannot be removed.');
+      setDialogError('System collections cannot be removed.');
       return;
     }
     const deleted = await onDeleteCollection(collectionId);
@@ -217,14 +217,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     } else if (dialog.type === 'delete-project') {
       const project = projects.find((p) => p.id === dialog.projectId);
       if (project?.isDefault) {
-        setDialogError('Default project cannot be removed.');
+        setDialogError('Inbox cannot be removed.');
         return;
       }
       await handleRemoveProject(dialog.projectId);
     } else if (dialog.type === 'delete-collection') {
       const collection = collections.find((c) => c.id === dialog.collectionId);
       if (collection?.isDefault) {
-        setDialogError('Unsorted default collections cannot be removed.');
+        setDialogError('System collections cannot be removed.');
         return;
       }
       await handleRemoveCollection(dialog.collectionId);

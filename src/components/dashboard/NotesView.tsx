@@ -206,7 +206,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                           borderBottom: '1px solid var(--border)',
                         }}
                       >
-                        {collectionGroup.collection?.name || 'Unsorted'}
+                        {collectionGroup.collection?.name || 'Unfiled'}
                       </div>
 
                       {collectionGroup.items.map((item) => {
@@ -469,4 +469,3 @@ export const NotesView: React.FC<NotesViewProps> = ({
     </div>
   );
 };
-

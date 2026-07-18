@@ -362,12 +362,29 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
       </div>
 
       {showRecent && (
-        <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
-          Search across your whole library — bookmarks, notes, tags, and AI categories.
+        <div style={{ padding: '14px 16px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
+          <strong style={{ display: 'block', color: 'var(--text)', fontSize: 'var(--text-sm)' }}>Find anything in this scope</strong>
+          <span style={{ display: 'block', marginTop: 3, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Search bookmarks, notes, tags, and AI categories.</span>
           {state.recentQueries.length > 0 && (
-            <span style={{ display: 'block', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
-              Recent queries are in the Inspector panel →
-            </span>
+            <div style={{ marginTop: 13 }}>
+              <span style={{ display: 'block', marginBottom: 6, color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>Recent searches</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {state.recentQueries.slice(0, 8).map((query) => (
+                  <button
+                    key={query}
+                    type="button"
+                    onClick={() => {
+                      onQueryChange(query);
+                      void onRunSearch(query);
+                    }}
+                    title={`Search again for ${query}`}
+                    style={{ minHeight: 28, maxWidth: 240, padding: '0 9px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', border: '1px solid var(--border)', borderRadius: 999, background: 'var(--bg)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
+                  >
+                    {query}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}
