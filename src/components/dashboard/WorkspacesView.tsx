@@ -1,251 +1,378 @@
-import React, { useMemo, useState } from 'react';
-import type { Project, Workspace } from '../../lib/db';
-import { Panel } from '../../styles/primitives';
-import { Resizer } from './Resizer';
-import { WorkspaceTab } from './WorkspaceTab';
-import { Calendar } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ExternalLink, FolderKanban, Layers3, MonitorUp, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
+import type { Item, Project, Workspace } from '../../lib/db';
+import { deleteWorkspace, updateWorkspace } from '../../lib/db';
+import type { GlobalTab, GlobalTabState, SavedWorkspaceSession } from './GlobalTabSystem';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
+import {
+  activateProjectWorkspace,
+  activateSavedProjectWorkspace,
+  addBrowserSnapshotToProjectWorkspace,
+  createProjectWorkspaceFromBrowserSnapshot,
+  deleteSavedProjectWorkspace,
+  getActiveProjectWorkspaceKey,
+  getHomebaseWorkspaceSessionKey,
+  getProjectSessionWorkspaceKey,
+  getProjectWorkspaceTabs,
+} from './workspaceSession';
+
+type WorkspaceFilter = 'all' | 'project' | 'browser';
+
+type ProjectWorkspaceRow = {
+  key: string;
+  kind: 'project';
+  name: string;
+  projectId: string;
+  tabs: GlobalTab[];
+  active: boolean;
+  live: boolean;
+  session?: SavedWorkspaceSession;
+  updatedAt: number;
+};
+
+type BrowserWorkspaceRow = {
+  key: string;
+  kind: 'browser';
+  name: string;
+  projectId?: string;
+  workspace: Workspace;
+  updatedAt: number;
+};
+
+type ManagedWorkspaceRow = ProjectWorkspaceRow | BrowserWorkspaceRow;
 
 interface WorkspacesViewProps {
   projects: Project[];
+  items: Item[];
   workspaces: Workspace[];
+  homeState: GlobalTabState;
+  scopeProjectId?: string | 'all';
+  onHomeStateChange: (next: GlobalTabState) => void;
+  onOpenHome?: () => void;
+  onOpenTabCommander?: () => void;
+  onSelectProjectScope?: (projectId: string | 'all') => void;
+  onWorkspacesChanged?: () => Promise<void>;
 }
 
-export const WorkspacesView: React.FC<WorkspacesViewProps> = ({ projects, workspaces }) => {
-  const [selectedProjectId, setSelectedProjectId] = useState<string | 'detached' | null>(null);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-  const [projectNavWidth, setProjectNavWidth] = useState(200);
-  const [workspacesListWidth, setWorkspacesListWidth] = useState(300);
+function projectWorkspaceRows(
+  projects: readonly Project[],
+  state: GlobalTabState
+): ProjectWorkspaceRow[] {
+  return projects.flatMap((project) => {
+    const liveKey = getProjectSessionWorkspaceKey(project.id);
+    const activeKey = getActiveProjectWorkspaceKey(state, project.id);
+    const liveTabs = getProjectWorkspaceTabs(state, project.id, liveKey);
+    const live = liveTabs.length > 0
+      ? [{
+          key: `project:${project.id}:live`,
+          kind: 'project' as const,
+          name: 'Live session',
+          projectId: project.id,
+          tabs: liveTabs,
+          active: activeKey === liveKey,
+          live: true,
+          updatedAt: project.updated_at,
+        }]
+      : [];
+    const saved = (state.savedWorkspaceSessions ?? [])
+      .filter((session) => session.projectId === project.id)
+      .map((session) => {
+        const workspaceKey = getHomebaseWorkspaceSessionKey(session.id);
+        return {
+          key: `project:${project.id}:saved:${session.id}`,
+          kind: 'project' as const,
+          name: session.name,
+          projectId: project.id,
+          tabs: getProjectWorkspaceTabs(state, project.id, workspaceKey),
+          active: activeKey === workspaceKey,
+          live: false,
+          session,
+          updatedAt: session.updatedAt,
+        };
+      });
+    return [...live, ...saved];
+  });
+}
 
-  // Group workspaces by project
-  const workspacesByProject = useMemo(() => {
-    const grouped = new Map<string | 'detached', Workspace[]>();
-    
-    // Initialize with all projects and detached
-    projects.forEach((p) => grouped.set(p.id, []));
-    grouped.set('detached', []);
-    
-    workspaces.forEach((ws) => {
-      const key = ws.projectId || 'detached';
-      if (!grouped.has(key)) {
-        grouped.set(key, []);
+export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
+  projects,
+  items,
+  workspaces,
+  homeState,
+  scopeProjectId = 'all',
+  onHomeStateChange,
+  onOpenHome,
+  onOpenTabCommander,
+  onSelectProjectScope,
+  onWorkspacesChanged,
+}) => {
+  const [filter, setFilter] = useState<WorkspaceFilter>('all');
+  const [query, setQuery] = useState('');
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [targetProjectId, setTargetProjectId] = useState(projects[0]?.id ?? '');
+  const [targetWorkspaceKey, setTargetWorkspaceKey] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const rows = useMemo<ManagedWorkspaceRow[]>(() => {
+    const projectRows = projectWorkspaceRows(projects, homeState);
+    const browserRows: BrowserWorkspaceRow[] = workspaces.map((workspace) => ({
+      key: `browser:${workspace.id}`,
+      kind: 'browser',
+      name: workspace.name,
+      projectId: workspace.projectId,
+      workspace,
+      updatedAt: workspace.updated_at,
+    }));
+    const normalizedQuery = query.trim().toLowerCase();
+    return [...projectRows, ...browserRows]
+      .filter((row) => filter === 'all' || row.kind === filter)
+      .filter((row) => scopeProjectId === 'all' || row.projectId === scopeProjectId)
+      .filter((row) => {
+        if (!normalizedQuery) return true;
+        const projectName = projects.find((project) => project.id === row.projectId)?.name ?? '';
+        return `${row.name} ${projectName}`.toLowerCase().includes(normalizedQuery);
+      })
+      .sort((left, right) => Number(right.kind === 'project' && right.active) - Number(left.kind === 'project' && left.active) || right.updatedAt - left.updatedAt);
+  }, [filter, homeState, projects, query, scopeProjectId, workspaces]);
+  const selected = rows.find((row) => row.key === selectedKey) ?? null;
+  const selectedBrowser = selected?.kind === 'browser' ? selected.workspace : null;
+  const targetSessions = (homeState.savedWorkspaceSessions ?? [])
+    .filter((session) => session.projectId === targetProjectId)
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+  const workspaceTargets = targetProjectId
+    ? [
+        { key: getProjectSessionWorkspaceKey(targetProjectId), label: 'Live session' },
+        ...targetSessions.map((session) => ({ key: getHomebaseWorkspaceSessionKey(session.id), label: session.name })),
+      ]
+    : [];
+
+  useEffect(() => {
+    if (selectedKey && rows.some((row) => row.key === selectedKey)) return;
+    setSelectedKey(rows[0]?.key ?? null);
+  }, [rows, selectedKey]);
+
+  useEffect(() => {
+    if (targetProjectId && projects.some((project) => project.id === targetProjectId)) return;
+    setTargetProjectId(projects[0]?.id ?? '');
+  }, [projects, targetProjectId]);
+
+  useEffect(() => {
+    if (workspaceTargets.some((target) => target.key === targetWorkspaceKey)) return;
+    setTargetWorkspaceKey(workspaceTargets[0]?.key ?? '');
+  }, [targetWorkspaceKey, workspaceTargets]);
+
+  const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+
+  const tabLabel = (tab: GlobalTab) => {
+    if (tab.kind === 'item') return itemById.get(tab.itemId)?.title || 'Missing library item';
+    if (tab.kind === 'url') return tab.title || tab.url;
+    if (tab.kind === 'search') return tab.query ? `Search: ${tab.query}` : 'Search';
+    return tab.title;
+  };
+
+  const tabDetail = (tab: GlobalTab) => {
+    if (tab.kind === 'item') return itemById.get(tab.itemId)?.url || 'Note';
+    if (tab.kind === 'url') return tab.url;
+    if (tab.kind === 'search') return 'Saved search context';
+    return `${tab.itemIds?.length ?? 0} items`;
+  };
+
+  const projectTabUrls = (tabs: readonly GlobalTab[]) => [
+    ...new Set(tabs.flatMap((tab) => {
+      if (tab.kind === 'url') return [tab.url];
+      if (tab.kind === 'item') {
+        const url = itemById.get(tab.itemId)?.url;
+        return url ? [url] : [];
       }
-      grouped.get(key)!.push(ws);
-    });
-    
-    return grouped;
-  }, [projects, workspaces]);
+      return [];
+    }).filter((url) => /^(https?:\/\/|file:\/\/)/i.test(url))),
+  ];
 
-  // Get workspaces for selected project
-  const projectWorkspaces = useMemo(() => {
-    if (!selectedProjectId) return [];
-    return workspacesByProject.get(selectedProjectId) || [];
-  }, [selectedProjectId, workspacesByProject]);
+  const activateProjectRow = (row: ProjectWorkspaceRow) => {
+    const next = row.live
+      ? activateProjectWorkspace({ state: homeState, projectId: row.projectId, workspace: null, items })
+      : activateSavedProjectWorkspace({ state: homeState, session: row.session! });
+    onHomeStateChange(next);
+    onSelectProjectScope?.(row.projectId);
+    onOpenHome?.();
+  };
 
-  // Get selected workspace
-  const selectedWorkspace = useMemo(() => {
-    if (!selectedWorkspaceId) return null;
-    return workspaces.find((w) => w.id === selectedWorkspaceId) || null;
-  }, [selectedWorkspaceId, workspaces]);
+  const openProjectWorkspaceLinks = (row: ProjectWorkspaceRow) => {
+    const urls = projectTabUrls(row.tabs);
+    if (urls.length > 0) void chrome.windows.create({ url: urls });
+  };
 
-  // Get project counts
-  const projectCounts = useMemo(() => {
-    const counts = new Map<string | 'detached', number>();
-    projects.forEach((p) => {
-      counts.set(p.id, (workspacesByProject.get(p.id) || []).length);
-    });
-    counts.set('detached', (workspacesByProject.get('detached') || []).length);
-    return counts;
-  }, [projects, workspacesByProject]);
-
-  // Auto-select first project if none selected
-  React.useEffect(() => {
-    if (selectedProjectId === null && projects.length > 0) {
-      // Try to select a project with workspaces, or first project, or detached
-      const projectWithWorkspaces = projects.find((p) => (workspacesByProject.get(p.id) || []).length > 0);
-      if (projectWithWorkspaces) {
-        setSelectedProjectId(projectWithWorkspaces.id);
-      } else if ((workspacesByProject.get('detached') || []).length > 0) {
-        setSelectedProjectId('detached');
-      } else if (projects.length > 0) {
-        setSelectedProjectId(projects[0].id);
-      }
+  const restoreBrowserSnapshot = async (workspace: Workspace) => {
+    for (const windowGroup of workspace.windows) {
+      const urls = windowGroup.tabs.map((tab) => tab.url).filter(Boolean);
+      if (urls.length > 0) await chrome.windows.create({ url: urls });
     }
-  }, [selectedProjectId, projects, workspacesByProject]);
+  };
+
+  const createProjectWorkspace = () => {
+    if (!selectedBrowser || !targetProjectId) return;
+    const suggested = selectedBrowser.name;
+    const name = window.prompt('Project workspace name', suggested)?.trim();
+    if (!name) return;
+    onHomeStateChange(createProjectWorkspaceFromBrowserSnapshot({
+      state: homeState,
+      workspace: selectedBrowser,
+      items,
+      projectId: targetProjectId,
+      name,
+    }));
+    setNotice(`Created project workspace “${name}”.`);
+  };
+
+  const addToProjectWorkspace = () => {
+    if (!selectedBrowser || !targetProjectId || !targetWorkspaceKey) return;
+    onHomeStateChange(addBrowserSnapshotToProjectWorkspace({
+      state: homeState,
+      workspace: selectedBrowser,
+      items,
+      projectId: targetProjectId,
+      targetWorkspaceKey,
+    }));
+    const target = workspaceTargets.find((candidate) => candidate.key === targetWorkspaceKey);
+    setNotice(`Added browser tabs to ${target?.label ?? 'project workspace'}.`);
+  };
+
+  const renameProjectWorkspace = (row: ProjectWorkspaceRow) => {
+    if (!row.session) return;
+    const name = window.prompt('Workspace name', row.name)?.trim();
+    if (!name) return;
+    onHomeStateChange({
+      ...homeState,
+      savedWorkspaceSessions: (homeState.savedWorkspaceSessions ?? []).map((session) =>
+        session.id === row.session!.id ? { ...session, name, updatedAt: Date.now() } : session
+      ),
+    });
+  };
+
+  const removeProjectWorkspace = (row: ProjectWorkspaceRow) => {
+    if (!row.session || !window.confirm(`Delete project workspace “${row.name}”?`)) return;
+    onHomeStateChange(deleteSavedProjectWorkspace({ state: homeState, sessionId: row.session.id }));
+    setSelectedKey(null);
+  };
+
+  const renameBrowserWorkspace = async (workspace: Workspace) => {
+    const name = window.prompt('Browser snapshot name', workspace.name)?.trim();
+    if (!name) return;
+    await updateWorkspace(workspace.id, { name });
+    await onWorkspacesChanged?.();
+  };
+
+  const removeBrowserWorkspace = async (workspace: Workspace) => {
+    if (!window.confirm(`Delete browser snapshot “${workspace.name}”?`)) return;
+    await deleteWorkspace(workspace.id);
+    setSelectedKey(null);
+    await onWorkspacesChanged?.();
+  };
+
+  const assignBrowserWorkspaceProject = async (workspace: Workspace, projectId: string) => {
+    await updateWorkspace(workspace.id, { projectId: projectId || undefined });
+    await onWorkspacesChanged?.();
+  };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `${projectNavWidth}px 4px ${workspacesListWidth}px 4px 1fr`, gap: '4px', height: '100%', minHeight: 0 }}>
-      {/* Left: Project Navigation */}
-      <Panel style={{ padding: '4px', overflowY: 'auto' }} className="scrollbar">
-        <div style={{ padding: '8px', borderBottom: '1px solid var(--border)', marginBottom: '4px' }}>
-          <h2 style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>Projects</h2>
+    <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden', padding: '4px 4px 64px', boxSizing: 'border-box' }}>
+      <header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
+        <div>
+          <h1 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-xl)', fontWeight: 700 }}>Workspaces</h1>
+          <p style={{ margin: '3px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Manage Homebase working sets and saved browser snapshots. Live browser tabs stay in Tab Commander.</p>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          {/* Detached workspaces */}
-          <button
-            onClick={() => {
-              setSelectedProjectId('detached');
-              setSelectedWorkspaceId(null);
-            }}
-            style={{
-              padding: '6px 8px',
-              textAlign: 'left',
-              border: 'none',
-              background: selectedProjectId === 'detached' ? 'var(--accent-weak)' : 'transparent',
-              color: selectedProjectId === 'detached' ? 'var(--accent)' : 'var(--text)',
-              cursor: 'pointer',
-              borderRadius: 4,
-              fontSize: 'var(--text-xs)',
-              fontWeight: selectedProjectId === 'detached' ? 600 : 400,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-            onMouseEnter={(e) => {
-              if (selectedProjectId !== 'detached') {
-                e.currentTarget.style.background = 'var(--bg-hover)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (selectedProjectId !== 'detached') {
-                e.currentTarget.style.background = 'transparent';
-              }
-            }}
-          >
-            <span>Detached</span>
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-              {projectCounts.get('detached') || 0}
-            </span>
-          </button>
+        {onOpenTabCommander && <button type="button" onClick={onOpenTabCommander} style={primaryButtonStyle}><MonitorUp size={13} /> Capture browser tabs</button>}
+      </header>
 
-          {/* Projects */}
-          {projects.map((project) => {
-            const count = projectCounts.get(project.id) || 0;
-            const isSelected = selectedProjectId === project.id;
-            return (
-              <button
-                key={project.id}
-                onClick={() => {
-                  setSelectedProjectId(project.id);
-                  setSelectedWorkspaceId(null);
-                }}
-                style={{
-                  padding: '6px 8px',
-                  textAlign: 'left',
-                  border: 'none',
-                  background: isSelected ? 'var(--accent-weak)' : 'transparent',
-                  color: isSelected ? 'var(--accent)' : 'var(--text)',
-                  cursor: 'pointer',
-                  borderRadius: 4,
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: isSelected ? 600 : 400,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.background = 'var(--bg-hover)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.background = 'transparent';
-                  }
-                }}
-              >
-                <span>{project.name}</span>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{count}</span>
-              </button>
-            );
-          })}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
+        <label style={{ width: 'min(460px, 100%)', height: 34, display: 'flex', alignItems: 'center', gap: 7, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--input-bg)', boxSizing: 'border-box' }}>
+          <Search size={13} color="var(--text-faint)" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter workspaces…" aria-label="Filter workspaces" style={{ minWidth: 0, flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
+        </label>
+        <div role="group" aria-label="Workspace type" style={{ display: 'inline-flex', padding: 2, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)' }}>
+          {(['all', 'project', 'browser'] as const).map((value) => (
+            <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)} style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 'var(--radius-sm)', background: filter === value ? 'var(--accent-weak)' : 'transparent', color: filter === value ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' }}>{value === 'all' ? 'All' : value === 'project' ? 'Project workspaces' : 'Browser snapshots'}</button>
+          ))}
         </div>
-      </Panel>
+        <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{rows.length} workspace{rows.length !== 1 ? 's' : ''}</span>
+      </div>
 
-      <Resizer
-        direction="vertical"
-        onResize={(delta) => {
-          setProjectNavWidth((w) => Math.min(Math.max(150, w + delta), 400));
-        }}
-      />
-
-      {/* Middle: Workspaces List */}
-      <Panel style={{ padding: '4px', overflowY: 'auto' }} className="scrollbar">
-        {selectedProjectId === null ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-            Select a project to view workspaces
-          </div>
-        ) : projectWorkspaces.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-            No workspaces in this project
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {projectWorkspaces.map((ws) => {
-              const totalTabs = ws.windows.reduce((sum, w) => sum + w.tabs.length, 0);
-              const isSelected = selectedWorkspaceId === ws.id;
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(280px, 390px) minmax(0, 1fr)', gap: 12 }}>
+        <section style={panelStyle} aria-label="Saved workspaces">
+          <div style={panelHeaderStyle}><strong style={{ fontSize: 'var(--text-sm)' }}>Saved work</strong></div>
+          <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            {rows.length === 0 ? <div style={emptyStyle}>No workspaces match this view.</div> : rows.map((row) => {
+              const project = projects.find((candidate) => candidate.id === row.projectId);
+              const selectedRow = selectedKey === row.key;
+              const count = row.kind === 'project' ? row.tabs.length : row.workspace.windows.reduce((sum, windowGroup) => sum + windowGroup.tabs.length, 0);
               return (
-                <button
-                  key={ws.id}
-                  onClick={() => setSelectedWorkspaceId(ws.id)}
-                  style={{
-                    padding: '8px 10px',
-                    textAlign: 'left',
-                    border: '1px solid var(--border)',
-                    background: isSelected ? 'var(--accent-weak)' : 'var(--bg-glass)',
-                    color: isSelected ? 'var(--accent)' : 'var(--text)',
-                    cursor: 'pointer',
-                    borderRadius: 6,
-                    fontSize: 'var(--text-xs)',
-                    transition: 'all 0.1s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.background = 'var(--bg-hover)';
-                      e.currentTarget.style.borderColor = 'var(--accent)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      e.currentTarget.style.background = 'var(--bg-glass)';
-                      e.currentTarget.style.borderColor = 'var(--border)';
-                    }
-                  }}
-                >
-                  <div style={{ fontWeight: 600, marginBottom: '4px', fontSize: 'var(--text-sm)' }}>{ws.name}</div>
-                  <div style={{ display: 'flex', gap: '8px', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
-                    <span>{ws.windows.length} window{ws.windows.length !== 1 ? 's' : ''}</span>
-                    <span>•</span>
-                    <span>{totalTabs} tab{totalTabs !== 1 ? 's' : ''}</span>
-                  </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Calendar size={10} />
-                    {new Date(ws.updated_at).toLocaleDateString()}
-                  </div>
+                <button key={row.key} type="button" onClick={() => { setSelectedKey(row.key); setNotice(null); if (row.projectId) setTargetProjectId(row.projectId); }} style={{ width: '100%', minHeight: 62, display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', border: 'none', borderBottom: '1px solid var(--border)', borderLeft: selectedRow ? '3px solid var(--accent)' : '3px solid transparent', background: selectedRow ? 'var(--accent-weak)' : 'transparent', color: 'var(--text)', textAlign: 'left', cursor: 'pointer' }}>
+                  <span style={{ width: 28, height: 28, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: row.kind === 'project' ? 'var(--accent-weak)' : 'var(--bg-hover)', color: row.kind === 'project' ? 'var(--accent)' : 'var(--text-faint)' }}>{row.kind === 'project' ? <Layers3 size={13} /> : <MonitorUp size={13} />}</span>
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--text-sm)' }}>{row.name}</strong>{row.kind === 'project' && row.active && <span style={activeBadgeStyle}>Active</span>}</span>
+                    <span style={{ display: 'block', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{row.kind === 'project' ? row.live ? 'Active now' : 'Project workspace' : 'Browser snapshot'} · {project?.name ?? 'Unassigned'} · {count} {row.kind === 'project' ? 'items' : 'tabs'}</span>
+                  </span>
                 </button>
               );
             })}
           </div>
-        )}
-      </Panel>
+        </section>
 
-      <Resizer
-        direction="vertical"
-        onResize={(delta) => {
-          setWorkspacesListWidth((w) => Math.min(Math.max(200, w + delta), 500));
-        }}
-      />
-
-      {/* Right: Workspace Details */}
-      <Panel style={{ padding: '12px', overflowY: 'auto' }} className="scrollbar">
-        {selectedWorkspace ? (
-          <WorkspaceTab workspace={selectedWorkspace} />
-        ) : (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-            Select a workspace to view its links
-          </div>
-        )}
-      </Panel>
+        <section style={panelStyle} aria-label="Workspace details">
+          {!selected ? <div style={emptyStyle}>Select a workspace to inspect it.</div> : selected.kind === 'project' ? (
+            <>
+              <div style={panelHeaderStyle}>
+                <div><strong style={{ display: 'block', fontSize: 'var(--text-sm)' }}>{selected.name}</strong><span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{projects.find((project) => project.id === selected.projectId)?.name} · {selected.live ? 'Active now' : 'Project workspace'}</span></div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {!selected.live && <button type="button" onClick={() => renameProjectWorkspace(selected)} style={iconButtonStyle} title="Rename workspace"><Pencil size={12} /></button>}
+                  {!selected.live && <button type="button" onClick={() => removeProjectWorkspace(selected)} style={{ ...iconButtonStyle, color: '#ef4444' }} title="Delete workspace"><Trash2 size={12} /></button>}
+                  <button type="button" disabled={projectTabUrls(selected.tabs).length === 0} onClick={() => openProjectWorkspaceLinks(selected)} style={secondaryButtonStyle}><ExternalLink size={12} /> Open links</button>
+                  <button type="button" onClick={() => activateProjectRow(selected)} style={primaryButtonStyle}><Play size={12} /> Activate in Home</button>
+                </div>
+              </div>
+              <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                {selected.tabs.length === 0 ? <div style={emptyStyle}>This workspace is empty.</div> : selected.tabs.map((tab) => <div key={tab.id} style={entryRowStyle}><span style={{ width: 27, height: 27, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--bg-hover)', color: 'var(--text-faint)' }}>{tab.kind === 'item' && !itemById.get(tab.itemId)?.url ? <FolderKanban size={12} /> : <ExternalLink size={12} />}</span><span style={{ minWidth: 0, flex: 1 }}><strong style={entryTitleStyle}>{tabLabel(tab)}</strong><span style={entryDetailStyle}>{tabDetail(tab)}</span></span></div>)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={panelHeaderStyle}>
+                <div><strong style={{ display: 'block', fontSize: 'var(--text-sm)' }}>{selected.name}</strong><span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Browser snapshot · {selected.workspace.windows.length} window{selected.workspace.windows.length !== 1 ? 's' : ''}</span></div>
+                <div style={{ display: 'flex', gap: 6 }}><button type="button" onClick={() => void renameBrowserWorkspace(selected.workspace)} style={iconButtonStyle} title="Rename snapshot"><Pencil size={12} /></button><button type="button" onClick={() => void removeBrowserWorkspace(selected.workspace)} style={{ ...iconButtonStyle, color: '#ef4444' }} title="Delete snapshot"><Trash2 size={12} /></button><button type="button" onClick={() => void restoreBrowserSnapshot(selected.workspace)} style={primaryButtonStyle}><MonitorUp size={12} /> Restore windows</button></div>
+              </div>
+              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+                  <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 650 }}>Snapshot project</span>
+                  <select value={selected.workspace.projectId ?? ''} onChange={(event) => void assignBrowserWorkspaceProject(selected.workspace, event.target.value)} aria-label="Browser snapshot project" style={selectStyle}><option value="">Unassigned</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+                  <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Organizes the snapshot only; it does not convert its tabs.</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                  <select value={targetProjectId} onChange={(event) => setTargetProjectId(event.target.value)} aria-label="Target project" style={selectStyle}><option value="">Choose project…</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+                  <button type="button" disabled={!targetProjectId} onClick={createProjectWorkspace} style={secondaryButtonStyle}><Plus size={12} /> Create project workspace</button>
+                  <select value={targetWorkspaceKey} onChange={(event) => setTargetWorkspaceKey(event.target.value)} aria-label="Target project workspace" disabled={!targetProjectId} style={selectStyle}>{workspaceTargets.map((target) => <option key={target.key} value={target.key}>{target.label}</option>)}</select>
+                  <button type="button" disabled={!targetWorkspaceKey} onClick={addToProjectWorkspace} style={secondaryButtonStyle}><Plus size={12} /> Add tabs</button>
+                </div>
+                {notice && <div role="status" style={{ marginTop: 6, color: 'var(--accent)', fontSize: 'var(--text-xs)' }}>{notice}</div>}
+              </div>
+              <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 10 }}>
+                {selected.workspace.windows.map((windowGroup, index) => <div key={windowGroup.id} style={{ marginBottom: 12 }}><div style={{ marginBottom: 5, color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase' }}>{windowGroup.name || `Window ${index + 1}`} · {windowGroup.tabs.length} tabs</div>{windowGroup.tabs.map((tab, tabIndex) => <div key={`${windowGroup.id}:${tabIndex}`} style={entryRowStyle}><ExternalLink size={12} color="var(--text-faint)" /><span style={{ minWidth: 0, flex: 1 }}><strong style={entryTitleStyle}>{tab.title || 'Untitled'}</strong><ExtensionPageUrlLink url={tab.url} style={entryDetailStyle}>{tab.url}</ExtensionPageUrlLink></span></div>)}</div>)}
+              </div>
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 };
 
+const panelStyle: React.CSSProperties = { minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };
+const panelHeaderStyle: React.CSSProperties = { minHeight: 46, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 11px', borderBottom: '1px solid var(--border)' };
+const emptyStyle: React.CSSProperties = { flex: 1, minHeight: 0, display: 'grid', placeItems: 'center', padding: 24, color: 'var(--text-faint)', fontSize: 'var(--text-sm)', textAlign: 'center' };
+const secondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' };
+const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
+const iconButtonStyle: React.CSSProperties = { width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };
+const selectStyle: React.CSSProperties = { minWidth: 145, maxWidth: 220, height: 29, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-xs)' };
+const entryRowStyle: React.CSSProperties = { minHeight: 43, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid var(--border)' };
+const entryTitleStyle: React.CSSProperties = { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-sm)' };
+const entryDetailStyle: React.CSSProperties = { display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' };
+const activeBadgeStyle: React.CSSProperties = { padding: '1px 5px', borderRadius: 999, background: 'var(--accent)', color: '#fff', fontSize: 9, fontWeight: 700, textTransform: 'uppercase' };

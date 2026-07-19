@@ -783,6 +783,14 @@ export const MainContent: React.FC<MainContentProps> = ({
             windows={windows}
             workspaces={workspaces}
             projects={projects}
+            items={items}
+            homeState={globalTabState ?? {
+              tabs: [],
+              activeTabId: null,
+              bottomLayout: 'tabs',
+              isSidebarCollapsed: false,
+            }}
+            onHomeStateChange={onGlobalTabStateChange ?? (() => {})}
             onWorkspacesChanged={onWorkspacesChanged}
             onCloseTab={onCloseTab}
             onCloseWindow={onCloseWindow}
@@ -1989,7 +1997,25 @@ export const MainContent: React.FC<MainContentProps> = ({
           />
         );
       case 'workspaces':
-        return <WorkspacesView projects={projects} workspaces={workspaces} />;
+        return (
+          <WorkspacesView
+            projects={projects}
+            items={items}
+            workspaces={workspaces}
+            homeState={globalTabState ?? {
+              tabs: [],
+              activeTabId: null,
+              bottomLayout: 'tabs',
+              isSidebarCollapsed: false,
+            }}
+            scopeProjectId={scopeProjectId}
+            onHomeStateChange={onGlobalTabStateChange ?? (() => {})}
+            onOpenHome={onOpenHomeWorkspace}
+            onOpenTabCommander={() => onSelectView?.('tab-commander')}
+            onSelectProjectScope={onSelectProjectScope}
+            onWorkspacesChanged={onWorkspacesChanged}
+          />
+        );
       case 'collections':
         return (
           <CollectionsView

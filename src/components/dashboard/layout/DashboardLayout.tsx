@@ -86,6 +86,7 @@ export interface ItemTab {
 const FULL_PAGE_VIEWS = new Set<DashboardView>([
   'settings',
   'trash',
+  'workspaces',
   'tab-commander',
   'import-studio',
   'help',
@@ -1126,6 +1127,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onTestAI={onTestAI}
                 scopeProjectId={scopeProjectId}
                 scopeCollectionId={scopeCollectionId}
+                globalTabState={globalTabState}
+                onGlobalTabStateChange={handleGlobalTabStateChange}
                 categoryBrowse={categoryBrowse}
                 onClearCategoryBrowse={handleClearCategoryBrowse}
                 onBrowseCategory={handleBrowseCategory}
@@ -1134,6 +1137,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onBatchProcessQueue={handleBatchProcessQueue}
                 onOpenPipelineHub={() => handleOpenPipelineHub({ filter: 'needs_attention' })}
                 onSelectView={handleSelectView}
+                onOpenHomeWorkspace={handleOpenHomeWorkspace}
+                onSelectProjectScope={handleSelectProjectScope}
                 onOpenItemFromSearch={handleOpenItemInInspector}
                 onClearProjectScope={handleClearProjectScope}
                 onClearCollectionScope={handleClearCollectionScope}

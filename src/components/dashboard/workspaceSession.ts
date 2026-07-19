@@ -315,6 +315,97 @@ export function transferProjectWorkspaceEntry({
   );
 }
 
+export function addBrowserSnapshotToProjectWorkspace({
+  state,
+  workspace,
+  items,
+  projectId,
+  targetWorkspaceKey,
+}: {
+  state: GlobalTabState;
+  workspace: Workspace;
+  items: readonly Item[];
+  projectId: string;
+  targetWorkspaceKey: string;
+}): GlobalTabState {
+  const converted = loadWorkspaceIntoProjectSession({
+    workspace,
+    existingTabs: [],
+    items,
+    projectId,
+  }).tabs;
+  return converted.reduce(
+    (nextState, entry) => addEntryToProjectWorkspace({
+      state: nextState,
+      projectId,
+      targetWorkspaceKey,
+      entry,
+    }),
+    state
+  );
+}
+
+export function createProjectWorkspaceFromBrowserSnapshot({
+  state,
+  workspace,
+  items,
+  projectId,
+  name,
+  sessionId = crypto.randomUUID(),
+  now = Date.now(),
+}: {
+  state: GlobalTabState;
+  workspace: Workspace;
+  items: readonly Item[];
+  projectId: string;
+  name: string;
+  sessionId?: string;
+  now?: number;
+}): GlobalTabState {
+  const currentKey = getActiveProjectWorkspaceKey(state, projectId);
+  const targetKey = getHomebaseWorkspaceSessionKey(sessionId);
+  const currentTabs = getProjectSessionTabs(state.tabs, projectId);
+  const otherTabs = state.tabs.filter((tab) => getGlobalTabProjectId(tab) !== projectId);
+  const convertedTabs = loadWorkspaceIntoProjectSession({
+    workspace,
+    existingTabs: [],
+    items,
+    projectId,
+  }).tabs;
+  const lastActiveTabByProject = { ...(state.lastActiveTabByProject ?? {}) };
+  if (convertedTabs.length > 0) {
+    lastActiveTabByProject[projectId] = convertedTabs[convertedTabs.length - 1].id;
+  } else {
+    delete lastActiveTabByProject[projectId];
+  }
+
+  return {
+    ...state,
+    tabs: [...otherTabs, ...convertedTabs],
+    activeTabId: null,
+    lastActiveTabByProject,
+    activeWorkspaceKeyByProject: {
+      ...(state.activeWorkspaceKeyByProject ?? {}),
+      [projectId]: targetKey,
+    },
+    workspaceSessionSnapshots: {
+      ...(state.workspaceSessionSnapshots ?? {}),
+      [currentKey]: currentTabs,
+      [targetKey]: convertedTabs,
+    },
+    savedWorkspaceSessions: [
+      ...(state.savedWorkspaceSessions ?? []).filter((session) => session.id !== sessionId),
+      {
+        id: sessionId,
+        name: name.trim(),
+        projectId,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+  };
+}
+
 /**
  * Add a saved browser workspace to a live Homebase session without replacing
  * existing work. Saved URLs become item tabs when possible and lightweight URL

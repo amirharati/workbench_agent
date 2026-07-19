@@ -222,7 +222,7 @@ export const HelpView: React.FC = () => {
           <FeatureRow
             icon={<Layers size={16} />}
             title="Workspaces"
-            desc="Saved browser tab groups linked to your library."
+            desc="Manage project working sets and browser snapshots together; activate Homebase work or restore captured browser windows."
           />
           <FeatureRow
             icon={<Search size={16} />}
@@ -247,7 +247,7 @@ export const HelpView: React.FC = () => {
           <FeatureRow
             icon={<Terminal size={16} />}
             title="Tab Commander"
-            desc="Manage open Chrome windows and tabs."
+            desc="Manage live Chrome windows and tabs, then capture a selection as a browser snapshot or project workspace."
           />
           <FeatureRow
             icon={<Settings size={16} />}

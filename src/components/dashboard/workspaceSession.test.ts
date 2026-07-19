@@ -13,6 +13,8 @@ import {
   getSavedWorkspaceSessionKey,
   getProjectSessionTabs,
   getVisibleWorkspaceTabs,
+  addBrowserSnapshotToProjectWorkspace,
+  createProjectWorkspaceFromBrowserSnapshot,
   loadWorkspaceIntoProjectSession,
   saveCurrentProjectWorkspace,
   transferProjectWorkspaceEntry,
@@ -271,5 +273,58 @@ describe('project workspace sessions', () => {
 
     expect(getProjectSessionTabs(moved.tabs, 'project-a')).toEqual([]);
     expect(moved.workspaceSessionSnapshots?.[savedKey]).toEqual([entry]);
+  });
+
+  it('adds a browser snapshot to a chosen inactive project workspace', () => {
+    const targetKey = getHomebaseWorkspaceSessionKey('saved-a');
+    const state: GlobalTabState = {
+      tabs: [],
+      activeTabId: null,
+      bottomLayout: 'tabs',
+      isSidebarCollapsed: false,
+      workspaceSessionSnapshots: { [targetKey]: [] },
+    };
+    const next = addBrowserSnapshotToProjectWorkspace({
+      state,
+      workspace,
+      items: [item('docs', 'https://example.com/docs')],
+      projectId: 'project-a',
+      targetWorkspaceKey: targetKey,
+    });
+
+    expect(next.workspaceSessionSnapshots?.[targetKey]).toEqual([
+      expect.objectContaining({ kind: 'item', itemId: 'docs' }),
+      expect.objectContaining({ kind: 'url', url: 'https://outside.example/page' }),
+    ]);
+    expect(next.tabs).toEqual([]);
+  });
+
+  it('creates and activates a named project workspace from a browser snapshot', () => {
+    const next = createProjectWorkspaceFromBrowserSnapshot({
+      state: {
+        tabs: [],
+        activeTabId: null,
+        bottomLayout: 'tabs',
+        isSidebarCollapsed: false,
+      },
+      workspace,
+      items: [item('docs', 'https://example.com/docs')],
+      projectId: 'project-a',
+      name: 'Captured window',
+      sessionId: 'captured-a',
+      now: 10,
+    });
+
+    expect(next.savedWorkspaceSessions).toContainEqual({
+      id: 'captured-a',
+      name: 'Captured window',
+      projectId: 'project-a',
+      createdAt: 10,
+      updatedAt: 10,
+    });
+    expect(getActiveProjectWorkspaceKey(next, 'project-a')).toBe(
+      getHomebaseWorkspaceSessionKey('captured-a')
+    );
+    expect(getProjectSessionTabs(next.tabs, 'project-a')).toHaveLength(2);
   });
 });
