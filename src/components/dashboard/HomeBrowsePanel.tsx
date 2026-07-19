@@ -3,7 +3,7 @@ import { ChevronRight, Clock, Folder, Layers3, Star, Trash2, Workflow } from 'lu
 import type { Item, Project } from '../../lib/db';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 
-type BrowseMode = 'projects' | 'recent' | 'favorites';
+type BrowseMode = 'projects' | 'recent' | 'quick-access';
 
 export interface HomeProjectSummary {
   project: Project;
@@ -14,7 +14,7 @@ export interface HomeProjectSummary {
 interface HomeBrowsePanelProps {
   projects: HomeProjectSummary[];
   recentItems: Item[];
-  favoriteItems: Item[];
+  quickAccessItems: Item[];
   selectedItemId?: string | null;
   totalItems: number;
   onOpenProject: (projectId: string) => void;
@@ -27,7 +27,7 @@ interface HomeBrowsePanelProps {
 export const HomeBrowsePanel: React.FC<HomeBrowsePanelProps> = ({
   projects,
   recentItems,
-  favoriteItems,
+  quickAccessItems,
   selectedItemId,
   totalItems,
   onOpenProject,
@@ -37,7 +37,7 @@ export const HomeBrowsePanel: React.FC<HomeBrowsePanelProps> = ({
   onOpenPipeline,
 }) => {
   const [mode, setMode] = useState<BrowseMode>('projects');
-  const visibleItems = mode === 'recent' ? recentItems : favoriteItems;
+  const visibleItems = mode === 'recent' ? recentItems : quickAccessItems;
 
   return (
     <section style={{ width: '100%', maxWidth: 1000 }} aria-labelledby="home-browse-heading">
@@ -47,7 +47,7 @@ export const HomeBrowsePanel: React.FC<HomeBrowsePanelProps> = ({
             <Layers3 size={13} /> Browse library
           </h2>
           <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-            Projects organize durable work; Recent and Favorites help you return quickly.
+            Projects organize durable work; Recent and Favorites &amp; pins help you return quickly.
           </p>
         </div>
         <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>
@@ -60,7 +60,7 @@ export const HomeBrowsePanel: React.FC<HomeBrowsePanelProps> = ({
           {([
             { id: 'projects' as const, label: 'Projects', icon: Folder, count: projects.length },
             { id: 'recent' as const, label: 'Recent', icon: Clock, count: recentItems.length },
-            { id: 'favorites' as const, label: 'Favorites', icon: Star, count: favoriteItems.length },
+            { id: 'quick-access' as const, label: 'Favorites & pins', icon: Star, count: quickAccessItems.length },
           ]).map(({ id, label, icon: Icon, count }) => {
             const active = mode === id;
             return (
@@ -93,7 +93,7 @@ export const HomeBrowsePanel: React.FC<HomeBrowsePanelProps> = ({
               </div>
             )
           ) : visibleItems.length === 0 ? (
-            <EmptyBrowseState message={mode === 'favorites' ? 'Favorite or pin items to keep them close.' : 'Newly captured material will appear here.'} />
+            <EmptyBrowseState message={mode === 'quick-access' ? 'Favorite or pin items to keep them close.' : 'Newly captured material will appear here.'} />
           ) : (
             visibleItems.map((item) => {
               const selected = selectedItemId === item.id;

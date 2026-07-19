@@ -957,6 +957,29 @@ export class SqliteStore {
     return rows.map(rowToSignal);
   }
 
+  /** Small worker-owned scope for the manual embedding backfill UI. */
+  getPendingEmbeddingItemIds(limit: number): string[] {
+    const cappedLimit = Math.min(500, Math.max(1, Math.floor(limit)));
+    const rows = this.conn.selectAll<{ itemId: string }>(
+      `SELECT e.item_id AS itemId
+       FROM item_enrichment e
+       JOIN items i ON i.id = e.item_id
+       LEFT JOIN ai_item_signals s ON s.item_id = e.item_id
+       WHERE e.ai_status = 'ok'
+         AND i.deleted_at IS NULL
+         AND (
+           s.item_id IS NULL
+           OR s.embedding IS NULL
+           OR length(s.embedding) = 0
+           OR s.embedding_model = ''
+         )
+       ORDER BY e.updated_at ASC
+       LIMIT ?`,
+      [cappedLimit]
+    );
+    return rows.map((row) => row.itemId);
+  }
+
   getLinksForItemIds(itemIds: string[]): AiItemCategoryLink[] {
     if (!itemIds.length) return [];
     const placeholders = itemIds.map(() => '?').join(',');
@@ -1584,6 +1607,10 @@ export class IdbCompatStore {
 
   getSignalsForItemIds(itemIds: string[]) {
     return this.store.getSignalsForItemIds(itemIds);
+  }
+
+  getPendingEmbeddingItemIds(limit: number) {
+    return this.store.getPendingEmbeddingItemIds(limit);
   }
 
   getLinksForItemIds(itemIds: string[]) {

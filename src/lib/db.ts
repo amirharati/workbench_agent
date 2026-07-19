@@ -33,7 +33,12 @@ import type {
 import type { TrashHistoryEntry } from './trashHistory';
 import { shouldPreferImportTitle } from './import/xImportHygiene';
 import { nowMs } from './time/clock';
-import { INBOX_PROJECT_NAME, INCOMING_COLLECTION_NAME, UNFILED_COLLECTION_NAME } from './systemDataModel';
+import {
+  assertCanCreateCollectionInProject,
+  INBOX_PROJECT_NAME,
+  INCOMING_COLLECTION_NAME,
+  UNFILED_COLLECTION_NAME,
+} from './systemDataModel';
 
 export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
 
@@ -916,6 +921,7 @@ export const addCollection = async (name: string, color?: string, projectId?: st
   const store = await getDB();
   const { defaultProjectId } = await ensureDefaultProjectAndCollection(store);
   const primaryProjectId = projectId || defaultProjectId;
+  assertCanCreateCollectionInProject(primaryProjectId, defaultProjectId);
   const id = crypto.randomUUID();
   const now = nowTs();
   store.putCollection({

@@ -14,7 +14,7 @@ describe('HomeBrowsePanel', () => {
           itemCount: 3,
         }]}
         recentItems={[]}
-        favoriteItems={[]}
+        quickAccessItems={[]}
         totalItems={3}
         onOpenProject={vi.fn()}
         onSelectItem={vi.fn()}
@@ -27,7 +27,7 @@ describe('HomeBrowsePanel', () => {
     expect(markup).toContain('Browse library');
     expect(markup).toContain('Projects');
     expect(markup).toContain('Recent');
-    expect(markup).toContain('Favorites');
+    expect(markup).toContain('Favorites &amp; pins');
     expect(markup).toContain('Inbox');
     expect(markup).toContain('Processing');
     expect(markup).toContain('Trash');

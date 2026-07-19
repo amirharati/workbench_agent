@@ -181,6 +181,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     const def = projects.find((p) => p.isDefault)?.id;
     return def || projects[0]?.id || '';
   }, [projects]);
+  const selectedProjectIsInbox = projects.find((project) => project.id === projectId)?.isDefault === true;
 
   // Auto-set project to default only on initial mount, not when user clears it
   useEffect(() => {
@@ -432,7 +433,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
 
   const createCollectionInline = async () => {
     const name = newCollectionName.trim();
-    if (!name || !projectId || creatingCollection) return;
+    if (!name || !projectId || selectedProjectIsInbox || creatingCollection) return;
     setCreatingCollection(true);
     setError(null);
     try {
@@ -1017,13 +1018,13 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Collection</span>
-              <button
+              {!selectedProjectIsInbox && <button
                 type="button"
                 onClick={() => setShowNewCollectionInline((v) => !v)}
                 style={{ border: 'none', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', fontSize: 'var(--text-xs)' }}
               >
                 + New
-              </button>
+              </button>}
             </div>
             <select
               value={collectionId}
@@ -1044,7 +1045,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                 </option>
               ))}
             </select>
-            {showNewCollectionInline && (
+            {showNewCollectionInline && !selectedProjectIsInbox && (
               <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
                 <input
                   value={newCollectionName}

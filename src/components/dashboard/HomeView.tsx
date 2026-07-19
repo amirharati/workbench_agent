@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Search, Home as HomeIcon, Folder, GripVertical, X, Globe2 } from 'lucide-react';
 import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
-import { getHomeQuickAccessItems } from '../../lib/itemQuickAccess';
+import { getQuickAccessItemsFromList } from '../../lib/itemQuickAccess';
 import { GlobalTabSystem, type GlobalTab, type GlobalTabState, type GlobalTabList, type GlobalTabSearch } from './GlobalTabSystem';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
@@ -193,7 +193,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     [scopedItems]
   );
 
-  const quickAccessItems = useMemo(() => getHomeQuickAccessItems(scopedItems, 8), [scopedItems]);
+  const quickAccessItems = useMemo(() => getQuickAccessItemsFromList(scopedItems), [scopedItems]);
   const hasStartupContent = projects.length > 0 || collections.length > 0 || items.length > 0;
 
   type HomeUtilTabId =
@@ -706,6 +706,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           project={activeProject}
           items={projectItems}
           collections={projectCollections}
+          organizationProjects={projects}
+          organizationCollections={collections}
           selectedCollectionId={scopeCollectionId}
           onSelectCollection={(collectionId) => {
             if (collectionId === 'all') openProjectScope(activeProject.id);
@@ -718,6 +720,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onFocusSession={focusCurrentSession}
           onOpenSearch={() => selectHomeSection('search')}
           onUpdateItem={onUpdateItem}
+          onCreateProject={onCreateProject}
+          onCreateCollection={onCreateCollection}
           workspaces={projectWorkspaces}
           activeWorkspaceKey={activeWorkspaceKey}
           onActivateWorkspace={activateWorkspace}
@@ -783,6 +787,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
             onFocusGlobal={focusCurrentSession}
             onAddItemToGlobal={addItemToCurrentSession}
             onViewSearch={selectCurrentWorkspaceEntry}
+            onUpdateItem={onUpdateItem}
+            onCreateProject={onCreateProject}
+            onCreateCollection={onCreateCollection}
             getEntryScopeLabel={getWorkspaceEntryScopeLabel}
           />
         )}
@@ -804,7 +811,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <HomeBrowsePanel
               projects={projectSummaries}
               recentItems={recentItems}
-              favoriteItems={quickAccessItems}
+              quickAccessItems={quickAccessItems}
               selectedItemId={selectedOverviewItemId}
               totalItems={items.length}
               onOpenProject={openProjectScope}

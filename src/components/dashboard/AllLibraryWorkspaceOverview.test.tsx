@@ -12,14 +12,14 @@ const groups: WorkspaceViewGroup[] = [
   { key: 'project:project-a', title: 'Research session', contextLabel: 'Project Alpha', projectId: 'project-a', tabs: [projectUrl] },
 ];
 
-function render(selectedView: string, selectedTab: GlobalTab | null = null) {
+function render(selectedView: string, selectedTab: GlobalTab | null = null, selectedItem: Parameters<typeof AllLibraryWorkspaceOverview>[0]['selectedItem'] = null) {
   return renderToStaticMarkup(
     <AllLibraryWorkspaceOverview
       groups={groups}
       selectedView={selectedView}
       onSelectedViewChange={vi.fn()}
       selectedTab={selectedTab}
-      selectedItem={null}
+      selectedItem={selectedItem}
       items={[]}
       projects={[{ id: 'project-a', name: 'Project Alpha', created_at: 1, updated_at: 1, isDefault: false }]}
       collections={[]}
@@ -29,6 +29,7 @@ function render(selectedView: string, selectedTab: GlobalTab | null = null) {
       onFocusGlobal={vi.fn()}
       onAddItemToGlobal={vi.fn()}
       onViewSearch={vi.fn()}
+      onUpdateItem={vi.fn()}
     />
   );
 }
@@ -54,5 +55,20 @@ describe('AllLibraryWorkspaceOverview', () => {
     expect(markup).not.toContain('overflow-x:auto');
     expect(markup).toContain('height:390px;min-height:250px;max-height:390px');
     expect(markup).toContain('overflow-y:auto');
+  });
+
+  it('offers the global favorite action in item preview', () => {
+    const markup = render('global', null, {
+      id: 'note-a',
+      url: '',
+      title: 'Preview note',
+      collectionIds: [],
+      tags: [],
+      source: 'manual',
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    expect(markup).toContain('Add to favorites: Preview note');
   });
 });

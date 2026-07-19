@@ -216,6 +216,11 @@ export async function getSignalsByItemIds<T = unknown>(itemIds: string[]): Promi
   return dbRpc('getSignalsByItemIds', [itemIds]);
 }
 
+/** Capped worker-side candidate scope for manual embedding backfill. */
+export async function getPendingEmbeddingItemIds(limit = 48): Promise<string[]> {
+  return dbRpc('getPendingEmbeddingItemIds', [limit]);
+}
+
 /** Block auto folder exports while a digest is running. */
 export async function pauseAutoMirrorForDigest(): Promise<{ ok: boolean }> {
   return dbRpc('pauseAutoMirrorForDigest', []);

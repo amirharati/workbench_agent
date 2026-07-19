@@ -1,9 +1,10 @@
 import React from 'react';
-import { ExternalLink, FileText, Layers3, Link2, Maximize2, Plus, Search } from 'lucide-react';
-import type { Collection, Item, Project } from '../../lib/db';
-import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
+import { ExternalLink, Layers3, Maximize2, Plus, Search } from 'lucide-react';
+import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
+import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
 import { ActiveWorkspaceCard } from './ActiveWorkspaceCard';
+import { ItemWorkspace } from './ItemWorkspace';
 
 export interface WorkspaceViewGroup {
   key: string;
@@ -28,6 +29,13 @@ interface AllLibraryWorkspaceOverviewProps {
   onFocusGlobal: () => void;
   onAddItemToGlobal: (item: Item) => void;
   onViewSearch: (tab: GlobalTab) => void;
+  onUpdateItem?: (
+    id: string,
+    updates: Partial<Omit<Item, 'id' | 'created_at'>>,
+    options?: UpdateItemOptions
+  ) => Promise<void>;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   getEntryScopeLabel?: (tab: GlobalTab) => string | undefined;
 }
 
@@ -57,6 +65,9 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   onFocusGlobal,
   onAddItemToGlobal,
   onViewSearch,
+  onUpdateItem,
+  onCreateProject,
+  onCreateCollection,
   getEntryScopeLabel,
 }) => {
   const visibleGroups = selectedView === 'all-active'
@@ -125,23 +136,26 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
 
         <div style={{ height: 390, minHeight: 250, maxHeight: 390, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }}>
           <div style={{ minHeight: 43, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '7px 11px', borderBottom: '1px solid var(--border)' }}>
-            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 650, textTransform: 'uppercase', letterSpacing: 0.4 }}>Preview</span>
-            {selectedTab ? (
-              <button type="button" onClick={() => onFocusTab(selectedTab)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
-            ) : previewItem && !previewInGlobalWorkspace ? (
-              <button type="button" onClick={() => onAddItemToGlobal(previewItem)} style={primaryButtonStyle}><Plus size={12} /> Add to global</button>
-            ) : null}
+            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 650, textTransform: 'uppercase', letterSpacing: 0.4 }}>{previewItem ? 'Item' : 'Workspace entry'}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {selectedTab ? (
+                <button type="button" onClick={() => onFocusTab(selectedTab)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
+              ) : previewItem && !previewInGlobalWorkspace ? (
+                <button type="button" onClick={() => onAddItemToGlobal(previewItem)} style={primaryButtonStyle}><Plus size={12} /> Add to global</button>
+              ) : null}
+            </div>
           </div>
 
           {previewItem ? (
             <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 17 }}>
-              <span style={previewIconStyle}>{previewItem.url ? <Link2 size={15} /> : <FileText size={15} />}</span>
-              <h3 style={{ margin: '12px 0 0', color: 'var(--text)', fontSize: 'var(--text-lg)', lineHeight: 1.35 }}>{previewItem.title || 'Untitled'}</h3>
-              {previewItem.url && <BookmarkUrlLink item={previewItem} style={{ marginTop: 6 }} />}
-              <p style={{ margin: '15px 0 0', color: previewItem.notes ? 'var(--text-muted)' : 'var(--text-faint)', fontSize: 'var(--text-sm)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                {previewItem.notes || 'No notes yet.'}
-              </p>
-              {previewItem.tags.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 15 }}>{previewItem.tags.map((tag) => <span key={tag} style={tagStyle}>{tag}</span>)}</div>}
+              <ItemWorkspace
+                item={previewItem}
+                projects={projects}
+                collections={collections}
+                onUpdateItem={onUpdateItem}
+                onCreateProject={onCreateProject}
+                onCreateCollection={onCreateCollection}
+              />
             </div>
           ) : selectedTab?.kind === 'search' ? (
             <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 17 }}>
@@ -164,8 +178,8 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
           ) : (
             <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, color: 'var(--text-faint)', textAlign: 'center' }}>
               <Layers3 size={23} />
-              <strong style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Select something to preview</strong>
-              <span style={{ maxWidth: 280, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>Choose an active workspace entry, favorite, or recent item. Preview never changes its workspace ownership.</span>
+              <strong style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Select something to work with</strong>
+              <span style={{ maxWidth: 280, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>Choose an active workspace entry, favorite, or recent item. Items can be edited and organized here without entering Focus.</span>
             </div>
           )}
         </div>
@@ -177,4 +191,3 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
 const previewIconStyle: React.CSSProperties = { width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-md)', background: 'var(--accent-weak)', color: 'var(--accent)' };
 const secondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' };
 const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
-const tagStyle: React.CSSProperties = { padding: '2px 6px', borderRadius: 999, background: 'var(--bg-hover)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' };

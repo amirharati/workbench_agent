@@ -866,6 +866,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   };
 
   const handleCreateCollection = () => {
+    if (project.isDefault) return;
     setShowCreateCollectionModal(true);
     setNewCollectionName('');
     setNewCollectionDescription('');
@@ -874,6 +875,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
 
   const handleCreateCollectionSubmit = async () => {
     if (!newCollectionName.trim()) return;
+    if (projects.find((candidate) => candidate.id === newCollectionProjectId)?.isDefault) return;
     try {
       await addCollection(newCollectionName.trim(), undefined, newCollectionProjectId);
       setShowCreateCollectionModal(false);
@@ -1164,7 +1166,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           onSelect={setSelectedCollectionId}
           totalItems={projectItems.length}
           getCountForCollection={(cid) => collectionItemCounts[cid] || 0}
-          onCreateCollection={handleCreateCollection}
+          onCreateCollection={project.isDefault ? undefined : handleCreateCollection}
           onDeleteCollection={handleDeleteCollection}
           onOpenCollectionInTab={handleOpenCollectionInTab}
           onOpenAllCollections={handleOpenAllCollections}
@@ -2093,7 +2095,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                       fontFamily: 'inherit',
                     }}
                   >
-                    {projects.map((p) => (
+                    {projects.filter((candidate) => !candidate.isDefault).map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>
@@ -2176,4 +2178,3 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     </div>
   );
 };
-

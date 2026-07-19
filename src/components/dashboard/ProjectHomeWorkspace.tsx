@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ExternalLink, FileText, Folder, Globe2, Layers3, Link2, Maximize2, Pin, Plus, Search, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
+import { ItemFavoriteButton } from './ItemFavoriteButton';
+import { ItemWorkspace } from './ItemWorkspace';
 import type { GlobalTab } from './GlobalTabSystem';
 import {
   getProjectPinTimestamp,
@@ -15,6 +17,8 @@ interface ProjectHomeWorkspaceProps {
   project: Project;
   items: Item[];
   collections: Collection[];
+  organizationProjects?: Project[];
+  organizationCollections?: Collection[];
   selectedCollectionId: string | 'all';
   onSelectCollection: (collectionId: string | 'all') => void;
   sessionTabs: GlobalTab[];
@@ -35,12 +39,16 @@ interface ProjectHomeWorkspaceProps {
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
     options?: UpdateItemOptions
   ) => Promise<void>;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
 }
 
 export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   project,
   items,
   collections,
+  organizationProjects,
+  organizationCollections,
   selectedCollectionId,
   onSelectCollection,
   sessionTabs,
@@ -57,6 +65,8 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   includeGlobalWork = false,
   onToggleIncludeGlobalWork,
   onUpdateItem,
+  onCreateProject,
+  onCreateCollection,
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedSessionTabId, setSelectedSessionTabId] = useState<string | null>(null);
@@ -193,17 +203,25 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </button>
           </div>
         </div>
-        <div className="hide-scrollbar" style={{ display: 'flex', alignItems: 'center', gap: 6, overflowX: 'auto', paddingBottom: 9 }} aria-label="Project workspaces">
-          <button type="button" onClick={() => onActivateWorkspace(null)} style={workspaceSwitchStyle(activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id))}>
-            {activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id) && <Check size={11} />}
-            Project session
+        <div className="scrollbar" data-browse-surface="project-workspaces" style={{ ...browseListStyle, marginBottom: 9 }} aria-label="Project workspaces">
+          <button type="button" onClick={() => onActivateWorkspace(null)} style={browseRowStyle(activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id))}>
+            <span style={browseRowIconStyle}><Layers3 size={12} /></span>
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span style={browseRowTitleStyle}>Project session</span>
+              <span style={browseRowDetailStyle}>Current working set for {project.name}</span>
+            </span>
+            {activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id) && <Check size={13} />}
           </button>
           {workspaces.map((workspace) => {
             const active = activeWorkspaceKey === getSavedWorkspaceSessionKey(workspace.id);
             return (
-              <button key={workspace.id} type="button" onClick={() => onActivateWorkspace(workspace)} title={`Activate ${workspace.name}`} style={workspaceSwitchStyle(active)}>
-                {active && <Check size={11} />}
-                <span style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{workspace.name}</span>
+              <button key={workspace.id} type="button" onClick={() => onActivateWorkspace(workspace)} title={`Activate ${workspace.name}`} style={browseRowStyle(active)}>
+                <span style={browseRowIconStyle}><Layers3 size={12} /></span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={browseRowTitleStyle}>{workspace.name}</span>
+                  <span style={browseRowDetailStyle}>{workspace.windows.length} window{workspace.windows.length !== 1 ? 's' : ''}</span>
+                </span>
+                {active && <Check size={13} />}
               </button>
             );
           })}
@@ -216,7 +234,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{sessionTabs.length} item{sessionTabs.length !== 1 ? 's' : ''}</span>
           </div>
           {sessionTabs.length === 0 ? (
-            <div style={{ padding: '14px 12px', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>This workspace is empty. Preview project material and add what you want to work with.</div>
+            <div style={{ padding: '14px 12px', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>This workspace is empty. Select project material and add what you want to work with.</div>
           ) : (
             <div className="scrollbar" style={{ maxHeight: 190, overflowY: 'auto' }}>
               {sessionTabs.map((tab) => {
@@ -268,11 +286,15 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <h2 id="project-pinned-heading" style={sectionHeadingStyle}><Pin size={13} /> Pinned to {project.name}</h2>
             <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{pinnedItems.length}</span>
           </div>
-          <div className="hide-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+          <div className="scrollbar" data-browse-surface="project-pins" style={browseListStyle}>
             {pinnedItems.map((item) => (
-              <button key={item.id} type="button" onClick={() => selectProjectItem(item)} style={{ ...miniCardStyle, borderColor: selectedItemId === item.id ? 'var(--accent)' : 'var(--border)' }}>
-                {item.url ? <Link2 size={12} /> : <FileText size={12} />}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || 'Untitled'}</span>
+              <button key={item.id} type="button" onClick={() => selectProjectItem(item)} style={browseRowStyle(selectedItemId === item.id)}>
+                <span style={browseRowIconStyle}>{item.url ? <Link2 size={12} /> : <FileText size={12} />}</span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={browseRowTitleStyle}>{item.title || 'Untitled'}</span>
+                  <span style={browseRowDetailStyle}>{item.url || item.notes || 'Note'}</span>
+                </span>
+                <Pin size={12} fill="currentColor" style={{ color: 'var(--accent)', flexShrink: 0 }} />
               </button>
             ))}
           </div>
@@ -281,7 +303,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
 
       {!project.isDefault && <section style={{ width: '100%', maxWidth: 1120, margin: '0 auto' }} aria-labelledby="project-collections-heading">
         <h2 id="project-collections-heading" style={{ ...sectionHeadingStyle, marginBottom: 8 }}><Folder size={13} /> Collections</h2>
-        <div className="hide-scrollbar" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+        <div className="scrollbar" data-browse-surface="project-collections" style={browseListStyle}>
           <CollectionCard
             title="All items"
             count={items.length}
@@ -313,7 +335,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
               <h2 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650 }}>{project.isDefault ? 'Incoming' : selectedCollection?.name ?? 'All items'}</h2>
               <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{orderedItems.length} item{orderedItems.length !== 1 ? 's' : ''}</span>
             </div>
-            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Select to preview</span>
+            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Select to view or edit</span>
           </div>
           <div className="scrollbar" style={{ minHeight: 0, flex: 1, overflowY: 'auto' }}>
             {orderedItems.length === 0 ? (
@@ -334,6 +356,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                       <span style={{ display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{item.notes || 'Note'}</span>
                     )}
                   </span>
+                  <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} stopPropagation />
                   <button type="button" aria-label={pinned ? `Unpin ${item.title} from ${project.name}` : `Pin ${item.title} to ${project.name}`} title={pinned ? `Unpin from ${project.name}` : `Pin to ${project.name}`} disabled={!onUpdateItem || pinningItemId === item.id} onClick={(event) => { event.stopPropagation(); void toggleProjectPin(item); }} style={{ width: 26, height: 26, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 5, background: pinned ? 'var(--accent-weak)' : 'transparent', color: pinned ? 'var(--accent)' : 'var(--text-faint)', cursor: onUpdateItem ? 'pointer' : 'default' }}>
                     <Pin size={12} fill={pinned ? 'currentColor' : 'none'} />
                   </button>
@@ -347,7 +370,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           {selectedItem ? (
             <>
               <div style={panelHeaderStyle}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Preview</span>
+                <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Item</span>
                 {selectedItemSessionTab ? (
                   <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={primaryButtonStyle}>
                     <Maximize2 size={12} /> Focus
@@ -359,35 +382,26 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                 )}
               </div>
               <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <h2 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-lg)', lineHeight: 1.35 }}>{selectedItem.title || 'Untitled'}</h2>
-                    {selectedItem.url && <BookmarkUrlLink item={selectedItem} style={{ marginTop: 6 }} />}
-                  </div>
-                  <button type="button" disabled={!onUpdateItem || pinningItemId === selectedItem.id} onClick={() => void toggleProjectPin(selectedItem)} style={{ ...secondaryButtonStyle, flexShrink: 0 }}>
-                    <Pin size={12} fill={isItemPinnedToProject(selectedItem, project.id) ? 'currentColor' : 'none'} />
-                    {isItemPinnedToProject(selectedItem, project.id) ? 'Unpin' : 'Pin to project'}
-                  </button>
-                </div>
-                {selectedItem.notes ? (
-                  <div style={{ marginTop: 18, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{selectedItem.notes}</div>
-                ) : (
-                  <div style={{ marginTop: 18, padding: '16px', border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>No notes yet. Add this item to the active workspace when you want to keep working with it.</div>
-                )}
-                {selectedItem.tags.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 18 }}>
-                    {selectedItem.tags.map((tag) => <span key={tag} style={{ padding: '2px 6px', borderRadius: 999, background: 'var(--bg-hover)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>{tag}</span>)}
-                  </div>
-                )}
-                <div style={{ marginTop: 18, paddingTop: 12, borderTop: '1px solid var(--border)', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
-                  {collections.filter((collection) => selectedItem.collectionIds.includes(collection.id)).map((collection) => collection.name).join(' · ') || project.name}
-                </div>
+                <ItemWorkspace
+                  item={selectedItem}
+                  projects={organizationProjects ?? [project]}
+                  collections={organizationCollections ?? collections}
+                  onUpdateItem={onUpdateItem}
+                  onCreateProject={onCreateProject}
+                  onCreateCollection={onCreateCollection}
+                  trailingActions={
+                    <button type="button" disabled={!onUpdateItem || pinningItemId === selectedItem.id} onClick={() => void toggleProjectPin(selectedItem)} style={{ ...secondaryButtonStyle, flexShrink: 0 }}>
+                      <Pin size={12} fill={isItemPinnedToProject(selectedItem, project.id) ? 'currentColor' : 'none'} />
+                      {isItemPinnedToProject(selectedItem, project.id) ? 'Unpin' : 'Pin to project'}
+                    </button>
+                  }
+                />
               </div>
             </>
           ) : selectedSessionTab ? (
             <>
               <div style={panelHeaderStyle}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Workspace preview</span>
+                <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Workspace entry</span>
                 <button type="button" onClick={() => onFocusSession(selectedSessionTab.id)} style={primaryButtonStyle}>
                   <Maximize2 size={12} /> Focus
                 </button>
@@ -424,8 +438,8 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           ) : (
             <div style={{ flex: 1, minHeight: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 28, textAlign: 'center', color: 'var(--text-faint)' }}>
               <Layers3 size={24} />
-              <strong style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Select an item to preview</strong>
-              <span style={{ maxWidth: 270, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>Browse project material or choose something from the active workspace. Nothing leaves this page until you explicitly enter Focus.</span>
+              <strong style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Select an item</strong>
+              <span style={{ maxWidth: 270, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>View, edit, favorite, and organize project material here. Focus opens the same work on a larger canvas.</span>
             </div>
           )}
         </div>
@@ -435,23 +449,26 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
 };
 
 const CollectionCard: React.FC<{ title: string; count: number; active: boolean; onClick: () => void; sample: Item[]; color?: string }> = ({ title, count, active, onClick, sample, color }) => (
-  <button type="button" onClick={onClick} style={{ width: 190, minWidth: 190, minHeight: 92, padding: '10px 11px', border: '1px solid', borderColor: active ? 'var(--accent)' : 'var(--border)', borderRadius: 'var(--radius-md)', background: active ? 'var(--accent-weak)' : 'var(--bg-panel)', color: active ? 'var(--text)' : 'var(--text-muted)', textAlign: 'left', cursor: 'pointer', boxShadow: active ? '0 0 0 1px var(--accent-weak)' : 'var(--shadow-sm)' }}>
-    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-sm)', fontWeight: 650 }}>
-      <span style={{ width: 8, height: 8, borderRadius: 3, background: color || 'var(--accent)', flexShrink: 0 }} />
-      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{title}</span>
-      <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 500 }}>{count}</span>
+  <button type="button" onClick={onClick} style={browseRowStyle(active)}>
+    <span style={{ ...browseRowIconStyle, color: color || 'var(--accent)' }}><Folder size={12} /></span>
+    <span style={{ minWidth: 0, flex: 1 }}>
+      <span style={browseRowTitleStyle}>{title}</span>
+      <span style={browseRowDetailStyle}>
+        {sample.length > 0 ? sample.map((item) => item.title || 'Untitled').join(' · ') : 'No items yet'}
+      </span>
     </span>
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 8, color: 'var(--text-faint)', fontSize: 10 }}>
-      {sample.length > 0 ? sample.map((item) => <span key={item.id} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || 'Untitled'}</span>) : <span>No items yet</span>}
-    </span>
+    <span style={{ color: active ? 'var(--accent)' : 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>{count}</span>
   </button>
 );
 
 const panelStyle: React.CSSProperties = { height: 420, minHeight: 360, maxHeight: 420, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };
 const panelHeaderStyle: React.CSSProperties = { minHeight: 48, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)' };
 const sectionHeadingStyle: React.CSSProperties = { margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 650 };
-const miniCardStyle: React.CSSProperties = { minWidth: 155, maxWidth: 210, height: 34, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer', boxShadow: 'var(--shadow-sm)' };
+const browseListStyle: React.CSSProperties = { maxHeight: 190, overflowY: 'auto', overflowX: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };
+const browseRowStyle = (active: boolean): React.CSSProperties => ({ width: '100%', minHeight: 44, display: 'flex', alignItems: 'center', gap: 9, padding: '7px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: active ? 'var(--bg-active)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)', textAlign: 'left', cursor: 'pointer' });
+const browseRowIconStyle: React.CSSProperties = { width: 25, height: 25, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: 'var(--bg-hover)', color: 'inherit' };
+const browseRowTitleStyle: React.CSSProperties = { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 600 };
+const browseRowDetailStyle: React.CSSProperties = { display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' };
 const secondaryButtonStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 29, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' };
 const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
-const workspaceSwitchStyle = (active: boolean): React.CSSProperties => ({ minHeight: 28, display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, padding: '0 9px', border: '1px solid', borderColor: active ? 'var(--border-active)' : 'var(--border)', borderRadius: 999, background: active ? 'var(--accent-weak)' : 'var(--bg-panel)', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: active ? 650 : 550, cursor: 'pointer' });
 const sessionIconButtonStyle: React.CSSProperties = { width: 25, height: 25, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 5, background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };

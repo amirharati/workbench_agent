@@ -135,6 +135,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           c.primaryProjectId === scopeProjectId ||
           (Array.isArray(c.projectIds) && c.projectIds.includes(scopeProjectId))
       );
+  const scopeProjectIsInbox = projects.find((project) => project.id === scopeProjectId)?.isDefault === true;
 
   const handleAddProject = async (name: string) => {
     if (!onCreateProject) return;
@@ -161,6 +162,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
   const handleAddCollection = async (name: string, projectId: string) => {
     if (!onCreateCollection) return;
+    if (projects.find((project) => project.id === projectId)?.isDefault) {
+      setDialogError('Inbox uses its single Incoming collection.');
+      return;
+    }
     const createdId = await onCreateCollection({ name: name.trim(), projectId });
     if (typeof createdId === 'string') {
       onSelectCollectionScope(createdId, projectId);
@@ -196,6 +201,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       }
       await handleAddProject(name);
     } else if (dialog.type === 'create-collection') {
+      if (projects.find((project) => project.id === dialog.projectId)?.isDefault) {
+        setDialogError('Inbox uses its single Incoming collection.');
+        return;
+      }
       const name = dialogName.trim();
       if (!name) {
         setDialogError('Collection name is required.');
@@ -504,7 +513,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               }}
             >
               <span>Collections</span>
-              {onCreateCollection && (
+              {onCreateCollection && !scopeProjectIsInbox && (
                 <button
                   type="button"
                   onClick={(e) => {

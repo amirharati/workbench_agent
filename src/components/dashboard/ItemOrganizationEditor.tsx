@@ -100,6 +100,8 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
     return [...byId.values()];
   }, [projects, pendingProjects]);
 
+  const addProjectIsInbox = effectiveProjects.find((project) => project.id === addProjectId)?.isDefault === true;
+
   useEffect(() => {
     if (pendingCollections.length === 0) return;
     setPendingCollections((prev) => prev.filter((c) => !collections.some((x) => x.id === c.id)));
@@ -288,7 +290,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
 
   const createCollectionInline = async () => {
     const name = newCollectionName.trim();
-    if (!name || !addProjectId || !onCreateCollection || creatingCollection || !canMutate) return;
+    if (!name || !addProjectId || addProjectIsInbox || !onCreateCollection || creatingCollection || !canMutate) return;
     setError(null);
     setCreatingCollection(true);
     try {
@@ -493,7 +495,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Collection</span>
-                {onCreateCollection && canMutate ? (
+                {onCreateCollection && canMutate && !addProjectIsInbox ? (
                   <button
                     type="button"
                     onClick={() => setShowNewCollection((v) => !v)}
@@ -602,7 +604,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
             </div>
           ) : null}
 
-          {showNewCollection && onCreateCollection && canMutate ? (
+          {showNewCollection && onCreateCollection && canMutate && !addProjectIsInbox ? (
             <div style={{ display: 'flex', gap: 4 }}>
               <input
                 value={newCollectionName}

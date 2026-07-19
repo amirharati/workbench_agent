@@ -5,6 +5,7 @@ import {
   type EmbedBackfillProgress,
   type EmbedBackfillStats,
 } from '../../lib/enrichment/embedItemSignal';
+import { getPendingEmbeddingItemIds } from '../../lib/storage/dbClient';
 
 type Props = {
   onComplete?: () => void;
@@ -42,8 +43,18 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
 
       while (!cancelRef.current && rounds < maxRounds) {
         rounds++;
+        const itemIds = await getPendingEmbeddingItemIds(batchSize);
+        if (itemIds.length === 0) {
+          setMessage(
+            totalEmbedded > 0
+              ? `Done — embedded ${totalEmbedded} this run.`
+              : 'All enriched items already have embeddings.'
+          );
+          break;
+        }
         const summary = await embedIncrementalBatch({
-          max: batchSize,
+          itemIds,
+          max: itemIds.length,
           onProgress: setProgress,
         });
         totalEmbedded += summary.embedded;

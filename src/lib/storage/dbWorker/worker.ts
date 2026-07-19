@@ -88,6 +88,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'pauseAutoMirrorForDigest',
   'resumeAutoMirrorAfterDigest',
   'getSignalsByItemIds',
+  'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
 ]);
 
@@ -248,7 +249,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 2;
+      return 3;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -428,6 +429,12 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         if (row) out.push(row);
       }
       return out;
+    }
+    case 'getPendingEmbeddingItemIds': {
+      const requestedLimit = Number(args[0]);
+      const limit = Number.isFinite(requestedLimit) ? requestedLimit : 48;
+      const store = await getIdbCompatStore();
+      return store.getPendingEmbeddingItemIds(limit);
     }
     case 'getPipelineSeedRows': {
       const ids = [...new Set(Array.isArray(args[0]) ? (args[0] as string[]).filter(Boolean) : [])];

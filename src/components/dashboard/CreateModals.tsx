@@ -244,13 +244,13 @@ export const NewCollectionModal: React.FC<NewCollectionModalProps> = ({
   defaultProjectId,
   onCreate,
 }) => {
+  const eligibleProjects = useMemo(() => projects.filter((project) => !project.isDefault), [projects]);
   const initialProjectId = useMemo(() => {
-    if (defaultProjectId && projects.some((p) => p.id === defaultProjectId)) {
+    if (defaultProjectId && eligibleProjects.some((p) => p.id === defaultProjectId)) {
       return defaultProjectId;
     }
-    const def = projects.find((p) => p.isDefault);
-    return def?.id || projects[0]?.id || '';
-  }, [defaultProjectId, projects]);
+    return eligibleProjects[0]?.id || '';
+  }, [defaultProjectId, eligibleProjects]);
 
   const [name, setName] = useState('');
   const [projectId, setProjectId] = useState(initialProjectId);
@@ -319,11 +319,10 @@ export const NewCollectionModal: React.FC<NewCollectionModalProps> = ({
           onChange={(e) => setProjectId(e.target.value)}
           style={fieldStyle}
         >
-          {projects.length === 0 && <option value="">No projects available</option>}
-          {projects.map((p) => (
+          {eligibleProjects.length === 0 && <option value="">Create a project first</option>}
+          {eligibleProjects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
-              {p.isDefault ? ' (default)' : ''}
             </option>
           ))}
         </select>
@@ -446,6 +445,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
   if (!open) return null;
 
   const projectCollections = collectionsForProject(projectId);
+  const selectedProjectIsInbox = projects.find((project) => project.id === projectId)?.isDefault === true;
 
   const canSubmit = !!title.trim() && !!collectionId && !submitting;
 
@@ -468,7 +468,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   const createCollectionInline = async () => {
     const name = newCollectionName.trim();
-    if (!name || !projectId || !onCreateCollection || creatingCollection) return;
+    if (!name || !projectId || selectedProjectIsInbox || !onCreateCollection || creatingCollection) return;
     setError(null);
     setCreatingCollection(true);
     try {
@@ -676,7 +676,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
             <label style={{ ...labelStyle, marginBottom: 0 }} htmlFor="new-item-collection">
               Collection
             </label>
-            {onCreateCollection && (
+            {onCreateCollection && !selectedProjectIsInbox && (
               <button
                 type="button"
                 onClick={() => setShowNewCollectionInline((v) => !v)}
@@ -708,7 +708,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
               </option>
             ))}
           </select>
-          {showNewCollectionInline && onCreateCollection && (
+          {showNewCollectionInline && onCreateCollection && !selectedProjectIsInbox && (
             <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
               <input
                 value={newCollectionName}

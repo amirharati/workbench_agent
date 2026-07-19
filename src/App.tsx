@@ -26,6 +26,7 @@ import {
   type LibraryHydrateProgress,
 } from './lib/db';
 import { getActiveItems, isActiveItem, moveItemToTrash, formatRestoreSummary } from './lib/itemQuickAccess';
+import { INBOX_COLLECTION_LIMIT_MESSAGE } from './lib/systemDataModel';
 import {
   shouldUseLightLibraryRefresh,
   type LibraryRefreshScope,
@@ -777,6 +778,10 @@ function App() {
     const name = data.name.trim();
     if (!name) {
       showStatus('Collection name is required');
+      return;
+    }
+    if (projects.find((project) => project.id === data.projectId)?.isDefault) {
+      showStatus(INBOX_COLLECTION_LIMIT_MESSAGE);
       return;
     }
     const duplicate = collections.some((c) => {

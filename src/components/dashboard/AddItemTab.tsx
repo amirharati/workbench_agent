@@ -50,6 +50,7 @@ export const AddItemTab: React.FC<AddItemTabProps> = ({
       ),
     [collections, selectedProjectId]
   );
+  const selectedProjectIsInbox = projects.find((project) => project.id === selectedProjectId)?.isDefault === true;
 
   const [selectedCollectionId, setSelectedCollectionId] = useState(() => {
     if (defaultCollectionId && defaultCollectionId !== 'all') return defaultCollectionId;
@@ -90,7 +91,7 @@ export const AddItemTab: React.FC<AddItemTabProps> = ({
 
   const handleCreateCollectionInline = async () => {
     const name = newCollectionName.trim();
-    if (!name || !selectedProjectId || !onCreateCollection || creatingCollection) return;
+    if (!name || !selectedProjectId || selectedProjectIsInbox || !onCreateCollection || creatingCollection) return;
     setError(null);
     setCreatingCollection(true);
     try {
@@ -246,7 +247,7 @@ export const AddItemTab: React.FC<AddItemTabProps> = ({
                   </option>
                 ))}
               </select>
-              {onCreateCollection && selectedProjectId && (
+              {onCreateCollection && selectedProjectId && !selectedProjectIsInbox && (
                 <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                   <input
                     value={newCollectionName}

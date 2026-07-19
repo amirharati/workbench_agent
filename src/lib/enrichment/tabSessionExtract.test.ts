@@ -1,51 +1,61 @@
+import { describe, expect, it } from 'vitest';
+import { shouldUseEphemeralTab } from './tabSessionExtract';
 import { sharedAuthSessionPathPrefix, urlsMatchForTabSession } from './tabSessionMatch';
 
-function assert(condition: boolean, label: string): void {
-  if (!condition) throw new Error(label);
-}
+describe('tab-session URL matching', () => {
+  it('matches equivalent Udemy lecture URLs', () => {
+    expect(
+      urlsMatchForTabSession(
+        'https://www.udemy.com/course/my-course/learn/lecture/12345',
+        'https://udemy.com/course/my-course/learn/lecture/12345/'
+      )
+    ).toBe(true);
+  });
 
-function runTests(): void {
-  assert(
-    urlsMatchForTabSession(
-      'https://www.udemy.com/course/my-course/learn/lecture/12345',
-      'https://udemy.com/course/my-course/learn/lecture/12345/'
-    ),
-    'identical Udemy lecture URLs should match'
-  );
+  it('allows a shared authenticated Udemy course path', () => {
+    expect(
+      sharedAuthSessionPathPrefix(
+        'https://www.udemy.com/course/python-bootcamp/learn/lecture/111111',
+        'https://www.udemy.com/course/python-bootcamp/'
+      )
+    ).toBe(true);
+  });
 
-  assert(
-    sharedAuthSessionPathPrefix(
-      'https://www.udemy.com/course/python-bootcamp/learn/lecture/111111',
-      'https://www.udemy.com/course/python-bootcamp/'
-    ),
-    'Udemy course landing and lecture should Tier-B match'
-  );
+  it('does not match unrelated GitHub paths', () => {
+    expect(
+      sharedAuthSessionPathPrefix(
+        'https://github.com/org/repo',
+        'https://github.com/settings/profile'
+      )
+    ).toBe(false);
+  });
 
-  assert(
-    !sharedAuthSessionPathPrefix(
-      'https://github.com/org/repo',
-      'https://github.com/settings/profile'
-    ),
-    'unrelated GitHub paths must not Tier-B match'
-  );
+  it('keeps Reddit thread and Google document matching behavior', () => {
+    expect(
+      urlsMatchForTabSession(
+        'https://www.reddit.com/r/machinelearning/comments/abc123/post/',
+        'https://reddit.com/r/machinelearning/comments/abc123/post'
+      )
+    ).toBe(true);
+    expect(
+      urlsMatchForTabSession(
+        'https://docs.google.com/document/d/ABC123/edit',
+        'https://docs.google.com/document/d/ABC123/'
+      )
+    ).toBe(true);
+  });
+});
 
-  assert(
-    urlsMatchForTabSession(
-      'https://www.reddit.com/r/machinelearning/comments/abc123/post/',
-      'https://reddit.com/r/machinelearning/comments/abc123/post'
-    ),
-    'Reddit thread path should keep existing match behavior'
-  );
+describe('ephemeral browser-tab policy', () => {
+  it('does not create hidden tabs for ordinary public pages', () => {
+    expect(shouldUseEphemeralTab('https://www.apartmentguide.com/')).toBe(false);
+    expect(shouldUseEphemeralTab('https://www.dell.com/')).toBe(false);
+    expect(shouldUseEphemeralTab('https://www.kadenze.com/')).toBe(false);
+  });
 
-  assert(
-    urlsMatchForTabSession(
-      'https://docs.google.com/document/d/ABC123/edit',
-      'https://docs.google.com/document/d/ABC123/'
-    ),
-    'Google docs with same id should match'
-  );
-
-  console.log('tabSessionExtract.test.ts: all tests passed');
-}
-
-runTests();
+  it('retains the fallback for sources that require a browser session', () => {
+    expect(shouldUseEphemeralTab('https://www.reddit.com/r/typescript/')).toBe(true);
+    expect(shouldUseEphemeralTab('https://docs.google.com/document/d/example/edit')).toBe(true);
+    expect(shouldUseEphemeralTab('https://mail.google.com/mail/u/0/')).toBe(true);
+  });
+});

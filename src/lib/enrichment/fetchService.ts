@@ -47,7 +47,13 @@ import { jinaProvider } from './providers/jina';
 import { noopProvider } from './providers/noop';
 import type { FetchProvider, FetchProviderResult } from './providers/types';
 import { timedAbortSignal } from './fetchAbort';
-import { fetchFromOpenTab, findTabForUrl, openEphemeralTabAndExtract, resolveTabSessionForUrl } from './tabSessionExtract';
+import {
+  fetchFromOpenTab,
+  findTabForUrl,
+  openEphemeralTabAndExtract,
+  resolveTabSessionForUrl,
+  shouldUseEphemeralTab,
+} from './tabSessionExtract';
 import { prefersBrowserTabFirst, skipHeadlessAfterTabMiss } from './urlPolicy';
 import {
   parseFetchedContent,
@@ -581,6 +587,12 @@ async function resolveItemFetch(
       options?.tabSessionOnly ||
       options?.preferTabSession ||
       prefersBrowserTabFirst(item.url);
+    // Generic public URLs may reuse an already-open matching tab, but must not
+    // silently create a real background tab after a headless miss. Besides
+    // being distracting, loading the full site emits its own console warnings.
+    const allowEphemeralTab = Boolean(
+      options?.tabSessionOnly || options?.preferTabSession || shouldUseEphemeralTab(item.url)
+    );
     const tabFirst =
       wantsTab &&
       !options?.tabSessionOnly &&
@@ -671,7 +683,7 @@ async function resolveItemFetch(
       return headless;
     }
 
-    const tabRetry = await runTabFetch(true);
+    const tabRetry = await runTabFetch(allowEphemeralTab);
     debug?.phase(
       'tab_retry',
       !!tabRetry.result?.ok,

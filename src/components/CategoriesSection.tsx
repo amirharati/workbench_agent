@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Plus, Folder, Trash2 } from 'lucide-react';
-import { Collection, Item, addCollection, deleteCollection as deleteCollectionDB } from '../lib/db';
+import React from 'react';
+import { Folder, Trash2 } from 'lucide-react';
+import { Collection, Item, deleteCollection as deleteCollectionDB } from '../lib/db';
 import { ItemCard } from './ItemCard';
 
 interface CategoriesSectionProps {
@@ -16,9 +16,6 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
   onDeleteItem,
   onRefresh,
 }) => {
-  const [newCollectionName, setNewCollectionName] = useState('');
-  const [showAddForm, setShowAddForm] = useState(false);
-
   // Group items by collection
   const unsortedCollectionIds = new Set(collections.filter((c) => c.isDefault).map((c) => c.id));
   const unsortedItems = items.filter((item) => {
@@ -31,15 +28,6 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
     items: items.filter((item) => (item.collectionIds || []).includes(col.id)),
   }));
 
-  const handleAddCollection = async () => {
-    if (newCollectionName.trim()) {
-      await addCollection(newCollectionName.trim());
-      setNewCollectionName('');
-      setShowAddForm(false);
-      onRefresh();
-    }
-  };
-
   const handleDeleteCollection = async (id: string) => {
     await deleteCollectionDB(id);
     onRefresh();
@@ -49,58 +37,7 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
         <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#1f2937' }}>Categories</h2>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          style={{
-            padding: '0.375rem 0.75rem',
-            background: '#eff6ff',
-            color: '#2563eb',
-            border: 'none',
-            borderRadius: '0.375rem',
-            cursor: 'pointer',
-            fontSize: '0.75rem',
-            fontWeight: 500,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.25rem',
-          }}
-        >
-          <Plus size={14} /> New
-        </button>
       </div>
-
-      {showAddForm && (
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-          <input
-            type="text"
-            placeholder="Category name..."
-            value={newCollectionName}
-            onChange={(e) => setNewCollectionName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddCollection()}
-            style={{
-              flex: 1,
-              padding: '0.5rem',
-              border: '1px solid #d1d5db',
-              borderRadius: '0.375rem',
-              fontSize: '0.875rem',
-            }}
-          />
-          <button
-            onClick={handleAddCollection}
-            style={{
-              padding: '0.5rem 1rem',
-              background: '#2563eb',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.375rem',
-              cursor: 'pointer',
-              fontSize: '0.875rem',
-            }}
-          >
-            Add
-          </button>
-        </div>
-      )}
 
       {/* Unsorted / Draft */}
       <div

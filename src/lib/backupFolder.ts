@@ -323,6 +323,19 @@ export async function getBackupFolderName(): Promise<string | null> {
 
 // --- low-level read/write ---------------------------------------------------
 
+/** Preserve useful DOMException details; String(DOMException) may be only "[object DOMException]". */
+export function formatBackupFolderError(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const candidate = error as { name?: unknown; message?: unknown };
+    const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
+    const message = typeof candidate.message === 'string' ? candidate.message.trim() : '';
+    if (name && message) return `${name}: ${message}`;
+    if (name) return name;
+    if (message) return message;
+  }
+  return typeof error === 'string' ? error : String(error);
+}
+
 async function ensureReadWritePermission(
   handle: FileSystemDirectoryHandle
 ): Promise<{ ok: boolean; error?: string }> {
@@ -363,7 +376,7 @@ async function readBinaryWithHandle(
     if (e instanceof DOMException && e.name === 'NotFoundError') {
       return { ok: false, notFound: true };
     }
-    return { ok: false, error: String(e) };
+    return { ok: false, error: formatBackupFolderError(e) };
   }
 }
 
@@ -380,7 +393,7 @@ async function readJsonWithHandle(
     if (e instanceof DOMException && e.name === 'NotFoundError') {
       return { ok: false, notFound: true };
     }
-    return { ok: false, error: String(e) };
+    return { ok: false, error: formatBackupFolderError(e) };
   }
 }
 
@@ -396,7 +409,7 @@ async function writeJsonWithHandle(
     await writable.close();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String(e) };
+    return { ok: false, error: formatBackupFolderError(e) };
   }
 }
 
@@ -418,7 +431,7 @@ async function writeBinaryWithHandle(
     await writable.close();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String(e) };
+    return { ok: false, error: formatBackupFolderError(e) };
   }
 }
 
@@ -450,7 +463,7 @@ async function replaceFileAtomically(
   try {
     await removeEntryIfExists(handle, tmpFilename);
   } catch (e) {
-    return { ok: false, error: String(e) };
+    return { ok: false, error: formatBackupFolderError(e) };
   }
 
   const tmpRes = await writeTemp(tmpFilename);
@@ -458,6 +471,7 @@ async function replaceFileAtomically(
 
   try {
     const tmpHandle = await handle.getFileHandle(tmpFilename);
+    let moveFailure: string | undefined;
     const moveFn = (tmpHandle as FileSystemFileHandle & { move?: (name: string) => Promise<void> })
       .move;
     if (typeof moveFn === 'function') {
@@ -468,10 +482,7 @@ async function replaceFileAtomically(
       } catch (moveErr) {
         // Chrome move() can fail on some folders (sync/cloud locks). Fall back to
         // copy-over so live sync is not stuck with a leftover *.tmp.
-        console.warn(
-          `[backupFolder] atomic move failed for ${filename}, falling back to copy:`,
-          moveErr
-        );
+        moveFailure = formatBackupFolderError(moveErr);
       }
     }
 
@@ -490,15 +501,28 @@ async function replaceFileAtomically(
     }
 
     const finalRes = await finalizeFromTemp(finalizeHandle, tmpFilename);
-    if (!finalRes.ok) return finalRes;
+    if (!finalRes.ok) {
+      const copyFailure = finalRes.error ?? 'unknown copy error';
+      return {
+        ok: false,
+        error: moveFailure
+          ? `Could not replace ${filename}: move failed (${moveFailure}); copy fallback failed (${copyFailure})`
+          : copyFailure,
+      };
+    }
     try {
       await removeEntryIfExists(handle, tmpFilename);
     } catch {
       /* best-effort cleanup */
     }
+    if (moveFailure) {
+      console.debug(
+        `[backupFolder] ${filename} replaced using copy fallback (${moveFailure})`
+      );
+    }
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String(e) };
+    return { ok: false, error: formatBackupFolderError(e) };
   }
 }
 
@@ -726,7 +750,7 @@ export async function deleteFileFromBackupFolder(
     await handle.removeEntry(filename);
     return { ok: true };
   } catch (e) {
-    const msg = String(e);
+    const msg = formatBackupFolderError(e);
     if (msg.includes('not found') || msg.includes('NotFoundError')) {
       return { ok: true, notFound: true };
     }
@@ -799,6 +823,6 @@ export async function pickAndPersistBackupFolder(): Promise<PickBackupFolderResu
     if (e instanceof DOMException && e.name === 'AbortError') {
       return { ok: false, error: 'cancelled' };
     }
-    return { ok: false, error: String(e) };
+    return { ok: false, error: formatBackupFolderError(e) };
   }
 }
