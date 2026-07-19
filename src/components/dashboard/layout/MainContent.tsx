@@ -2372,6 +2372,9 @@ export const MainContent: React.FC<MainContentProps> = ({
           overflow: activeView === 'home' ? 'hidden' : 'auto',
           display: activeView === 'home' ? 'flex' : 'block',
           flexDirection: 'column',
+          boxSizing: 'border-box',
+          paddingBottom: activeView === 'home' ? 0 : 20,
+          scrollPaddingBottom: activeView === 'home' ? 0 : 20,
         }}
       >
         {renderContent()}

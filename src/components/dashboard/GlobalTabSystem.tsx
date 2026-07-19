@@ -123,6 +123,15 @@ export function pruneGlobalTabs(
 
 export type GlobalTab = GlobalTabItem | GlobalTabSearch | GlobalTabUrl | GlobalTabList;
 
+/** A named Homebase working set. Its generic entries live in workspaceSessionSnapshots. */
+export interface SavedWorkspaceSession {
+  id: string;
+  name: string;
+  projectId: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export function getGlobalTabProjectId(tab: GlobalTab): string | 'all' {
   return tab.scopeProjectId?.trim() || 'all';
 }
@@ -153,6 +162,8 @@ export interface GlobalTabState {
   activeWorkspaceKeyByProject?: Record<string, string>;
   /** Auto-saved live tab sets for inactive project/saved workspaces. */
   workspaceSessionSnapshots?: Record<string, GlobalTab[]>;
+  /** User-created Homebase workspaces; unlike browser workspaces these can contain every GlobalTab kind. */
+  savedWorkspaceSessions?: SavedWorkspaceSession[];
 }
 
 export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
@@ -168,6 +179,7 @@ export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
   includeGlobalWorkByProject: {},
   activeWorkspaceKeyByProject: {},
   workspaceSessionSnapshots: {},
+  savedWorkspaceSessions: [],
 };
 
 const LS_KEY = 'workbench-global-tabs';
@@ -214,6 +226,18 @@ export function loadGlobalTabState(): GlobalTabState {
         .filter(([, snapshotTabs]) => Array.isArray(snapshotTabs))
         .map(([key, snapshotTabs]) => [key, normalizeGlobalTabs(snapshotTabs as unknown[])])
     );
+    const savedWorkspaceSessions = Array.isArray(parsed.savedWorkspaceSessions)
+      ? parsed.savedWorkspaceSessions.filter(
+          (session): session is SavedWorkspaceSession =>
+            session != null &&
+            typeof session === 'object' &&
+            typeof session.id === 'string' &&
+            typeof session.name === 'string' &&
+            typeof session.projectId === 'string' &&
+            typeof session.createdAt === 'number' &&
+            typeof session.updatedAt === 'number'
+        )
+      : [];
     const activeTabId =
       parsed.activeTabId && tabs.some((t) => t.id === parsed.activeTabId)
         ? parsed.activeTabId
@@ -240,6 +264,7 @@ export function loadGlobalTabState(): GlobalTabState {
           ? parsed.activeWorkspaceKeyByProject
           : {},
       workspaceSessionSnapshots,
+      savedWorkspaceSessions,
     };
   } catch {
     return GLOBAL_TAB_STATE_DEFAULT;
@@ -1195,7 +1220,8 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
-                padding: '16px 20px',
+                padding: '16px 20px 32px',
+                scrollPaddingBottom: 32,
                 background: 'var(--bg)',
               }}
               className="reading-content"
@@ -1236,7 +1262,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             </div>
           ) : (
           <TabScrollShell
-            style={{ padding: '16px 20px', background: 'var(--bg)' }}
+            style={{ padding: '16px 20px 32px', scrollPaddingBottom: 32, background: 'var(--bg)' }}
             className="scrollbar reading-content"
           >
             <div

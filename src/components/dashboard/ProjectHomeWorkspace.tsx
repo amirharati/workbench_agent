@@ -1,17 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ExternalLink, FileText, Folder, Globe2, Layers3, Link2, Maximize2, Pin, Plus, Search, X } from 'lucide-react';
+import { ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Globe2, Layers3, Link2, Maximize2, MoveRight, Pin, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemFavoriteButton } from './ItemFavoriteButton';
 import { ItemWorkspace } from './ItemWorkspace';
-import type { GlobalTab } from './GlobalTabSystem';
+import type { GlobalTab, SavedWorkspaceSession } from './GlobalTabSystem';
 import {
   getProjectPinTimestamp,
   isItemPinnedToProject,
   sortItemsWithProjectPins,
   updateProjectPinMetadata,
 } from './projectPins';
-import { getProjectSessionWorkspaceKey, getSavedWorkspaceSessionKey } from './workspaceSession';
+import { getHomebaseWorkspaceSessionKey, getProjectSessionWorkspaceKey, getSavedWorkspaceSessionKey } from './workspaceSession';
 
 interface ProjectHomeWorkspaceProps {
   project: Project;
@@ -28,8 +28,19 @@ interface ProjectHomeWorkspaceProps {
   onFocusSession: (tabId?: string) => void;
   onOpenSearch: () => void;
   workspaces: Workspace[];
+  savedWorkspaceSessions: SavedWorkspaceSession[];
   activeWorkspaceKey: string;
   onActivateWorkspace: (workspace: Workspace | null) => void;
+  onActivateSavedWorkspace: (session: SavedWorkspaceSession) => void;
+  onSaveWorkspace: (name: string) => string | void;
+  onDeleteSavedWorkspace: (sessionId: string) => void;
+  workspaceDestinations: Array<{ key: string; label: string }>;
+  onAddItemToWorkspace: (item: Item, targetWorkspaceKey: string) => void;
+  onTransferSessionEntry: (
+    entry: GlobalTab,
+    targetWorkspaceKey: string,
+    mode: 'copy' | 'move'
+  ) => void;
   onSelectedItemChange?: (item: Item | null) => void;
   onSelectSessionEntry?: (tab: GlobalTab) => void;
   includeGlobalWork?: boolean;
@@ -58,8 +69,15 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   onFocusSession,
   onOpenSearch,
   workspaces,
+  savedWorkspaceSessions,
   activeWorkspaceKey,
   onActivateWorkspace,
+  onActivateSavedWorkspace,
+  onSaveWorkspace,
+  onDeleteSavedWorkspace,
+  workspaceDestinations,
+  onAddItemToWorkspace,
+  onTransferSessionEntry,
   onSelectedItemChange,
   onSelectSessionEntry,
   includeGlobalWork = false,
@@ -71,6 +89,12 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedSessionTabId, setSelectedSessionTabId] = useState<string | null>(null);
   const [pinningItemId, setPinningItemId] = useState<string | null>(null);
+  const [showSaveWorkspace, setShowSaveWorkspace] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState('');
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [itemTargetWorkspaceKey, setItemTargetWorkspaceKey] = useState('');
+  const [transferEntryId, setTransferEntryId] = useState<string | null>(null);
+  const [transferTargetWorkspaceKey, setTransferTargetWorkspaceKey] = useState('');
 
   const filteredItems = useMemo(
     () =>
@@ -99,8 +123,26 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const selectedItemSessionTab = selectedItem
     ? sessionTabs.find((tab) => tab.kind === 'item' && tab.itemId === selectedItem.id)
     : undefined;
+  const workspaceBrowserUrls = useMemo(() => {
+    const urls = sessionTabs.flatMap((tab) => {
+      if (tab.kind === 'url') return [tab.url];
+      if (tab.kind === 'item') {
+        const url = items.find((item) => item.id === tab.itemId)?.url;
+        return url ? [url] : [];
+      }
+      return [];
+    });
+    return [...new Set(urls.filter((url) => /^(https?:\/\/|file:\/\/)/i.test(url)))];
+  }, [items, sessionTabs]);
   const activeWorkspace = workspaces.find(
     (workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeWorkspaceKey
+  );
+  const activeSavedWorkspace = savedWorkspaceSessions.find(
+    (session) => getHomebaseWorkspaceSessionKey(session.id) === activeWorkspaceKey
+  );
+  const hasWorkspaceChoices = savedWorkspaceSessions.length > 0 || workspaces.length > 0;
+  const transferDestinations = workspaceDestinations.filter(
+    (destination) => destination.key !== activeWorkspaceKey
   );
   const selectedCollection =
     selectedCollectionId === 'all'
@@ -109,8 +151,59 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
 
   useEffect(() => {
     setSelectedItemId(null);
+    setShowSaveWorkspace(false);
+    setWorkspaceName('');
+    setWorkspaceError(null);
     onSelectedItemChange?.(null);
   }, [project.id, selectedCollectionId, onSelectedItemChange]);
+
+  useEffect(() => {
+    if (!workspaceDestinations.some((destination) => destination.key === itemTargetWorkspaceKey)) {
+      setItemTargetWorkspaceKey(
+        workspaceDestinations.find((destination) => destination.key !== activeWorkspaceKey)?.key
+          ?? workspaceDestinations[0]?.key
+          ?? ''
+      );
+    }
+  }, [activeWorkspaceKey, itemTargetWorkspaceKey, workspaceDestinations]);
+
+  useEffect(() => {
+    if (!transferDestinations.some((destination) => destination.key === transferTargetWorkspaceKey)) {
+      setTransferTargetWorkspaceKey(transferDestinations[0]?.key ?? '');
+    }
+  }, [transferDestinations, transferTargetWorkspaceKey]);
+
+  const saveWorkspace = () => {
+    const name = workspaceName.trim();
+    if (!name) {
+      setWorkspaceError('Workspace name is required.');
+      return;
+    }
+    const error = onSaveWorkspace(name);
+    if (error) {
+      setWorkspaceError(error);
+      return;
+    }
+    setShowSaveWorkspace(false);
+    setWorkspaceName('');
+    setWorkspaceError(null);
+  };
+
+  const openWorkspaceInBrowser = () => {
+    if (workspaceBrowserUrls.length === 0) return;
+    if (typeof chrome !== 'undefined' && chrome.windows?.create) {
+      void chrome.windows.create({ url: workspaceBrowserUrls });
+      return;
+    }
+    for (const url of workspaceBrowserUrls) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const transferEntry = (entry: GlobalTab, mode: 'copy' | 'move') => {
+    if (!transferTargetWorkspaceKey) return;
+    onTransferSessionEntry(entry, transferTargetWorkspaceKey, mode);
+    setTransferEntryId(null);
+    if (mode === 'move') setSelectedSessionTabId(null);
+  };
 
   useEffect(() => {
     setSelectedSessionTabId(null);
@@ -160,7 +253,8 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         minHeight: 0,
         overflowY: 'auto',
         overflowX: 'hidden',
-        padding: '24px',
+        padding: '24px 24px 72px',
+        scrollPaddingBottom: 72,
         display: 'flex',
         flexDirection: 'column',
         gap: 20,
@@ -193,25 +287,70 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <p style={{ margin: '4px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Switch working sets here. The workspace you leave is preserved automatically.</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" onClick={() => { setShowSaveWorkspace((visible) => !visible); setWorkspaceError(null); }} style={secondaryButtonStyle}>
+              <Save size={12} /> Save as workspace
+            </button>
             {onToggleIncludeGlobalWork && (
               <button type="button" onClick={onToggleIncludeGlobalWork} aria-pressed={includeGlobalWork} style={{ ...secondaryButtonStyle, borderColor: includeGlobalWork ? 'var(--border-active)' : 'var(--border)', background: includeGlobalWork ? 'var(--accent-weak)' : 'transparent', color: includeGlobalWork ? 'var(--accent)' : 'var(--text-muted)' }}>
                 <Globe2 size={12} /> {includeGlobalWork ? 'Including global' : 'Include global work'}
               </button>
             )}
+            <button type="button" disabled={workspaceBrowserUrls.length === 0} onClick={openWorkspaceInBrowser} title={workspaceBrowserUrls.length === 0 ? 'This workspace has no browser links' : `Open ${workspaceBrowserUrls.length} link${workspaceBrowserUrls.length !== 1 ? 's' : ''} in a new browser window`} style={{ ...secondaryButtonStyle, opacity: workspaceBrowserUrls.length === 0 ? 0.45 : 1, cursor: workspaceBrowserUrls.length === 0 ? 'default' : 'pointer' }}>
+              <ExternalLink size={12} /> Open links
+            </button>
             <button type="button" disabled={sessionTabs.length === 0} onClick={() => onFocusSession(selectedSessionTab?.id)} style={{ ...primaryButtonStyle, opacity: sessionTabs.length === 0 ? 0.45 : 1, cursor: sessionTabs.length === 0 ? 'default' : 'pointer' }}>
               <Maximize2 size={12} /> Focus workspace
             </button>
           </div>
         </div>
-        <div className="scrollbar" data-browse-surface="project-workspaces" style={{ ...browseListStyle, marginBottom: 9 }} aria-label="Project workspaces">
+        {showSaveWorkspace && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginBottom: 9, padding: 9, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <input
+                autoFocus
+                value={workspaceName}
+                onChange={(event) => { setWorkspaceName(event.target.value); setWorkspaceError(null); }}
+                onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); saveWorkspace(); } }}
+                placeholder="Workspace name"
+                aria-label="Workspace name"
+                style={{ width: '100%', height: 31, padding: '0 9px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-sm)' }}
+              />
+              {workspaceError && <div role="alert" style={{ marginTop: 5, color: 'var(--danger, #ef4444)', fontSize: 'var(--text-xs)' }}>{workspaceError}</div>}
+            </div>
+            <button type="button" onClick={saveWorkspace} disabled={!workspaceName.trim()} style={{ ...primaryButtonStyle, opacity: workspaceName.trim() ? 1 : 0.5 }}>
+              Save
+            </button>
+            <button type="button" onClick={() => { setShowSaveWorkspace(false); setWorkspaceName(''); setWorkspaceError(null); }} aria-label="Cancel saving workspace" style={sessionIconButtonStyle}>
+              <X size={13} />
+            </button>
+          </div>
+        )}
+        {hasWorkspaceChoices && <div className="scrollbar" data-browse-surface="project-workspaces" style={{ ...browseListStyle, marginBottom: 9 }} aria-label="Project workspaces">
           <button type="button" onClick={() => onActivateWorkspace(null)} style={browseRowStyle(activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id))}>
             <span style={browseRowIconStyle}><Layers3 size={12} /></span>
             <span style={{ minWidth: 0, flex: 1 }}>
-              <span style={browseRowTitleStyle}>Project session</span>
-              <span style={browseRowDetailStyle}>Current working set for {project.name}</span>
+              <span style={browseRowTitleStyle}>Live session</span>
+              <span style={browseRowDetailStyle}>Project scratch workspace</span>
             </span>
             {activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id) && <Check size={13} />}
           </button>
+          {savedWorkspaceSessions.map((session) => {
+            const active = activeWorkspaceKey === getHomebaseWorkspaceSessionKey(session.id);
+            const savedCount = active
+              ? sessionTabs.length
+              : 0;
+            return (
+              <div key={session.id} role="button" tabIndex={0} onClick={() => onActivateSavedWorkspace(session)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onActivateSavedWorkspace(session); } }} title={`Activate ${session.name}`} style={{ ...browseRowStyle(active), display: 'flex' }}>
+                <span style={browseRowIconStyle}><Layers3 size={12} /></span>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={browseRowTitleStyle}>{session.name}</span>
+                  <span style={browseRowDetailStyle}>{active ? `${savedCount} active item${savedCount !== 1 ? 's' : ''}` : 'Homebase workspace'}</span>
+                </span>
+                {active && <Check size={13} />}
+                <button type="button" onClick={(event) => { event.stopPropagation(); if (window.confirm(`Delete workspace “${session.name}”?`)) onDeleteSavedWorkspace(session.id); }} title={`Delete ${session.name}`} aria-label={`Delete ${session.name}`} style={sessionIconButtonStyle}><Trash2 size={11} /></button>
+              </div>
+            );
+          })}
           {workspaces.map((workspace) => {
             const active = activeWorkspaceKey === getSavedWorkspaceSessionKey(workspace.id);
             return (
@@ -219,17 +358,17 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                 <span style={browseRowIconStyle}><Layers3 size={12} /></span>
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={browseRowTitleStyle}>{workspace.name}</span>
-                  <span style={browseRowDetailStyle}>{workspace.windows.length} window{workspace.windows.length !== 1 ? 's' : ''}</span>
+                <span style={browseRowDetailStyle}>Browser workspace · {workspace.windows.length} window{workspace.windows.length !== 1 ? 's' : ''}</span>
                 </span>
                 {active && <Check size={13} />}
               </button>
             );
           })}
-        </div>
+        </div>}
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }}>
           <div style={{ minHeight: 39, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '7px 11px', borderBottom: sessionTabs.length > 0 ? '1px solid var(--border)' : 'none' }}>
             <span style={{ minWidth: 0, color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {activeWorkspace?.name ?? 'Project session'}
+              {activeSavedWorkspace?.name ?? activeWorkspace?.name ?? 'Live session'}
             </span>
             <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{sessionTabs.length} item{sessionTabs.length !== 1 ? 's' : ''}</span>
           </div>
@@ -249,8 +388,10 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                   : undefined;
                 const detail = tab.kind === 'url' ? tab.url : tab.kind === 'search' ? `Search · ${searchScope}` : tab.kind === 'list' ? 'List' : item?.url || 'Note';
                 const selected = selectedSessionTabId === tab.id;
+                const transferable = tab.scopeProjectId === project.id;
                 return (
-                  <div key={tab.id} role="button" tabIndex={0} onClick={() => selectSessionTab(tab)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectSessionTab(tab); } }} style={{ minHeight: 42, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 11px', borderBottom: '1px solid var(--border)', background: selected ? 'var(--bg-active)' : 'transparent', cursor: 'pointer' }}>
+                  <React.Fragment key={tab.id}>
+                  <div role="button" tabIndex={0} onClick={() => selectSessionTab(tab)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectSessionTab(tab); } }} style={{ minHeight: 42, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 11px', borderBottom: '1px solid var(--border)', background: selected ? 'var(--bg-active)' : 'transparent', cursor: 'pointer' }}>
                     <span style={{ width: 24, height: 24, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, background: 'var(--bg-hover)', color: selected ? 'var(--accent)' : 'var(--text-faint)' }}>
                       {tab.kind === 'search' ? <Search size={11} /> : tab.kind === 'url' ? <ExternalLink size={11} /> : item?.url ? <Link2 size={11} /> : <FileText size={11} />}
                     </span>
@@ -271,8 +412,19 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                       )}
                     </span>
                     <button type="button" onClick={(event) => { event.stopPropagation(); onFocusSession(tab.id); }} title={`Focus ${label}`} aria-label={`Focus ${label}`} style={sessionIconButtonStyle}><Maximize2 size={11} /></button>
+                    {transferable && transferDestinations.length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); setTransferEntryId((current) => current === tab.id ? null : tab.id); setTransferTargetWorkspaceKey(transferDestinations[0]?.key ?? ''); }} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
                     <button type="button" onClick={(event) => { event.stopPropagation(); if (selectedSessionTabId === tab.id) setSelectedSessionTabId(null); onRemoveSessionTab(tab.id); }} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={sessionIconButtonStyle}><X size={12} /></button>
                   </div>
+                  {transferable && transferEntryId === tab.id && transferDestinations.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px 7px 42px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
+                      <select value={transferTargetWorkspaceKey} onChange={(event) => setTransferTargetWorkspaceKey(event.target.value)} onClick={(event) => event.stopPropagation()} aria-label={`Destination for ${label}`} style={destinationSelectStyle}>
+                        {transferDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
+                      </select>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); transferEntry(tab, 'copy'); }} disabled={!transferTargetWorkspaceKey} style={secondaryButtonStyle}><Copy size={11} /> Copy</button>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); transferEntry(tab, 'move'); }} disabled={!transferTargetWorkspaceKey} style={secondaryButtonStyle}><MoveRight size={11} /> Move</button>
+                    </div>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </div>
@@ -328,7 +480,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         </div>
       </section>}
 
-      <section style={{ width: '100%', maxWidth: 1120, margin: '0 auto', minHeight: 360, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14, alignItems: 'stretch' }}>
+      <section data-project-page-footer-content style={{ width: '100%', maxWidth: 1120, margin: '0 auto 64px', minHeight: 360, flexShrink: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14, alignItems: 'stretch' }}>
         <div style={panelStyle}>
           <div style={panelHeaderStyle}>
             <div>
@@ -371,15 +523,19 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <>
               <div style={panelHeaderStyle}>
                 <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Item</span>
-                {selectedItemSessionTab ? (
-                  <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={primaryButtonStyle}>
-                    <Maximize2 size={12} /> Focus
-                  </button>
-                ) : (
-                  <button type="button" onClick={() => onAddItemToSession(selectedItem)} style={primaryButtonStyle}>
-                    <Plus size={12} /> Add to workspace
-                  </button>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {selectedItemSessionTab && <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={secondaryButtonStyle}><Maximize2 size={12} /> Focus</button>}
+                  {workspaceDestinations.length > 1 ? (
+                    <>
+                      <select value={itemTargetWorkspaceKey} onChange={(event) => setItemTargetWorkspaceKey(event.target.value)} aria-label={`Workspace for ${selectedItem.title || 'item'}`} style={destinationSelectStyle}>
+                        {workspaceDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}{destination.key === activeWorkspaceKey ? ' (current)' : ''}</option>)}
+                      </select>
+                      <button type="button" onClick={() => onAddItemToWorkspace(selectedItem, itemTargetWorkspaceKey)} disabled={!itemTargetWorkspaceKey} style={primaryButtonStyle}><Plus size={12} /> Add</button>
+                    </>
+                  ) : !selectedItemSessionTab ? (
+                    <button type="button" onClick={() => onAddItemToSession(selectedItem)} style={primaryButtonStyle}><Plus size={12} /> Add to workspace</button>
+                  ) : null}
+                </div>
               </div>
               <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px' }}>
                 <ItemWorkspace
@@ -472,3 +628,4 @@ const browseRowDetailStyle: React.CSSProperties = { display: 'block', marginTop:
 const secondaryButtonStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 29, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' };
 const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
 const sessionIconButtonStyle: React.CSSProperties = { width: 25, height: 25, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 5, background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };
+const destinationSelectStyle: React.CSSProperties = { minWidth: 120, maxWidth: 190, height: 29, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-xs)' };

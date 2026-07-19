@@ -3,13 +3,19 @@ import type { Item, Workspace } from '../../lib/db';
 import type { GlobalTabState } from './GlobalTabSystem';
 import {
   activateProjectWorkspace,
+  activateSavedProjectWorkspace,
+  addEntryToProjectWorkspace,
+  deleteSavedProjectWorkspace,
   getActiveProjectWorkspaceKey,
+  getHomebaseWorkspaceSessionKey,
   getProjectSessionResumeTabId,
   getProjectSessionWorkspaceKey,
   getSavedWorkspaceSessionKey,
   getProjectSessionTabs,
   getVisibleWorkspaceTabs,
   loadWorkspaceIntoProjectSession,
+  saveCurrentProjectWorkspace,
+  transferProjectWorkspaceEntry,
 } from './workspaceSession';
 
 const item = (id: string, url: string): Item => ({
@@ -145,5 +151,125 @@ describe('project workspace sessions', () => {
 
     expect(getProjectSessionTabs(activated.tabs, 'project-a')).toEqual([liveSavedTab]);
     expect(activated.workspaceSessionSnapshots?.[projectKey]).toEqual(state.tabs);
+  });
+
+  it('saves a generic project working set and restores it after using the live session', () => {
+    const state: GlobalTabState = {
+      tabs: [
+        { kind: 'item', id: 'note-tab', itemId: 'note-1', scopeProjectId: 'project-a' },
+        { kind: 'search', id: 'search-tab', query: 'research', scopeProjectId: 'project-a' },
+      ],
+      activeTabId: null,
+      bottomLayout: 'tabs',
+      isSidebarCollapsed: false,
+    };
+
+    const saved = saveCurrentProjectWorkspace({
+      state,
+      projectId: 'project-a',
+      name: 'Deep research',
+      sessionId: 'session-1',
+      now: 42,
+    });
+    const session = saved.savedWorkspaceSessions?.[0];
+
+    expect(session).toMatchObject({ id: 'session-1', name: 'Deep research', projectId: 'project-a' });
+    expect(getActiveProjectWorkspaceKey(saved, 'project-a')).toBe(
+      getHomebaseWorkspaceSessionKey('session-1')
+    );
+    expect(saved.workspaceSessionSnapshots?.[getHomebaseWorkspaceSessionKey('session-1')]).toEqual(
+      state.tabs
+    );
+
+    const live = activateProjectWorkspace({ state: saved, projectId: 'project-a', workspace: null, items: [] });
+    expect(getProjectSessionTabs(live.tabs, 'project-a')).toEqual(state.tabs);
+
+    const restored = activateSavedProjectWorkspace({ state: live, session: session! });
+    expect(getProjectSessionTabs(restored.tabs, 'project-a')).toEqual(state.tabs);
+  });
+
+  it('deletes an active saved workspace and returns to the live project session', () => {
+    const base: GlobalTabState = {
+      tabs: [{ kind: 'item', id: 'live-tab', itemId: 'live', scopeProjectId: 'project-a' }],
+      activeTabId: null,
+      bottomLayout: 'tabs',
+      isSidebarCollapsed: false,
+    };
+    const saved = saveCurrentProjectWorkspace({
+      state: base,
+      projectId: 'project-a',
+      name: 'Temporary',
+      sessionId: 'temporary',
+    });
+    const deleted = deleteSavedProjectWorkspace({ state: saved, sessionId: 'temporary' });
+
+    expect(deleted.savedWorkspaceSessions).toEqual([]);
+    expect(getActiveProjectWorkspaceKey(deleted, 'project-a')).toBe(
+      getProjectSessionWorkspaceKey('project-a')
+    );
+    expect(getProjectSessionTabs(deleted.tabs, 'project-a')).toEqual(base.tabs);
+    expect(deleted.workspaceSessionSnapshots?.[getHomebaseWorkspaceSessionKey('temporary')]).toBeUndefined();
+  });
+
+  it('copies an item into another workspace without removing it from the current one', () => {
+    const liveKey = getProjectSessionWorkspaceKey('project-a');
+    const savedKey = getHomebaseWorkspaceSessionKey('saved-a');
+    const entry = { kind: 'item' as const, id: 'item-one', itemId: 'one', scopeProjectId: 'project-a' };
+    const state: GlobalTabState = {
+      tabs: [entry],
+      activeTabId: null,
+      bottomLayout: 'tabs',
+      isSidebarCollapsed: false,
+      activeWorkspaceKeyByProject: { 'project-a': liveKey },
+      workspaceSessionSnapshots: { [savedKey]: [] },
+      savedWorkspaceSessions: [
+        { id: 'saved-a', name: 'Saved A', projectId: 'project-a', createdAt: 1, updatedAt: 1 },
+      ],
+    };
+
+    const copied = transferProjectWorkspaceEntry({
+      state,
+      projectId: 'project-a',
+      sourceWorkspaceKey: liveKey,
+      targetWorkspaceKey: savedKey,
+      entry,
+      mode: 'copy',
+    });
+
+    expect(getProjectSessionTabs(copied.tabs, 'project-a')).toEqual([entry]);
+    expect(copied.workspaceSessionSnapshots?.[savedKey]).toEqual([entry]);
+    const copiedAgain = addEntryToProjectWorkspace({
+      state: copied,
+      projectId: 'project-a',
+      targetWorkspaceKey: savedKey,
+      entry,
+    });
+    expect(copiedAgain.workspaceSessionSnapshots?.[savedKey]).toHaveLength(1);
+  });
+
+  it('moves an entry to a workspace that already contains it', () => {
+    const liveKey = getProjectSessionWorkspaceKey('project-a');
+    const savedKey = getHomebaseWorkspaceSessionKey('saved-a');
+    const entry = { kind: 'item' as const, id: 'item-one', itemId: 'one', scopeProjectId: 'project-a' };
+    const state: GlobalTabState = {
+      tabs: [entry],
+      activeTabId: null,
+      bottomLayout: 'tabs',
+      isSidebarCollapsed: false,
+      activeWorkspaceKeyByProject: { 'project-a': liveKey },
+      workspaceSessionSnapshots: { [savedKey]: [entry] },
+    };
+
+    const moved = transferProjectWorkspaceEntry({
+      state,
+      projectId: 'project-a',
+      sourceWorkspaceKey: liveKey,
+      targetWorkspaceKey: savedKey,
+      entry,
+      mode: 'move',
+    });
+
+    expect(getProjectSessionTabs(moved.tabs, 'project-a')).toEqual([]);
+    expect(moved.workspaceSessionSnapshots?.[savedKey]).toEqual([entry]);
   });
 });

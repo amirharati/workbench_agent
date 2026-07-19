@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Search, Home as HomeIcon, Folder, GripVertical, X, Globe2 } from 'lucide-react';
 import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { getQuickAccessItemsFromList } from '../../lib/itemQuickAccess';
-import { GlobalTabSystem, type GlobalTab, type GlobalTabState, type GlobalTabList, type GlobalTabSearch } from './GlobalTabSystem';
+import { GlobalTabSystem, type GlobalTab, type GlobalTabState, type GlobalTabList, type GlobalTabSearch, type SavedWorkspaceSession } from './GlobalTabSystem';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
@@ -14,11 +14,18 @@ import { AllLibraryWorkspaceOverview, type WorkspaceViewGroup } from './AllLibra
 import { HomeBrowsePanel } from './HomeBrowsePanel';
 import {
   activateProjectWorkspace,
+  activateSavedProjectWorkspace,
+  addEntryToProjectWorkspace,
+  deleteSavedProjectWorkspace,
   getActiveProjectWorkspaceKey,
+  getHomebaseWorkspaceSessionKey,
   getProjectSessionTabs,
   getProjectSessionResumeTabId,
+  getProjectSessionWorkspaceKey,
   getSavedWorkspaceSessionKey,
   getVisibleWorkspaceTabs,
+  saveCurrentProjectWorkspace,
+  transferProjectWorkspaceEntry,
 } from './workspaceSession';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
@@ -113,18 +120,30 @@ export const HomeView: React.FC<HomeViewProps> = ({
         : [],
     [activeProject, workspaces]
   );
+  const projectSavedWorkspaceSessions = useMemo(
+    () =>
+      activeProject
+        ? (homeState.savedWorkspaceSessions ?? [])
+            .filter((session) => session.projectId === activeProject.id)
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+        : [],
+    [activeProject, homeState.savedWorkspaceSessions]
+  );
   const allLibraryWorkspaceGroups = useMemo<WorkspaceViewGroup[]>(() => {
     const globalTabs = getProjectSessionTabs(homeState.tabs, 'all');
     const projectGroups = projects
       .map((project) => {
         const tabs = getProjectSessionTabs(homeState.tabs, project.id);
         const activeKey = getActiveProjectWorkspaceKey(homeState, project.id);
+        const savedSession = homeState.savedWorkspaceSessions?.find(
+          (session) => getHomebaseWorkspaceSessionKey(session.id) === activeKey
+        );
         const savedWorkspace = workspaces.find(
           (workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeKey
         );
         return {
           key: `project:${project.id}`,
-          title: savedWorkspace?.name ?? 'Project session',
+          title: savedSession?.name ?? savedWorkspace?.name ?? 'Live session',
           contextLabel: project.name,
           projectId: project.id,
           tabs,
@@ -168,6 +187,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const activeWorkspaceKey = activeProject
     ? getActiveProjectWorkspaceKey(homeState, activeProject.id)
     : '';
+  const projectWorkspaceDestinations = useMemo(
+    () => activeProject
+      ? [
+          { key: getProjectSessionWorkspaceKey(activeProject.id), label: 'Live session' },
+          ...projectSavedWorkspaceSessions.map((session) => ({
+            key: getHomebaseWorkspaceSessionKey(session.id),
+            label: session.name,
+          })),
+        ]
+      : [],
+    [activeProject, projectSavedWorkspaceSessions]
+  );
   const projectSummaries = useMemo(
     () =>
       [...projects]
@@ -480,6 +511,58 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }));
   };
 
+  const saveCurrentWorkspace = (name: string): string | void => {
+    if (!activeProject) return 'Open a project first.';
+    const normalizedName = name.trim().toLowerCase();
+    if (!normalizedName) return 'Workspace name is required.';
+    if (
+      projectSavedWorkspaceSessions.some((session) => session.name.trim().toLowerCase() === normalizedName) ||
+      projectWorkspaces.some((workspace) => workspace.name.trim().toLowerCase() === normalizedName)
+    ) {
+      return 'A workspace with this name already exists in this project.';
+    }
+    onHomeStateChange(saveCurrentProjectWorkspace({
+      state: homeState,
+      projectId: activeProject.id,
+      name: name.trim(),
+    }));
+  };
+
+  const activateSavedWorkspace = (session: SavedWorkspaceSession) => {
+    onHomeStateChange(activateSavedProjectWorkspace({ state: homeState, session }));
+  };
+
+  const deleteSavedWorkspace = (sessionId: string) => {
+    onHomeStateChange(deleteSavedProjectWorkspace({ state: homeState, sessionId }));
+  };
+
+  const addItemToWorkspace = (item: Item, targetWorkspaceKey: string) => {
+    if (!activeProject) return;
+    const id = `item-${item.id}@project:${activeProject.id}`;
+    onHomeStateChange(addEntryToProjectWorkspace({
+      state: homeState,
+      projectId: activeProject.id,
+      targetWorkspaceKey,
+      entry: { kind: 'item', id, itemId: item.id, scopeProjectId: activeProject.id },
+    }));
+  };
+
+  const transferWorkspaceEntry = (
+    entry: GlobalTab,
+    targetWorkspaceKey: string,
+    mode: 'copy' | 'move'
+  ) => {
+    if (!activeProject) return;
+    onHomeStateChange(transferProjectWorkspaceEntry({
+      state: homeState,
+      projectId: activeProject.id,
+      sourceWorkspaceKey: activeWorkspaceKey,
+      targetWorkspaceKey,
+      entry,
+      mode,
+    }));
+  };
+
   const showHomeItemContextMenu = (e: React.MouseEvent, item: Item) => {
     e.preventDefault();
     e.stopPropagation();
@@ -723,8 +806,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onCreateProject={onCreateProject}
           onCreateCollection={onCreateCollection}
           workspaces={projectWorkspaces}
+          savedWorkspaceSessions={projectSavedWorkspaceSessions}
           activeWorkspaceKey={activeWorkspaceKey}
           onActivateWorkspace={activateWorkspace}
+          onActivateSavedWorkspace={activateSavedWorkspace}
+          onSaveWorkspace={saveCurrentWorkspace}
+          onDeleteSavedWorkspace={deleteSavedWorkspace}
+          workspaceDestinations={projectWorkspaceDestinations}
+          onAddItemToWorkspace={addItemToWorkspace}
+          onTransferSessionEntry={transferWorkspaceEntry}
           onSelectedItemChange={onSelectedBrowseItemChange}
           onSelectSessionEntry={selectCurrentWorkspaceEntry}
           includeGlobalWork={includeGlobalWork}
@@ -736,7 +826,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           minHeight: 0,
           overflowY: 'auto',
           overflowX: 'hidden',
-          padding: '32px 24px',
+          padding: '32px 24px 80px',
+          scrollPaddingBottom: 80,
           display: 'flex',
           flexDirection: 'column',
           gap: 24,
@@ -827,7 +918,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ flexShrink: 0, margin: '12px 20px 0' }}>
           <ActiveWorkspaceCard
-            title={activeProject ? projectWorkspaces.find((workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeWorkspaceKey)?.name ?? 'Project session' : 'Global workspace'}
+            title={activeProject
+              ? projectSavedWorkspaceSessions.find((session) => getHomebaseWorkspaceSessionKey(session.id) === activeWorkspaceKey)?.name
+                ?? projectWorkspaces.find((workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeWorkspaceKey)?.name
+                ?? 'Live session'
+              : 'Global workspace'}
             contextLabel={activeProject?.name ?? 'All Library'}
             tabs={currentSessionTabs}
             items={items}

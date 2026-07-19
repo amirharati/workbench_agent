@@ -108,7 +108,8 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
       style={{
         height: '100%',
         overflowY: 'auto',
-        padding: embedded ? '12px 16px' : '24px 28px',
+        padding: embedded ? '12px 16px 28px' : '24px 28px 40px',
+        scrollPaddingBottom: embedded ? 28 : 40,
         display: 'flex',
         flexDirection: 'column',
         gap: embedded ? 12 : 20,

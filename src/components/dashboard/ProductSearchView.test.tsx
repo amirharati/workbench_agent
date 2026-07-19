@@ -36,5 +36,6 @@ describe('ProductSearchView empty state', () => {
     expect(markup).toContain('local first');
     expect(markup).toContain('browser research');
     expect(markup).not.toContain('Inspector panel');
+    expect(markup).toContain('padding:24px 28px 40px');
   });
 });

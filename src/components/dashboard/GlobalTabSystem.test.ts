@@ -140,6 +140,23 @@ describe('loadGlobalTabState Home workspace state', () => {
     expect(loadGlobalTabState().includeGlobalWorkByProject).toEqual({ 'project-a': true });
   });
 
+  it('restores named Homebase workspaces independently of browser workspaces', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        tabs: [],
+        activeTabId: null,
+        savedWorkspaceSessions: [
+          { id: 'session-a', name: 'Writing', projectId: 'project-a', createdAt: 10, updatedAt: 20 },
+        ],
+      })
+    );
+
+    expect(loadGlobalTabState().savedWorkspaceSessions).toEqual([
+      { id: 'session-a', name: 'Writing', projectId: 'project-a', createdAt: 10, updatedAt: 20 },
+    ]);
+  });
+
   it('keeps multiple promoted searches as independent working tabs', () => {
     localStorage.setItem(
       STORAGE_KEY,
