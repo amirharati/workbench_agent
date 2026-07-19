@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   BookMarked, 
   Layers,
-  FileText, 
   Settings, 
   ChevronLeft, 
   ChevronRight,
@@ -88,8 +87,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     {
       title: 'Content',
       items: [
-        { icon: BookMarked, label: 'Bookmarks', id: 'bookmarks' },
-        { icon: FileText, label: 'Notes', id: 'notes' },
+        { icon: BookMarked, label: 'Library', id: 'bookmarks' },
         { icon: Layers, label: 'Workspaces', id: 'workspaces' },
       ],
     },
@@ -695,7 +693,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {section.items.map((item) => {
-                const isActive = activeView === item.id;
+                const isActive = activeView === item.id || (item.id === 'bookmarks' && activeView === 'notes');
                 return (
                   <button
                     key={item.id}

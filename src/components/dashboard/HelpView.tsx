@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Home,
   BookMarked,
-  FileText,
   Search,
   Star,
   Pin,
@@ -217,13 +216,8 @@ export const HelpView: React.FC = () => {
           />
           <FeatureRow
             icon={<BookMarked size={16} />}
-            title="Bookmarks"
-            desc="Browse and edit saved links. Scope by project/collection in the sidebar. Open items in the detail pane or tabs."
-          />
-          <FeatureRow
-            icon={<FileText size={16} />}
-            title="Notes"
-            desc="Notes without URLs — same organization as bookmarks."
+            title="Library"
+            desc="Browse links and notes together or filter by type. Scope by project/collection, organize material, add it to any workspace, or enter Focus explicitly."
           />
           <FeatureRow
             icon={<Layers size={16} />}

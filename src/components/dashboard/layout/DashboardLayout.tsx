@@ -91,7 +91,7 @@ const FULL_PAGE_VIEWS = new Set<DashboardView>([
   'help',
 ]);
 /** Keep right Inspector visible (Home, Search, Enrichment Hub). */
-const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'notes', 'pipeline']);
+const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'bookmarks', 'notes', 'pipeline']);
 
 interface DashboardLayoutProps {
   windows: WindowGroup[];
@@ -535,6 +535,12 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       setCategoryBrowse(null);
     }
   };
+
+  /** Reveal an already-focused Home workspace without clearing its active entry. */
+  const handleOpenHomeWorkspace = useCallback(() => {
+    setActiveView('home');
+    patchNavigationState({ activeView: 'home' });
+  }, []);
 
   const handleOpenPipelineHub = useCallback(
     (opts?: { filter?: string }) => {
@@ -1195,6 +1201,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               batchCancellable={pipeline.isCancellable}
               onCancelBatch={handleCancelBatch}
               onSelectView={handleSelectView}
+              onOpenHomeWorkspace={handleOpenHomeWorkspace}
               shellLayout={shellLayout}
               onShellLayoutPatch={patchShellLayoutState}
               onClearProjectScope={handleClearProjectScope}

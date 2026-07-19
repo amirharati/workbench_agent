@@ -36,6 +36,7 @@ import { NewProjectModal, NewCollectionModal, NewItemModal } from '../CreateModa
 import { DeleteConfirmDialog } from '../../DeleteConfirmDialog';
 import { TrashView } from '../TrashView';
 import { ExtensionPageUrlLink } from '../BookmarkUrlLink';
+import { BookmarksLibraryView } from '../BookmarksLibraryView';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -114,6 +115,7 @@ interface MainContentProps {
   batchCancellable?: boolean;
   onCancelBatch?: () => void;
   onSelectView?: (view: DashboardView) => void;
+  onOpenHomeWorkspace?: () => void;
   shellLayout?: ShellLayoutState;
   onShellLayoutPatch?: (patch: Partial<ShellLayoutState>) => void;
   onClearProjectScope?: () => void;
@@ -189,6 +191,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   batchCancellable,
   onCancelBatch,
   onSelectView,
+  onOpenHomeWorkspace,
   shellLayout,
   onShellLayoutPatch,
   onClearProjectScope,
@@ -630,7 +633,44 @@ export const MainContent: React.FC<MainContentProps> = ({
   );
 
   const renderContent = () => {
-    switch (activeView) {
+    if (activeView === 'bookmarks' || activeView === 'notes') {
+      return (
+        <BookmarksLibraryView
+          items={items}
+          collections={collections}
+          projects={projects}
+          scopeProjectId={scopeProjectId}
+          scopeCollectionId={scopeCollectionId}
+          homeState={globalTabState ?? {
+            tabs: [],
+            activeTabId: null,
+            bottomLayout: 'tabs',
+            isSidebarCollapsed: false,
+          }}
+          onHomeStateChange={onGlobalTabStateChange ?? (() => {})}
+          onUpdateItem={onUpdateBookmark}
+          onDeleteItem={onDeleteBookmark ? (id) => onDeleteBookmark(id) : undefined}
+          onCreateItem={onCreateItem}
+          onCreateProject={onCreateProject}
+          onCreateCollection={onCreateCollection}
+          onOpenImport={() => onSelectView?.('import-studio')}
+          onOpenHome={onOpenHomeWorkspace}
+          onSelectProjectScope={onSelectProjectScope}
+          onResetScope={onResetScope}
+          onClearProjectScope={onClearProjectScope}
+          onClearCollectionScope={onClearCollectionScope}
+          categoryBrowse={categoryBrowse}
+          pipelineBrowse={pipelineBrowse}
+          onClearCategoryBrowse={onClearCategoryBrowse}
+          onClearPipelineBrowse={onClearPipelineBrowse}
+          onSelectedItemChange={onSelectedBrowseItemChange}
+          initialTypeFilter={activeView === 'notes' ? 'notes' : 'all'}
+        />
+      );
+    }
+
+    // Keep the legacy Bookmarks case available during the new library-view trial.
+    switch (activeView as DashboardView) {
       case 'home':
         return (
           <div
@@ -2332,6 +2372,8 @@ export const MainContent: React.FC<MainContentProps> = ({
     );
   }
 
+  const usesContainedScroller = activeView === 'home' || activeView === 'bookmarks';
+
   return (
     <div style={{ 
       height: '100%', 
@@ -2369,12 +2411,12 @@ export const MainContent: React.FC<MainContentProps> = ({
         style={{
           flex: 1,
           minHeight: 0,
-          overflow: activeView === 'home' ? 'hidden' : 'auto',
-          display: activeView === 'home' ? 'flex' : 'block',
+          overflow: usesContainedScroller ? 'hidden' : 'auto',
+          display: usesContainedScroller ? 'flex' : 'block',
           flexDirection: 'column',
           boxSizing: 'border-box',
-          paddingBottom: activeView === 'home' ? 0 : 20,
-          scrollPaddingBottom: activeView === 'home' ? 0 : 20,
+          paddingBottom: usesContainedScroller ? 0 : 20,
+          scrollPaddingBottom: usesContainedScroller ? 0 : 20,
         }}
       >
         {renderContent()}
