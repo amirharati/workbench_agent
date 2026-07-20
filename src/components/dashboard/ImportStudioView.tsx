@@ -23,7 +23,6 @@ import {
   IMPORT_WAVE_PIPELINE_ENABLED,
   preflightImportPipelineStart,
   runScopedPipelineJob,
-  shouldCreateScopedPipelineJob,
   writeImportPipelineJob,
   type ImportReport,
 } from '../../lib/pipeline';
@@ -39,10 +38,18 @@ import {
   parseBookmarkImportFile,
   type BookmarkImportCandidate,
 } from '../../lib/import/bookmarkFileImport';
-import { EnrichmentPanel } from './EnrichmentPanel';
 import { ImportReportOverlay } from './ImportReportOverlay';
+import { INCOMING_COLLECTION_NAME, UNFILED_COLLECTION_NAME } from '../../lib/systemDataModel';
 
-type ImportTab = 'file' | 'chrome' | 'ai';
+export type ImportSource = 'file' | 'chrome' | 'assistant';
+
+type ImportProcessingProgress = {
+  phase: 'prep' | 'enrich' | 'embed' | 'classify' | 'wave' | 'done';
+  waveIndex: number;
+  waveTotal: number;
+  enrichDone?: number;
+  enrichTotal?: number;
+};
 
 interface ImportStudioViewProps {
   projects: Project[];
@@ -65,6 +72,43 @@ function readSkipTrashedImportPref(): boolean {
   }
 }
 
+export function isImportableBookmarkUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url.trim());
+}
+
+export function getDefaultImportSelection(rows: Array<{ url: string }>): Set<number> {
+  return new Set(rows.flatMap((row, index) => (isImportableBookmarkUrl(row.url) ? [index] : [])));
+}
+
+export function resolveImportDestinationLabel(
+  projects: Project[],
+  collections: Collection[],
+  projectId: string,
+  collectionId: string
+): string {
+  if (collectionId) {
+    return collections.find((collection) => collection.id === collectionId)?.name || 'Selected collection';
+  }
+  if (projectId) {
+    const projectName = projects.find((project) => project.id === projectId)?.name || 'Selected project';
+    return `${projectName} / ${UNFILED_COLLECTION_NAME}`;
+  }
+  return `Inbox / ${INCOMING_COLLECTION_NAME}`;
+}
+
+export function resolveImportProcessingPercent(progress: ImportProcessingProgress): number {
+  if (progress.phase === 'done') return 100;
+  if (progress.phase === 'prep') return 3;
+  if (progress.phase === 'enrich' && progress.enrichTotal) {
+    return Math.min(70, Math.round(5 + (65 * (progress.enrichDone ?? 0)) / progress.enrichTotal));
+  }
+  if (progress.phase === 'wave' || progress.phase === 'embed' || progress.phase === 'classify') {
+    const total = Math.max(1, progress.waveTotal);
+    return Math.min(95, Math.round(70 + (25 * progress.waveIndex) / total));
+  }
+  return 5;
+}
+
 const sectionStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
   borderRadius: 8,
@@ -81,8 +125,10 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   onBack,
   onImported,
 }) => {
-  const [tab, setTab] = React.useState<ImportTab>('file');
+  const [source, setSource] = React.useState<ImportSource>('file');
   const [rows, setRows] = React.useState<ImportCandidate[]>([]);
+  const [selectedRowIndexes, setSelectedRowIndexes] = React.useState<Set<number>>(() => new Set());
+  const [reviewQuery, setReviewQuery] = React.useState('');
   const [sourceLabel, setSourceLabel] = React.useState('');
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -90,8 +136,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   const [processing, setProcessing] = React.useState(false);
   const [wavePipelineRunning, setWavePipelineRunning] = React.useState(false);
   const [processProgress, setProcessProgress] = React.useState('');
+  const [processProgressPercent, setProcessProgressPercent] = React.useState(0);
   const pipelineAbortRef = React.useRef<AbortController | null>(null);
-  const [processNewImports, setProcessNewImports] = React.useState(true);
   const [skipPreviouslyTrashed, setSkipPreviouslyTrashed] = React.useState(readSkipTrashedImportPref);
   const [trashHistoryMap, setTrashHistoryMap] = React.useState<Map<string, TrashHistoryEntry>>(
     () => new Map()
@@ -105,7 +151,6 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   const [pipelineFilter, setPipelineFilter] = React.useState('');
   const [commitMessage, setCommitMessage] = React.useState('');
   const [commitError, setCommitError] = React.useState('');
-  const [lastImportCollectionId, setLastImportCollectionId] = React.useState<string | undefined>();
   const [lastCommitMeta, setLastCommitMeta] = React.useState<{
     importSummary: string;
     targetLabel: string;
@@ -179,6 +224,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
 
   const resetImportSession = () => {
     setRows([]);
+    setSelectedRowIndexes(new Set());
+    setReviewQuery('');
     setSourceLabel('');
     setError('');
     setCommitMessage('');
@@ -248,6 +295,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     setProcessing(true);
     setWavePipelineRunning(true);
     setProcessProgress(`Starting pipeline on ${ids.length} selected link${ids.length === 1 ? '' : 's'}…`);
+    setProcessProgressPercent(2);
     addToast({
       type: 'info',
       message: `Running fetch + AI + classify on ${ids.length} link${ids.length === 1 ? '' : 's'} — progress is checkpointed. Keep this tab open.`,
@@ -296,6 +344,9 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         signal: ac.signal,
         onProgress: (p) => {
           setProcessProgress(formatScopedPipelineJobProgress(p));
+          setProcessProgressPercent((current) =>
+            Math.max(current, resolveImportProcessingPercent(p))
+          );
         },
       });
       const dur = formatPipelineDurationMs(result.durationMs);
@@ -332,6 +383,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       setProcessing(false);
       setWavePipelineRunning(false);
       setProcessProgress('');
+      setProcessProgressPercent(0);
       setPipelineSelectedIds(new Set());
       pipelineAbortRef.current = null;
     }
@@ -349,10 +401,10 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     }
   };
 
-  const isHttpUrl = (url: string): boolean => /^https?:\/\//i.test(url.trim());
-
   const setImportedRows = (nextRows: ImportCandidate[], label: string) => {
     setRows(nextRows);
+    setSelectedRowIndexes(getDefaultImportSelection(nextRows));
+    setReviewQuery('');
     setSourceLabel(label);
     setError('');
     setCommitError('');
@@ -379,12 +431,14 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         setImportedRows(result.rows, result.sourceLabel);
       } else {
         setRows([]);
+        setSelectedRowIndexes(new Set());
         setSourceLabel('');
         setError(result.errorMessage ?? 'No bookmark rows were detected in that file.');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not parse file.');
       setRows([]);
+      setSelectedRowIndexes(new Set());
       setSourceLabel('');
     } finally {
       setLoading(false);
@@ -430,13 +484,14 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       };
 
       walk(tree, []);
-      setImportedRows(out, 'Chrome bookmarks API');
+      setImportedRows(out, 'Chrome bookmarks');
       if (out.length === 0) {
         setError('No bookmark URLs returned from Chrome API.');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load Chrome bookmarks.');
       setRows([]);
+      setSelectedRowIndexes(new Set());
       setSourceLabel('');
     } finally {
       setLoading(false);
@@ -449,7 +504,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   );
 
   const stats = React.useMemo(() => {
-    const valid = rows.filter((row) => isHttpUrl(row.url)).length;
+    const valid = rows.filter((row) => isImportableBookmarkUrl(row.url)).length;
     const invalid = rows.length - valid;
     const seen = new Set<string>();
     let duplicates = 0;
@@ -474,8 +529,43 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     );
   }, [collections, selectedProjectId]);
 
+  const visibleRowIndexes = React.useMemo(() => {
+    const query = reviewQuery.trim().toLowerCase();
+    return rows.flatMap((row, index) => {
+      if (!query) return [index];
+      return [row.title, row.url, row.description, row.notes, row.folderPath, row.importSource, row.source]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+        ? [index]
+        : [];
+    });
+  }, [reviewQuery, rows]);
+
+  const selectedRows = React.useMemo(
+    () => rows.filter((_, index) => selectedRowIndexes.has(index)),
+    [rows, selectedRowIndexes]
+  );
+
+  const setVisibleRowSelection = (selected: boolean) => {
+    setSelectedRowIndexes((current) => {
+      const next = new Set(current);
+      for (const index of visibleRowIndexes) {
+        if (!isImportableBookmarkUrl(rows[index].url)) continue;
+        if (selected) next.add(index);
+        else next.delete(index);
+      }
+      return next;
+    });
+  };
+
+  const changeSource = (nextSource: ImportSource) => {
+    if (nextSource === source || processing || committing || pipelineConfirm) return;
+    resetImportSession();
+    setSource(nextSource);
+  };
+
   const handleCommitToDb = async () => {
-    if (rows.length === 0) {
+    if (selectedRows.length === 0) {
       setCommitError('Nothing to import yet. Load a file or Chrome bookmarks first.');
       return;
     }
@@ -490,7 +580,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         (selectedProjectId ? await ensureProjectUnsortedCollection(selectedProjectId) : '');
 
       const result = await bulkImportBookmarks(
-        rows.map((row) => ({
+        selectedRows.map((row) => ({
           url: row.url,
           title: row.title || row.url,
           description: row.description,
@@ -503,12 +593,12 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         { skipPreviouslyTrashed }
       );
 
-      const targetLabel =
+      const targetLabel = resolveImportDestinationLabel(
+        projects,
+        collections,
+        selectedProjectId,
         selectedCollectionId
-          ? filteredCollections.find((c) => c.id === selectedCollectionId)?.name || 'selected collection'
-          : selectedProjectId
-          ? `${projects.find((p) => p.id === selectedProjectId)?.name || 'selected project'} / Unsorted`
-          : 'Default / Unsorted';
+      );
 
       const withheldPart =
         result.skippedPreviouslyTrashed > 0
@@ -528,28 +618,13 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         items: result.affectedItems,
       };
       setCommitMessage(importSummary);
-      setLastImportCollectionId(targetCollectionId || undefined);
       setLastCommitMeta(commitMeta);
 
       if (onImported) {
         await onImported();
       }
 
-      if (shouldCreateScopedPipelineJob(result.affectedItemIds)) {
-        try {
-          const job = createImportPipelineJob(result.affectedItemIds);
-          await writeImportPipelineJob(job);
-          addToast({
-            type: 'info',
-            message:
-              'Import saved — run digest on selected links to start the pipeline, or resume from the dashboard banner if interrupted.',
-          });
-        } catch (e) {
-          console.warn('[import] could not write import-pipeline-job.json', e);
-        }
-      }
-
-      if (processNewImports && result.affectedItems.length > 0) {
+      if (result.affectedItems.length > 0) {
         setPipelineFilter('');
         setPipelineConfirm({
           importSummary,
@@ -558,15 +633,13 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         setPipelineSelectedIds(new Set(result.affectedItems.map((item) => item.itemId)));
         addToast({
           type: 'info',
-          message: `Import saved — review ${result.affectedItems.length} link${result.affectedItems.length === 1 ? '' : 's'} below, then confirm digest or skip.`,
+          message: `Import saved — choose whether to process ${result.affectedItems.length} link${result.affectedItems.length === 1 ? '' : 's'} now or finish.`,
         });
-      } else if (processNewImports && result.affectedItems.length === 0) {
+      } else {
         addToast({
           type: 'info',
           message: 'No valid links to process — all rows were skipped.',
         });
-        await openImportReport(commitMeta, new Set());
-      } else {
         await openImportReport(commitMeta, new Set());
       }
     } catch (e) {
@@ -589,14 +662,36 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           background: 'var(--accent-weak)',
         }}
       >
-        <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
-          Step 2 — Digest (optional)
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
+            Step 3 — Process imported bookmarks (optional)
+          </div>
+          <button
+            type="button"
+            onClick={() => void runSelectedPipeline()}
+            disabled={selectedPipelineCount === 0}
+            style={{
+              minHeight: 34,
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid var(--accent)',
+              background: 'var(--accent)',
+              color: 'var(--accent-text, #fff)',
+              fontSize: 'var(--text-xs)',
+              fontWeight: 650,
+              cursor: selectedPipelineCount === 0 ? 'not-allowed' : 'pointer',
+              opacity: selectedPipelineCount === 0 ? 0.6 : 1,
+              flexShrink: 0,
+            }}
+          >
+            Process selected ({selectedPipelineCount})
+          </button>
         </div>
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
           <strong style={{ color: 'var(--er-ok, #3fb950)' }}>Bookmarks are already saved in the database.</strong>{' '}
-          {pipelineConfirm.importSummary} Nothing is fetched until you confirm below. Uncheck links to
-          leave as import-only, or choose <strong>Don&apos;t digest</strong> to finish without running the
-          pipeline (you can digest later from Enrichment Hub).
+          {pipelineConfirm.importSummary} Nothing is fetched and no AI provider is called until you confirm
+          below. Processing may use your configured paid AI provider. Uncheck links to leave them as
+          import-only, or finish now and process them later from Enrichment Hub.
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
@@ -723,42 +818,152 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
               cursor: 'pointer',
             }}
           >
-            Don&apos;t digest
-          </button>
-          <button
-            type="button"
-            onClick={() => void runSelectedPipeline()}
-            disabled={selectedPipelineCount === 0}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid var(--accent)',
-              background: 'var(--accent)',
-              color: 'var(--accent-text, #fff)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: selectedPipelineCount === 0 ? 'not-allowed' : 'pointer',
-              opacity: selectedPipelineCount === 0 ? 0.6 : 1,
-            }}
-          >
-            Digest selected ({selectedPipelineCount})
+            Finish without processing
           </button>
         </div>
       </div>
     );
   };
 
-  const renderPreviewTable = () => (
-    <div style={sectionStyle}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+  const renderDestinationControls = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div>
         <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
-          Import preview
+          Destination
         </div>
-        {sourceLabel ? <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{sourceLabel}</div> : null}
+        <div style={{ marginTop: 3, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+          Every selected bookmark will be saved to this location. You can reorganize individual items later.
+        </div>
+      </div>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+        Project
+        <select
+          value={selectedProjectId}
+          onChange={(event) => {
+            setSelectedProjectId(event.target.value);
+            setSelectedCollectionId('');
+          }}
+          disabled={committing || processing}
+          style={selectStyle}
+        >
+          <option value="">Inbox (default)</option>
+          {projects.filter((project) => !project.isDefault).map((project) => (
+            <option key={project.id} value={project.id}>{project.name}</option>
+          ))}
+        </select>
+      </label>
+      {selectedProjectId ? (
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          Collection
+          <select
+            value={selectedCollectionId}
+            onChange={(event) => setSelectedCollectionId(event.target.value)}
+            disabled={committing || processing}
+            style={selectStyle}
+          >
+            <option value="">{UNFILED_COLLECTION_NAME} (default)</option>
+            {filteredCollections.filter((collection) => !collection.isDefault).map((collection) => (
+              <option key={collection.id} value={collection.id}>{collection.name}</option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <div style={{ padding: '7px 9px', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
+          Collection: {INCOMING_COLLECTION_NAME}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderPostSaveStage = () => (
+    <div style={{ ...sectionStyle, padding: 14, background: 'var(--bg-panel)' }}>
+      {commitMessage ? (
+        <div style={{ padding: '9px 11px', borderRadius: 7, background: 'color-mix(in srgb, var(--er-ok, #3fb950) 10%, transparent)', color: 'var(--text)', fontSize: 'var(--text-sm)' }}>
+          {commitMessage}
+        </div>
+      ) : null}
+      {processing && processProgress ? (
+        <div style={{ padding: '10px 12px', borderRadius: 7, border: '1px solid var(--accent)', background: 'var(--accent-weak)', fontSize: 'var(--text-xs)', color: 'var(--text)', lineHeight: 1.5 }}>
+          <div style={{ fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>Processing imported bookmarks</div>
+          <div
+            role="progressbar"
+            aria-label="Import processing progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={processProgressPercent}
+            style={{ height: 9, margin: '8px 0', overflow: 'hidden', borderRadius: 999, background: 'var(--bg-hover)' }}
+          >
+            <div
+              style={{
+                width: `${processProgressPercent}%`,
+                height: '100%',
+                borderRadius: 999,
+                background: 'var(--accent)',
+                transition: 'width 180ms ease-out',
+              }}
+            />
+          </div>
+          <div style={{ marginBottom: 5, color: 'var(--text-faint)' }}>{processProgressPercent}% complete</div>
+          {processProgress}
+          <div style={{ marginTop: 6, color: 'var(--text-muted)' }}>
+            Progress is checkpointed after each wave and can be resumed if this page closes.
+          </div>
+          {wavePipelineRunning ? (
+            <button type="button" onClick={() => pipelineAbortRef.current?.abort()} style={{ ...smallButtonStyle, marginTop: 8 }}>
+              Cancel processing
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {commitError ? <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--error, #dc2626)' }}>{commitError}</div> : null}
+      {renderPipelineConfirmPanel()}
+    </div>
+  );
+
+  const renderImportButton = () => {
+    const disabled = committing || processing || !!pipelineConfirm || selectedRows.length === 0;
+    return (
+      <button
+        type="button"
+        onClick={handleCommitToDb}
+        disabled={disabled}
+        style={{
+          minHeight: 34,
+          padding: '6px 12px',
+          borderRadius: 6,
+          border: '1px solid var(--accent)',
+          background: 'var(--accent)',
+          color: 'var(--accent-text, #fff)',
+          fontSize: 'var(--text-xs)',
+          fontWeight: 650,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.6 : 1,
+          flexShrink: 0,
+        }}
+      >
+        {committing
+          ? 'Saving bookmarks…'
+          : processing
+            ? 'Processing…'
+            : `Import ${selectedRows.length} bookmark${selectedRows.length === 1 ? '' : 's'}`}
+      </button>
+    );
+  };
+
+  const renderPreviewTable = () => pipelineConfirm || processing ? renderPostSaveStage() : (
+    <div style={sectionStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
+            Step 2 — Review and save
+          </div>
+          {sourceLabel ? <div style={{ marginTop: 3, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{sourceLabel}</div> : null}
+        </div>
+        {renderImportButton()}
       </div>
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-        <span>Total: {stats.total}</span>
-        <span>Valid URL: {stats.valid}</span>
+        <span>{selectedRows.length} selected</span>
+        <span>{stats.valid} valid URLs</span>
         <span>Invalid URL: {stats.invalid}</span>
         <span>Potential duplicates: {stats.duplicates}</span>
       </div>
@@ -779,51 +984,61 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           {error}
         </div>
       ) : null}
-      <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 6 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
-          <thead>
-            <tr style={{ background: 'var(--bg)' }}>
-              {['Title', 'URL', 'Description', 'Folder', 'Image', 'Source'].map((h) => (
-                <th
-                  key={h}
-                  style={{
-                    textAlign: 'left',
-                    padding: '6px 8px',
-                    borderBottom: '1px solid var(--border)',
-                    color: 'var(--text-muted)',
-                    position: 'sticky',
-                    top: 0,
-                    background: 'var(--bg)',
-                  }}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.slice(0, 300).map((row, index) => (
-              <tr key={`${row.url}-${index}`}>
-                <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{row.title || 'Untitled'}</td>
-                <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', wordBreak: 'break-all' }}>{row.url}</td>
-                <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{row.description || row.notes || '-'}</td>
-                <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>{row.folderPath || '-'}</td>
-                <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', wordBreak: 'break-all' }}>
-                  {row.imageUrl || '-'}
-                </td>
-                <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
-                  {row.importSource || row.source}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {rows.length > 300 ? (
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-          Showing first 300 rows. Full row count is still used for stats.
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(270px, 0.38fr)', gap: 12, alignItems: 'start' }}>
+        <div style={{ minWidth: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--bg)' }}>
+          <div style={{ display: 'flex', gap: 7, alignItems: 'center', padding: 8, borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+            <input
+              type="search"
+              value={reviewQuery}
+              onChange={(event) => setReviewQuery(event.target.value)}
+              placeholder="Filter imported bookmarks…"
+              aria-label="Filter imported bookmarks"
+              style={{ ...selectStyle, flex: '1 1 190px' }}
+            />
+            <button type="button" onClick={() => setVisibleRowSelection(true)} style={smallButtonStyle}>Select shown</button>
+            <button type="button" onClick={() => setVisibleRowSelection(false)} style={smallButtonStyle}>Clear shown</button>
+          </div>
+          <div className="scrollbar" style={{ maxHeight: 'min(48vh, 520px)', overflowY: 'auto' }}>
+            {visibleRowIndexes.length === 0 ? (
+              <div style={{ padding: 18, color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>No bookmarks match this filter.</div>
+            ) : visibleRowIndexes.map((index) => {
+              const row = rows[index];
+              const valid = isImportableBookmarkUrl(row.url);
+              return (
+                <label key={`${row.url}-${index}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '9px 11px', borderBottom: '1px solid var(--border)', cursor: valid ? 'pointer' : 'not-allowed', opacity: valid ? 1 : 0.62 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedRowIndexes.has(index)}
+                    disabled={!valid || committing || processing}
+                    onChange={(event) => setSelectedRowIndexes((current) => {
+                      const next = new Set(current);
+                      if (event.target.checked) next.add(index); else next.delete(index);
+                      return next;
+                    })}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <strong style={{ color: 'var(--text)', fontSize: 'var(--text-xs)' }}>{row.title || 'Untitled'}</strong>
+                      {!valid ? <span style={{ color: 'var(--error, #f85149)', fontSize: 10, fontWeight: 700 }}>Invalid URL</span> : null}
+                      {row.folderPath ? <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>{row.folderPath}</span> : null}
+                    </span>
+                    <span style={{ display: 'block', marginTop: 2, color: 'var(--text-muted)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.url}</span>
+                    {row.description || row.notes ? <span style={{ display: 'block', marginTop: 3, color: 'var(--text-faint)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.description || row.notes}</span> : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </div>
-      ) : null}
+        <div style={{ ...sectionStyle, padding: 12, background: 'var(--bg-panel)', position: 'sticky', top: 0 }}>
+          {renderDestinationControls()}
+          <div style={{ height: 1, background: 'var(--border)' }} />
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Saving imports or merges the selected bookmarks. It does not fetch pages or call an AI provider.
+          </div>
+        </div>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <label
           style={{
@@ -914,56 +1129,6 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
             ) : null}
           </div>
         ) : null}
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 6,
-            fontSize: 'var(--text-xs)',
-            color: 'var(--text-muted)',
-            cursor: committing || processing ? 'not-allowed' : 'pointer',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={processNewImports}
-            onChange={(e) => setProcessNewImports(e.target.checked)}
-            disabled={committing || processing}
-            style={{ marginTop: 2 }}
-          />
-          <span>
-            <strong style={{ color: 'var(--text)' }}>Step 2: offer digest after commit</strong> — fetch, AI
-            summary, classify (all optional)
-            <br />
-            <strong>Commit to DB</strong> only writes bookmarks. Digest is a separate confirm step: pick
-            which saved links to process, or skip entirely. Uncheck the box above to import without ever
-            showing the digest list.
-          </span>
-        </label>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={handleCommitToDb}
-            disabled={committing || processing || !!pipelineConfirm || rows.length === 0}
-            style={{
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--accent)',
-              background: 'var(--accent)',
-              color: 'var(--accent-text, #fff)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-            cursor: committing || processing || !!pipelineConfirm || rows.length === 0 ? 'not-allowed' : 'pointer',
-            opacity: committing || processing || !!pipelineConfirm || rows.length === 0 ? 0.6 : 1,
-            }}
-          >
-            {committing
-              ? 'Saving to database…'
-              : processing
-                ? 'Running digest…'
-                : 'Commit to DB (save only)'}
-          </button>
-        </div>
       </div>
       {processing && processProgress ? (
         <div
@@ -1006,12 +1171,6 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       {commitError ? <div style={{ fontSize: 'var(--text-xs)', color: '#dc2626' }}>{commitError}</div> : null}
       {commitMessage ? <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{commitMessage}</div> : null}
       {renderPipelineConfirmPanel()}
-      {commitMessage && lastImportCollectionId ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Enrich imported items:</span>
-          <EnrichmentPanel onComplete={onImported} />
-        </div>
-      ) : null}
     </div>
   );
 
@@ -1019,7 +1178,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     <>
       <div style={sectionStyle}>
         <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
-          File import sources
+          Step 1 — Choose a bookmark file
         </div>
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
           Start with known formats, then normalize into one import preview model.
@@ -1075,51 +1234,6 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           </span>
         </div>
       </div>
-      <div style={sectionStyle}>
-        <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>Destination mapping (planning)</div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Preselect destination for next phase (write pipeline).</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <select
-            value={selectedProjectId}
-            onChange={(e) => {
-              setSelectedProjectId(e.target.value);
-              setSelectedCollectionId('');
-            }}
-            style={{
-              padding: '6px 8px',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              background: 'var(--bg)',
-              color: 'var(--text)',
-            }}
-          >
-            <option value="">Select project (optional)</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={selectedCollectionId}
-            onChange={(e) => setSelectedCollectionId(e.target.value)}
-            style={{
-              padding: '6px 8px',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              background: 'var(--bg)',
-              color: 'var(--text)',
-            }}
-          >
-            <option value="">Select collection (optional)</option>
-            {filteredCollections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
       {(rows.length > 0 || error) && renderPreviewTable()}
     </>
   );
@@ -1128,10 +1242,10 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     <>
       <div style={sectionStyle}>
         <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
-          Import from Chrome bookmarks API
+          Step 1 — Load Chrome bookmarks
         </div>
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-          Pulls current bookmarks via `chrome.bookmarks.getTree()` and converts them to the same preview schema.
+          Read the bookmarks currently saved in Chrome, then review exactly what will enter Homebase.
         </div>
         <button
           type="button"
@@ -1156,53 +1270,36 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     </>
   );
 
-  const renderAiTab = () => (
-    <div style={sectionStyle}>
-      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
-        AI format assistant (mockup)
-      </div>
-      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-        Future mode: paste unknown format samples, generate a mapping schema, validate, then run through
-        the same import pipeline. Leaving this as mock-only until we collect real examples.
-      </div>
-      <textarea
-        placeholder="Paste unknown sample rows or format notes here..."
-        rows={7}
-        style={{
-          border: '1px solid var(--border)',
-          borderRadius: 6,
-          background: 'var(--bg)',
-          color: 'var(--text)',
-          padding: '8px',
-          resize: 'vertical',
-        }}
-      />
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <button
-          type="button"
-          disabled
-          style={{
-            padding: '6px 10px',
-            borderRadius: 6,
-            border: '1px solid var(--border)',
-            background: 'var(--bg-hover)',
-            color: 'var(--text-muted)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 600,
-            cursor: 'not-allowed',
-          }}
-        >
-          Generate schema (later)
-        </button>
-        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-          Mockup only; no AI parsing logic wired yet.
+  const renderAssistantTab = () => (
+    <div style={{ ...sectionStyle, padding: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
+          Format assistant
+        </div>
+        <span style={{ padding: '2px 7px', borderRadius: 999, border: '1px solid var(--border)', color: 'var(--text-faint)', fontSize: 10, fontWeight: 700 }}>
+          Not implemented
         </span>
       </div>
+      <div style={{ maxWidth: 720, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        This future tool will help map an unsupported bookmark format into the same review workflow.
+        It will remain disabled until the mapping behavior, validation, and AI cost confirmation are implemented.
+      </div>
+      <textarea
+        disabled
+        aria-label="Unsupported format sample"
+        placeholder="Paste an unsupported format sample here in a future version…"
+        rows={7}
+        style={{ maxWidth: 720, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text-muted)', padding: 8, resize: 'vertical', opacity: 0.65 }}
+      />
+      <button type="button" disabled style={{ ...smallButtonStyle, width: 'fit-content', cursor: 'not-allowed', opacity: 0.6 }}>
+        Generate mapping — not implemented
+      </button>
     </div>
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%', position: 'relative' }}>
+    <div className="scrollbar" style={{ height: '100%', overflow: 'auto', boxSizing: 'border-box', padding: '16px 18px 72px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 1320, margin: '0 auto', position: 'relative' }}>
       {importReport ? (
         <ImportReportOverlay
           report={importReport}
@@ -1216,10 +1313,15 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           }}
         />
       ) : null}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text)' }}>
-          Bookmark Import Studio
-        </h1>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--text)' }}>
+            Import bookmarks
+          </h1>
+          <p style={{ margin: '6px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            Bring bookmarks into your library first, then choose whether any should be processed with AI.
+          </p>
+        </div>
         <button
           type="button"
           onClick={onBack}
@@ -1240,18 +1342,21 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: '6px' }}>
-        {[
-          { id: 'file', label: 'File import' },
-          { id: 'chrome', label: 'Chrome API' },
-          { id: 'ai', label: 'AI assistant (mock)' },
-        ].map((item) => {
-          const active = tab === item.id;
+      <div role="tablist" aria-label="Import source" style={{ display: 'flex', gap: '6px', padding: 5, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-panel)' }}>
+        {([
+          { id: 'file', label: 'Bookmark file' },
+          { id: 'chrome', label: 'Chrome bookmarks' },
+          { id: 'assistant', label: 'Format assistant · Not implemented' },
+        ] as const).map((item) => {
+          const active = source === item.id;
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => setTab(item.id as ImportTab)}
+              role="tab"
+              aria-selected={active}
+              onClick={() => changeSource(item.id)}
+              disabled={processing || committing || !!pipelineConfirm}
               style={{
                 padding: '6px 10px',
                 borderRadius: 6,
@@ -1260,7 +1365,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
                 color: active ? 'var(--accent)' : 'var(--text-muted)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: processing || committing || pipelineConfirm ? 'not-allowed' : 'pointer',
+                opacity: processing || committing || pipelineConfirm ? 0.65 : 1,
               }}
             >
               {item.label}
@@ -1269,11 +1375,34 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         })}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0, overflow: 'auto' }}>
-        {tab === 'file' && renderFileTab()}
-        {tab === 'chrome' && renderChromeTab()}
-        {tab === 'ai' && renderAiTab()}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
+        {source === 'file' && renderFileTab()}
+        {source === 'chrome' && renderChromeTab()}
+        {source === 'assistant' && renderAssistantTab()}
+      </div>
       </div>
     </div>
   );
+};
+
+const selectStyle: React.CSSProperties = {
+  minHeight: 32,
+  padding: '6px 8px',
+  border: '1px solid var(--border)',
+  borderRadius: 6,
+  background: 'var(--bg)',
+  color: 'var(--text)',
+  fontSize: 'var(--text-xs)',
+  boxSizing: 'border-box',
+};
+
+const smallButtonStyle: React.CSSProperties = {
+  minHeight: 30,
+  padding: '4px 8px',
+  borderRadius: 6,
+  border: '1px solid var(--border)',
+  background: 'var(--bg)',
+  color: 'var(--text-muted)',
+  fontSize: 'var(--text-xs)',
+  cursor: 'pointer',
 };
