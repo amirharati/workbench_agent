@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, LayoutGrid, List, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, LayoutGrid, List, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import type { WindowGroup } from '../../../App';
 import { addWorkspace, normalizeBookmarkUrl, updateWorkspace } from '../../../lib/db';
 import type { Project, Workspace, WorkspaceWindow } from '../../../lib/db';
@@ -15,6 +15,7 @@ import {
 interface BottomPanelProps {
   isCollapsed: boolean;
   onToggle: () => void;
+  displayMode?: 'panel' | 'page';
   windows: WindowGroup[];
   workspaces: Workspace[];
   /** Used when creating a workspace from Tab Commander (project vs detached) */
@@ -65,6 +66,7 @@ function clampToViewportTop(top: number, height: number, padding = 8): number {
 export const BottomPanel: React.FC<BottomPanelProps> = ({
   isCollapsed,
   onToggle,
+  displayMode = 'panel',
   windows,
   workspaces,
   projects = [],
@@ -76,6 +78,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onCloseWindow,
   onRefresh,
 }) => {
+  const isPage = displayMode === 'page';
   const allTabs = useMemo(() => windows.flatMap((w) => w.tabs), [windows]);
   const [query, setQuery] = useState('');
   const [selectedWindowIds, setSelectedWindowIds] = useState<number[]>([]);
@@ -89,7 +92,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   const [windowCollapsed, setWindowCollapsed] = useState<Record<number, boolean>>({});
   const [tabLimit, setTabLimit] = useState<number>(120);
   const TAB_PAGE_SIZE = 120;
-  const [tabsView, setTabsView] = useState<'list' | 'gallery'>('list');
+  const [tabsView, setTabsView] = useState<'list' | 'gallery'>(() => {
+    if (typeof window === 'undefined') return 'list';
+    return window.localStorage.getItem('workbench:tab-commander-tabs-view') === 'gallery' ? 'gallery' : 'list';
+  });
   const [hoveredTabKey, setHoveredTabKey] = useState<string | null>(null);
   const [previewTabIds, setPreviewTabIds] = useState<number[]>([]);
   const previewTabIdSet = useMemo(() => new Set(previewTabIds), [previewTabIds]);
@@ -100,14 +106,18 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   const [selectedTabIds, setSelectedTabIds] = useState<number[]>([]);
   const selectedTabIdSet = useMemo(() => new Set(selectedTabIds), [selectedTabIds]);
 
+  const windowOrderRef = useRef(new Map<number, number>());
+  const nextWindowOrderRef = useRef(0);
   const sortedWindows = useMemo(() => {
-    // Windows with an active tab first, then by tab count desc.
-    return [...windows].sort((a, b) => {
-      const aActive = a.tabs.some((t) => t.active) ? 1 : 0;
-      const bActive = b.tabs.some((t) => t.active) ? 1 : 0;
-      if (aActive !== bActive) return bActive - aActive;
-      return b.tabs.length - a.tabs.length;
-    });
+    for (const browserWindow of windows) {
+      if (!windowOrderRef.current.has(browserWindow.windowId)) {
+        windowOrderRef.current.set(browserWindow.windowId, nextWindowOrderRef.current++);
+      }
+    }
+    return [...windows].sort(
+      (left, right) =>
+        (windowOrderRef.current.get(left.windowId) ?? 0) - (windowOrderRef.current.get(right.windowId) ?? 0)
+    );
   }, [windows]);
 
   // Stable labeling for the current UI list: W1, W2, W3...
@@ -234,6 +244,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     // Reset pagination when selection or query changes
     setTabLimit(TAB_PAGE_SIZE);
   }, [selectedWindowIds.join(','), query]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('workbench:tab-commander-tabs-view', tabsView);
+  }, [tabsView]);
 
   const visibleTabs = filteredTabsForSelection.slice(0, tabLimit);
   const hiddenCount = Math.max(0, filteredTabsForSelection.length - visibleTabs.length);
@@ -719,10 +733,12 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     buttonId,
     title,
     align = 'right',
+    primary = false,
   }: {
     buttonId: string;
     title: string;
     align?: 'left' | 'right';
+    primary?: boolean;
   }) => {
     const buttonRef = useRef<HTMLButtonElement | null>(null);
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -896,17 +912,18 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             alignItems: 'center',
             gap: 6,
             padding: '4px 8px',
-            borderRadius: 9999,
-            border: '1px solid var(--border)',
-            background: 'transparent',
+            minHeight: 31,
+            borderRadius: 'var(--radius-sm)',
+            border: primary ? '1px solid var(--accent)' : '1px solid var(--border)',
+            background: primary ? 'var(--accent)' : 'transparent',
             cursor: 'pointer',
-            color: 'var(--text)',
+            color: primary ? '#fff' : 'var(--text)',
             fontSize: 'var(--text-xs)',
             fontWeight: 500,
             whiteSpace: 'nowrap',
           }}
         >
-          Capture…
+          Capture
         </button>
         {isOpen ? renderMenu() : null}
       </>
@@ -1080,6 +1097,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         display: 'flex',
         height: '100%',
         flexDirection: 'column',
+        gap: isPage ? 12 : 0,
+        minHeight: 0,
         background: 'var(--bg)',
         color: 'var(--text)',
         fontFamily: 'var(--font-sans)',
@@ -1087,6 +1106,30 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       onClick={() => closeDropdowns()}
     >
       {/* Header */}
+      {isPage ? (
+        <>
+          <header data-tab-commander-header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
+            <div>
+              <h1 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-xl)', fontWeight: 700 }}>Tab Commander</h1>
+              <p style={{ margin: '3px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Manage {windows.length} live browser window{windows.length !== 1 ? 's' : ''} and {allTabs.length} open tab{allTabs.length !== 1 ? 's' : ''}, then capture the work you want to keep.</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              {onRefresh && <button type="button" onClick={() => void onRefresh()} style={pageSecondaryButtonStyle}><RefreshCw size={12} /> Refresh</button>}
+              <div onClick={(event) => event.stopPropagation()}><WorkspaceSaveMenu buttonId="workspace-save-page" title="Capture selected tabs or windows" align="right" primary /></div>
+            </div>
+          </header>
+          <div data-tab-commander-toolbar style={{ minHeight: 42, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
+            <label style={{ width: 'min(620px, 100%)', height: 36, display: 'flex', alignItems: 'center', gap: 8, padding: '0 11px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--input-bg)', boxSizing: 'border-box' }} onClick={(event) => event.stopPropagation()}>
+              <Search size={14} style={{ color: 'var(--text-faint)' }} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter selected windows by tab title, domain, or URL…" aria-label="Filter live browser tabs" style={{ minWidth: 0, flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
+              {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear tab filter" title="Clear filter" style={pageIconButtonStyle}><X size={12} /></button>}
+            </label>
+            <span style={selectionSummaryStyle}>{selectedWindowIds.length} window{selectedWindowIds.length !== 1 ? 's' : ''} selected</span>
+            <span style={selectionSummaryStyle}>{selectedTabIds.length} individual tab{selectedTabIds.length !== 1 ? 's' : ''} selected</span>
+            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{selectedTabIds.length > 0 ? 'Capture will use the selected tabs.' : selectedWindowIds.length > 0 ? 'Capture will use the selected windows.' : 'Capture will use all open windows.'}</span>
+          </div>
+        </>
+      ) : (
       <div
         style={{
           display: 'flex',
@@ -1215,16 +1258,21 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           </button>
         </div>
       </div>
+      )}
 
       {/* Content */}
       {!isCollapsed && (
         <div
           style={{
             flex: 1,
+            minHeight: 0,
             overflow: 'hidden',
             display: 'grid',
-            gridTemplateColumns: '240px 1fr',
+            gridTemplateColumns: isPage ? 'minmax(250px, 330px) minmax(0, 1fr)' : '240px 1fr',
             background: 'var(--bg)',
+            border: isPage ? '1px solid var(--border)' : 'none',
+            borderRadius: isPage ? 'var(--radius-lg)' : 0,
+            boxShadow: isPage ? 'var(--shadow-sm)' : 'none',
           }}
         >
           {/* Windows column */}
@@ -1270,6 +1318,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               return (
                 <div
                   key={w.windowId}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isSelected}
+                  aria-label={`${label}, ${w.tabs.length} tabs`}
                   style={{
                     border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
                     background: isSelected ? 'var(--accent-weak)' : 'var(--bg-panel)',
@@ -1281,6 +1333,12 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     outlineOffset: '1px',
                   }}
                   onClick={(e) => handleWindowClick(w.windowId, e)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+                    event.preventDefault();
+                    setSelectedWindowIds([w.windowId]);
+                    setLastClickedWindowId(w.windowId);
+                  }}
                   onDragOver={(e) => handleWindowDragOver(e, w.windowId)}
                   onDragEnter={(e) => handleWindowDragOver(e, w.windowId)}
                   onDragLeave={() => {
@@ -1545,6 +1603,11 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     onClick={() => setTabsView('gallery')}
                   />
                 </div>
+                {selectedTabIds.length > 0 && (
+                  <button type="button" onClick={() => setSelectedTabIds([])} title="Clear individual tab selection" style={pageSecondaryButtonStyle}>
+                    {selectedTabIds.length} selected · Clear
+                  </button>
+                )}
                 {previewTabIds.length > 0 && (
                   <button
                     onClick={handleClosePreviews}
@@ -1570,7 +1633,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     <span style={{ opacity: 0.85 }}>({previewTabIds.length})</span>
                   </button>
                 )}
-                {selectedWindowIds.length >= 1 && (
+                {!isPage && selectedWindowIds.length >= 1 && (
                   <WorkspaceSaveMenu buttonId={`workspace-save-selected-${selectedWindowIds.join('-')}`} title="Capture selection" align="right" />
                 )}
               </div>
@@ -1593,7 +1656,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                   return (
                     <div
                       key={rowKey}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Activate ${tab.title || 'Untitled'}`}
                       onClick={() => handleTabClick(tab.id, windowId)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+                        event.preventDefault();
+                        void handleTabClick(tab.id, windowId);
+                      }}
                       draggable
                       onDragStart={(e) => handleTabDragStart(e, tab.id, windowId)}
                       style={{
@@ -1635,7 +1706,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             height: 14,
                             cursor: 'pointer',
                             flexShrink: 0,
-                            opacity: isHovered || isSelectedTab ? 1 : 0,
+                            opacity: isPage || isHovered || isSelectedTab ? 1 : 0,
                             transition: 'opacity 120ms ease-in-out',
                           }}
                         />
@@ -1744,8 +1815,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                             display: 'flex',
                             alignItems: 'center',
                             borderRadius: 4,
-                            opacity: isHovered || isActive ? 1 : 0,
-                            pointerEvents: isHovered || isActive ? 'auto' : 'none',
+                            opacity: isPage || isHovered || isActive ? 1 : 0,
+                            pointerEvents: isPage || isHovered || isActive ? 'auto' : 'none',
                             transition: 'opacity 120ms ease-in-out',
                           }}
                           onMouseEnter={(e) => {
@@ -1774,8 +1845,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                               display: 'flex',
                               alignItems: 'center',
                               borderRadius: 4,
-                              opacity: isHovered || isActive ? 1 : 0,
-                              pointerEvents: isHovered || isActive ? 'auto' : 'none',
+                              opacity: isPage || isHovered || isActive ? 1 : 0,
+                              pointerEvents: isPage || isHovered || isActive ? 'auto' : 'none',
                               transition: 'opacity 120ms ease-in-out',
                             }}
                             onMouseEnter={(e) => {
@@ -1816,7 +1887,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     return (
                       <div
                         key={`${windowId}:${tab.id}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Activate ${tab.title || 'Untitled'}`}
                         onClick={() => handleTabClick(tab.id, windowId)}
+                        onKeyDown={(event) => {
+                          if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+                          event.preventDefault();
+                          void handleTabClick(tab.id, windowId);
+                        }}
                         draggable
                         onDragStart={(e) => handleTabDragStart(e, tab.id, windowId)}
                         style={{
@@ -2032,3 +2111,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     </>
   );
 };
+
+const pageSecondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' };
+const pageIconButtonStyle: React.CSSProperties = { width: 25, height: 25, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };
+const selectionSummaryStyle: React.CSSProperties = { minHeight: 27, display: 'inline-flex', alignItems: 'center', padding: '0 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-panel)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, whiteSpace: 'nowrap' };

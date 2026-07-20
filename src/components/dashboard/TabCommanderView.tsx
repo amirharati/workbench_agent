@@ -37,9 +37,11 @@ export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
     <div
       style={{
         height: '100%',
-        minHeight: 520,
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
+        padding: '16px 18px 72px',
+        boxSizing: 'border-box',
         background: 'var(--bg)',
         color: 'var(--text)',
       }}
@@ -48,14 +50,12 @@ export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
         style={{
           flex: 1,
           minHeight: 0,
-          border: '1px solid var(--border)',
-          borderRadius: 8,
           overflow: 'hidden',
-          background: 'var(--bg-panel)',
         }}
       >
         <BottomPanel
           isCollapsed={false}
+          displayMode="page"
           onToggle={() => {
             /* no-op: full page */
           }}
@@ -74,4 +74,3 @@ export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
     </div>
   );
 };
-
