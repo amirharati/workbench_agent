@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, FileText, Focus, Pin, Plus, Search, Trash2, Upload } from 'lucide-react';
+import { ExternalLink, FileText, Focus, Library, Link2, Pin, Plus, Search, Trash2, Upload } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { CategoryBrowseFilter, PipelineBrowseFilter } from '../../lib/pipeline';
 import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
@@ -12,6 +12,7 @@ import { ListPipelineBadge } from './PipelineDisplayBlocks';
 import { ScopeChipsBar } from './ScopeChipsBar';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { isItemPinnedToProject, updateProjectPinMetadata } from './projectPins';
+import { ContentBrowser, useContentBrowseMode } from './ContentBrowser';
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
@@ -185,6 +186,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   const [workspaceKey, setWorkspaceKey] = useState(GLOBAL_WORKSPACE_KEY);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
   const [pinningItemId, setPinningItemId] = useState<string | null>(null);
+  const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:library-content-view');
 
   const destinations = useMemo(
     () => buildBookmarkWorkspaceDestinations(projects, homeState.savedWorkspaceSessions ?? []),
@@ -228,6 +230,24 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
     : projects.find((project) => project.id === scopeProjectId) ?? null;
   const selectedDestination = destinations.find((destination) => destination.key === workspaceKey)
     ?? destinations[0];
+  const browseEntries = scopedItems.map((item) => {
+    const isLink = Boolean(item.url?.trim());
+    return {
+      id: item.id,
+      title: item.title || 'Untitled',
+      icon: isLink ? <ListPipelineBadge badge={badgeMap.get(item.id)} /> : <FileText size={12} />,
+      subtitle: isLink
+        ? <BookmarkUrlLink item={item} style={{ display: 'block', color: 'inherit' }} />
+        : item.notes?.trim() || 'Empty note',
+      meta: new Date(item.updated_at ?? item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      actions: (
+        <>
+          <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} stopPropagation />
+          {isLink && <button type="button" onClick={() => void openBookmarkInBrowser(item)} title={`Open ${item.title || 'link'}`} aria-label={`Open ${item.title || 'link'}`} style={iconButtonStyle}><ExternalLink size={12} /></button>}
+        </>
+      ),
+    };
+  });
 
   useEffect(() => {
     const preferredKey = scopeProjectId === 'all'
@@ -306,17 +326,15 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
       </header>
 
       <div style={{ flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <label style={{ height: 36, width: 'min(560px, 100%)', display: 'flex', alignItems: 'center', gap: 8, padding: '0 11px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--input-bg)', boxSizing: 'border-box' }}>
-            <Search size={14} color="var(--text-faint)" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter by title, URL, note text, or tag…" aria-label="Filter library" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
-          </label>
-          <div role="group" aria-label="Library item type" style={{ height: 34, display: 'inline-flex', alignItems: 'center', padding: 2, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)' }}>
-            {(['all', 'links', 'notes'] as const).map((filter) => (
-              <button key={filter} type="button" aria-pressed={typeFilter === filter} onClick={() => setTypeFilter(filter)} style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 'var(--radius-sm)', background: typeFilter === filter ? 'var(--accent-weak)' : 'transparent', color: typeFilter === filter ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer', textTransform: 'capitalize' }}>{filter}</button>
-            ))}
-          </div>
+        <div data-library-view-tabs role="tablist" aria-label="Library view" style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: 5, flexWrap: 'wrap', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)' }}>
+          <button type="button" role="tab" aria-selected={typeFilter === 'all'} onClick={() => setTypeFilter('all')} style={viewTabStyle(typeFilter === 'all')}><Library size={12} /> All items</button>
+          <button type="button" role="tab" aria-selected={typeFilter === 'links'} onClick={() => setTypeFilter('links')} style={viewTabStyle(typeFilter === 'links')}><Link2 size={12} /> Links</button>
+          <button type="button" role="tab" aria-selected={typeFilter === 'notes'} onClick={() => setTypeFilter('notes')} style={viewTabStyle(typeFilter === 'notes')}><FileText size={12} /> Notes</button>
         </div>
+        <label style={{ height: 36, width: 'min(560px, 100%)', display: 'flex', alignItems: 'center', gap: 8, padding: '0 11px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--input-bg)', boxSizing: 'border-box' }}>
+          <Search size={14} color="var(--text-faint)" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter by title, URL, note text, or tag…" aria-label="Filter library" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
+        </label>
         <ScopeChipsBar
           scopeProjectId={scopeProjectId}
           scopeCollectionId={scopeCollectionId}
@@ -334,33 +352,16 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(280px, 390px) minmax(0, 1fr)', gap: 12 }}>
-        <section style={panelStyle} aria-label="Item library">
-          <div style={panelHeaderStyle}>
-            <strong style={{ color: 'var(--text)', fontSize: 'var(--text-sm)' }}>{typeFilter === 'links' ? 'Saved links' : typeFilter === 'notes' ? 'Notes' : 'All items'}</strong>
-            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{scopedItems.length}</span>
-          </div>
-          <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-            {scopedItems.length === 0 ? (
-              <div style={{ padding: 24, color: 'var(--text-faint)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>{query.trim() ? 'No items match this filter.' : 'No items in this scope.'}</div>
-            ) : scopedItems.map((item) => {
-              const selected = selectedItemId === item.id;
-              const isLink = Boolean(item.url?.trim());
-              return (
-                <div key={item.id} role="button" tabIndex={0} aria-current={selected ? 'true' : undefined} onClick={() => { setSelectedItemId(item.id); setWorkspaceNotice(null); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedItemId(item.id); setWorkspaceNotice(null); } }} style={{ display: 'flex', alignItems: 'center', gap: 9, minHeight: 54, padding: '7px 9px', borderBottom: '1px solid var(--border)', borderLeft: selected ? '3px solid var(--accent)' : '3px solid transparent', background: selected ? 'var(--accent-weak)' : 'transparent', cursor: 'pointer' }}>
-                  <span style={{ minWidth: 0, flex: 1 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: selected ? 'var(--accent)' : 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: selected ? 700 : 600 }}>
-                      {isLink ? <ListPipelineBadge badge={badgeMap.get(item.id)} /> : <FileText size={12} color="var(--text-faint)" />}
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title || 'Untitled'}</span>
-                    </span>
-                    {isLink ? <BookmarkUrlLink item={item} style={{ display: 'block', color: 'var(--text-faint)' }} /> : <span style={{ display: '-webkit-box', marginTop: 2, overflow: 'hidden', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, color: 'var(--text-faint)', fontSize: 'var(--text-xs)', lineHeight: 1.35 }}>{item.notes?.trim() || 'Empty note'}</span>}
-                  </span>
-                  <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} stopPropagation />
-                  {isLink && <button type="button" onClick={(event) => { event.stopPropagation(); void openBookmarkInBrowser(item); }} title={`Open ${item.title || 'link'}`} aria-label={`Open ${item.title || 'link'}`} style={iconButtonStyle}><ExternalLink size={12} /></button>}
-                </div>
-              );
-            })}
-          </div>
-        </section>
+        <ContentBrowser
+          title={typeFilter === 'links' ? 'Saved links' : typeFilter === 'notes' ? 'Notes' : 'All items'}
+          entries={browseEntries}
+          selectedId={selectedItemId}
+          onSelect={(id) => { setSelectedItemId(id); setWorkspaceNotice(null); }}
+          mode={browseMode}
+          onModeChange={setBrowseMode}
+          emptyMessage={query.trim() ? 'No items match this filter.' : 'No items in this scope.'}
+          ariaLabel="Item library"
+        />
 
         <section style={panelStyle} aria-label="Selected library item">
           {selectedItem ? (
@@ -413,3 +414,4 @@ const secondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inl
 const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
 const iconButtonStyle: React.CSSProperties = { width: 27, height: 27, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };
 const destinationSelectStyle: React.CSSProperties = { minWidth: 155, maxWidth: 230, height: 29, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-xs)' };
+const viewTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 10px', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' });

@@ -20,6 +20,8 @@ function render(selectedView: string, selectedTab: GlobalTab | null = null, sele
       onSelectedViewChange={vi.fn()}
       selectedTab={selectedTab}
       selectedItem={selectedItem}
+      initialView={selectedTab ? 'workspace' : selectedItem ? 'quick-access' : 'projects'}
+      quickAccessItems={selectedItem ? [selectedItem] : []}
       items={[]}
       projects={[{ id: 'project-a', name: 'Project Alpha', created_at: 1, updated_at: 1, isDefault: false }]}
       collections={[]}
@@ -36,7 +38,25 @@ function render(selectedView: string, selectedTab: GlobalTab | null = null, sele
 
 describe('AllLibraryWorkspaceOverview', () => {
   it('groups global and project work without exposing destructive controls in the combined lens', () => {
-    const markup = render('all-active');
+    const markup = renderToStaticMarkup(
+      <AllLibraryWorkspaceOverview
+        groups={groups}
+        selectedView="all-active"
+        onSelectedViewChange={vi.fn()}
+        selectedTab={null}
+        selectedItem={null}
+        initialView="workspace"
+        items={[]}
+        projects={[{ id: 'project-a', name: 'Project Alpha', created_at: 1, updated_at: 1, isDefault: false }]}
+        collections={[]}
+        onSelectTab={vi.fn()}
+        onRemoveGlobalTab={vi.fn()}
+        onFocusTab={vi.fn()}
+        onFocusGlobal={vi.fn()}
+        onAddItemToGlobal={vi.fn()}
+        onViewSearch={vi.fn()}
+      />
+    );
 
     expect(markup).toContain('Global workspace');
     expect(markup).toContain('Research session');
@@ -51,9 +71,8 @@ describe('AllLibraryWorkspaceOverview', () => {
     expect(markup).toContain('Saved search · All Library');
     expect(markup).toContain('View results');
     expect(markup).toContain('Focus');
-    expect(markup).toContain('width:100%;min-width:0;min-height:40px');
     expect(markup).not.toContain('overflow-x:auto');
-    expect(markup).toContain('height:390px;min-height:250px;max-height:390px');
+    expect(markup).toContain('data-all-library-working-canvas="true"');
     expect(markup).toContain('overflow-y:auto');
   });
 
@@ -70,5 +89,30 @@ describe('AllLibraryWorkspaceOverview', () => {
     });
 
     expect(markup).toContain('Add to favorites: Preview note');
+  });
+
+  it('does not show a stale workspace selection while Projects is active', () => {
+    const markup = renderToStaticMarkup(
+      <AllLibraryWorkspaceOverview
+        groups={groups}
+        selectedView="global"
+        onSelectedViewChange={vi.fn()}
+        selectedTab={globalSearch}
+        selectedItem={null}
+        items={[]}
+        projects={[]}
+        collections={[]}
+        onSelectTab={vi.fn()}
+        onRemoveGlobalTab={vi.fn()}
+        onFocusTab={vi.fn()}
+        onFocusGlobal={vi.fn()}
+        onAddItemToGlobal={vi.fn()}
+        onViewSearch={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('aria-label="All Library view"');
+    expect(markup).toContain('Projects');
+    expect(markup).not.toContain('Saved search · All Library');
   });
 });

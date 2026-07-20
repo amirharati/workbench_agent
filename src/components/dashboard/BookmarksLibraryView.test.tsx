@@ -29,7 +29,12 @@ describe('BookmarksLibraryView', () => {
     expect(markup).toContain('Python');
     expect(markup).toContain('Note');
     expect(markup).toContain('Filter library');
-    expect(markup).toContain('Library item type');
+    expect(markup).toContain('data-library-view-tabs="true"');
+    expect(markup).toContain('aria-label="Library view"');
+    expect(markup).toContain('All items');
+    expect(markup.indexOf('Library view')).toBeLessThan(markup.indexOf('Filter library'));
+    expect(markup).toContain('aria-label="Gallery view"');
+    expect(markup).toContain('data-content-view="list"');
     expect(markup).toContain('Select an item to inspect and edit it.');
   });
 
@@ -49,7 +54,7 @@ describe('BookmarksLibraryView', () => {
 
     expect(markup).toContain('Draft text');
     expect(markup).not.toContain('https://python.org');
-    expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain('aria-selected="true"');
   });
 
   it('offers global, live project, and named workspace destinations', () => {

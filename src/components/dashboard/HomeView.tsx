@@ -11,7 +11,6 @@ import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary, reorde
 import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
 import { ActiveWorkspaceCard } from './ActiveWorkspaceCard';
 import { AllLibraryWorkspaceOverview, type WorkspaceViewGroup } from './AllLibraryWorkspaceOverview';
-import { HomeBrowsePanel } from './HomeBrowsePanel';
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
@@ -401,6 +400,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
     });
   };
 
+  const clearAllLibrarySelection = () => {
+    setSelectedOverviewItemId(null);
+    setSelectedAllLibraryWorkspaceTabId(null);
+    onSelectedBrowseItemChange?.(null);
+  };
+
   const effectiveSearchScopeLabel = librarySearch?.state.filters.collectionId
     ? collections.find((collection) => collection.id === librarySearch.state.filters.collectionId)?.name ?? 'Collection'
     : librarySearch?.state.filters.projectId
@@ -788,6 +793,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <ProjectHomeWorkspace
           project={activeProject}
           items={projectItems}
+          organizationItems={items}
           collections={projectCollections}
           organizationProjects={projects}
           organizationCollections={collections}
@@ -882,6 +888,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
             onCreateProject={onCreateProject}
             onCreateCollection={onCreateCollection}
             getEntryScopeLabel={getWorkspaceEntryScopeLabel}
+            projectSummaries={projectSummaries}
+            recentItems={recentItems}
+            quickAccessItems={quickAccessItems}
+            totalItems={items.length}
+            onOpenProject={openProjectScope}
+            onSelectItem={selectOverviewItem}
+            onItemContextMenu={showHomeItemContextMenu}
+            onClearSelection={clearAllLibrarySelection}
+            onOpenTrash={() => openUtilityTab('util-trash')}
+            onOpenPipeline={onOpenPipelineHub}
           />
         )}
 
@@ -892,26 +908,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
               progress={libraryHydrateProgress}
             />
           </div>
-        ) : scopeProjectId === 'all' ? (
-          <>
-            {libraryLoading && (
-              <div style={{ width: '100%', maxWidth: 1000, display: 'flex', justifyContent: 'center' }}>
-                <LibraryLoadingPlaceholder variant="inline" message="Refreshing library in the background…" progress={libraryHydrateProgress} />
-              </div>
-            )}
-            <HomeBrowsePanel
-              projects={projectSummaries}
-              recentItems={recentItems}
-              quickAccessItems={quickAccessItems}
-              selectedItemId={selectedOverviewItemId}
-              totalItems={items.length}
-              onOpenProject={openProjectScope}
-              onSelectItem={selectOverviewItem}
-              onItemContextMenu={showHomeItemContextMenu}
-              onOpenTrash={() => openUtilityTab('util-trash')}
-              onOpenPipeline={onOpenPipelineHub}
-            />
-          </>
+        ) : scopeProjectId === 'all' && libraryLoading ? (
+          <div style={{ width: '100%', maxWidth: 1120, display: 'flex', justifyContent: 'center' }}>
+            <LibraryLoadingPlaceholder variant="inline" message="Refreshing library in the background…" progress={libraryHydrateProgress} />
+          </div>
         ) : null}
       </div>
       ) : librarySearch ? (

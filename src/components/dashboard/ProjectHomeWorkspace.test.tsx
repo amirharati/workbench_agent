@@ -46,7 +46,7 @@ const workspaces: Workspace[] = Array.from({ length: 6 }, (_, index) => ({
 }));
 
 describe('ProjectHomeWorkspace browse surfaces', () => {
-  it('uses bounded vertical lists for workspaces, project pins, and collections', () => {
+  it('uses compact context controls and one persistent list/gallery working canvas', () => {
     const markup = renderToStaticMarkup(
       <ProjectHomeWorkspace
         project={project}
@@ -73,21 +73,26 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
       />
     );
 
-    expect(markup).toContain('data-browse-surface="project-workspaces"');
-    expect(markup).toContain('data-browse-surface="project-pins"');
-    expect(markup).toContain('data-browse-surface="project-collections"');
-    expect(markup.match(/overflow-y:auto/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(markup).toContain('data-project-view-tabs="true"');
+    expect(markup).toContain('aria-label="Project view"');
+    expect(markup).toContain('aria-label="Collection view"');
+    expect(markup).toContain('aria-label="Workspace view"');
+    expect(markup).not.toContain('data-browse-surface="project-workspaces"');
+    expect(markup).not.toContain('data-browse-surface="project-pins"');
+    expect(markup).not.toContain('data-browse-surface="project-collections"');
     expect(markup).not.toContain('overflow-x:auto');
     expect(markup).toContain('Workspace 5');
-    expect(markup).toContain('Pinned item 5');
     expect(markup).toContain('Collection 5');
-    expect(markup).toContain('Add to favorites: Pinned item 5');
-    expect(markup).toContain('padding:24px 24px 72px');
-    expect(markup).toContain('data-project-page-footer-content="true"');
-    expect(markup).toContain('margin:0 auto 64px');
+    expect(markup).toContain('Pinned <span');
+    expect(markup).toContain('padding:16px 18px 72px');
+    expect(markup).toContain('data-project-working-canvas="true"');
+    expect(markup).toContain('aria-label="Project material"');
+    expect(markup).toContain('aria-label="Gallery view"');
+    expect(markup).toContain('All project items');
+    expect(markup).not.toContain('data-project-page-footer-content="true"');
   });
 
-  it('hides the redundant switcher until a saved workspace exists', () => {
+  it('keeps a compact Workspace tab when Live session is the only choice', () => {
     const markup = renderToStaticMarkup(
       <ProjectHomeWorkspace
         project={project}
@@ -113,12 +118,13 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
       />
     );
 
-    expect(markup).toContain('Save as workspace');
     expect(markup).toContain('Live session');
+    expect(markup).toContain('aria-label="Workspace view"');
+    expect(markup).not.toContain('Save as workspace');
     expect(markup).not.toContain('data-browse-surface="project-workspaces"');
   });
 
-  it('shows a named Homebase workspace as the active generic working set', () => {
+  it('shows the selected workspace name without claiming its list is visible', () => {
     const markup = renderToStaticMarkup(
       <ProjectHomeWorkspace
         project={project}
@@ -148,7 +154,9 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     );
 
     expect(markup).toContain('Writing plan');
-    expect(markup).toContain('1 active item');
-    expect(markup).toContain('Open links');
+    expect(markup).toContain('1 item');
+    expect(markup).toContain('aria-label="Workspace view"');
+    expect(markup).toContain('All project items');
+    expect(markup).not.toContain('Open links');
   });
 });
