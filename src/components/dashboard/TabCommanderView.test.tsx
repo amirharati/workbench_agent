@@ -25,10 +25,16 @@ describe('TabCommanderView', () => {
     expect(markup).toContain('data-tab-commander-header="true"');
     expect(markup).toContain('Manage 1 live browser window and 1 open tab');
     expect(markup).toContain('aria-label="Filter live browser tabs"');
-    expect(markup).toContain('Capture will use all open windows.');
+    expect(markup).toContain('Search and capture apply to the selected windows.');
+    expect(markup).toContain('data-tab-commander-canvas="true"');
+    expect(markup).toContain('Live windows');
+    expect(markup).toContain('Tabs in selection');
+    expect(markup).toContain('Current window');
+    expect(markup).toContain('aria-label="Activate Example"');
+    expect(markup).toContain('aria-label="Locate W1"');
     expect(markup).toContain('Refresh');
     expect(markup).not.toContain('title="Collapse"');
     expect(markup).not.toContain('lucide-grip-horizontal');
-    expect(markup.match(/>Capture</g)).toHaveLength(1);
+    expect(markup.match(/>Capture 1 window</g)).toHaveLength(1);
   });
 });

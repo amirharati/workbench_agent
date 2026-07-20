@@ -81,7 +81,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   const isPage = displayMode === 'page';
   const allTabs = useMemo(() => windows.flatMap((w) => w.tabs), [windows]);
   const [query, setQuery] = useState('');
-  const [selectedWindowIds, setSelectedWindowIds] = useState<number[]>([]);
+  const [selectedWindowIds, setSelectedWindowIds] = useState<number[]>(() => {
+    const activeWindow = windows.find((browserWindow) => browserWindow.tabs.some((tab) => tab.active));
+    return activeWindow ? [activeWindow.windowId] : windows[0] ? [windows[0].windowId] : [];
+  });
   const [lastClickedWindowId, setLastClickedWindowId] = useState<number | null>(null);
   const [saveDropdownOpen, setSaveDropdownOpen] = useState<string | null>(null);
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
@@ -734,11 +737,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     title,
     align = 'right',
     primary = false,
+    label = 'Capture',
   }: {
     buttonId: string;
     title: string;
     align?: 'left' | 'right';
     primary?: boolean;
+    label?: string;
   }) => {
     const buttonRef = useRef<HTMLButtonElement | null>(null);
     const menuRef = useRef<HTMLDivElement | null>(null);
@@ -923,7 +928,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             whiteSpace: 'nowrap',
           }}
         >
-          Capture
+          {label}
         </button>
         {isOpen ? renderMenu() : null}
       </>
@@ -1115,7 +1120,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               {onRefresh && <button type="button" onClick={() => void onRefresh()} style={pageSecondaryButtonStyle}><RefreshCw size={12} /> Refresh</button>}
-              <div onClick={(event) => event.stopPropagation()}><WorkspaceSaveMenu buttonId="workspace-save-page" title="Capture selected tabs or windows" align="right" primary /></div>
+              <div onClick={(event) => event.stopPropagation()}><WorkspaceSaveMenu buttonId="workspace-save-page" title="Capture selected tabs or windows" align="right" primary label={selectedTabIds.length > 0 ? `Capture ${selectedTabIds.length} tab${selectedTabIds.length !== 1 ? 's' : ''}` : selectedWindowIds.length > 0 ? `Capture ${selectedWindowIds.length} window${selectedWindowIds.length !== 1 ? 's' : ''}` : 'Capture browser'} /></div>
             </div>
           </header>
           <div data-tab-commander-toolbar style={{ minHeight: 42, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
@@ -1124,9 +1129,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter selected windows by tab title, domain, or URL…" aria-label="Filter live browser tabs" style={{ minWidth: 0, flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
               {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear tab filter" title="Clear filter" style={pageIconButtonStyle}><X size={12} /></button>}
             </label>
-            <span style={selectionSummaryStyle}>{selectedWindowIds.length} window{selectedWindowIds.length !== 1 ? 's' : ''} selected</span>
-            <span style={selectionSummaryStyle}>{selectedTabIds.length} individual tab{selectedTabIds.length !== 1 ? 's' : ''} selected</span>
-            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{selectedTabIds.length > 0 ? 'Capture will use the selected tabs.' : selectedWindowIds.length > 0 ? 'Capture will use the selected windows.' : 'Capture will use all open windows.'}</span>
+            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{selectedTabIds.length > 0 ? `${selectedTabIds.length} individual tab${selectedTabIds.length !== 1 ? 's' : ''} override the window selection for capture.` : selectedWindowIds.length > 0 ? 'Search and capture apply to the selected windows.' : 'Select a window to browse its tabs; capture currently includes every open window.'}</span>
           </div>
         </>
       ) : (
@@ -1263,31 +1266,34 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       {/* Content */}
       {!isCollapsed && (
         <div
+          data-tab-commander-canvas={isPage || undefined}
           style={{
             flex: 1,
             minHeight: 0,
             overflow: 'hidden',
             display: 'grid',
             gridTemplateColumns: isPage ? 'minmax(250px, 330px) minmax(0, 1fr)' : '240px 1fr',
+            gap: isPage ? 12 : 0,
             background: 'var(--bg)',
-            border: isPage ? '1px solid var(--border)' : 'none',
-            borderRadius: isPage ? 'var(--radius-lg)' : 0,
-            boxShadow: isPage ? 'var(--shadow-sm)' : 'none',
+            border: 'none',
           }}
         >
           {/* Windows column */}
           <div
             style={{
+              border: isPage ? '1px solid var(--border)' : 'none',
               borderRight: '1px solid var(--border)',
+              borderRadius: isPage ? 'var(--radius-lg)' : 0,
               overflowY: 'auto',
-              padding: 8,
+              padding: isPage ? 0 : 8,
               background: 'var(--bg-panel)',
+              boxShadow: isPage ? 'var(--shadow-sm)' : 'none',
             }}
             className="scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 4px 8px' }}>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text)', textTransform: 'uppercase' }}>Windows</div>
+            <div style={{ minHeight: isPage ? 46 : undefined, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: isPage ? '7px 10px' : '4px 4px 8px', borderBottom: isPage ? '1px solid var(--border)' : 'none', position: isPage ? 'sticky' : undefined, top: isPage ? 0 : undefined, zIndex: isPage ? 1 : undefined, background: 'var(--bg-panel)' }}>
+              <div><div style={{ fontSize: isPage ? 'var(--text-sm)' : 'var(--text-xs)', fontWeight: 650, color: 'var(--text)', textTransform: isPage ? 'none' : 'uppercase' }}>Live windows</div>{isPage && <div style={{ marginTop: 2, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{windows.length} open · {selectedWindowIds.length} selected</div>}</div>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1314,6 +1320,44 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               const isCollapsedWindow = windowCollapsed[w.windowId] ?? false;
               const matchCount = w.tabs.filter((t) => tabMatchesQuery(t, query)).length;
               const label = windowLabelById.get(w.windowId) || `W?`;
+
+              if (isPage) {
+                return (
+                  <div
+                    key={w.windowId}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
+                    aria-label={`${label}, ${w.tabs.length} tabs`}
+                    onClick={(event) => handleWindowClick(w.windowId, event)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+                      event.preventDefault();
+                      setSelectedWindowIds([w.windowId]);
+                      setLastClickedWindowId(w.windowId);
+                    }}
+                    onDragOver={(event) => handleWindowDragOver(event, w.windowId)}
+                    onDragEnter={(event) => handleWindowDragOver(event, w.windowId)}
+                    onDragLeave={() => { if (dragOverWindowId === w.windowId) setDragOverWindowId(null); }}
+                    onDrop={(event) => void handleWindowDrop(event, w.windowId)}
+                    style={{ minHeight: 58, display: 'flex', alignItems: 'center', gap: 9, padding: '7px 8px 7px 10px', borderBottom: '1px solid var(--border)', borderLeft: isSelected ? '3px solid var(--accent)' : '3px solid transparent', background: isSelected ? 'var(--accent-weak)' : 'transparent', outline: dragOverWindowId === w.windowId ? '2px solid var(--accent)' : 'none', outlineOffset: -2, cursor: 'pointer' }}
+                  >
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleWindowSelection(w.windowId)} onClick={(event) => event.stopPropagation()} aria-label={`Select ${label}`} style={{ width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
+                    <span style={{ width: 31, height: 31, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: isSelected ? 'var(--bg-panel)' : 'var(--bg-hover)', color: isSelected ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 750 }}>{label}</span>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650 }}>
+                        {w.tabs.some((tab) => tab.active) ? 'Current window' : 'Browser window'}
+                        {w.tabs.some((tab) => tab.active) && <span title="Active window" style={{ width: 6, height: 6, flexShrink: 0, borderRadius: 999, background: '#22c55e' }} />}
+                      </span>
+                      <span style={{ display: 'block', marginTop: 2, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{query ? `${matchCount} matching of ${w.tabs.length}` : `${w.tabs.length} tab${w.tabs.length !== 1 ? 's' : ''}`}</span>
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      <button type="button" onClick={(event) => void handleFindWindow(event, w.windowId)} title={`Locate ${label}`} aria-label={`Locate ${label}`} style={pageIconButtonStyle}><Search size={12} /></button>
+                      {onCloseWindow && <button type="button" onClick={(event) => void handleCloseWindow(event, w.windowId)} title={`Close ${label}`} aria-label={`Close ${label}`} style={{ ...pageIconButtonStyle, color: 'var(--text-faint)' }}><X size={13} /></button>}
+                    </span>
+                  </div>
+                );
+              }
 
               return (
                 <div
@@ -1524,10 +1568,11 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           </div>
 
           {/* Tabs column */}
-          <div style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', border: isPage ? '1px solid var(--border)' : 'none', borderRadius: isPage ? 'var(--radius-lg)' : 0, background: 'var(--bg-panel)', boxShadow: isPage ? 'var(--shadow-sm)' : 'none' }} onClick={(e) => e.stopPropagation()}>
             <div
               style={{
-                padding: '8px 12px',
+                minHeight: isPage ? 46 : undefined,
+                padding: isPage ? '7px 10px' : '8px 12px',
                 borderBottom: '1px solid var(--border)',
                 display: 'flex',
                 alignItems: 'center',
@@ -1540,7 +1585,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
-                    {selectedWindowIds.length === 0
+                    {isPage
+                      ? 'Tabs in selection'
+                      : selectedWindowIds.length === 0
                       ? 'Tabs'
                       : selectedWindowIds.length === 1
                         ? `${windowLabelById.get(selectedWindowIds[0]) || 'W?'}`
@@ -1603,7 +1650,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     onClick={() => setTabsView('gallery')}
                   />
                 </div>
-                {selectedTabIds.length > 0 && (
+                {!isPage && selectedTabIds.length > 0 && (
                   <button type="button" onClick={() => setSelectedTabIds([])} title="Clear individual tab selection" style={pageSecondaryButtonStyle}>
                     {selectedTabIds.length} selected · Clear
                   </button>
@@ -1639,7 +1686,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               </div>
             </div>
 
-            <div className="scrollbar" style={{ flex: 1, overflowY: 'auto', padding: 8, background: 'var(--bg)' }}>
+            {isPage && selectedTabIds.length > 0 && (
+              <div role="status" style={{ minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '5px 10px', borderBottom: '1px solid var(--border-active)', background: 'var(--accent-weak)', color: 'var(--accent)', fontSize: 'var(--text-xs)', fontWeight: 650 }}>
+                <span>{selectedTabIds.length} tab{selectedTabIds.length !== 1 ? 's' : ''} selected for capture or drag</span>
+                <button type="button" onClick={() => setSelectedTabIds([])} style={{ ...pageSecondaryButtonStyle, minHeight: 25, borderColor: 'var(--border-active)', color: 'var(--accent)' }}>Clear selection</button>
+              </div>
+            )}
+
+            <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isPage ? 0 : 8, background: isPage ? 'var(--bg-panel)' : 'var(--bg)' }}>
               {selectedWindowIds.length === 0 && (
                 <div style={{ padding: 20, color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>Select one or more windows.</div>
               )}
@@ -1671,25 +1725,26 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         display: 'flex',
                         alignItems: 'center',
                         gap: 8,
-                        padding: '6px 8px',
-                        background: isActive ? 'var(--accent-weak)' : 'var(--bg-panel)',
+                        padding: isPage ? '7px 9px' : '6px 8px',
+                        background: isSelectedTab ? 'var(--accent-weak)' : isActive ? 'var(--bg-active)' : 'var(--bg-panel)',
                         border: '1px solid transparent',
                         borderBottom: '1px solid var(--border)',
-                        borderRadius: 6,
+                        borderLeft: isPage ? (isSelectedTab ? '3px solid var(--accent)' : '3px solid transparent') : undefined,
+                        borderRadius: isPage ? 0 : 6,
                         cursor: 'pointer',
-                        marginBottom: 2,
+                        marginBottom: isPage ? 0 : 2,
                         position: 'relative',
-                        minHeight: 30,
+                        minHeight: isPage ? 52 : 30,
                       }}
                       onMouseEnter={(e) => {
                         setHoveredTabKey(rowKey);
-                        e.currentTarget.style.background = isActive ? 'var(--accent-weak)' : 'var(--bg-hover)';
-                        e.currentTarget.style.borderColor = 'var(--accent)';
+                        e.currentTarget.style.background = isSelectedTab ? 'var(--accent-weak)' : isActive ? 'var(--bg-active)' : 'var(--bg-hover)';
+                        if (!isPage) e.currentTarget.style.borderColor = 'var(--accent)';
                       }}
                       onMouseLeave={(e) => {
                         setHoveredTabKey(null);
-                        e.currentTarget.style.background = isActive ? 'var(--accent-weak)' : 'var(--bg-panel)';
-                        e.currentTarget.style.borderColor = 'transparent';
+                        e.currentTarget.style.background = isSelectedTab ? 'var(--accent-weak)' : isActive ? 'var(--bg-active)' : 'var(--bg-panel)';
+                        if (!isPage) e.currentTarget.style.borderColor = 'transparent';
                       }}
                       title={tab.title || ''}
                     >
@@ -1872,8 +1927,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                    gridTemplateColumns: isPage ? 'repeat(auto-fill, minmax(180px, 1fr))' : 'repeat(auto-fill, minmax(220px, 1fr))',
                     gap: 8,
+                    padding: isPage ? 8 : 0,
                     alignItems: 'start',
                   }}
                 >
@@ -1901,8 +1957,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         style={{
                           background: isActive ? 'var(--accent-weak)' : 'var(--bg-panel)',
                           border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
-                          borderRadius: 8,
-                          padding: 8,
+                          borderRadius: 'var(--radius-md)',
+                          padding: 10,
+                          minHeight: isPage ? 128 : undefined,
                           cursor: 'pointer',
                           display: 'flex',
                           flexDirection: 'column',
@@ -2114,4 +2171,3 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
 const pageSecondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' };
 const pageIconButtonStyle: React.CSSProperties = { width: 25, height: 25, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };
-const selectionSummaryStyle: React.CSSProperties = { minHeight: 27, display: 'inline-flex', alignItems: 'center', padding: '0 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-panel)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, whiteSpace: 'nowrap' };
