@@ -227,6 +227,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
   const [rawDump, setRawDump] = useState<string | null>(null);
   const [rawLoading, setRawLoading] = useState(false);
   const [rawError, setRawError] = useState('');
+  const [rawViewerOpen, setRawViewerOpen] = useState(false);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [embedBusy, setEmbedBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
@@ -270,16 +271,19 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
 
   useEffect(() => {
     setBookmarkOpen(true);
+    setRawViewerOpen(false);
+    setRawDump(null);
+    setRawError('');
   }, [item.id]);
 
   useEffect(() => {
     setRawDump(null);
     setRawError('');
-    if (enrich?.rawRef && enrich?.hasRawBody) {
+    if (rawViewerOpen && enrich?.rawRef && enrich?.hasRawBody) {
       void loadDump();
     }
   }, [
-    item.id,
+    rawViewerOpen,
     enrich?.rawRef,
     enrich?.hasRawBody,
     enrich?.fetchedAt,
@@ -905,6 +909,44 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           alignItems: 'stretch',
         }}
       >
+        {/* AI stage */}
+        <div style={stageCardStyle}>
+          <StageHeader
+            icon={Sparkles}
+            title="AI extract"
+            status={String(aiStatus)}
+            statusColor={aiColor}
+            onClear={() => void runClearStage('ai')}
+            clearDisabled={running || (!isBulk && !enrich?.summary && !enrich?.aiStatus)}
+            clearTitle="Delete AI summary, tags, and search embed (keeps fetch snippet)"
+          />
+          <StageBody>
+            {enrich?.aiError || (enrich?.aiStatus && enrich.aiStatus !== 'ok') ? (
+              <div style={{ color: 'var(--error, #f85149)' }}>
+                {enrich.aiError ??
+                  describeAiFailure(enrich.aiStatus, enrich.aiError) ??
+                  AI_STATUS_HINTS[enrich.aiStatus!]}
+              </div>
+            ) : null}
+            {aiShortGated ? (
+              <div style={{ color: 'var(--er-warn, #d29922)' }}>
+                Cached text is {snippetLen} chars (min {ENRICHMENT_DEFAULTS.minUsefulSnippetChars}) — use Run AI anyway to bypass.
+              </div>
+            ) : null}
+            <MetaLine label="Last run">{formatTime(enrich?.aiAt)}</MetaLine>
+            {enrich?.aiTags?.length ? (
+              <MetaLine label="Tags">{enrich.aiTags.join(', ')}</MetaLine>
+            ) : null}
+            <EnrichmentContent
+              summary={context?.summary ?? enrich?.summary}
+              keyPoints={context?.keyPoints ?? enrich?.aiKeyPoints ?? []}
+              references={references}
+              compact
+              emptyMessage="No summary yet"
+            />
+          </StageBody>
+        </div>
+
         {/* Fetch stage */}
         <div style={stageCardStyle}>
           <StageHeader
@@ -941,44 +983,6 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
                 {enrich.snippet}
               </div>
             ) : null}
-          </StageBody>
-        </div>
-
-        {/* AI stage */}
-        <div style={stageCardStyle}>
-          <StageHeader
-            icon={Sparkles}
-            title="AI extract"
-            status={String(aiStatus)}
-            statusColor={aiColor}
-            onClear={() => void runClearStage('ai')}
-            clearDisabled={running || (!isBulk && !enrich?.summary && !enrich?.aiStatus)}
-            clearTitle="Delete AI summary, tags, and search embed (keeps fetch snippet)"
-          />
-          <StageBody>
-            {enrich?.aiError || (enrich?.aiStatus && enrich.aiStatus !== 'ok') ? (
-              <div style={{ color: 'var(--error, #f85149)' }}>
-                {enrich.aiError ??
-                  describeAiFailure(enrich.aiStatus, enrich.aiError) ??
-                  AI_STATUS_HINTS[enrich.aiStatus!]}
-              </div>
-            ) : null}
-            {aiShortGated ? (
-              <div style={{ color: 'var(--er-warn, #d29922)' }}>
-                Cached text is {snippetLen} chars (min {ENRICHMENT_DEFAULTS.minUsefulSnippetChars}) — use Run AI anyway to bypass.
-              </div>
-            ) : null}
-            <MetaLine label="Last run">{formatTime(enrich?.aiAt)}</MetaLine>
-            {enrich?.aiTags?.length ? (
-              <MetaLine label="Tags">{enrich.aiTags.join(', ')}</MetaLine>
-            ) : null}
-            <EnrichmentContent
-              summary={context?.summary ?? enrich?.summary}
-              keyPoints={context?.keyPoints ?? enrich?.aiKeyPoints ?? []}
-              references={references}
-              compact
-              emptyMessage="No summary yet"
-            />
           </StageBody>
         </div>
 
@@ -1088,14 +1092,10 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
         </div>
       </div>
 
-      {/* Raw fetch viewer — grows with content up to viewport height */}
+      {/* Raw fetch/debug data stays out of the primary review flow until requested. */}
       <div
         style={{
           padding: '0 16px 16px',
-          position: 'sticky',
-          bottom: 0,
-          background: 'var(--bg)',
-          zIndex: 2,
         }}
       >
         <div
@@ -1105,22 +1105,41 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
             flexDirection: 'column',
           }}
         >
-          <div
+          <button
+            type="button"
+            onClick={() => setRawViewerOpen((open) => !open)}
+            aria-expanded={rawViewerOpen}
+            aria-controls={`fetch-dump-${item.id}`}
             style={{
+              width: '100%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '10px 12px',
-              borderBottom: '1px solid var(--border)',
+              border: 'none',
+              borderBottom: rawViewerOpen ? '1px solid var(--border)' : 'none',
               background: 'var(--bg)',
+              color: 'var(--text)',
               flexShrink: 0,
+              cursor: 'pointer',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 'var(--text-sm)' }}>
               <Database size={15} />
-              Fetch dump (viewer)
+              Raw fetch &amp; debug data
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+              {enrich?.hasRawBody ? `${enrich.rawBytes ?? '?'} bytes` : 'No saved dump'}
+              <ChevronDown
+                size={15}
+                aria-hidden
+                style={{ transform: rawViewerOpen ? 'rotate(180deg)' : undefined }}
+              />
+            </div>
+          </button>
+          {rawViewerOpen ? (
+            <div id={`fetch-dump-${item.id}`}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, padding: '8px 10px 0' }}>
               {item.url ? (
                 <button
                   type="button"
@@ -1141,30 +1160,35 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
                 {rawLoading ? <Loader2 size={13} className="spin" /> : null}
                 {rawDump ? 'Reload' : 'Load dump'}
               </button>
+              </div>
+              <div
+                className="scrollbar"
+                style={{
+                  margin: 10,
+                  padding: 12,
+                  maxHeight: 360,
+                  overflow: 'auto',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  background: 'var(--bg)',
+                  fontFamily: 'ui-monospace, monospace',
+                  fontSize: 11,
+                  lineHeight: 1.45,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                {rawError ? <span style={{ color: 'var(--error)' }}>{rawError}</span> : null}
+                {!rawError && !rawDump && !rawLoading ? (
+                  enrich?.hasRawBody
+                    ? 'Open or reload the saved fetch dump.'
+                    : 'No fetch dump on disk — run Re-fetch first.'
+                ) : null}
+                {rawLoading ? 'Loading fetch dump…' : rawDump}
+              </div>
             </div>
-          </div>
-          <div
-            className="scrollbar"
-            style={{
-              padding: 12,
-              maxHeight: 'calc(100vh - 320px)',
-              overflow: 'auto',
-              fontFamily: 'ui-monospace, monospace',
-              fontSize: 11,
-              lineHeight: 1.45,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              color: 'var(--text-muted)',
-            }}
-          >
-            {rawError ? <span style={{ color: 'var(--error)' }}>{rawError}</span> : null}
-            {!rawError && !rawDump && !rawLoading ? (
-              enrich?.hasRawBody
-                ? 'Loading fetch dump…'
-                : 'No fetch dump on disk — run Re-fetch first.'
-            ) : null}
-            {rawDump}
-          </div>
+          ) : null}
         </div>
       </div>
     </div>

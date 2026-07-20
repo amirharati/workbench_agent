@@ -198,6 +198,8 @@ export type PipelineHubCategoriesLaneProps = {
   onBrowseCategory?: (categoryId: string, name: string) => void;
   /** Scope chips bar — full scoped/filtered count (not enrichment page size). */
   onScopeItemCount?: (count: number) => void;
+  activeView?: 'queue' | 'taxonomy';
+  hideViewTabs?: boolean;
 };
 
 export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps> = ({
@@ -207,6 +209,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   onOpenItem,
   onBrowseCategory,
   onScopeItemCount,
+  activeView,
+  hideViewTabs = false,
 }) => {
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
@@ -234,6 +238,10 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   const inspectStateRef = useRef(inspectState);
   selectedIdsRef.current = selectedIds;
   inspectStateRef.current = inspectState;
+
+  useEffect(() => {
+    if (activeView && activeView !== subTab) setSubTab(activeView);
+  }, [activeView, subTab]);
 
   useEffect(() => {
     patchNavigationState({
@@ -731,7 +739,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
         />
       ) : null}
     <div>
-      <PipelineMaintenanceStrip
+      {subTab === 'queue' && <PipelineMaintenanceStrip
         snapshot={maintenanceSnapshot}
         loading={maintenanceLoading}
         refreshing={maintenanceRefreshing}
@@ -750,8 +758,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
         onReclassifyAll={handleReclassifyAll}
         onRetryManual={handleRetryManualRequest}
         onViewManualReview={handleViewManualReview}
-      />
-      <div
+      />}
+      {!hideViewTabs && <div
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -791,7 +799,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
             </button>
           )
         ) : null}
-      </div>
+      </div>}
 
       {subTab === 'taxonomy' ? (
         <AiCategoriesView embedded onBrowseCategory={onBrowseCategory} />

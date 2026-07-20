@@ -88,11 +88,12 @@ const FULL_PAGE_VIEWS = new Set<DashboardView>([
   'trash',
   'workspaces',
   'tab-commander',
+  'pipeline',
   'import-studio',
   'help',
 ]);
 /** Keep right Inspector visible (Home, Search, Enrichment Hub). */
-const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'bookmarks', 'notes', 'pipeline']);
+const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'bookmarks', 'notes']);
 
 interface DashboardLayoutProps {
   windows: WindowGroup[];
@@ -528,6 +529,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         saveGlobalTabState(next);
         return next;
       });
+    }
+    if (view === 'pipeline') {
+      setScopeProjectId('all');
+      setScopeCollectionId('all');
+      setActiveView('pipeline');
+      patchNavigationState({ activeView: 'pipeline', scopeProjectId: 'all', scopeCollectionId: 'all' });
+      setPipelineBrowse(null);
+      setCategoryBrowse(null);
+      return;
     }
     setActiveView(view);
     patchNavigationState({ activeView: view as PersistedDashboardView });

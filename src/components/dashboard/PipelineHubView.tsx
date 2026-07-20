@@ -53,6 +53,59 @@ import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { HubBulkStagedActions } from './HubBulkStagedActions';
 
 type HubLane = 'enrichment' | 'categories';
+export type HubView = 'enrichment' | 'classification' | 'taxonomy';
+
+export function resolvePipelineHubView(
+  hubLane?: HubLane,
+  categoriesSubTab?: 'queue' | 'taxonomy'
+): HubView {
+  if (hubLane === 'enrichment') return 'enrichment';
+  return categoriesSubTab === 'taxonomy' ? 'taxonomy' : 'classification';
+}
+
+export function PipelineHubViewTabs({
+  activeView,
+  onChange,
+}: {
+  activeView: HubView;
+  onChange: (view: HubView) => void;
+}) {
+  return (
+    <div
+      data-enrichment-hub-views
+      role="tablist"
+      aria-label="Enrichment Hub view"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5,
+        marginBottom: 14,
+        padding: 5,
+        flexWrap: 'wrap',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-md)',
+        background: 'var(--bg-panel)',
+      }}
+    >
+      {([
+        ['enrichment', 'Enrichment review'],
+        ['classification', 'Classification review'],
+        ['taxonomy', 'Taxonomy'],
+      ] as const).map(([view, label]) => (
+        <button
+          key={view}
+          type="button"
+          role="tab"
+          aria-selected={activeView === view}
+          onClick={() => onChange(view)}
+          style={hubViewTabStyle(activeView === view)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 interface PipelineHubViewProps {
   items: Item[];
@@ -457,7 +510,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 }) => {
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
-  const [hubLane, setHubLane] = useState<HubLane>(hubSaved.hubLane);
+  const [activeHubView, setActiveHubView] = useState<HubView>(() =>
+    resolvePipelineHubView(hubSaved.hubLane, hubSaved.categoriesSubTab)
+  );
+  const hubLane: HubLane = activeHubView === 'enrichment' ? 'enrichment' : 'categories';
   const [categoriesScopeItemCount, setCategoriesScopeItemCount] = useState<number | null>(null);
 
   const libraryScopeItemCount = useMemo(
@@ -526,12 +582,13 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     patchNavigationState({
       pipelineHub: {
         hubLane,
+        categoriesSubTab: activeHubView === 'taxonomy' ? 'taxonomy' : 'queue',
         enrichmentOutcomeLabel: outcomeLabel,
         enrichmentSearch: search,
         enrichmentTrashSuggestionsOnly: trashSuggestionsOnly,
       },
     });
-  }, [hubLane, outcomeLabel, search, trashSuggestionsOnly]);
+  }, [activeHubView, hubLane, outcomeLabel, search, trashSuggestionsOnly]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -1222,14 +1279,25 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     setInspectState(null);
   }, []);
 
+  const activeInspectRow = useMemo(() => {
+    if (!inspectState) return null;
+    const activeId = inspectState.ids[inspectState.index];
+    if (!activeId) return null;
+    return (
+      rows.find((row) => row.item.id === activeId) ??
+      tableRowsForList.find((row) => row.item.id === activeId) ??
+      null
+    );
+  }, [inspectState, rows, tableRowsForList]);
+
   return (
     <div
       className="scrollbar"
       style={{
         height: '100%',
         overflow: 'auto',
-        padding: '20px 24px 32px',
-        maxWidth: 1100,
+        padding: '16px 18px 72px',
+        maxWidth: 1440,
         margin: '0 auto',
         boxSizing: 'border-box',
       }}
@@ -1241,9 +1309,11 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               Enrichment Hub
             </h1>
             <p style={{ margin: '6px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-              {hubLane === 'enrichment'
-                ? 'Fetch, AI, embed, and classify — queues, filters, and bulk actions'
-                : 'Classify queue, topic assignment, and taxonomy overview'}
+              {activeHubView === 'enrichment'
+                ? 'Inspect enrichment quality, diagnose failures, and rerun individual links or selected groups.'
+                : activeHubView === 'classification'
+                  ? 'Review classification readiness, blockers, assignments, and category reruns.'
+                  : 'Browse the taxonomy that supports library-wide classification.'}
             </p>
           </div>
           <button
@@ -1271,7 +1341,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         </div>
       </header>
 
-      {taxonomyLeafCount === 0 && (
+      {taxonomyLeafCount === 0 && activeHubView !== 'enrichment' && (
         <div
           style={{
             marginBottom: 16,
@@ -1310,52 +1380,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         </div>
       )}
 
-      <div
-        style={{
-          display: 'flex',
-          gap: 4,
-          marginBottom: 16,
-          borderBottom: '1px solid var(--border)',
-          paddingBottom: 0,
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setHubLane('enrichment')}
-          style={{
-            padding: '8px 14px',
-            border: 'none',
-            borderBottom: hubLane === 'enrichment' ? '2px solid var(--accent)' : '2px solid transparent',
-            background: 'transparent',
-            color: hubLane === 'enrichment' ? 'var(--text)' : 'var(--text-muted)',
-            fontSize: 'var(--text-sm)',
-            fontWeight: hubLane === 'enrichment' ? 600 : 500,
-            cursor: 'pointer',
-            marginBottom: -1,
-          }}
-        >
-          Enrichment
-        </button>
-        <button
-          type="button"
-          onClick={() => setHubLane('categories')}
-          style={{
-            padding: '8px 14px',
-            border: 'none',
-            borderBottom: hubLane === 'categories' ? '2px solid var(--accent)' : '2px solid transparent',
-            background: 'transparent',
-            color: hubLane === 'categories' ? 'var(--text)' : 'var(--text-muted)',
-            fontSize: 'var(--text-sm)',
-            fontWeight: hubLane === 'categories' ? 600 : 500,
-            cursor: 'pointer',
-            marginBottom: -1,
-          }}
-        >
-          Categories & taxonomy
-        </button>
-      </div>
+      <PipelineHubViewTabs activeView={activeHubView} onChange={setActiveHubView} />
 
-      {hubLane === 'categories' ? (
+      {activeHubView !== 'enrichment' ? (
         <PipelineHubCategoriesLane
           collections={collections}
           scopeProjectId={scopeProjectId}
@@ -1363,10 +1390,12 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           onOpenItem={onOpenItem}
           onBrowseCategory={onBrowseCategory}
           onScopeItemCount={setCategoriesScopeItemCount}
+          activeView={activeHubView === 'taxonomy' ? 'taxonomy' : 'queue'}
+          hideViewTabs
         />
       ) : null}
 
-      {hubLane === 'enrichment' ? (
+      {activeHubView === 'enrichment' ? (
         <>
       {showStatusGuide ? (
         <div
@@ -1413,60 +1442,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       <div style={{ marginBottom: 16 }}>
         <div
           style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 8,
-            alignItems: 'center',
-            marginBottom: 8,
-          }}
-        >
-          <SummaryChip
-            label="All"
-            count={allChipCount}
-            active={outcomeLabel === 'all' && !trashSuggestionsOnly}
-            color={PIPELINE_STATE_COLORS.neutral}
-            onClick={clearHubFilters}
-          />
-          <SummaryChip
-            label="Trash suggestions"
-            count={trashSuggestionCount}
-            active={trashSuggestionsOnly}
-            color={PIPELINE_STATE_COLORS.failed}
-            dimmed={trashSuggestionCount === 0}
-            onClick={toggleTrashSuggestions}
-          />
-          {initialLoading ? (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                color: 'var(--text-faint)',
-                fontSize: 'var(--text-xs)',
-              }}
-            >
-              <Loader2 size={14} className="spin" />
-              Loading…
-            </span>
-          ) : refreshing ? (
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>Refreshing…</span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void reload({ silent: true })}
-              title="Refresh"
-              style={{
-                ...chipBase,
-                marginLeft: 'auto',
-                padding: '4px 8px',
-              }}
-            >
-              <RefreshCw size={13} />
-            </button>
-          )}
-        </div>
-        <div
-          style={{
             fontSize: 'var(--text-xs)',
             fontWeight: 600,
             color: 'var(--text-faint)',
@@ -1478,6 +1453,13 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           Status
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <SummaryChip
+            label="All"
+            count={allChipCount}
+            active={outcomeLabel === 'all' && !trashSuggestionsOnly}
+            color={PIPELINE_STATE_COLORS.neutral}
+            onClick={clearHubFilters}
+          />
           {statusBarChips.map((chip) => (
             <SummaryChip
               key={chip.label}
@@ -1502,6 +1484,13 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             dimmed={trashSuggestionCount === 0}
             onClick={toggleTrashSuggestions}
           />
+          {initialLoading ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}><Loader2 size={14} className="spin" /> Loading…</span>
+          ) : refreshing ? (
+            <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>Refreshing…</span>
+          ) : (
+            <button type="button" onClick={() => void reload({ silent: true })} title="Refresh enrichment review" aria-label="Refresh enrichment review" style={{ ...chipBase, marginLeft: 'auto', padding: '4px 8px' }}><RefreshCw size={13} /></button>
+          )}
         </div>
       </div>
 
@@ -1735,15 +1724,28 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         </div>
       ) : null}
 
-      {/* Table */}
+      {/* Review canvas */}
       <div
+        data-enrichment-review-canvas
         style={{
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-          overflow: 'hidden',
-          background: 'var(--bg-panel)',
+          display: 'grid',
+          gridTemplateColumns: activeInspectRow
+            ? 'minmax(0, 1fr) minmax(340px, 42%)'
+            : 'minmax(0, 1fr)',
+          gap: 12,
+          alignItems: 'start',
         }}
       >
+        <div style={{ minWidth: 0, overflowX: 'auto' }}>
+          <div
+            style={{
+              minWidth: activeInspectRow ? 820 : undefined,
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              overflow: 'hidden',
+              background: 'var(--bg-panel)',
+            }}
+          >
         <div
           style={{
             display: 'grid',
@@ -1827,7 +1829,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                     gridTemplateColumns: '32px 1fr 140px 1fr 120px 100px',
                     gap: 8,
                     padding: '10px 12px',
-                    borderBottom: isCurrentInspect ? 'none' : '1px solid var(--border)',
+                    borderBottom: '1px solid var(--border)',
                     alignItems: 'center',
                     fontSize: 'var(--text-sm)',
                     background: rowBackground,
@@ -1983,39 +1985,64 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                     onClose={() => setStatusHelpItemId(null)}
                   />
                 ) : null}
-                {isCurrentInspect && inspectState ? (
-                  <div ref={inspectPanelRef}>
-                    <PipelineItemInspectorPanel
-                      item={item}
-                      enrichment={enrichment}
-                      embedFailed={row.embedFailed}
-                      collections={collections}
-                      targetIds={inspectState.ids}
-                      itemLabels={inspectItemLabels}
-                      navIndex={inspectState.index}
-                      navTotal={inspectState.ids.length}
-                      onPrev={() =>
-                        setInspectState((s) =>
-                          s && s.index > 0 ? { ...s, index: s.index - 1 } : s
-                        )
-                      }
-                      onNext={() =>
-                        setInspectState((s) =>
-                          s && s.index < s.ids.length - 1 ? { ...s, index: s.index + 1 } : s
-                        )
-                      }
-                      onClose={closeInspect}
-                      onOpenInTab={onOpenItem ? () => onOpenItem(item) : undefined}
-                      onActionComplete={() =>
-                        applyHoldForIds(inspectState.ids.slice(inspectState.index, inspectState.index + 1))
-                      }
-                    />
-                  </div>
-                ) : null}
               </div>
             );
           })
         )}
+          </div>
+        </div>
+
+        {activeInspectRow && inspectState ? (
+          <aside
+            aria-label="Enrichment inspector"
+            style={{
+              position: 'sticky',
+              top: 0,
+              minWidth: 0,
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              overflow: 'hidden',
+              background: 'var(--bg-panel)',
+              boxShadow: 'var(--shadow-sm)',
+            }}
+          >
+            <div
+              ref={inspectPanelRef}
+              className="scrollbar"
+              style={{ maxHeight: 'calc(100vh - 190px)', overflowY: 'auto' }}
+            >
+              <PipelineItemInspectorPanel
+                item={activeInspectRow.item}
+                enrichment={activeInspectRow.enrichment}
+                embedFailed={activeInspectRow.embedFailed}
+                collections={collections}
+                targetIds={inspectState.ids}
+                itemLabels={inspectItemLabels}
+                navIndex={inspectState.index}
+                navTotal={inspectState.ids.length}
+                onPrev={() =>
+                  setInspectState((state) =>
+                    state && state.index > 0 ? { ...state, index: state.index - 1 } : state
+                  )
+                }
+                onNext={() =>
+                  setInspectState((state) =>
+                    state && state.index < state.ids.length - 1
+                      ? { ...state, index: state.index + 1 }
+                      : state
+                  )
+                }
+                onClose={closeInspect}
+                onOpenInTab={onOpenItem ? () => onOpenItem(activeInspectRow.item) : undefined}
+                onActionComplete={() =>
+                  applyHoldForIds(
+                    inspectState.ids.slice(inspectState.index, inspectState.index + 1)
+                  )
+                }
+              />
+            </div>
+          </aside>
+        ) : null}
       </div>
 
       {hasMoreToShow ? (
@@ -2084,3 +2111,5 @@ const actionBtnStyle: React.CSSProperties = {
   color: 'var(--text-muted)',
   cursor: 'pointer',
 };
+
+const hubViewTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 11px', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' });
