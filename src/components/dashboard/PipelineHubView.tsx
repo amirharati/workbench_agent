@@ -1358,9 +1358,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         >
           <AlertTriangle size={16} style={{ flexShrink: 0, color: '#d97706' }} />
           <span>
-            <strong>Taxonomy not loaded — classify cannot run.</strong>{' '}
-            Go to <strong>Settings → Fetch enrichment → Import seed taxonomy</strong> to load topics,
-            then run classify from here or Import Studio.
+            <strong>Taxonomy is not ready, so classify cannot run yet.</strong>{' '}
+            The starter taxonomy normally loads automatically. If this remains after a reload, use{' '}
+            <strong>Settings → Advanced → Reset to starter taxonomy</strong>.
           </span>
         </div>
       )}

@@ -9,12 +9,24 @@ import {
   type FolderSqliteBackupInfo,
 } from '../../lib/backupSnapshots';
 import { formatRestoreSummary } from '../../lib/itemQuickAccess';
-import { EnrichmentPanel } from './EnrichmentPanel';
 import { PipelineDebugSection } from './PipelineDebugSection';
 import { CategorizationSetupSection } from './CategorizationPanel';
 import { useToast } from '../ToastContainer';
 
 type FontScalePreset = 'small' | 'normal' | 'large';
+export type SettingsSection = 'general' | 'ai' | 'backup' | 'advanced';
+
+export const resolveInitialSettingsSection = (
+  backupFolderLinked: boolean,
+  backupFolderReady?: boolean
+): SettingsSection => (backupFolderLinked && backupFolderReady ? 'general' : 'backup');
+
+const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
+  { id: 'general', label: 'General' },
+  { id: 'ai', label: 'AI & processing' },
+  { id: 'backup', label: 'Backup & restore' },
+  { id: 'advanced', label: 'Advanced' },
+];
 const FONT_SCALE_VALUES: Record<FontScalePreset, string> = {
   small: '0.9',
   normal: '1',
@@ -97,6 +109,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (stored === '1.15') return 'large';
     return 'normal';
   });
+  const [activeSection, setActiveSection] = useState<SettingsSection>(() =>
+    resolveInitialSettingsSection(backupFolderLinked, backupFolderReady)
+  );
 
   const handleFontScaleChange = (preset: FontScalePreset) => {
     const value = FONT_SCALE_VALUES[preset];
@@ -292,27 +307,80 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div style={{ maxWidth: 900, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#111827' }}>Settings</h1>
-      <p style={{ marginTop: '0.5rem', color: '#6b7280' }}>
-        Backup is required for safe usage. Configure your folder below, then restore from{' '}
-        <code>workbench.sqlite</code> or <code>latest.json</code> any time.
-      </p>
+    <div
+      className="settings-view"
+      style={{
+        width: '100%',
+        maxWidth: 1080,
+        paddingBottom: 'max(5rem, env(safe-area-inset-bottom))',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1rem',
+      }}
+    >
+      <div>
+        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)' }}>
+          Settings
+        </h1>
+        <p style={{ margin: '0.35rem 0 0', color: 'var(--text-muted)' }}>
+          Configure Homebase, AI processing, and how your library is protected.
+        </p>
+      </div>
+
+      <nav
+        aria-label="Settings sections"
+        style={{
+          display: 'flex',
+          gap: 4,
+          overflowX: 'auto',
+          paddingBottom: 6,
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        {SETTINGS_SECTIONS.map((section) => {
+          const selected = activeSection === section.id;
+          const needsAttention = section.id === 'backup' && (!backupFolderReady || conflictBlocking);
+          return (
+            <button
+              key={section.id}
+              type="button"
+              aria-current={selected ? 'page' : undefined}
+              onClick={() => setActiveSection(section.id)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                border: 'none',
+                borderBottom: selected ? '2px solid var(--accent)' : '2px solid transparent',
+                background: 'transparent',
+                color: selected ? 'var(--text)' : 'var(--text-muted)',
+                fontSize: '0.85rem',
+                fontWeight: selected ? 700 : 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {section.label}{needsAttention ? ' ·' : ''}
+            </button>
+          );
+        })}
+      </nav>
+
+      {activeSection === 'general' ? (
+        <>
 
       {/* Appearance section */}
       <div
         style={{
-          border: '1px solid #d1d5db',
+          border: '1px solid var(--border)',
           borderRadius: 10,
           padding: '1rem',
-          background: '#ffffff',
+          background: 'var(--bg-panel)',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.6rem',
         }}
       >
-        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Appearance</div>
-        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>Font size</div>
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>Appearance</div>
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Font size</div>
         <div style={{ display: 'flex', gap: 6 }}>
           {(['small', 'normal', 'large'] as FontScalePreset[]).map((preset) => (
             <button
@@ -322,9 +390,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               style={{
                 padding: '5px 14px',
                 borderRadius: 6,
-                border: fontScale === preset ? '2px solid #6366f1' : '1px solid #d1d5db',
-                background: fontScale === preset ? 'rgba(99,102,241,0.1)' : '#ffffff',
-                color: fontScale === preset ? '#4f46e5' : '#374151',
+                border: fontScale === preset ? '2px solid #6366f1' : '1px solid var(--border)',
+                background: fontScale === preset ? 'rgba(99,102,241,0.1)' : 'var(--bg-panel)',
+                color: fontScale === preset ? 'var(--accent-hover)' : 'var(--text)',
                 fontWeight: fontScale === preset ? 600 : 400,
                 fontSize: '0.85rem',
                 cursor: 'pointer',
@@ -336,20 +404,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           ))}
         </div>
       </div>
-
       <div
         style={{
-          border: '1px solid #d1d5db',
+          border: '1px solid var(--border)',
           borderRadius: 10,
           padding: '1rem',
-          background: '#ffffff',
+          background: 'var(--bg-panel)',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.6rem',
         }}
       >
-        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Home Page Setup</div>
-        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>Home Page Setup</div>
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
           Use Homebase as your browser home/startup page. This opens Chrome settings and copies the Homebase URL.
         </div>
         <div>
@@ -372,55 +439,59 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
+        </>
+      ) : null}
+
+      {activeSection === 'ai' ? (
       <div
         style={{
-          border: '1px solid #d1d5db',
+          border: '1px solid var(--border)',
           borderRadius: 10,
           padding: '1rem',
-          background: '#ffffff',
+          background: 'var(--bg-panel)',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.75rem',
         }}
       >
-        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>AI Settings</div>
-        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>AI Settings</div>
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
           Configure one default AI provider/model for now. This keeps v1 simple and can fan out by task later.
         </div>
         {aiForm ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(220px, 1fr))', gap: '0.65rem' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)' }}>
               Provider
               <select
                 value={aiForm.provider}
                 onChange={(e) => updateAiField('provider', e.target.value as AISettings['provider'])}
-                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff' }}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-panel)' }}
               >
                 <option value="openrouter">OpenRouter (OpenAI-compatible)</option>
                 <option value="chrome-native">Chrome native (on-device)</option>
               </select>
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)' }}>
               Model ID
               <input
                 value={aiForm.model}
                 onChange={(e) => updateAiField('model', e.target.value)}
                 placeholder="openai/gpt-4o-mini"
                 disabled={aiForm.provider === 'chrome-native'}
-                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)' }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151', gridColumn: '1 / span 2' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)', gridColumn: '1 / span 2' }}>
               Base URL
               <input
                 value={aiForm.baseUrl}
                 onChange={(e) => updateAiField('baseUrl', e.target.value)}
                 placeholder="https://openrouter.ai/api/v1"
                 disabled={aiForm.provider === 'chrome-native'}
-                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)' }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151', gridColumn: '1 / span 2' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)', gridColumn: '1 / span 2' }}>
               API Key
               <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
                 <input
@@ -433,7 +504,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   style={{
                     padding: '0.45rem 0.55rem',
                     borderRadius: 8,
-                    border: '1px solid #d1d5db',
+                    border: '1px solid var(--border)',
                     flex: 1,
                   }}
                 />
@@ -443,9 +514,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   style={{
                     padding: '0.42rem 0.6rem',
                     borderRadius: 8,
-                    border: '1px solid #d1d5db',
-                    background: '#fff',
-                    color: '#374151',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-panel)',
+                    color: 'var(--text)',
                     cursor: 'pointer',
                     fontSize: '0.8rem',
                     fontWeight: 600,
@@ -458,7 +529,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </button>
               </div>
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)' }}>
               Model routing
               <select
                 value={aiForm.routingMode}
@@ -466,7 +537,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   updateAiField('routingMode', e.target.value as AISettings['routingMode'])
                 }
                 disabled={aiForm.provider === 'chrome-native'}
-                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff' }}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-panel)' }}
               >
                 <option value="single">Single model for all tasks</option>
                 <option value="by-task">Route by task type</option>
@@ -478,7 +549,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 alignItems: 'center',
                 gap: '0.45rem',
                 fontSize: '0.82rem',
-                color: '#374151',
+                color: 'var(--text)',
                 marginTop: '1.35rem',
                 opacity: aiForm.provider === 'chrome-native' ? 0.6 : 1,
               }}
@@ -493,7 +564,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </label>
             {aiForm.routingMode === 'by-task' && aiForm.provider !== 'chrome-native' ? (
               <>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)' }}>
                   Task model: summarize
                   <input
                     value={aiForm.taskModels?.summarize ?? ''}
@@ -504,10 +575,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       })
                     }
                     placeholder="optional override model id"
-                    style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+                    style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)' }}
                   />
                 </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)' }}>
                   Task model: tag
                   <input
                     value={aiForm.taskModels?.tag ?? ''}
@@ -518,12 +589,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       })
                     }
                     placeholder="optional override model id"
-                    style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+                    style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)' }}
                   />
                 </label>
               </>
             ) : null}
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)' }}>
               Timeout (ms)
               <input
                 value={String(aiForm.timeoutMs)}
@@ -532,10 +603,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 min={3000}
                 max={120000}
                 step={1000}
-                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)' }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)' }}>
               Temperature
               <input
                 value={String(aiForm.temperature)}
@@ -544,10 +615,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 min={0}
                 max={2}
                 step={0.1}
-                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)' }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)' }}>
               Max output tokens
               <input
                 value={String(aiForm.maxOutputTokens)}
@@ -556,21 +627,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 min={64}
                 max={8192}
                 step={32}
-                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db' }}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)' }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: '#374151', gridColumn: '1 / span 2' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)', gridColumn: '1 / span 2' }}>
               Test prompt
               <textarea
                 value={aiTestPrompt}
                 onChange={(e) => setAiTestPrompt(e.target.value)}
                 rows={3}
-                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid #d1d5db', resize: 'vertical' }}
+                style={{ padding: '0.45rem 0.55rem', borderRadius: 8, border: '1px solid var(--border)', resize: 'vertical' }}
               />
             </label>
           </div>
         ) : (
-          <div style={{ fontSize: '0.82rem', color: '#6b7280' }}>Loading AI settings...</div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Loading AI settings...</div>
         )}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
@@ -609,16 +680,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </button>
         </div>
         {aiError && (
-          <div style={{ fontSize: '0.82rem', color: '#b91c1c' }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--error)' }}>
             <strong>AI error:</strong> {aiError}
           </div>
         )}
         <div
           style={{
             fontSize: '0.82rem',
-            color: '#4b5563',
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
+            color: 'var(--text-muted)',
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
             borderRadius: 8,
             padding: '0.65rem',
             lineHeight: 1.45,
@@ -630,7 +701,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           a dedicated key.
         </div>
         {aiModelMismatch && !aiForm?.strictModelMatch && (
-          <div style={{ fontSize: '0.82rem', color: '#92400e' }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--er-warn, #d29922)' }}>
             <strong>Model mismatch:</strong> requested <code>{aiRequestedModel || '-'}</code>, provider returned{' '}
             <code>{aiTestModel || '-'}</code>. Enable strict matching to fail these responses.
           </div>
@@ -639,9 +710,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div
             style={{
               fontSize: '0.82rem',
-              color: '#374151',
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
+              color: 'var(--text)',
+              background: 'var(--bg)',
+              border: '1px solid var(--border)',
               borderRadius: 8,
               padding: '0.65rem',
               whiteSpace: 'pre-wrap',
@@ -662,25 +733,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       </div>
 
+      ) : null}
+
+      {activeSection === 'advanced' ? (
       <div
         style={{
-          border: '1px solid #d1d5db',
+          border: '1px solid var(--border)',
           borderRadius: 10,
           padding: '1rem',
-          background: '#ffffff',
+          background: 'var(--bg-panel)',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.75rem',
         }}
       >
-        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Fetch enrichment</div>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: '#4b5563', lineHeight: 1.5 }}>
-          Dev tools for fetch + classify. After a batch run, analysis is auto-saved under{' '}
-          <code>pipeline-runs/</code> in your backup folder (or download from the completion dialog).
-          For ~400 items use Pipeline Hub batch with <strong>process all</strong> scope.
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>Taxonomy & diagnostics</div>
+        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Maintenance and diagnostic tools. Run normal enrichment and categorization work from the
+          Enrichment Hub.
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <EnrichmentPanel />
           <button
             type="button"
             onClick={handleExportPipelineAnalysis}
@@ -691,8 +763,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               height: 24,
               borderRadius: 4,
               border: '1px solid #6366f1',
-              background: exportingPipeline ? '#c7d2fe' : '#eef2ff',
-              color: '#4338ca',
+              background: exportingPipeline ? 'var(--bg-active)' : 'var(--accent-weak)',
+              color: 'var(--accent-hover)',
               fontSize: '0.75rem',
               fontWeight: 600,
               cursor: !onExportPipelineAnalysis || exportingPipeline ? 'not-allowed' : 'pointer',
@@ -706,26 +778,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <PipelineDebugSection />
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {!backupFolderLinked && (
-            <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--er-warn, #d29922)' }}>
               Choose a backup folder below for disk cache.
             </span>
           )}
         </div>
       </div>
 
+      ) : null}
+
+      {activeSection === 'backup' ? (
       <div
         style={{
-          border: '1px solid #d1d5db',
+          border: '1px solid var(--border)',
           borderRadius: 10,
           padding: '1rem',
-          background: '#ffffff',
+          background: 'var(--bg-panel)',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.75rem',
         }}
       >
-        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#111827' }}>Backup Settings</div>
-        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>Backup & restore</div>
+        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)', marginTop: 2 }}>
+          Automatic protection
+        </div>
+        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+          Homebase keeps the live database in your chosen folder up to date after changes and rotates
+          two previous copies before overwriting it. This runs automatically once the folder is connected.
+        </div>
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
           Status:{' '}
           {!backupFolderLinked
             ? 'Not linked'
@@ -738,8 +820,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {conflictBlocking && conflict && (
           <div
             style={{
-              border: '1px solid #fca5a5',
-              background: '#fef2f2',
+              border: '1px solid var(--error)',
+              background: 'var(--error-weak)',
               borderRadius: 8,
               padding: '0.75rem',
               display: 'flex',
@@ -747,18 +829,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               gap: '0.5rem',
             }}
           >
-            <div style={{ fontWeight: 700, color: '#991b1b', fontSize: '0.9rem' }}>
+            <div style={{ fontWeight: 700, color: 'var(--error)', fontSize: '0.9rem' }}>
               Backup paused — sync conflict detected
             </div>
-            <div style={{ fontSize: '0.82rem', color: '#7f1d1d', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '0.82rem', color: 'var(--error)', lineHeight: 1.5 }}>
               {conflict.message}
             </div>
             <div
               style={{
                 fontSize: '0.78rem',
-                color: '#374151',
-                background: '#ffffff',
-                border: '1px solid #fecaca',
+                color: 'var(--text)',
+                background: 'var(--bg-panel)',
+                border: '1px solid var(--error)',
                 borderRadius: 6,
                 padding: '0.5rem 0.6rem',
                 lineHeight: 1.5,
@@ -773,7 +855,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <strong>Folder meta (<code>workbench.meta.json</code>):</strong> revision{' '}
                   <code>{conflict.remote.revision}</code> · {shortDevice(conflict.remote.deviceId)} · written{' '}
                   {formatRelative(conflict.remote.exportedAt)}{' '}
-                  <span style={{ color: '#9ca3af' }}>({formatAbsolute(conflict.remote.exportedAt)})</span>
+                  <span style={{ color: 'var(--text-faint)' }}>({formatAbsolute(conflict.remote.exportedAt)})</span>
                 </div>
               )}
             </div>
@@ -803,9 +885,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 style={{
                   padding: '0.5rem 0.75rem',
                   borderRadius: 8,
-                  border: '1px solid #b91c1c',
-                  background: resolving === 'local' ? '#fecaca' : '#fff',
-                  color: '#991b1b',
+                  border: '1px solid var(--error)',
+                  background: resolving === 'local' ? 'var(--error)' : '#fff',
+                  color: 'var(--error)',
                   cursor: resolving ? 'progress' : 'pointer',
                   fontSize: '0.85rem',
                   fontWeight: 600,
@@ -823,9 +905,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div
             style={{
               fontSize: '0.82rem',
-              color: '#374151',
-              background: '#f1f5f9',
-              border: '1px solid #e2e8f0',
+              color: 'var(--text)',
+              background: 'var(--bg)',
+              border: '1px solid var(--border)',
               borderRadius: 8,
               padding: '0.65rem',
               lineHeight: 1.5,
@@ -839,10 +921,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {mirrorAt > 0 ? (
                 <>
                   last write {formatRelative(mirrorAt)}{' '}
-                  <span style={{ color: '#6b7280' }}>({formatAbsolute(mirrorAt)})</span>
+                  <span style={{ color: 'var(--text-muted)' }}>({formatAbsolute(mirrorAt)})</span>
                 </>
               ) : (
-                <span style={{ color: '#6b7280' }}>none yet</span>
+                <span style={{ color: 'var(--text-muted)' }}>none yet</span>
               )}
               {mirrorPending && (
                 <span style={{ marginLeft: '0.5rem', color: '#2563eb', fontWeight: 600 }}>
@@ -855,13 +937,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </span>
               )}
               {conflictBlocking && (
-                <span style={{ marginLeft: '0.5rem', color: '#b91c1c', fontWeight: 600 }}>
+                <span style={{ marginLeft: '0.5rem', color: 'var(--error)', fontWeight: 600 }}>
                   · paused (conflict)
                 </span>
               )}
             </div>
             {mirrorError && (
-              <div style={{ color: '#b91c1c' }}>
+              <div style={{ color: 'var(--error)' }}>
                 <strong>Last mirror error:</strong> {mirrorError}
               </div>
             )}
@@ -870,16 +952,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {manualOk ? (
                 <>
                   last write {formatRelative(manualOk)}{' '}
-                  <span style={{ color: '#6b7280' }}>({formatAbsolute(manualOk)})</span>
+                  <span style={{ color: 'var(--text-muted)' }}>({formatAbsolute(manualOk)})</span>
                 </>
               ) : (
-                <span style={{ color: '#6b7280' }}>none yet</span>
+                <span style={{ color: 'var(--text-muted)' }}>none yet</span>
               )}
             </div>
             {errorAt && errorMsg && (
-              <div style={{ color: '#b91c1c' }}>
+              <div style={{ color: 'var(--error)' }}>
                 <strong>Last backup error:</strong> {errorMsg}{' '}
-                <span style={{ color: '#9ca3af' }}>({formatRelative(errorAt)})</span>
+                <span style={{ color: 'var(--text-faint)' }}>({formatRelative(errorAt)})</span>
               </div>
             )}
           </div>
@@ -888,15 +970,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div
           style={{
             fontSize: '0.82rem',
-            color: '#374151',
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
+            color: 'var(--text)',
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
             borderRadius: 8,
             padding: '0.65rem',
             lineHeight: 1.45,
           }}
         >
-          <div><strong>What happens when you choose a folder:</strong></div>
+          <div><strong>How folder protection works</strong></div>
           <div>
             1) If <code>workbench.sqlite</code> already exists there, the app loads it into browser storage (OPFS).
           </div>
@@ -904,9 +986,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             2) If the folder is empty, the app creates <code>workbench.sqlite</code> from your current data on first save.
           </div>
           <div>3) Legacy <code>latest.json</code> in the folder can still be restored via Settings.</div>
-          <div style={{ marginTop: '0.4rem' }}>
-            <strong>How backups are written:</strong>
-          </div>
+          <div style={{ marginTop: '0.4rem' }}><strong>Automatic and manual files</strong></div>
           <div>
             · <strong>Live mirror:</strong> after edits, <code>workbench.sqlite</code> +{' '}
             <code>workbench.meta.json</code> refresh in the folder (debounced ~3s, min interval 60s).
@@ -926,13 +1006,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
+        <div
+          style={{
+            marginTop: 4,
+            paddingTop: '0.85rem',
+            borderTop: '1px solid var(--border)',
+          }}
+        >
+          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)' }}>
+            Snapshots & restore
+          </div>
+          <div style={{ marginTop: 3, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            Create named point-in-time copies when you want one, or restore an earlier automatic,
+            manual, or safety copy.
+          </div>
+        </div>
+
         {backupFolderReady && (
           <div
             style={{
               fontSize: '0.82rem',
-              color: '#374151',
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
+              color: 'var(--text)',
+              background: 'var(--bg)',
+              border: '1px solid var(--border)',
               borderRadius: 8,
               padding: '0.65rem',
               lineHeight: 1.5,
@@ -944,7 +1040,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
               <div>
                 <strong>Backups in your folder</strong>
-                <div style={{ color: '#6b7280', fontSize: '0.78rem' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                   Live, automatic <code>prev</code> copies, and <code>manual-</code> /{' '}
                   <code>safety-</code> files. <strong>Restore replaces</strong> the browser library
                   with that file (not a merge). Current live is snapshotted into rotation first.
@@ -957,8 +1053,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 style={{
                   padding: '0.35rem 0.6rem',
                   borderRadius: 6,
-                  border: '1px solid #cbd5e1',
-                  background: '#fff',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-panel)',
                   cursor: folderBackupsLoading ? 'progress' : 'pointer',
                   fontSize: '0.78rem',
                 }}
@@ -967,7 +1063,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
             {folderBackups.length === 0 ? (
-              <div style={{ color: '#6b7280' }}>
+              <div style={{ color: 'var(--text-muted)' }}>
                 No sqlite files found yet — add bookmarks so <code>workbench.sqlite</code> is created,
                 then use <strong>Backup now</strong> or wait for auto <code>prev</code> copies after edits.
               </div>
@@ -998,17 +1094,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       gap: '0.5rem',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border)',
                       borderRadius: 6,
                       padding: '0.45rem 0.55rem',
-                      background: '#fff',
+                      background: 'var(--bg-panel)',
                     }}
                   >
                     <div>
                       <div style={{ fontWeight: 600 }}>
                         {kindLabel} · <code>{snap.filename}</code>
                       </div>
-                      <div style={{ color: '#6b7280', fontSize: '0.78rem' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                         {sizeKb} KB
                         {snap.mtime
                           ? ` · ${formatRelative(snap.mtime)} (${formatAbsolute(snap.mtime)})`
@@ -1016,7 +1112,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
                     </div>
                     {isLive ? (
-                      <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>Current live file</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Current live file</span>
                     ) : (
                       <button
                         type="button"
@@ -1057,9 +1153,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         style={{
                           padding: '0.4rem 0.65rem',
                           borderRadius: 6,
-                          border: '1px solid #b45309',
-                          background: restoringFolderBackup === snap.filename ? '#fde68a' : '#fffbeb',
-                          color: '#92400e',
+                          border: '1px solid var(--er-warn, #d29922)',
+                          background:
+                            restoringFolderBackup === snap.filename
+                              ? 'color-mix(in srgb, var(--er-warn, #d29922) 20%, var(--bg-panel))'
+                              : 'color-mix(in srgb, var(--er-warn, #d29922) 8%, var(--bg-panel))',
+                          color: 'var(--er-warn, #d29922)',
                           cursor: restoringFolderBackup || conflictBlocking ? 'not-allowed' : 'pointer',
                           fontSize: '0.78rem',
                           fontWeight: 600,
@@ -1157,9 +1256,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             style={{
               padding: '0.5rem 0.6rem',
               borderRadius: 8,
-              border: '1px solid #d1d5db',
-              background: '#fff',
-              color: '#374151',
+              border: '1px solid var(--border)',
+              background: 'var(--bg-panel)',
+              color: 'var(--text)',
               fontSize: '0.85rem',
             }}
           >
@@ -1172,9 +1271,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             style={{
               padding: '0.5rem 0.75rem',
               borderRadius: 8,
-              border: '1px solid #d1d5db',
-              background: restoringBackup ? '#f3f4f6' : '#fff',
-              color: restoringBackup ? '#9ca3af' : '#374151',
+              border: '1px solid var(--border)',
+              background: restoringBackup ? 'var(--bg-hover)' : 'var(--bg-panel)',
+              color: restoringBackup ? 'var(--text-faint)' : 'var(--text)',
               cursor: restoringBackup || !backupFolderLinked || !backupFolderReady ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem',
               fontWeight: 500,
@@ -1203,19 +1302,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           style={{
             marginTop: '0.75rem',
             paddingTop: '0.75rem',
-            borderTop: '1px solid #fecaca',
+            borderTop: '1px solid var(--error)',
             display: 'flex',
             flexDirection: 'column',
             gap: '0.5rem',
           }}
         >
-          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#991b1b' }}>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--error)' }}>
             Testing — clear library
           </div>
-          <p style={{ margin: 0, fontSize: '0.82rem', color: '#7f1d1d', lineHeight: 1.45 }}>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--error)', lineHeight: 1.45 }}>
             Deletes all bookmarks, notes, enrichment, categories, and pipeline state from browser
             storage and overwrites <code>workbench.sqlite</code> in your backup folder with an empty
-            library (default project + Unsorted only). Use this instead of uninstalling the
+            library (Inbox + Incoming only). Use this instead of uninstalling the
             extension when re-testing imports.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
@@ -1229,7 +1328,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               style={{
                 padding: '0.45rem 0.6rem',
                 borderRadius: 8,
-                border: '1px solid #fca5a5',
+                border: '1px solid var(--error)',
                 fontSize: '0.85rem',
                 minWidth: 180,
               }}
@@ -1251,7 +1350,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }
                 setClearingLibrary(true);
                 try {
-    const result = await clearAllLibraryData();
+                  const result = await clearAllLibraryData();
                   if (!result.ok) {
                     throw new Error(result.error ?? 'Clear failed');
                   }
@@ -1283,8 +1382,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               style={{
                 padding: '0.5rem 0.75rem',
                 borderRadius: 8,
-                border: '1px solid #b91c1c',
-                background: clearingLibrary ? '#fecaca' : '#dc2626',
+                border: '1px solid var(--error)',
+                background: clearingLibrary ? 'var(--error)' : '#dc2626',
                 color: '#fff',
                 cursor:
                   clearingLibrary || !backupFolderReady || clearLibraryConfirm.trim() !== 'DELETE'
@@ -1302,16 +1401,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
           {!backupFolderLinked ? (
-            <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--er-warn, #d29922)' }}>
               Link a backup folder first so the empty database can be mirrored to disk.
             </span>
           ) : !backupFolderReady ? (
-            <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--er-warn, #d29922)' }}>
               Click the page once to resume folder access before clearing.
             </span>
           ) : null}
         </div>
       </div>
+      ) : null}
     </div>
   );
 };

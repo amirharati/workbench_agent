@@ -13,6 +13,7 @@ import {
   getScopedCategorizationStats,
   getTaxonomyState,
   importSeedTaxonomy,
+  ensureSeedTaxonomy,
 } from '../../lib/categorization';
 import { ClassifyQueueReasonBlock } from './ClassifyQueueReasonBlock';
 import { assessCategorizationEligibility } from '../../lib/enrichment/categorizationEligibility';
@@ -618,6 +619,10 @@ export function CategorizationSetupSection() {
   const [message, setMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    // The bundled taxonomy is a zero-cost local default. This is also run at
+    // application startup; keeping the guard here makes this view truthful if
+    // it opens before the background startup task finishes.
+    await ensureSeedTaxonomy();
     const [stats, tax] = await Promise.all([getCategorizationQueueStats(), getTaxonomyState()]);
     setMeta({ version: tax.taxonomyVersion, leaves: stats.leafCount });
   }, []);
@@ -627,11 +632,18 @@ export function CategorizationSetupSection() {
   }, [refresh]);
 
   const handleImport = async () => {
+    if (
+      !window.confirm(
+        'Reset the current topic list to the bundled starter taxonomy?\n\nCustom and discovered topic definitions will be replaced. Your full library backups still preserve the current taxonomy.'
+      )
+    ) {
+      return;
+    }
     setRunning(true);
     setMessage(null);
     try {
       const r = await importSeedTaxonomy(true);
-      setMessage(`Imported v${r.taxonomyVersion}: ${r.leaves} topics.`);
+      setMessage(`Reset to starter taxonomy v${r.taxonomyVersion}: ${r.leaves} topics.`);
       await refresh();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Import failed');
@@ -687,11 +699,11 @@ export function CategorizationSetupSection() {
       }}
     >
       <div style={{ fontSize: 'var(--dev-fs-base)', fontWeight: 600, marginBottom: 6 }}>
-        AI categorization (setup)
+        Taxonomy
       </div>
       <p style={{ margin: '0 0 8px', fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>
-        <strong>Run classify here → Bookmarks toolbar → Results</strong> (after Enrich + AI summary).
-        This section is only for loading the topic list and checking API key above.
+        Homebase loads the bundled starter taxonomy automatically when a library has no topics.
+        Reset is only needed when you intentionally want to discard a customized topic structure.
       </p>
       {meta && (
         <p style={{ margin: '0 0 8px', fontSize: 'var(--dev-fs-sm)' }}>
@@ -704,7 +716,7 @@ export function CategorizationSetupSection() {
         onClick={() => void handleImport()}
         style={{ padding: '4px 10px', fontSize: 'var(--dev-fs-sm)' }}
       >
-        {running ? 'Importing…' : 'Import / reset seed taxonomy'}
+        {running ? 'Resetting…' : 'Reset to starter taxonomy'}
       </button>
       {message && (
         <p style={{ margin: '6px 0 0', fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)' }}>
@@ -712,8 +724,8 @@ export function CategorizationSetupSection() {
         </p>
       )}
       <p style={{ margin: '8px 0 0', fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}>
-        Backups include <code>ai_categories</code>, links, signals, counts — see{' '}
-        <code>_pipelineExportCounts</code> in <code>latest.json</code>.
+        Automatic and manual library backups include the current taxonomy, assignments, signals,
+        and counts. Restoring a full backup restores that taxonomy as well.
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
         <button

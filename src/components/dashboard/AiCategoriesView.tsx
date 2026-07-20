@@ -316,7 +316,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
           {taxonomy
             ? showEmpty || q
               ? 'No categories match your filter.'
-              : 'No taxonomy loaded yet. Open this view again to seed categories, or enable Show empty topics.'
+              : 'The starter taxonomy is still loading. Reopen this view if it does not appear shortly.'
             : 'Loading taxonomy…'}
         </p>
       ) : (

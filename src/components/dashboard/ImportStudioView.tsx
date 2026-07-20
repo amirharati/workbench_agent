@@ -28,6 +28,7 @@ import {
 } from '../../lib/pipeline';
 import {
   createPipelineOwnerId,
+  PIPELINE_HARD_CANCEL_REASON,
   releasePipelineRunLock,
   startPipelineLockHeartbeat,
   tryAcquirePipelineRunLock,
@@ -138,6 +139,9 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   const [processProgress, setProcessProgress] = React.useState('');
   const [processProgressPercent, setProcessProgressPercent] = React.useState(0);
   const pipelineAbortRef = React.useRef<AbortController | null>(null);
+  const cancelPipelineProcessing = () => {
+    pipelineAbortRef.current?.abort(PIPELINE_HARD_CANCEL_REASON);
+  };
   const [skipPreviouslyTrashed, setSkipPreviouslyTrashed] = React.useState(readSkipTrashedImportPref);
   const [trashHistoryMap, setTrashHistoryMap] = React.useState<Map<string, TrashHistoryEntry>>(
     () => new Map()
@@ -909,7 +913,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
             Progress is checkpointed after each wave and can be resumed if this page closes.
           </div>
           {wavePipelineRunning ? (
-            <button type="button" onClick={() => pipelineAbortRef.current?.abort()} style={{ ...smallButtonStyle, marginTop: 8 }}>
+            <button type="button" onClick={cancelPipelineProcessing} style={{ ...smallButtonStyle, marginTop: 8 }}>
               Cancel processing
             </button>
           ) : null}
@@ -1152,7 +1156,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           {wavePipelineRunning ? (
             <button
               type="button"
-              onClick={() => pipelineAbortRef.current?.abort()}
+              onClick={cancelPipelineProcessing}
               style={{
                 marginTop: 8,
                 padding: '4px 10px',

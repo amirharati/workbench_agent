@@ -125,6 +125,20 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Settings contains native form controls; keep them on the active theme too. */
+.settings-view input:not([type='checkbox']):not([type='radio']),
+.settings-view select,
+.settings-view textarea {
+  background: var(--bg-input);
+  color: var(--text);
+  border-color: var(--border) !important;
+}
+
+.settings-view option {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
 /* ===== Scrollbar (Compact) ===== */
 .scrollbar {
   scrollbar-width: thin;

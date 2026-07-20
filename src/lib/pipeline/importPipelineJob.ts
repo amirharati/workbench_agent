@@ -216,6 +216,14 @@ export function createImportPipelineJob(
   };
 }
 
+export function isImportPipelineJobTerminal(job: ImportPipelineJob): boolean {
+  const allItemsCompleted =
+    job.itemIds.length > 0 &&
+    job.completedItemIds.length >= job.itemIds.length &&
+    job.itemIds.every((id) => job.completedItemIds.includes(id));
+  return allItemsCompleted || job.status === 'completed' || job.lastError === 'Cancelled';
+}
+
 /**
  * Heal orphaned / fully-done job files so the Resume banner does not stick around
  * after a finished run or a crashed window that left status: running.
@@ -223,12 +231,9 @@ export function createImportPipelineJob(
 export async function reconcileImportPipelineJob(
   job: ImportPipelineJob
 ): Promise<ImportPipelineJob | null> {
-  const done =
-    job.itemIds.length > 0 &&
-    job.completedItemIds.length >= job.itemIds.length &&
-    job.itemIds.every((id) => job.completedItemIds.includes(id));
-
-  if (done || job.status === 'completed') {
+  // Cancellation is terminal. Older builds could persist a cancelled job just
+  // before their asynchronous cleanup ran, leaving a misleading Resume banner.
+  if (isImportPipelineJobTerminal(job)) {
     try {
       await clearImportPipelineJob();
     } catch {

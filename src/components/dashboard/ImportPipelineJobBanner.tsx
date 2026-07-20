@@ -21,13 +21,17 @@ export type ImportPipelineJobBannerProps = {
 function formatJobSummary(job: ImportPipelineJob): string {
   const count = job.itemIds.length.toLocaleString();
   const done = job.completedItemIds.length;
+  const remaining = Math.max(0, job.itemIds.length - done);
   const wavePart = job.waveIndex > 0 ? ` · wave ${job.waveIndex}` : '';
   const progressPart =
-    done > 0 ? ` · ${done.toLocaleString()} done` : '';
-  const statusPart = job.lastError
+    done > 0 ? ` · ${done.toLocaleString()} processed` : '';
+  const remainingPart = remaining > 0 ? ` · ${remaining.toLocaleString()} remaining` : '';
+  const statusPart = job.status === 'paused' && !job.lastError
+    ? 'saved checkpoint'
+    : job.lastError
     ? `${job.status}: ${job.lastError}`
     : job.status;
-  return `Large batch pipeline — ${count} link${job.itemIds.length === 1 ? '' : 's'}${progressPart}${wavePart} · ${statusPart}`;
+  return `Large batch pipeline — ${count} link${job.itemIds.length === 1 ? '' : 's'}${progressPart}${remainingPart}${wavePart} · ${statusPart}`;
 }
 
 const ACTIVE_STATUSES = new Set<ImportPipelineJob['status']>(['paused', 'running', 'failed']);
@@ -129,7 +133,7 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
       : 'Running in another Homebase window. You can request Cancel from here — Resume stays hidden while it’s active.'
     : otherPipelineBusy
       ? 'Another enrichment job is running — Resume unlocks when it finishes.'
-      : 'Press Resume to continue with a progress dialog. Dismiss clears the saved job file.';
+      : `${Math.max(0, job.itemIds.length - job.completedItemIds.length).toLocaleString()} link${job.itemIds.length - job.completedItemIds.length === 1 ? '' : 's'} did not reach a final state. Resume retries the remaining work; Dismiss accepts the current result and removes this checkpoint.`;
 
   return (
     <>
