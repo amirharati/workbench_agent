@@ -34,7 +34,7 @@ export const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 10000,
+        zIndex: 'var(--layer-modal)',
       }}
       onClick={() => onResult({ action: 'cancel' })}
     >
@@ -94,9 +94,9 @@ export const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
             style={{
               padding: '10px 16px',
               borderRadius: 6,
-              border: '1px solid #ef4444',
-              background: canRemoveFromCollection ? 'transparent' : '#ef4444',
-              color: canRemoveFromCollection ? '#ef4444' : '#fff',
+              border: '1px solid var(--danger)',
+              background: canRemoveFromCollection ? 'transparent' : 'var(--danger)',
+              color: canRemoveFromCollection ? 'var(--danger)' : 'var(--accent-text)',
               fontSize: 'var(--text-sm)',
               cursor: 'pointer',
               textAlign: 'left',

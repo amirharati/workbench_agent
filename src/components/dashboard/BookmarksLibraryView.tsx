@@ -267,7 +267,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
       actions: (
         <>
           <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} stopPropagation />
-          {isLink && <button type="button" onClick={() => void openBookmarkInBrowser(item)} title={`Open ${item.title || 'link'}`} aria-label={`Open ${item.title || 'link'}`} style={iconButtonStyle}><ExternalLink size={12} /></button>}
+          {isLink && <button className="ui-button ui-button--icon" type="button" onClick={() => void openBookmarkInBrowser(item)} title={`Open ${item.title || 'link'}`} aria-label={`Open ${item.title || 'link'}`} style={iconButtonStyle}><ExternalLink size={12} /></button>}
         </>
       ),
     };
@@ -347,24 +347,24 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   };
 
   return (
-    <div style={uiPatterns.pageFrame}>
-      <header style={uiPatterns.pageHeader}>
+    <div className="ui-page-frame" style={uiPatterns.pageFrame}>
+      <header className="ui-page-header" style={uiPatterns.pageHeader}>
         <div>
           <h1 style={uiPatterns.pageTitle}>Library</h1>
           <p style={uiPatterns.pageDescription}>Browse and maintain your saved links and notes.</p>
         </div>
-        <div style={uiPatterns.actionRow}>
-          {onOpenImport && <button type="button" onClick={onOpenImport} style={secondaryButtonStyle}><Upload size={12} /> Import</button>}
-          {onCreateItem && <button type="button" onClick={() => setCreateKind('note')} style={secondaryButtonStyle}><FileText size={12} /> New note</button>}
-          {onCreateItem && <button type="button" onClick={() => setCreateKind('bookmark')} style={primaryButtonStyle}><Plus size={12} /> Add link</button>}
+        <div className="ui-action-row" style={uiPatterns.actionRow}>
+          {onOpenImport && <button className="ui-button ui-button--secondary" type="button" onClick={onOpenImport} style={secondaryButtonStyle}><Upload size={12} /> Import</button>}
+          {onCreateItem && <button className="ui-button ui-button--secondary" type="button" onClick={() => setCreateKind('note')} style={secondaryButtonStyle}><FileText size={12} /> New note</button>}
+          {onCreateItem && <button className="ui-button ui-button--primary" type="button" onClick={() => setCreateKind('bookmark')} style={primaryButtonStyle}><Plus size={12} /> Add link</button>}
         </div>
       </header>
 
       <div style={{ flexShrink: 0 }}>
-        <div data-library-view-tabs role="tablist" aria-label="Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
-          <button type="button" role="tab" aria-selected={typeFilter === 'all'} onClick={() => setTypeFilter('all')} style={viewTabStyle(typeFilter === 'all')}><Library size={12} /> All items</button>
-          <button type="button" role="tab" aria-selected={typeFilter === 'links'} onClick={() => setTypeFilter('links')} style={viewTabStyle(typeFilter === 'links')}><Link2 size={12} /> Links</button>
-          <button type="button" role="tab" aria-selected={typeFilter === 'notes'} onClick={() => setTypeFilter('notes')} style={viewTabStyle(typeFilter === 'notes')}><FileText size={12} /> Notes</button>
+        <div className="ui-tab-bar" data-library-view-tabs role="tablist" aria-label="Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
+          <button className="ui-view-tab" type="button" role="tab" aria-selected={typeFilter === 'all'} onClick={() => setTypeFilter('all')} style={viewTabStyle(typeFilter === 'all')}><Library size={12} /> All items</button>
+          <button className="ui-view-tab" type="button" role="tab" aria-selected={typeFilter === 'links'} onClick={() => setTypeFilter('links')} style={viewTabStyle(typeFilter === 'links')}><Link2 size={12} /> Links</button>
+          <button className="ui-view-tab" type="button" role="tab" aria-selected={typeFilter === 'notes'} onClick={() => setTypeFilter('notes')} style={viewTabStyle(typeFilter === 'notes')}><FileText size={12} /> Notes</button>
         </div>
         <label style={{ ...uiPatterns.searchField, height: 36 }}>
           <Search size={14} color="var(--text-faint)" />
@@ -386,7 +386,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
         />
       </div>
 
-      <div style={uiPatterns.splitCanvas}>
+      <div className="ui-split-canvas" style={uiPatterns.splitCanvas}>
         <ContentBrowser
           title={typeFilter === 'links' ? 'Saved links' : typeFilter === 'notes' ? 'Notes' : 'All items'}
           entries={browseEntries}
@@ -398,7 +398,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
           ariaLabel="Item library"
         />
 
-        <section style={panelStyle} aria-label="Selected library item">
+        <section className="ui-panel" style={panelStyle} aria-label="Selected library item">
           {selectedItem ? (
             <>
               <div style={{ ...panelHeaderStyle, alignItems: 'center' }}>
@@ -410,9 +410,9 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
                   <select value={workspaceKey} onChange={(event) => { setWorkspaceKey(event.target.value); setWorkspaceNotice(null); }} aria-label={`Workspace for ${selectedItem.title || 'item'}`} style={destinationSelectStyle}>
                     {destinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
                   </select>
-                  <button type="button" onClick={() => addToWorkspace(false)} style={secondaryButtonStyle}><Plus size={12} /> Add</button>
-                  <button type="button" onClick={() => addToWorkspace(true)} style={primaryButtonStyle}><Focus size={12} /> Focus</button>
-                  {onDeleteItem && <button type="button" onClick={() => void removeSelectedItem()} title="Move to trash" aria-label={`Move ${selectedItem.title || 'item'} to trash`} style={{ ...iconButtonStyle, color: '#ef4444' }}><Trash2 size={13} /></button>}
+                  <button className="ui-button ui-button--secondary" type="button" onClick={() => addToWorkspace(false)} style={secondaryButtonStyle}><Plus size={12} /> Add</button>
+                  <button className="ui-button ui-button--primary" type="button" onClick={() => addToWorkspace(true)} style={primaryButtonStyle}><Focus size={12} /> Focus</button>
+                  {onDeleteItem && <button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => void removeSelectedItem()} title="Move to trash" aria-label={`Move ${selectedItem.title || 'item'} to trash`} style={{ ...iconButtonStyle, color: 'var(--danger)' }}><Trash2 size={13} /></button>}
                 </div>
               </div>
               <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
@@ -424,7 +424,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
                   onCreateProject={onCreateProject}
                   onCreateCollection={onCreateCollection}
                   trailingActions={activeProject ? (
-                    <button type="button" disabled={!onUpdateItem || pinningItemId === selectedItem.id} onClick={() => void toggleProjectPin()} style={secondaryButtonStyle}>
+                    <button className="ui-button ui-button--secondary" type="button" disabled={!onUpdateItem || pinningItemId === selectedItem.id} onClick={() => void toggleProjectPin()} style={secondaryButtonStyle}>
                       <Pin size={12} fill={isItemPinnedToProject(selectedItem, activeProject.id) ? 'currentColor' : 'none'} />
                       {isItemPinnedToProject(selectedItem, activeProject.id) ? 'Unpin' : 'Pin to project'}
                     </button>

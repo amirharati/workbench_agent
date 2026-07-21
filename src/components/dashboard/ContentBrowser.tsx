@@ -76,15 +76,15 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   }, [renderedEntries.length, selectedId]);
 
   return (
-  <section style={panelStyle} aria-label={ariaLabel ?? title}>
+  <section className="ui-panel" style={panelStyle} aria-label={ariaLabel ?? title}>
     <div style={headerStyle}>
       <div style={{ minWidth: 0 }}>
         <strong style={{ display: 'block', overflow: 'hidden', color: 'var(--text)', fontSize: 'var(--text-sm)', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</strong>
         <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{entries.length} item{entries.length !== 1 ? 's' : ''}</span>
       </div>
       <div role="group" aria-label={`${title} view`} style={toggleGroupStyle}>
-        <button type="button" aria-label="List view" aria-pressed={mode === 'list'} title="List view" onClick={() => onModeChange('list')} style={toggleButtonStyle(mode === 'list')}><List size={12} /></button>
-        <button type="button" aria-label="Gallery view" aria-pressed={mode === 'gallery'} title="Gallery view" onClick={() => onModeChange('gallery')} style={toggleButtonStyle(mode === 'gallery')}><Grid2X2 size={12} /></button>
+        <button className="ui-view-tab" type="button" aria-label="List view" aria-pressed={mode === 'list'} title="List view" onClick={() => onModeChange('list')} style={toggleButtonStyle(mode === 'list')}><List size={12} /></button>
+        <button className="ui-view-tab" type="button" aria-label="Gallery view" aria-pressed={mode === 'gallery'} title="Gallery view" onClick={() => onModeChange('gallery')} style={toggleButtonStyle(mode === 'gallery')}><Grid2X2 size={12} /></button>
       </div>
     </div>
     <div className="scrollbar" data-content-view={mode} style={mode === 'gallery' ? galleryStyle : listStyle}>

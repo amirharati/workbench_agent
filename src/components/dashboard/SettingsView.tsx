@@ -320,7 +320,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         gap: '1rem',
       }}
     >
-      <div>
+      <div className="ui-page-header">
         <h1 style={uiPatterns.pageTitle}>
           Settings
         </h1>
@@ -330,6 +330,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       <nav
+        className="ui-tab-bar"
         aria-label="Settings sections"
         style={{
           ...uiPatterns.tabBar,
@@ -341,6 +342,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           const needsAttention = section.id === 'backup' && (!backupFolderReady || conflictBlocking);
           return (
             <button
+              className="ui-view-tab"
               key={section.id}
               type="button"
               aria-current={selected ? 'page' : undefined}
@@ -1376,9 +1378,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               style={{
                 padding: '0.5rem 0.75rem',
                 borderRadius: 8,
-                border: '1px solid var(--error)',
-                background: clearingLibrary ? 'var(--error)' : '#dc2626',
-                color: '#fff',
+                border: '1px solid var(--danger)',
+                background: 'var(--danger)',
+                color: 'var(--accent-text)',
                 cursor:
                   clearingLibrary || !backupFolderReady || clearLibraryConfirm.trim() !== 'DELETE'
                     ? 'not-allowed'

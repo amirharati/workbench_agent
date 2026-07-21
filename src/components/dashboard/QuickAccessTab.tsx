@@ -28,7 +28,7 @@ export const QuickAccessTab: React.FC<QuickAccessTabProps> = ({ onItemClick }) =
       title="Favorites & pins"
       icon={
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Star size={18} style={{ color: '#ef4444', fill: '#ef4444' }} />
+          <Star size={18} style={{ color: 'var(--favorite)', fill: 'var(--favorite)' }} />
           <Pin size={18} style={{ color: 'var(--accent)' }} />
         </span>
       }

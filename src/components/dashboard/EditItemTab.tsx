@@ -185,7 +185,7 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>
-              Title <span style={{ color: '#ef4444' }}>*</span>
+              Title <span style={{ color: 'var(--danger)' }}>*</span>
             </label>
             <Input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
           </div>
@@ -265,7 +265,7 @@ export const EditItemTab: React.FC<EditItemTabProps> = ({
           </div>
 
           {error && (
-            <div style={{ padding: '0.75rem', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', borderRadius: 8, color: '#ef4444', fontSize: '0.9rem' }}>
+            <div style={{ padding: '0.75rem', background: 'var(--danger-weak)', border: '1px solid var(--danger-border)', borderRadius: 8, color: 'var(--danger)', fontSize: '0.9rem' }}>
               {error}
             </div>
           )}

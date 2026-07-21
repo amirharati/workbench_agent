@@ -285,7 +285,7 @@ export const HelpView: React.FC = () => {
       children: (
         <>
           <FeatureRow
-            icon={<Star size={16} style={{ color: '#ef4444' }} />}
+            icon={<Star size={16} style={{ color: 'var(--favorite)' }} />}
             title="Favorites"
             desc="Star an item from its tab header, side panel, or right-click menu. Favorites appear on Home and in the Favorites tab."
           />
@@ -295,7 +295,7 @@ export const HelpView: React.FC = () => {
             desc="Pin important items for quick access. In collection lists, pinned items sort to the top. Pinned-only items show 📌; both flags show ⭐ then 📌 on cards."
           />
           <FeatureRow
-            icon={<Trash2 size={16} style={{ color: '#ef4444' }} />}
+            icon={<Trash2 size={16} style={{ color: 'var(--danger)' }} />}
             title="Trash"
             desc="Deleting removes from one collection, or moves to trash when it was the last placement. Restore from the Trash tab or context menu."
           />
@@ -338,9 +338,9 @@ export const HelpView: React.FC = () => {
   ];
 
   return (
-    <div style={{ ...uiPatterns.pageFrame, overflow: 'auto' }}>
+    <div className="ui-page-frame" style={{ ...uiPatterns.pageFrame, overflow: 'auto' }}>
       <div style={{ width: '100%', maxWidth: 720, margin: '0 auto' }}>
-      <div style={{ ...uiPatterns.pageHeader, marginBottom: 20 }}>
+      <div className="ui-page-header" style={{ ...uiPatterns.pageHeader, marginBottom: 20 }}>
         <div>
         <h1 style={uiPatterns.pageTitle}>Help</h1>
         <p style={{ ...uiPatterns.pageDescription, fontSize: 'var(--text-sm)' }}>
@@ -352,6 +352,7 @@ export const HelpView: React.FC = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         {sections.map((section) => (
           <section
+            className="ui-panel"
             key={section.id}
             id={`help-${section.id}`}
             style={{

@@ -42,7 +42,7 @@ export const BookmarkDetailModal: React.FC<BookmarkDetailModalProps> = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 1000,
+        zIndex: 'var(--layer-modal)',
       }}
       onClick={onClose}
     >
@@ -138,7 +138,7 @@ export const BookmarkDetailModal: React.FC<BookmarkDetailModalProps> = ({
         <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between' }}>
           <button
             onClick={() => { onDelete(item.id); onClose(); }}
-            style={{ padding: '0.5rem 1rem', border: 'none', background: '#fee2e2', color: '#dc2626', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
+            style={{ padding: '0.5rem 1rem', border: 'none', background: 'var(--danger-weak)', color: 'var(--danger)', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
           >
             Delete
           </button>

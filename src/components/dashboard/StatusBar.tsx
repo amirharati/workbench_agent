@@ -17,7 +17,7 @@ interface StatusBarProps {
 
 const TYPE_STYLES: Record<StatusMessageType, { icon: string; color: string; bg: string }> = {
   warning: { icon: '⚠', color: '#d29922', bg: 'rgba(210, 153, 34, 0.08)' },
-  error:   { icon: '✗', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.08)' },
+  error:   { icon: '✗', color: 'var(--danger)', bg: 'var(--danger-weak)' },
   info:    { icon: 'i', color: '#818cf8', bg: 'rgba(99, 102, 241, 0.08)' },
 };
 

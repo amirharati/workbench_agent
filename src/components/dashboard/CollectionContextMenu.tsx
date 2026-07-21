@@ -85,7 +85,7 @@ export const CollectionContextMenu: React.FC<CollectionContextMenuProps> = ({
         position: 'fixed',
         left: x,
         top: y,
-        zIndex: 10000,
+        zIndex: 'var(--layer-modal)',
         background: 'var(--bg-panel)',
         border: '1px solid var(--border)',
         borderRadius: 8,
@@ -124,7 +124,7 @@ export const CollectionContextMenu: React.FC<CollectionContextMenuProps> = ({
               textAlign: 'left',
               background: 'transparent',
               border: 'none',
-              color: menuItem.danger ? '#ef4444' : 'var(--text)',
+              color: menuItem.danger ? 'var(--danger)' : 'var(--text)',
               cursor: 'pointer',
               borderRadius: 6,
               display: 'flex',
@@ -135,7 +135,7 @@ export const CollectionContextMenu: React.FC<CollectionContextMenuProps> = ({
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = menuItem.danger
-                ? 'rgba(239, 68, 68, 0.15)'
+                ? 'var(--danger-weak)'
                 : 'var(--bg-glass)';
             }}
             onMouseLeave={(e) => {
@@ -150,4 +150,3 @@ export const CollectionContextMenu: React.FC<CollectionContextMenuProps> = ({
     </div>
   );
 };
-

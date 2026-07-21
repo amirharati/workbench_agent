@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { Item, Project, Workspace } from '../../lib/db';
 import type { GlobalTabState } from './GlobalTabSystem';
-import { WorkspacesView } from './WorkspacesView';
+import { getWorkspaceTabUrl, WorkspacesView } from './WorkspacesView';
 
 const project: Project = { id: 'project-a', name: 'Research', isDefault: false, created_at: 1, updated_at: 1 };
 const item: Item = { id: 'item-a', title: 'Docs', url: 'https://example.com/docs', collectionIds: [], tags: [], source: 'bookmark', created_at: 1, updated_at: 1 };
@@ -17,6 +17,21 @@ const homeState: GlobalTabState = {
 };
 
 describe('WorkspacesView', () => {
+  it('resolves direct URLs for URL-bearing workspace entries only', () => {
+    const itemById = new Map([[item.id, item]]);
+
+    expect(getWorkspaceTabUrl(homeState.tabs[0], itemById)).toBe(item.url);
+    expect(
+      getWorkspaceTabUrl(
+        { kind: 'url', id: 'url-a', url: 'https://example.com/direct', scopeProjectId: project.id },
+        itemById
+      )
+    ).toBe('https://example.com/direct');
+    expect(
+      getWorkspaceTabUrl({ kind: 'search', id: 'search-a', query: 'docs' }, itemById)
+    ).toBeNull();
+  });
+
   it('shows project workspaces and browser snapshots as distinct saved-work types', () => {
     const markup = renderToStaticMarkup(
       <WorkspacesView

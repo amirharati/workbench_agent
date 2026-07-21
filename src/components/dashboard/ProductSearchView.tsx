@@ -404,7 +404,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
       )}
 
       {state.error && (
-        <div style={{ color: 'var(--error, #ef4444)', fontSize: 'var(--text-sm)' }}>{state.error}</div>
+        <div style={{ color: 'var(--danger)', fontSize: 'var(--text-sm)' }}>{state.error}</div>
       )}
 
       {state.restoring && !state.result && (

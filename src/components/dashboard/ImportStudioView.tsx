@@ -920,7 +920,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           ) : null}
         </div>
       ) : null}
-      {commitError ? <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--error, #dc2626)' }}>{commitError}</div> : null}
+      {commitError ? <div role="alert" style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>{commitError}</div> : null}
       {renderPipelineConfirmPanel()}
     </div>
   );
@@ -977,7 +977,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           role="alert"
           style={{
             fontSize: 'var(--text-xs)',
-            color: '#dc2626',
+            color: 'var(--danger)',
             whiteSpace: 'pre-wrap',
             lineHeight: 1.45,
             padding: '8px',
@@ -1025,7 +1025,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <strong style={{ color: 'var(--text)', fontSize: 'var(--text-xs)' }}>{row.title || 'Untitled'}</strong>
-                      {!valid ? <span style={{ color: 'var(--error, #f85149)', fontSize: 10, fontWeight: 700 }}>Invalid URL</span> : null}
+                      {!valid ? <span style={{ color: 'var(--error)', fontSize: 10, fontWeight: 700 }}>Invalid URL</span> : null}
                       {row.folderPath ? <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>{row.folderPath}</span> : null}
                     </span>
                     <span style={{ display: 'block', marginTop: 2, color: 'var(--text-muted)', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.url}</span>
@@ -1173,7 +1173,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           ) : null}
         </div>
       ) : null}
-      {commitError ? <div style={{ fontSize: 'var(--text-xs)', color: '#dc2626' }}>{commitError}</div> : null}
+      {commitError ? <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>{commitError}</div> : null}
       {commitMessage ? <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{commitMessage}</div> : null}
       {renderPipelineConfirmPanel()}
     </div>
@@ -1303,7 +1303,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   );
 
   return (
-    <div className="scrollbar" style={{ ...uiPatterns.pageFrame, overflow: 'auto' }}>
+    <div className="scrollbar ui-page-frame" style={{ ...uiPatterns.pageFrame, overflow: 'auto' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 1320, margin: '0 auto', position: 'relative' }}>
       {importReport ? (
         <ImportReportOverlay
@@ -1318,7 +1318,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           }}
         />
       ) : null}
-      <div style={uiPatterns.pageHeader}>
+      <div className="ui-page-header" style={uiPatterns.pageHeader}>
         <div>
           <h1 style={uiPatterns.pageTitle}>
             Import bookmarks
@@ -1328,6 +1328,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           </p>
         </div>
         <button
+          className="ui-button ui-button--secondary"
           type="button"
           onClick={onBack}
           disabled={processing}
@@ -1341,7 +1342,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         </button>
       </div>
 
-      <div role="tablist" aria-label="Import source" style={uiPatterns.tabBar}>
+      <div className="ui-tab-bar" role="tablist" aria-label="Import source" style={uiPatterns.tabBar}>
         {([
           { id: 'file', label: 'Bookmark file' },
           { id: 'chrome', label: 'Chrome bookmarks' },
@@ -1350,6 +1351,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           const active = source === item.id;
           return (
             <button
+              className="ui-view-tab"
               key={item.id}
               type="button"
               role="tab"

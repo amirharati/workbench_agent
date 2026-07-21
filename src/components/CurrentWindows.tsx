@@ -119,7 +119,7 @@ export const CurrentWindows: React.FC<CurrentWindowsProps> = ({ windows, onClose
                       alignItems: 'center',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#ef4444';
+                      e.currentTarget.style.color = 'var(--danger)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.color = '#9ca3af';

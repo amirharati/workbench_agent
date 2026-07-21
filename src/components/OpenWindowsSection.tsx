@@ -71,7 +71,7 @@ export const OpenWindowsSection: React.FC<OpenWindowsSectionProps> = ({
             borderRadius: '0.5rem',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             minWidth: '150px',
-            zIndex: 100,
+            zIndex: 'var(--layer-dropdown)',
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -220,7 +220,7 @@ export const OpenWindowsSection: React.FC<OpenWindowsSectionProps> = ({
                       <button
                         onClick={(e) => { e.stopPropagation(); tab.id && onCloseTab(tab.id); }}
                         style={{ padding: '0.25rem', border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', display: 'flex', alignItems: 'center' }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger)')}
                         onMouseLeave={(e) => (e.currentTarget.style.color = '#9ca3af')}
                       >
                         <X size={14} />

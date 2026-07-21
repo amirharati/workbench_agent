@@ -150,10 +150,10 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
 
   return (
     <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, display: 'flex', flexDirection: 'column' }} aria-label="All Library workspace">
-      <div data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
-        <button type="button" role="tab" aria-selected={activeView === 'projects'} onClick={() => selectView('projects')} style={viewTabStyle(activeView === 'projects')}><Folder size={12} /> Projects <span style={tabCountStyle}>{projectSummaries.length}</span></button>
-        <button type="button" role="tab" aria-selected={activeView === 'recent'} onClick={() => selectView('recent')} style={viewTabStyle(activeView === 'recent')}><Clock size={12} /> Recent <span style={tabCountStyle}>{recentItems.length}</span></button>
-        <button type="button" role="tab" aria-selected={activeView === 'quick-access'} onClick={() => selectView('quick-access')} style={viewTabStyle(activeView === 'quick-access')}><Star size={12} /> Favorites &amp; pins <span style={tabCountStyle}>{quickAccessItems.length}</span></button>
+      <div className="ui-tab-bar" data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
+        <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'projects'} onClick={() => selectView('projects')} style={viewTabStyle(activeView === 'projects')}><Folder size={12} /> Projects <span style={tabCountStyle}>{projectSummaries.length}</span></button>
+        <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'recent'} onClick={() => selectView('recent')} style={viewTabStyle(activeView === 'recent')}><Clock size={12} /> Recent <span style={tabCountStyle}>{recentItems.length}</span></button>
+        <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'quick-access'} onClick={() => selectView('quick-access')} style={viewTabStyle(activeView === 'quick-access')}><Star size={12} /> Favorites &amp; pins <span style={tabCountStyle}>{quickAccessItems.length}</span></button>
         <div style={compoundTabStyle(activeView === 'workspace')}>
           <button type="button" role="tab" aria-selected={activeView === 'workspace'} onClick={() => selectView('workspace')} style={compoundTabButtonStyle}><Layers3 size={12} /> Workspace</button>
           <select
@@ -168,11 +168,11 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
           </select>
         </div>
         <span style={{ marginLeft: 'auto', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{totalItems} item{totalItems !== 1 ? 's' : ''}</span>
-        {onOpenPipeline && <button type="button" onClick={onOpenPipeline} style={secondaryButtonStyle}><Workflow size={11} /> Processing</button>}
-        {onOpenTrash && <button type="button" onClick={onOpenTrash} style={secondaryButtonStyle}><Trash2 size={11} /> Trash</button>}
+        {onOpenPipeline && <button className="ui-button ui-button--secondary" type="button" onClick={onOpenPipeline} style={secondaryButtonStyle}><Workflow size={11} /> Processing</button>}
+        {onOpenTrash && <button className="ui-button ui-button--secondary" type="button" onClick={onOpenTrash} style={secondaryButtonStyle}><Trash2 size={11} /> Trash</button>}
       </div>
 
-      <div data-all-library-working-canvas style={{ height: 460, minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}>
+      <div className="ui-working-canvas" data-all-library-working-canvas style={{ height: 460, minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}>
         {activeView === 'workspace' ? <div className="scrollbar" style={{ minWidth: 0, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {visibleGroups.length === 0 ? (
             <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 24, border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-faint)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>
@@ -207,7 +207,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
           ariaLabel="All Library material"
         />}
 
-        <div style={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }}>
+        <div className="ui-panel" style={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }}>
           <div style={{ minHeight: 43, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '7px 11px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 650, textTransform: 'uppercase', letterSpacing: 0.4 }}>{previewItem ? 'Item' : 'Workspace entry'}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

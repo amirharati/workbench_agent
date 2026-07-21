@@ -138,7 +138,7 @@ export const BookmarksGrid: React.FC<BookmarksGridProps> = ({ items, onDeleteIte
                     borderRadius: '0.25rem',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.color = '#ef4444';
+                    e.currentTarget.style.color = 'var(--danger)';
                     e.currentTarget.style.background = '#fef2f2';
                   }}
                   onMouseLeave={(e) => {

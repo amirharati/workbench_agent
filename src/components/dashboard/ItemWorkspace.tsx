@@ -142,7 +142,7 @@ export const ItemWorkspace: React.FC<ItemWorkspaceProps> = ({
         </div>
       </div>
 
-      {error && <div role="alert" style={{ color: '#ef4444', fontSize: 'var(--text-xs)' }}>{error}</div>}
+      {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 'var(--text-xs)' }}>{error}</div>}
 
       {editing && item.url && (
         <label style={fieldLabelStyle}>

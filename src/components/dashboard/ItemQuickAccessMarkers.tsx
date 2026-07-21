@@ -27,7 +27,7 @@ export const ItemQuickAccessMarkers: React.FC<ItemQuickAccessMarkersProps> = ({
 
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-      {showFavorite && <Star size={size} style={{ color: '#ef4444', fill: '#ef4444' }} />}
+      {showFavorite && <Star size={size} style={{ color: 'var(--favorite)', fill: 'var(--favorite)' }} />}
       {showPin && <Pin size={size} style={{ color: 'var(--accent)' }} />}
     </span>
   );

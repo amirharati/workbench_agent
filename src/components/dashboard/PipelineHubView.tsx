@@ -1293,7 +1293,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
   return (
     <div
-      className="scrollbar"
+      className="scrollbar ui-page-frame"
       style={{
         ...uiPatterns.pageFrame,
         overflow: 'auto',
@@ -1302,7 +1302,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       }}
     >
       <header>
-        <div style={uiPatterns.pageHeader}>
+        <div className="ui-page-header" style={uiPatterns.pageHeader}>
           <div>
             <h1 style={uiPatterns.pageTitle}>
               Enrichment Hub
@@ -1316,6 +1316,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             </p>
           </div>
           <button
+            className="ui-button ui-button--secondary"
             type="button"
             onClick={() => setShowStatusGuide((v) => !v)}
             aria-expanded={showStatusGuide}
@@ -1534,7 +1535,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               padding: '5px 12px',
               borderRadius: 6,
               border: 'none',
-              background: '#ef4444',
+              background: 'var(--danger)',
               color: '#fff',
               fontSize: 'var(--text-xs)',
               fontWeight: 600,
@@ -1686,9 +1687,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               gap: 6,
               padding: '5px 12px',
               borderRadius: 6,
-              border: '1px solid color-mix(in srgb, #ef4444 40%, var(--border))',
+              border: '1px solid color-mix(in srgb, var(--danger) 40%, var(--border))',
               background: 'var(--bg)',
-              color: '#ef4444',
+              color: 'var(--danger)',
               fontSize: 'var(--text-xs)',
               fontWeight: 600,
               cursor: 'pointer',

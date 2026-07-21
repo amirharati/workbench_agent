@@ -251,7 +251,7 @@ export const EnrichmentTestModal: React.FC<Props> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 10001,
+        zIndex: 'var(--layer-modal-raised)',
         background: 'var(--bg)',
         color: 'var(--text)',
         display: 'flex',
@@ -367,7 +367,7 @@ export const EnrichmentTestModal: React.FC<Props> = ({
           type="button"
           onClick={() => void handleClearPipeline()}
           disabled={running || clearing}
-          style={{ ...btnSm, color: 'var(--error, #dc2626)', borderColor: 'var(--error, #dc2626)' }}
+          style={{ ...btnSm, color: 'var(--danger)', borderColor: 'var(--danger)' }}
           title="Remove all enrichment + assignments (keeps bookmarks + topic list)"
         >
           {clearing ? 'Clearing…' : 'Reset all enrich/classify'}
@@ -505,7 +505,7 @@ export const EnrichmentTestModal: React.FC<Props> = ({
               Done: {result.processed} ok, {result.skipped} skipped, {result.failed} failed — review opened
             </span>
           )}
-          {error && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--error, #dc2626)' }}>{error}</span>}
+          {error && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>{error}</span>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {running ? (

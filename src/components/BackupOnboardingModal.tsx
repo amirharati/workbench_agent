@@ -130,7 +130,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 100000,
+        zIndex: 'var(--layer-modal-raised)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -228,7 +228,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
         )}
 
         {error ? (
-          <p style={{ color: 'var(--danger, #dc2626)', margin: '0 0 12px', fontSize: '0.875rem' }} role="alert">
+          <p style={{ color: 'var(--danger)', margin: '0 0 12px', fontSize: '0.875rem' }} role="alert">
             {error}
           </p>
         ) : null}

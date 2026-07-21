@@ -52,7 +52,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 5000,
+        zIndex: 'var(--layer-command)',
         background: 'rgba(0,0,0,0.45)',
         display: 'flex',
         alignItems: 'flex-start',

@@ -92,7 +92,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
     <>
       <QuickAccessItemList
         title="Trash"
-        icon={<Trash2 size={20} style={{ color: '#ef4444' }} />}
+        icon={<Trash2 size={20} style={{ color: 'var(--danger)' }} />}
         items={items}
         emptyIcon={<Trash2 size={48} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />}
         emptyTitle="Trash is empty"
@@ -108,6 +108,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
         headerExtra={
           items.length > 0 ? (
             <button
+              className="ui-button ui-button--danger"
               type="button"
               disabled={busy}
               onClick={() => handleEmptyTrash()}
@@ -123,6 +124,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
         renderRowActions={(item) => (
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
             <button
+              className="ui-button ui-button--secondary"
               type="button"
               onClick={(e) => void handleRestore(e, item)}
               style={uiPatterns.secondaryButton}
@@ -130,6 +132,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
               Restore
             </button>
             <button
+              className="ui-button ui-button--danger"
               type="button"
               onClick={(e) => handlePermanentDelete(e, item)}
               style={uiPatterns.dangerButton}
@@ -145,7 +148,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
           role="alert"
           style={{
             margin: '8px 12px 0',
-            color: '#dc2626',
+            color: 'var(--danger)',
             fontSize: 'var(--text-sm)',
           }}
         >
@@ -159,7 +162,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
           aria-modal="true"
           style={{
             ...uiPatterns.modalBackdrop,
-            zIndex: 100000,
+            zIndex: 'var(--layer-modal-raised)',
           }}
           onClick={() => {
             if (!busy) setPending(null);
@@ -183,6 +186,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
+                className="ui-button ui-button--secondary"
                 type="button"
                 disabled={busy}
                 onClick={() => setPending(null)}
@@ -191,6 +195,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
                 Cancel
               </button>
               <button
+                className="ui-button ui-button--danger"
                 type="button"
                 disabled={busy}
                 onClick={() => void runPending()}

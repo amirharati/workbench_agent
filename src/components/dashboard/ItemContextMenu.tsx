@@ -211,7 +211,7 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
         position: 'fixed',
         left: x,
         top: y,
-        zIndex: 10000,
+        zIndex: 'var(--layer-modal)',
         background: 'var(--bg-panel)',
         border: '1px solid var(--border)',
         borderRadius: 8,
@@ -249,7 +249,7 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
               textAlign: 'left',
               background: 'transparent',
               border: 'none',
-              color: menuItem.danger ? '#ef4444' : 'var(--text)',
+              color: menuItem.danger ? 'var(--danger)' : 'var(--text)',
               cursor: 'pointer',
               borderRadius: 6,
               display: 'flex',
@@ -260,7 +260,7 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = menuItem.danger
-                ? 'rgba(239, 68, 68, 0.15)'
+                ? 'var(--danger-weak)'
                 : 'var(--bg-glass)';
             }}
             onMouseLeave={(e) => {

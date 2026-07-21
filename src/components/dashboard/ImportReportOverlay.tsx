@@ -111,7 +111,7 @@ export const ImportReportOverlay: React.FC<ImportReportOverlayProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 10002,
+        zIndex: 'var(--layer-modal-raised)',
         background: 'rgba(0,0,0,0.5)',
         display: 'flex',
         alignItems: 'center',

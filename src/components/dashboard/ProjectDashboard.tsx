@@ -2002,7 +2002,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 10000,
+            zIndex: 'var(--layer-modal)',
             padding: '1rem',
           }}
           onClick={(e) => {

@@ -493,7 +493,7 @@ export const TabContent: React.FC<TabContentProps> = ({
             <span>{iconForItem(effectiveItem)} {effectiveItem.title || 'Untitled'}</span>
             <ItemQuickAccessMarkers item={effectiveItem} size={14} hideWhenTrashed />
             {effectiveItem.deletedAt && (
-              <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 600 }}>In trash</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>In trash</span>
             )}
           </h2>
           <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -533,10 +533,10 @@ export const TabContent: React.FC<TabContentProps> = ({
               }
               style={{
                 padding: '0.5rem',
-                background: effectiveItem.favoriteAt ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+                background: effectiveItem.favoriteAt ? 'var(--favorite-weak)' : 'transparent',
                 border: '1px solid var(--border)',
                 borderRadius: 8,
-                color: effectiveItem.favoriteAt ? '#ef4444' : 'var(--text)',
+                color: effectiveItem.favoriteAt ? 'var(--favorite)' : 'var(--text)',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -545,7 +545,7 @@ export const TabContent: React.FC<TabContentProps> = ({
               }}
               title={effectiveItem.favoriteAt ? 'Remove from favorites' : 'Add to favorites'}
             >
-              <Star size={16} fill={effectiveItem.favoriteAt ? '#ef4444' : 'none'} />
+              <Star size={16} fill={effectiveItem.favoriteAt ? 'var(--favorite)' : 'none'} />
             </button>
           )}
           {!effectiveItem.deletedAt && (
@@ -599,7 +599,7 @@ export const TabContent: React.FC<TabContentProps> = ({
                 background: 'transparent',
                 border: '1px solid var(--border)',
                 borderRadius: 8,
-                color: '#ef4444',
+                color: 'var(--danger)',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -608,8 +608,8 @@ export const TabContent: React.FC<TabContentProps> = ({
               }}
               title="Move to trash"
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
-                e.currentTarget.style.borderColor = '#ef4444';
+                e.currentTarget.style.background = 'var(--danger-weak)';
+                e.currentTarget.style.borderColor = 'var(--danger)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'transparent';
@@ -887,6 +887,5 @@ export const TabContent: React.FC<TabContentProps> = ({
     </div>
   );
 };
-
 
 

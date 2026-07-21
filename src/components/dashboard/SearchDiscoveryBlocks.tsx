@@ -263,7 +263,7 @@ export function SimilarItemsBlock({
 
   if (error) {
     return (
-      <p style={{ fontSize: 'var(--dev-fs-sm)', color: 'var(--error, #f85149)', marginBottom: 12 }}>
+      <p style={{ fontSize: 'var(--dev-fs-sm)', color: 'var(--error)', marginBottom: 12 }}>
         {error}
       </p>
     );

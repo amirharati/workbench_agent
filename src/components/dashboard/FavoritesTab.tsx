@@ -26,7 +26,7 @@ export const FavoritesTab: React.FC<FavoritesTabProps> = ({ onItemClick }) => {
   return (
     <QuickAccessItemList
       title="Favorites"
-      icon={<Heart size={20} style={{ color: '#ef4444', fill: '#ef4444' }} />}
+      icon={<Heart size={20} style={{ color: 'var(--favorite)', fill: 'var(--favorite)' }} />}
       items={items}
       emptyIcon={<HeartOff size={48} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />}
       emptyTitle="No favorites yet"

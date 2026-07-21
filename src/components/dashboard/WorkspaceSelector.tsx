@@ -119,7 +119,7 @@ export const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
               border: '1px solid var(--border)',
               borderRadius: 6,
               boxShadow: 'var(--shadow-lg)',
-              zIndex: 100,
+              zIndex: 'var(--layer-dropdown)',
               minWidth: 180,
               maxHeight: 240,
               overflowY: 'auto',
@@ -273,4 +273,3 @@ export const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
     </div>
   );
 };
-

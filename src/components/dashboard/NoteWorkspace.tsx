@@ -428,7 +428,7 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
                         borderRadius: 6,
                         border: '1px solid var(--border)',
                         background: 'transparent',
-                        color: '#ef4444',
+                        color: 'var(--danger)',
                         cursor: 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -446,7 +446,7 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
                     padding: '6px 20px',
                     flexShrink: 0,
                     fontSize: 'var(--text-xs)',
-                    color: '#ef4444',
+                    color: 'var(--danger)',
                   }}
                 >
                   {saveError}

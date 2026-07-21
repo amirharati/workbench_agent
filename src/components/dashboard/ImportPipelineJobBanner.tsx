@@ -144,7 +144,7 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 10002,
+            zIndex: 'var(--layer-modal-raised)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

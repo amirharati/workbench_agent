@@ -1792,7 +1792,7 @@ function PipelineProgressModal({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 10001,
+        zIndex: 'var(--layer-modal-raised)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -1925,7 +1925,7 @@ function PipelineProgressModal({
                   fontWeight: modal.queueOutcome || modal.reportRows?.length ? 600 : 400,
                   color:
                     modal.tone === 'error'
-                      ? '#ef4444'
+                      ? 'var(--danger)'
                       : modal.tone === 'info'
                         ? 'var(--text-muted)'
                         : 'var(--text)',

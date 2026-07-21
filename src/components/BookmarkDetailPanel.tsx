@@ -132,7 +132,7 @@ export const BookmarkDetailPanel: React.FC<BookmarkDetailPanelProps> = ({
       <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between' }}>
         <button
           onClick={() => { onDelete(item.id); onClose(); }}
-          style={{ padding: '0.375rem 0.75rem', border: 'none', background: '#fee2e2', color: '#dc2626', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.75rem' }}
+          style={{ padding: '0.375rem 0.75rem', border: 'none', background: 'var(--danger-weak)', color: 'var(--danger)', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.75rem' }}
         >
           Delete
         </button>

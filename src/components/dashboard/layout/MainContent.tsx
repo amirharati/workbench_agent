@@ -1257,7 +1257,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                 Uses up to 20 bookmarks from current filters and asks the model to cite sources like [B1].
               </div>
               {bookmarkAiError ? (
-                <div style={{ fontSize: 'var(--text-xs)', color: '#dc2626' }}>{bookmarkAiError}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>{bookmarkAiError}</div>
               ) : null}
               {bookmarkAiResult ? (
                 <div
@@ -1801,7 +1801,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                                 background: 'transparent',
                                 border: '1px solid var(--border)',
                                 borderRadius: 4,
-                                color: '#ef4444',
+                                color: 'var(--danger)',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -2363,7 +2363,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           }}
         />
         {showImportStudio && (
-          <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', zIndex: 100 }}>
+          <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', zIndex: 'var(--layer-dropdown)' }}>
             <React.Suspense fallback={<LazyViewFallback />}>
               <ImportStudioView
                 projects={projects}
@@ -2549,7 +2549,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 2000,
+          zIndex: 'var(--layer-overlay)',
           padding: '1rem'
         }}>
           <div style={{ background: 'var(--bg-panel)', color: 'var(--text)', borderRadius: '0.75rem', padding: '1rem', width: '420px', maxWidth: '100%', boxShadow: 'var(--shadow-panel)', border: '1px solid var(--border)' }}>
@@ -2617,7 +2617,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 2000,
+          zIndex: 'var(--layer-overlay)',
           padding: '1rem'
         }}
         onClick={() => setViewingItem(null)}
@@ -2873,7 +2873,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 2000,
+          zIndex: 'var(--layer-overlay)',
           padding: '1rem'
         }}>
           <div style={{

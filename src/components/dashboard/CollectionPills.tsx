@@ -189,7 +189,7 @@ export const CollectionPills: React.FC<CollectionPillsProps> = ({
                 border: '1px solid var(--border)',
                 borderRadius: 6,
                 boxShadow: 'var(--shadow-lg)',
-                zIndex: 100,
+                zIndex: 'var(--layer-dropdown)',
                 minWidth: 160,
                 maxHeight: 200,
                 overflowY: 'auto',

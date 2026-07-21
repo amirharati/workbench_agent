@@ -448,14 +448,14 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
 
   return (
     <div
-      className="scrollbar"
+      className="scrollbar ui-page-frame"
       style={{
         ...uiPatterns.pageFrame,
         overflow: 'hidden',
         overflowX: 'hidden',
       }}
     >
-      <header style={{ ...uiPatterns.pageHeader, width: '100%', maxWidth: 1120, margin: '0 auto' }}>
+      <header className="ui-page-header" style={{ ...uiPatterns.pageHeader, width: '100%', maxWidth: 1120, margin: '0 auto' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <span style={{ width: 34, height: 34, borderRadius: 'var(--radius-md)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-weak)', color: 'var(--accent)' }}>
@@ -469,16 +469,16 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </div>
           </div>
         </div>
-        <button type="button" onClick={onOpenSearch} style={secondaryButtonStyle}>
+        <button className="ui-button ui-button--secondary" type="button" onClick={onOpenSearch} style={secondaryButtonStyle}>
           <Search size={13} />
           {browseSource === 'collection' ? 'Search collection' : 'Search project'}
         </button>
       </header>
 
       <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, flex: 1, margin: '0 auto', display: 'flex', flexDirection: 'column' }} aria-label="Project workspace">
-        <div data-project-view-tabs style={{ ...uiPatterns.tabBar, marginBottom: 8 }} role="tablist" aria-label="Project view">
-          <button type="button" role="tab" aria-selected={browseSource === 'all'} onClick={() => { setBrowseSource('all'); setSelectedSessionTabId(null); if (selectedItemId && !allProjectItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); if (selectedCollectionId !== 'all') onSelectCollection('all'); }} style={viewTabStyle(browseSource === 'all')}><Folder size={12} /> {project.isDefault ? 'Incoming' : 'All items'}</button>
-          <button type="button" role="tab" aria-selected={browseSource === 'pinned'} onClick={() => { setBrowseSource('pinned'); setSelectedSessionTabId(null); if (selectedItemId && !pinnedItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); }} style={viewTabStyle(browseSource === 'pinned')}><Pin size={12} /> Pinned <span style={{ color: 'var(--text-faint)' }}>{pinnedItems.length}</span></button>
+        <div className="ui-tab-bar" data-project-view-tabs style={{ ...uiPatterns.tabBar, marginBottom: 8 }} role="tablist" aria-label="Project view">
+          <button className="ui-view-tab" type="button" role="tab" aria-selected={browseSource === 'all'} onClick={() => { setBrowseSource('all'); setSelectedSessionTabId(null); if (selectedItemId && !allProjectItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); if (selectedCollectionId !== 'all') onSelectCollection('all'); }} style={viewTabStyle(browseSource === 'all')}><Folder size={12} /> {project.isDefault ? 'Incoming' : 'All items'}</button>
+          <button className="ui-view-tab" type="button" role="tab" aria-selected={browseSource === 'pinned'} onClick={() => { setBrowseSource('pinned'); setSelectedSessionTabId(null); if (selectedItemId && !pinnedItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); }} style={viewTabStyle(browseSource === 'pinned')}><Pin size={12} /> Pinned <span style={{ color: 'var(--text-faint)' }}>{pinnedItems.length}</span></button>
           {!project.isDefault && collections.length > 0 && (
             <div style={compoundTabStyle(browseSource === 'collection')}>
               <button type="button" role="tab" aria-selected={browseSource === 'collection'} onClick={() => { const collectionId = selectedCollectionId !== 'all' ? selectedCollectionId : collections[0]?.id; if (!collectionId) return; setBrowseSource('collection'); setSelectedSessionTabId(null); setSelectedItemId(null); onSelectCollection(collectionId); }} style={compoundTabButtonStyle}><Folder size={12} /> Collection</button>
@@ -526,7 +526,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                 aria-label="Workspace name"
                 style={{ width: '100%', height: 31, padding: '0 9px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-sm)' }}
               />
-              {workspaceError && <div role="alert" style={{ marginTop: 5, color: 'var(--danger, #ef4444)', fontSize: 'var(--text-xs)' }}>{workspaceError}</div>}
+              {workspaceError && <div role="alert" style={{ marginTop: 5, color: 'var(--danger)', fontSize: 'var(--text-xs)' }}>{workspaceError}</div>}
             </div>
             <button type="button" onClick={saveWorkspace} disabled={!workspaceName.trim()} style={{ ...primaryButtonStyle, opacity: workspaceName.trim() ? 1 : 0.5 }}>
               Save
@@ -655,7 +655,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </label>
           )}
         </div>)}
-        <div data-project-working-canvas style={{ flex: 1, minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}>
+        <div className="ui-working-canvas" data-project-working-canvas style={{ flex: 1, minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}>
           <ContentBrowser
             title={browseTitle}
             entries={browseEntries}

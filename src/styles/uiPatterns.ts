@@ -10,9 +10,9 @@ export const uiPatterns = {
     minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
+    gap: 'var(--space-md)',
     overflow: 'hidden',
-    padding: '16px 18px 72px',
+    padding: 'var(--space-lg) var(--page-gutter) var(--page-bottom-clearance)',
     boxSizing: 'border-box',
   } satisfies React.CSSProperties,
 
@@ -20,7 +20,7 @@ export const uiPatterns = {
     display: 'flex',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 16,
+    gap: 'var(--space-lg)',
     flexShrink: 0,
   } satisfies React.CSSProperties,
 
@@ -50,7 +50,7 @@ export const uiPatterns = {
   toolbar: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 'var(--space-sm)',
     flexWrap: 'wrap',
     flexShrink: 0,
   } satisfies React.CSSProperties,
@@ -68,7 +68,7 @@ export const uiPatterns = {
 
   viewTab(active: boolean): React.CSSProperties {
     return {
-      minHeight: 31,
+    minHeight: 31,
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -113,7 +113,7 @@ export const uiPatterns = {
     minHeight: 0,
     display: 'grid',
     gridTemplateColumns: 'minmax(280px, 390px) minmax(0, 1fr)',
-    gap: 12,
+    gap: 'var(--space-md)',
   } satisfies React.CSSProperties,
 
   emptyState: {
@@ -129,7 +129,7 @@ export const uiPatterns = {
   } satisfies React.CSSProperties,
 
   secondaryButton: {
-    minHeight: 29,
+    minHeight: 'var(--control-height-md)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -146,7 +146,7 @@ export const uiPatterns = {
   } satisfies React.CSSProperties,
 
   primaryButton: {
-    minHeight: 29,
+    minHeight: 'var(--control-height-md)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -163,16 +163,16 @@ export const uiPatterns = {
   } satisfies React.CSSProperties,
 
   dangerButton: {
-    minHeight: 29,
+    minHeight: 'var(--control-height-md)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     padding: '0 9px',
-    border: '1px solid rgba(239, 68, 68, 0.45)',
+    border: '1px solid var(--danger-border)',
     borderRadius: 'var(--radius-sm)',
-    background: 'rgba(239, 68, 68, 0.08)',
-    color: 'var(--danger, #ef4444)',
+    background: 'var(--danger-weak)',
+    color: 'var(--danger)',
     fontSize: 'var(--text-xs)',
     fontWeight: 650,
     cursor: 'pointer',
@@ -180,8 +180,8 @@ export const uiPatterns = {
   } satisfies React.CSSProperties,
 
   iconButton: {
-    width: 27,
-    height: 27,
+    width: 'var(--control-height-sm)',
+    height: 'var(--control-height-sm)',
     flexShrink: 0,
     display: 'inline-flex',
     alignItems: 'center',
@@ -196,7 +196,7 @@ export const uiPatterns = {
   select: {
     minWidth: 120,
     maxWidth: 230,
-    height: 29,
+    height: 'var(--control-height-md)',
     padding: '0 7px',
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius-sm)',
@@ -207,7 +207,7 @@ export const uiPatterns = {
 
   searchField: {
     width: 'min(560px, 100%)',
-    height: 34,
+    height: 'var(--control-height-lg)',
     display: 'flex',
     alignItems: 'center',
     gap: 8,
@@ -250,7 +250,8 @@ export const uiPatterns = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
-    background: 'rgba(0, 0, 0, 0.48)',
+    background: 'var(--overlay-backdrop)',
+    zIndex: 'var(--layer-modal)',
   } satisfies React.CSSProperties,
 
   dialog: {
@@ -264,3 +265,23 @@ export const uiPatterns = {
     boxShadow: 'var(--shadow-panel, 0 20px 50px rgba(0,0,0,0.35))',
   } satisfies React.CSSProperties,
 };
+
+/** Class-backed behavior for shared patterns that need pseudo states or media queries. */
+export const uiClassNames = {
+  pageFrame: 'ui-page-frame',
+  pageHeader: 'ui-page-header',
+  actionRow: 'ui-action-row',
+  toolbar: 'ui-toolbar',
+  tabBar: 'ui-tab-bar',
+  splitCanvas: 'ui-split-canvas',
+  workingCanvas: 'ui-working-canvas',
+  panel: 'ui-panel',
+  field: 'ui-field',
+  viewTab: 'ui-view-tab',
+  button: {
+    secondary: 'ui-button ui-button--secondary',
+    primary: 'ui-button ui-button--primary',
+    danger: 'ui-button ui-button--danger',
+    icon: 'ui-button ui-button--icon',
+  },
+} as const;

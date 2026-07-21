@@ -17,7 +17,7 @@ export interface HubActionConfirmModalProps {
 const CONFIRM_COLORS: Record<HubActionConfirmVariant, string> = {
   accent: 'var(--accent)',
   warn: 'var(--er-warn, #d29922)',
-  danger: 'var(--error, #f85149)',
+  danger: 'var(--error)',
 };
 
 export const HubActionConfirmModal: React.FC<HubActionConfirmModalProps> = ({
@@ -40,7 +40,7 @@ export const HubActionConfirmModal: React.FC<HubActionConfirmModalProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 10002,
+        zIndex: 'var(--layer-modal-raised)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

@@ -754,7 +754,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
       </div>
 
       {error && (
-        <div style={{ fontSize: 'var(--text-xs)', color: '#ef4444' }}>{error}</div>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>{error}</div>
       )}
     </div>
   );

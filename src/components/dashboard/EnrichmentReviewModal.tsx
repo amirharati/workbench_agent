@@ -540,7 +540,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 10002,
+        zIndex: 'var(--layer-modal-raised)',
         background: 'var(--bg)',
         color: 'var(--text)',
         display: 'flex',
@@ -1050,7 +1050,7 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
                   {active.item.url}
                 </p>
                 {refetchError ? (
-                  <p style={{ margin: '0 0 12px', fontSize: 'var(--dev-fs-sm)', color: 'var(--error, #dc2626)' }}>
+                  <p style={{ margin: '0 0 12px', fontSize: 'var(--dev-fs-sm)', color: 'var(--danger)' }}>
                     Re-fetch: {refetchError}
                   </p>
                 ) : null}

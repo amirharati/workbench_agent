@@ -408,7 +408,7 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
                           background: 'transparent',
                           border: 'none',
                           cursor: 'pointer',
-                          color: '#ef4444',
+                          color: 'var(--danger)',
                           display: 'flex',
                           alignItems: 'center',
                           borderRadius: 4,
@@ -417,7 +417,7 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
                         }}
                         title="Delete collection"
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                          e.currentTarget.style.background = 'var(--danger-weak)';
                           e.currentTarget.style.opacity = '1';
                         }}
                         onMouseLeave={(e) => {

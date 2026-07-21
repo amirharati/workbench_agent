@@ -374,7 +374,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     borderRadius: 6,
                     border: '1px solid var(--border)',
                     background: 'transparent',
-                    color: '#ef4444',
+                    color: 'var(--danger)',
                     cursor: 'pointer',
                   }}
                   title="Delete selected project"
@@ -396,7 +396,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   border: '1px solid var(--border)',
                   borderRadius: 6,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  zIndex: 100,
+                  zIndex: 'var(--layer-dropdown)',
                   maxHeight: 240,
                   overflowY: 'auto',
                 }}
@@ -478,7 +478,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           borderRadius: 4,
                           border: '1px solid transparent',
                           background: 'transparent',
-                          color: '#ef4444',
+                          color: 'var(--danger)',
                           cursor: 'pointer',
                           flexShrink: 0,
                         }}
@@ -619,7 +619,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           borderRadius: 3,
                           border: '1px solid transparent',
                           background: 'transparent',
-                          color: '#ef4444',
+                          color: 'var(--danger)',
                           opacity: 0.8,
                           flexShrink: 0,
                           cursor: 'pointer',
@@ -777,7 +777,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 strokeWidth={isActive ? 2 : 1.5}
                 style={{
                   flexShrink: 0,
-                  color: id === 'trash' && trashedCount > 0 ? '#ef4444' : undefined,
+                  color: id === 'trash' && trashedCount > 0 ? 'var(--danger)' : undefined,
                 }}
               />
               {!isCollapsed && (
@@ -801,8 +801,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                         padding: '0 5px',
                         height: 18,
                         borderRadius: 9,
-                        background: 'rgba(239, 68, 68, 0.15)',
-                        color: '#ef4444',
+                        background: 'var(--danger-weak)',
+                        color: 'var(--danger)',
                         fontSize: 11,
                         fontWeight: 600,
                         display: 'flex',
@@ -829,7 +829,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 2000,
+            zIndex: 'var(--layer-overlay)',
           }}
           onClick={() => {
             setDialog(null);
@@ -928,7 +928,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                               key={name}
                               style={{
                                 fontSize: 'var(--text-xs)',
-                                color: isSame ? '#ef4444' : 'var(--text-muted)',
+                                color: isSame ? 'var(--danger)' : 'var(--text-muted)',
                                 background: isSame ? 'rgba(239,68,68,0.12)' : 'transparent',
                                 borderRadius: 4,
                                 padding: '3px 6px',
@@ -952,7 +952,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </div>
             )}
             {dialogError && (
-              <div style={{ fontSize: 'var(--text-xs)', color: '#ef4444' }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>
                 {dialogError}
               </div>
             )}
@@ -990,7 +990,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     (dialog.type === 'create-project' || dialog.type === 'create-collection') && !dialogName.trim()
                       ? 'var(--accent-weak)'
                       : dialog.type === 'delete-project' || dialog.type === 'delete-collection'
-                        ? '#ef4444'
+                        ? 'var(--danger)'
                         : 'var(--accent)',
                   color: '#fff',
                   padding: '6px 12px',

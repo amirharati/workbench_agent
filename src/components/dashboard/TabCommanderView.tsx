@@ -36,6 +36,7 @@ export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
 }) => {
   return (
     <div
+      className="ui-page-frame"
       style={{
         ...uiPatterns.pageFrame,
         background: 'var(--bg)',

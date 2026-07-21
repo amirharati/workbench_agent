@@ -234,7 +234,7 @@ export function SearchDevPanel() {
         ) : null}
 
         {error ? (
-          <p style={{ margin: '8px 0 0', fontSize: 'var(--dev-fs-caption)', color: 'var(--error, #f85149)' }}>
+          <p style={{ margin: '8px 0 0', fontSize: 'var(--dev-fs-caption)', color: 'var(--error)' }}>
             {error}
           </p>
         ) : null}

@@ -57,7 +57,7 @@ export const ManualReviewRetryModal: React.FC<ManualReviewRetryModalProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 10002,
+        zIndex: 'var(--layer-modal-raised)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

@@ -726,9 +726,9 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           style={{
             padding: '0.5rem 0.65rem',
             borderRadius: 8,
-            border: '1px solid #ef4444',
+            border: '1px solid var(--danger-border)',
             background: 'rgba(239,68,68,0.12)',
-            color: '#ef4444',
+            color: 'var(--danger)',
             fontSize: 'var(--text-xs)',
           }}
         >

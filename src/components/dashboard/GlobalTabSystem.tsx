@@ -940,7 +940,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                       <span
                         onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
                         style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 4, color: 'var(--text-faint)', cursor: 'pointer', flexShrink: 0 }}
-                        onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'var(--error-weak)'; }}
+                        onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-weak)'; }}
                         onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; }}
                       >
                         <X size={12} />
@@ -1070,7 +1070,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   <span
                     onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
                     style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 4, color: 'var(--text-faint)', cursor: 'pointer', flexShrink: 0 }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'var(--error-weak)'; }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-weak)'; }}
                     onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; }}
                   >
                     <X size={11} />
@@ -1110,7 +1110,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       {isTabMenuOpen && (
         <>
           <div onClick={() => setIsTabMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99, pointerEvents: draggedTabId ? 'none' : 'auto' }} />
-          <div style={{ position: 'absolute', top: bottomLayout === 'tabs' ? 40 : 8, right: 8, background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: '6px 0', width: 320, maxWidth: 'calc(100% - 16px)', zIndex: 100, maxHeight: '60%', overflowY: 'auto' }} className="scrollbar">
+          <div style={{ position: 'absolute', top: bottomLayout === 'tabs' ? 40 : 8, right: 8, background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: '6px 0', width: 320, maxWidth: 'calc(100% - 16px)', zIndex: 'var(--layer-dropdown)', maxHeight: '60%', overflowY: 'auto' }} className="scrollbar">
             <div style={{ padding: '6px 12px 8px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>
               All open work · {tabs.length}
             </div>
@@ -1462,7 +1462,7 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
               <ItemQuickAccessMarkers item={item} size={14} hideWhenTrashed />
               {isTrashed && (
-                <span style={{ fontSize: 'var(--text-xs)', color: '#ef4444', fontWeight: 600 }}>In trash</span>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>In trash</span>
               )}
             </div>
           )}
@@ -1491,11 +1491,11 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
               title={item.favoriteAt ? 'Remove from favorites' : 'Add to favorites'}
               style={{
                 ...btnStyle('secondary'),
-                color: item.favoriteAt ? '#ef4444' : 'var(--text)',
-                background: item.favoriteAt ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+                color: item.favoriteAt ? 'var(--favorite)' : 'var(--text)',
+                background: item.favoriteAt ? 'var(--favorite-weak)' : 'transparent',
               }}
             >
-              <Star size={14} fill={item.favoriteAt ? '#ef4444' : 'none'} />
+              <Star size={14} fill={item.favoriteAt ? 'var(--favorite)' : 'none'} />
             </button>
           )}
           {!isTrashed && (
@@ -1519,7 +1519,7 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
                 </button>
               )}
               {canEdit && !isTrashed && (
-                <button type="button" onClick={onDelete} style={{ ...btnStyle('secondary'), color: '#ef4444' }}>
+                <button type="button" onClick={onDelete} style={{ ...btnStyle('secondary'), color: 'var(--danger)' }}>
                   Trash
                 </button>
               )}
@@ -1551,7 +1551,7 @@ const ItemDetail: React.FC<ItemDetailProps> = ({
                 {editDirty ? 'Save' : 'Saved'}
               </button>
               {canEdit && !isTrashed && (
-                <button type="button" onClick={onDelete} style={{ ...btnStyle('secondary'), color: '#ef4444' }}>
+                <button type="button" onClick={onDelete} style={{ ...btnStyle('secondary'), color: 'var(--danger)' }}>
                   Trash
                 </button>
               )}

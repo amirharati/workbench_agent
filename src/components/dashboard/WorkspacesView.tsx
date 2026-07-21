@@ -95,6 +95,16 @@ function projectWorkspaceRows(
   });
 }
 
+export function getWorkspaceTabUrl(
+  tab: GlobalTab,
+  itemById: ReadonlyMap<string, Item>
+): string | null {
+  if (tab.kind === 'url') return tab.url.trim() || null;
+  if (tab.kind !== 'item') return null;
+  const item = itemById.get(tab.itemId);
+  return item?.url?.trim() || item?.urlRaw?.trim() || null;
+}
+
 export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   projects,
   items,
@@ -176,6 +186,21 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     if (tab.kind === 'url') return tab.url;
     if (tab.kind === 'search') return 'Saved search context';
     return `${tab.itemIds?.length ?? 0} items`;
+  };
+
+  const tabDetailContent = (tab: GlobalTab) => {
+    const url = getWorkspaceTabUrl(tab, itemById);
+    if (!url) return <span style={entryDetailStyle}>{tabDetail(tab)}</span>;
+    return (
+      <ExtensionPageUrlLink
+        url={url}
+        className="ui-url-link"
+        style={entryDetailStyle}
+        title={`Open ${url}`}
+      >
+        {url}
+      </ExtensionPageUrlLink>
+    );
   };
 
   const projectTabUrls = (tabs: readonly GlobalTab[]) => [
@@ -276,30 +301,30 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   };
 
   return (
-    <div style={uiPatterns.pageFrame}>
-      <header style={uiPatterns.pageHeader}>
+    <div className="ui-page-frame" style={uiPatterns.pageFrame}>
+      <header className="ui-page-header" style={uiPatterns.pageHeader}>
         <div>
           <h1 style={uiPatterns.pageTitle}>Workspaces</h1>
           <p style={uiPatterns.pageDescription}>Manage Homebase working sets and saved browser snapshots. Live browser tabs stay in Tab Commander.</p>
         </div>
-        {onOpenTabCommander && <button type="button" onClick={onOpenTabCommander} style={primaryButtonStyle}><MonitorUp size={13} /> Capture browser tabs</button>}
+        {onOpenTabCommander && <button className="ui-button ui-button--primary" type="button" onClick={onOpenTabCommander} style={primaryButtonStyle}><MonitorUp size={13} /> Capture browser tabs</button>}
       </header>
 
-      <div style={uiPatterns.toolbar}>
+      <div className="ui-toolbar" style={uiPatterns.toolbar}>
         <label style={{ ...uiPatterns.searchField, width: 'min(460px, 100%)' }}>
           <Search size={13} color="var(--text-faint)" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter workspaces…" aria-label="Filter workspaces" style={{ minWidth: 0, flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
         </label>
         <div role="group" aria-label="Workspace type" style={{ display: 'inline-flex', padding: 2, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)' }}>
           {(['all', 'project', 'browser'] as const).map((value) => (
-            <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)} style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 'var(--radius-sm)', background: filter === value ? 'var(--accent-weak)' : 'transparent', color: filter === value ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' }}>{value === 'all' ? 'All' : value === 'project' ? 'Project workspaces' : 'Browser snapshots'}</button>
+            <button className="ui-view-tab" key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)} style={{ height: 28, padding: '0 10px', border: 'none', borderRadius: 'var(--radius-sm)', background: filter === value ? 'var(--accent-weak)' : 'transparent', color: filter === value ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' }}>{value === 'all' ? 'All' : value === 'project' ? 'Project workspaces' : 'Browser snapshots'}</button>
           ))}
         </div>
         <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{rows.length} workspace{rows.length !== 1 ? 's' : ''}</span>
       </div>
 
-      <div style={uiPatterns.splitCanvas}>
-        <section style={panelStyle} aria-label="Saved workspaces">
+      <div className="ui-split-canvas" style={uiPatterns.splitCanvas}>
+        <section className="ui-panel" style={panelStyle} aria-label="Saved workspaces">
           <div style={panelHeaderStyle}><strong style={{ fontSize: 'var(--text-sm)' }}>Saved work</strong></div>
           <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {rows.length === 0 ? <div style={emptyStyle}>No workspaces match this view.</div> : rows.map((row) => {
@@ -319,27 +344,27 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           </div>
         </section>
 
-        <section style={panelStyle} aria-label="Workspace details">
+        <section className="ui-panel" style={panelStyle} aria-label="Workspace details">
           {!selected ? <div style={emptyStyle}>Select a workspace to inspect it.</div> : selected.kind === 'project' ? (
             <>
               <div style={panelHeaderStyle}>
                 <div><strong style={{ display: 'block', fontSize: 'var(--text-sm)' }}>{selected.name}</strong><span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{projects.find((project) => project.id === selected.projectId)?.name} · {selected.live ? 'Active now' : 'Project workspace'}</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {!selected.live && <button type="button" onClick={() => renameProjectWorkspace(selected)} style={iconButtonStyle} title="Rename workspace"><Pencil size={12} /></button>}
-                  {!selected.live && <button type="button" onClick={() => removeProjectWorkspace(selected)} style={{ ...iconButtonStyle, color: '#ef4444' }} title="Delete workspace"><Trash2 size={12} /></button>}
+                  {!selected.live && <button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => removeProjectWorkspace(selected)} style={{ ...iconButtonStyle, color: 'var(--danger)' }} title="Delete workspace"><Trash2 size={12} /></button>}
                   <button type="button" disabled={projectTabUrls(selected.tabs).length === 0} onClick={() => openProjectWorkspaceLinks(selected)} style={secondaryButtonStyle}><ExternalLink size={12} /> Open links</button>
                   <button type="button" onClick={() => activateProjectRow(selected)} style={primaryButtonStyle}><Play size={12} /> Activate in Home</button>
                 </div>
               </div>
               <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                {selected.tabs.length === 0 ? <div style={emptyStyle}>This workspace is empty.</div> : selected.tabs.map((tab) => <div key={tab.id} style={entryRowStyle}><span style={{ width: 27, height: 27, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--bg-hover)', color: 'var(--text-faint)' }}>{tab.kind === 'item' && !itemById.get(tab.itemId)?.url ? <FolderKanban size={12} /> : <ExternalLink size={12} />}</span><span style={{ minWidth: 0, flex: 1 }}><strong style={entryTitleStyle}>{tabLabel(tab)}</strong><span style={entryDetailStyle}>{tabDetail(tab)}</span></span></div>)}
+                {selected.tabs.length === 0 ? <div style={emptyStyle}>This workspace is empty.</div> : selected.tabs.map((tab) => <div key={tab.id} style={entryRowStyle}><span style={{ width: 27, height: 27, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--bg-hover)', color: 'var(--text-faint)' }}>{tab.kind === 'item' && !getWorkspaceTabUrl(tab, itemById) ? <FolderKanban size={12} /> : <ExternalLink size={12} />}</span><span style={{ minWidth: 0, flex: 1 }}><strong style={entryTitleStyle}>{tabLabel(tab)}</strong>{tabDetailContent(tab)}</span></div>)}
               </div>
             </>
           ) : (
             <>
               <div style={panelHeaderStyle}>
                 <div><strong style={{ display: 'block', fontSize: 'var(--text-sm)' }}>{selected.name}</strong><span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Browser snapshot · {selected.workspace.windows.length} window{selected.workspace.windows.length !== 1 ? 's' : ''}</span></div>
-                <div style={{ display: 'flex', gap: 6 }}><button type="button" onClick={() => void renameBrowserWorkspace(selected.workspace)} style={iconButtonStyle} title="Rename snapshot"><Pencil size={12} /></button><button type="button" onClick={() => void removeBrowserWorkspace(selected.workspace)} style={{ ...iconButtonStyle, color: '#ef4444' }} title="Delete snapshot"><Trash2 size={12} /></button><button type="button" onClick={() => void restoreBrowserSnapshot(selected.workspace)} style={primaryButtonStyle}><MonitorUp size={12} /> Restore windows</button></div>
+                <div style={{ display: 'flex', gap: 6 }}><button className="ui-button ui-button--icon" type="button" onClick={() => void renameBrowserWorkspace(selected.workspace)} style={iconButtonStyle} title="Rename snapshot"><Pencil size={12} /></button><button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => void removeBrowserWorkspace(selected.workspace)} style={{ ...iconButtonStyle, color: 'var(--danger)' }} title="Delete snapshot"><Trash2 size={12} /></button><button className="ui-button ui-button--primary" type="button" onClick={() => void restoreBrowserSnapshot(selected.workspace)} style={primaryButtonStyle}><MonitorUp size={12} /> Restore windows</button></div>
               </div>
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
@@ -356,7 +381,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
                 {notice && <div role="status" style={{ marginTop: 6, color: 'var(--accent)', fontSize: 'var(--text-xs)' }}>{notice}</div>}
               </div>
               <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 10 }}>
-                {selected.workspace.windows.map((windowGroup, index) => <div key={windowGroup.id} style={{ marginBottom: 12 }}><div style={{ marginBottom: 5, color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase' }}>{windowGroup.name || `Window ${index + 1}`} · {windowGroup.tabs.length} tabs</div>{windowGroup.tabs.map((tab, tabIndex) => <div key={`${windowGroup.id}:${tabIndex}`} style={entryRowStyle}><ExternalLink size={12} color="var(--text-faint)" /><span style={{ minWidth: 0, flex: 1 }}><strong style={entryTitleStyle}>{tab.title || 'Untitled'}</strong><ExtensionPageUrlLink url={tab.url} style={entryDetailStyle}>{tab.url}</ExtensionPageUrlLink></span></div>)}</div>)}
+                {selected.workspace.windows.map((windowGroup, index) => <div key={windowGroup.id} style={{ marginBottom: 12 }}><div style={{ marginBottom: 5, color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase' }}>{windowGroup.name || `Window ${index + 1}`} · {windowGroup.tabs.length} tabs</div>{windowGroup.tabs.map((tab, tabIndex) => <div key={`${windowGroup.id}:${tabIndex}`} style={entryRowStyle}><ExternalLink size={12} color="var(--text-faint)" /><span style={{ minWidth: 0, flex: 1 }}><strong style={entryTitleStyle}>{tab.title || 'Untitled'}</strong><ExtensionPageUrlLink url={tab.url} className="ui-url-link" style={entryDetailStyle} title={`Open ${tab.url}`}>{tab.url}</ExtensionPageUrlLink></span></div>)}</div>)}
               </div>
             </>
           )}

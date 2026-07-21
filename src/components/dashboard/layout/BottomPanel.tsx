@@ -799,7 +799,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
             border: '1px solid var(--border)',
             borderRadius: 8,
             boxShadow: '0 12px 32px rgba(0,0,0,0.15)',
-            zIndex: 2147483647,
+            zIndex: 'var(--layer-browser-overlay)',
             overflow: 'hidden',
           }}
           onClick={(e) => e.stopPropagation()}
@@ -947,7 +947,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 2147483647,
+          zIndex: 'var(--layer-browser-overlay)',
           padding: 16,
         }}
         onClick={(e) => {
@@ -1348,7 +1348,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                     <span style={{ minWidth: 0, flex: 1 }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650 }}>
                         {w.tabs.some((tab) => tab.active) ? 'Current window' : 'Browser window'}
-                        {w.tabs.some((tab) => tab.active) && <span title="Active window" style={{ width: 6, height: 6, flexShrink: 0, borderRadius: 999, background: '#22c55e' }} />}
+                        {w.tabs.some((tab) => tab.active) && <span title="Active window" style={{ width: 6, height: 6, flexShrink: 0, borderRadius: 999, background: 'var(--status-live)' }} />}
                       </span>
                       <span style={{ display: 'block', marginTop: 2, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{query ? `${matchCount} matching of ${w.tabs.length}` : `${w.tabs.length} tab${w.tabs.length !== 1 ? 's' : ''}`}</span>
                     </span>
@@ -1417,7 +1417,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                               width: 6,
                               height: 6,
                               borderRadius: 9999,
-                              background: '#22c55e',
+                              background: 'var(--status-live)',
                               flexShrink: 0,
                             }}
                             title="Active window"
@@ -1798,7 +1798,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                               width: 6,
                               height: 6,
                               borderRadius: 9999,
-                              background: '#22c55e',
+                              background: 'var(--status-live)',
                               flexShrink: 0,
                             }}
                             title="Active tab"

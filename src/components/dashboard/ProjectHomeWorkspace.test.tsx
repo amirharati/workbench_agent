@@ -87,7 +87,9 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup).toContain('Workspace 5');
     expect(markup).toContain('Collection 5');
     expect(markup).toContain('Pinned <span');
-    expect(markup).toContain('padding:16px 18px 72px');
+    expect(markup).toContain(
+      'padding:var(--space-lg) var(--page-gutter) var(--page-bottom-clearance)'
+    );
     expect(markup).toContain('data-project-working-canvas="true"');
     expect(markup).toContain('aria-label="Project material"');
     expect(markup).toContain('aria-label="Gallery view"');

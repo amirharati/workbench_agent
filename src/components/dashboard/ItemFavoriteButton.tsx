@@ -30,6 +30,7 @@ export const ItemFavoriteButton: React.FC<ItemFavoriteButtonProps> = ({
 
   return (
     <button
+      className="ui-button ui-button--icon"
       type="button"
       aria-label={`${label}: ${item.title || 'Untitled'}`}
       aria-pressed={favorite}
@@ -53,8 +54,8 @@ export const ItemFavoriteButton: React.FC<ItemFavoriteButtonProps> = ({
         padding: showLabel ? '0 9px' : 0,
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-sm)',
-        background: favorite ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
-        color: favorite ? '#ef4444' : 'var(--text-faint)',
+        background: favorite ? 'var(--favorite-weak)' : 'transparent',
+        color: favorite ? 'var(--favorite)' : 'var(--text-faint)',
         fontSize: 'var(--text-xs)',
         fontWeight: 600,
         cursor: pending ? 'wait' : 'pointer',
