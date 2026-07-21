@@ -19,7 +19,7 @@
     "file:///*/*"
   ],
   "side_panel": {
-    "default_path": "index.html"
+    "default_path": "index.html?surface=side-panel"
   },
   "chrome_url_overrides": {
     "newtab": "index.html"

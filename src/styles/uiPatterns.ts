@@ -27,16 +27,17 @@ export const uiPatterns = {
   pageTitle: {
     margin: 0,
     color: 'var(--text)',
-    fontSize: 'var(--text-xl)',
-    fontWeight: 700,
-    lineHeight: 1.25,
+    fontSize: 'var(--text-2xl)',
+    fontWeight: 720,
+    lineHeight: 'var(--leading-tight)',
+    letterSpacing: 'var(--tracking-tight)',
   } satisfies React.CSSProperties,
 
   pageDescription: {
     margin: '3px 0 0',
     color: 'var(--text-faint)',
-    fontSize: 'var(--text-xs)',
-    lineHeight: 1.45,
+    fontSize: 'var(--text-sm)',
+    lineHeight: 'var(--leading-normal)',
   } satisfies React.CSSProperties,
 
   actionRow: {
@@ -63,7 +64,7 @@ export const uiPatterns = {
     flexWrap: 'wrap',
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius-md)',
-    background: 'var(--bg-panel)',
+    background: 'var(--bg-subtle)',
   } satisfies React.CSSProperties,
 
   viewTab(active: boolean): React.CSSProperties {
@@ -77,7 +78,7 @@ export const uiPatterns = {
       border: active ? '1px solid var(--border-active)' : '1px solid transparent',
       borderRadius: 'var(--radius-sm)',
       background: active ? 'var(--accent-weak)' : 'transparent',
-      color: active ? 'var(--accent-hover)' : 'var(--text-muted)',
+      color: active ? 'var(--accent)' : 'var(--text-muted)',
       fontSize: 'var(--text-xs)',
       fontWeight: 650,
       cursor: 'pointer',
@@ -92,7 +93,7 @@ export const uiPatterns = {
     overflow: 'hidden',
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius-lg)',
-    background: 'var(--bg-panel)',
+    background: 'var(--bg-raised)',
     boxShadow: 'var(--shadow-sm)',
   } satisfies React.CSSProperties,
 
@@ -105,6 +106,7 @@ export const uiPatterns = {
     gap: 10,
     padding: '8px 11px',
     borderBottom: '1px solid var(--border)',
+    background: 'var(--bg-subtle)',
     boxSizing: 'border-box',
   } satisfies React.CSSProperties,
 
@@ -137,7 +139,7 @@ export const uiPatterns = {
     padding: '0 9px',
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius-sm)',
-    background: 'var(--bg-glass)',
+    background: 'var(--bg-panel)',
     color: 'var(--text-muted)',
     fontSize: 'var(--text-xs)',
     fontWeight: 600,
@@ -224,7 +226,7 @@ export const uiPatterns = {
     fontSize: 'var(--text-xs)',
     fontWeight: 600,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 'var(--tracking-caps)',
   } satisfies React.CSSProperties,
 
   fieldInput: {

@@ -129,14 +129,14 @@ async function readSidePanelHostTabId() {
 }
 
 chrome.sidePanel
-  .setOptions({ enabled: false, path: 'index.html' })
+  .setOptions({ enabled: false, path: 'index.html?surface=side-panel' })
   .catch((error) => console.error(error));
 
 chrome.action.onClicked.addListener((tab) => {
   if (typeof tab.id !== 'number') return;
   // Enable + open on this tab only — leave other tabs' panels alone.
   chrome.sidePanel
-    .setOptions({ tabId: tab.id, enabled: true, path: 'index.html' })
+    .setOptions({ tabId: tab.id, enabled: true, path: 'index.html?surface=side-panel' })
     .catch((error) => console.error(error));
   chrome.sidePanel
     .open({ tabId: tab.id })

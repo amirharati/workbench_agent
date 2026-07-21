@@ -18,7 +18,7 @@
   --page-bottom-clearance: 72px;
 
   /* ===== Typography ===== */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-sans: 'Inter', 'SF Pro Text', 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
 
   /* Font scale — set by JS from user preference (localStorage: workbench-font-scale) */
@@ -29,9 +29,13 @@
   --text-base: calc(0.875rem * var(--font-scale));  /* ~14px at 1.0 */
   --text-lg: calc(1rem * var(--font-scale));        /* ~16px at 1.0 */
   --text-xl: calc(1.125rem * var(--font-scale));    /* ~18px at 1.0 */
+  --text-2xl: calc(1.25rem * var(--font-scale));    /* ~20px at 1.0 */
 
   --leading-tight: 1.25;
   --leading-normal: 1.4;
+  --leading-relaxed: 1.55;
+  --tracking-tight: -0.012em;
+  --tracking-caps: 0.045em;
   /* Reading leading scales with font size for comfortable long-form text */
   --reading-leading: calc(1.6 * var(--font-scale));
 
@@ -56,6 +60,8 @@
   /* ===== Dark Theme (Default) ===== */
   --bg: #0d1117;
   --bg-panel: #161b22;
+  --bg-raised: #1c222c;
+  --bg-subtle: #12171e;
   --bg-glass: rgba(255, 255, 255, 0.05);
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-active: rgba(99, 102, 241, 0.12);
@@ -64,8 +70,10 @@
   --text: #e6edf3;
   --text-muted: #a3abb5;
   --text-faint: #8b949e;
+  --text-placeholder: #747e89;
   
   --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.22);
   --border-focus: rgba(99, 102, 241, 0.5);
   --border-active: rgba(99, 102, 241, 0.3);
   
@@ -106,6 +114,8 @@
 :root[data-theme='light'] {
   --bg: #ffffff;
   --bg-panel: #f6f8fa;
+  --bg-raised: #ffffff;
+  --bg-subtle: #eef1f4;
   --bg-glass: rgba(0, 0, 0, 0.035);
   --bg-hover: rgba(0, 0, 0, 0.065);
   --bg-active: rgba(79, 70, 229, 0.08);
@@ -114,8 +124,10 @@
   --text: #1f2328;
   --text-muted: #4b5563;
   --text-faint: #667085;
+  --text-placeholder: #7a8494;
   
   --border: rgba(0, 0, 0, 0.15);
+  --border-strong: rgba(0, 0, 0, 0.24);
   --border-focus: rgba(79, 70, 229, 0.5);
   --border-active: rgba(79, 70, 229, 0.3);
   
@@ -153,6 +165,61 @@
   --overlay-backdrop: rgba(15, 23, 42, 0.36);
 }
 
+/*
+ * The side panel is a separate extension surface. It follows Chrome/OS rather
+ * than the dashboard preference, and the tokens live on :root so portalled
+ * dialogs, menus, and transient loading states cannot fall back to dark mode.
+ */
+:root[data-surface='side-panel'] {
+  color-scheme: light dark;
+
+  --bg: Canvas;
+  --bg-panel: Canvas;
+  --bg-raised: Canvas;
+  --bg-subtle: color-mix(in srgb, CanvasText 4%, Canvas);
+  --bg-glass: ButtonFace;
+  --bg-hover: color-mix(in srgb, CanvasText 6%, Canvas);
+  --bg-active: color-mix(in srgb, Highlight 12%, Canvas);
+  --input-bg: Field;
+  --bg-input: Field;
+
+  --text: CanvasText;
+  --text-muted: GrayText;
+  --text-faint: GrayText;
+  --text-placeholder: GrayText;
+
+  --border: color-mix(in srgb, CanvasText 15%, transparent);
+  --border-strong: color-mix(in srgb, CanvasText 24%, transparent);
+  --border-focus: Highlight;
+  --border-active: color-mix(in srgb, Highlight 40%, transparent);
+
+  --accent: Highlight;
+  --accent-solid: Highlight;
+  --accent-hover: Highlight;
+  --accent-solid-hover: Highlight;
+  --accent-text: HighlightText;
+  --accent-weak: color-mix(in srgb, Highlight 15%, Canvas);
+
+  --error: light-dark(#b42318, #ff7b72);
+  --error-weak: color-mix(in srgb, var(--error) 12%, transparent);
+  --danger: var(--error);
+  --danger-weak: var(--error-weak);
+  --danger-border: color-mix(in srgb, var(--error) 42%, transparent);
+  --favorite: light-dark(#c2414b, #ff7b91);
+  --favorite-weak: color-mix(in srgb, var(--favorite) 12%, transparent);
+  --warning: light-dark(#92400e, #fbbf24);
+  --warning-weak: color-mix(in srgb, var(--warning) 12%, transparent);
+  --warning-border: color-mix(in srgb, var(--warning) 42%, transparent);
+  --status-success: light-dark(#1a7f37, #56d364);
+  --status-info: light-dark(#0969da, #79c0ff);
+  --status-verified: light-dark(#8250df, #d2a8ff);
+  --status-live: light-dark(#1a7f37, #56d364);
+  --er-ok: var(--status-success);
+  --er-warn: var(--warning);
+
+  --overlay-backdrop: color-mix(in srgb, CanvasText 42%, transparent);
+}
+
 /* ===== Base Styles ===== */
 * {
   box-sizing: border-box;
@@ -169,6 +236,18 @@ body,
   background: var(--bg);
 }
 
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-surface='side-panel'] {
+  color-scheme: light dark;
+}
+
 body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
@@ -179,6 +258,21 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-placeholder);
+  opacity: 1;
 }
 
 button:focus-visible,
@@ -213,16 +307,19 @@ button:disabled {
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
+  box-shadow: none;
   transition:
     background-color var(--duration-fast) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard),
     opacity var(--duration-fast) var(--ease-standard),
-    filter var(--duration-fast) var(--ease-standard);
+    filter var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
 }
 
 .ui-button--secondary {
-  background: var(--bg-glass);
+  background: var(--bg-panel);
 }
 
 .ui-button--secondary:hover:not(:disabled),
@@ -237,6 +334,7 @@ button:disabled {
   background: var(--accent-solid);
   color: var(--accent-text);
   font-weight: 650;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent-solid) 38%, transparent);
 }
 
 .ui-button--primary:hover:not(:disabled) {
@@ -263,7 +361,7 @@ button:disabled {
   min-height: var(--control-height-sm);
   flex-shrink: 0;
   padding: 0;
-  background: var(--bg-glass);
+  background: transparent;
   color: var(--text-faint);
 }
 
@@ -283,6 +381,10 @@ button:disabled {
   opacity: 0.5;
 }
 
+.ui-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 .ui-view-tab {
   transition:
     background-color var(--duration-fast) var(--ease-standard),
@@ -296,6 +398,7 @@ button:disabled {
 }
 
 .ui-field {
+  caret-color: var(--accent);
   transition:
     background-color var(--duration-fast) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard),
@@ -322,7 +425,7 @@ button:disabled {
 }
 
 .ui-panel {
-  background: var(--bg-panel);
+  background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -492,6 +595,18 @@ button:disabled {
 
 [data-theme='light'] .side-panel-saved-cards-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.42);
+}
+
+.side-panel-surface .side-panel-saved-cards-scroll::-webkit-scrollbar-track {
+  background: color-mix(in srgb, CanvasText 8%, transparent);
+}
+
+.side-panel-surface .side-panel-saved-cards-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, CanvasText 28%, transparent);
+}
+
+.side-panel-surface .side-panel-saved-cards-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, CanvasText 42%, transparent);
 }
 
 /* ===== Dev pipeline UI typography (enrichment review, classify, pipeline dev) ===== */

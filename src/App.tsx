@@ -74,6 +74,7 @@ import {
 } from './lib/dashboardStartupProjection';
 import { loadWorkbenchSqliteFromFolder } from './lib/linkBackupFolder';
 import { scheduleStartupIdleWork, waitForStartupIdle } from './lib/startupScheduling';
+import { isSidePanelSurface } from './lib/appSurface';
 
 export interface WindowGroup {
   windowId: number;
@@ -97,7 +98,7 @@ function App() {
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryHydrateProgress, setLibraryHydrateProgress] =
     useState<LibraryHydrateProgress | null>(null);
-  const [isSidePanel, setIsSidePanel] = useState(() => window.innerWidth < 500);
+  const [isSidePanel] = useState(() => isSidePanelSurface());
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
   const [folderGateResolved, setFolderGateResolved] = useState(false);
   /** Persisted handle exists — first-time pick is done (permission may still be revoked). */
@@ -453,14 +454,6 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Detect context
-  useEffect(() => {
-    const checkContext = () => setIsSidePanel(window.innerWidth < 500);
-    checkContext();
-    window.addEventListener('resize', checkContext);
-    return () => window.removeEventListener('resize', checkContext);
   }, []);
 
   // Load windows
@@ -1348,24 +1341,8 @@ function App() {
           fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
           minHeight: '100vh',
           position: 'relative',
-          colorScheme: 'light dark',
-          background: 'Canvas',
-          color: 'CanvasText',
-          ['--bg' as string]: 'Canvas',
-          ['--bg-panel' as string]: 'Canvas',
-          ['--bg-glass' as string]: 'ButtonFace',
-          ['--bg-hover' as string]: 'color-mix(in srgb, CanvasText 6%, Canvas)',
-          ['--input-bg' as string]: 'Field',
-          ['--text' as string]: 'CanvasText',
-          ['--text-muted' as string]: 'GrayText',
-          ['--text-faint' as string]: 'GrayText',
-          ['--border' as string]: 'color-mix(in srgb, CanvasText 15%, transparent)',
-          ['--accent' as string]: 'Highlight',
-          ['--accent-solid' as string]: 'Highlight',
-          ['--accent-hover' as string]: 'Highlight',
-          ['--accent-text' as string]: 'HighlightText',
-          ['--accent-weak' as string]: 'color-mix(in srgb, Highlight 15%, Canvas)',
-          ['--bg-input' as string]: 'Field',
+          background: 'var(--bg)',
+          color: 'var(--text)',
         }}
         onPointerDownCapture={() => {
           if (backupFolderReady) return;
