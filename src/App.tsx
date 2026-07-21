@@ -88,7 +88,7 @@ function App() {
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryHydrateProgress, setLibraryHydrateProgress] =
     useState<LibraryHydrateProgress | null>(null);
-  const [isSidePanel, setIsSidePanel] = useState(false);
+  const [isSidePanel, setIsSidePanel] = useState(() => window.innerWidth < 500);
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
   const [folderGateResolved, setFolderGateResolved] = useState(false);
   /** Persisted handle exists — first-time pick is done (permission may still be revoked). */
@@ -1246,7 +1246,7 @@ function App() {
   if (isSidePanel) {
     if (!folderGateResolved) {
       return (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', colorScheme: 'light dark', background: 'Canvas', color: 'CanvasText' }}>
           Loading…
         </div>
       );
@@ -1308,23 +1308,29 @@ function App() {
 
     return (
       <div
+        className="side-panel-surface"
         style={{
           fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
           minHeight: '100vh',
           position: 'relative',
+          colorScheme: 'light dark',
           background: 'Canvas',
           color: 'CanvasText',
           ['--bg' as string]: 'Canvas',
           ['--bg-panel' as string]: 'Canvas',
           ['--bg-glass' as string]: 'ButtonFace',
-          ['--bg-hover' as string]: 'rgba(0, 0, 0, 0.06)',
+          ['--bg-hover' as string]: 'color-mix(in srgb, CanvasText 6%, Canvas)',
           ['--input-bg' as string]: 'Field',
           ['--text' as string]: 'CanvasText',
           ['--text-muted' as string]: 'GrayText',
-          ['--border' as string]: 'rgba(0, 0, 0, 0.15)',
+          ['--text-faint' as string]: 'GrayText',
+          ['--border' as string]: 'color-mix(in srgb, CanvasText 15%, transparent)',
           ['--accent' as string]: 'Highlight',
+          ['--accent-solid' as string]: 'Highlight',
+          ['--accent-hover' as string]: 'Highlight',
           ['--accent-text' as string]: 'HighlightText',
-          ['--accent-weak' as string]: 'rgba(0, 120, 215, 0.15)',
+          ['--accent-weak' as string]: 'color-mix(in srgb, Highlight 15%, Canvas)',
+          ['--bg-input' as string]: 'Field',
         }}
         onPointerDownCapture={() => {
           if (backupFolderReady) return;
@@ -1336,11 +1342,9 @@ function App() {
             projects={projects}
             collections={collections}
             items={items}
-            onDeleteItem={handleDeleteBookmark}
             onCreateProject={handleCreateProject}
             onCreateCollection={handleCreateCollection}
             onOpenFullPage={handleOpenFullPage}
-            onSetAsBrowserHome={handleSetAsBrowserHome}
             loadData={loadData}
           />
         </PipelineProgressProvider>

@@ -12,6 +12,7 @@ import { formatRestoreSummary } from '../../lib/itemQuickAccess';
 import { PipelineDebugSection } from './PipelineDebugSection';
 import { CategorizationSetupSection } from './CategorizationPanel';
 import { useToast } from '../ToastContainer';
+import { ThemeSelector } from '../ThemeToggle';
 
 type FontScalePreset = 'small' | 'normal' | 'large';
 export type SettingsSection = 'general' | 'ai' | 'backup' | 'advanced';
@@ -380,6 +381,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         }}
       >
         <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>Appearance</div>
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Color theme</div>
+        <ThemeSelector />
         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Font size</div>
         <div style={{ display: 'flex', gap: 6 }}>
           {(['small', 'normal', 'large'] as FontScalePreset[]).map((preset) => (

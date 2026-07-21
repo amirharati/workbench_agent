@@ -149,8 +149,8 @@ export const SearchTab: React.FC<SearchTabProps> = ({
             style={{
               padding: '0.4rem 0.8rem',
               borderRadius: 16,
-              border: `1px solid ${selectedCollectionId === 'all' ? 'var(--accent)' : 'rgba(255,255,255,0.08)'}`,
-              background: selectedCollectionId === 'all' ? 'var(--accent-weak)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${selectedCollectionId === 'all' ? 'var(--accent)' : 'var(--border)'}`,
+              background: selectedCollectionId === 'all' ? 'var(--accent-weak)' : 'var(--bg-glass)',
               color: selectedCollectionId === 'all' ? 'var(--text)' : 'var(--text-muted)',
               cursor: 'pointer',
               fontSize: '0.85rem',
@@ -168,8 +168,8 @@ export const SearchTab: React.FC<SearchTabProps> = ({
                 style={{
                   padding: '0.4rem 0.8rem',
                   borderRadius: 16,
-                  border: `1px solid ${isSelected ? 'var(--accent)' : 'rgba(255,255,255,0.08)'}`,
-                  background: isSelected ? 'var(--accent-weak)' : 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                  background: isSelected ? 'var(--accent-weak)' : 'var(--bg-glass)',
                   color: isSelected ? 'var(--text)' : 'var(--text-muted)',
                   cursor: 'pointer',
                   fontSize: '0.85rem',
@@ -219,7 +219,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
                 transition: 'all 0.15s ease',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                e.currentTarget.style.background = 'var(--bg-hover)';
                 e.currentTarget.style.borderColor = 'var(--accent)';
               }}
               onMouseLeave={(e) => {
@@ -291,4 +291,3 @@ export const SearchTab: React.FC<SearchTabProps> = ({
     </div>
   );
 };
-

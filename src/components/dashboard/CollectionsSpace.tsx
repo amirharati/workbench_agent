@@ -177,7 +177,7 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
               cursor: 'pointer',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+              e.currentTarget.style.background = 'var(--bg-hover)';
               e.currentTarget.style.borderColor = 'var(--accent)';
             }}
             onMouseLeave={(e) => {
@@ -271,7 +271,7 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
               }}
               onMouseEnter={(e) => {
                 if (!isDragOver && !isEditing) {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                  e.currentTarget.style.background = 'var(--bg-hover)';
                   e.currentTarget.style.borderColor = 'var(--accent)';
                 }
               }}
@@ -447,4 +447,3 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
     </div>
   );
 };
-

@@ -1347,16 +1347,16 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             marginBottom: 16,
             padding: '10px 14px',
             borderRadius: 8,
-            background: '#fef9c3',
-            border: '1px solid #fde047',
+            background: 'var(--warning-weak)',
+            border: '1px solid var(--warning-border)',
             display: 'flex',
             alignItems: 'center',
             gap: 10,
             fontSize: 'var(--text-sm)',
-            color: '#713f12',
+            color: 'var(--text)',
           }}
         >
-          <AlertTriangle size={16} style={{ flexShrink: 0, color: '#d97706' }} />
+          <AlertTriangle size={16} style={{ flexShrink: 0, color: 'var(--warning)' }} />
           <span>
             <strong>Taxonomy is not ready, so classify cannot run yet.</strong>{' '}
             The starter taxonomy normally loads automatically. If this remains after a reload, use{' '}

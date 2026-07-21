@@ -15,8 +15,8 @@
   /* Font scale — set by JS from user preference (localStorage: workbench-font-scale) */
   --font-scale: 1;
 
-  --text-xs: calc(0.7rem * var(--font-scale));      /* ~11.2px at 1.0 */
-  --text-sm: calc(0.8rem * var(--font-scale));      /* ~12.8px at 1.0 */
+  --text-xs: calc(0.75rem * var(--font-scale));     /* 12px at 1.0 */
+  --text-sm: calc(0.8125rem * var(--font-scale));   /* 13px at 1.0 */
   --text-base: calc(0.875rem * var(--font-scale));  /* ~14px at 1.0 */
   --text-lg: calc(1rem * var(--font-scale));        /* ~16px at 1.0 */
   --text-xl: calc(1.125rem * var(--font-scale));    /* ~18px at 1.0 */
@@ -34,28 +34,37 @@
   /* ===== Dark Theme (Default) ===== */
   --bg: #0d1117;
   --bg-panel: #161b22;
-  --bg-glass: rgba(255, 255, 255, 0.03);
-  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-glass: rgba(255, 255, 255, 0.05);
+  --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-active: rgba(99, 102, 241, 0.12);
-  --input-bg: rgba(255, 255, 255, 0.04);
+  --input-bg: rgba(255, 255, 255, 0.06);
   
   --text: #e6edf3;
-  --text-muted: #8b949e;
-  --text-faint: #6e7681;
+  --text-muted: #a3abb5;
+  --text-faint: #8b949e;
   
-  --border: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.14);
   --border-focus: rgba(99, 102, 241, 0.5);
   --border-active: rgba(99, 102, 241, 0.3);
   
   --accent: #6366f1;
+  --accent-solid: #4f46e5;
   --accent-hover: #818cf8;
   --accent-weak: rgba(99, 102, 241, 0.15);
   --accent-text: #ffffff;
   
   --error: #ef4444;
   --error-weak: rgba(239, 68, 68, 0.15);
+  --warning: #fbbf24;
+  --warning-weak: rgba(251, 191, 36, 0.12);
+  --warning-border: rgba(251, 191, 36, 0.42);
+  --status-success: #56d364;
+  --status-info: #79c0ff;
+  --status-verified: #d2a8ff;
+  --er-ok: var(--status-success);
+  --er-warn: var(--warning);
   
-  --bg-input: rgba(255, 255, 255, 0.04);
+  --bg-input: rgba(255, 255, 255, 0.06);
   
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
   --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.18);
@@ -67,28 +76,37 @@
 :root[data-theme='light'] {
   --bg: #ffffff;
   --bg-panel: #f6f8fa;
-  --bg-glass: rgba(0, 0, 0, 0.02);
-  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-glass: rgba(0, 0, 0, 0.035);
+  --bg-hover: rgba(0, 0, 0, 0.065);
   --bg-active: rgba(79, 70, 229, 0.08);
-  --input-bg: rgba(0, 0, 0, 0.03);
+  --input-bg: rgba(0, 0, 0, 0.045);
   
   --text: #1f2328;
-  --text-muted: #57606a;
-  --text-faint: #8b949e;
+  --text-muted: #4b5563;
+  --text-faint: #667085;
   
-  --border: rgba(0, 0, 0, 0.1);
+  --border: rgba(0, 0, 0, 0.15);
   --border-focus: rgba(79, 70, 229, 0.5);
   --border-active: rgba(79, 70, 229, 0.3);
   
   --accent: #4f46e5;
+  --accent-solid: #4338ca;
   --accent-hover: #6366f1;
   --accent-weak: rgba(79, 70, 229, 0.1);
   --accent-text: #ffffff;
   
   --error: #dc2626;
   --error-weak: rgba(220, 38, 38, 0.1);
+  --warning: #92400e;
+  --warning-weak: #fef3c7;
+  --warning-border: #f59e0b;
+  --status-success: #1a7f37;
+  --status-info: #0969da;
+  --status-verified: #8250df;
+  --er-ok: var(--status-success);
+  --er-warn: var(--warning);
   
-  --bg-input: rgba(0, 0, 0, 0.03);
+  --bg-input: rgba(0, 0, 0, 0.045);
   
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.08);
@@ -123,6 +141,20 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-hover);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed !important;
 }
 
 /* Settings contains native form controls; keep them on the active theme too. */
@@ -174,6 +206,19 @@ body {
 
 [data-theme='light'] .scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
+}
+
+/* The side panel follows the browser/OS palette, independent of dashboard theme. */
+.side-panel-surface .scrollbar {
+  scrollbar-color: color-mix(in srgb, CanvasText 28%, transparent) transparent;
+}
+
+.side-panel-surface .scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, CanvasText 28%, transparent);
+}
+
+.side-panel-surface .scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, CanvasText 42%, transparent);
 }
 
 /* Hide scrollbar entirely for tab strips */
@@ -308,15 +353,15 @@ body {
 }
 
 .enrichment-review .er-fetch {
-  color: #f85149;
+  color: var(--error);
 }
 
 .enrichment-review .er-ok {
-  color: #3fb950;
+  color: var(--status-success);
 }
 
 .enrichment-review .er-warn {
-  color: #d29922;
+  color: var(--warning);
 }
 
 .enrichment-review .er-group-header {

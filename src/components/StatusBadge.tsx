@@ -8,11 +8,11 @@ interface StatusBadgeProps {
 }
 
 const VARIANT_STYLES: Record<StatusBadgeVariant, { bg: string; color: string; icon: string }> = {
-  success: { bg: 'rgba(63, 185, 80, 0.15)', color: '#3fb950', icon: '✓' },
-  verified: { bg: 'rgba(163, 113, 247, 0.18)', color: '#a371f7', icon: '✓' },
-  warning: { bg: 'rgba(210, 153, 34, 0.15)', color: '#d29922', icon: '⚠' },
-  error: { bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', icon: '✗' },
-  info: { bg: 'rgba(88, 166, 255, 0.15)', color: '#58a6ff', icon: 'i' },
+  success: { bg: 'color-mix(in srgb, var(--status-success) 14%, transparent)', color: 'var(--status-success)', icon: '✓' },
+  verified: { bg: 'color-mix(in srgb, var(--status-verified) 14%, transparent)', color: 'var(--status-verified)', icon: '✓' },
+  warning: { bg: 'var(--warning-weak)', color: 'var(--warning)', icon: '⚠' },
+  error: { bg: 'var(--error-weak)', color: 'var(--error)', icon: '✗' },
+  info: { bg: 'color-mix(in srgb, var(--status-info) 14%, transparent)', color: 'var(--status-info)', icon: 'i' },
 };
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ variant, children }) => {

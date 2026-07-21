@@ -52,7 +52,7 @@ export const ButtonPrimary: React.FC<ButtonProps> = ({ style, ...rest }) => (
     {...rest}
     style={{
       border: 'none',
-      background: 'var(--accent)',
+      background: 'var(--accent-solid, var(--accent))',
       color: 'var(--accent-text)',
       borderRadius: tokens.radius.md,
       padding: '4px 12px',

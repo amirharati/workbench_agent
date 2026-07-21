@@ -375,9 +375,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       dragEl.style.width = '280px';
       dragEl.style.padding = '10px';
       dragEl.style.borderRadius = '12px';
-      dragEl.style.background = 'rgba(255,255,255,0.98)';
-      dragEl.style.border = '1px solid rgba(229,231,235,1)';
-      dragEl.style.boxShadow = '0 18px 44px rgba(0,0,0,0.22)';
+      dragEl.style.background = 'var(--bg-panel)';
+      dragEl.style.border = '1px solid var(--border)';
+      dragEl.style.boxShadow = 'var(--shadow-panel)';
       dragEl.style.fontFamily = 'system-ui, sans-serif';
 
       const title = document.createElement('div');
@@ -390,15 +390,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       left.textContent = count === 1 ? 'Moving tab' : `Moving ${count} tabs`;
       left.style.fontSize = '12px';
       left.style.fontWeight = '800';
-      left.style.color = '#111827';
+      left.style.color = 'var(--text)';
 
       const pill = document.createElement('div');
       pill.textContent = count.toString();
       pill.style.fontSize = '12px';
       pill.style.fontWeight = '900';
-      pill.style.color = '#1d4ed8';
-      pill.style.background = '#eff6ff';
-      pill.style.border = '1px solid #93c5fd';
+      pill.style.color = 'var(--accent-hover)';
+      pill.style.background = 'var(--accent-weak)';
+      pill.style.border = '1px solid var(--accent)';
       pill.style.padding = '2px 8px';
       pill.style.borderRadius = '9999px';
 
@@ -417,7 +417,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           row.textContent = t;
           row.style.fontSize = '12px';
           row.style.fontWeight = '700';
-          row.style.color = '#374151';
+          row.style.color = 'var(--text)';
           row.style.whiteSpace = 'nowrap';
           row.style.overflow = 'hidden';
           row.style.textOverflow = 'ellipsis';
@@ -428,7 +428,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           more.textContent = `+${count - labelTitles.length} more`;
           more.style.fontSize = '12px';
           more.style.fontWeight = '800';
-          more.style.color = '#6b7280';
+          more.style.color = 'var(--text-muted)';
           list.appendChild(more);
         }
         dragEl.appendChild(list);
@@ -1813,9 +1813,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                               fontSize: 'var(--text-xs)',
                               padding: '1px 6px',
                               borderRadius: 9999,
-                              background: '#fef3c7',
-                              border: '1px solid #fcd34d',
-                              color: '#92400e',
+                              background: 'var(--warning-weak)',
+                              border: '1px solid var(--warning-border)',
+                              color: 'var(--warning)',
                               fontWeight: 600,
                               flexShrink: 0,
                             }}
@@ -2024,9 +2024,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                   fontSize: 'var(--text-xs)',
                                   padding: '1px 6px',
                                   borderRadius: 9999,
-                                  background: '#fef3c7',
-                                  border: '1px solid #fcd34d',
-                                  color: '#92400e',
+                                  background: 'var(--warning-weak)',
+                                  border: '1px solid var(--warning-border)',
+                                  color: 'var(--warning)',
                                   fontWeight: 600,
                                   flexShrink: 0,
                                 }}

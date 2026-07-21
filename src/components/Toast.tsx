@@ -16,9 +16,9 @@ interface ToastProps {
 }
 
 const TYPE_STYLES: Record<ToastType, { border: string; icon: string; iconColor: string }> = {
-  success: { border: '#3fb950', icon: '✓', iconColor: '#3fb950' },
-  error:   { border: '#ef4444', icon: '✗', iconColor: '#ef4444' },
-  info:    { border: '#818cf8', icon: 'i', iconColor: '#818cf8' },
+  success: { border: 'var(--status-success)', icon: '✓', iconColor: 'var(--status-success)' },
+  error:   { border: 'var(--error)', icon: '✗', iconColor: 'var(--error)' },
+  info:    { border: 'var(--status-info)', icon: 'i', iconColor: 'var(--status-info)' },
 };
 
 // success and info auto-dismiss after 3s; error is persistent

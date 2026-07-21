@@ -1,54 +1,69 @@
 import React, { useEffect, useState } from 'react';
+import {
+  APP_THEME_STORAGE_KEY,
+  applyAppTheme,
+  readAppTheme,
+  saveAppTheme,
+  type AppTheme,
+} from '../lib/theme';
 
-type Theme = 'dark' | 'light';
-
-const storageKey = 'app-theme';
-
-const getInitialTheme = (): Theme => {
-  if (typeof window === 'undefined') return 'dark';
-  const stored = localStorage.getItem(storageKey) as Theme | null;
-  if (stored === 'dark' || stored === 'light') return stored;
-  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  return prefersDark ? 'dark' : 'light';
-};
-
-export const ThemeToggle: React.FC = () => {
-  const [theme, setTheme] = useState<Theme>('dark');
+export const ThemeSelector: React.FC = () => {
+  const [theme, setTheme] = useState<AppTheme>(() => readAppTheme());
 
   useEffect(() => {
-    const initial = getInitialTheme();
-    setTheme(initial);
-    document.documentElement.dataset.theme = initial;
+    applyAppTheme(theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === APP_THEME_STORAGE_KEY) setTheme(readAppTheme());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const toggle = () => {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+  const selectTheme = (next: AppTheme) => {
     setTheme(next);
-    document.documentElement.dataset.theme = next;
-    localStorage.setItem(storageKey, next);
+    saveAppTheme(next);
   };
 
   return (
-    <button
-      onClick={toggle}
+    <div
+      role="group"
+      aria-label="Color theme"
       style={{
-        width: '100%',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-start',
-        gap: '0.5rem',
-        padding: '0.5rem 0.75rem',
-        borderRadius: 10,
-        border: '1px solid var(--border)',
-        background: 'var(--bg-glass)',
-        color: 'var(--text)',
-        cursor: 'pointer',
+        gap: 6,
       }}
-      title="Toggle light/dark theme"
     >
-      <span>{theme === 'dark' ? '🌙' : '☀️'}</span>
-      <span>{theme === 'dark' ? 'Dark' : 'Light'} mode</span>
-    </button>
+      {(['dark', 'light'] as AppTheme[]).map((option) => {
+        const selected = theme === option;
+        return (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => selectTheme(option)}
+            style={{
+              minWidth: 94,
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: selected ? '1px solid var(--accent)' : '1px solid var(--border)',
+              background: selected ? 'var(--accent-weak)' : 'var(--bg)',
+              color: selected ? 'var(--accent-hover)' : 'var(--text-muted)',
+              fontSize: 'var(--text-sm)',
+              fontWeight: selected ? 700 : 600,
+              cursor: 'pointer',
+              textTransform: 'capitalize',
+            }}
+          >
+            {option === 'dark' ? '◐ Dark' : '◑ Light'}
+          </button>
+        );
+      })}
+    </div>
   );
 };
 
+/** Backward-compatible name for any future compact placement. */
+export const ThemeToggle = ThemeSelector;

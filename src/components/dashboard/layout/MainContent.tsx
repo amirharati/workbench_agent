@@ -2539,36 +2539,36 @@ export const MainContent: React.FC<MainContentProps> = ({
           zIndex: 2000,
           padding: '1rem'
         }}>
-          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1rem', width: '420px', maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', border: '1px solid #e5e7eb' }}>
+          <div style={{ background: 'var(--bg-panel)', color: 'var(--text)', borderRadius: '0.75rem', padding: '1rem', width: '420px', maxWidth: '100%', boxShadow: 'var(--shadow-panel)', border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#111827' }}>Add bookmark</div>
-              <button onClick={() => setShowAddModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#6b7280', fontWeight: 700 }}>✕</button>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text)' }}>Add bookmark</div>
+              <button onClick={() => setShowAddModal(false)} aria-label="Close add bookmark" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', fontWeight: 700 }}>✕</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>URL</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>URL</label>
                 <input
                   value={newUrl}
                   onChange={(e) => setNewUrl(e.target.value)}
                   placeholder="https://example.com"
-                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem' }}
+                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid var(--border)', borderRadius: '0.5rem', fontSize: '0.9rem', background: 'var(--bg-input)', color: 'var(--text)' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Title (optional)</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Title (optional)</label>
                 <input
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="Title"
-                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem' }}
+                  style={{ width: '100%', padding: '0.55rem 0.65rem', border: '1px solid var(--border)', borderRadius: '0.5rem', fontSize: '0.9rem', background: 'var(--bg-input)', color: 'var(--text)' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Collection</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Collection</label>
                 <select
                   value={newCollectionId || ''}
                   onChange={(e) => setNewCollectionId(e.target.value || undefined)}
-                  style={{ width: '100%', padding: '0.5rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem', background: 'white' }}
+                  style={{ width: '100%', padding: '0.5rem 0.65rem', border: '1px solid var(--border)', borderRadius: '0.5rem', fontSize: '0.9rem', background: 'var(--bg-input)', color: 'var(--text)' }}
                 >
                   <option value="">Unsorted</option>
                   {collections.map((c) => (
@@ -2579,13 +2579,13 @@ export const MainContent: React.FC<MainContentProps> = ({
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
                 <button
                   onClick={() => setShowAddModal(false)}
-                  style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                  style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--bg-glass)', color: 'var(--text)', cursor: 'pointer', fontWeight: 700 }}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAddSubmit}
-                  style={{ padding: '0.5rem 0.9rem', borderRadius: '0.5rem', border: '1px solid #111827', background: '#111827', color: 'white', cursor: 'pointer', fontWeight: 800 }}
+                  style={{ padding: '0.5rem 0.9rem', borderRadius: '0.5rem', border: '1px solid var(--accent)', background: 'var(--accent)', color: 'var(--accent-text)', cursor: 'pointer', fontWeight: 800 }}
                 >
                   Save
                 </button>
@@ -2864,36 +2864,37 @@ export const MainContent: React.FC<MainContentProps> = ({
           padding: '1rem'
         }}>
           <div style={{
-            background: 'white',
+            background: 'var(--bg-panel)',
+            color: 'var(--text)',
             borderRadius: '0.75rem',
             padding: '1rem',
             width: 'min(36rem, 92vw)',
             maxWidth: '100%',
             minWidth: 0,
             boxSizing: 'border-box',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-            border: '1px solid #e5e7eb',
+            boxShadow: 'var(--shadow-panel)',
+            border: '1px solid var(--border)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#111827' }}>Edit bookmark</div>
-              <button onClick={closeEditModal} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#6b7280', fontWeight: 700 }}>✕</button>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text)' }}>Edit bookmark</div>
+              <button onClick={closeEditModal} aria-label="Close edit bookmark" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', fontWeight: 700 }}>✕</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', width: '100%', minWidth: 0 }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Title</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Title</label>
                 <input
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '0.55rem 0.65rem', border: '1px solid var(--border)', borderRadius: '0.5rem', fontSize: '0.9rem', background: 'var(--bg-input)', color: 'var(--text)' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: '#374151', marginBottom: '0.25rem' }}>Notes</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Notes</label>
                 <textarea
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
                   rows={6}
-                  style={{ width: '100%', boxSizing: 'border-box', minHeight: 140, padding: '0.55rem 0.65rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', fontSize: '0.9rem', resize: 'vertical', lineHeight: 1.5 }}
+                  style={{ width: '100%', boxSizing: 'border-box', minHeight: 140, padding: '0.55rem 0.65rem', border: '1px solid var(--border)', borderRadius: '0.5rem', fontSize: '0.9rem', resize: 'vertical', lineHeight: 1.5, background: 'var(--bg-input)', color: 'var(--text)' }}
                 />
               </div>
               {editingItem && (
@@ -2919,7 +2920,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 {editSavedFlash && (
-                  <span style={{ fontSize: '0.8rem', color: '#2563eb', fontWeight: 600, marginRight: 'auto' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--accent-hover)', fontWeight: 700, marginRight: 'auto' }}>
                     Saved
                   </span>
                 )}
@@ -2930,8 +2931,9 @@ export const MainContent: React.FC<MainContentProps> = ({
                   style={{
                     padding: '0.5rem 0.75rem',
                     borderRadius: '0.5rem',
-                    border: '1px solid #e5e7eb',
-                    background: 'white',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-glass)',
+                    color: 'var(--text)',
                     cursor: editModalDirty ? 'pointer' : 'default',
                     fontWeight: 700,
                     opacity: editModalDirty ? 1 : 0.45,
@@ -2941,7 +2943,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                 </button>
                 <button
                   onClick={closeEditModal}
-                  style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                  style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)', background: 'var(--bg-glass)', color: 'var(--text)', cursor: 'pointer', fontWeight: 700 }}
                 >
                   Done
                 </button>
@@ -2951,9 +2953,9 @@ export const MainContent: React.FC<MainContentProps> = ({
                   style={{
                     padding: '0.5rem 0.9rem',
                     borderRadius: '0.5rem',
-                    border: '1px solid #111827',
-                    background: editModalDirty ? '#111827' : '#9ca3af',
-                    color: 'white',
+                    border: '1px solid var(--accent)',
+                    background: editModalDirty ? 'var(--accent)' : 'var(--bg-hover)',
+                    color: editModalDirty ? 'var(--accent-text)' : 'var(--text-faint)',
                     cursor: editModalDirty ? 'pointer' : 'default',
                     fontWeight: 800,
                   }}

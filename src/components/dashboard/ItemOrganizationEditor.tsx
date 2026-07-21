@@ -28,6 +28,8 @@ export interface ItemOrganizationEditorProps {
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   compact?: boolean;
+  /** Hide tag editing when this editor is used only as a save-destination picker. */
+  showTags?: boolean;
 }
 
 const chipBase: React.CSSProperties = {
@@ -58,6 +60,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   onCreateProject,
   onCreateCollection,
   compact = false,
+  showTags = true,
 }) => {
   // Write path exists → always render the same chrome (view/edit won't reflow).
   const hasWritePath = !!onUpdate || !!onLocalChange;
@@ -369,7 +372,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
         boxSizing: 'border-box',
       }}
     >
-      <div style={{ width: '100%', minWidth: 0 }}>
+      {showTags ? <div style={{ width: '100%', minWidth: 0 }}>
         <div style={labelStyle}>Saved in</div>
         <div style={chipRowStyle}>
           {memberships.length === 0 ? (
@@ -435,7 +438,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
             ))
           )}
         </div>
-      </div>
+      </div> : null}
 
       {hasWritePath && (
         <div
@@ -465,13 +468,17 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowNewProject((v) => !v)}
+                    aria-expanded={showNewProject}
                     style={{
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--accent)',
+                      border: '1px solid var(--accent)',
+                      borderRadius: 999,
+                      background: 'var(--accent-solid, var(--accent))',
+                      color: 'var(--accent-text)',
                       cursor: 'pointer',
                       fontSize: 'var(--text-xs)',
-                      padding: 0,
+                      fontWeight: 700,
+                      lineHeight: 1.2,
+                      padding: '2px 7px',
                     }}
                   >
                     + New
@@ -499,13 +506,17 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowNewCollection((v) => !v)}
+                    aria-expanded={showNewCollection}
                     style={{
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--accent)',
+                      border: '1px solid var(--accent)',
+                      borderRadius: 999,
+                      background: 'var(--accent-solid, var(--accent))',
+                      color: 'var(--accent-text)',
                       cursor: 'pointer',
                       fontSize: 'var(--text-xs)',
-                      padding: 0,
+                      fontWeight: 700,
+                      lineHeight: 1.2,
+                      padding: '2px 7px',
                     }}
                   >
                     + New

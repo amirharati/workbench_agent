@@ -54,8 +54,8 @@ export const Resizer: React.FC<ResizerProps> = ({
         height: isVertical ? '100%' : thickness,
         cursor: isVertical ? 'col-resize' : 'row-resize',
         background: isVertical
-          ? 'linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent)'
-          : 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.08), transparent)',
+          ? 'linear-gradient(to right, transparent, var(--border), transparent)'
+          : 'linear-gradient(to bottom, transparent, var(--border), transparent)',
         transition: 'background 0.2s',
         userSelect: 'none',
         touchAction: 'none',
@@ -69,8 +69,8 @@ export const Resizer: React.FC<ResizerProps> = ({
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = isVertical
-          ? 'linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent)'
-          : 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.08), transparent)';
+          ? 'linear-gradient(to right, transparent, var(--border), transparent)'
+          : 'linear-gradient(to bottom, transparent, var(--border), transparent)';
       }}
     >
       {!isVertical && (
@@ -92,5 +92,4 @@ export const Resizer: React.FC<ResizerProps> = ({
     </div>
   );
 };
-
 

@@ -150,7 +150,7 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
                   }}
                   onMouseEnter={(e) => {
                     if (!onItemClick) return;
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                    e.currentTarget.style.background = 'var(--bg-hover)';
                     e.currentTarget.style.borderColor = 'var(--accent)';
                   }}
                   onMouseLeave={(e) => {

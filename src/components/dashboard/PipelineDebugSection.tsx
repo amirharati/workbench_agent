@@ -60,17 +60,17 @@ export function PipelineDebugSection() {
   return (
     <div
       style={{
-        borderTop: '1px solid #e5e7eb',
+        borderTop: '1px solid var(--border)',
         paddingTop: '0.75rem',
         display: 'flex',
         flexDirection: 'column',
         gap: '0.5rem',
       }}
     >
-      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>
+      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' }}>
         Pipeline debug timing
       </div>
-      <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280', lineHeight: 1.45 }}>
+      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
         When enabled, every Import Studio or Hub pipeline run writes{' '}
         <code>pipeline-run-in-progress.json</code>, <code>pipeline-run-latest.json</code>, and a{' '}
         <code>pipeline-runs/</code> folder in your backup folder (next to{' '}
@@ -91,7 +91,7 @@ export function PipelineDebugSection() {
           Record debug timings
         </label>
         {rowCount !== null && rowCount > 0 ? (
-          <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>{rowCount} row(s)</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{rowCount} row(s)</span>
         ) : null}
         <button
           type="button"
@@ -101,9 +101,9 @@ export function PipelineDebugSection() {
             padding: '2px 10px',
             height: 24,
             borderRadius: 4,
-            border: '1px solid #d1d5db',
-            background: '#fff',
-            color: '#374151',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-input)',
+            color: 'var(--text)',
             fontSize: '0.75rem',
             fontWeight: 600,
             cursor: purging ? 'wait' : 'pointer',
@@ -113,7 +113,7 @@ export function PipelineDebugSection() {
         </button>
       </div>
       {message ? (
-        <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>{message}</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{message}</div>
       ) : null}
     </div>
   );

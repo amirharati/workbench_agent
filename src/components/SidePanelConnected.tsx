@@ -17,7 +17,6 @@ import {
   syncOpenTabUrls,
 } from '../lib/storage/workingSetCache';
 import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
-import { usePipelineProgress } from './dashboard/PipelineProgressProvider';
 import { SidePanelView } from './SidePanelView';
 import type { SessionExternalLink } from './SidePanelExternalSection';
 
@@ -71,11 +70,9 @@ export interface SidePanelConnectedProps {
   projects: Project[];
   collections: Collection[];
   items: Item[];
-  onDeleteItem: (id: string, collectionId?: string) => Promise<void>;
   onCreateProject: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection: (data: { name: string; projectId: string }) => Promise<string | void>;
   onOpenFullPage: () => void;
-  onSetAsBrowserHome: () => Promise<void>;
   loadData: (opts?: { quiet?: boolean }) => Promise<void>;
 }
 
@@ -83,14 +80,11 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
   projects,
   collections,
   items,
-  onDeleteItem,
   onCreateProject,
   onCreateCollection,
   onOpenFullPage,
-  onSetAsBrowserHome,
   loadData,
 }) => {
-  const pipeline = usePipelineProgress();
   const [status, setStatus] = useState('');
   const [externalLinks, setExternalLinks] = useState<SessionExternalLink[]>([]);
   const [fastItems, setFastItems] = useState<Item[]>([]);
@@ -223,67 +217,6 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
     [items]
   );
 
-  const handleSaveCurrentTab = useCallback(
-    async (collectionId?: string) => {
-      showStatus('Saving…');
-      await new Promise<void>((r) => setTimeout(r, 0));
-
-      const ctx = await getActiveTabBookmarkContext();
-      if (ctx?.url && (/^https?:\/\//i.test(ctx.url) || /^file:\/\//i.test(ctx.url))) {
-        const collectionIds = collectionId ? [collectionId] : [];
-        try {
-          const result = await addItemWithMerge(
-            {
-              url: ctx.url,
-              title: ctx.title || 'Untitled',
-              favicon: ctx.favIconUrl,
-              tags: [],
-              source: 'tab',
-              collectionIds,
-            },
-            { awaitDurable: false }
-          );
-
-          let statusPrefix = 'Tab saved';
-          if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
-            statusPrefix = 'Already saved in this collection';
-          } else if (result.merged && result.addedToCollections.length > 0) {
-            statusPrefix = 'Added to collection';
-          }
-
-          showStatus(statusPrefix);
-          // Optimistic: pull item into fastItems from read buffer for instant Already saved.
-          const optimistic = findActiveItemsByUrlInReadBuffer(ctx.url);
-          if (optimistic.length) setFastItems(optimistic);
-
-          void loadData({ quiet: true }).then(() => {
-            void import('../lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) => {
-              flushDurableBackupSoon();
-            });
-          });
-
-          if (result.itemId && /^https?:\/\//i.test(ctx.url)) {
-            window.setTimeout(() => {
-              void pipeline
-                .runSingle(result.itemId, {
-                  title: 'Digest',
-                  preferTabSession: true,
-                  tabId: ctx.tabId,
-                  itemLabel: ctx.title || ctx.url,
-                })
-                .catch(() => {});
-            }, 0);
-          }
-        } catch (error) {
-          showStatus(toStatusMessage(error, 'Could not save tab'));
-        }
-      } else {
-        showStatus('Cannot save this page');
-      }
-    },
-    [loadData, pipeline, showStatus]
-  );
-
   const handleCreateItem = useCallback(
     async (data: { title: string; url?: string; notes?: string; collectionIds: string[] }) => {
       try {
@@ -327,16 +260,6 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
               flushDurableBackupSoon();
             });
           });
-          window.setTimeout(() => {
-            void pipeline
-              .runSingle(result.itemId, {
-                title: 'Digest',
-                preferTabSession: true,
-                tabId: ctx?.tabId,
-                itemLabel: title || saveUrl,
-              })
-              .catch(() => {});
-          }, 0);
         } else {
           showStatus('Note added');
           void loadData({ quiet: true }).then(() => {
@@ -350,7 +273,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         throw error;
       }
     },
-    [loadData, pipeline, showStatus]
+    [loadData, showStatus]
   );
 
   const handleCreateExternalLink = useCallback(
@@ -385,21 +308,13 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
             flushDurableBackupSoon();
           });
         });
-        if (/^https?:\/\//i.test(saveUrl)) {
-          void pipeline
-            .runSingle(result.itemId, {
-              title: 'Digest',
-              itemLabel: saveUrl,
-            })
-            .catch(() => {});
-        }
         return result.itemId;
       } catch (error) {
         showStatus(toStatusMessage(error, 'Could not save external link'));
         throw error;
       }
     },
-    [loadData, pipeline, showStatus]
+    [loadData, showStatus]
   );
 
   const handleUpdateItem = useCallback(
@@ -473,15 +388,12 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       projects={visibleProjects}
       collections={visibleCollections}
       items={visibleItems}
-      onSaveTab={handleSaveCurrentTab}
       onCreateItem={handleCreateItem}
       onCreateExternalLink={handleCreateExternalLink}
       onUpdateItem={handleUpdateItem}
-      onDeleteItem={onDeleteItem}
       onCreateProject={handleCreateProjectLocal}
       onCreateCollection={handleCreateCollectionLocal}
       onOpenFullPage={onOpenFullPage}
-      onSetAsBrowserHome={onSetAsBrowserHome}
       status={status}
       externalLinks={externalLinks}
       onHostTabNavigate={clearExternalLinks}

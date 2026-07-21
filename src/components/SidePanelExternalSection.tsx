@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Link2 } from 'lucide-react';
-import { Input, ButtonGhost, ButtonPrimary, Panel } from '../styles/primitives';
+import { CheckCircle2, ChevronDown, ChevronRight, Link2, X } from 'lucide-react';
+import { ButtonPrimary, Input, Panel } from '../styles/primitives';
 import { isValidBookmarkUrl } from '../lib/utils';
-import { SidePanelDigestPanel } from './SidePanelDigestPanel';
 
 export type SessionExternalLink = {
   itemId: string;
@@ -17,7 +16,9 @@ interface SidePanelExternalSectionProps {
   onSave: (url: string) => Promise<void>;
   canSave: boolean;
   saveHint?: string;
-  onOpenInApp?: () => void;
+  destinationLabel?: string;
+  destinationControls?: React.ReactNode;
+  showTrigger?: boolean;
 }
 
 export const SidePanelExternalSection: React.FC<SidePanelExternalSectionProps> = ({
@@ -27,7 +28,9 @@ export const SidePanelExternalSection: React.FC<SidePanelExternalSectionProps> =
   onSave,
   canSave,
   saveHint,
-  onOpenInApp,
+  destinationLabel,
+  destinationControls,
+  showTrigger = true,
 }) => {
   const [url, setUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -45,17 +48,15 @@ export const SidePanelExternalSection: React.FC<SidePanelExternalSectionProps> =
       return;
     }
     if (!canSave) {
-      setError(saveHint || 'Pick a project and collection first');
+      setError(saveHint || 'Choose a destination first');
       return;
     }
-
     setSubmitting(true);
     try {
       await onSave(trimmed);
       setUrl('');
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save link');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save link');
     } finally {
       setSubmitting(false);
     }
@@ -63,137 +64,125 @@ export const SidePanelExternalSection: React.FC<SidePanelExternalSectionProps> =
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      <button
-        type="button"
-        onClick={onToggleOpen}
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-          padding: '0.5rem 0.6rem',
-          borderRadius: 8,
-          border: '1px solid var(--border)',
-          background: open ? 'var(--accent-weak)' : 'var(--bg-glass)',
-          color: 'var(--text)',
-          cursor: 'pointer',
-          fontSize: 'var(--text-sm)',
-          fontWeight: 600,
-        }}
-      >
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Link2 size={15} />
-          Add external link
-          {!open && links.length > 0 ? (
-            <span
-              style={{
-                fontSize: 'var(--text-xs)',
-                fontWeight: 500,
-                color: 'var(--text-muted)',
-              }}
-            >
-              ({links.length})
-            </span>
-          ) : null}
-        </span>
-        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-      </button>
+      {showTrigger ? (
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0.5rem 0.6rem',
+            borderRadius: 8,
+            border: '1px solid var(--border)',
+            background: open ? 'var(--accent-weak)' : 'var(--bg-glass)',
+            color: 'var(--text)',
+            cursor: 'pointer',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 650,
+          }}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Link2 size={14} /> Add link
+          </span>
+          {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+        </button>
+      ) : null}
 
       {open ? (
-        <Panel style={{ padding: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.35 }}>
-            Save a link mentioned on this page (article, feed post, etc.) without leaving the tab.
+        <Panel style={{ padding: '0.65rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1, fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+              Capture a link from this page
+            </div>
+            {!showTrigger ? (
+              <button
+                type="button"
+                aria-label="Close add link"
+                onClick={onToggleOpen}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: 2,
+                }}
+              >
+                <X size={15} />
+              </button>
+            ) : null}
+          </div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            Paste a link mentioned in the current page without navigating away.
           </div>
           <Input
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(event) => setUrl(event.target.value)}
             placeholder="https://…"
-            style={{ height: 30, fontSize: 'var(--text-sm)' }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void submit();
+            style={{ height: 32 }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void submit();
             }}
           />
-          {saveHint && !canSave ? (
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+            Destination: {destinationLabel ?? 'current selection'}
+          </div>
+          {destinationControls}
+          {!canSave && saveHint ? (
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{saveHint}</div>
           ) : null}
           {error ? (
             <div
+              role="alert"
               style={{
-                fontSize: 'var(--text-xs)',
-                color: '#ef4444',
-                background: 'rgba(239,68,68,0.12)',
-                border: '1px solid rgba(239,68,68,0.35)',
                 padding: '0.35rem 0.45rem',
                 borderRadius: 6,
+                background: 'var(--error-weak)',
+                color: 'var(--error)',
+                fontSize: 'var(--text-xs)',
               }}
             >
               {error}
             </div>
           ) : null}
           <ButtonPrimary
-            onClick={() => void submit()}
-            disabled={submitting || !url.trim()}
-            style={{ width: '100%', padding: '0.45rem', fontSize: 'var(--text-sm)', fontWeight: 600 }}
-          >
-            {submitting ? 'Saving…' : 'Save external link'}
-          </ButtonPrimary>
-        </Panel>
-      ) : null}
-
-      {open && links.length > 0 ? (
-        <Panel style={{ padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <div
-            style={{
-              fontSize: 'var(--text-xs)',
-              color: 'var(--text-muted)',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-            }}
-          >
-            External links this visit ({links.length})
-          </div>
-          {links.map((link) => (
-            <div
-              key={link.itemId}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.35rem',
-                padding: '0.45rem',
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'var(--bg-panel)',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  color: 'var(--text-muted)',
-                  wordBreak: 'break-all',
-                  lineHeight: 1.35,
-                }}
-                title={link.url}
-              >
-                {link.url}
-              </div>
-              {link.digestStatus ? (
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--accent)' }}>{link.digestStatus}</div>
-              ) : null}
-              <SidePanelDigestPanel
-                itemId={link.itemId}
-                statusLabel={link.digestStatus}
-                onOpenInApp={onOpenInApp}
-              />
-            </div>
-          ))}
-          <ButtonGhost
             type="button"
-            onClick={onToggleOpen}
-            style={{ padding: '0.3rem 0.45rem', fontSize: 'var(--text-xs)', alignSelf: 'flex-start' }}
+            onClick={() => void submit()}
+            disabled={submitting || !url.trim() || !canSave}
+            style={{ width: '100%', padding: '0.5rem', fontWeight: 650 }}
           >
-            Add another
-          </ButtonGhost>
+            {submitting ? 'Saving…' : 'Save link'}
+          </ButtonPrimary>
+
+          {links.length > 0 ? (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginBottom: 5 }}>
+                Captured this visit
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {links.map((link) => (
+                  <div
+                    key={link.itemId}
+                    title={link.url}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      minWidth: 0,
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    <CheckCircle2 size={12} color="var(--accent)" />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {link.url}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </Panel>
       ) : null}
     </div>

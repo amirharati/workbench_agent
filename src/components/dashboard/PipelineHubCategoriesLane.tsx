@@ -46,10 +46,10 @@ import { usePipelineProgress } from './PipelineProgressProvider';
 
 const PAGE_SIZE = 80;
 
-const RECLASSIFY_ACCENT = '#a371f7';
+const RECLASSIFY_ACCENT = 'var(--status-verified)';
 
 const STATE_COLORS: Record<string, string> = {
-  pending_classify: '#58a6ff',
+  pending_classify: 'var(--status-info)',
   pending_reclassify: RECLASSIFY_ACCENT,
   pending_discover: 'var(--er-warn, #d29922)',
   classified_general: 'var(--er-warn, #d29922)',
@@ -59,7 +59,7 @@ const STATE_COLORS: Record<string, string> = {
   ineligible: 'var(--text-faint)',
   skipped: 'var(--text-muted)',
   classified: 'var(--er-ok, #3fb950)',
-  manual_only: '#a371f7',
+  manual_only: 'var(--status-verified)',
   none: 'var(--text-faint)',
 };
 
