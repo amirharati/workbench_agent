@@ -884,24 +884,24 @@ export const HomeView: React.FC<HomeViewProps> = ({
         />
       ) : (
       <div
+        className="scrollbar ui-home-overview"
         style={{
           minHeight: 0,
           overflowY: 'auto',
           overflowX: 'hidden',
-          padding: '32px 24px 80px',
-          scrollPaddingBottom: 80,
+          padding: '32px 24px var(--page-safe-bottom)',
+          scrollPaddingBottom: 'var(--page-safe-bottom)',
           display: 'flex',
           flexDirection: 'column',
           gap: 24,
           alignItems: 'center',
         }}
-        className="scrollbar"
       >
-        <section style={{ maxWidth: 1000, width: '100%' }} aria-labelledby="home-find-heading">
-          <h2 id="home-find-heading" style={{ margin: '0 0 8px', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 650 }}>Find</h2>
+        <section className="ui-home-find" style={{ maxWidth: 1000, width: '100%' }} aria-labelledby="home-find-heading">
+          <h2 className="ui-home-find__heading" id="home-find-heading" style={{ margin: '0 0 8px', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 650 }}>Find</h2>
           <div style={{ maxWidth: 680 }}>
           <form onSubmit={handleHeroSearch}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 18px', boxShadow: 'var(--shadow-sm)' }}>
+            <div className="ui-home-find__field" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 18px', boxShadow: 'var(--shadow-sm)' }}>
               <Search size={18} color="var(--text-muted)" style={{ flexShrink: 0 }} />
               <input
                 type="text"

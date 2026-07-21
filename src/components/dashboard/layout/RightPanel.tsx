@@ -33,8 +33,6 @@ interface RightPanelProps {
   ) => Promise<{ text: string; model: string; requestedModel?: string; modelMismatch?: boolean }>;
 }
 
-const PANEL_WIDTH = 280;
-
 export const RightPanel: React.FC<RightPanelProps> = ({
   activeItem,
   aiSettings,
@@ -65,7 +63,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
       data-expanded={showExpanded ? 'true' : 'false'}
       onMouseEnter={() => { if (isCollapsed) setHoverExpanded(true); }}
       onMouseLeave={() => setHoverExpanded(false)}
-      style={{ width: showExpanded ? PANEL_WIDTH : 8 }}
+      style={{ width: showExpanded ? undefined : 8 }}
     >
       {isCollapsed && !hoverExpanded && (
         <button
@@ -79,7 +77,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
       )}
 
       {showExpanded && (
-        <div className="right-panel__content" style={{ width: PANEL_WIDTH }}>
+        <div className="right-panel__content">
           <div
             className="right-panel__tabs"
             role="tablist"

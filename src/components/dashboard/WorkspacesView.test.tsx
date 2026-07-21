@@ -1,4 +1,8 @@
+// @vitest-environment jsdom
+
 import { renderToStaticMarkup } from 'react-dom/server';
+import { createRoot } from 'react-dom/client';
+import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Item, Project, Workspace } from '../../lib/db';
 import type { GlobalTabState } from './GlobalTabSystem';
@@ -17,6 +21,8 @@ const homeState: GlobalTabState = {
 };
 
 describe('WorkspacesView', () => {
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
   it('resolves direct URLs for URL-bearing workspace entries only', () => {
     const itemById = new Map([[item.id, item]]);
 
@@ -50,5 +56,34 @@ describe('WorkspacesView', () => {
     expect(markup).toContain('Writing set');
     expect(markup).toContain('Chrome research');
     expect(markup).toContain('Live browser tabs stay in Tab Commander.');
+    expect(markup).toContain('ui-adaptive-browser');
+    expect(markup).toContain('data-detail-open="false"');
+  });
+
+  it('lets a narrow detail pane return to the workspace browser', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <WorkspacesView
+          projects={[project]}
+          items={[item]}
+          workspaces={[browserWorkspace]}
+          homeState={homeState}
+          onHomeStateChange={vi.fn()}
+        />
+      );
+    });
+
+    expect(host.querySelector('.ui-adaptive-browser')?.getAttribute('data-detail-open')).toBe('true');
+    const back = host.querySelector<HTMLButtonElement>('.ui-adaptive-detail-back');
+    expect(back).not.toBeNull();
+    await act(async () => back?.click());
+    expect(host.querySelector('.ui-adaptive-browser')?.getAttribute('data-detail-open')).toBe('false');
+
+    await act(async () => root.unmount());
+    host.remove();
   });
 });

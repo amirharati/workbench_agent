@@ -38,6 +38,8 @@ describe('BookmarksLibraryView', () => {
     expect(markup.indexOf('Library view')).toBeLessThan(markup.indexOf('Filter library'));
     expect(markup).toContain('aria-label="Gallery view"');
     expect(markup).toContain('data-content-view="list"');
+    expect(markup).toContain('ui-adaptive-browser');
+    expect(markup).toContain('data-detail-open="false"');
     expect(markup).toContain('Select an item to inspect and edit it.');
   });
 
@@ -91,6 +93,8 @@ describe('BookmarksLibraryView', () => {
 
     expect(markup).toContain('aria-current="true"');
     expect(markup).toContain('aria-label="Workspace for Python"');
+    expect(markup).toContain('data-detail-open="true"');
+    expect(markup).toContain('ui-adaptive-detail-back');
     expect(markup).not.toContain('Select an item to inspect and edit it.');
   });
 

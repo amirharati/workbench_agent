@@ -12,7 +12,7 @@ export const uiPatterns = {
     flexDirection: 'column',
     gap: 'var(--space-md)',
     overflow: 'hidden',
-    padding: 'var(--space-lg) var(--page-gutter) var(--page-bottom-clearance)',
+    padding: 'var(--space-lg) var(--page-gutter) var(--page-safe-bottom)',
     boxSizing: 'border-box',
   } satisfies React.CSSProperties,
 

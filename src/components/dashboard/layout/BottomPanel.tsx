@@ -1114,17 +1114,17 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       {/* Header */}
       {isPage ? (
         <>
-          <header data-tab-commander-header style={uiPatterns.pageHeader}>
+          <header className="ui-page-header" data-tab-commander-header style={uiPatterns.pageHeader}>
             <div>
               <h1 style={uiPatterns.pageTitle}>Tab Commander</h1>
               <p style={uiPatterns.pageDescription}>Manage {windows.length} live browser window{windows.length !== 1 ? 's' : ''} and {allTabs.length} open tab{allTabs.length !== 1 ? 's' : ''}, then capture the work you want to keep.</p>
             </div>
-            <div style={uiPatterns.actionRow}>
+            <div className="ui-action-row" style={uiPatterns.actionRow}>
               {onRefresh && <button type="button" onClick={() => void onRefresh()} style={pageSecondaryButtonStyle}><RefreshCw size={12} /> Refresh</button>}
               <div onClick={(event) => event.stopPropagation()}><WorkspaceSaveMenu buttonId="workspace-save-page" title="Capture selected tabs or windows" align="right" primary label={selectedTabIds.length > 0 ? `Capture ${selectedTabIds.length} tab${selectedTabIds.length !== 1 ? 's' : ''}` : selectedWindowIds.length > 0 ? `Capture ${selectedWindowIds.length} window${selectedWindowIds.length !== 1 ? 's' : ''}` : 'Capture browser'} /></div>
             </div>
           </header>
-          <div data-tab-commander-toolbar style={{ ...uiPatterns.toolbar, minHeight: 42, gap: 10 }}>
+          <div className="ui-toolbar" data-tab-commander-toolbar style={{ ...uiPatterns.toolbar, minHeight: 42, gap: 10 }}>
             <label style={{ ...uiPatterns.searchField, width: 'min(620px, 100%)', height: 36 }} onClick={(event) => event.stopPropagation()}>
               <Search size={14} style={{ color: 'var(--text-faint)' }} />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter selected windows by tab title, domain, or URL…" aria-label="Filter live browser tabs" style={{ minWidth: 0, flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />

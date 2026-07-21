@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, Clock, ExternalLink, Folder, Layers3, Maximize2, Plus, Search, Star, Trash2, Workflow } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Clock, ExternalLink, Folder, Layers3, Maximize2, Plus, Search, Star, Trash2, Workflow } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
@@ -312,7 +312,12 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
         {onOpenTrash && <button className="ui-button ui-button--secondary" type="button" onClick={onOpenTrash} style={secondaryButtonStyle}><Trash2 size={11} /> Trash</button>}
       </div>
 
-      <div className="ui-working-canvas" data-all-library-working-canvas style={{ height: 460, minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}>
+      <div
+        className="ui-working-canvas ui-adaptive-browser"
+        data-all-library-working-canvas
+        data-detail-open={activeSelectedTab || previewItem ? 'true' : 'false'}
+        style={{ height: 460, minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}
+      >
         {activeView === 'workspace' ? <div className="scrollbar" style={{ minWidth: 0, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {visibleGroups.length === 0 ? (
             <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 24, border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-faint)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>
@@ -353,6 +358,14 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
               {activeView === 'workspace' ? 'Workspace entry' : 'Item details'}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                className="ui-button ui-button--secondary ui-adaptive-detail-back"
+                type="button"
+                onClick={onClearSelection}
+                style={secondaryButtonStyle}
+              >
+                <ArrowLeft size={12} /> Browse
+              </button>
               {activeSelectedTab ? (
                 <button type="button" onClick={() => onFocusTab(activeSelectedTab)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
               ) : previewItem && !previewInGlobalWorkspace ? (

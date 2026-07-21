@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Globe2, Layers3, Link2, Maximize2, MoveRight, Pin, Plus, Save, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Globe2, Layers3, Link2, Maximize2, MoveRight, Pin, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemFavoriteButton } from './ItemFavoriteButton';
@@ -372,6 +372,11 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     if (item) selectProjectItem(item);
   };
 
+  const clearDetailSelection = () => {
+    setSelectedItemId(null);
+    setSelectedSessionTabId(null);
+  };
+
   const detailPanel = (
     <section className="ui-panel ui-detail-panel" style={panelStyle} aria-label="Selected project content">
       {selectedItem ? (
@@ -379,6 +384,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           <div className="ui-detail-panel__header" style={panelHeaderStyle}>
             <span style={detailLabelStyle}>Item</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={clearDetailSelection} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
               {selectedItemSessionTab && <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={secondaryButtonStyle}><Maximize2 size={12} /> Focus</button>}
               {workspaceDestinations.length > 1 ? (
                 <>
@@ -413,7 +419,10 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         <>
           <div className="ui-detail-panel__header" style={panelHeaderStyle}>
             <span style={detailLabelStyle}>Workspace entry</span>
-            <button type="button" onClick={() => onFocusSession(selectedSessionTab.id)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={clearDetailSelection} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
+              <button type="button" onClick={() => onFocusSession(selectedSessionTab.id)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
+            </div>
           </div>
           {transferEntryId === selectedSessionTab.id && transferDestinations.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 8, borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
@@ -656,7 +665,12 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </label>
           )}
         </div>)}
-        <div className="ui-working-canvas" data-project-working-canvas style={{ flex: 1, minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}>
+        <div
+          className="ui-working-canvas ui-adaptive-browser"
+          data-project-working-canvas
+          data-detail-open={selectedItem || selectedSessionTab ? 'true' : 'false'}
+          style={{ flex: 1, minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}
+        >
           <ContentBrowser
             title={browseTitle}
             entries={browseEntries}

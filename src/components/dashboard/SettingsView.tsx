@@ -310,23 +310,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   return (
     <div
-      className="settings-view"
+      className="settings-view ui-page-frame"
       style={{
+        ...uiPatterns.pageFrame,
+        height: 'auto',
+        minHeight: '100%',
         width: '100%',
         maxWidth: 1080,
-        paddingBottom: 'max(5rem, env(safe-area-inset-bottom))',
-        display: 'flex',
-        flexDirection: 'column',
+        margin: '0 auto',
+        paddingBottom: 'var(--page-safe-bottom)',
+        overflow: 'visible',
         gap: '1rem',
       }}
     >
-      <div className="ui-page-header">
-        <h1 style={uiPatterns.pageTitle}>
-          Settings
-        </h1>
-        <p style={uiPatterns.pageDescription}>
-          Configure Homebase, AI processing, and how your library is protected.
-        </p>
+      <div className="ui-page-header" style={uiPatterns.pageHeader}>
+        <div>
+          <h1 style={uiPatterns.pageTitle}>
+            Settings
+          </h1>
+          <p style={uiPatterns.pageDescription}>
+            Configure Homebase, AI processing, and how your library is protected.
+          </p>
+        </div>
       </div>
 
       <nav
@@ -455,7 +460,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Configure one default AI provider/model for now. This keeps v1 simple and can fan out by task later.
         </div>
         {aiForm ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(220px, 1fr))', gap: '0.65rem' }}>
+          <div className="ui-responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(220px, 1fr))', gap: '0.65rem' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.82rem', color: 'var(--text)' }}>
               Provider
               <select

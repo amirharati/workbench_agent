@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, FileText, Focus, Library, Link2, Pin, Plus, Search, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, Focus, Library, Link2, Pin, Plus, Search, Trash2, Upload } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { CategoryBrowseFilter, PipelineBrowseFilter } from '../../lib/pipeline';
 import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
@@ -386,7 +386,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
         />
       </div>
 
-      <div className="ui-split-canvas" style={uiPatterns.splitCanvas}>
+      <div className="ui-split-canvas ui-adaptive-browser" data-detail-open={selectedItem ? 'true' : 'false'} style={uiPatterns.splitCanvas}>
         <ContentBrowser
           title={typeFilter === 'links' ? 'Saved links' : typeFilter === 'notes' ? 'Notes' : 'All items'}
           entries={browseEntries}
@@ -407,6 +407,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
                   {workspaceNotice && <span role="status" style={{ display: 'block', marginTop: 2, color: 'var(--accent)', fontSize: 'var(--text-xs)' }}>{workspaceNotice}</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={() => setSelectedItemId(null)} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
                   <select value={workspaceKey} onChange={(event) => { setWorkspaceKey(event.target.value); setWorkspaceNotice(null); }} aria-label={`Workspace for ${selectedItem.title || 'item'}`} style={destinationSelectStyle}>
                     {destinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
                   </select>

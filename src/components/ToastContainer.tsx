@@ -63,7 +63,7 @@ const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismiss }) =>
     <div
       style={{
         position: 'fixed',
-        bottom: 16,
+        bottom: 'calc(var(--browser-footer-safe-clearance) + 16px)',
         right: 16,
         display: 'flex',
         flexDirection: 'column',

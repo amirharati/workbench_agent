@@ -989,7 +989,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           {error}
         </div>
       ) : null}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(270px, 0.38fr)', gap: 12, alignItems: 'start' }}>
+      <div className="ui-responsive-sidecar" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(270px, 0.38fr)', gap: 12, alignItems: 'start' }}>
         <div style={{ minWidth: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--bg)' }}>
           <div style={{ display: 'flex', gap: 7, alignItems: 'center', padding: 8, borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
             <input
@@ -1036,7 +1036,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
             })}
           </div>
         </div>
-        <div style={{ ...sectionStyle, padding: 12, background: 'var(--bg-panel)', position: 'sticky', top: 0 }}>
+        <div className="ui-responsive-sidecar__aside" style={{ ...sectionStyle, padding: 12, background: 'var(--bg-panel)', position: 'sticky', top: 0 }}>
           {renderDestinationControls()}
           <div style={{ height: 1, background: 'var(--border)' }} />
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>

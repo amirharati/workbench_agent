@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, FolderKanban, Layers3, MonitorUp, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ExternalLink, FolderKanban, Layers3, MonitorUp, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
 import type { Item, Project, Workspace } from '../../lib/db';
 import { deleteWorkspace, updateWorkspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, SavedWorkspaceSession } from './GlobalTabSystem';
@@ -136,6 +136,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [workspacePrompt, setWorkspacePrompt] = useState<WorkspacePrompt | null>(null);
   const [workspaceDelete, setWorkspaceDelete] = useState<WorkspaceDelete | null>(null);
+  const didInitializeSelectionRef = useRef(false);
 
   const rows = useMemo<ManagedWorkspaceRow[]>(() => {
     const projectRows = projectWorkspaceRows(projects, homeState);
@@ -172,7 +173,12 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
 
   useEffect(() => {
     if (selectedKey && rows.some((row) => row.key === selectedKey)) return;
-    setSelectedKey(rows[0]?.key ?? null);
+    if (!didInitializeSelectionRef.current) {
+      didInitializeSelectionRef.current = true;
+      setSelectedKey(rows[0]?.key ?? null);
+      return;
+    }
+    if (selectedKey) setSelectedKey(rows[0]?.key ?? null);
   }, [rows, selectedKey]);
 
   useEffect(() => {
@@ -353,7 +359,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
         <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{rows.length} workspace{rows.length !== 1 ? 's' : ''}</span>
       </div>
 
-      <div className="ui-split-canvas" style={uiPatterns.splitCanvas}>
+      <div className="ui-split-canvas ui-adaptive-browser" data-detail-open={selected ? 'true' : 'false'} style={uiPatterns.splitCanvas}>
         <section className="ui-panel" style={panelStyle} aria-label="Saved workspaces">
           <div style={panelHeaderStyle}><strong style={{ fontSize: 'var(--text-sm)' }}>Saved work</strong></div>
           <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
@@ -380,6 +386,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
               <div style={panelHeaderStyle}>
                 <div><strong style={{ display: 'block', fontSize: 'var(--text-sm)' }}>{selected.name}</strong><span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{projects.find((project) => project.id === selected.projectId)?.name} · {selected.live ? 'Active now' : 'Project workspace'}</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={() => setSelectedKey(null)} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
                   {!selected.live && <button type="button" onClick={() => renameProjectWorkspace(selected)} style={iconButtonStyle} title="Rename workspace"><Pencil size={12} /></button>}
                   {!selected.live && <button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => removeProjectWorkspace(selected)} style={{ ...iconButtonStyle, color: 'var(--danger)' }} title="Delete workspace"><Trash2 size={12} /></button>}
                   <button type="button" disabled={projectTabUrls(selected.tabs).length === 0} onClick={() => openProjectWorkspaceLinks(selected)} style={secondaryButtonStyle}><ExternalLink size={12} /> Open links</button>
@@ -394,7 +401,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
             <>
               <div style={panelHeaderStyle}>
                 <div><strong style={{ display: 'block', fontSize: 'var(--text-sm)' }}>{selected.name}</strong><span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Browser snapshot · {selected.workspace.windows.length} window{selected.workspace.windows.length !== 1 ? 's' : ''}</span></div>
-                  <div style={{ display: 'flex', gap: 6 }}><button className="ui-button ui-button--icon" type="button" onClick={() => renameBrowserWorkspace(selected.workspace)} style={iconButtonStyle} title="Rename snapshot"><Pencil size={12} /></button><button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => removeBrowserWorkspace(selected.workspace)} style={{ ...iconButtonStyle, color: 'var(--danger)' }} title="Delete snapshot"><Trash2 size={12} /></button><button className="ui-button ui-button--primary" type="button" onClick={() => void restoreBrowserSnapshot(selected.workspace)} style={primaryButtonStyle}><MonitorUp size={12} /> Restore windows</button></div>
+                  <div style={{ display: 'flex', gap: 6 }}><button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={() => setSelectedKey(null)} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button><button className="ui-button ui-button--icon" type="button" onClick={() => renameBrowserWorkspace(selected.workspace)} style={iconButtonStyle} title="Rename snapshot"><Pencil size={12} /></button><button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => removeBrowserWorkspace(selected.workspace)} style={{ ...iconButtonStyle, color: 'var(--danger)' }} title="Delete snapshot"><Trash2 size={12} /></button><button className="ui-button ui-button--primary" type="button" onClick={() => void restoreBrowserSnapshot(selected.workspace)} style={primaryButtonStyle}><MonitorUp size={12} /> Restore windows</button></div>
               </div>
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>

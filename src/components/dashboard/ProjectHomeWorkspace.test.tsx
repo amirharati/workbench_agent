@@ -88,9 +88,11 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup).toContain('Collection 5');
     expect(markup).toContain('Pinned <span');
     expect(markup).toContain(
-      'padding:var(--space-lg) var(--page-gutter) var(--page-bottom-clearance)'
+      'padding:var(--space-lg) var(--page-gutter) var(--page-safe-bottom)'
     );
     expect(markup).toContain('data-project-working-canvas="true"');
+    expect(markup).toContain('ui-adaptive-browser');
+    expect(markup).toContain('data-detail-open="false"');
     expect(markup).toContain('aria-label="Project material"');
     expect(markup).toContain('aria-label="Gallery view"');
     expect(markup).toContain('All project items');
@@ -166,6 +168,8 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
 
     expect(markup).toContain('aria-current="true"');
     expect(markup).toContain('Pinned item 0');
+    expect(markup).toContain('data-detail-open="true"');
+    expect(markup).toContain('ui-adaptive-detail-back');
     expect(markup).not.toContain('Select something to work with');
   });
 

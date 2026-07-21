@@ -83,6 +83,9 @@ describe('AllLibraryWorkspaceOverview', () => {
     expect(markup).toContain('Focus');
     expect(markup).not.toContain('overflow-x:auto');
     expect(markup).toContain('data-all-library-working-canvas="true"');
+    expect(markup).toContain('ui-adaptive-browser');
+    expect(markup).toContain('data-detail-open="true"');
+    expect(markup).toContain('ui-adaptive-detail-back');
     expect(markup).toContain('overflow-y:auto');
   });
 

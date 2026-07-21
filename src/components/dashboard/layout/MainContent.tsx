@@ -2416,10 +2416,12 @@ export const MainContent: React.FC<MainContentProps> = ({
 
   return (
     <div style={{ 
-      height: '100%', 
+      flex: 1,
+      minHeight: 0,
       width: '100%', 
       display: 'flex', 
-      flexDirection: 'column' 
+      flexDirection: 'column',
+      overflow: 'hidden',
     }}>
       {/* Wrapper header is only shown for views that don't render their own header. */}
       {!(activeView === 'projects' && selectedProjectId !== null) &&

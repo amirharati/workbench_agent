@@ -1719,7 +1719,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
       {/* Review canvas */}
       <div
+        className="ui-responsive-inspector-canvas"
         data-enrichment-review-canvas
+        data-detail-open={activeInspectRow ? 'true' : 'false'}
         style={{
           display: 'grid',
           gridTemplateColumns: activeInspectRow

@@ -10,6 +10,7 @@ interface TrashViewProps {
 export const TrashView: React.FC<TrashViewProps> = ({ onOpenItem }) => {
   return (
     <div
+      className="ui-page-frame"
       style={{
         flex: 1,
         minHeight: 0,
