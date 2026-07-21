@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Loader2, RefreshCw, Sparkles, Tags, AlertTriangle } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Tags } from 'lucide-react';
 import {
   type PipelineMaintenanceSnapshot,
 } from '../../lib/pipeline/pipelineMaintenanceSnapshot';
 import { DiscoverConfigModal, type DiscoverInputScope, type DiscoverConfigPlan } from './DiscoverConfigModal';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 export type PipelineMaintenanceStripProps = {
   snapshot: PipelineMaintenanceSnapshot | null;
@@ -84,83 +85,18 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
       ) : null}
 
       {reclassifyConfirmOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 'var(--layer-modal-raised)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            background: 'rgba(0,0,0,0.45)',
-            boxSizing: 'border-box',
+        <HubActionConfirmModal
+          title="Reclassify entire scope?"
+          description={`Re-run topic classification AI on ${discoverConfigPlan?.counts.all ?? 0} bookmarks in ${scopeLabel}, including bookmarks that already have a specific topic.`}
+          warning="This is intended after a significant taxonomy change and may consume many paid API calls."
+          confirmLabel="Start reclassify"
+          confirmVariant="warn"
+          onCancel={() => setReclassifyConfirmOpen(false)}
+          onConfirm={() => {
+            onReclassifyAll?.();
+            setReclassifyConfirmOpen(false);
           }}
-          onClick={() => setReclassifyConfirmOpen(false)}
-        >
-          <div
-            style={{
-              width: '100%',
-              maxWidth: 420,
-              background: 'var(--bg-panel)',
-              color: 'var(--text)',
-              borderRadius: 12,
-              border: '1px solid var(--border)',
-              boxShadow: 'var(--shadow-lg)',
-              padding: '20px',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: '0 0 12px', fontSize: 'var(--text-base)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <AlertTriangle size={18} color="var(--er-warn, #d29922)" />
-              Reclassify Entire Scope?
-            </h3>
-            <p style={{ margin: '0 0 16px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              This will re-run the topic classification AI on <strong>{discoverConfigPlan?.counts.all} bookmarks</strong> in the current scope ({scopeLabel}) that have already been digested or classified, even if they already have a specific topic.
-            </p>
-            <p style={{ margin: '0 0 20px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              This is useful if you have significantly changed your taxonomy and want to apply it everywhere. It may consume a large number of API calls.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setReclassifyConfirmOpen(false)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: 'var(--text-sm)',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onReclassifyAll?.();
-                  setReclassifyConfirmOpen(false);
-                }}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  background: 'var(--er-warn, #d29922)',
-                  color: '#fff',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Start Reclassify
-              </button>
-            </div>
-          </div>
-        </div>
+        />
       ) : null}
 
       <div

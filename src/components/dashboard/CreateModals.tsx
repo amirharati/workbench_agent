@@ -1,114 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
 import type { Collection, Project } from '../../lib/db';
-import { Input, ButtonGhost } from '../../styles/primitives';
+import { Input, ButtonGhost, ButtonPrimary } from '../../styles/primitives';
 import { isValidBookmarkUrl } from '../../lib/utils';
 import { uiPatterns } from '../../styles/uiPatterns';
-
-const MODAL_Z = 2147483647;
+import { DialogShell } from './DialogShell';
 
 const labelStyle: React.CSSProperties = uiPatterns.fieldLabel;
 
 const fieldStyle: React.CSSProperties = uiPatterns.fieldInput;
-
-interface ModalShellProps {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-  footer?: React.ReactNode;
-}
-
-const ModalShell: React.FC<ModalShellProps> = ({ title, onClose, children, footer }) => {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      role="presentation"
-      style={{
-        ...uiPatterns.modalBackdrop,
-        zIndex: MODAL_Z,
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        style={{
-          ...uiPatterns.dialog,
-          maxWidth: 460,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0.75rem 1rem',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg-glass)',
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{title}</div>
-          <ButtonGhost
-            type="button"
-            onClick={onClose}
-            style={{ padding: '2px 6px', height: 24 }}
-            title="Close"
-          >
-            <X size={14} />
-          </ButtonGhost>
-        </div>
-        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {children}
-        </div>
-        {footer ? (
-          <div
-            style={{
-              padding: '0.75rem 1rem',
-              borderTop: '1px solid var(--border)',
-              display: 'flex',
-              gap: '0.5rem',
-              justifyContent: 'flex-end',
-              background: 'var(--bg-glass)',
-            }}
-          >
-            {footer}
-          </div>
-        ) : null}
-      </div>
-    </div>,
-    document.body
-  );
-};
-
-const PrimaryButton: React.FC<
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }
-> = ({ active = true, style, children, ...rest }) => (
-  <button
-    type="button"
-    {...rest}
-    style={{
-      ...uiPatterns.primaryButton,
-      background: active ? 'var(--accent-solid, var(--accent))' : 'var(--bg-glass)',
-      color: active ? 'var(--accent-text, #fff)' : 'var(--text-muted)',
-      cursor: active ? 'pointer' : 'not-allowed',
-      ...style,
-    }}
-  >
-    {children}
-  </button>
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // New Project
@@ -148,25 +47,25 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ open, onClose,
   };
 
   return (
-    <ModalShell
+    <DialogShell
       title="New project"
+      description="Create a durable home for related collections, material, and workspaces."
       onClose={onClose}
       footer={
         <>
           <ButtonGhost type="button" onClick={onClose}>
             Cancel
           </ButtonGhost>
-          <PrimaryButton
-            active={!!name.trim() && !submitting}
+          <ButtonPrimary
             disabled={!name.trim() || submitting}
             onClick={submit}
           >
             {submitting ? 'Creating…' : 'Create'}
-          </PrimaryButton>
+          </ButtonPrimary>
         </>
       }
     >
-      <div>
+      <div className="ui-form__group">
         <label style={labelStyle} htmlFor="new-project-name">
           Name
         </label>
@@ -181,11 +80,12 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ open, onClose,
           }}
         />
       </div>
-      <div>
+      <div className="ui-form__group">
         <label style={labelStyle} htmlFor="new-project-desc">
           Description (optional)
         </label>
         <textarea
+          className="ui-field"
           id="new-project-desc"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -194,7 +94,7 @@ export const NewProjectModal: React.FC<NewProjectModalProps> = ({ open, onClose,
           style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.4 }}
         />
       </div>
-    </ModalShell>
+    </DialogShell>
   );
 };
 
@@ -253,21 +153,22 @@ export const NewCollectionModal: React.FC<NewCollectionModalProps> = ({
   };
 
   return (
-    <ModalShell
+    <DialogShell
       title="New collection"
+      description="Create a focused section inside a project."
       onClose={onClose}
       footer={
         <>
           <ButtonGhost type="button" onClick={onClose}>
             Cancel
           </ButtonGhost>
-          <PrimaryButton active={canSubmit} disabled={!canSubmit} onClick={submit}>
+          <ButtonPrimary disabled={!canSubmit} onClick={submit}>
             {submitting ? 'Creating…' : 'Create'}
-          </PrimaryButton>
+          </ButtonPrimary>
         </>
       }
     >
-      <div>
+      <div className="ui-form__group">
         <label style={labelStyle} htmlFor="new-collection-name">
           Name
         </label>
@@ -282,11 +183,12 @@ export const NewCollectionModal: React.FC<NewCollectionModalProps> = ({
           }}
         />
       </div>
-      <div>
+      <div className="ui-form__group">
         <label style={labelStyle} htmlFor="new-collection-project">
           Project
         </label>
         <select
+          className="ui-field"
           id="new-collection-project"
           value={projectId}
           onChange={(e) => setProjectId(e.target.value)}
@@ -300,7 +202,7 @@ export const NewCollectionModal: React.FC<NewCollectionModalProps> = ({
           ))}
         </select>
       </div>
-    </ModalShell>
+    </DialogShell>
   );
 };
 
@@ -488,24 +390,26 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   const titleText = kind === 'note' ? 'New note' : 'Add bookmark';
   const urlHelp =
-    kind === 'note' ? 'Optional. Add a URL if this note refers to a page.' : 'Required for bookmarks; leave empty to save as a note.';
+    kind === 'note' ? 'Optional. Add a URL if this note refers to a page.' : 'Add a URL for a bookmark, or leave it empty to create a note instead.';
 
   return (
-    <ModalShell
+    <DialogShell
       title={titleText}
+      description={kind === 'note' ? 'Capture an idea and organize it now or refine it later.' : 'Save a useful page and choose where it belongs.'}
       onClose={onClose}
+      maxWidth={520}
       footer={
         <>
           <ButtonGhost type="button" onClick={onClose}>
             Cancel
           </ButtonGhost>
-          <PrimaryButton active={canSubmit} disabled={!canSubmit} onClick={submit}>
+          <ButtonPrimary disabled={!canSubmit} onClick={submit}>
             {submitting ? 'Creating…' : 'Create'}
-          </PrimaryButton>
+          </ButtonPrimary>
         </>
       }
     >
-      <div>
+      <div className="ui-form__group">
         <label style={labelStyle} htmlFor="new-item-title">
           Title
         </label>
@@ -522,7 +426,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
       </div>
 
       {kind === 'bookmark' && (
-        <div>
+        <div className="ui-form__group">
           <label style={labelStyle} htmlFor="new-item-url">
             URL
           </label>
@@ -533,17 +437,18 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com"
           />
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}>
+          <div className="ui-form__help">
             {urlHelp}
           </div>
         </div>
       )}
 
-      <div>
+      <div className="ui-form__group">
         <label style={labelStyle} htmlFor="new-item-notes">
           {kind === 'note' ? 'Content' : 'Notes (optional)'}
         </label>
         <textarea
+          className="ui-field"
           id="new-item-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -554,7 +459,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
       </div>
 
       {kind === 'note' && (
-        <div>
+        <div className="ui-form__group">
           <label style={labelStyle} htmlFor="new-item-url-note">
             URL (optional)
           </label>
@@ -565,37 +470,30 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com"
           />
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}>
+          <div className="ui-form__help">
             {urlHelp}
           </div>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+      <div className="ui-form__grid">
+        <div className="ui-form__group">
+          <div className="ui-form__label-row">
             <label style={{ ...labelStyle, marginBottom: 0 }} htmlFor="new-item-project">
               Project
             </label>
             {onCreateProject && (
               <button
+                className="ui-button ui-button--secondary ui-button--compact"
                 type="button"
                 onClick={() => setShowNewProjectInline((v) => !v)}
-                style={{
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-glass)',
-                  color: 'var(--text)',
-                  borderRadius: 6,
-                  padding: '2px 6px',
-                  fontSize: 'var(--text-xs)',
-                  cursor: 'pointer',
-                }}
               >
                 + New
               </button>
             )}
           </div>
           <select
+            className="ui-field"
             id="new-item-project"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
@@ -610,64 +508,45 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
             ))}
           </select>
           {showNewProjectInline && onCreateProject && (
-            <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+            <div className="ui-form__inline-create">
               <input
+                className="ui-field"
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
                 placeholder="Project name"
-                style={{
-                  ...fieldStyle,
-                  padding: '0.35rem 0.5rem',
-                  fontSize: 'var(--text-xs)',
-                }}
+                style={fieldStyle}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void createProjectInline();
                 }}
               />
               <button
+                className="ui-button ui-button--primary ui-button--compact"
                 type="button"
                 onClick={() => void createProjectInline()}
                 disabled={!newProjectName.trim() || creatingProject}
-                style={{
-                  border: 'none',
-                  background: 'var(--accent)',
-                  color: 'var(--accent-text, #fff)',
-                  borderRadius: 6,
-                  padding: '0 8px',
-                  fontSize: 'var(--text-xs)',
-                  cursor: !newProjectName.trim() || creatingProject ? 'not-allowed' : 'pointer',
-                  opacity: !newProjectName.trim() || creatingProject ? 0.6 : 1,
-                }}
               >
                 {creatingProject ? '…' : 'Add'}
               </button>
             </div>
           )}
         </div>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+        <div className="ui-form__group">
+          <div className="ui-form__label-row">
             <label style={{ ...labelStyle, marginBottom: 0 }} htmlFor="new-item-collection">
               Collection
             </label>
             {onCreateCollection && !selectedProjectIsInbox && (
               <button
+                className="ui-button ui-button--secondary ui-button--compact"
                 type="button"
                 onClick={() => setShowNewCollectionInline((v) => !v)}
-                style={{
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-glass)',
-                  color: 'var(--text)',
-                  borderRadius: 6,
-                  padding: '2px 6px',
-                  fontSize: 'var(--text-xs)',
-                  cursor: 'pointer',
-                }}
               >
                 + New
               </button>
             )}
           </div>
           <select
+            className="ui-field"
             id="new-item-collection"
             value={collectionId}
             onChange={(e) => setCollectionId(e.target.value)}
@@ -682,37 +561,22 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
             ))}
           </select>
           {showNewCollectionInline && onCreateCollection && !selectedProjectIsInbox && (
-            <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+            <div className="ui-form__inline-create">
               <input
+                className="ui-field"
                 value={newCollectionName}
                 onChange={(e) => setNewCollectionName(e.target.value)}
                 placeholder="Collection name"
-                style={{
-                  ...fieldStyle,
-                  padding: '0.35rem 0.5rem',
-                  fontSize: 'var(--text-xs)',
-                }}
+                style={fieldStyle}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void createCollectionInline();
                 }}
               />
               <button
+                className="ui-button ui-button--primary ui-button--compact"
                 type="button"
                 onClick={() => void createCollectionInline()}
                 disabled={!newCollectionName.trim() || creatingCollection || !projectId}
-                style={{
-                  border: 'none',
-                  background: 'var(--accent)',
-                  color: 'var(--accent-text, #fff)',
-                  borderRadius: 6,
-                  padding: '0 8px',
-                  fontSize: 'var(--text-xs)',
-                  cursor:
-                    !newCollectionName.trim() || creatingCollection || !projectId
-                      ? 'not-allowed'
-                      : 'pointer',
-                  opacity: !newCollectionName.trim() || creatingCollection || !projectId ? 0.6 : 1,
-                }}
               >
                 {creatingCollection ? '…' : 'Add'}
               </button>
@@ -722,19 +586,10 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
       </div>
 
       {error ? (
-        <div
-          style={{
-            padding: '0.5rem 0.65rem',
-            borderRadius: 8,
-            border: '1px solid var(--danger-border)',
-            background: 'rgba(239,68,68,0.12)',
-            color: 'var(--danger)',
-            fontSize: 'var(--text-xs)',
-          }}
-        >
+        <div className="ui-status" data-tone="error" role="alert">
           {error}
         </div>
       ) : null}
-    </ModalShell>
+    </DialogShell>
   );
 };

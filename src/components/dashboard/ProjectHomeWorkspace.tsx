@@ -515,9 +515,10 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           </div>}
         </div>
         {showSaveWorkspace && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginBottom: 9, padding: 9, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)' }}>
+          <div className="ui-inline-form" style={{ marginBottom: 9 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
               <input
+                className="ui-field"
                 autoFocus
                 value={workspaceName}
                 onChange={(event) => { setWorkspaceName(event.target.value); setWorkspaceError(null); }}
@@ -526,12 +527,12 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                 aria-label="Workspace name"
                 style={{ width: '100%', height: 31, padding: '0 9px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-sm)' }}
               />
-              {workspaceError && <div role="alert" style={{ marginTop: 5, color: 'var(--danger)', fontSize: 'var(--text-xs)' }}>{workspaceError}</div>}
+              {workspaceError && <div className="ui-status" data-tone="error" role="alert" style={{ marginTop: 6 }}>{workspaceError}</div>}
             </div>
-            <button type="button" onClick={saveWorkspace} disabled={!workspaceName.trim()} style={{ ...primaryButtonStyle, opacity: workspaceName.trim() ? 1 : 0.5 }}>
+            <button className="ui-button ui-button--primary" type="button" onClick={saveWorkspace} disabled={!workspaceName.trim()} style={{ ...primaryButtonStyle, opacity: workspaceName.trim() ? 1 : 0.5 }}>
               Save
             </button>
-            <button type="button" onClick={() => { setShowSaveWorkspace(false); setWorkspaceName(''); setWorkspaceError(null); }} aria-label="Cancel saving workspace" style={sessionIconButtonStyle}>
+            <button className="ui-button ui-button--icon" type="button" onClick={() => { setShowSaveWorkspace(false); setWorkspaceName(''); setWorkspaceError(null); }} aria-label="Cancel saving workspace" style={sessionIconButtonStyle}>
               <X size={13} />
             </button>
           </div>

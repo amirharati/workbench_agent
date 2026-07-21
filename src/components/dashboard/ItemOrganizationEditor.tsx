@@ -361,6 +361,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
 
   return (
     <div
+      className="ui-organization-editor"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -409,6 +410,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                 </span>
                 {hasWritePath && (
                   <button
+                    className="ui-organization-editor__chip-remove"
                     type="button"
                     title={
                       !canMutate
@@ -452,6 +454,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
           }}
         >
           <div
+            className="ui-organization-editor__destination-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
@@ -466,26 +469,17 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Project</span>
                 {onCreateProject && canMutate ? (
                   <button
+                    className="ui-button ui-button--secondary ui-button--compact"
                     type="button"
                     onClick={() => setShowNewProject((v) => !v)}
                     aria-expanded={showNewProject}
-                    style={{
-                      border: '1px solid var(--accent)',
-                      borderRadius: 999,
-                      background: 'var(--accent-solid, var(--accent))',
-                      color: 'var(--accent-text)',
-                      cursor: 'pointer',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 700,
-                      lineHeight: 1.2,
-                      padding: '2px 7px',
-                    }}
                   >
                     + New
                   </button>
                 ) : null}
               </div>
               <select
+                className="ui-field"
                 value={addProjectId}
                 onChange={(e) => setAddProjectId(e.target.value)}
                 disabled={!canMutate || busy}
@@ -504,26 +498,17 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Collection</span>
                 {onCreateCollection && canMutate && !addProjectIsInbox ? (
                   <button
+                    className="ui-button ui-button--secondary ui-button--compact"
                     type="button"
                     onClick={() => setShowNewCollection((v) => !v)}
                     aria-expanded={showNewCollection}
-                    style={{
-                      border: '1px solid var(--accent)',
-                      borderRadius: 999,
-                      background: 'var(--accent-solid, var(--accent))',
-                      color: 'var(--accent-text)',
-                      cursor: 'pointer',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 700,
-                      lineHeight: 1.2,
-                      padding: '2px 7px',
-                    }}
                   >
                     + New
                   </button>
                 ) : null}
               </div>
               <select
+                className="ui-field"
                 value={addCollectionId}
                 onChange={(e) => setAddCollectionId(e.target.value)}
                 disabled={!canMutate || busy || collectionsForAddProject.length === 0}
@@ -539,6 +524,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
               </select>
             </div>
             <button
+              className="ui-button ui-button--primary"
               type="button"
               onClick={addMembership}
               disabled={!canMutate || busy || !addCollectionId || membershipIds.includes(addCollectionId)}
@@ -572,6 +558,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
           {showNewProject && onCreateProject && canMutate ? (
             <div style={{ display: 'flex', gap: 4 }}>
               <input
+                className="ui-field"
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
                 placeholder="Project name"
@@ -595,6 +582,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                 }}
               />
               <button
+                className="ui-button ui-button--primary ui-button--compact"
                 type="button"
                 onClick={() => void createProjectInline()}
                 disabled={!newProjectName.trim() || creatingProject}
@@ -618,6 +606,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
           {showNewCollection && onCreateCollection && canMutate && !addProjectIsInbox ? (
             <div style={{ display: 'flex', gap: 4 }}>
               <input
+                className="ui-field"
                 value={newCollectionName}
                 onChange={(e) => setNewCollectionName(e.target.value)}
                 placeholder={addProjectId ? 'Collection name' : 'Pick a project first'}
@@ -641,6 +630,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
                 }}
               />
               <button
+                className="ui-button ui-button--primary ui-button--compact"
                 type="button"
                 onClick={() => void createCollectionInline()}
                 disabled={!newCollectionName.trim() || creatingCollection || !addProjectId}
@@ -693,6 +683,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
               </span>
               {hasWritePath && (
                 <button
+                  className="ui-organization-editor__chip-remove"
                   type="button"
                   onClick={() => removeTag(tag)}
                   disabled={!canMutate || busy}
@@ -715,6 +706,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
           ))}
           {hasWritePath && (
             <input
+              className="ui-field"
               type="text"
               value={tagDraft}
               disabled={!canMutate || busy}
@@ -753,9 +745,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
         ) : null}
       </div>
 
-      {error && (
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>{error}</div>
-      )}
+      {error && <div className="ui-status" data-tone="error" role="alert">{error}</div>}
     </div>
   );
 };

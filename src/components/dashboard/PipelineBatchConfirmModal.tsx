@@ -104,43 +104,30 @@ export const PipelineBatchConfirmModal: React.FC<PipelineBatchConfirmModalProps>
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="pipeline-batch-confirm-title"
+      className="ui-dialog-backdrop"
+      role="presentation"
+      data-layer="raised"
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 'var(--layer-modal-raised)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-        background: 'rgba(0,0,0,0.45)',
-        boxSizing: 'border-box',
       }}
-      onClick={onCancel}
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}
     >
       <div
+        className="ui-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pipeline-batch-confirm-title"
+        tabIndex={-1}
         style={{
-          width: '100%',
           maxWidth: 520,
           maxHeight: 'min(85vh, 640px)',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--bg-panel)',
-          color: 'var(--text)',
-          borderRadius: 12,
-          border: '1px solid var(--border)',
-          boxShadow: 'var(--shadow-lg)',
-          overflow: 'hidden',
         }}
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
       >
         <div
+          className="ui-dialog__header"
           style={{
             flexShrink: 0,
-            padding: '18px 20px 12px',
-            borderBottom: '1px solid var(--border)',
+            display: 'block',
           }}
         >
           <div
@@ -164,17 +151,10 @@ export const PipelineBatchConfirmModal: React.FC<PipelineBatchConfirmModalProps>
               {isClassify ? 'Review classify queue' : PIPELINE_QUEUE_LABELS[kind]}
             </h2>
             <button
+              className="ui-button ui-button--icon ui-dialog__close"
               type="button"
               onClick={onCancel}
               aria-label="Close"
-              style={{
-                padding: 4,
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                borderRadius: 4,
-              }}
             >
               <X size={18} />
             </button>
@@ -258,6 +238,7 @@ export const PipelineBatchConfirmModal: React.FC<PipelineBatchConfirmModalProps>
         </div>
 
         <div
+          className="scrollbar"
           style={{
             flex: 1,
             minHeight: 0,
@@ -359,7 +340,7 @@ export const PipelineBatchConfirmModal: React.FC<PipelineBatchConfirmModalProps>
                               display: 'block',
                               marginTop: 4,
                               fontSize: 'var(--text-xs)',
-                              color: '#d29922',
+                              color: 'var(--warning)',
                               lineHeight: 1.4,
                             }}
                           >
@@ -376,45 +357,23 @@ export const PipelineBatchConfirmModal: React.FC<PipelineBatchConfirmModalProps>
         </div>
 
         <div
+          className="ui-dialog__footer"
           style={{
             flexShrink: 0,
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-            padding: '14px 20px',
-            borderTop: '1px solid var(--border)',
           }}
         >
           <button
+            className="ui-button ui-button--secondary"
             type="button"
             onClick={onCancel}
-            style={{
-              padding: '7px 14px',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: 'var(--text)',
-              fontSize: 'var(--text-sm)',
-              cursor: 'pointer',
-            }}
           >
             Cancel
           </button>
           <button
+            className="ui-button ui-button--primary"
             type="button"
             disabled={selectedCount === 0 || loading}
             onClick={() => onConfirm([...selected])}
-            style={{
-              padding: '7px 14px',
-              borderRadius: 'var(--radius-sm)',
-              border: 'none',
-              background:
-                selectedCount === 0 || loading ? 'var(--bg-hover)' : 'var(--accent)',
-              color: selectedCount === 0 || loading ? 'var(--text-muted)' : '#fff',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 600,
-              cursor: selectedCount === 0 || loading ? 'not-allowed' : 'pointer',
-            }}
           >
             {actionLabel} ({isClassify ? selectedRunnable : selectedCount})
           </button>

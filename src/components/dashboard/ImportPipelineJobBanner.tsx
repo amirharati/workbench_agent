@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Loader2, Play, Square, X } from 'lucide-react';
+import { Loader2, Play, Square, X } from 'lucide-react';
 import type { ImportPipelineJob } from '../../lib/pipeline/importPipelineJob';
 import {
   isPipelineRunLockFresh,
@@ -8,6 +8,7 @@ import {
 } from '../../lib/pipeline/pipelineRunLock';
 import { useToast } from '../ToastContainer';
 import { usePipelineProgress } from './PipelineProgressProvider';
+import { DialogShell } from './DialogShell';
 
 export type ImportPipelineJobBannerProps = {
   job: ImportPipelineJob | null;
@@ -138,96 +139,23 @@ export const ImportPipelineJobBanner: React.FC<ImportPipelineJobBannerProps> = (
   return (
     <>
       {dismissOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 'var(--layer-modal-raised)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            background: 'rgba(0,0,0,0.45)',
-            boxSizing: 'border-box',
-          }}
-          onClick={() => !dismissing && setDismissOpen(false)}
+        <DialogShell
+          title="Dismiss pipeline job?"
+          description="Remove the saved checkpoint for this large batch run."
+          onClose={() => { if (!dismissing) setDismissOpen(false); }}
+          maxWidth={430}
+          raised
+          footer={
+            <>
+              <button className="ui-button ui-button--secondary" type="button" disabled={dismissing} onClick={() => setDismissOpen(false)}>Cancel</button>
+              <button className="ui-button ui-button--warning" type="button" disabled={dismissing} onClick={() => void handleDismissConfirm()}>{dismissing ? 'Dismissing…' : 'Dismiss job'}</button>
+            </>
+          }
         >
-          <div
-            style={{
-              width: '100%',
-              maxWidth: 420,
-              background: 'var(--bg-panel)',
-              color: 'var(--text)',
-              borderRadius: 12,
-              border: '1px solid var(--border)',
-              boxShadow: 'var(--shadow-lg)',
-              padding: 20,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3
-              style={{
-                margin: '0 0 12px',
-                fontSize: 'var(--text-base)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <AlertTriangle size={18} color="var(--er-warn, #d29922)" />
-              Dismiss pipeline job?
-            </h3>
-            <p
-              style={{
-                margin: '0 0 20px',
-                fontSize: 'var(--text-sm)',
-                color: 'var(--text-muted)',
-                lineHeight: 1.5,
-              }}
-            >
-              This removes <code>import-pipeline-job.json</code> from your backup folder. You can
-              still run fetch + AI from Import Studio or Enrichment Hub; wave resume will not be
-              available until you start another large batch pipeline run.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                type="button"
-                disabled={dismissing}
-                onClick={() => setDismissOpen(false)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  color: 'var(--text)',
-                  fontSize: 'var(--text-sm)',
-                  cursor: dismissing ? 'wait' : 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={dismissing}
-                onClick={() => void handleDismissConfirm()}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  background: 'var(--er-warn, #d29922)',
-                  color: '#fff',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 600,
-                  cursor: dismissing ? 'wait' : 'pointer',
-                }}
-              >
-                {dismissing ? 'Dismissing…' : 'Dismiss job'}
-              </button>
-            </div>
+          <div className="ui-status" data-tone="warning">
+            This removes <code>import-pipeline-job.json</code> from your backup folder. Fetch and AI remain available from Import Studio or Enrichment Hub, but this wave cannot resume afterward.
           </div>
-        </div>
+        </DialogShell>
       ) : null}
 
       <div

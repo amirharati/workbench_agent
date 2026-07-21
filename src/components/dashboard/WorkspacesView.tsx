@@ -4,6 +4,8 @@ import type { Item, Project, Workspace } from '../../lib/db';
 import { deleteWorkspace, updateWorkspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, SavedWorkspaceSession } from './GlobalTabSystem';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
+import { TextPromptDialog } from './TextPromptDialog';
 import { uiPatterns } from '../../styles/uiPatterns';
 import {
   activateProjectWorkspace,
@@ -41,6 +43,15 @@ type BrowserWorkspaceRow = {
 };
 
 type ManagedWorkspaceRow = ProjectWorkspaceRow | BrowserWorkspaceRow;
+
+type WorkspacePrompt =
+  | { kind: 'create-project'; workspace: Workspace; projectId: string }
+  | { kind: 'rename-project'; row: ProjectWorkspaceRow }
+  | { kind: 'rename-browser'; workspace: Workspace };
+
+type WorkspaceDelete =
+  | { kind: 'project'; row: ProjectWorkspaceRow }
+  | { kind: 'browser'; workspace: Workspace };
 
 interface WorkspacesViewProps {
   projects: Project[];
@@ -123,6 +134,8 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   const [targetProjectId, setTargetProjectId] = useState(projects[0]?.id ?? '');
   const [targetWorkspaceKey, setTargetWorkspaceKey] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
+  const [workspacePrompt, setWorkspacePrompt] = useState<WorkspacePrompt | null>(null);
+  const [workspaceDelete, setWorkspaceDelete] = useState<WorkspaceDelete | null>(null);
 
   const rows = useMemo<ManagedWorkspaceRow[]>(() => {
     const projectRows = projectWorkspaceRows(projects, homeState);
@@ -237,17 +250,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
 
   const createProjectWorkspace = () => {
     if (!selectedBrowser || !targetProjectId) return;
-    const suggested = selectedBrowser.name;
-    const name = window.prompt('Project workspace name', suggested)?.trim();
-    if (!name) return;
-    onHomeStateChange(createProjectWorkspaceFromBrowserSnapshot({
-      state: homeState,
-      workspace: selectedBrowser,
-      items,
-      projectId: targetProjectId,
-      name,
-    }));
-    setNotice(`Created project workspace “${name}”.`);
+    setWorkspacePrompt({ kind: 'create-project', workspace: selectedBrowser, projectId: targetProjectId });
   };
 
   const addToProjectWorkspace = () => {
@@ -265,34 +268,61 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
 
   const renameProjectWorkspace = (row: ProjectWorkspaceRow) => {
     if (!row.session) return;
-    const name = window.prompt('Workspace name', row.name)?.trim();
-    if (!name) return;
-    onHomeStateChange({
-      ...homeState,
-      savedWorkspaceSessions: (homeState.savedWorkspaceSessions ?? []).map((session) =>
-        session.id === row.session!.id ? { ...session, name, updatedAt: Date.now() } : session
-      ),
-    });
+    setWorkspacePrompt({ kind: 'rename-project', row });
   };
 
   const removeProjectWorkspace = (row: ProjectWorkspaceRow) => {
-    if (!row.session || !window.confirm(`Delete project workspace “${row.name}”?`)) return;
-    onHomeStateChange(deleteSavedProjectWorkspace({ state: homeState, sessionId: row.session.id }));
-    setSelectedKey(null);
+    if (!row.session) return;
+    setWorkspaceDelete({ kind: 'project', row });
   };
 
-  const renameBrowserWorkspace = async (workspace: Workspace) => {
-    const name = window.prompt('Browser snapshot name', workspace.name)?.trim();
-    if (!name) return;
-    await updateWorkspace(workspace.id, { name });
-    await onWorkspacesChanged?.();
+  const renameBrowserWorkspace = (workspace: Workspace) => {
+    setWorkspacePrompt({ kind: 'rename-browser', workspace });
   };
 
-  const removeBrowserWorkspace = async (workspace: Workspace) => {
-    if (!window.confirm(`Delete browser snapshot “${workspace.name}”?`)) return;
-    await deleteWorkspace(workspace.id);
+  const removeBrowserWorkspace = (workspace: Workspace) => {
+    setWorkspaceDelete({ kind: 'browser', workspace });
+  };
+
+  const submitWorkspacePrompt = async (name: string) => {
+    if (!workspacePrompt) return;
+    if (workspacePrompt.kind === 'create-project') {
+      onHomeStateChange(createProjectWorkspaceFromBrowserSnapshot({
+        state: homeState,
+        workspace: workspacePrompt.workspace,
+        items,
+        projectId: workspacePrompt.projectId,
+        name,
+      }));
+      setNotice(`Created project workspace “${name}”.`);
+    } else if (workspacePrompt.kind === 'rename-project') {
+      const sessionId = workspacePrompt.row.session?.id;
+      if (!sessionId) return;
+      onHomeStateChange({
+        ...homeState,
+        savedWorkspaceSessions: (homeState.savedWorkspaceSessions ?? []).map((session) =>
+          session.id === sessionId ? { ...session, name, updatedAt: Date.now() } : session
+        ),
+      });
+    } else {
+      await updateWorkspace(workspacePrompt.workspace.id, { name });
+      await onWorkspacesChanged?.();
+    }
+    setWorkspacePrompt(null);
+  };
+
+  const confirmWorkspaceDelete = async () => {
+    if (!workspaceDelete) return;
+    if (workspaceDelete.kind === 'project') {
+      const sessionId = workspaceDelete.row.session?.id;
+      if (!sessionId) return;
+      onHomeStateChange(deleteSavedProjectWorkspace({ state: homeState, sessionId }));
+    } else {
+      await deleteWorkspace(workspaceDelete.workspace.id);
+      await onWorkspacesChanged?.();
+    }
     setSelectedKey(null);
-    await onWorkspacesChanged?.();
+    setWorkspaceDelete(null);
   };
 
   const assignBrowserWorkspaceProject = async (workspace: Workspace, projectId: string) => {
@@ -364,7 +394,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
             <>
               <div style={panelHeaderStyle}>
                 <div><strong style={{ display: 'block', fontSize: 'var(--text-sm)' }}>{selected.name}</strong><span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Browser snapshot · {selected.workspace.windows.length} window{selected.workspace.windows.length !== 1 ? 's' : ''}</span></div>
-                <div style={{ display: 'flex', gap: 6 }}><button className="ui-button ui-button--icon" type="button" onClick={() => void renameBrowserWorkspace(selected.workspace)} style={iconButtonStyle} title="Rename snapshot"><Pencil size={12} /></button><button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => void removeBrowserWorkspace(selected.workspace)} style={{ ...iconButtonStyle, color: 'var(--danger)' }} title="Delete snapshot"><Trash2 size={12} /></button><button className="ui-button ui-button--primary" type="button" onClick={() => void restoreBrowserSnapshot(selected.workspace)} style={primaryButtonStyle}><MonitorUp size={12} /> Restore windows</button></div>
+                  <div style={{ display: 'flex', gap: 6 }}><button className="ui-button ui-button--icon" type="button" onClick={() => renameBrowserWorkspace(selected.workspace)} style={iconButtonStyle} title="Rename snapshot"><Pencil size={12} /></button><button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => removeBrowserWorkspace(selected.workspace)} style={{ ...iconButtonStyle, color: 'var(--danger)' }} title="Delete snapshot"><Trash2 size={12} /></button><button className="ui-button ui-button--primary" type="button" onClick={() => void restoreBrowserSnapshot(selected.workspace)} style={primaryButtonStyle}><MonitorUp size={12} /> Restore windows</button></div>
               </div>
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
@@ -387,6 +417,28 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           )}
         </section>
       </div>
+      {workspacePrompt ? (
+        <TextPromptDialog
+          title={workspacePrompt.kind === 'create-project' ? 'Create project workspace' : workspacePrompt.kind === 'rename-project' ? 'Rename workspace' : 'Rename browser snapshot'}
+          description={workspacePrompt.kind === 'create-project' ? 'Turn this saved browser snapshot into a reusable project working set.' : 'Use a short name that makes this saved context easy to recognize.'}
+          label={workspacePrompt.kind === 'rename-browser' ? 'Snapshot name' : 'Workspace name'}
+          initialValue={workspacePrompt.kind === 'create-project' ? workspacePrompt.workspace.name : workspacePrompt.kind === 'rename-project' ? workspacePrompt.row.name : workspacePrompt.workspace.name}
+          confirmLabel={workspacePrompt.kind === 'create-project' ? 'Create workspace' : 'Save name'}
+          onConfirm={submitWorkspacePrompt}
+          onCancel={() => setWorkspacePrompt(null)}
+        />
+      ) : null}
+      {workspaceDelete ? (
+        <HubActionConfirmModal
+          title={workspaceDelete.kind === 'project' ? 'Delete project workspace?' : 'Delete browser snapshot?'}
+          description={`“${workspaceDelete.kind === 'project' ? workspaceDelete.row.name : workspaceDelete.workspace.name}” will be removed from saved work.`}
+          warning={workspaceDelete.kind === 'project' ? 'This removes the saved working set. It does not delete any library items.' : 'This removes the saved snapshot. It does not close or delete the original browser tabs.'}
+          confirmLabel="Delete"
+          confirmVariant="danger"
+          onConfirm={() => void confirmWorkspaceDelete()}
+          onCancel={() => setWorkspaceDelete(null)}
+        />
+      ) : null}
     </div>
   );
 };

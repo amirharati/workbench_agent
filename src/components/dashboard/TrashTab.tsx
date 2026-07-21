@@ -10,6 +10,7 @@ import {
 } from '../../lib/itemQuickAccess';
 import { QuickAccessItemList } from './QuickAccessItemList';
 import { uiPatterns } from '../../styles/uiPatterns';
+import { DialogShell } from './DialogShell';
 
 const PERMANENT_DELETE_BODY =
   'The bookmark and its enrichment data will be removed. The URL stays on the import block list so Import Studio can skip it later.';
@@ -157,55 +158,25 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
       ) : null}
 
       {pending ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            ...uiPatterns.modalBackdrop,
-            zIndex: 'var(--layer-modal-raised)',
-          }}
-          onClick={() => {
-            if (!busy) setPending(null);
-          }}
+        <DialogShell
+          title={pending.kind === 'permanent'
+            ? `Permanently delete “${pending.item.title || pending.item.url || 'Untitled'}”?`
+            : `Empty trash (${pending.count} item${pending.count === 1 ? '' : 's'})?`}
+          description="This action cannot be undone."
+          onClose={() => { if (!busy) setPending(null); }}
+          maxWidth={430}
+          raised
+          footer={
+            <>
+              <button className="ui-button ui-button--secondary" type="button" disabled={busy} onClick={() => setPending(null)} style={{ ...uiPatterns.secondaryButton, opacity: busy ? 0.7 : 1 }}>Cancel</button>
+              <button className="ui-button ui-button--danger" type="button" disabled={busy} onClick={() => void runPending()} style={{ ...uiPatterns.dangerButton, opacity: busy ? 0.7 : 1 }}>{busy ? 'Deleting…' : pending.kind === 'empty' ? 'Empty trash' : 'Delete permanently'}</button>
+            </>
+          }
         >
-          <div
-            style={{
-              ...uiPatterns.dialog,
-              maxWidth: 420,
-              padding: 20,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: '0 0 10px', fontSize: '1rem', fontWeight: 700 }}>
-              {pending.kind === 'permanent'
-                ? `Permanently delete “${pending.item.title || pending.item.url || 'Untitled'}”?`
-                : `Empty trash (${pending.count} item${pending.count === 1 ? '' : 's'})?`}
-            </h3>
-            <p style={{ margin: '0 0 16px', lineHeight: 1.5, opacity: 0.9, fontSize: '0.9rem' }}>
-              {pending.kind === 'permanent' ? PERMANENT_DELETE_BODY : EMPTY_TRASH_BODY}
-            </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button
-                className="ui-button ui-button--secondary"
-                type="button"
-                disabled={busy}
-                onClick={() => setPending(null)}
-                style={{ ...uiPatterns.secondaryButton, opacity: busy ? 0.7 : 1 }}
-              >
-                Cancel
-              </button>
-              <button
-                className="ui-button ui-button--danger"
-                type="button"
-                disabled={busy}
-                onClick={() => void runPending()}
-                style={{ ...uiPatterns.dangerButton, opacity: busy ? 0.7 : 1 }}
-              >
-                {busy ? 'Deleting…' : pending.kind === 'empty' ? 'Empty trash' : 'Delete permanently'}
-              </button>
-            </div>
+          <div className="ui-status" data-tone="error">
+            {pending.kind === 'permanent' ? PERMANENT_DELETE_BODY : EMPTY_TRASH_BODY}
           </div>
-        </div>
+        </DialogShell>
       ) : null}
     </>
   );
