@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   BookMarked, 
   Layers,
@@ -15,8 +15,10 @@ import {
   HelpCircle,
   Workflow,
 } from 'lucide-react';
-import { DashboardView } from './DashboardLayout';
+import type { DashboardView } from './DashboardLayout';
 import type { Collection, Item, Project } from '../../../lib/db';
+import { DialogShell } from '../DialogShell';
+import { ButtonDanger, ButtonGhost, ButtonPrimary, Input } from '../../../styles/primitives';
 
 interface LeftSidebarProps {
   isCollapsed: boolean;
@@ -105,9 +107,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
   const trashedCount = items.filter((i) => i.deletedAt != null).length;
 
-  const getCollectionItemCounts = (collectionId: string) => {
-    let bookmarks = 0;
-    let notes = 0;
+  const collectionItemCounts = useMemo(() => {
+    const counts = new Map<string, { bookmarks: number; notes: number }>();
     for (const item of items) {
       const rawCollectionIds = (item as unknown as { collectionIds?: unknown }).collectionIds;
       const collectionIds = Array.isArray(rawCollectionIds)
@@ -115,12 +116,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         : typeof rawCollectionIds === 'string'
           ? [rawCollectionIds]
           : [];
-      if (!collectionIds.includes(collectionId)) continue;
-      if (isBookmarkItem(item)) bookmarks += 1;
-      else notes += 1;
+      for (const collectionId of collectionIds) {
+        const current = counts.get(collectionId) ?? { bookmarks: 0, notes: 0 };
+        if (isBookmarkItem(item)) current.bookmarks += 1;
+        else current.notes += 1;
+        counts.set(collectionId, current);
+      }
     }
-    return { bookmarks, notes };
-  };
+    return counts;
+  }, [items]);
 
   const selectedProject = scopeProjectId === 'all' 
     ? null 
@@ -241,93 +245,79 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     setDialogError('');
   };
 
+  const closeDialog = () => {
+    setDialog(null);
+    setDialogName('');
+    setDialogError('');
+  };
+
+  const dialogTitle = dialog?.type === 'create-project'
+    ? 'Create project'
+    : dialog?.type === 'create-collection'
+      ? 'Create collection'
+      : dialog?.type === 'delete-project'
+        ? 'Delete project'
+        : 'Delete collection';
+  const isCreateDialog = dialog?.type === 'create-project' || dialog?.type === 'create-collection';
+  const isDeleteDialog = dialog?.type === 'delete-project' || dialog?.type === 'delete-collection';
+  const existingNames = dialog?.type === 'create-project'
+    ? projects.map((project) => project.name)
+    : dialog?.type === 'create-collection'
+      ? collections
+          .filter(
+            (collection) =>
+              collection.primaryProjectId === dialog.projectId ||
+              (Array.isArray(collection.projectIds) && collection.projectIds.includes(dialog.projectId))
+          )
+          .map((collection) => collection.name)
+      : [];
+  const normalizedDialogName = dialogName.trim().toLowerCase();
+
   return (
-    <div style={{ 
-      display: 'flex', 
-      height: '100%', 
-      flexDirection: 'column',
-      color: 'var(--text)',
-      fontSize: 'var(--text-sm)',
-    }}>
+    <div className="ui-sidebar" data-collapsed={isCollapsed ? 'true' : 'false'}>
       {/* Header */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        padding: '8px 10px',
-        borderBottom: '1px solid var(--border)',
-        height: 36,
-      }}>
+      <div className="ui-sidebar__header">
         {!isCollapsed && (
-          <span style={{ 
-            fontWeight: 600, 
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text)',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}>
+          <span className="ui-sidebar__brand">
             Homebase
           </span>
         )}
-        <button 
+        <button
+          type="button"
+          className="ui-sidebar__icon-button"
           onClick={onToggle}
-          style={{
-            padding: '4px',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--text-muted)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: 4,
-          }}
+          title={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+          aria-label={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
         >
           {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
 
       {/* Main nav area */}
-      <nav style={{ 
-        flex: 1, 
-        padding: '8px',
-        overflowY: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-      }}>
+      <nav className="ui-sidebar__nav scrollbar" aria-label="Primary navigation">
         {/* 1. PROJECT SELECTOR - Simple dropdown */}
         {!isCollapsed && (
-          <div ref={dropdownRef} style={{ position: 'relative' }}>
-            <div style={{ display: 'flex', gap: 6 }}>
+          <div ref={dropdownRef} className="ui-sidebar__scope">
+            <div className="ui-sidebar__scope-controls">
               <button
+                type="button"
+                className="ui-sidebar__project-trigger"
                 onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 10px',
-                  background: 'var(--bg-input)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-sm)',
-                  color: 'var(--text)',
-                }}
+                aria-haspopup="listbox"
+                aria-expanded={projectDropdownOpen}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span className="ui-sidebar__project-label">
                   <Folder size={14} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span className="ui-sidebar__truncate">
                     {selectedProject ? selectedProject.name : 'All Projects'}
                   </span>
                 </span>
-                <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.6 }} />
+                <ChevronDown className="ui-sidebar__project-chevron" size={14} />
               </button>
               {onCreateProject && (
                 <button
                   type="button"
+                  className="ui-sidebar__scope-action"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -335,19 +325,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     setDialogError('');
                     setDialog({ type: 'create-project' });
                   }}
-                  style={{
-                    width: 30,
-                    height: 30,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 6,
-                    border: '1px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                  }}
                   title="Add project"
+                  aria-label="Add project"
                 >
                   <Plus size={14} />
                 </button>
@@ -355,6 +334,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               {onDeleteProject && selectedProject && !selectedProject.isDefault && (
                 <button
                   type="button"
+                  className="ui-sidebar__scope-action ui-sidebar__scope-action--danger"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -365,19 +345,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       projectName: selectedProject.name,
                     });
                   }}
-                  style={{
-                    width: 30,
-                    height: 30,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 6,
-                    border: '1px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--danger)',
-                    cursor: 'pointer',
-                  }}
                   title="Delete selected project"
+                  aria-label={`Delete ${selectedProject.name}`}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -386,72 +355,35 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
             {projectDropdownOpen && (
               <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  marginTop: 4,
-                  background: 'var(--bg-panel)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 6,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  zIndex: 'var(--layer-dropdown)',
-                  maxHeight: 240,
-                  overflowY: 'auto',
-                }}
-                className="scrollbar"
+                className="ui-sidebar__project-menu scrollbar"
+                role="listbox"
+                aria-label="Choose project"
               >
                 <button
+                  type="button"
+                  className="ui-sidebar__project-option"
+                  data-active={scopeProjectId === 'all' ? 'true' : 'false'}
+                  role="option"
+                  aria-selected={scopeProjectId === 'all'}
                   onClick={() => {
                     onSelectProjectScope('all');
                     setProjectDropdownOpen(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    background: scopeProjectId === 'all' ? 'var(--accent-weak)' : 'transparent',
-                    border: 'none',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    fontSize: 'var(--text-sm)',
-                    color: scopeProjectId === 'all' ? 'var(--text)' : 'var(--text-muted)',
                   }}
                 >
                   All Projects
                 </button>
                 {projects.map((project) => (
-                  <div
-                    key={project.id}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      padding: 2,
-                    }}
-                  >
+                  <div key={project.id} className="ui-sidebar__project-option-row">
                     <button
                       type="button"
+                      className="ui-sidebar__project-option"
+                      data-active={scopeProjectId === project.id ? 'true' : 'false'}
+                      role="option"
+                      aria-selected={scopeProjectId === project.id}
                       onClick={() => {
                         onSelectProjectScope(project.id);
                         onSelectCollectionScope('all', project.id);
                         setProjectDropdownOpen(false);
-                      }}
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        padding: '8px 10px',
-                        background: scopeProjectId === project.id ? 'var(--accent-weak)' : 'transparent',
-                        border: 'none',
-                        borderRadius: 4,
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        fontSize: 'var(--text-sm)',
-                        color: scopeProjectId === project.id ? 'var(--text)' : 'var(--text-muted)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
                       }}
                     >
                       {project.name}
@@ -459,6 +391,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     {onDeleteProject && !project.isDefault && (
                       <button
                         type="button"
+                        className="ui-sidebar__row-action ui-sidebar__row-action--danger"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -469,20 +402,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                             projectName: project.name,
                           });
                         }}
-                        style={{
-                          width: 24,
-                          height: 24,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: 4,
-                          border: '1px solid transparent',
-                          background: 'transparent',
-                          color: 'var(--danger)',
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                        }}
                         title={`Delete ${project.name}`}
+                        aria-label={`Delete ${project.name}`}
                       >
                         <Trash2 size={12} />
                       </button>
@@ -496,24 +417,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
         {/* 2. COLLECTIONS - Only show when a project is selected */}
         {!isCollapsed && scopeProjectId !== 'all' && (
-          <div>
-            <div
-              style={{
-                padding: '4px 4px 6px 4px',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                color: 'var(--text-faint)',
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
+          <section className="ui-sidebar__section" aria-labelledby="sidebar-collections-heading">
+            <div className="ui-sidebar__section-heading" id="sidebar-collections-heading">
               <span>Collections</span>
               {onCreateCollection && !scopeProjectIsInbox && (
                 <button
                   type="button"
+                  className="ui-sidebar__section-action"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -522,84 +432,46 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     setDialogError('');
                     setDialog({ type: 'create-collection', projectId: scopeProjectId });
                   }}
-                  style={{
-                    width: 20,
-                    height: 20,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 4,
-                    border: '1px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                  }}
                   title="Add collection"
+                  aria-label="Add collection"
                 >
                   <Plus size={12} />
                 </button>
               )}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div className="ui-sidebar__link-list">
               <button
+                type="button"
+                className="ui-sidebar__nav-item"
+                data-active={scopeCollectionId === 'all' ? 'true' : 'false'}
+                aria-current={scopeCollectionId === 'all' ? 'page' : undefined}
                 onClick={() => onSelectCollectionScope('all', scopeProjectId)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '6px 8px',
-                  background: scopeCollectionId === 'all' ? 'var(--accent-weak)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-sm)',
-                  color: scopeCollectionId === 'all' ? 'var(--text)' : 'var(--text-muted)',
-                }}
               >
                 All
               </button>
               {projectCollections.map((collection) => {
-                const counts = getCollectionItemCounts(collection.id);
+                const counts = collectionItemCounts.get(collection.id) ?? { bookmarks: 0, notes: 0 };
                 const isSelected = scopeCollectionId === collection.id;
                 return (
-                  <div
-                    key={collection.id}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                  >
+                  <div key={collection.id} className="ui-sidebar__nav-row">
                     <button
                       type="button"
+                      className="ui-sidebar__nav-item"
+                      data-active={isSelected ? 'true' : 'false'}
+                      aria-current={isSelected ? 'page' : undefined}
                       onClick={() => onSelectCollectionScope(collection.id, scopeProjectId)}
-                      style={{
-                      flex: 1,
-                      minWidth: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '6px 8px',
-                      background: isSelected ? 'var(--accent-weak)' : 'transparent',
-                      border: 'none',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      fontSize: 'var(--text-sm)',
-                      color: isSelected ? 'var(--text)' : 'var(--text-muted)',
-                    }}
                   >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
+                    <span className="ui-sidebar__nav-label">
                       {collection.name}
                     </span>
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>
+                    <span className="ui-sidebar__count">
                       {counts.bookmarks + counts.notes}
                     </span>
                     </button>
                     {onDeleteCollection && !collection.isDefault && (
                       <button
                         type="button"
+                        className="ui-sidebar__row-action ui-sidebar__row-action--danger"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -610,21 +482,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                             collectionName: collection.name,
                           });
                         }}
-                        style={{
-                          width: 18,
-                          height: 18,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: 3,
-                          border: '1px solid transparent',
-                          background: 'transparent',
-                          color: 'var(--danger)',
-                          opacity: 0.8,
-                          flexShrink: 0,
-                          cursor: 'pointer',
-                        }}
                         title="Delete collection"
+                        aria-label={`Delete ${collection.name}`}
                       >
                         <Trash2 size={12} />
                       </button>
@@ -633,40 +492,28 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 );
               })}
             </div>
-          </div>
+          </section>
         )}
 
         {/* Divider before nav sections */}
-        {!isCollapsed && <div style={{ borderTop: '1px solid var(--border)' }} />}
+        {!isCollapsed && <div className="ui-sidebar__divider" />}
 
         {/* Home nav item */}
         {(() => {
           const isActive = activeView === 'home';
           return (
             <button
+              type="button"
+              className="ui-sidebar__nav-item"
+              data-active={isActive ? 'true' : 'false'}
+              data-collapsed={isCollapsed ? 'true' : 'false'}
+              aria-current={isActive ? 'page' : undefined}
               onClick={() => onSelectView('home')}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: isCollapsed ? 'center' : 'flex-start',
-                padding: isCollapsed ? '8px' : '6px 8px',
-                height: 30,
-                borderRadius: 4,
-                background: isActive ? 'var(--accent-weak)' : 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 'var(--text-sm)',
-                fontWeight: isActive ? 500 : 400,
-                color: isActive ? 'var(--text)' : 'var(--text-muted)',
-                gap: 8,
-                marginBottom: 4,
-              }}
               title="Home"
             >
               <Home size={16} strokeWidth={isActive ? 2 : 1.5} style={{ flexShrink: 0 }} />
               {!isCollapsed && (
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span className="ui-sidebar__nav-label">
                   Home
                 </span>
               )}
@@ -676,49 +523,29 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
         {/* 3. CONTENT & TOOLS NAV */}
         {navSections.map((section) => (
-          <div key={section.title}>
+          <section className="ui-sidebar__section" key={section.title} aria-label={section.title}>
             {!isCollapsed && (
-              <div
-                style={{
-                  padding: '4px 4px 6px 4px',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--text-faint)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}
-              >
+              <div className="ui-sidebar__section-heading">
                 {section.title}
               </div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div className="ui-sidebar__link-list">
               {section.items.map((item) => {
                 const isActive = activeView === item.id || (item.id === 'bookmarks' && activeView === 'notes');
                 return (
                   <button
                     key={item.id}
+                    type="button"
+                    className="ui-sidebar__nav-item"
+                    data-active={isActive ? 'true' : 'false'}
+                    data-collapsed={isCollapsed ? 'true' : 'false'}
+                    aria-current={isActive ? 'page' : undefined}
                     onClick={() => onSelectView(item.id)}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: isCollapsed ? 'center' : 'flex-start',
-                      padding: isCollapsed ? '8px' : '6px 8px',
-                      height: 30,
-                      borderRadius: 4,
-                      background: isActive ? 'var(--accent-weak)' : 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: 'var(--text-sm)',
-                      fontWeight: isActive ? 500 : 400,
-                      color: isActive ? 'var(--text)' : 'var(--text-muted)',
-                      gap: 8,
-                    }}
                     title={item.label}
                   >
                     <item.icon size={16} strokeWidth={isActive ? 2 : 1.5} style={{ flexShrink: 0 }} />
                     {!isCollapsed && (
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span className="ui-sidebar__nav-label">
                         {item.label}
                       </span>
                     )}
@@ -726,21 +553,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 );
               })}
             </div>
-          </div>
+          </section>
         ))}
       </nav>
 
       {/* Settings, Trash, Help — pinned bottom */}
-      <div
-        style={{
-          flexShrink: 0,
-          padding: 8,
-          borderTop: '1px solid var(--border)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2,
-        }}
-      >
+      <div className="ui-sidebar__footer">
         {(
           [
             { id: 'settings' as DashboardView, label: 'Settings', Icon: Settings },
@@ -753,23 +571,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <button
               key={id}
               type="button"
+              className="ui-sidebar__nav-item"
+              data-active={isActive ? 'true' : 'false'}
+              data-collapsed={isCollapsed ? 'true' : 'false'}
+              aria-current={isActive ? 'page' : undefined}
               onClick={() => onSelectView(id)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: isCollapsed ? 'center' : 'flex-start',
-                padding: isCollapsed ? '8px' : '6px 8px',
-                height: 30,
-                borderRadius: 4,
-                background: isActive ? 'var(--accent-weak)' : 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 'var(--text-sm)',
-                fontWeight: isActive ? 500 : 400,
-                color: isActive ? 'var(--text)' : 'var(--text-muted)',
-                gap: 8,
-              }}
               title={label}
             >
               <Icon
@@ -783,32 +589,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               {!isCollapsed && (
                 <>
                   <span
-                    style={{
-                      flex: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      textAlign: 'left',
-                    }}
+                    className="ui-sidebar__nav-label"
                   >
                     {label}
                   </span>
                   {badge != null && badge > 0 ? (
                     <span
-                      style={{
-                        flexShrink: 0,
-                        minWidth: 18,
-                        padding: '0 5px',
-                        height: 18,
-                        borderRadius: 9,
-                        background: 'var(--danger-weak)',
-                        color: 'var(--danger)',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
+                      className="ui-sidebar__badge ui-sidebar__badge--danger"
                     >
                       {badge > 99 ? '99+' : badge}
                     </span>
@@ -821,191 +608,76 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       </div>
 
       {dialog && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.45)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 'var(--layer-overlay)',
-          }}
-          onClick={() => {
-            setDialog(null);
-            setDialogName('');
-            setDialogError('');
-          }}
+        <DialogShell
+          title={dialogTitle}
+          description={
+            dialog.type === 'create-project'
+              ? 'Projects keep collections, saved workspaces, and working context together.'
+              : dialog.type === 'create-collection'
+                ? 'Collections organize material inside the selected project.'
+                : 'This action cannot be undone.'
+          }
+          onClose={closeDialog}
+          maxWidth={400}
+          footer={(
+            <>
+              <ButtonGhost type="button" onClick={closeDialog}>Cancel</ButtonGhost>
+              {isDeleteDialog ? (
+                <ButtonDanger type="button" onClick={() => void submitDialog()}>Delete</ButtonDanger>
+              ) : (
+                <ButtonPrimary
+                  type="button"
+                  onClick={() => void submitDialog()}
+                  disabled={!dialogName.trim()}
+                >
+                  Create
+                </ButtonPrimary>
+              )}
+            </>
+          )}
         >
-          <div
-            style={{
-              width: '90%',
-              maxWidth: 360,
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              background: 'var(--bg-panel)',
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text)' }}>
-              {dialog.type === 'create-project' && 'Create project'}
-              {dialog.type === 'create-collection' && 'Create collection'}
-              {dialog.type === 'delete-project' && 'Delete project'}
-              {dialog.type === 'delete-collection' && 'Delete collection'}
-            </div>
-            {(dialog.type === 'create-project' || dialog.type === 'create-collection') && (
-              (() => {
-                const existingNames =
-                  dialog.type === 'create-project'
-                    ? projects.map((p) => p.name)
-                    : collections
-                        .filter(
-                          (c) =>
-                            c.primaryProjectId === dialog.projectId ||
-                            (Array.isArray(c.projectIds) && c.projectIds.includes(dialog.projectId))
-                        )
-                        .map((c) => c.name);
-                const normalizedInput = dialogName.trim().toLowerCase();
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                      {dialog.type === 'create-project'
-                        ? 'Enter a unique project name.'
-                        : 'Enter a unique collection name for this project.'}
+          {isCreateDialog ? (
+            <div className="ui-form__group">
+              <label className="ui-form__label" htmlFor="sidebar-dialog-name">
+                {dialog.type === 'create-project' ? 'Project name' : 'Collection name'}
+              </label>
+              <Input
+                id="sidebar-dialog-name"
+                autoFocus
+                type="text"
+                value={dialogName}
+                onChange={(event) => {
+                  setDialogName(event.target.value);
+                  if (dialogError) setDialogError('');
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && dialogName.trim()) void submitDialog();
+                }}
+                placeholder={dialog.type === 'create-project' ? 'Project name' : 'Collection name'}
+              />
+              <div className="ui-sidebar__existing-heading">Existing · {existingNames.length}</div>
+              <div className="ui-sidebar__existing-list scrollbar">
+                {existingNames.length === 0 ? (
+                  <div className="ui-sidebar__existing-empty">No existing names.</div>
+                ) : existingNames.map((name) => {
+                  const duplicate = normalizedDialogName.length > 0 && name.trim().toLowerCase() === normalizedDialogName;
+                  return (
+                    <div key={name} className="ui-sidebar__existing-name" data-duplicate={duplicate ? 'true' : 'false'}>
+                      {name}
                     </div>
-                    <input
-                      autoFocus
-                      type="text"
-                      value={dialogName}
-                      onChange={(e) => {
-                        setDialogName(e.target.value);
-                        if (dialogError) setDialogError('');
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void submitDialog();
-                      }}
-                      placeholder={dialog.type === 'create-project' ? 'Project name' : 'Collection name'}
-                      style={{
-                        width: '100%',
-                        borderRadius: 6,
-                        border: '1px solid var(--border)',
-                        background: 'var(--bg-input)',
-                        color: 'var(--text)',
-                        padding: '8px 10px',
-                        fontSize: 'var(--text-sm)',
-                      }}
-                    />
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
-                      Existing ({existingNames.length})
-                    </div>
-                    <div
-                      className="scrollbar"
-                      style={{
-                        maxHeight: 120,
-                        overflowY: 'auto',
-                        border: '1px solid var(--border)',
-                        borderRadius: 6,
-                        background: 'var(--bg)',
-                        padding: 6,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 4,
-                      }}
-                    >
-                      {existingNames.length === 0 ? (
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', padding: '2px 4px' }}>
-                          No existing names.
-                        </div>
-                      ) : (
-                        existingNames.map((name) => {
-                          const isSame = normalizedInput.length > 0 && name.trim().toLowerCase() === normalizedInput;
-                          return (
-                            <div
-                              key={name}
-                              style={{
-                                fontSize: 'var(--text-xs)',
-                                color: isSame ? 'var(--danger)' : 'var(--text-muted)',
-                                background: isSame ? 'rgba(239,68,68,0.12)' : 'transparent',
-                                borderRadius: 4,
-                                padding: '3px 6px',
-                              }}
-                            >
-                              {name}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                );
-              })()
-            )}
-            {(dialog.type === 'delete-project' || dialog.type === 'delete-collection') && (
-              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                {dialog.type === 'delete-project'
-                  ? `Delete project "${dialog.projectName}"?`
-                  : `Delete collection "${dialog.collectionName}"?`}
+                  );
+                })}
               </div>
-            )}
-            {dialogError && (
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>
-                {dialogError}
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setDialog(null);
-                  setDialogName('');
-                  setDialogError('');
-                }}
-                style={{
-                  borderRadius: 6,
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  color: 'var(--text)',
-                  padding: '6px 12px',
-                  fontSize: 'var(--text-sm)',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void submitDialog()}
-                disabled={
-                  (dialog.type === 'create-project' || dialog.type === 'create-collection') &&
-                  !dialogName.trim()
-                }
-                style={{
-                  borderRadius: 6,
-                  border: 'none',
-                  background:
-                    (dialog.type === 'create-project' || dialog.type === 'create-collection') && !dialogName.trim()
-                      ? 'var(--accent-weak)'
-                      : dialog.type === 'delete-project' || dialog.type === 'delete-collection'
-                        ? 'var(--danger)'
-                        : 'var(--accent)',
-                  color: '#fff',
-                  padding: '6px 12px',
-                  fontSize: 'var(--text-sm)',
-                  cursor:
-                    (dialog.type === 'create-project' || dialog.type === 'create-collection') && !dialogName.trim()
-                      ? 'not-allowed'
-                      : 'pointer',
-                }}
-              >
-                {dialog.type === 'delete-project' || dialog.type === 'delete-collection' ? 'Delete' : 'Create'}
-              </button>
             </div>
-          </div>
-        </div>
+          ) : (
+            <div className="ui-status" data-tone="warning">
+              {dialog.type === 'delete-project'
+                ? `Delete project “${dialog.projectName}”? Its collections will move to Inbox and library items will remain saved.`
+                : `Delete collection “${dialog.collectionName}”? Items will remain saved and move to Incoming if this was their only collection.`}
+            </div>
+          )}
+          {dialogError ? <div className="ui-status" data-tone="error">{dialogError}</div> : null}
+        </DialogShell>
       )}
     </div>
   );

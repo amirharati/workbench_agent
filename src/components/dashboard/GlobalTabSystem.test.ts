@@ -196,7 +196,7 @@ describe('loadGlobalTabState Home workspace state', () => {
       })
     );
 
-    expect(markup).toMatch(/^<div style="height:100%;width:100%;flex:1;/);
+    expect(markup).toMatch(/^<div class="ui-workspace-tabs" style="height:100%;width:100%;flex:1;/);
     expect(markup).toContain('min-height:0;min-width:0');
   });
 
@@ -246,6 +246,27 @@ describe('loadGlobalTabState Home workspace state', () => {
     expect(markup).toContain('Show 1 tabs from other projects');
     expect(markup).toContain('All open · 2');
     expect(markup).toContain('Show all 2 open tabs');
+  });
+
+  it('exposes open work as keyboard-focusable tabs with explicit close actions', () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(GlobalTabSystem, {
+        items: [],
+        collections: [],
+        projects: [],
+        tabState: {
+          tabs: [{ kind: 'search', id: 'search-python', query: 'python' }],
+          activeTabId: 'search-python',
+          bottomLayout: 'tabs',
+          isSidebarCollapsed: false,
+        },
+        onTabStateChange: vi.fn(),
+      })
+    );
+
+    expect(markup).toContain('role="tablist" aria-label="Open work"');
+    expect(markup).toContain('role="tab" tabindex="0" aria-selected="true"');
+    expect(markup).toContain('aria-label="Close Search: python"');
   });
 
   it('includes only global plus current-project entries when strict project Focus opts in', () => {

@@ -1049,24 +1049,12 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const isFullMiddleView = FULL_MIDDLE_VIEWS.has(activeView);
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      height: '100vh', 
-      width: '100vw', 
-      overflow: 'hidden', 
-      background: 'var(--bg)', 
-      color: 'var(--text)',
-      fontFamily: 'var(--font-sans)',
-      fontSize: 'var(--text-base)',
-    }}>
+    <div className="ui-dashboard-shell">
       {/* Left Sidebar */}
-      <div style={{ 
-        width: shellLayout.leftSidebarCollapsed ? '48px' : '200px',
-        flexShrink: 0,
-        borderRight: '1px solid var(--border)',
-        background: 'var(--bg-panel)',
-        transition: 'width 0.2s ease',
-      }}>
+      <div
+        className="ui-dashboard-shell__sidebar"
+        data-collapsed={shellLayout.leftSidebarCollapsed ? 'true' : 'false'}
+      >
         <LeftSidebar 
           isCollapsed={shellLayout.leftSidebarCollapsed} 
           onToggle={handleLeftSidebarToggle}
@@ -1087,10 +1075,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       </div>
 
       {/* Middle + Right Area */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', background: 'var(--bg)' }}>
+      <div className="ui-dashboard-shell__body">
         
         {/* Middle workspace */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+        <main className="ui-dashboard-shell__workspace">
           {backupFolderReady ? (
             <ImportPipelineJobBanner
               job={importPipelineJob.job}
@@ -1103,7 +1091,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
           {isFullPageView ? (
             // Full-page views (Settings, Tab Commander, Workspaces)
-            <div style={{ flex: 1, overflow: 'auto', padding: 12 }} className="scrollbar">
+            <div className="ui-dashboard-shell__full-page scrollbar">
               <MainContent 
                 activeView={activeView} 
                 projects={projects}
@@ -1350,7 +1338,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               </div>
             </div>
           )}
-        </div>
+        </main>
 
         {/* Right Panel */}
         {!isFullPageView && (

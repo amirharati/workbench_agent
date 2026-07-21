@@ -62,111 +62,55 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   return (
     <div
       className={`right-panel${isCollapsed && !hoverExpanded ? ' right-panel-collapsed' : ''}`}
+      data-expanded={showExpanded ? 'true' : 'false'}
       onMouseEnter={() => { if (isCollapsed) setHoverExpanded(true); }}
       onMouseLeave={() => setHoverExpanded(false)}
-      style={{
-        display: 'flex',
-        flexShrink: 0,
-        borderLeft: '1px solid var(--border)',
-        width: showExpanded ? PANEL_WIDTH : 8,
-        overflow: 'hidden',
-        background: 'var(--bg-panel)',
-        minHeight: 0,
-        position: 'relative',
-      }}
+      style={{ width: showExpanded ? PANEL_WIDTH : 8 }}
     >
       {isCollapsed && !hoverExpanded && (
         <button
           onClick={toggle}
           title="Expand panel"
+          aria-label="Expand Inspector panel"
           className="right-panel-handle"
-          style={{
-            width: 8,
-            height: '100%',
-            background: 'none',
-            border: 'none',
-            cursor: 'col-resize',
-            padding: 0,
-            color: 'var(--text-faint)',
-          }}
         >
           <ChevronLeft size={10} />
         </button>
       )}
 
       {showExpanded && (
-        <div
-          style={{
-            width: PANEL_WIDTH,
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: 0,
-            overflow: 'hidden',
-            flex: 1,
-          }}
-        >
+        <div className="right-panel__content" style={{ width: PANEL_WIDTH }}>
           <div
-            style={{
-              display: 'flex',
-              alignItems: 'stretch',
-              borderBottom: '1px solid var(--border)',
-              flexShrink: 0,
-              height: 36,
-            }}
+            className="right-panel__tabs"
+            role="tablist"
+            aria-label="Inspector tools"
           >
             {(['inspector', 'ask'] as RightPanelTab[]).map((tab) => (
               <button
                 key={tab}
+                type="button"
+                className="right-panel__tab"
+                data-active={activeTab === tab ? 'true' : 'false'}
+                role="tab"
+                aria-selected={activeTab === tab}
                 onClick={() => onActiveTabChange(tab)}
-                style={{
-                  flex: 1,
-                  padding: '0 4px',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: activeTab === tab
-                    ? '2px solid var(--accent)'
-                    : '2px solid transparent',
-                  color: activeTab === tab ? 'var(--text)' : 'var(--text-faint)',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: activeTab === tab ? 600 : 400,
-                  cursor: 'pointer',
-                  transition: 'color 150ms ease',
-                }}
               >
                 {tab === 'inspector' ? 'Inspector' : 'Ask'}
               </button>
             ))}
 
             <button
+              type="button"
+              className="right-panel__collapse"
               onClick={toggle}
               title="Collapse panel"
-              style={{
-                background: 'none',
-                border: 'none',
-                borderBottom: '2px solid transparent',
-                color: 'var(--text-faint)',
-                cursor: 'pointer',
-                padding: '0 10px',
-                display: 'flex',
-                alignItems: 'center',
-                flexShrink: 0,
-              }}
-              onMouseEnter={e => (e.currentTarget.style.color = 'var(--text)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-faint)')}
+              aria-label="Collapse Inspector panel"
             >
               <ChevronRight size={13} />
             </button>
           </div>
 
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-            }}
-          >
+          <div className="right-panel__body" role="tabpanel">
             {activeTab === 'inspector' ? (
               <InspectorTab
                 activeItem={activeItem}

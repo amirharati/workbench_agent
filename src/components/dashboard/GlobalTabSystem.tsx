@@ -290,6 +290,14 @@ function getTabLabel(tab: GlobalTab, items: Item[]): string {
   return item.title?.trim() || 'Untitled';
 }
 
+function getTabAccessibleLabel(tab: GlobalTab, items: Item[]): string {
+  if (tab.kind === 'search') return `Search: ${tab.query?.trim() || 'Untitled search'}`;
+  if (tab.kind === 'list') return tab.title || 'Untitled list';
+  if (tab.kind === 'url') return tab.title?.trim() || tab.url || 'Web page';
+  const item = items.find((candidate) => candidate.id === tab.itemId);
+  return item?.title?.trim() || 'Untitled item';
+}
+
 function TabOutOfScopeBadge({
   tab,
   items,
@@ -828,6 +836,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
 
   return (
     <div
+      className="ui-workspace-tabs"
       style={{
         height: '100%',
         width: '100%',
@@ -841,6 +850,8 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     >
       {workspaceHeader}
       <div
+        className="ui-workspace-tabs__layout"
+        data-layout={bottomLayout}
         style={{
           flex: 1,
           minHeight: 0,
@@ -853,8 +864,8 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       >
       {/* --- SIDEBAR LAYOUT --- */}
       {bottomLayout === 'sidebar' && (
-        <div style={{ width: isSidebarCollapsed ? 48 : 220, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)', background: 'var(--bg-panel)', transition: 'width 200ms ease', overflow: 'hidden', flexShrink: 0 }}>
-          <div style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', padding: isSidebarCollapsed ? 0 : '0 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div className="ui-workspace-tabs__sidebar" data-collapsed={isSidebarCollapsed ? 'true' : 'false'} style={{ width: isSidebarCollapsed ? 48 : 220 }}>
+          <div className="ui-workspace-tabs__sidebar-header" data-collapsed={isSidebarCollapsed ? 'true' : 'false'}>
             {!isSidebarCollapsed && (
               onExitFocus ? (
                 <button
@@ -886,14 +897,27 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             {scopedTabs.map(tab => {
               const isActive = tab.id === activeTabId;
               const label = getTabLabel(tab, items);
+              const accessibleLabel = getTabAccessibleLabel(tab, items);
               const isSearch = tab.kind === 'search';
               const isList = tab.kind === 'list';
               const isUrl = tab.kind === 'url';
               return (
                 <div
                   key={tab.id}
+                  className="ui-workspace-tabs__sidebar-tab"
+                  data-active={isActive ? 'true' : 'false'}
+                  data-collapsed={isSidebarCollapsed ? 'true' : 'false'}
                   data-tab-id={tab.id}
+                  role="tab"
+                  tabIndex={0}
+                  aria-selected={isActive}
                   onClick={() => set({ activeTabId: tab.id })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      set({ activeTabId: tab.id });
+                    }
+                  }}
                   draggable
                   onDragStart={(e) => { setDraggedTabId(tab.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', tab.id); }}
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
@@ -912,14 +936,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   }}
                   onDragEnd={() => setDraggedTabId(null)}
                   title={label}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'flex-start',
-                    padding: isSidebarCollapsed ? '8px 0' : '8px 12px', cursor: 'pointer', background: isActive ? 'var(--bg-active)' : 'transparent',
-                    color: isActive ? 'var(--accent)' : 'var(--text-muted)', fontWeight: isActive ? 600 : 400,
-                    borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent', opacity: draggedTabId === tab.id ? 0.4 : 1, position: 'relative'
-                  }}
-                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                  style={{ opacity: draggedTabId === tab.id ? 0.4 : 1 }}
                 >
                   <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20 }}>
                     {isSearch ? <Search size={14} /> : isList ? <Layout size={14} /> : isUrl ? <ExternalLink size={14} /> : <FileText size={14} />}
@@ -937,14 +954,16 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                         compact
                       />
                       {renderTabScope(tab, true)}
-                      <span
+                      <button
+                        type="button"
+                        className="ui-workspace-tabs__close"
                         onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
-                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 4, color: 'var(--text-faint)', cursor: 'pointer', flexShrink: 0 }}
-                        onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-weak)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        aria-label={`Close ${accessibleLabel}`}
+                        title={`Close ${accessibleLabel}`}
                       >
                         <X size={12} />
-                      </span>
+                      </button>
                     </>
                   )}
                 </div>
@@ -981,8 +1000,8 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
 
       {/* --- TOP TABS LAYOUT --- */}
       {bottomLayout === 'tabs' && (
-        <div ref={tabStripContainerRef} style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)', flexShrink: 0, height: 40, position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0 9px', borderRight: '1px solid var(--border)', background: 'var(--bg-panel)', zIndex: 2, flexShrink: 0 }}>
+        <div ref={tabStripContainerRef} className="ui-workspace-tabs__strip">
+          <div className="ui-workspace-tabs__strip-label">
             {onExitFocus ? (
               <>
                 <button
@@ -1019,15 +1038,27 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               </>
             )}
           </div>
-          <div ref={tabStripRef} style={{ display: 'flex', alignItems: 'flex-end', gap: 2, paddingLeft: 8, flex: 1, overflowX: 'auto', scrollbarWidth: 'none' }} className="hide-scrollbar">
+          <div ref={tabStripRef} className="ui-workspace-tabs__tab-list hide-scrollbar" role="tablist" aria-label="Open work">
             {visibleTabs.map(tab => {
               const isActive = tab.id === activeTabId;
               const label = getTabLabel(tab, items);
+              const accessibleLabel = getTabAccessibleLabel(tab, items);
               return (
                 <div
                   key={tab.id}
+                  className="ui-workspace-tabs__tab"
+                  data-active={isActive ? 'true' : 'false'}
                   data-tab-id={tab.id}
+                  role="tab"
+                  tabIndex={0}
+                  aria-selected={isActive}
                   onClick={() => set({ activeTabId: tab.id })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      set({ activeTabId: tab.id });
+                    }
+                  }}
                   draggable
                   onDragStart={(e) => { setDraggedTabId(tab.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', tab.id); }}
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
@@ -1045,16 +1076,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                     setDraggedTabId(null);
                   }}
                   onDragEnd={() => setDraggedTabId(null)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6, flex: 1, height: 34, padding: '0 12px', borderRadius: '6px 6px 0 0',
-                    borderLeft: isActive ? '1px solid var(--border)' : '1px solid transparent', borderRight: isActive ? '1px solid var(--border)' : '1px solid transparent',
-                    borderTop: isActive ? '2px solid var(--accent)' : '2px solid transparent', borderBottom: isActive ? '1px solid var(--bg)' : '1px solid transparent',
-                    background: isActive ? 'var(--bg)' : 'var(--bg-hover)', color: isActive ? 'var(--text)' : 'var(--text-muted)',
-                    fontWeight: isActive ? 600 : 400, fontSize: 'var(--text-sm)', cursor: 'pointer', whiteSpace: 'nowrap', maxWidth: 160, minWidth: 80, userSelect: 'none',
-                    opacity: draggedTabId === tab.id ? 0.4 : 1,
-                  }}
-                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-glass)'; }}
-                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                  style={{ opacity: draggedTabId === tab.id ? 0.4 : 1 }}
                 >
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, pointerEvents: 'none' }}>{label}</span>
                   <TabOutOfScopeBadge
@@ -1067,14 +1089,16 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                     compact
                   />
                   {renderTabScope(tab, true)}
-                  <span
+                  <button
+                    type="button"
+                    className="ui-workspace-tabs__close"
                     onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
-                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 4, color: 'var(--text-faint)', cursor: 'pointer', flexShrink: 0 }}
-                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-weak)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent'; }}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    aria-label={`Close ${accessibleLabel}`}
+                    title={`Close ${accessibleLabel}`}
                   >
                     <X size={11} />
-                  </span>
+                  </button>
                 </div>
               );
             })}

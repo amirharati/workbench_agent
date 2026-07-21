@@ -17,49 +17,14 @@ interface ScopeChipsBarProps {
   onClearPipelineBrowse?: () => void;
 }
 
-const chipStyle = (accent?: boolean): React.CSSProperties => ({
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 4,
-  padding: '2px 8px',
-  borderRadius: 999,
-  border: `1px solid ${accent ? 'var(--accent)' : 'var(--border)'}`,
-  background: accent ? 'var(--accent-weak)' : 'var(--bg-glass)',
-  color: accent ? 'var(--accent)' : 'var(--text-muted)',
-  fontSize: 'var(--text-xs)',
-  fontWeight: 600,
-  lineHeight: 1.4,
-});
-
-const dismissStyle: React.CSSProperties = {
-  all: 'unset',
-  cursor: 'pointer',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 14,
-  height: 14,
-  borderRadius: 999,
-  color: 'var(--text-faint)',
-  fontSize: 12,
-  lineHeight: 1,
-};
-
 function ChipDismiss({ onClick, title }: { onClick: () => void; title: string }) {
   return (
     <button
       type="button"
+      className="ui-scope-chip__dismiss"
       onClick={onClick}
       title={title}
-      style={dismissStyle}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'var(--bg-hover)';
-        e.currentTarget.style.color = 'var(--text)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
-        e.currentTarget.style.color = 'var(--text-faint)';
-      }}
+      aria-label={title}
     >
       ×
     </button>
@@ -92,30 +57,22 @@ export const ScopeChipsBar: React.FC<ScopeChipsBarProps> = ({
   if (!showBar) return null;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        flexWrap: 'wrap',
-        marginTop: 6,
-      }}
-    >
+    <div className="ui-scope-bar" aria-label="Current library scope">
       {scopeProjectId === 'all' && scopeCollectionId === 'all' && !hasBrowseFilter ? (
-        <span style={chipStyle()} title="Showing all projects and collections">
+        <span className="ui-scope-chip" title="Showing all projects and collections">
           All projects
         </span>
       ) : null}
 
       {project && scopeCollectionId === 'all' ? (
-        <span style={chipStyle(true)}>
+        <span className="ui-scope-chip" data-active="true">
           Project: {project.name}
           <ChipDismiss onClick={onClearProject} title="Clear project scope" />
         </span>
       ) : null}
 
       {collection ? (
-        <span style={chipStyle(true)}>
+        <span className="ui-scope-chip" data-active="true">
           Collection: {collection.name}
           <ChipDismiss onClick={onClearCollection} title="Clear collection scope" />
         </span>
@@ -124,12 +81,8 @@ export const ScopeChipsBar: React.FC<ScopeChipsBarProps> = ({
       {hasScopeFilter && scopeProjectId !== 'all' && scopeCollectionId !== 'all' ? (
         <button
           type="button"
+          className="ui-scope-chip ui-scope-chip--reset"
           onClick={onResetScope}
-          style={{
-            ...chipStyle(),
-            cursor: 'pointer',
-            border: '1px dashed var(--border)',
-          }}
           title="Reset to all projects and collections"
         >
           Reset scope
@@ -137,7 +90,7 @@ export const ScopeChipsBar: React.FC<ScopeChipsBarProps> = ({
       ) : null}
 
       {categoryBrowse ? (
-        <span style={chipStyle(true)}>
+        <span className="ui-scope-chip" data-active="true">
           Category: {categoryBrowse.name}
           {onClearCategoryBrowse ? (
             <ChipDismiss onClick={onClearCategoryBrowse} title="Clear category filter" />
@@ -146,7 +99,7 @@ export const ScopeChipsBar: React.FC<ScopeChipsBarProps> = ({
       ) : null}
 
       {pipelineBrowse ? (
-        <span style={chipStyle(true)}>
+        <span className="ui-scope-chip" data-active="true">
           Queue: {pipelineBrowse.label}
           {onClearPipelineBrowse ? (
             <ChipDismiss onClick={onClearPipelineBrowse} title="Clear queue filter" />
@@ -155,7 +108,7 @@ export const ScopeChipsBar: React.FC<ScopeChipsBarProps> = ({
       ) : null}
 
       {typeof itemCount === 'number' ? (
-        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+        <span className="ui-scope-bar__count">
           {itemCount} item{itemCount !== 1 ? 's' : ''}
         </span>
       ) : null}
