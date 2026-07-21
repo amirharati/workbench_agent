@@ -13,7 +13,7 @@ import { normalizeBookmarkUrl } from '../lib/db';
 import { favoriteItem, unfavoriteItem } from '../lib/itemQuickAccess';
 import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
 import { isValidBookmarkUrl } from '../lib/utils';
-import { ButtonGhost, ButtonPrimary, Input, Panel } from '../styles/primitives';
+import { ButtonGhost, ButtonPrimary, IconButton, Input, Panel } from '../styles/primitives';
 import { ItemOrganizationEditor } from './dashboard/ItemOrganizationEditor';
 import { SidePanelDigestPanel } from './SidePanelDigestPanel';
 import {
@@ -307,14 +307,15 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
 
   return (
     <div
+      className="side-panel-layout"
       style={{
-        minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
         color: 'var(--text)',
       }}
     >
       <header
+        className="side-panel-header"
         style={{
           position: 'sticky',
           top: 0,
@@ -348,7 +349,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       </header>
 
       <main
-        className="scrollbar"
+        className="scrollbar side-panel-main"
         style={{
           flex: 1,
           minHeight: 0,
@@ -389,6 +390,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         ) : null}
 
         <Panel
+          className="side-panel-current-card"
           style={{
             padding: '0.7rem',
             display: 'flex',
@@ -399,6 +401,9 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
+                className="side-panel-current-status"
+                data-state={savedStatePending ? 'pending' : activeItem ? 'saved' : 'unsaved'}
+                role="status"
                 style={{
                   fontSize: 'var(--text-xs)',
                   color: 'var(--text-muted)',
@@ -413,7 +418,6 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                 style={{
                   marginTop: 2,
                   fontSize: 'var(--text-xs)',
-                  color: activeItem ? 'var(--accent)' : 'var(--text-faint)',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 4,
@@ -428,10 +432,12 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
               </div>
             </div>
             {activeItem ? (
-              <button
+              <IconButton
                 type="button"
+                className="side-panel-favorite"
                 title={activeItem.favoriteAt ? 'Remove from favorites' : 'Add to favorites'}
                 aria-label={activeItem.favoriteAt ? 'Remove from favorites' : 'Add to favorites'}
+                aria-pressed={Boolean(activeItem.favoriteAt)}
                 onClick={() =>
                   void (activeItem.favoriteAt
                     ? unfavoriteItem(activeItem.id)
@@ -444,14 +450,10 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderRadius: 6,
-                  border: '1px solid var(--border)',
-                  background: activeItem.favoriteAt ? 'var(--accent-weak)' : 'var(--bg-glass)',
-                  color: activeItem.favoriteAt ? 'var(--accent)' : 'var(--text-muted)',
-                  cursor: 'pointer',
                 }}
               >
                 <Star size={14} fill={activeItem.favoriteAt ? 'currentColor' : 'none'} />
-              </button>
+              </IconButton>
             ) : null}
           </div>
 
@@ -475,6 +477,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             {url || 'Waiting for a supported page…'}
           </div>
           <textarea
+            className="ui-field side-panel-notes"
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
             rows={4}
@@ -496,6 +499,8 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
 
           <button
             type="button"
+            className="ui-button ui-button--secondary side-panel-organize-toggle"
+            aria-expanded={organizeOpen}
             onClick={() => setOrganizeOpen((open) => !open)}
             style={{
               width: '100%',
@@ -549,7 +554,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           ) : null}
 
           {status ? (
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--accent)' }}>{status}</div>
+            <div className="ui-status" data-tone="info" role="status" style={{ fontSize: 'var(--text-xs)' }}>{status}</div>
           ) : null}
           {error ? (
             <div

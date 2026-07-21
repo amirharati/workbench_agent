@@ -99,7 +99,7 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
           role={feedback.type === 'error' ? 'alert' : 'status'}
           style={{
             fontSize: 'var(--text-xs)',
-            color: feedback.type === 'error' ? 'var(--error)' : 'var(--accent)',
+            color: feedback.type === 'error' ? 'var(--error)' : 'var(--status-success)',
           }}
         >
           {feedback.message}

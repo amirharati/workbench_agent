@@ -31,6 +31,7 @@ import type {
   ScopedCategorizationStats,
 } from '../../lib/categorization';
 import type { TopicClassifyResult } from '../../lib/categorization/types';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 export type CategorizationPanelProps = {
   /** Items with AI summary in enrichment Results list. */
@@ -69,6 +70,7 @@ export function CategorizationPanel({
   const [maxItems, setMaxItems] = useState(() =>
     scopeCount > 0 ? Math.min(scopeCount, 200) : 100
   );
+  const [runConfirm, setRunConfirm] = useState<'retry-manual' | 'force' | null>(null);
 
   useEffect(() => {
     if (scopeCount > 0) setMaxItems((prev) => Math.min(prev, scopeCount));
@@ -221,12 +223,6 @@ export function CategorizationPanel({
   const handleRetryManualReview = () =>
     runWithProgress('Retry manual review', async () => {
       const n = queue?.manualReview ?? 0;
-      if (
-        n > 0 &&
-        !window.confirm(`Re-run classify on up to ${n} manual-review item(s)? Uses LLM.`)
-      ) {
-        return;
-      }
       const r = await classifyIncremental({
         ...classifyOpts,
         retryManualReview: true,
@@ -499,16 +495,7 @@ export function CategorizationPanel({
         <button
           type="button"
           disabled={running || needsSeed || scopeCount === 0}
-          onClick={() => {
-            if (
-              !window.confirm(
-                `Re-run topic LLM on up to ${scopeCount} AI-ready items even if they already have a topic?`
-              )
-            ) {
-              return;
-            }
-            void handleClassify('force');
-          }}
+          onClick={() => setRunConfirm('force')}
           style={btnStyle()}
           title="Re-assign topics even when already classified"
         >
@@ -542,7 +529,7 @@ export function CategorizationPanel({
         <button
           type="button"
           disabled={running || needsSeed || !(queue?.manualReview ?? 0)}
-          onClick={() => void handleRetryManualReview()}
+          onClick={() => setRunConfirm('retry-manual')}
           style={btnStyle()}
           title="Re-classify items in manual-review bucket (controlled LLM retry)"
         >
@@ -596,6 +583,24 @@ export function CategorizationPanel({
         </p>
       ) : null}
     </div>
+    {runConfirm ? (
+      <HubActionConfirmModal
+        title={runConfirm === 'force' ? 'Re-classify this scope?' : 'Retry manual-review items?'}
+        description={runConfirm === 'force'
+          ? `Topic classification will run again for up to ${scopeCount} AI-ready items, including items that already have a topic.`
+          : `Classification will run again for up to ${queue?.manualReview ?? 0} manual-review items.`}
+        warning="This action uses the configured AI provider and may cost money."
+        confirmLabel={runConfirm === 'force' ? 'Re-classify all' : 'Retry manual review'}
+        confirmVariant="warn"
+        onCancel={() => setRunConfirm(null)}
+        onConfirm={() => {
+          const action = runConfirm;
+          setRunConfirm(null);
+          if (action === 'force') void handleClassify('force');
+          else void handleRetryManualReview();
+        }}
+      />
+    ) : null}
     </>
   );
 }
@@ -617,6 +622,7 @@ export function CategorizationSetupSection() {
   const [running, setRunning] = useState(false);
   const [meta, setMeta] = useState<{ version: number; leaves: number } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [setupConfirm, setSetupConfirm] = useState<'reset' | 'clear' | null>(null);
 
   const refresh = useCallback(async () => {
     // The bundled taxonomy is a zero-cost local default. This is also run at
@@ -632,13 +638,7 @@ export function CategorizationSetupSection() {
   }, [refresh]);
 
   const handleImport = async () => {
-    if (
-      !window.confirm(
-        'Reset the current topic list to the bundled starter taxonomy?\n\nCustom and discovered topic definitions will be replaced. Your full library backups still preserve the current taxonomy.'
-      )
-    ) {
-      return;
-    }
+    setSetupConfirm(null);
     setRunning(true);
     setMessage(null);
     try {
@@ -667,13 +667,7 @@ export function CategorizationSetupSection() {
   };
 
   const clearTaxonomyOnly = async () => {
-    if (
-      !window.confirm(
-        'Delete taxonomy, all category links, signals, AND enrichments? Bookmarks stay. Re-import seed after.'
-      )
-    ) {
-      return;
-    }
+    setSetupConfirm(null);
     setRunning(true);
     try {
       const r = await clearPipelineData({ clearTaxonomy: true });
@@ -713,7 +707,7 @@ export function CategorizationSetupSection() {
       <button
         type="button"
         disabled={running}
-        onClick={() => void handleImport()}
+        onClick={() => setSetupConfirm('reset')}
         style={{ padding: '4px 10px', fontSize: 'var(--dev-fs-sm)' }}
       >
         {running ? 'Resetting…' : 'Reset to starter taxonomy'}
@@ -739,12 +733,30 @@ export function CategorizationSetupSection() {
         <button
           type="button"
           disabled={running}
-          onClick={() => void clearTaxonomyOnly()}
+          onClick={() => setSetupConfirm('clear')}
           style={{ padding: '4px 10px', fontSize: 'var(--dev-fs-sm)', color: 'var(--error)' }}
         >
           Clear taxonomy too
         </button>
       </div>
+      {setupConfirm ? (
+        <HubActionConfirmModal
+          title={setupConfirm === 'reset' ? 'Reset to starter taxonomy?' : 'Clear the full AI taxonomy?'}
+          description={setupConfirm === 'reset'
+            ? 'Custom and discovered topic definitions will be replaced by the bundled starter taxonomy.'
+            : 'The taxonomy, category links, classification signals, and enrichment results will be deleted.'}
+          warning={setupConfirm === 'reset'
+            ? 'Full library backups preserve the current taxonomy if you need to restore it.'
+            : 'Bookmarks remain, but the AI pipeline data must be rebuilt afterward.'}
+          confirmLabel={setupConfirm === 'reset' ? 'Reset taxonomy' : 'Clear taxonomy and results'}
+          confirmVariant={setupConfirm === 'reset' ? 'warn' : 'danger'}
+          onCancel={() => setSetupConfirm(null)}
+          onConfirm={() => {
+            if (setupConfirm === 'reset') void handleImport();
+            else void clearTaxonomyOnly();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

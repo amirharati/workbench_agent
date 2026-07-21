@@ -28,6 +28,7 @@ import { DeleteConfirmDialog } from '../../DeleteConfirmDialog';
 import { TrashView } from '../TrashView';
 import { ExtensionPageUrlLink } from '../BookmarkUrlLink';
 import { BookmarksLibraryView } from '../BookmarksLibraryView';
+import { HubActionConfirmModal } from '../HubActionConfirmModal';
 
 const SettingsView = React.lazy(() => import('../SettingsView').then((module) => ({ default: module.SettingsView })));
 const ImportStudioView = React.lazy(() => import('../ImportStudioView').then((module) => ({ default: module.ImportStudioView })));
@@ -291,6 +292,7 @@ export const MainContent: React.FC<MainContentProps> = ({
 
   // Create modals (top-level views: Projects, Collections, Bookmarks, Notes)
   const [showNewProject, setShowNewProject] = useState(false);
+  const [projectDeleteConfirmId, setProjectDeleteConfirmId] = useState<string | null>(null);
   const [showNewCollection, setShowNewCollection] = useState(false);
   const [showAddBookmark, setShowAddBookmark] = useState(false);
   const [showAddNote, setShowAddNote] = useState(false);
@@ -300,6 +302,19 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [bookmarkAiResult, setBookmarkAiResult] = useState('');
   const [bookmarkAiError, setBookmarkAiError] = useState('');
   const [bookmarkAiSources, setBookmarkAiSources] = useState<BookmarkAISource[]>([]);
+
+  const confirmDeleteProject = async () => {
+    const id = projectDeleteConfirmId;
+    if (!id) return;
+    setProjectDeleteConfirmId(null);
+    const ok = await deleteProject(id);
+    if (!ok) {
+      window.alert('Cannot delete the default project.');
+      return;
+    }
+    if (selectedProjectId === id) setSelectedProjectId(null);
+    if (onRefresh) await onRefresh();
+  };
 
   // Keep bookmark/note classification mutually exclusive:
   // - Bookmark: has a non-empty URL
@@ -910,20 +925,13 @@ export const MainContent: React.FC<MainContentProps> = ({
           setShowNewProject(true);
         };
 
-        const handleDeleteProject = async (id: string) => {
+        const handleDeleteProject = (id: string) => {
           // Can't delete the virtual "All" project
           if (id === ALL_PROJECTS_ID) {
             alert('Cannot delete the "All" aggregate view.');
             return;
           }
-          if (!window.confirm('Delete this project? This does not delete bookmarks.')) return;
-          const ok = await deleteProject(id);
-          if (!ok) {
-            alert('Cannot delete default project.');
-            return;
-          }
-          if (selectedProjectId === id) setSelectedProjectId(null);
-          if (onRefresh) await onRefresh();
+          setProjectDeleteConfirmId(id);
         };
 
         const ProjectCard: React.FC<{ project: Project }> = ({ project }) => {
@@ -1149,7 +1157,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                     padding: '2px 10px',
                     height: 24,
                     background: 'var(--accent)',
-                    color: 'var(--accent-text, #fff)',
+                    color: 'var(--accent-text)',
                     border: 'none',
                     borderRadius: 4,
                     cursor: onCreateItem ? 'pointer' : 'not-allowed',
@@ -1247,7 +1255,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                     borderRadius: 6,
                     border: '1px solid var(--accent)',
                     background: bookmarkAiRunning ? 'var(--accent-weak)' : 'var(--accent)',
-                    color: 'var(--accent-text, #fff)',
+                    color: 'var(--accent-text)',
                     cursor: bookmarkAiRunning ? 'progress' : 'pointer',
                     fontSize: 'var(--text-xs)',
                     fontWeight: 600,
@@ -2122,7 +2130,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                         color: 'var(--text-faint)',
                       }}>
                         {tabCount} tab{tabCount !== 1 ? 's' : ''} · {ws.windows.length} window{ws.windows.length !== 1 ? 's' : ''}
-                        {!ws.projectId && <span style={{ marginLeft: 6, color: 'var(--warning, #f59e0b)' }}>detached</span>}
+                        {!ws.projectId && <span style={{ marginLeft: 6, color: 'var(--warning)' }}>detached</span>}
                       </span>
                     </button>
                   );
@@ -2225,7 +2233,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                 borderRadius: 6,
                 border: 'none',
                 background: 'var(--accent)',
-                color: '#fff',
+                color: 'var(--accent-text)',
                 fontSize: 'var(--text-xs)',
                 fontWeight: 500,
                 cursor: 'pointer',
@@ -2544,6 +2552,18 @@ export const MainContent: React.FC<MainContentProps> = ({
           }}
         />
       )}
+
+      {projectDeleteConfirmId ? (
+        <HubActionConfirmModal
+          title="Delete project?"
+          description={`“${projects.find((project) => project.id === projectDeleteConfirmId)?.name ?? 'This project'}” will be removed.`}
+          warning="Bookmarks and notes remain in your library; only the project structure is deleted."
+          confirmLabel="Delete project"
+          confirmVariant="danger"
+          onCancel={() => setProjectDeleteConfirmId(null)}
+          onConfirm={() => void confirmDeleteProject()}
+        />
+      ) : null}
 
       {/* Add bookmark modal */}
       {showAddModal && (

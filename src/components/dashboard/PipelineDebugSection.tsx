@@ -5,6 +5,7 @@ import {
   purgeAllPipelineDebug,
   setPipelineDebugEnabled,
 } from '../../lib/enrichment/pipelineDebug';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 /** Settings toggle + purge for debug-only pipeline timing rows. */
 export function PipelineDebugSection() {
@@ -12,6 +13,7 @@ export function PipelineDebugSection() {
   const [rowCount, setRowCount] = useState<number | null>(null);
   const [purging, setPurging] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [purgeConfirmCount, setPurgeConfirmCount] = useState<number | null>(null);
 
   const refreshCount = useCallback(async () => {
     try {
@@ -34,16 +36,19 @@ export function PipelineDebugSection() {
     else void refreshCount();
   };
 
-  const handlePurge = async () => {
+  const requestPurge = async () => {
     if (purging) return;
     const count = rowCount ?? (await getPipelineDebugCount());
     if (count === 0) {
       setMessage('No debug rows to purge.');
       return;
     }
-    if (!window.confirm(`Delete ${count} debug timing row(s)? Enrichment data is not affected.`)) {
-      return;
-    }
+    setPurgeConfirmCount(count);
+  };
+
+  const handlePurge = async () => {
+    if (!purgeConfirmCount || purging) return;
+    setPurgeConfirmCount(null);
     setPurging(true);
     setMessage(null);
     try {
@@ -95,7 +100,7 @@ export function PipelineDebugSection() {
         ) : null}
         <button
           type="button"
-          onClick={() => void handlePurge()}
+          onClick={() => void requestPurge()}
           disabled={purging || rowCount === 0}
           style={{
             padding: '2px 10px',
@@ -114,6 +119,17 @@ export function PipelineDebugSection() {
       </div>
       {message ? (
         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{message}</div>
+      ) : null}
+      {purgeConfirmCount ? (
+        <HubActionConfirmModal
+          title="Purge pipeline debug data?"
+          description={`${purgeConfirmCount} debug timing row${purgeConfirmCount === 1 ? '' : 's'} will be deleted.`}
+          warning="Enrichment and classification results are not affected."
+          confirmLabel="Purge debug data"
+          confirmVariant="danger"
+          onCancel={() => setPurgeConfirmCount(null)}
+          onConfirm={() => void handlePurge()}
+        />
       ) : null}
     </div>
   );

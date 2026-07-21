@@ -14,6 +14,7 @@ import { CategorizationSetupSection } from './CategorizationPanel';
 import { useToast } from '../ToastContainer';
 import { ThemeSelector } from '../ThemeToggle';
 import { uiPatterns } from '../../styles/uiPatterns';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 type FontScalePreset = 'small' | 'normal' | 'large';
 export type SettingsSection = 'general' | 'ai' | 'backup' | 'advanced';
@@ -146,6 +147,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [folderBackups, setFolderBackups] = React.useState<FolderSqliteBackupInfo[]>([]);
   const [folderBackupsLoading, setFolderBackupsLoading] = React.useState(false);
   const [restoringFolderBackup, setRestoringFolderBackup] = React.useState<string | null>(null);
+  const [folderRestoreConfirm, setFolderRestoreConfirm] = React.useState<FolderSqliteBackupInfo | null>(null);
 
   React.useEffect(() => {
     if (aiSettings) setAiForm(aiSettings);
@@ -176,6 +178,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const id = window.setInterval(() => forceTick((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
+
+  const restoreFolderSnapshot = async (snapshot: FolderSqliteBackupInfo) => {
+    setFolderRestoreConfirm(null);
+    setRestoringFolderBackup(snapshot.filename);
+    try {
+      const res = await restoreFolderBackupIntoApp(snapshot.filename);
+      if (!res.ok) {
+        addToast({ type: 'error', message: res.error ?? 'Restore failed' });
+        return;
+      }
+      await refreshFolderBackups();
+      addToast({
+        type: 'success',
+        message: `Restored ${snapshot.filename} (full replace). Current live was snapshotted first.`,
+      });
+    } catch (error) {
+      addToast({ type: 'error', message: String(error) });
+    } finally {
+      setRestoringFolderBackup(null);
+    }
+  };
 
   const handleRestoreInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -368,6 +391,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Appearance section */}
       <div
+        className="ui-settings-card"
         style={{
           border: '1px solid var(--border)',
           borderRadius: 10,
@@ -391,9 +415,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               style={{
                 padding: '5px 14px',
                 borderRadius: 6,
-                border: fontScale === preset ? '2px solid #6366f1' : '1px solid var(--border)',
-                background: fontScale === preset ? 'rgba(99,102,241,0.1)' : 'var(--bg-panel)',
-                color: fontScale === preset ? 'var(--accent-hover)' : 'var(--text)',
+                border: fontScale === preset ? '2px solid var(--accent)' : '1px solid var(--border)',
+                background: fontScale === preset ? 'var(--accent-weak)' : 'var(--bg-panel)',
+                color: fontScale === preset ? 'var(--accent)' : 'var(--text)',
                 fontWeight: fontScale === preset ? 600 : 400,
                 fontSize: '0.85rem',
                 cursor: 'pointer',
@@ -406,6 +430,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
       <div
+        className="ui-settings-card"
         style={{
           border: '1px solid var(--border)',
           borderRadius: 10,
@@ -422,14 +447,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
         <div>
           <button
+            className="ui-button ui-button--primary"
             type="button"
             onClick={() => onSetAsBrowserHome?.()}
             style={{
               padding: '0.5rem 0.75rem',
               borderRadius: 8,
               border: 'none',
-              background: '#2563eb',
-              color: '#fff',
+              background: 'var(--accent-solid)',
+              color: 'var(--accent-text)',
               cursor: 'pointer',
               fontSize: '0.85rem',
               fontWeight: 600,
@@ -445,6 +471,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {activeSection === 'ai' ? (
       <div
+        className="ui-settings-card"
         style={{
           border: '1px solid var(--border)',
           borderRadius: 10,
@@ -646,6 +673,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
+            className="ui-button ui-button--primary"
             type="button"
             disabled={aiDisabled}
             onClick={handleSaveAI}
@@ -653,8 +681,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               padding: '0.5rem 0.75rem',
               borderRadius: 8,
               border: 'none',
-              background: aiDisabled ? '#93c5fd' : '#2563eb',
-              color: '#fff',
+              background: 'var(--accent-solid)',
+              color: 'var(--accent-text)',
               cursor: aiDisabled ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem',
               fontWeight: 600,
@@ -663,15 +691,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {isSavingAI ? 'Saving...' : 'Save AI settings'}
           </button>
           <button
+            className="ui-button ui-button--secondary"
             type="button"
             disabled={aiDisabled}
             onClick={handleTestAI}
             style={{
               padding: '0.5rem 0.75rem',
               borderRadius: 8,
-              border: '1px solid #16a34a',
-              background: aiDisabled ? '#86efac' : '#16a34a',
-              color: '#fff',
+              border: '1px solid var(--status-success)',
+              background: 'color-mix(in srgb, var(--status-success) 14%, var(--bg-raised))',
+              color: 'var(--status-success)',
               cursor: aiDisabled ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem',
               fontWeight: 600,
@@ -702,7 +731,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           a dedicated key.
         </div>
         {aiModelMismatch && !aiForm?.strictModelMatch && (
-          <div style={{ fontSize: '0.82rem', color: 'var(--er-warn, #d29922)' }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--warning)' }}>
             <strong>Model mismatch:</strong> requested <code>{aiRequestedModel || '-'}</code>, provider returned{' '}
             <code>{aiTestModel || '-'}</code>. Enable strict matching to fail these responses.
           </div>
@@ -738,6 +767,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {activeSection === 'advanced' ? (
       <div
+        className="ui-settings-card"
         style={{
           border: '1px solid var(--border)',
           borderRadius: 10,
@@ -755,6 +785,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
+            className="ui-button ui-button--secondary"
             type="button"
             onClick={handleExportPipelineAnalysis}
             disabled={!onExportPipelineAnalysis || exportingPipeline}
@@ -763,7 +794,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               padding: '2px 10px',
               height: 24,
               borderRadius: 4,
-              border: '1px solid #6366f1',
+              border: '1px solid var(--accent)',
               background: exportingPipeline ? 'var(--bg-active)' : 'var(--accent-weak)',
               color: 'var(--accent-hover)',
               fontSize: '0.75rem',
@@ -779,7 +810,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <PipelineDebugSection />
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {!backupFolderLinked && (
-            <span style={{ fontSize: '0.8rem', color: 'var(--er-warn, #d29922)' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--warning)' }}>
               Choose a backup folder below for disk cache.
             </span>
           )}
@@ -790,6 +821,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {activeSection === 'backup' ? (
       <div
+        className="ui-settings-card"
         style={{
           border: '1px solid var(--border)',
           borderRadius: 10,
@@ -863,14 +895,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               <button
                 type="button"
+                className="ui-button ui-button--primary"
                 onClick={handleLoadRemote}
                 disabled={!!resolving}
                 style={{
                   padding: '0.5rem 0.75rem',
                   borderRadius: 8,
                   border: 'none',
-                  background: resolving === 'remote' ? '#93c5fd' : '#2563eb',
-                  color: '#fff',
+                  background: 'var(--accent-solid)',
+                  color: 'var(--accent-text)',
                   cursor: resolving ? 'progress' : 'pointer',
                   fontSize: '0.85rem',
                   fontWeight: 600,
@@ -881,13 +914,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
               <button
                 type="button"
+                className="ui-button ui-button--danger"
                 onClick={handleKeepLocal}
                 disabled={!!resolving}
                 style={{
                   padding: '0.5rem 0.75rem',
                   borderRadius: 8,
                   border: '1px solid var(--error)',
-                  background: resolving === 'local' ? 'var(--error)' : '#fff',
+                  background: resolving === 'local' ? 'var(--danger-weak)' : 'var(--bg-raised)',
                   color: 'var(--error)',
                   cursor: resolving ? 'progress' : 'pointer',
                   fontSize: '0.85rem',
@@ -928,12 +962,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span style={{ color: 'var(--text-muted)' }}>none yet</span>
               )}
               {mirrorPending && (
-                <span style={{ marginLeft: '0.5rem', color: '#2563eb', fontWeight: 600 }}>
+                <span style={{ marginLeft: '0.5rem', color: 'var(--status-info)', fontWeight: 600 }}>
                   · mirroring soon…
                 </span>
               )}
               {inFlight && (
-                <span style={{ marginLeft: '0.5rem', color: '#2563eb', fontWeight: 600 }}>
+                <span style={{ marginLeft: '0.5rem', color: 'var(--status-info)', fontWeight: 600 }}>
                   · writing…
                 </span>
               )}
@@ -1117,49 +1151,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     ) : (
                       <button
                         type="button"
+                        className="ui-button ui-button--warning"
                         disabled={!!restoringFolderBackup || conflictBlocking}
                         title={
                           conflictBlocking
                             ? 'Resolve the sync conflict above first'
                             : 'Snapshot current live, then restore this copy into workbench.sqlite'
                         }
-                        onClick={async () => {
-                          if (
-                            !window.confirm(
-                              `Replace your current library with ${snap.filename}?\n\n` +
-                                `This is a full restore (not a merge). Items only in the browser that are not in this file will disappear.\n\n` +
-                                `Your current live database will be saved into the snapshot rotation first so you can undo.`
-                            )
-                          ) {
-                            return;
-                          }
-                          setRestoringFolderBackup(snap.filename);
-                          try {
-                            const res = await restoreFolderBackupIntoApp(snap.filename);
-                            if (!res.ok) {
-                              addToast({ type: 'error', message: res.error ?? 'Restore failed' });
-                              return;
-                            }
-                            await refreshFolderBackups();
-                            addToast({
-                              type: 'success',
-                              message: `Restored ${snap.filename} (full replace). Current live was snapshotted first.`,
-                            });
-                          } catch (e) {
-                            addToast({ type: 'error', message: String(e) });
-                          } finally {
-                            setRestoringFolderBackup(null);
-                          }
-                        }}
+                        onClick={() => setFolderRestoreConfirm(snap)}
                         style={{
                           padding: '0.4rem 0.65rem',
                           borderRadius: 6,
-                          border: '1px solid var(--er-warn, #d29922)',
+                          border: '1px solid var(--warning-border)',
                           background:
                             restoringFolderBackup === snap.filename
-                              ? 'color-mix(in srgb, var(--er-warn, #d29922) 20%, var(--bg-panel))'
-                              : 'color-mix(in srgb, var(--er-warn, #d29922) 8%, var(--bg-panel))',
-                          color: 'var(--er-warn, #d29922)',
+                              ? 'color-mix(in srgb, var(--warning) 20%, var(--bg-panel))'
+                              : 'var(--warning-weak)',
+                          color: 'var(--warning)',
                           cursor: restoringFolderBackup || conflictBlocking ? 'not-allowed' : 'pointer',
                           fontSize: '0.78rem',
                           fontWeight: 600,
@@ -1178,13 +1186,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             type="button"
+            className="ui-button ui-button--primary"
             onClick={() => onChooseBackupFolder?.()}
             style={{
               padding: '0.5rem 0.75rem',
               borderRadius: 8,
               border: 'none',
-              background: '#2563eb',
-              color: '#fff',
+              background: 'var(--accent-solid)',
+              color: 'var(--accent-text)',
               cursor: 'pointer',
               fontSize: '0.85rem',
               fontWeight: 600,
@@ -1195,6 +1204,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             type="button"
+            className="ui-button ui-button--secondary"
             onClick={() => onManualBackup?.()}
             disabled={manualDisabled}
             title={
@@ -1211,9 +1221,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             style={{
               padding: '0.5rem 0.75rem',
               borderRadius: 8,
-              border: '1px solid #16a34a',
-              background: manualDisabled ? '#86efac' : '#16a34a',
-              color: '#fff',
+              border: '1px solid color-mix(in srgb, var(--status-success) 45%, var(--border))',
+              background: 'color-mix(in srgb, var(--status-success) 12%, var(--bg-raised))',
+              color: 'var(--status-success)',
               cursor: manualDisabled ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem',
               fontWeight: 600,
@@ -1225,6 +1235,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <button
             type="button"
+            className="ui-button ui-button--secondary"
             onClick={handleExportJson}
             disabled={jsonExportDisabled || !onExportJsonSnapshot}
             title={
@@ -1239,9 +1250,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             style={{
               padding: '0.5rem 0.75rem',
               borderRadius: 8,
-              border: '1px solid #6366f1',
-              background: jsonExportDisabled ? '#c7d2fe' : '#6366f1',
-              color: '#fff',
+              border: '1px solid var(--border-active)',
+              background: 'var(--accent-weak)',
+              color: 'var(--accent)',
               cursor: jsonExportDisabled ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem',
               fontWeight: 600,
@@ -1342,13 +1353,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 clearLibraryConfirm.trim() !== 'DELETE'
               }
               onClick={async () => {
-                if (
-                  !window.confirm(
-                    'Delete the entire library?\n\nAll bookmarks, enrichment, and categories will be removed. The backup folder sqlite file will be replaced.\n\nThis cannot be undone.'
-                  )
-                ) {
-                  return;
-                }
                 setClearingLibrary(true);
                 try {
                   const result = await clearAllLibraryData();
@@ -1402,16 +1406,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
           {!backupFolderLinked ? (
-            <span style={{ fontSize: '0.8rem', color: 'var(--er-warn, #d29922)' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--warning)' }}>
               Link a backup folder first so the empty database can be mirrored to disk.
             </span>
           ) : !backupFolderReady ? (
-            <span style={{ fontSize: '0.8rem', color: 'var(--er-warn, #d29922)' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--warning)' }}>
               Click the page once to resume folder access before clearing.
             </span>
           ) : null}
         </div>
       </div>
+      ) : null}
+      {folderRestoreConfirm ? (
+        <HubActionConfirmModal
+          title="Replace the current library?"
+          description={`Restore ${folderRestoreConfirm.filename} as the complete Homebase library.`}
+          bullets={[
+            'Items absent from this snapshot will disappear from the active library.',
+            'The current live database is snapshotted first so the restore can be undone.',
+          ]}
+          warning="This is a full replacement, not a merge."
+          confirmLabel="Restore snapshot"
+          confirmVariant="warn"
+          onCancel={() => setFolderRestoreConfirm(null)}
+          onConfirm={() => void restoreFolderSnapshot(folderRestoreConfirm)}
+        />
       ) : null}
     </div>
   );

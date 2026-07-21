@@ -2517,6 +2517,17 @@ button.ui-scope-chip {
   color: var(--text);
 }
 
+.ui-settings-card {
+  border-radius: var(--radius-lg) !important;
+  background: var(--bg-raised) !important;
+  box-shadow: var(--shadow-sm);
+}
+
+.ui-context-menu button:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 /* ===== Scrollbar (Compact) ===== */
 .scrollbar {
   scrollbar-width: thin;
@@ -2555,6 +2566,55 @@ button.ui-scope-chip {
 }
 
 /* The side panel follows the browser/OS palette, independent of dashboard theme. */
+.side-panel-layout {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.side-panel-header {
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.side-panel-main {
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.side-panel-current-card {
+  background: var(--bg-raised);
+}
+
+.side-panel-current-status {
+  color: var(--text-faint);
+}
+
+.side-panel-current-status[data-state='pending'] {
+  color: var(--status-info);
+}
+
+.side-panel-current-status[data-state='saved'] {
+  color: var(--status-success);
+}
+
+.side-panel-favorite[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--favorite) 45%, var(--border));
+  background: var(--favorite-weak);
+  color: var(--favorite);
+}
+
+.side-panel-notes:focus-visible {
+  border-color: var(--border-focus) !important;
+  box-shadow: 0 0 0 3px var(--accent-weak);
+  outline: none;
+}
+
+.side-panel-organize-toggle[aria-expanded='true'] {
+  border-color: var(--border-active);
+  background: var(--accent-weak);
+}
+
 .side-panel-surface .scrollbar {
   scrollbar-color: color-mix(in srgb, CanvasText 28%, transparent) transparent;
 }

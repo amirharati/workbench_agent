@@ -1233,8 +1233,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               <p style={{ margin: '8px 0 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.55, overflowWrap: 'anywhere' }}>{activeTab.url}</p>
               <button
                 type="button"
+                className="ui-button ui-button--primary"
                 onClick={() => chrome.tabs.create({ url: activeTab.url })}
-                style={{ marginTop: 20, minHeight: 32, display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 12px', border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff', fontSize: 'var(--text-sm)', fontWeight: 650, cursor: 'pointer' }}
+                style={{ marginTop: 20, minHeight: 32, display: 'inline-flex', alignItems: 'center', gap: 7, padding: '0 12px', border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 'var(--text-sm)', fontWeight: 650, cursor: 'pointer' }}
               >
                 <ExternalLink size={14} /> Open in browser
               </button>
@@ -1705,5 +1706,5 @@ const btnStyle = (variant: 'primary' | 'secondary'): React.CSSProperties => ({
   padding: '5px 12px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)', cursor: 'pointer',
   border: variant === 'primary' ? 'none' : '1px solid var(--border)',
   background: variant === 'primary' ? 'var(--accent)' : 'transparent',
-  color: variant === 'primary' ? '#fff' : 'var(--text)',
+  color: variant === 'primary' ? 'var(--accent-text)' : 'var(--text)',
 });

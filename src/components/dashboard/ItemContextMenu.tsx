@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Item } from '../../lib/db';
 import {
   favoriteItem,
@@ -9,6 +9,7 @@ import {
   unpinItem,
   permanentlyDeleteItem,
 } from '../../lib/itemQuickAccess';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 interface ItemContextMenuProps {
   item: Item;
@@ -44,8 +45,10 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const isTrashed = item.deletedAt != null;
+  const [pendingDestructiveAction, setPendingDestructiveAction] = useState<'trash' | 'permanent' | null>(null);
 
   useEffect(() => {
+    if (pendingDestructiveAction) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
@@ -62,7 +65,7 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [onClose]);
+  }, [onClose, pendingDestructiveAction]);
 
   useEffect(() => {
     if (menuRef.current) {
@@ -140,15 +143,7 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
         },
         {
           label: 'Delete permanently',
-          action: () => {
-            if (
-              !window.confirm(
-                `Permanently delete "${item.title || 'Untitled'}"? The URL stays blocked on import; bookmark data is removed.`
-              )
-            )
-              return;
-            void runQuickAccess(() => permanentlyDeleteItem(item.id));
-          },
+          action: () => setPendingDestructiveAction('permanent'),
           icon: '🗑️',
           danger: true,
         },
@@ -188,25 +183,36 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
     onDuplicate && !isTrashed && { label: 'Duplicate', action: () => onDuplicate(item), icon: '📋' },
     !isTrashed && {
         label: 'Move to trash',
-        action: () => {
-          if (onDelete) {
-            onDelete(item);
-            onClose();
-            return;
-          }
-          if (!window.confirm(`Move "${item.title || 'Untitled'}" to trash?`)) return;
-          void runQuickAccess(() =>
-            moveItemToTrash(item.id, { reason: 'Moved to trash', reasonCode: 'context_menu' })
-          );
-        },
+        action: () => setPendingDestructiveAction('trash'),
         icon: '🗑️',
         danger: true,
       },
   ].filter(Boolean) as MenuItem[];
 
+  const confirmDestructiveAction = () => {
+    const action = pendingDestructiveAction;
+    setPendingDestructiveAction(null);
+    if (action === 'permanent') {
+      void runQuickAccess(() => permanentlyDeleteItem(item.id));
+      return;
+    }
+    if (action === 'trash') {
+      if (onDelete) {
+        onDelete(item);
+        onClose();
+        return;
+      }
+      void runQuickAccess(() =>
+        moveItemToTrash(item.id, { reason: 'Moved to trash', reasonCode: 'context_menu' })
+      );
+    }
+  };
+
   return (
+    <>
     <div
       ref={menuRef}
+      className="ui-context-menu"
       style={{
         position: 'fixed',
         left: x,
@@ -215,7 +221,7 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
         background: 'var(--bg-panel)',
         border: '1px solid var(--border)',
         borderRadius: 8,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+        boxShadow: 'var(--shadow-panel)',
         padding: '0.25rem',
         minWidth: 180,
         backdropFilter: 'blur(12px)',
@@ -273,5 +279,17 @@ export const ItemContextMenu: React.FC<ItemContextMenuProps> = ({
         );
       })}
     </div>
+    {pendingDestructiveAction ? (
+      <HubActionConfirmModal
+        title={pendingDestructiveAction === 'permanent' ? 'Delete item permanently?' : 'Move item to trash?'}
+        description={`“${item.title || 'Untitled'}” ${pendingDestructiveAction === 'permanent' ? 'will be permanently deleted.' : 'will be moved out of its current views.'}`}
+        warning={pendingDestructiveAction === 'permanent' ? 'Bookmark data cannot be restored. Its URL remains blocked from automatic re-import.' : 'You can restore this item later from Trash.'}
+        confirmLabel={pendingDestructiveAction === 'permanent' ? 'Delete permanently' : 'Move to trash'}
+        confirmVariant="danger"
+        onCancel={() => setPendingDestructiveAction(null)}
+        onConfirm={confirmDestructiveAction}
+      />
+    ) : null}
+    </>
   );
 };

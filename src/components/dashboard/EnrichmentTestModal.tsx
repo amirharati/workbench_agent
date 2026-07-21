@@ -12,6 +12,7 @@ import {
 import { buildPipelineRunExport } from '../../lib/pipeline/pipelineRunAnalysis';
 import { persistPipelineRunExport, downloadPipelineRunBundle } from '../../lib/pipeline/pipelineRunStore';
 import { EnrichmentReviewModal } from './EnrichmentReviewModal';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 type Props = {
   open: boolean;
@@ -42,6 +43,7 @@ export const EnrichmentTestModal: React.FC<Props> = ({
   const [lastRunIds, setLastRunIds] = useState<string[]>([]);
   const [pickCount, setPickCount] = useState(50);
   const [clearing, setClearing] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
   const fetchBookmarks = useCallback(async () => {
     const all = await getAllItems();
@@ -144,11 +146,7 @@ export const EnrichmentTestModal: React.FC<Props> = ({
   };
 
   const handleClearPipeline = async () => {
-    const msg =
-      'Delete ALL enrichment rows, AI summaries, category links, and classify signals for every bookmark?\n\n' +
-      'Taxonomy (40 topics) is kept unless you also clear taxonomy in Settings.\n\n' +
-      'Bookmarks themselves are NOT deleted. Run a manual backup first if unsure.';
-    if (!window.confirm(msg)) return;
+    setClearConfirmOpen(false);
     setClearing(true);
     setError('');
     try {
@@ -365,7 +363,7 @@ export const EnrichmentTestModal: React.FC<Props> = ({
         </button>
         <button
           type="button"
-          onClick={() => void handleClearPipeline()}
+          onClick={() => setClearConfirmOpen(true)}
           disabled={running || clearing}
           style={{ ...btnSm, color: 'var(--danger)', borderColor: 'var(--danger)' }}
           title="Remove all enrichment + assignments (keeps bookmarks + topic list)"
@@ -543,6 +541,21 @@ export const EnrichmentTestModal: React.FC<Props> = ({
         onClose={() => setReviewOpen(false)}
         itemIds={lastRunIds.length > 0 ? lastRunIds : undefined}
       />
+      {clearConfirmOpen ? (
+        <HubActionConfirmModal
+          title="Clear all pipeline results?"
+          description="Enrichment rows, AI summaries, category links, and classification signals will be removed for every bookmark."
+          bullets={[
+            'Bookmarks themselves are not deleted.',
+            'The starter taxonomy is kept unless you clear it separately in Settings.',
+          ]}
+          warning="Run a manual backup first if you may need these results later."
+          confirmLabel="Clear pipeline results"
+          confirmVariant="danger"
+          onCancel={() => setClearConfirmOpen(false)}
+          onConfirm={() => void handleClearPipeline()}
+        />
+      ) : null}
     </div>
   );
 };

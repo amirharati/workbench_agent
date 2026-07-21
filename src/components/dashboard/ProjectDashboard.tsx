@@ -14,6 +14,7 @@ import { DeleteConfirmDialog, type DeleteConfirmResult } from '../DeleteConfirmD
 import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
 import { TabPaneFrame } from './TabScrollShell';
 import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from '../../lib/tabUrlCapture';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 type Tab = {
   id: string;
@@ -94,6 +95,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionDescription, setNewCollectionDescription] = useState('');
   const [newCollectionProjectId, setNewCollectionProjectId] = useState<string>(project.id);
+  const [collectionDeleteConfirm, setCollectionDeleteConfirm] = useState<Collection | null>(null);
   
   // Workspace state
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -894,7 +896,13 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   };
 
   const handleDeleteCollection = async (collection: Collection) => {
-    if (!window.confirm(`Delete "${collection.name}"? Items in this collection will be moved to Unsorted.`)) return;
+    setCollectionDeleteConfirm(collection);
+  };
+
+  const confirmDeleteCollection = async () => {
+    if (!collectionDeleteConfirm) return;
+    const collection = collectionDeleteConfirm;
+    setCollectionDeleteConfirm(null);
     try {
       await deleteCollection(collection.id);
       // If we deleted the currently selected collection, switch to 'all'
@@ -2144,7 +2152,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     padding: '0.5rem 0.9rem',
                     fontWeight: 600,
                     background: newCollectionName.trim() ? 'var(--accent)' : 'var(--bg-glass)',
-                    color: newCollectionName.trim() ? '#fff' : 'var(--text-muted)',
+                    color: newCollectionName.trim() ? 'var(--accent-text)' : 'var(--text-muted)',
                     cursor: newCollectionName.trim() ? 'pointer' : 'not-allowed',
                   }}
                 >
@@ -2167,6 +2175,17 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           onResult={runDeleteFromDialog}
         />
       )}
+      {collectionDeleteConfirm ? (
+        <HubActionConfirmModal
+          title="Delete collection?"
+          description={`“${collectionDeleteConfirm.name}” will be removed from this project.`}
+          warning="Items in this collection will be moved to Unsorted. Library items are not deleted."
+          confirmLabel="Delete collection"
+          confirmVariant="danger"
+          onCancel={() => setCollectionDeleteConfirm(null)}
+          onConfirm={() => void confirmDeleteCollection()}
+        />
+      ) : null}
     </div>
   );
 };

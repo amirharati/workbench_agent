@@ -389,15 +389,11 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
                         </button>
                       )}
                       <button
-                        onClick={async (e) => {
+                        onClick={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          console.log('Delete button clicked for:', collection.name, 'onDeleteCollection:', !!onDeleteCollection);
                           if (onDeleteCollection) {
-                            if (window.confirm(`Delete "${collection.name}"? Items will be moved to Unsorted.`)) {
-                              console.log('Calling onDeleteCollection');
-                              await onDeleteCollection(collection);
-                            }
+                            onDeleteCollection(collection);
                           } else {
                             console.error('onDeleteCollection handler not provided');
                             alert('Delete handler not available');

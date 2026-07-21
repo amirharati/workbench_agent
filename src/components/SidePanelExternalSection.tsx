@@ -99,6 +99,7 @@ export const SidePanelExternalSection: React.FC<SidePanelExternalSectionProps> =
             {!showTrigger ? (
               <button
                 type="button"
+                className="ui-button ui-button--icon"
                 aria-label="Close add link"
                 onClick={onToggleOpen}
                 style={{
@@ -174,7 +175,7 @@ export const SidePanelExternalSection: React.FC<SidePanelExternalSectionProps> =
                       color: 'var(--text-muted)',
                     }}
                   >
-                    <CheckCircle2 size={12} color="var(--accent)" />
+                    <CheckCircle2 size={12} color="var(--status-success)" />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {link.url}
                     </span>

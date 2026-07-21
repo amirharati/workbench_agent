@@ -71,11 +71,7 @@ export const CollectionContextMenu: React.FC<CollectionContextMenuProps> = ({
     onRename && { label: 'Rename', action: () => onRename(collection), icon: '✏️' },
     onDetach && { label: 'Remove from project', action: () => onDetach(collection), icon: '🔗' },
     (onRename || onDetach || onDelete) && { label: '─', action: undefined, icon: '', separator: true },
-    onDelete && { label: 'Delete collection', action: () => {
-      if (window.confirm(`Delete "${collection.name}"? Items will be moved to Unsorted.`)) {
-        onDelete(collection);
-      }
-    }, icon: '🗑️', danger: true },
+    onDelete && { label: 'Delete collection', action: () => onDelete(collection), icon: '🗑️', danger: true },
   ].filter(Boolean) as Array<{ label: string; action?: () => void; icon: string; danger?: boolean; separator?: boolean }>;
 
   return (
@@ -89,7 +85,7 @@ export const CollectionContextMenu: React.FC<CollectionContextMenuProps> = ({
         background: 'var(--bg-panel)',
         border: '1px solid var(--border)',
         borderRadius: 8,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+        boxShadow: 'var(--shadow-panel)',
         padding: '0.25rem',
         minWidth: 180,
         backdropFilter: 'blur(12px)',

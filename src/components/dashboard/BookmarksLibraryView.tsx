@@ -23,6 +23,7 @@ import {
   getHomebaseWorkspaceSessionKey,
   getProjectSessionWorkspaceKey,
 } from './workspaceSession';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 const GLOBAL_WORKSPACE_KEY = 'global-session:all';
 
@@ -210,6 +211,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   const [workspaceKey, setWorkspaceKey] = useState(initialPageUi.workspaceKey);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
   const [pinningItemId, setPinningItemId] = useState<string | null>(null);
+  const [trashConfirmItem, setTrashConfirmItem] = useState<Item | null>(null);
   const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:library-content-view');
 
   const destinations = useMemo(
@@ -322,11 +324,9 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
     }
   };
 
-  const removeSelectedItem = async () => {
+  const removeSelectedItem = () => {
     if (!selectedItem || !onDeleteItem) return;
-    if (!window.confirm(`Move “${selectedItem.title || 'Untitled'}” to trash?`)) return;
-    await onDeleteItem(selectedItem.id);
-    setSelectedItemId(null);
+    setTrashConfirmItem(selectedItem);
   };
 
   const toggleProjectPin = async () => {
@@ -440,6 +440,24 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
       </div>
 
       {onCreateItem && <NewItemModal open={createKind != null} onClose={() => setCreateKind(null)} kind={createKind ?? 'bookmark'} projects={projects} collections={collections} defaultProjectId={scopeProjectId !== 'all' ? scopeProjectId : undefined} defaultCollectionId={scopeCollectionId !== 'all' ? scopeCollectionId : undefined} onCreateProject={onCreateProject} onCreateCollection={onCreateCollection} onCreate={async (data) => { await onCreateItem(data); setCreateKind(null); }} />}
+      {trashConfirmItem ? (
+        <HubActionConfirmModal
+          title="Move item to trash?"
+          description={`“${trashConfirmItem.title || 'Untitled'}” will leave the active library view.`}
+          warning="You can restore it later from Trash."
+          confirmLabel="Move to trash"
+          confirmVariant="danger"
+          onCancel={() => setTrashConfirmItem(null)}
+          onConfirm={() => {
+            if (!onDeleteItem) return;
+            const targetId = trashConfirmItem.id;
+            setTrashConfirmItem(null);
+            void onDeleteItem(targetId).then(() => {
+              setSelectedItemId((current) => current === targetId ? null : current);
+            });
+          }}
+        />
+      ) : null}
     </div>
   );
 };

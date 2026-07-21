@@ -912,7 +912,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 'var(--text-lg)', fontFamily: 'var(--font-sans)' }}
               />
               {searchQuery && (
-                <button type="submit" style={{ background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', color: '#fff', padding: '5px 14px', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                <button type="submit" className="ui-button ui-button--primary" style={{ background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', color: 'var(--accent-text)', padding: '5px 14px', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
                   Search
                 </button>
               )}

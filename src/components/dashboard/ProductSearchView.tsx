@@ -198,6 +198,8 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               {state.query && (
                 <button
                   type="button"
+                  className="ui-button ui-button--icon"
+                  aria-label="Clear search"
                   onClick={() => onQueryChange('')}
                   style={{
                     position: 'absolute',
@@ -218,13 +220,14 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             </div>
             <button
               type="submit"
+              className="ui-button ui-button--primary"
               disabled={state.loading || !state.query.trim()}
               style={{
                 padding: '10px 18px',
                 borderRadius: 'var(--radius-md)',
                 border: 'none',
                 background: state.loading ? 'var(--accent-weak)' : 'var(--accent)',
-                color: '#fff',
+                color: 'var(--accent-text)',
                 fontWeight: 600,
                 fontSize: 'var(--text-sm)',
                 cursor: state.loading ? 'wait' : 'pointer',

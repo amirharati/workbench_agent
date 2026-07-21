@@ -15,6 +15,7 @@ import {
 import { getHomebaseWorkspaceSessionKey, getProjectSessionWorkspaceKey, getSavedWorkspaceSessionKey } from './workspaceSession';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { loadPageUiState, projectPageUiKey, savePageUiState } from '../../lib/shell/pageUiState';
+import { HubActionConfirmModal } from './HubActionConfirmModal';
 
 interface ProjectHomeWorkspaceProps {
   project: Project;
@@ -103,6 +104,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const [showSaveWorkspace, setShowSaveWorkspace] = useState(false);
   const [workspaceName, setWorkspaceName] = useState('');
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceDeleteConfirm, setWorkspaceDeleteConfirm] = useState<SavedWorkspaceSession | null>(null);
   const [itemTargetWorkspaceKey, setItemTargetWorkspaceKey] = useState('');
   const [transferEntryId, setTransferEntryId] = useState<string | null>(null);
   const [transferTargetWorkspaceKey, setTransferTargetWorkspaceKey] = useState('');
@@ -506,7 +508,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </select>
           </div>
           {browseSource === 'workspace' && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginLeft: 'auto', flexWrap: 'wrap' }}>
-            {activeSavedWorkspace && <button type="button" onClick={() => { if (window.confirm(`Delete workspace “${activeSavedWorkspace.name}”?`)) onDeleteSavedWorkspace(activeSavedWorkspace.id); }} title={`Delete ${activeSavedWorkspace.name}`} style={secondaryButtonStyle}><Trash2 size={11} /> Delete</button>}
+            {activeSavedWorkspace && <button className="ui-button ui-button--danger" type="button" onClick={() => setWorkspaceDeleteConfirm(activeSavedWorkspace)} title={`Delete ${activeSavedWorkspace.name}`} style={secondaryButtonStyle}><Trash2 size={11} /> Delete</button>}
             <button type="button" onClick={() => { setShowSaveWorkspace((visible) => !visible); setWorkspaceError(null); }} style={secondaryButtonStyle}>
               <Save size={12} /> Save as workspace
             </button>
@@ -568,7 +570,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                   <span style={browseRowDetailStyle}>{active ? `${savedCount} active item${savedCount !== 1 ? 's' : ''}` : 'Homebase workspace'}</span>
                 </span>
                 {active && <Check size={13} />}
-                <button type="button" onClick={(event) => { event.stopPropagation(); if (window.confirm(`Delete workspace “${session.name}”?`)) onDeleteSavedWorkspace(session.id); }} title={`Delete ${session.name}`} aria-label={`Delete ${session.name}`} style={sessionIconButtonStyle}><Trash2 size={11} /></button>
+                <button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={(event) => { event.stopPropagation(); setWorkspaceDeleteConfirm(session); }} title={`Delete ${session.name}`} aria-label={`Delete ${session.name}`} style={sessionIconButtonStyle}><Trash2 size={11} /></button>
               </div>
             );
           })}
@@ -853,6 +855,21 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           )}
         </div>
       </section>)}
+      {workspaceDeleteConfirm ? (
+        <HubActionConfirmModal
+          title="Delete project workspace?"
+          description={`“${workspaceDeleteConfirm.name}” will be removed from this project.`}
+          warning="Its saved working set will be deleted. Library items are not removed."
+          confirmLabel="Delete workspace"
+          confirmVariant="danger"
+          onCancel={() => setWorkspaceDeleteConfirm(null)}
+          onConfirm={() => {
+            const sessionId = workspaceDeleteConfirm.id;
+            setWorkspaceDeleteConfirm(null);
+            onDeleteSavedWorkspace(sessionId);
+          }}
+        />
+      ) : null}
     </div>
   );
 };
