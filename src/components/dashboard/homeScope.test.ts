@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Collection, Item, Project } from '../../lib/db';
-import { addProjectToSwitcher, getHomeScopeItems, getProjectCollections, getProjectHomeSummary, rememberRecentCollection, reorderProjectSwitcher } from './homeScope';
+import {
+  addProjectToSwitcher,
+  getHomeScopeItems,
+  getProjectCollections,
+  getProjectHomeSummary,
+  rememberProjectAccess,
+  rememberRecentCollection,
+  reorderProjectSwitcher,
+} from './homeScope';
 
 const projects: Project[] = [
   { id: 'p1', name: 'One', isDefault: false, created_at: 1, updated_at: 1 },
@@ -44,6 +52,11 @@ describe('Home project and collection scope', () => {
   it('reorders open project switchers only when both projects exist', () => {
     expect(reorderProjectSwitcher(['p1', 'p2', 'p3'], 'p1', 'p3')).toEqual(['p2', 'p3', 'p1']);
     expect(reorderProjectSwitcher(['p1', 'p2'], 'missing', 'p2')).toEqual(['p1', 'p2']);
+  });
+
+  it('tracks project access as a separate newest-first history', () => {
+    expect(rememberProjectAccess(['p3', 'p2', 'p1'], 'p2')).toEqual(['p2', 'p3', 'p1']);
+    expect(rememberProjectAccess(['p3', 'p2', 'p1'], 'p4', 3)).toEqual(['p4', 'p3', 'p2']);
   });
 
   it('keeps the same bounded history for collections inside a project', () => {

@@ -33,6 +33,7 @@ export type NavigationPersistedState = {
   scopeProjectId: string;
   scopeCollectionId: string;
   recentProjectIds: string[];
+  recentProjectAccessIds: string[];
   recentCollectionIdsByProject: Record<string, string[]>;
   pipelineHub: PipelineHubPersistedState;
 };
@@ -57,6 +58,7 @@ export const NAVIGATION_STATE_DEFAULT: NavigationPersistedState = {
   scopeProjectId: 'all',
   scopeCollectionId: 'all',
   recentProjectIds: [],
+  recentProjectAccessIds: [],
   recentCollectionIdsByProject: {},
   pipelineHub: PIPELINE_HUB_STATE_DEFAULT,
 };
@@ -108,6 +110,9 @@ function normalizeNavigationState(
 ): NavigationPersistedState {
   const rawView = raw?.activeView as string | undefined;
   const hub = normalizePipelineHub(raw?.pipelineHub);
+  const recentProjectIds = Array.isArray(raw?.recentProjectIds)
+    ? Array.from(new Set(raw.recentProjectIds.filter((id): id is string => typeof id === 'string'))).slice(0, 5)
+    : [];
   if (rawView === 'ai-categories') {
     hub.hubLane = 'categories';
     hub.categoriesSubTab = 'taxonomy';
@@ -116,9 +121,10 @@ function normalizeNavigationState(
     activeView: normalizeView(rawView),
     scopeProjectId: typeof raw?.scopeProjectId === 'string' ? raw.scopeProjectId : 'all',
     scopeCollectionId: typeof raw?.scopeCollectionId === 'string' ? raw.scopeCollectionId : 'all',
-    recentProjectIds: Array.isArray(raw?.recentProjectIds)
-      ? Array.from(new Set(raw.recentProjectIds.filter((id): id is string => typeof id === 'string'))).slice(0, 5)
-      : [],
+    recentProjectIds,
+    recentProjectAccessIds: Array.isArray(raw?.recentProjectAccessIds)
+      ? Array.from(new Set(raw.recentProjectAccessIds.filter((id): id is string => typeof id === 'string'))).slice(0, 12)
+      : recentProjectIds,
     recentCollectionIdsByProject:
       raw?.recentCollectionIdsByProject &&
       typeof raw.recentCollectionIdsByProject === 'object' &&

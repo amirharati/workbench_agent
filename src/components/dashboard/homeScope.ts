@@ -2,6 +2,7 @@ import type { Collection, Item, Project } from '../../lib/db';
 
 export type HomeScopeId = string | 'all';
 export const HOME_RECENT_SCOPE_LIMIT = 5;
+export const HOME_RECENT_PROJECT_ACCESS_LIMIT = 12;
 
 export function addProjectToSwitcher(
   projectIds: string[],
@@ -25,6 +26,14 @@ export function reorderProjectSwitcher(
   const [moved] = next.splice(fromIndex, 1);
   next.splice(targetIndex, 0, moved);
   return next;
+}
+
+export function rememberProjectAccess(
+  projectIds: string[],
+  projectId: string,
+  limit = HOME_RECENT_PROJECT_ACCESS_LIMIT
+): string[] {
+  return [projectId, ...projectIds.filter((id) => id !== projectId)].slice(0, limit);
 }
 
 export function rememberRecentCollection(

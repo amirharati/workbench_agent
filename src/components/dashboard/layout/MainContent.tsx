@@ -52,6 +52,7 @@ interface MainContentProps {
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   recentProjectIds?: string[];
+  recentProjectAccessIds?: string[];
   projects: Project[];
   items: Item[];
   collections: Collection[];
@@ -141,6 +142,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
   recentProjectIds = [],
+  recentProjectAccessIds = [],
   projects,
   items, 
   collections, 
@@ -723,6 +725,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
             recentProjectIds={recentProjectIds}
+            recentProjectAccessIds={recentProjectAccessIds}
             onSelectProjectScope={onSelectProjectScope}
             onReorderProjectScopes={onReorderProjectScopes}
             onCloseProjectScope={onCloseProjectScope}

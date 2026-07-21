@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, ExternalLink, Folder, Layers3, Maximize2, Plus, Search, Star, Trash2, Workflow } from 'lucide-react';
+import { ChevronRight, Clock, ExternalLink, Folder, Layers3, Maximize2, Plus, Search, Star, Trash2, Workflow } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
@@ -42,6 +42,7 @@ interface AllLibraryWorkspaceOverviewProps {
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   getEntryScopeLabel?: (tab: GlobalTab) => string | undefined;
   projectSummaries?: HomeProjectSummary[];
+  recentProjectAccessIds?: string[];
   recentItems?: Item[];
   quickAccessItems?: Item[];
   totalItems?: number;
@@ -53,9 +54,39 @@ interface AllLibraryWorkspaceOverviewProps {
   onOpenPipeline?: () => void;
   initialView?: AllLibraryView;
   onActiveViewChange?: (view: AllLibraryView) => void;
+  initialProjectFilter?: ProjectLauncherFilter;
+  initialProjectQuery?: string;
+  onProjectFilterChange?: (filter: ProjectLauncherFilter) => void;
+  onProjectQueryChange?: (query: string) => void;
 }
 
-export type AllLibraryView = 'projects' | 'recent' | 'quick-access' | 'workspace';
+export type AllLibraryView = 'recent' | 'quick-access' | 'workspace';
+export type ProjectLauncherFilter = 'all' | 'recent';
+
+export function normalizeAllLibraryView(value: unknown): AllLibraryView {
+  return value === 'quick-access' || value === 'workspace' ? value : 'recent';
+}
+
+export function getVisibleProjectSummaries(
+  projectSummaries: HomeProjectSummary[],
+  recentProjectAccessIds: string[],
+  filter: ProjectLauncherFilter,
+  query: string
+): HomeProjectSummary[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (normalizedQuery) {
+    return projectSummaries.filter(({ project }) =>
+      `${project.name} ${project.description ?? ''}`.toLocaleLowerCase().includes(normalizedQuery)
+    );
+  }
+  if (filter === 'recent') {
+    const summariesById = new Map(projectSummaries.map((summary) => [summary.project.id, summary]));
+    return recentProjectAccessIds
+      .map((projectId) => summariesById.get(projectId))
+      .filter((summary): summary is HomeProjectSummary => summary != null);
+  }
+  return projectSummaries;
+}
 
 function searchScopeLabel(tab: GlobalTab, projects: Project[], collections: Collection[]): string {
   if (tab.kind !== 'search') return '';
@@ -88,6 +119,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   onCreateCollection,
   getEntryScopeLabel,
   projectSummaries = [],
+  recentProjectAccessIds = [],
   recentItems = [],
   quickAccessItems = [],
   totalItems = items.length,
@@ -97,11 +129,29 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   onClearSelection,
   onOpenTrash,
   onOpenPipeline,
-  initialView = 'projects',
+  initialView = 'recent',
   onActiveViewChange,
+  initialProjectFilter = 'all',
+  initialProjectQuery = '',
+  onProjectFilterChange,
+  onProjectQueryChange,
 }) => {
-  const [activeView, setActiveView] = React.useState<AllLibraryView>(initialView);
+  const [activeView, setActiveView] = React.useState<AllLibraryView>(() => normalizeAllLibraryView(initialView));
+  const [projectFilter, setProjectFilter] = React.useState<ProjectLauncherFilter>(initialProjectFilter);
+  const [projectQuery, setProjectQuery] = React.useState(initialProjectQuery);
   const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:home-all-library-content-view');
+  const recentProjectSummaries = getVisibleProjectSummaries(
+    projectSummaries,
+    recentProjectAccessIds,
+    'recent',
+    ''
+  );
+  const visibleProjectSummaries = getVisibleProjectSummaries(
+    projectSummaries,
+    recentProjectAccessIds,
+    projectFilter,
+    projectQuery
+  );
   const visibleGroups = selectedView === 'all-active'
     ? groups.filter((group) => group.tabs.length > 0)
     : groups.filter((group) => group.key === selectedView);
@@ -118,15 +168,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
     ? groups[0]?.tabs.some((tab) => tab.kind === 'item' && tab.itemId === previewItem.id) ?? false
     : false;
   const visibleItems = activeView === 'recent' ? recentItems : quickAccessItems;
-  const browseEntries = activeView === 'projects'
-    ? projectSummaries.map(({ project, collectionCount, itemCount }) => ({
-        id: `project:${project.id}`,
-        title: project.name,
-        icon: <Folder size={13} />,
-        subtitle: project.isDefault ? `${itemCount} incoming` : `${itemCount} items · ${collectionCount} collections`,
-        meta: project.isDefault ? 'Default project' : undefined,
-      }))
-    : visibleItems.map((item) => ({
+  const browseEntries = visibleItems.map((item) => ({
         id: item.id,
         title: item.title || 'Untitled',
         icon: <ItemQuickAccessMarkers item={item} size={11} />,
@@ -140,18 +182,116 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
     onClearSelection?.();
   };
   const selectBrowseEntry = (id: string) => {
-    if (activeView === 'projects') {
-      onOpenProject?.(id.slice('project:'.length));
-      return;
-    }
     const item = visibleItems.find((candidate) => candidate.id === id);
     if (item) onSelectItem?.(item);
   };
 
   return (
     <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, display: 'flex', flexDirection: 'column' }} aria-label="All Library workspace">
+      <section className="ui-project-launcher" aria-labelledby="all-library-projects-heading">
+        <div className="ui-project-launcher__header">
+          <div>
+            <h2 className="ui-project-launcher__title" id="all-library-projects-heading">
+              <Folder size={14} /> Open a project
+            </h2>
+            <p className="ui-project-launcher__description">
+              Projects change your Home context. Opening one does not add or remove anything from a workspace.
+            </p>
+          </div>
+          <span className="ui-project-launcher__count">
+            {visibleProjectSummaries.length !== projectSummaries.length
+              ? `${visibleProjectSummaries.length} of ${projectSummaries.length}`
+              : projectSummaries.length}{' '}
+            project{projectSummaries.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <div className="ui-project-launcher__controls">
+          <label className="ui-project-launcher__search">
+            <Search size={13} aria-hidden="true" />
+            <input
+              type="search"
+              value={projectQuery}
+              onChange={(event) => {
+                const nextQuery = event.target.value;
+                setProjectQuery(nextQuery);
+                onProjectQueryChange?.(nextQuery);
+                if (nextQuery.trim()) {
+                  setProjectFilter('all');
+                  onProjectFilterChange?.('all');
+                }
+              }}
+              placeholder="Search projects"
+              aria-label="Search projects"
+            />
+          </label>
+          <div className="ui-project-launcher__filters" role="group" aria-label="Filter projects">
+            <button
+              type="button"
+              aria-pressed={projectFilter === 'all'}
+              onClick={() => {
+                setProjectFilter('all');
+                onProjectFilterChange?.('all');
+              }}
+            >
+              All <span>{projectSummaries.length}</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={projectFilter === 'recent'}
+              onClick={() => {
+                setProjectQuery('');
+                setProjectFilter('recent');
+                onProjectQueryChange?.('');
+                onProjectFilterChange?.('recent');
+              }}
+            >
+              Recent <span>{recentProjectSummaries.length}</span>
+            </button>
+          </div>
+        </div>
+        <div className="ui-project-launcher__grid scrollbar" aria-label="Project navigation">
+          {projectSummaries.length === 0 ? (
+            <div className="ui-project-launcher__empty">
+              Create a project when related material needs a durable home.
+            </div>
+          ) : visibleProjectSummaries.length === 0 ? (
+            <div className="ui-project-launcher__empty">
+              {projectQuery.trim()
+                ? `No projects match “${projectQuery.trim()}”.`
+                : 'Projects you open will appear in Recent.'}
+            </div>
+          ) : visibleProjectSummaries.map(({ project, collectionCount, itemCount }) => (
+            <button
+              key={project.id}
+              className="ui-project-launcher__project"
+              type="button"
+              onClick={() => onOpenProject?.(project.id)}
+              aria-label={`Open ${project.name}`}
+            >
+              <span className="ui-project-launcher__icon" data-inbox={project.isDefault ? 'true' : 'false'}>
+                <Folder size={14} />
+              </span>
+              <span className="ui-project-launcher__project-copy">
+                <strong>{project.name}</strong>
+                <span>
+                  {project.isDefault
+                    ? `${itemCount} incoming`
+                    : `${itemCount} item${itemCount !== 1 ? 's' : ''} · ${collectionCount} collection${collectionCount !== 1 ? 's' : ''}`}
+                </span>
+              </span>
+              <ChevronRight size={14} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div className="ui-material-workspace-heading">
+        <div>
+          <h2>Library material</h2>
+          <p>Select material to inspect it, or switch to Workspace to continue active work.</p>
+        </div>
+      </div>
       <div className="ui-tab-bar" data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
-        <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'projects'} onClick={() => selectView('projects')} style={viewTabStyle(activeView === 'projects')}><Folder size={12} /> Projects <span style={tabCountStyle}>{projectSummaries.length}</span></button>
         <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'recent'} onClick={() => selectView('recent')} style={viewTabStyle(activeView === 'recent')}><Clock size={12} /> Recent <span style={tabCountStyle}>{recentItems.length}</span></button>
         <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'quick-access'} onClick={() => selectView('quick-access')} style={viewTabStyle(activeView === 'quick-access')}><Star size={12} /> Favorites &amp; pins <span style={tabCountStyle}>{quickAccessItems.length}</span></button>
         <div style={compoundTabStyle(activeView === 'workspace')}>
@@ -197,19 +337,21 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             />
           ))}
         </div> : <ContentBrowser
-          title={activeView === 'projects' ? 'Projects' : activeView === 'recent' ? 'Recent items' : 'Favorites & pins'}
+          title={activeView === 'recent' ? 'Recent items' : 'Favorites & pins'}
           entries={browseEntries}
           selectedId={previewItem?.id ?? null}
           onSelect={selectBrowseEntry}
           mode={browseMode}
           onModeChange={setBrowseMode}
-          emptyMessage={activeView === 'projects' ? 'Create a project when you want a durable home for related work.' : activeView === 'quick-access' ? 'Favorite or pin items to keep them close.' : 'Newly captured material will appear here.'}
+          emptyMessage={activeView === 'quick-access' ? 'Favorite or pin items to keep them close.' : 'Newly captured material will appear here.'}
           ariaLabel="All Library material"
         />}
 
         <div className="ui-panel ui-detail-panel" style={uiPatterns.panel}>
           <div className="ui-detail-panel__header" style={uiPatterns.panelHeader}>
-            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 650, textTransform: 'uppercase', letterSpacing: 0.4 }}>{previewItem ? 'Item' : 'Workspace entry'}</span>
+            <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 650, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              {activeView === 'workspace' ? 'Workspace entry' : 'Item details'}
+            </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {activeSelectedTab ? (
                 <button type="button" onClick={() => onFocusTab(activeSelectedTab)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
@@ -250,9 +392,15 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             </div>
           ) : (
             <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, color: 'var(--text-faint)', textAlign: 'center' }}>
-              <Layers3 size={23} />
-              <strong style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Select something to work with</strong>
-              <span style={{ maxWidth: 300, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>{activeView === 'projects' ? 'Choose a project to enter its working canvas, or switch views to inspect recent and favorite material here.' : 'Choose an item or workspace entry. Items can be edited and organized here without entering Focus.'}</span>
+              {activeView === 'workspace' ? <Layers3 size={23} /> : activeView === 'recent' ? <Clock size={23} /> : <Star size={23} />}
+              <strong style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+                {activeView === 'workspace' ? 'Select a workspace entry' : 'Select an item to inspect'}
+              </strong>
+              <span style={{ maxWidth: 300, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
+                {activeView === 'workspace'
+                  ? 'Choose active work to inspect it here, or use Focus for its full interactive view.'
+                  : 'Selecting an item opens its editable details here. Adding it to a workspace is always a separate action.'}
+              </span>
             </div>
           )}
         </div>

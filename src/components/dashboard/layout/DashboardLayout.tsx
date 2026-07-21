@@ -25,7 +25,7 @@ import { CommandPalette } from '../CommandPalette';
 import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID, loadLastSearchQuery } from '../../../hooks/useLibrarySearch';
 import { useImportPipelineJob } from '../../../hooks/useImportPipelineJob';
 import { ImportPipelineJobBanner } from '../ImportPipelineJobBanner';
-import { addProjectToSwitcher, rememberRecentCollection } from '../homeScope';
+import { addProjectToSwitcher, rememberProjectAccess, rememberRecentCollection } from '../homeScope';
 import {
   loadItemIdsForCategory,
   loadItemIdsForPipelineQueue,
@@ -238,6 +238,11 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     initialNav.scopeProjectId === 'all'
       ? initialNav.recentProjectIds
       : addProjectToSwitcher(initialNav.recentProjectIds, initialNav.scopeProjectId)
+  );
+  const [recentProjectAccessIds, setRecentProjectAccessIds] = useState<string[]>(() =>
+    initialNav.scopeProjectId === 'all'
+      ? initialNav.recentProjectAccessIds
+      : rememberProjectAccess(initialNav.recentProjectAccessIds, initialNav.scopeProjectId)
   );
   const [, setRecentCollectionIdsByProject] = useState<Record<string, string[]>>(() => {
     if (initialNav.scopeProjectId === 'all' || initialNav.scopeCollectionId === 'all') {
@@ -644,6 +649,11 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       patchNavigationState({ recentProjectIds: next });
       return next;
     });
+    setRecentProjectAccessIds((previous) => {
+      const next = rememberProjectAccess(previous, projectId);
+      patchNavigationState({ recentProjectAccessIds: next });
+      return next;
+    });
   };
 
   const handleReorderProjectScopes = (projectIds: string[]) => {
@@ -712,6 +722,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     if (deleted !== false && scopeProjectId === projectId) {
       setScopeProjectId('all');
       setScopeCollectionId('all');
+    }
+    if (deleted !== false) {
+      setRecentProjectAccessIds((previous) => {
+        const next = previous.filter((id) => id !== projectId);
+        patchNavigationState({ recentProjectAccessIds: next });
+        return next;
+      });
     }
     return deleted;
   };
@@ -1188,6 +1205,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               scopeProjectId={scopeProjectId}
               scopeCollectionId={scopeCollectionId}
               recentProjectIds={recentProjectIds}
+              recentProjectAccessIds={recentProjectAccessIds}
               globalTabState={globalTabState}
               onGlobalTabStateChange={handleGlobalTabStateChange}
               renderListTab={renderListTab}

@@ -10,7 +10,12 @@ import { ProductSearchView } from './ProductSearchView';
 import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary, reorderProjectSwitcher } from './homeScope';
 import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
 import { ActiveWorkspaceCard } from './ActiveWorkspaceCard';
-import { AllLibraryWorkspaceOverview, type WorkspaceViewGroup } from './AllLibraryWorkspaceOverview';
+import {
+  AllLibraryWorkspaceOverview,
+  normalizeAllLibraryView,
+  type ProjectLauncherFilter,
+  type WorkspaceViewGroup,
+} from './AllLibraryWorkspaceOverview';
 import type { AllLibraryView } from './AllLibraryWorkspaceOverview';
 import { homePageUiKey, loadPageUiState, savePageUiState } from '../../lib/shell/pageUiState';
 import {
@@ -59,6 +64,7 @@ interface HomeViewProps {
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   recentProjectIds?: string[];
+  recentProjectAccessIds?: string[];
   onSelectProjectScope?: (projectId: string | 'all') => void;
   onReorderProjectScopes?: (projectIds: string[]) => void;
   onCloseProjectScope?: (projectId: string) => void;
@@ -73,7 +79,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, librarySearch, workingSearch, onOpenItemFromSearch, onOpenPipelineHub, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, onSelectedBrowseItemChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, librarySearch, workingSearch, onOpenItemFromSearch, onOpenPipelineHub, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], recentProjectAccessIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, onSelectedBrowseItemChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const [homeItemContextMenu, setHomeItemContextMenu] = React.useState<{
     item: Item;
@@ -86,7 +92,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
     selectedOverviewItemId: null as string | null,
     selectedAllLibraryWorkspaceTabId: null as string | null,
     allLibraryWorkspaceView: 'global',
-    allLibraryActiveView: 'projects' as AllLibraryView,
+    allLibraryActiveView: 'recent' as AllLibraryView,
+    projectLauncherFilter: 'all' as ProjectLauncherFilter,
+    projectLauncherQuery: '',
   }));
   const [selectedOverviewItemId, setSelectedOverviewItemId] = React.useState<string | null>(
     initialPageUi.selectedOverviewItemId
@@ -95,7 +103,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
     initialPageUi.selectedAllLibraryWorkspaceTabId
   );
   const [allLibraryWorkspaceView, setAllLibraryWorkspaceView] = React.useState(initialPageUi.allLibraryWorkspaceView);
-  const [allLibraryActiveView, setAllLibraryActiveView] = React.useState<AllLibraryView>(initialPageUi.allLibraryActiveView);
+  const [allLibraryActiveView, setAllLibraryActiveView] = React.useState<AllLibraryView>(() =>
+    normalizeAllLibraryView(initialPageUi.allLibraryActiveView)
+  );
+  const [projectLauncherFilter, setProjectLauncherFilter] = React.useState<ProjectLauncherFilter>(
+    initialPageUi.projectLauncherFilter === 'recent' ? 'recent' : 'all'
+  );
+  const [projectLauncherQuery, setProjectLauncherQuery] = React.useState(initialPageUi.projectLauncherQuery);
   const focusLayerRef = React.useRef<HTMLDivElement>(null);
   const lastBrowseFocusRef = React.useRef<HTMLElement | null>(null);
   const wasFocusOpenRef = React.useRef(false);
@@ -106,8 +120,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
       selectedAllLibraryWorkspaceTabId,
       allLibraryWorkspaceView,
       allLibraryActiveView,
+      projectLauncherFilter,
+      projectLauncherQuery,
     });
-  }, [allLibraryActiveView, allLibraryWorkspaceView, pageUiKey, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
+  }, [allLibraryActiveView, allLibraryWorkspaceView, pageUiKey, projectLauncherFilter, projectLauncherQuery, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
 
   const activeProject = useMemo(
     () => (scopeProjectId === 'all' ? undefined : projects.find((project) => project.id === scopeProjectId)),
@@ -241,9 +257,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   );
   const projectSummaries = useMemo(
     () =>
-      [...projects]
-        .sort((a, b) => b.updated_at - a.updated_at)
-        .map((project) => getProjectHomeSummary(project, items, collections)),
+      projects.map((project) => getProjectHomeSummary(project, items, collections)),
     [projects, items, collections]
   );
   const recentProjects = useMemo(
@@ -911,6 +925,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <AllLibraryWorkspaceOverview
             initialView={allLibraryActiveView}
             onActiveViewChange={setAllLibraryActiveView}
+            initialProjectFilter={projectLauncherFilter}
+            initialProjectQuery={projectLauncherQuery}
+            onProjectFilterChange={setProjectLauncherFilter}
+            onProjectQueryChange={setProjectLauncherQuery}
             groups={allLibraryWorkspaceGroups}
             selectedView={allLibraryWorkspaceView}
             onSelectedViewChange={(view) => {
@@ -933,6 +951,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             onCreateCollection={onCreateCollection}
             getEntryScopeLabel={getWorkspaceEntryScopeLabel}
             projectSummaries={projectSummaries}
+            recentProjectAccessIds={recentProjectAccessIds}
             recentItems={recentItems}
             quickAccessItems={quickAccessItems}
             totalItems={items.length}
