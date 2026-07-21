@@ -36,7 +36,15 @@ export type DataChangeReason =
 export interface DataChangeEvent {
   reason: DataChangeReason;
   at: number;
+  /** Document instance that emitted the event, used to ignore its own broadcast. */
+  sourceId?: string;
+  /** Primary domain row touched by an ordinary CRUD operation. */
+  entityId?: string;
+  /** Worker revision acknowledged for this mutation, when available. */
+  revision?: number;
 }
+
+export type DataChangeDetail = Pick<DataChangeEvent, 'entityId' | 'revision'>;
 
 type Listener = (event: DataChangeEvent) => void;
 
@@ -51,9 +59,21 @@ export function subscribeToDataChanges(listener: Listener): () => void {
 
 /** Same name in every extension page (side panel, new tab, etc.) for cross-document refresh. */
 export const DATA_CHANGED_BROADCAST_CHANNEL = 'workbench-agent-data-changed';
+export const DATA_CHANGE_SOURCE_ID =
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
-export function notifyDataChanged(reason: DataChangeReason = 'unknown'): void {
-  const event: DataChangeEvent = { reason, at: Date.now() };
+export function notifyDataChanged(
+  reason: DataChangeReason = 'unknown',
+  detail?: DataChangeDetail
+): void {
+  const event: DataChangeEvent = {
+    reason,
+    at: Date.now(),
+    sourceId: DATA_CHANGE_SOURCE_ID,
+    ...detail,
+  };
   // Best-effort: never let a buggy listener break a DB write.
   for (const listener of Array.from(listeners)) {
     try {
@@ -66,7 +86,7 @@ export function notifyDataChanged(reason: DataChangeReason = 'unknown'): void {
   if (typeof BroadcastChannel !== 'undefined') {
     try {
       const ch = new BroadcastChannel(DATA_CHANGED_BROADCAST_CHANNEL);
-      ch.postMessage({ reason, at: event.at });
+      ch.postMessage(event);
       ch.close();
     } catch {
       // ignore

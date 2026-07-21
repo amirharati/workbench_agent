@@ -49,6 +49,18 @@ const DEFAULT_UNSORTED_COLLECTION_NAME = INCOMING_COLLECTION_NAME;
 
 export const ALL_PROJECTS_ID = '__all__';
 
+function notifyDbChanged(reason: Parameters<typeof notifyDataChanged>[0], entityId?: string): void {
+  let revision: number | undefined;
+  try {
+    revision = isDbWorkerProcess()
+      ? revisionTracker.getLocalRevisionSync()
+      : getRemoteStore().getRevision();
+  } catch {
+    revision = undefined;
+  }
+  notifyDataChanged(reason, { entityId, revision });
+}
+
 // ============================================================================
 // Types (unchanged from IDB version)
 // ============================================================================
@@ -310,11 +322,13 @@ export async function ensurePipelineHydrated(): Promise<void> {
 
 export const getDB = async (): Promise<IdbCompatStore> => {
   // OPFS is live truth — do not require folder *write* permission (Chrome often
-  // resets to `prompt` after reload). First-time pick is gated in App.
-  const { requireConfiguredBackupFolder } = await import('./backupFolder');
-  await requireConfiguredBackupFolder();
+  // resets to `prompt` after reload). First-time pick is gated in App. Once the
+  // process store is open, do not re-read the persisted directory handle for
+  // every ordinary CRUD call.
   if (isDbWorkerProcess()) {
     if (!storePromise) {
+      const { requireConfiguredBackupFolder } = await import('./backupFolder');
+      await requireConfiguredBackupFolder();
       storePromise = (async () => {
         const store = await getIdbCompatStore();
         await ensureDefaultProjectAndCollection(store);
@@ -325,6 +339,8 @@ export const getDB = async (): Promise<IdbCompatStore> => {
   }
   await dbLifecycle;
   if (!storePromise) {
+    const { requireConfiguredBackupFolder } = await import('./backupFolder');
+    await requireConfiguredBackupFolder();
     storePromise = initTabStore().catch((e) => {
       storePromise = null;
       throw e;
@@ -484,7 +500,11 @@ async function commitAndVerifyItem(itemId: string): Promise<void> {
 }
 
 /** Fire-and-forget durability — UI already has write-through memory. */
-function commitAndVerifyItemInBackground(itemId: string, urlForWorkingSet?: string): void {
+function commitAndVerifyItemInBackground(
+  itemId: string,
+  urlForWorkingSet?: string,
+  onCommitted?: () => void
+): void {
   void commitAndVerifyItem(itemId)
     .then(() => {
       if (urlForWorkingSet) {
@@ -492,6 +512,7 @@ function commitAndVerifyItemInBackground(itemId: string, urlForWorkingSet?: stri
           markUrlDurable(urlForWorkingSet);
         });
       }
+      onCommitted?.();
     })
     .catch((err) => {
       console.error('[db] background durable commit failed:', err);
@@ -527,16 +548,17 @@ export const addItemWithMerge = async (
     ? item.collectionIds 
     : [defaultUnsortedCollectionId];
 
-  const finishCommit = async (itemId: string, url?: string) => {
+  const finishCommit = async (itemId: string, url: string | undefined, onCommitted: () => void) => {
     if (awaitDurable) {
       await commitAndVerifyItem(itemId);
       if (url) {
         const { markUrlDurable } = await import('./storage/workingSetCache');
         markUrlDurable(url);
       }
+      onCommitted();
       return;
     }
-    commitAndVerifyItemInBackground(itemId, url);
+    commitAndVerifyItemInBackground(itemId, url, onCommitted);
   };
   
   if (!item.url?.trim() || !isBookmarkUrl(item.url)) {
@@ -559,8 +581,7 @@ export const addItemWithMerge = async (
       collectionIds,
       placements
     } as Item);
-    await finishCommit(id);
-    notifyDataChanged('item.add');
+    await finishCommit(id, undefined, () => notifyDbChanged('item.add', id));
     return { itemId: id, merged: false, addedToCollections: collectionIds, alreadyInCollections: [] };
   }
   
@@ -641,8 +662,7 @@ export const addItemWithMerge = async (
       pinSavedItem(savedUrl, mergedItem, { durable: awaitDurable });
     }
 
-    await finishCommit(existing.id, savedUrl);
-    notifyDataChanged('item.update');
+    await finishCommit(existing.id, savedUrl, () => notifyDbChanged('item.update', existing.id));
     return {
       itemId: existing.id,
       merged: true,
@@ -680,8 +700,7 @@ export const addItemWithMerge = async (
     pinSavedItem(savedUrl, created, { durable: awaitDurable });
   }
 
-  await finishCommit(id, savedUrl);
-  notifyDataChanged('item.add');
+  await finishCommit(id, savedUrl, () => notifyDbChanged('item.add', id));
   return { itemId: id, merged: false, addedToCollections: collectionIds, alreadyInCollections: [] };
 };
 
@@ -797,7 +816,7 @@ export const removeItemFromCollection = async (
       reasonCode: 'remove_last_collection',
     }, { notify: false });
     await commitAndVerifyItem(itemId);
-    notifyDataChanged('item.update');
+    notifyDbChanged('item.update', itemId);
     return { removed: true, itemDeleted: false, itemTrashed: true, remainingPlacements: 0 };
   }
   
@@ -809,7 +828,7 @@ export const removeItemFromCollection = async (
   });
 
   await commitAndVerifyItem(itemId);
-  notifyDataChanged('item.update');
+  notifyDbChanged('item.update', itemId);
   return { removed: true, itemDeleted: false, itemTrashed: false, remainingPlacements: newCollectionIds.length };
 };
 
@@ -830,7 +849,7 @@ export const deleteItem = async (id: string): Promise<{ deleted: boolean; placem
   }
   store.deleteItem(id);
   await commitAndVerifyItemDeleted(id);
-  notifyDataChanged('item.delete');
+  notifyDbChanged('item.delete', id);
   return { deleted: true, placementCount };
 };
 
@@ -848,20 +867,33 @@ export const getAllProjects = async () => {
 };
 
 export const addProject = async (name: string, description?: string) => {
-  const store = await getDB();
+  await getDB();
   const now = nowTs();
   const id = crypto.randomUUID();
-  store.putProject({
+  const project: Project = {
     id,
     name,
     description,
     isDefault: false,
     created_at: now,
     updated_at: now,
-  });
-  await ensureDefaultCollectionForProject(store, id);
-  await commitPendingDbWrites();
-  notifyDataChanged('project.add');
+  };
+  const defaultCollection: Collection = {
+    id: `collection_${id}_unsorted`,
+    name: UNFILED_COLLECTION_NAME,
+    color: '#3b82f6',
+    isDefault: true,
+    created_at: now,
+    updated_at: now,
+    primaryProjectId: id,
+    projectIds: [id],
+  };
+  // Project + its required Unfiled collection become durable atomically in one worker RPC.
+  await applyBatchMutations([
+    { kind: 'put', storeName: 'projects', value: project },
+    { kind: 'put', storeName: 'collections', value: defaultCollection },
+  ]);
+  notifyDbChanged('project.add', id);
   return id;
 };
 
@@ -872,7 +904,7 @@ export const updateProject = async (id: string, updates: Partial<Omit<Project, '
   const now = nowTs();
   store.putProject({ ...existing, ...updates, updated_at: now });
   await commitPendingDbWrites();
-  notifyDataChanged('project.update');
+  notifyDbChanged('project.update', id);
   return true;
 };
 
@@ -904,7 +936,7 @@ export const deleteProject = async (id: string) => {
 
   store.deleteProject(id);
   await commitPendingDbWrites();
-  notifyDataChanged('project.delete');
+  notifyDbChanged('project.delete', id);
   return true;
 };
 
@@ -935,7 +967,7 @@ export const addCollection = async (name: string, color?: string, projectId?: st
     color: color || '#3b82f6',
   });
   await commitPendingDbWrites();
-  notifyDataChanged('collection.add');
+  notifyDbChanged('collection.add', id);
   return id;
 };
 
@@ -954,7 +986,7 @@ export const deleteCollection = async (id: string) => {
   }
   store.deleteCollection(id);
   await commitPendingDbWrites();
-  notifyDataChanged('collection.delete');
+  notifyDbChanged('collection.delete', id);
 };
 
 export const updateCollection = async (id: string, updates: Partial<Omit<Collection, 'id' | 'created_at'>>) => {
@@ -963,7 +995,7 @@ export const updateCollection = async (id: string, updates: Partial<Omit<Collect
   if (collection) {
     store.putCollection({ ...collection, ...updates, updated_at: nowTs() });
     await commitPendingDbWrites();
-    notifyDataChanged('collection.update');
+    notifyDbChanged('collection.update', id);
   }
 };
 
@@ -983,7 +1015,7 @@ export const updateItemCollection = async (itemId: string, collectionId: string 
       updated_at: now,
     });
     await commitAndVerifyItem(itemId);
-    notifyDataChanged('item.update');
+    notifyDbChanged('item.update', itemId);
   }
 };
 
@@ -1070,7 +1102,7 @@ export const updateItem = async (
   assertNoBookmarkDuplicateInCollections(store, next.url || '', next.collectionIds, id);
   store.putItem(next);
   await commitAndVerifyItem(id);
-  notifyDataChanged('item.update');
+  notifyDbChanged('item.update', id);
 };
 
 /** One (or few chunked) worker transactions — use for bulk trash, imports, etc. */
@@ -1134,7 +1166,7 @@ export const addSnapshot = async (tabs: Snapshot['tabs']) => {
     tabs,
   });
   await commitPendingDbWrites();
-  notifyDataChanged('snapshot.add');
+  notifyDbChanged('snapshot.add');
 };
 
 // ============================================================================
@@ -1167,7 +1199,7 @@ export const addWorkspace = async (name: string, windows: WorkspaceWindow[], pro
   const dedupedWindows = deduplicateWorkspaceTabs(windows);
   store.putWorkspace({ id, name, projectId, created_at: now, updated_at: now, windows: dedupedWindows });
   await commitPendingDbWrites();
-  notifyDataChanged('workspace.add');
+  notifyDbChanged('workspace.add', id);
   return id;
 };
 
@@ -1184,7 +1216,7 @@ export const updateWorkspace = async (id: string, updates: Partial<Pick<Workspac
   
   store.putWorkspace({ ...existing, ...processedUpdates, updated_at: now });
   await commitPendingDbWrites();
-  notifyDataChanged('workspace.update');
+  notifyDbChanged('workspace.update', id);
   return true;
 };
 
@@ -1192,7 +1224,7 @@ export const deleteWorkspace = async (id: string) => {
   const store = await getDB();
   store.deleteWorkspace(id);
   await commitPendingDbWrites();
-  notifyDataChanged('workspace.delete');
+  notifyDbChanged('workspace.delete', id);
 };
 
 // ============================================================================

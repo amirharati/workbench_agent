@@ -255,7 +255,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 4;
+      return 5;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -590,6 +590,27 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       }
       return {
         applied: ops.length,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
+    }
+    case 'storeMutate': {
+      const storeMethod = args[0] as string;
+      const storeArgs = (args[1] as unknown[]) ?? [];
+      if (!isMutatingStoreMethod(storeMethod)) {
+        throw new Error(`Store method is not a registered mutation: ${storeMethod}`);
+      }
+      const store = await getIdbCompatStore();
+      const fn = (store as unknown as Record<string, (...a: unknown[]) => unknown>)[storeMethod];
+      if (typeof fn !== 'function') {
+        throw new Error(`Unknown store method: ${storeMethod}`);
+      }
+      const result = fn.apply(store, storeArgs);
+      invalidateHubScopeEntryCache();
+      if (shouldScheduleFolderMirrorForMethod(storeMethod)) {
+        scheduleFolderMirror();
+      }
+      return {
+        result,
         revision: revisionTracker.recordSqliteMutation(),
       };
     }

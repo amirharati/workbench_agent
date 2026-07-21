@@ -695,12 +695,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         source,
       });
 
-      // Refresh data first to get the new item
-      if (onRefresh) await onRefresh();
-      const { flushDurableBackupSoon } = await import('../../lib/storage/flushDurableBackup');
-      flushDurableBackupSoon();
-
-      // Fetch the item (new or existing if merged)
+      // The write-through cache already contains the acknowledged item.
       const newItem = await getItem(result.itemId);
       if (newItem) {
         // Open the item in a tab
@@ -882,7 +877,6 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
       setNewCollectionName('');
       setNewCollectionDescription('');
       setNewCollectionProjectId(project.id);
-      if (onRefresh) await onRefresh();
     } catch (error) {
       console.error('Failed to create collection:', error);
       alert('Failed to create collection. Please try again.');
@@ -891,13 +885,11 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
 
   const handleCreateProjectFromItemForm = async (data: { name: string; description?: string }) => {
     const id = await addProject(data.name, data.description);
-    if (onRefresh) await onRefresh();
     return id;
   };
 
   const handleCreateCollectionFromItemForm = async (data: { name: string; projectId: string }) => {
     const id = await addCollection(data.name, undefined, data.projectId);
-    if (onRefresh) await onRefresh();
     return id;
   };
 

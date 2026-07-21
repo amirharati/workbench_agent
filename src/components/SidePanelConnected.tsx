@@ -73,7 +73,6 @@ export interface SidePanelConnectedProps {
   onCreateProject: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection: (data: { name: string; projectId: string }) => Promise<string | void>;
   onOpenFullPage: () => void;
-  loadData: (opts?: { quiet?: boolean }) => Promise<void>;
 }
 
 export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
@@ -83,7 +82,6 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
   onCreateProject,
   onCreateCollection,
   onOpenFullPage,
-  loadData,
 }) => {
   const [status, setStatus] = useState('');
   const [externalLinks, setExternalLinks] = useState<SessionExternalLink[]>([]);
@@ -106,7 +104,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
   }, []);
 
   const visibleItems = useMemo(() => {
-    // Prefer fresher rows — stale fastItems must not clobber loadData after org edits.
+    // Prefer fresher rows — stale fastItems must not clobber canonical props after org edits.
     return mergePreferNewer(items, fastItems);
   }, [items, fastItems]);
 
@@ -224,24 +222,21 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         let source: Item['source'] = 'tab';
         let title = data.title;
 
-        const ctx = await getActiveTabBookmarkContext();
+        const ctx = saveUrl ? await getActiveTabBookmarkContext() : null;
         if (ctx) {
           if (!title.trim() || title.trim() === saveUrl) {
             title = ctx.title || title;
           }
         }
 
-        const result = await addItemWithMerge(
-          {
-            url: saveUrl,
-            title,
-            tags: [],
-            source,
-            collectionIds: data.collectionIds,
-            ...(data.notes !== undefined ? { notes: data.notes } : {}),
-          },
-          { awaitDurable: false }
-        );
+        const result = await addItemWithMerge({
+          url: saveUrl,
+          title,
+          tags: [],
+          source,
+          collectionIds: data.collectionIds,
+          ...(data.notes !== undefined ? { notes: data.notes } : {}),
+        });
 
         if (saveUrl && /^https?:\/\//i.test(saveUrl)) {
           let statusPrefix = 'Bookmark added';
@@ -255,41 +250,28 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           showStatus(statusPrefix);
           const optimistic = findActiveItemsByUrlInReadBuffer(saveUrl);
           if (optimistic.length) setFastItems(optimistic);
-          void loadData({ quiet: true }).then(() => {
-            void import('../lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) => {
-              flushDurableBackupSoon();
-            });
-          });
         } else {
           showStatus('Note added');
-          void loadData({ quiet: true }).then(() => {
-            void import('../lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) => {
-              flushDurableBackupSoon();
-            });
-          });
         }
       } catch (error) {
         showStatus(toStatusMessage(error, 'Could not add item'));
         throw error;
       }
     },
-    [loadData, showStatus]
+    [showStatus]
   );
 
   const handleCreateExternalLink = useCallback(
     async (data: { url: string; collectionIds: string[] }) => {
       const saveUrl = data.url.trim();
       try {
-        const result = await addItemWithMerge(
-          {
-            url: saveUrl,
-            title: saveUrl,
-            tags: [],
-            source: 'manual',
-            collectionIds: data.collectionIds,
-          },
-          { awaitDurable: false }
-        );
+        const result = await addItemWithMerge({
+          url: saveUrl,
+          title: saveUrl,
+          tags: [],
+          source: 'manual',
+          collectionIds: data.collectionIds,
+        });
 
         let statusPrefix = 'External link saved';
         if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
@@ -303,18 +285,13 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           { itemId: result.itemId, url: saveUrl },
         ]);
         showStatus(statusPrefix);
-        void loadData().then(() => {
-          void import('../lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) => {
-            flushDurableBackupSoon();
-          });
-        });
         return result.itemId;
       } catch (error) {
         showStatus(toStatusMessage(error, 'Could not save external link'));
         throw error;
       }
     },
-    [loadData, showStatus]
+    [showStatus]
   );
 
   const handleUpdateItem = useCallback(
@@ -375,12 +352,9 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           return mergePreferNewer(others, [fresh]);
         });
       }
-      await loadData({ quiet: true });
-      const { flushDurableBackupSoon } = await import('../lib/storage/flushDurableBackup');
-      flushDurableBackupSoon();
       showStatus('Saved');
     },
-    [items, loadData, showStatus]
+    [items, showStatus]
   );
 
   return (

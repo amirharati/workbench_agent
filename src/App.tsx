@@ -52,8 +52,13 @@ import {
   regrantBackupFolderPermission,
   tryReuseConfiguredBackupFolder,
 } from './lib/backupFolder';
-import { DATA_CHANGED_BROADCAST_CHANNEL, subscribeToDataChanges } from './lib/dataChangeNotifier';
-import { ensureDbWorker, mirrorNow, getDbWorkerStatus, type DbWorkerStatus } from './lib/storage/dbClient';
+import {
+  DATA_CHANGED_BROADCAST_CHANNEL,
+  DATA_CHANGE_SOURCE_ID,
+  subscribeToDataChanges,
+  type DataChangeEvent,
+} from './lib/dataChangeNotifier';
+import { ensureDbWorker, mirrorNow, getDbWorkerStatus, getRemoteStore, type DbWorkerStatus } from './lib/storage/dbClient';
 import { backupCoordinator, BackupStatusSnapshot, isSqliteBackupFile, type RestoreBackupResult } from './lib/backupCoordinator';
 import { ManualFolderBackupSink } from './lib/backupSinks';
 import { revisionTracker } from './lib/revisionTracker';
@@ -113,7 +118,6 @@ function App() {
   );
   const [folderMirrorStatus, setFolderMirrorStatus] = useState<DbWorkerStatus | null>(null);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
-  const folderFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullLibraryReadyRef = useRef(false);
   const startupProjectionReadyRef = useRef(Boolean(immediateStartupProjection));
   const startupProjectionGeneratedAtRef = useRef(immediateStartupProjection?.generatedAt ?? 0);
@@ -156,17 +160,6 @@ function App() {
       cancelled = true;
     };
   }, [applyStartupProjection]);
-
-  /** Soft-schedule folder mirror after edits (debounced; folder catches up in seconds). */
-  const scheduleFolderFlush = useCallback((delayMs = 800) => {
-    if (folderFlushTimerRef.current) clearTimeout(folderFlushTimerRef.current);
-    folderFlushTimerRef.current = setTimeout(() => {
-      folderFlushTimerRef.current = null;
-      void import('./lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) =>
-        flushDurableBackupSoon()
-      );
-    }, delayMs);
-  }, []);
 
   const syncFileSystemSink = async () => {
     backupCoordinator.removeSink('file-system-sqlite');
@@ -354,10 +347,6 @@ function App() {
   useEffect(() => {
     if (!backupFolderReady) return;
     const scheduleSoft = () => {
-      if (folderFlushTimerRef.current) {
-        clearTimeout(folderFlushTimerRef.current);
-        folderFlushTimerRef.current = null;
-      }
       if (isAnyDigestInFlight()) return;
       void import('./lib/storage/flushDurableBackup').then(({ flushDurableBackupSoon }) =>
         flushDurableBackupSoon()
@@ -531,9 +520,9 @@ function App() {
             getActiveItems(),
           ]);
           fullLibraryReadyRef.current = true;
-          setProjects(allProjects);
-          setCollections(allCollections);
-          setWorkspaces(allWorkspaces);
+          setProjects([...allProjects]);
+          setCollections([...allCollections]);
+          setWorkspaces([...allWorkspaces]);
           setItems(allItems.sort((a, b) => b.created_at - a.created_at));
           void getDbWorkerStatus()
             .then((status) =>
@@ -607,6 +596,10 @@ function App() {
     [loadData, refreshLibraryItems]
   );
 
+  const refreshWorkspaces = useCallback(async () => {
+    setWorkspaces([...(await getAllWorkspaces())]);
+  }, []);
+
   const loadDataRef = useRef(loadData);
   loadDataRef.current = loadData;
 
@@ -623,13 +616,102 @@ function App() {
     await loadDataRef.current();
   };
 
+  const refreshFromPeerChange = async (event: DataChangeEvent) => {
+    const store = getRemoteStore();
+    const revision = typeof event.revision === 'number' ? event.revision : undefined;
+
+    if (event.entityId && event.reason.startsWith('item.')) {
+      const row = await store.refreshItemFromWorker(event.entityId, revision);
+      setItems((prev) => {
+        const next = new Map(prev.map((item) => [item.id, item]));
+        if (row && isActiveItem(row)) next.set(row.id, row);
+        else next.delete(event.entityId!);
+        return [...next.values()].sort((a, b) => b.created_at - a.created_at);
+      });
+      return;
+    }
+
+    if (event.reason.startsWith('project.')) {
+      await store.refreshTablesFromWorker(['projects', 'collections']);
+      if (revision != null) store.setRevision(revision);
+      const [nextProjects, nextCollections] = await Promise.all([
+        getAllProjects(),
+        getAllCollections(),
+      ]);
+      setProjects([...nextProjects]);
+      setCollections([...nextCollections]);
+      return;
+    }
+
+    if (event.reason.startsWith('collection.')) {
+      const tables = event.reason === 'collection.delete' ? ['collections', 'items'] : ['collections'];
+      await store.refreshTablesFromWorker(tables);
+      if (revision != null) store.setRevision(revision);
+      setCollections([...(await getAllCollections())]);
+      if (event.reason === 'collection.delete') {
+        setItems((await getActiveItems()).sort((a, b) => b.created_at - a.created_at));
+      }
+      return;
+    }
+
+    if (event.reason.startsWith('workspace.')) {
+      await store.refreshTablesFromWorker(['workspaces']);
+      if (revision != null) store.setRevision(revision);
+      setWorkspaces([...(await getAllWorkspaces())]);
+      return;
+    }
+
+    await reloadFromPeer();
+  };
+
+  const refreshFromLocalChange = (event: DataChangeEvent) => {
+    if (
+      event.entityId &&
+      (event.reason === 'item.add' || event.reason === 'item.update')
+    ) {
+      void refreshLibraryItems([event.entityId]).catch((error) => {
+        console.error('[data-change] Could not reconcile changed item:', error);
+        notifyUser({
+          type: 'error',
+          message: `Changed item could not be confirmed: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      });
+      return true;
+    }
+    if (event.reason === 'project.add' || event.reason === 'project.update') {
+      void Promise.all([getAllProjects(), getAllCollections()]).then(([nextProjects, nextCollections]) => {
+        setProjects([...nextProjects]);
+        setCollections([...nextCollections]);
+      });
+      return true;
+    }
+    if (event.reason === 'collection.add' || event.reason === 'collection.update') {
+      void getAllCollections().then((nextCollections) => setCollections([...nextCollections]));
+      return true;
+    }
+    if (event.reason === 'workspace.add' || event.reason === 'workspace.update' || event.reason === 'workspace.delete') {
+      void getAllWorkspaces().then((nextWorkspaces) => setWorkspaces([...nextWorkspaces]));
+      return true;
+    }
+    return false;
+  };
+
   /** Side panel and dashboard are different documents — reload DB on peer writes only. */
   useEffect(() => {
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(DATA_CHANGED_BROADCAST_CHANNEL);
-      bc.onmessage = () => {
-        void reloadFromPeer();
+      bc.onmessage = (message: MessageEvent<DataChangeEvent>) => {
+        const event = message.data;
+        if (event?.sourceId === DATA_CHANGE_SOURCE_ID) return;
+        if (!event || typeof event.reason !== 'string') {
+          void reloadFromPeer();
+          return;
+        }
+        void refreshFromPeerChange(event).catch((error) => {
+          console.warn('[data-change] Scoped peer refresh failed; falling back to reload:', error);
+          void reloadFromPeer();
+        });
       };
     } catch {
       bc = null;
@@ -646,6 +728,7 @@ function App() {
       ) {
         return;
       }
+      if (refreshFromLocalChange(event)) return;
       // Keep the open editor stable: never flash libraryLoading on routine writes.
       const quiet =
         event.reason === 'item.update' ||
@@ -730,9 +813,6 @@ function App() {
       source: 'manual',
       collectionIds,
     });
-    await loadData();
-    // Checkpoint: new link saved → folder.
-    scheduleFolderFlush(0);
     return result.itemId;
   };
 
@@ -745,8 +825,6 @@ function App() {
       await updateItem(id, updates, options);
       // Surgical UI refresh — never full libraryLoading flash while editing.
       await refreshLibraryRef.current({ itemIds: [id] });
-      // Folder is durable truth — one debounced flush, not a dump per keystroke/chip.
-      scheduleFolderFlush();
     } catch (error) {
       const { isBackupFolderPermissionPaused } = await import('./lib/backupFolder');
       // Linked folder + Chrome permission pause must never look like a save failure.
@@ -757,7 +835,7 @@ function App() {
       showStatus(toStatusMessage(error, 'Could not update bookmark'));
       throw error;
     }
-  }, [scheduleFolderFlush]);
+  }, []);
 
   const handleDeleteBookmark = async (id: string, collectionId?: string) => {
     try {
@@ -797,7 +875,6 @@ function App() {
       return;
     }
     const id = await addProject(name, data.description);
-    await loadData();
     showStatus('Project created');
     return id;
   };
@@ -823,7 +900,6 @@ function App() {
       return;
     }
     const id = await addCollection(name, undefined, data.projectId);
-    await loadData();
     showStatus('Collection created');
     return id;
   };
@@ -877,7 +953,7 @@ function App() {
       let source: Item['source'] = 'manual';
       let title = data.title;
 
-      const ctx = await getActiveTabBookmarkContext();
+      const ctx = saveUrl ? await getActiveTabBookmarkContext() : null;
       if (ctx && saveUrl) {
         saveUrl = await resolveTabBookmarkUrl(ctx.tabId, saveUrl);
         if (!title.trim() || title.trim() === data.url?.trim()) {
@@ -896,8 +972,6 @@ function App() {
         collectionIds: data.collectionIds,
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
       });
-      await loadData();
-      scheduleFolderFlush(0);
 
       if (saveUrl && /^https?:\/\//i.test(saveUrl)) {
         if (result.updatedPlacementNotes && result.addedToCollections.length === 0) {
@@ -1357,7 +1431,6 @@ function App() {
             onCreateProject={handleCreateProject}
             onCreateCollection={handleCreateCollection}
             onOpenFullPage={handleOpenFullPage}
-            loadData={loadData}
           />
         </PipelineProgressProvider>
       </div>
@@ -1410,7 +1483,7 @@ function App() {
       collections={collections}
       items={items}
       workspaces={workspaces}
-      onWorkspacesChanged={loadData}
+      onWorkspacesChanged={refreshWorkspaces}
       onAddBookmark={handleAddBookmark}
       onUpdateBookmark={handleUpdateBookmark}
       onDeleteBookmark={handleDeleteBookmark}

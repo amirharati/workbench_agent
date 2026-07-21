@@ -23,6 +23,11 @@ type HydrateSnapshot = {
   deletedItems: ReturnType<IdbCompatStore['getAllDeletedItems']>;
 };
 
+type StoreMutationAck<T = unknown> = {
+  result: T;
+  revision: number;
+};
+
 /** Warm pipeline state transferred from a page to the offscreen bulk realm. */
 export type PipelineCacheSeed = Pick<
   HydrateSnapshot,
@@ -283,6 +288,19 @@ export class RemoteIdbCompatStore {
     return rpc<ReturnType<IdbCompatStore['getItem']>>('getItemById', [itemId]);
   }
 
+  /** Refresh one item after a scoped cross-document CRUD notification. */
+  async refreshItemFromWorker(
+    itemId: string,
+    remoteRevision?: number
+  ): Promise<ReturnType<IdbCompatStore['getItem']>> {
+    await this.drainWrites();
+    const item = await this.getPersistedItem(itemId);
+    if (item) this.patchGenericPut('items', item);
+    else this.patchGenericDelete('items', itemId);
+    if (typeof remoteRevision === 'number') this.setRevision(remoteRevision);
+    return item;
+  }
+
   async getPersistedItemsByUrl(
     url: string,
     normalizedUrl: string
@@ -459,7 +477,9 @@ export class RemoteIdbCompatStore {
     this.writesInFlight += 1;
     const next = this.chain.then(async () => {
       try {
-        return await rpc<T>('storeInvoke', [method, args]);
+        const ack = await rpc<StoreMutationAck<T>>('storeMutate', [method, args]);
+        if (typeof ack?.revision === 'number') this.setRevision(ack.revision);
+        return ack?.result;
       } finally {
         this.writesInFlight = Math.max(0, this.writesInFlight - 1);
       }

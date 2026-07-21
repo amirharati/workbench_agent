@@ -23,7 +23,7 @@ import { installOffscreenPipelineHost } from '../lib/pipeline/offscreenPipelineH
 void syncClock();
 
 // Keep this in sync with public/service-worker.js and the worker response.
-const DB_OWNER_PROTOCOL_VERSION = 4;
+const DB_OWNER_PROTOCOL_VERSION = 5;
 
 const worker = new DbWorker({ name: 'workbench-db' });
 
