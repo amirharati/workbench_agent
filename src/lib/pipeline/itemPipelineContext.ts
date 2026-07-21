@@ -453,6 +453,14 @@ export async function loadPipelineBadgeMap(itemIds: string[]): Promise<Map<strin
   const map = new Map<string, PipelineBadge>();
   if (!itemIds.length) return map;
 
+  // Library badges are compact derived data. Compute them once in the shared
+  // DB owner instead of hydrating every pipeline table into each dashboard.
+  const { dbRpc, isDbWorkerProcess } = await import('../storage/dbClient');
+  if (!isDbWorkerProcess()) {
+    const entries = await dbRpc<Array<[string, PipelineBadge]>>('getPipelineBadgeEntries', [itemIds]);
+    return new Map(entries);
+  }
+
   const db = await getDB();
   const stores = await loadPipelineStores(db);
   const idSet = new Set(itemIds);

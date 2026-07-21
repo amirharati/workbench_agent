@@ -197,10 +197,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const { messages: statusMessages, addStatusMessage, dismissStatusMessage } = useStatusBar();
   const librarySearch = useLibrarySearch((message) => {
     addToast({ type: 'error', message: `Search failed: ${message}` });
-  });
+  }, 'workbench:home-search-state:v2');
   const workingLibrarySearch = useLibrarySearch((message) => {
     addToast({ type: 'error', message: `Search tab failed: ${message}` });
-  });
+  }, 'workbench:working-search-state:v2');
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [shellLayout, setShellLayout] = useState<ShellLayoutState>(() => loadShellLayout());
   const patchShellLayoutState = useCallback((patch: Partial<ShellLayoutState>) => {
@@ -226,10 +226,14 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const handleSelectedBrowseItemChange = useCallback((item: Item | null) => {
     setSelectedBrowseItemId(item?.id ?? null);
   }, []);
+  const browseContextKey = `${activeView}:${scopeProjectId}:${scopeCollectionId}`;
+  const previousBrowseContextRef = useRef(browseContextKey);
 
   useEffect(() => {
+    if (previousBrowseContextRef.current === browseContextKey) return;
+    previousBrowseContextRef.current = browseContextKey;
     setSelectedBrowseItemId(null);
-  }, [activeView, scopeProjectId, scopeCollectionId]);
+  }, [browseContextKey]);
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() =>
     initialNav.scopeProjectId === 'all'
       ? initialNav.recentProjectIds

@@ -1,7 +1,10 @@
 import type { Collection, Item, Project, Workspace } from './db';
 
-export const DASHBOARD_STARTUP_PROJECTION_VERSION = 1;
-export const DASHBOARD_STARTUP_CACHE_KEY = 'homebase.dashboard-startup.v1';
+export const DASHBOARD_STARTUP_PROJECTION_VERSION = 2;
+export const DASHBOARD_STARTUP_CACHE_KEY = 'homebase.dashboard-startup.v2';
+export const DASHBOARD_STARTUP_IMMEDIATE_KEY = 'homebase.dashboard-startup.immediate.v2';
+const LEGACY_DASHBOARD_STARTUP_CACHE_KEY = 'homebase.dashboard-startup.v1';
+const LEGACY_DASHBOARD_STARTUP_IMMEDIATE_KEY = 'homebase.dashboard-startup.immediate.v1';
 
 export interface DashboardStartupProjection {
   version: typeof DASHBOARD_STARTUP_PROJECTION_VERSION;
@@ -35,6 +38,19 @@ function compactStartupItem(item: Item): Item {
   };
 }
 
+function compactStartupWorkspace(workspace: Workspace): Workspace {
+  return {
+    id: workspace.id,
+    name: workspace.name,
+    ...(workspace.projectId ? { projectId: workspace.projectId } : {}),
+    created_at: workspace.created_at,
+    updated_at: workspace.updated_at,
+    // Full browser-window/tab snapshots can be large and are not needed to
+    // paint Home. Canonical hydration restores them before workspace actions.
+    windows: [],
+  };
+}
+
 export function createDashboardStartupProjection(input: {
   revision: number;
   generatedAt?: number;
@@ -49,7 +65,7 @@ export function createDashboardStartupProjection(input: {
     generatedAt: input.generatedAt ?? Date.now(),
     projects: input.projects,
     collections: input.collections,
-    workspaces: input.workspaces,
+    workspaces: input.workspaces.map(compactStartupWorkspace),
     items: input.items
       .filter((item) => item.deletedAt == null)
       .map(compactStartupItem)
@@ -81,11 +97,43 @@ export async function loadPersistedDashboardStartupProjection(): Promise<Dashboa
   }
 }
 
+/**
+ * Synchronous first-paint cache for dashboard pages.
+ *
+ * chrome.storage.local is the durable fallback, but its asynchronous read can
+ * be delayed while Chrome wakes an extension context. localStorage lets React
+ * seed the last known dashboard before it renders a blocking loading screen.
+ */
+export function loadImmediateDashboardStartupProjection(): DashboardStartupProjection | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(DASHBOARD_STARTUP_IMMEDIATE_KEY);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (isDashboardStartupProjection(value)) return value;
+    localStorage.removeItem(DASHBOARD_STARTUP_IMMEDIATE_KEY);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function persistDashboardStartupProjection(
   projection: DashboardStartupProjection
 ): Promise<void> {
+  // Write the synchronous mirror before the first await. Callers often fire
+  // and forget this function, and the next dashboard should still be instant.
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(LEGACY_DASHBOARD_STARTUP_IMMEDIATE_KEY);
+      localStorage.setItem(DASHBOARD_STARTUP_IMMEDIATE_KEY, JSON.stringify(projection));
+    }
+  } catch {
+    // Quota/security failures are non-fatal; chrome.storage remains canonical.
+  }
   try {
     await chrome.storage.local.set({ [DASHBOARD_STARTUP_CACHE_KEY]: projection });
+    await chrome.storage.local.remove(LEGACY_DASHBOARD_STARTUP_CACHE_KEY);
   } catch (error) {
     console.warn('[startup] Could not persist dashboard projection:', error);
   }

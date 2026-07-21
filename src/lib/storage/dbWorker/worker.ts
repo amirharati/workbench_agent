@@ -52,6 +52,11 @@ const workerScope = self as unknown as {
 let mirrorConfigured = false;
 let pendingMirrorWrite: ((result: { ok: boolean; error?: string }) => void) | null = null;
 let dashboardStartupProjectionCache: DashboardStartupProjection | null = null;
+let pipelineBadgeEntriesCache: {
+  revision: number;
+  coveredIds: Set<string>;
+  entries: Map<string, unknown>;
+} | null = null;
 
 /** In-memory priority queues — high drains before low; work is never cancelled. */
 const highRpcQueue: RpcRequest[] = [];
@@ -90,6 +95,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'getSignalsByItemIds',
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
+  'getPipelineBadgeEntries',
 ]);
 
 const MUTATING_STORE_METHODS = new Set([
@@ -249,7 +255,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 3;
+      return 4;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -279,6 +285,29 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         items: store.getDashboardStartupItems(),
       });
       return dashboardStartupProjectionCache;
+    }
+    case 'getPipelineBadgeEntries': {
+      const ids = [...new Set(Array.isArray(args[0]) ? (args[0] as string[]).filter(Boolean) : [])];
+      if (!ids.length) return [];
+      const revision = revisionTracker.getLocalRevisionSync();
+      if (pipelineBadgeEntriesCache?.revision !== revision) {
+        pipelineBadgeEntriesCache = {
+          revision,
+          coveredIds: new Set(),
+          entries: new Map(),
+        };
+      }
+      const missingIds = ids.filter((id) => !pipelineBadgeEntriesCache!.coveredIds.has(id));
+      if (missingIds.length) {
+        const { loadPipelineBadgeMap } = await import('../../pipeline/itemPipelineContext');
+        const loaded = await loadPipelineBadgeMap(missingIds);
+        for (const id of missingIds) pipelineBadgeEntriesCache.coveredIds.add(id);
+        for (const [id, badge] of loaded) pipelineBadgeEntriesCache.entries.set(id, badge);
+      }
+      return ids.flatMap((id) => {
+        const badge = pipelineBadgeEntriesCache!.entries.get(id);
+        return badge ? [[id, badge]] : [];
+      });
     }
     case 'mirrorNow': {
       const payload = args[0] as { force?: boolean; allowEmptyMirror?: boolean } | undefined;

@@ -18,6 +18,7 @@ import {
   Zap,
   Workflow,
 } from 'lucide-react';
+import { uiPatterns } from '../../styles/uiPatterns';
 
 function modKeyLabel(): string {
   if (typeof navigator === 'undefined') return '⌘ / Ctrl';
@@ -337,21 +338,15 @@ export const HelpView: React.FC = () => {
   ];
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '8px 4px 48px' }}>
-      <div style={{ marginBottom: 28 }}>
-        <h1
-          style={{
-            margin: '0 0 8px',
-            fontSize: 'var(--text-xl)',
-            fontWeight: 700,
-            letterSpacing: -0.02,
-          }}
-        >
-          Help
-        </h1>
-        <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+    <div style={{ ...uiPatterns.pageFrame, overflow: 'auto' }}>
+      <div style={{ width: '100%', maxWidth: 720, margin: '0 auto' }}>
+      <div style={{ ...uiPatterns.pageHeader, marginBottom: 20 }}>
+        <div>
+        <h1 style={uiPatterns.pageTitle}>Help</h1>
+        <p style={{ ...uiPatterns.pageDescription, fontSize: 'var(--text-sm)' }}>
           Homebase guide — basics, shortcuts, and where to find things. v2
         </p>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -360,11 +355,9 @@ export const HelpView: React.FC = () => {
             key={section.id}
             id={`help-${section.id}`}
             style={{
-              background: 'var(--bg-panel)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
+              ...uiPatterns.panel,
+              overflow: 'visible',
               padding: '16px 18px',
-              boxShadow: 'var(--shadow-sm)',
             }}
           >
             <h2
@@ -397,6 +390,7 @@ export const HelpView: React.FC = () => {
             <div style={{ color: 'var(--text)' }}>{section.children}</div>
           </section>
         ))}
+      </div>
       </div>
     </div>
   );

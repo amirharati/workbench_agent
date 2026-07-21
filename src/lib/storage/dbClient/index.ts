@@ -1,6 +1,7 @@
 import { getDbRpcPriority, type DbRpcPriority } from '../dbRpcPriority';
 
 let ownerReady = false;
+let ensureRemoteOwnerPromise: Promise<void> | null = null;
 const ownerReadyWaiters = new Set<() => void>();
 const ownerReadyRejecters = new Set<(err: Error) => void>();
 
@@ -133,17 +134,28 @@ export async function ensureDbWorker(): Promise<void> {
     return;
   }
   if (ownerReady) return;
-  const readyWait = waitForDbOwnerReady(60_000);
-  const response = await chrome.runtime.sendMessage({
-    target: 'db-rpc',
-    id: 0,
-    method: 'ping',
-    args: [],
-  });
-  if (!response?.ok) {
-    throw new Error(response?.error ?? 'DB worker did not start');
+  if (ensureRemoteOwnerPromise) return ensureRemoteOwnerPromise;
+  ensureRemoteOwnerPromise = (async () => {
+    const response = await chrome.runtime.sendMessage({
+      target: 'db-rpc',
+      id: 0,
+      method: 'ping',
+      args: [],
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error ?? 'DB worker did not start');
+    }
+    // The service worker only returns this response after the shared offscreen
+    // worker answered the ping. That response is stronger evidence than the
+    // one-shot db-owner-ready broadcast, which a newly opened dashboard may
+    // have missed while another dashboard already owned the warm connection.
+    markDbOwnerReady();
+  })();
+  try {
+    await ensureRemoteOwnerPromise;
+  } finally {
+    ensureRemoteOwnerPromise = null;
   }
-  await readyWait;
 }
 
 export async function dbRpc<T>(

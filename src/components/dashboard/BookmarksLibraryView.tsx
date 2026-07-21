@@ -13,6 +13,8 @@ import { ScopeChipsBar } from './ScopeChipsBar';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { isItemPinnedToProject, updateProjectPinMetadata } from './projectPins';
 import { ContentBrowser, useContentBrowseMode } from './ContentBrowser';
+import { uiPatterns } from '../../styles/uiPatterns';
+import { libraryPageUiKey, loadPageUiState, savePageUiState } from '../../lib/shell/pageUiState';
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
@@ -63,6 +65,20 @@ interface BookmarksLibraryViewProps {
 }
 
 export type LibraryTypeFilter = 'all' | 'links' | 'notes';
+
+type LibraryPageUiState = {
+  query: string;
+  typeFilter: LibraryTypeFilter;
+  selectedItemId: string | null;
+  workspaceKey: string;
+};
+
+const LIBRARY_PAGE_UI_DEFAULT: LibraryPageUiState = {
+  query: '',
+  typeFilter: 'all',
+  selectedItemId: null,
+  workspaceKey: GLOBAL_WORKSPACE_KEY,
+};
 
 export function buildBookmarkWorkspaceDestinations(
   projects: readonly Project[],
@@ -179,11 +195,19 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   onSelectedItemChange,
   initialTypeFilter = 'all',
 }) => {
-  const [query, setQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>(initialTypeFilter);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const pageUiKey = libraryPageUiKey(
+    initialTypeFilter === 'notes' ? 'notes' : 'library',
+    scopeProjectId,
+    scopeCollectionId
+  );
+  const [initialPageUi] = useState(() => loadPageUiState(pageUiKey, LIBRARY_PAGE_UI_DEFAULT));
+  const [query, setQuery] = useState(initialPageUi.query);
+  const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>(
+    initialTypeFilter === 'all' ? initialPageUi.typeFilter : initialTypeFilter
+  );
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(initialPageUi.selectedItemId);
   const [createKind, setCreateKind] = useState<'bookmark' | 'note' | null>(null);
-  const [workspaceKey, setWorkspaceKey] = useState(GLOBAL_WORKSPACE_KEY);
+  const [workspaceKey, setWorkspaceKey] = useState(initialPageUi.workspaceKey);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
   const [pinningItemId, setPinningItemId] = useState<string | null>(null);
   const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:library-content-view');
@@ -253,23 +277,34 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
     const preferredKey = scopeProjectId === 'all'
       ? GLOBAL_WORKSPACE_KEY
       : getActiveProjectWorkspaceKey(homeState, scopeProjectId);
-    setWorkspaceKey(
-      destinations.some((destination) => destination.key === preferredKey)
-        ? preferredKey
-        : scopeProjectId === 'all'
-          ? GLOBAL_WORKSPACE_KEY
-          : getProjectSessionWorkspaceKey(scopeProjectId)
+    setWorkspaceKey((current) =>
+      destinations.some((destination) => destination.key === current)
+        ? current
+        : destinations.some((destination) => destination.key === preferredKey)
+          ? preferredKey
+          : scopeProjectId === 'all'
+            ? GLOBAL_WORKSPACE_KEY
+            : getProjectSessionWorkspaceKey(scopeProjectId)
     );
   }, [destinations, scopeProjectId]);
 
   useEffect(() => {
-    if (selectedItemId && !scopedItems.some((item) => item.id === selectedItemId)) {
+    if (selectedItemId && items.length > 0 && !scopedItems.some((item) => item.id === selectedItemId)) {
       setSelectedItemId(null);
     }
-  }, [scopedItems, selectedItemId]);
+  }, [items.length, scopedItems, selectedItemId]);
 
   useEffect(() => {
-    setTypeFilter(initialTypeFilter);
+    savePageUiState<LibraryPageUiState>(pageUiKey, {
+      query,
+      typeFilter,
+      selectedItemId,
+      workspaceKey,
+    });
+  }, [pageUiKey, query, selectedItemId, typeFilter, workspaceKey]);
+
+  useEffect(() => {
+    if (initialTypeFilter !== 'all') setTypeFilter(initialTypeFilter);
   }, [initialTypeFilter]);
 
   useEffect(() => {
@@ -312,13 +347,13 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   };
 
   return (
-    <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px 18px 72px', boxSizing: 'border-box', gap: 12 }}>
-      <header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
+    <div style={uiPatterns.pageFrame}>
+      <header style={uiPatterns.pageHeader}>
         <div>
-          <h1 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-xl)', fontWeight: 700 }}>Library</h1>
-          <p style={{ margin: '3px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Browse and maintain your saved links and notes.</p>
+          <h1 style={uiPatterns.pageTitle}>Library</h1>
+          <p style={uiPatterns.pageDescription}>Browse and maintain your saved links and notes.</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <div style={uiPatterns.actionRow}>
           {onOpenImport && <button type="button" onClick={onOpenImport} style={secondaryButtonStyle}><Upload size={12} /> Import</button>}
           {onCreateItem && <button type="button" onClick={() => setCreateKind('note')} style={secondaryButtonStyle}><FileText size={12} /> New note</button>}
           {onCreateItem && <button type="button" onClick={() => setCreateKind('bookmark')} style={primaryButtonStyle}><Plus size={12} /> Add link</button>}
@@ -326,12 +361,12 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
       </header>
 
       <div style={{ flexShrink: 0 }}>
-        <div data-library-view-tabs role="tablist" aria-label="Library view" style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: 5, flexWrap: 'wrap', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)' }}>
+        <div data-library-view-tabs role="tablist" aria-label="Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
           <button type="button" role="tab" aria-selected={typeFilter === 'all'} onClick={() => setTypeFilter('all')} style={viewTabStyle(typeFilter === 'all')}><Library size={12} /> All items</button>
           <button type="button" role="tab" aria-selected={typeFilter === 'links'} onClick={() => setTypeFilter('links')} style={viewTabStyle(typeFilter === 'links')}><Link2 size={12} /> Links</button>
           <button type="button" role="tab" aria-selected={typeFilter === 'notes'} onClick={() => setTypeFilter('notes')} style={viewTabStyle(typeFilter === 'notes')}><FileText size={12} /> Notes</button>
         </div>
-        <label style={{ height: 36, width: 'min(560px, 100%)', display: 'flex', alignItems: 'center', gap: 8, padding: '0 11px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--input-bg)', boxSizing: 'border-box' }}>
+        <label style={{ ...uiPatterns.searchField, height: 36 }}>
           <Search size={14} color="var(--text-faint)" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter by title, URL, note text, or tag…" aria-label="Filter library" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
         </label>
@@ -351,7 +386,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
         />
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(280px, 390px) minmax(0, 1fr)', gap: 12 }}>
+      <div style={uiPatterns.splitCanvas}>
         <ContentBrowser
           title={typeFilter === 'links' ? 'Saved links' : typeFilter === 'notes' ? 'Notes' : 'All items'}
           entries={browseEntries}
@@ -408,10 +443,10 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   );
 };
 
-const panelStyle: React.CSSProperties = { minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };
-const panelHeaderStyle: React.CSSProperties = { minHeight: 42, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 11px', borderBottom: '1px solid var(--border)', boxSizing: 'border-box' };
-const secondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' };
-const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
-const iconButtonStyle: React.CSSProperties = { width: 27, height: 27, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };
-const destinationSelectStyle: React.CSSProperties = { minWidth: 155, maxWidth: 230, height: 29, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-xs)' };
-const viewTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 10px', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' });
+const panelStyle = uiPatterns.panel;
+const panelHeaderStyle = uiPatterns.panelHeader;
+const secondaryButtonStyle = uiPatterns.secondaryButton;
+const primaryButtonStyle = uiPatterns.primaryButton;
+const iconButtonStyle = uiPatterns.iconButton;
+const destinationSelectStyle: React.CSSProperties = { ...uiPatterns.select, minWidth: 155 };
+const viewTabStyle = uiPatterns.viewTab;

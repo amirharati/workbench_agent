@@ -43,6 +43,7 @@ import { itemMatchesScope } from '../../lib/shell/itemScope';
 import { loadNavigationState, patchNavigationState } from '../../lib/shell/navigationState';
 import { buildDisplayListWithRecentHolds } from '../../lib/pipeline/recentListHolds';
 import { ScopeChipsBar } from './ScopeChipsBar';
+import { uiPatterns } from '../../styles/uiPatterns';
 import { PipelineItemInspectorPanel } from './PipelineItemInspectorPanel';
 import { PipelineHubCategoriesLane } from './PipelineHubCategoriesLane';
 import { usePipelineProgress } from './PipelineProgressProvider';
@@ -1294,21 +1295,19 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     <div
       className="scrollbar"
       style={{
-        height: '100%',
+        ...uiPatterns.pageFrame,
         overflow: 'auto',
-        padding: '16px 18px 72px',
         maxWidth: 1440,
         margin: '0 auto',
-        boxSizing: 'border-box',
       }}
     >
-      <header style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+      <header>
+        <div style={uiPatterns.pageHeader}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--text)' }}>
+            <h1 style={uiPatterns.pageTitle}>
               Enrichment Hub
             </h1>
-            <p style={{ margin: '6px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            <p style={uiPatterns.pageDescription}>
               {activeHubView === 'enrichment'
                 ? 'Inspect enrichment quality, diagnose failures, and rerun individual links or selected groups.'
                 : activeHubView === 'classification'
@@ -1321,17 +1320,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             onClick={() => setShowStatusGuide((v) => !v)}
             aria-expanded={showStatusGuide}
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 10px',
-              borderRadius: 6,
+              ...uiPatterns.secondaryButton,
               border: `1px solid ${showStatusGuide ? 'var(--accent)' : 'var(--border)'}`,
               background: showStatusGuide ? 'var(--accent-weak)' : 'transparent',
-              color: showStatusGuide ? 'var(--accent)' : 'var(--text-muted)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: 'pointer',
+              color: showStatusGuide ? 'var(--accent-hover)' : 'var(--text-muted)',
               flexShrink: 0,
             }}
           >

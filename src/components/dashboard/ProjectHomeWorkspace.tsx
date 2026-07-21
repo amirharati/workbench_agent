@@ -13,6 +13,8 @@ import {
   updateProjectPinMetadata,
 } from './projectPins';
 import { getHomebaseWorkspaceSessionKey, getProjectSessionWorkspaceKey, getSavedWorkspaceSessionKey } from './workspaceSession';
+import { uiPatterns } from '../../styles/uiPatterns';
+import { loadPageUiState, projectPageUiKey, savePageUiState } from '../../lib/shell/pageUiState';
 
 interface ProjectHomeWorkspaceProps {
   project: Project;
@@ -89,8 +91,14 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   onCreateProject,
   onCreateCollection,
 }) => {
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [selectedSessionTabId, setSelectedSessionTabId] = useState<string | null>(null);
+  const pageUiKey = projectPageUiKey(project.id, selectedCollectionId);
+  const [initialPageUi] = useState(() => loadPageUiState(pageUiKey, {
+    selectedItemId: null as string | null,
+    selectedSessionTabId: null as string | null,
+    browseSource: (selectedCollectionId === 'all' ? 'all' : 'collection') as 'workspace' | 'all' | 'pinned' | 'collection',
+  }));
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(initialPageUi.selectedItemId);
+  const [selectedSessionTabId, setSelectedSessionTabId] = useState<string | null>(initialPageUi.selectedSessionTabId);
   const [pinningItemId, setPinningItemId] = useState<string | null>(null);
   const [showSaveWorkspace, setShowSaveWorkspace] = useState(false);
   const [workspaceName, setWorkspaceName] = useState('');
@@ -99,7 +107,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const [transferEntryId, setTransferEntryId] = useState<string | null>(null);
   const [transferTargetWorkspaceKey, setTransferTargetWorkspaceKey] = useState('');
   const [browseSource, setBrowseSource] = useState<'workspace' | 'all' | 'pinned' | 'collection'>(
-    selectedCollectionId === 'all' ? 'all' : 'collection'
+    initialPageUi.browseSource
   );
   const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:project-content-view');
   const showLegacyProjectBrowser = false as boolean;
@@ -163,14 +171,20 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
       : collections.find((collection) => collection.id === selectedCollectionId) ?? null;
 
   useEffect(() => {
-    setSelectedItemId(null);
-    setSelectedSessionTabId(null);
-    setBrowseSource(project.isDefault || selectedCollectionId === 'all' ? 'all' : 'collection');
-    setShowSaveWorkspace(false);
-    setWorkspaceName('');
-    setWorkspaceError(null);
-    onSelectedItemChange?.(null);
-  }, [project.id, project.isDefault, selectedCollectionId, onSelectedItemChange]);
+    savePageUiState(pageUiKey, { selectedItemId, selectedSessionTabId, browseSource });
+  }, [browseSource, pageUiKey, selectedItemId, selectedSessionTabId]);
+
+  useEffect(() => {
+    if (selectedItemId && allItems.length > 0 && !allItems.some((item) => item.id === selectedItemId)) {
+      setSelectedItemId(null);
+      return;
+    }
+    if (selectedSessionTabId && sessionTabs.length > 0 && !sessionTabs.some((tab) => tab.id === selectedSessionTabId)) {
+      setSelectedSessionTabId(null);
+      return;
+    }
+    onSelectedItemChange?.(selectedItem);
+  }, [allItems, onSelectedItemChange, selectedItem, selectedItemId, selectedSessionTabId, sessionTabs]);
 
   useEffect(() => {
     if (!workspaceDestinations.some((destination) => destination.key === itemTargetWorkspaceKey)) {
@@ -241,25 +255,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     setTransferEntryId(null);
     if (mode === 'move') setSelectedSessionTabId(null);
   };
-
-  useEffect(() => {
-    setSelectedSessionTabId(null);
-    setSelectedItemId(null);
-  }, [project.id, activeWorkspaceKey]);
-
-  useEffect(() => {
-    if (browseSource !== 'workspace') return;
-    const activeTab = activeSessionTabId
-      ? sessionTabs.find((tab) => tab.id === activeSessionTabId) ?? null
-      : null;
-    setSelectedSessionTabId(activeTab?.id ?? null);
-    setSelectedItemId(activeTab?.kind === 'item' ? activeTab.itemId : null);
-    onSelectedItemChange?.(
-      activeTab?.kind === 'item'
-        ? allItems.find((item) => item.id === activeTab.itemId) ?? null
-        : null
-    );
-  }, [activeSessionTabId, allItems, browseSource, onSelectedItemChange, sessionTabs]);
 
   const selectSessionTab = (tab: GlobalTab) => {
     setBrowseSource('workspace');
@@ -455,26 +450,20 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     <div
       className="scrollbar"
       style={{
-        height: '100%',
-        minHeight: 0,
+        ...uiPatterns.pageFrame,
         overflow: 'hidden',
         overflowX: 'hidden',
-        padding: '16px 18px 72px',
-        boxSizing: 'border-box',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
       }}
     >
-      <header style={{ width: '100%', maxWidth: 1120, margin: '0 auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+      <header style={{ ...uiPatterns.pageHeader, width: '100%', maxWidth: 1120, margin: '0 auto' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <span style={{ width: 34, height: 34, borderRadius: 'var(--radius-md)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-weak)', color: 'var(--accent)' }}>
               <Folder size={17} />
             </span>
             <div style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-xl)', lineHeight: 1.2 }}>{project.name}</h1>
-              <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
+              <h1 style={uiPatterns.pageTitle}>{project.name}</h1>
+              <p style={uiPatterns.pageDescription}>
                 {project.description || `${items.length} item${items.length !== 1 ? 's' : ''} · ${collections.length} collection${collections.length !== 1 ? 's' : ''}`}
               </p>
             </div>
@@ -487,7 +476,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
       </header>
 
       <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, flex: 1, margin: '0 auto', display: 'flex', flexDirection: 'column' }} aria-label="Project workspace">
-        <div data-project-view-tabs style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: 5, flexWrap: 'wrap', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)' }} role="tablist" aria-label="Project view">
+        <div data-project-view-tabs style={{ ...uiPatterns.tabBar, marginBottom: 8 }} role="tablist" aria-label="Project view">
           <button type="button" role="tab" aria-selected={browseSource === 'all'} onClick={() => { setBrowseSource('all'); setSelectedSessionTabId(null); if (selectedItemId && !allProjectItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); if (selectedCollectionId !== 'all') onSelectCollection('all'); }} style={viewTabStyle(browseSource === 'all')}><Folder size={12} /> {project.isDefault ? 'Incoming' : 'All items'}</button>
           <button type="button" role="tab" aria-selected={browseSource === 'pinned'} onClick={() => { setBrowseSource('pinned'); setSelectedSessionTabId(null); if (selectedItemId && !pinnedItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); }} style={viewTabStyle(browseSource === 'pinned')}><Pin size={12} /> Pinned <span style={{ color: 'var(--text-faint)' }}>{pinnedItems.length}</span></button>
           {!project.isDefault && collections.length > 0 && (
@@ -866,21 +855,21 @@ const CollectionCard: React.FC<{ title: string; count: number; active: boolean; 
   </button>
 );
 
-const panelStyle: React.CSSProperties = { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };
+const panelStyle: React.CSSProperties = { ...uiPatterns.panel, height: '100%' };
 const detailLabelStyle: React.CSSProperties = { color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 };
 const sourceButtonStyle = (active: boolean): React.CSSProperties => ({ minHeight: 30, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'var(--bg-panel)', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' });
-const viewTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 10px', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' });
+const viewTabStyle = uiPatterns.viewTab;
 const compoundTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'center', overflow: 'hidden', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)' });
 const compoundTabButtonStyle: React.CSSProperties = { height: 29, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 7px 0 9px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' };
 const tabSelectStyle: React.CSSProperties = { minWidth: 96, maxWidth: 155, height: 25, marginRight: 3, padding: '0 5px', border: 'none', borderLeft: '1px solid var(--border)', outline: 'none', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-xs)' };
-const panelHeaderStyle: React.CSSProperties = { minHeight: 48, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)' };
+const panelHeaderStyle: React.CSSProperties = { ...uiPatterns.panelHeader, minHeight: 48, padding: '8px 12px' };
 const sectionHeadingStyle: React.CSSProperties = { margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 650 };
 const browseListStyle: React.CSSProperties = { maxHeight: 190, overflowY: 'auto', overflowX: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };
 const browseRowStyle = (active: boolean): React.CSSProperties => ({ width: '100%', minHeight: 44, display: 'flex', alignItems: 'center', gap: 9, padding: '7px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: active ? 'var(--bg-active)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)', textAlign: 'left', cursor: 'pointer' });
 const browseRowIconStyle: React.CSSProperties = { width: 25, height: 25, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: 'var(--bg-hover)', color: 'inherit' };
 const browseRowTitleStyle: React.CSSProperties = { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 600 };
 const browseRowDetailStyle: React.CSSProperties = { display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' };
-const secondaryButtonStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 29, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' };
-const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
-const sessionIconButtonStyle: React.CSSProperties = { width: 25, height: 25, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 5, background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };
-const destinationSelectStyle: React.CSSProperties = { minWidth: 120, maxWidth: 190, height: 29, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-xs)' };
+const secondaryButtonStyle = uiPatterns.secondaryButton;
+const primaryButtonStyle = uiPatterns.primaryButton;
+const sessionIconButtonStyle: React.CSSProperties = { ...uiPatterns.iconButton, width: 25, height: 25, border: 'none' };
+const destinationSelectStyle: React.CSSProperties = { ...uiPatterns.select, maxWidth: 190 };

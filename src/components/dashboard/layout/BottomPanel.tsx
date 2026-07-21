@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { uiPatterns } from '../../../styles/uiPatterns';
 import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, LayoutGrid, List, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import type { WindowGroup } from '../../../App';
 import { addWorkspace, normalizeBookmarkUrl, updateWorkspace } from '../../../lib/db';
@@ -1113,18 +1114,18 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       {/* Header */}
       {isPage ? (
         <>
-          <header data-tab-commander-header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
+          <header data-tab-commander-header style={uiPatterns.pageHeader}>
             <div>
-              <h1 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-xl)', fontWeight: 700 }}>Tab Commander</h1>
-              <p style={{ margin: '3px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Manage {windows.length} live browser window{windows.length !== 1 ? 's' : ''} and {allTabs.length} open tab{allTabs.length !== 1 ? 's' : ''}, then capture the work you want to keep.</p>
+              <h1 style={uiPatterns.pageTitle}>Tab Commander</h1>
+              <p style={uiPatterns.pageDescription}>Manage {windows.length} live browser window{windows.length !== 1 ? 's' : ''} and {allTabs.length} open tab{allTabs.length !== 1 ? 's' : ''}, then capture the work you want to keep.</p>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <div style={uiPatterns.actionRow}>
               {onRefresh && <button type="button" onClick={() => void onRefresh()} style={pageSecondaryButtonStyle}><RefreshCw size={12} /> Refresh</button>}
               <div onClick={(event) => event.stopPropagation()}><WorkspaceSaveMenu buttonId="workspace-save-page" title="Capture selected tabs or windows" align="right" primary label={selectedTabIds.length > 0 ? `Capture ${selectedTabIds.length} tab${selectedTabIds.length !== 1 ? 's' : ''}` : selectedWindowIds.length > 0 ? `Capture ${selectedWindowIds.length} window${selectedWindowIds.length !== 1 ? 's' : ''}` : 'Capture browser'} /></div>
             </div>
           </header>
-          <div data-tab-commander-toolbar style={{ minHeight: 42, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
-            <label style={{ width: 'min(620px, 100%)', height: 36, display: 'flex', alignItems: 'center', gap: 8, padding: '0 11px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--input-bg)', boxSizing: 'border-box' }} onClick={(event) => event.stopPropagation()}>
+          <div data-tab-commander-toolbar style={{ ...uiPatterns.toolbar, minHeight: 42, gap: 10 }}>
+            <label style={{ ...uiPatterns.searchField, width: 'min(620px, 100%)', height: 36 }} onClick={(event) => event.stopPropagation()}>
               <Search size={14} style={{ color: 'var(--text-faint)' }} />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter selected windows by tab title, domain, or URL…" aria-label="Filter live browser tabs" style={{ minWidth: 0, flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
               {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear tab filter" title="Clear filter" style={pageIconButtonStyle}><X size={12} /></button>}
@@ -2169,5 +2170,5 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   );
 };
 
-const pageSecondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' };
-const pageIconButtonStyle: React.CSSProperties = { width: 25, height: 25, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };
+const pageSecondaryButtonStyle = uiPatterns.secondaryButton;
+const pageIconButtonStyle: React.CSSProperties = { ...uiPatterns.iconButton, width: 25, height: 25, border: 'none' };

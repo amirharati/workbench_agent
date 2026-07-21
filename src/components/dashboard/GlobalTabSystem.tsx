@@ -484,7 +484,12 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
         (current !== tabQuery || librarySearch.state.mode !== tabMode || !filtersMatch));
 
     if (!needsRestore) {
-      if (current === tabQuery && !librarySearch.state.result && !librarySearch.state.loading) {
+      if (
+        current === tabQuery &&
+        !librarySearch.state.result &&
+        !librarySearch.state.loading &&
+        !librarySearch.state.restoring
+      ) {
         void librarySearch.runSearch(tabQuery);
       }
       prevActiveTabIdRef.current = activeTabId;
@@ -500,6 +505,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     librarySearch?.state.query,
     librarySearch?.state.result,
     librarySearch?.state.loading,
+    librarySearch?.state.restoring,
   ]);
 
   const [resolvedItem, setResolvedItem] = useState<Item | null>(null);

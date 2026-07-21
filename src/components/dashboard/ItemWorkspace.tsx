@@ -4,6 +4,7 @@ import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db'
 import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
 import { ItemFavoriteButton } from './ItemFavoriteButton';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
+import { uiPatterns } from '../../styles/uiPatterns';
 
 interface ItemWorkspaceProps {
   item: Item;
@@ -190,9 +191,9 @@ export const ItemWorkspace: React.FC<ItemWorkspaceProps> = ({
   );
 };
 
-const secondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' };
-const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
+const secondaryButtonStyle = uiPatterns.secondaryButton;
+const primaryButtonStyle = uiPatterns.primaryButton;
 const titleInputStyle: React.CSSProperties = { width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '6px 9px', border: '1px solid var(--border-active)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-input)', color: 'var(--text)', fontSize: 'var(--text-lg)', fontWeight: 650, outline: 'none' };
-const fieldLabelStyle: React.CSSProperties = { display: 'block', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 };
-const fieldInputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', marginTop: 4, padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-input)', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, outline: 'none' };
+const fieldLabelStyle = uiPatterns.fieldLabel;
+const fieldInputStyle = uiPatterns.fieldInput;
 const notesInputStyle: React.CSSProperties = { ...fieldInputStyle, minHeight: 130, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 };

@@ -4,28 +4,13 @@ import { X } from 'lucide-react';
 import type { Collection, Project } from '../../lib/db';
 import { Input, ButtonGhost } from '../../styles/primitives';
 import { isValidBookmarkUrl } from '../../lib/utils';
+import { uiPatterns } from '../../styles/uiPatterns';
 
 const MODAL_Z = 2147483647;
 
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: 'var(--text-xs)',
-  fontWeight: 600,
-  color: 'var(--text-muted)',
-  marginBottom: 6,
-};
+const labelStyle: React.CSSProperties = uiPatterns.fieldLabel;
 
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  boxSizing: 'border-box',
-  padding: '0.5rem 0.65rem',
-  borderRadius: 8,
-  border: '1px solid var(--border)',
-  fontSize: 'var(--text-sm)',
-  color: 'var(--text)',
-  background: 'var(--input-bg)',
-  fontFamily: 'inherit',
-};
+const fieldStyle: React.CSSProperties = uiPatterns.fieldInput;
 
 interface ModalShellProps {
   title: string;
@@ -45,30 +30,22 @@ const ModalShell: React.FC<ModalShellProps> = ({ title, onClose, children, foote
 
   return createPortal(
     <div
+      role="presentation"
       style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.45)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        ...uiPatterns.modalBackdrop,
         zIndex: MODAL_Z,
-        padding: '1rem',
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         style={{
-          width: '100%',
+          ...uiPatterns.dialog,
           maxWidth: 460,
-          background: 'var(--bg-panel)',
-          color: 'var(--text)',
-          borderRadius: 12,
-          border: '1px solid var(--border)',
-          boxShadow: 'var(--shadow-panel, 0 20px 50px rgba(0,0,0,0.35))',
-          overflow: 'hidden',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -122,13 +99,9 @@ const PrimaryButton: React.FC<
     type="button"
     {...rest}
     style={{
-      padding: '0.45rem 0.9rem',
-      borderRadius: 8,
-      border: 'none',
-      background: active ? 'var(--accent)' : 'var(--bg-glass)',
+      ...uiPatterns.primaryButton,
+      background: active ? 'var(--accent-solid, var(--accent))' : 'var(--bg-glass)',
       color: active ? 'var(--accent-text, #fff)' : 'var(--text-muted)',
-      fontSize: 'var(--text-sm)',
-      fontWeight: 600,
       cursor: active ? 'pointer' : 'not-allowed',
       ...style,
     }}

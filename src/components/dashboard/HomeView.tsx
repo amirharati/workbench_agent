@@ -11,6 +11,8 @@ import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary, reorde
 import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
 import { ActiveWorkspaceCard } from './ActiveWorkspaceCard';
 import { AllLibraryWorkspaceOverview, type WorkspaceViewGroup } from './AllLibraryWorkspaceOverview';
+import type { AllLibraryView } from './AllLibraryWorkspaceOverview';
+import { homePageUiKey, loadPageUiState, savePageUiState } from '../../lib/shell/pageUiState';
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
@@ -79,16 +81,33 @@ export const HomeView: React.FC<HomeViewProps> = ({
     y: number;
   } | null>(null);
   const [draggedProjectId, setDraggedProjectId] = React.useState<string | null>(null);
-  const [selectedOverviewItemId, setSelectedOverviewItemId] = React.useState<string | null>(null);
-  const [selectedAllLibraryWorkspaceTabId, setSelectedAllLibraryWorkspaceTabId] = React.useState<string | null>(null);
-  const [allLibraryWorkspaceView, setAllLibraryWorkspaceView] = React.useState('global');
+  const pageUiKey = homePageUiKey(scopeProjectId, scopeCollectionId);
+  const [initialPageUi] = React.useState(() => loadPageUiState(pageUiKey, {
+    selectedOverviewItemId: null as string | null,
+    selectedAllLibraryWorkspaceTabId: null as string | null,
+    allLibraryWorkspaceView: 'global',
+    allLibraryActiveView: 'projects' as AllLibraryView,
+  }));
+  const [selectedOverviewItemId, setSelectedOverviewItemId] = React.useState<string | null>(
+    initialPageUi.selectedOverviewItemId
+  );
+  const [selectedAllLibraryWorkspaceTabId, setSelectedAllLibraryWorkspaceTabId] = React.useState<string | null>(
+    initialPageUi.selectedAllLibraryWorkspaceTabId
+  );
+  const [allLibraryWorkspaceView, setAllLibraryWorkspaceView] = React.useState(initialPageUi.allLibraryWorkspaceView);
+  const [allLibraryActiveView, setAllLibraryActiveView] = React.useState<AllLibraryView>(initialPageUi.allLibraryActiveView);
   const focusLayerRef = React.useRef<HTMLDivElement>(null);
   const lastBrowseFocusRef = React.useRef<HTMLElement | null>(null);
   const wasFocusOpenRef = React.useRef(false);
 
   React.useEffect(() => {
-    setSelectedOverviewItemId(null);
-  }, [scopeProjectId, scopeCollectionId]);
+    savePageUiState(pageUiKey, {
+      selectedOverviewItemId,
+      selectedAllLibraryWorkspaceTabId,
+      allLibraryWorkspaceView,
+      allLibraryActiveView,
+    });
+  }, [allLibraryActiveView, allLibraryWorkspaceView, pageUiKey, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
 
   const activeProject = useMemo(
     () => (scopeProjectId === 'all' ? undefined : projects.find((project) => project.id === scopeProjectId)),
@@ -168,6 +187,28 @@ export const HomeView: React.FC<HomeViewProps> = ({
     () => items.find((item) => item.id === selectedOverviewItemId) ?? null,
     [items, selectedOverviewItemId]
   );
+
+  React.useEffect(() => {
+    if (selectedOverviewItemId) {
+      if (selectedOverviewItem) {
+        onSelectedBrowseItemChange?.(selectedOverviewItem);
+      } else if (items.length > 0) {
+        setSelectedOverviewItemId(null);
+      }
+      return;
+    }
+    if (selectedAllLibraryWorkspaceTabId) {
+      if (selectedAllLibraryWorkspaceTab) {
+        onSelectedBrowseItemChange?.(
+          selectedAllLibraryWorkspaceTab.kind === 'item'
+            ? items.find((item) => item.id === selectedAllLibraryWorkspaceTab.itemId) ?? null
+            : null
+        );
+      } else if (homeState.tabs.length > 0) {
+        setSelectedAllLibraryWorkspaceTabId(null);
+      }
+    }
+  }, [homeState.tabs.length, items, onSelectedBrowseItemChange, selectedAllLibraryWorkspaceTab, selectedAllLibraryWorkspaceTabId, selectedOverviewItem, selectedOverviewItemId]);
 
   React.useEffect(() => {
     if (
@@ -791,6 +832,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {homeSection === 'overview' ? activeProject ? (
         <ProjectHomeWorkspace
+          key={`${activeProject.id}:${scopeCollectionId}`}
           project={activeProject}
           items={projectItems}
           organizationItems={items}
@@ -867,6 +909,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
         {scopeProjectId === 'all' && (
           <AllLibraryWorkspaceOverview
+            initialView={allLibraryActiveView}
+            onActiveViewChange={setAllLibraryActiveView}
             groups={allLibraryWorkspaceGroups}
             selectedView={allLibraryWorkspaceView}
             onSelectedViewChange={(view) => {

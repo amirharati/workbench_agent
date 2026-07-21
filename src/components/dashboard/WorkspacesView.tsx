@@ -4,6 +4,7 @@ import type { Item, Project, Workspace } from '../../lib/db';
 import { deleteWorkspace, updateWorkspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, SavedWorkspaceSession } from './GlobalTabSystem';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
+import { uiPatterns } from '../../styles/uiPatterns';
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
@@ -275,17 +276,17 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   };
 
   return (
-    <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden', padding: '4px 4px 64px', boxSizing: 'border-box' }}>
-      <header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexShrink: 0 }}>
+    <div style={uiPatterns.pageFrame}>
+      <header style={uiPatterns.pageHeader}>
         <div>
-          <h1 style={{ margin: 0, color: 'var(--text)', fontSize: 'var(--text-xl)', fontWeight: 700 }}>Workspaces</h1>
-          <p style={{ margin: '3px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Manage Homebase working sets and saved browser snapshots. Live browser tabs stay in Tab Commander.</p>
+          <h1 style={uiPatterns.pageTitle}>Workspaces</h1>
+          <p style={uiPatterns.pageDescription}>Manage Homebase working sets and saved browser snapshots. Live browser tabs stay in Tab Commander.</p>
         </div>
         {onOpenTabCommander && <button type="button" onClick={onOpenTabCommander} style={primaryButtonStyle}><MonitorUp size={13} /> Capture browser tabs</button>}
       </header>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
-        <label style={{ width: 'min(460px, 100%)', height: 34, display: 'flex', alignItems: 'center', gap: 7, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--input-bg)', boxSizing: 'border-box' }}>
+      <div style={uiPatterns.toolbar}>
+        <label style={{ ...uiPatterns.searchField, width: 'min(460px, 100%)' }}>
           <Search size={13} color="var(--text-faint)" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter workspaces…" aria-label="Filter workspaces" style={{ minWidth: 0, flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
         </label>
@@ -297,7 +298,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
         <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{rows.length} workspace{rows.length !== 1 ? 's' : ''}</span>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(280px, 390px) minmax(0, 1fr)', gap: 12 }}>
+      <div style={uiPatterns.splitCanvas}>
         <section style={panelStyle} aria-label="Saved workspaces">
           <div style={panelHeaderStyle}><strong style={{ fontSize: 'var(--text-sm)' }}>Saved work</strong></div>
           <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
@@ -365,13 +366,13 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   );
 };
 
-const panelStyle: React.CSSProperties = { minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };
-const panelHeaderStyle: React.CSSProperties = { minHeight: 46, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 11px', borderBottom: '1px solid var(--border)' };
-const emptyStyle: React.CSSProperties = { flex: 1, minHeight: 0, display: 'grid', placeItems: 'center', padding: 24, color: 'var(--text-faint)', fontSize: 'var(--text-sm)', textAlign: 'center' };
-const secondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' };
-const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
-const iconButtonStyle: React.CSSProperties = { width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-faint)', cursor: 'pointer' };
-const selectStyle: React.CSSProperties = { minWidth: 145, maxWidth: 220, height: 29, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-xs)' };
+const panelStyle = uiPatterns.panel;
+const panelHeaderStyle = uiPatterns.panelHeader;
+const emptyStyle = uiPatterns.emptyState;
+const secondaryButtonStyle = uiPatterns.secondaryButton;
+const primaryButtonStyle = uiPatterns.primaryButton;
+const iconButtonStyle = uiPatterns.iconButton;
+const selectStyle: React.CSSProperties = { ...uiPatterns.select, minWidth: 145, maxWidth: 220 };
 const entryRowStyle: React.CSSProperties = { minHeight: 43, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid var(--border)' };
 const entryTitleStyle: React.CSSProperties = { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-sm)' };
 const entryDetailStyle: React.CSSProperties = { display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' };

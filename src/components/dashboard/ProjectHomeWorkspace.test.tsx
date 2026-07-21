@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Collection, Item, Project, Workspace } from '../../lib/db';
+import { projectPageUiKey } from '../../lib/shell/pageUiState';
 import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
 import { getHomebaseWorkspaceSessionKey, getProjectSessionWorkspaceKey } from './workspaceSession';
 
@@ -46,6 +47,8 @@ const workspaces: Workspace[] = Array.from({ length: 6 }, (_, index) => ({
 }));
 
 describe('ProjectHomeWorkspace browse surfaces', () => {
+  afterEach(() => localStorage.clear());
+
   it('uses compact context controls and one persistent list/gallery working canvas', () => {
     const markup = renderToStaticMarkup(
       <ProjectHomeWorkspace
@@ -122,6 +125,46 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup).toContain('aria-label="Workspace view"');
     expect(markup).not.toContain('Save as workspace');
     expect(markup).not.toContain('data-browse-surface="project-workspaces"');
+  });
+
+  it('restores the selected project item after reload', () => {
+    localStorage.setItem(
+      projectPageUiKey(project.id, 'all'),
+      JSON.stringify({
+        selectedItemId: items[0].id,
+        selectedSessionTabId: null,
+        browseSource: 'all',
+      })
+    );
+
+    const markup = renderToStaticMarkup(
+      <ProjectHomeWorkspace
+        project={project}
+        items={items}
+        collections={collections}
+        selectedCollectionId="all"
+        onSelectCollection={vi.fn()}
+        sessionTabs={[]}
+        onAddItemToSession={vi.fn()}
+        onRemoveSessionTab={vi.fn()}
+        onFocusSession={vi.fn()}
+        onOpenSearch={vi.fn()}
+        workspaces={workspaces}
+        savedWorkspaceSessions={[]}
+        activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
+        onActivateWorkspace={vi.fn()}
+        onActivateSavedWorkspace={vi.fn()}
+        onSaveWorkspace={vi.fn()}
+        onDeleteSavedWorkspace={vi.fn()}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' }]}
+        onAddItemToWorkspace={vi.fn()}
+        onTransferSessionEntry={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('aria-current="true"');
+    expect(markup).toContain('Pinned item 0');
+    expect(markup).not.toContain('Select something to work with');
   });
 
   it('shows the selected workspace name without claiming its list is visible', () => {

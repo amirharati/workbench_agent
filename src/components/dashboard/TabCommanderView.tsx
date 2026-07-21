@@ -3,6 +3,7 @@ import type { WindowGroup } from '../../App';
 import type { Item, Project, Workspace } from '../../lib/db';
 import type { GlobalTabState } from './GlobalTabSystem';
 import { BottomPanel } from './layout/BottomPanel';
+import { uiPatterns } from '../../styles/uiPatterns';
 
 interface TabCommanderViewProps {
   windows: WindowGroup[];
@@ -36,12 +37,7 @@ export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
   return (
     <div
       style={{
-        height: '100%',
-        minHeight: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '16px 18px 72px',
-        boxSizing: 'border-box',
+        ...uiPatterns.pageFrame,
         background: 'var(--bg)',
         color: 'var(--text)',
       }}

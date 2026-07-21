@@ -22,4 +22,45 @@ describe('ContentBrowser', () => {
     expect(markup).toContain('Working copy');
     expect(markup).toContain('aria-label="List view"');
   });
+
+  it('allows a status badge in the leading slot to take its full width', () => {
+    const markup = renderToStaticMarkup(
+      <ContentBrowser
+        title="Library"
+        entries={[{ id: 'link-a', title: 'A useful article', icon: <span>Enriched</span> }]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        mode="list"
+        onModeChange={vi.fn()}
+        emptyMessage="Nothing here"
+      />
+    );
+
+    expect(markup).toContain('width:auto');
+    expect(markup).toContain('min-width:27px');
+    expect(markup).toContain('Enriched');
+    expect(markup).toContain('A useful article');
+  });
+
+  it('mounts a bounded first batch for large libraries', () => {
+    const markup = renderToStaticMarkup(
+      <ContentBrowser
+        title="Library"
+        entries={Array.from({ length: 100 }, (_, index) => ({
+          id: `item-${index}`,
+          title: `Library item ${index}`,
+          icon: 'L',
+        }))}
+        selectedId={null}
+        onSelect={vi.fn()}
+        mode="list"
+        onModeChange={vi.fn()}
+        emptyMessage="Nothing here"
+      />
+    );
+
+    expect(markup).toContain('Library item 59');
+    expect(markup).not.toContain('Library item 60');
+    expect(markup).toContain('Loading more… 60 of 100');
+  });
 });

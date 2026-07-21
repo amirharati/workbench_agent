@@ -16,16 +16,7 @@ import { ListPipelineBadge } from '../PipelineDisplayBlocks';
 import { ScopeChipsBar } from '../ScopeChipsBar';
 import { type GlobalTabState } from '../GlobalTabSystem';
 import { SHELL_LAYOUT_DEFAULTS, type ShellLayoutState } from '../../../lib/shell/shellLayoutState';
-import { SettingsView } from '../SettingsView';
-import { ImportStudioView } from '../ImportStudioView';
-import { PipelineHubView } from '../PipelineHubView';
-import { EnrichmentPanel } from '../EnrichmentPanel';
-import { TabCommanderView } from '../TabCommanderView';
-import { ProjectDashboard } from '../ProjectDashboard';
-import { CollectionsView } from '../CollectionsView';
 import { sortItemsWithPinsFirst } from '../../../lib/itemQuickAccess';
-import { WorkspacesView } from '../WorkspacesView';
-import { NoteWorkspace } from '../NoteWorkspace';
 import { ItemOrganizationEditor } from '../ItemOrganizationEditor';
 import { SearchBar } from '../SearchBar';
 import { Resizer } from '../Resizer';
@@ -37,6 +28,22 @@ import { DeleteConfirmDialog } from '../../DeleteConfirmDialog';
 import { TrashView } from '../TrashView';
 import { ExtensionPageUrlLink } from '../BookmarkUrlLink';
 import { BookmarksLibraryView } from '../BookmarksLibraryView';
+
+const SettingsView = React.lazy(() => import('../SettingsView').then((module) => ({ default: module.SettingsView })));
+const ImportStudioView = React.lazy(() => import('../ImportStudioView').then((module) => ({ default: module.ImportStudioView })));
+const PipelineHubView = React.lazy(() => import('../PipelineHubView').then((module) => ({ default: module.PipelineHubView })));
+const EnrichmentPanel = React.lazy(() => import('../EnrichmentPanel').then((module) => ({ default: module.EnrichmentPanel })));
+const TabCommanderView = React.lazy(() => import('../TabCommanderView').then((module) => ({ default: module.TabCommanderView })));
+const ProjectDashboard = React.lazy(() => import('../ProjectDashboard').then((module) => ({ default: module.ProjectDashboard })));
+const CollectionsView = React.lazy(() => import('../CollectionsView').then((module) => ({ default: module.CollectionsView })));
+const WorkspacesView = React.lazy(() => import('../WorkspacesView').then((module) => ({ default: module.WorkspacesView })));
+const NoteWorkspace = React.lazy(() => import('../NoteWorkspace').then((module) => ({ default: module.NoteWorkspace })));
+
+const LazyViewFallback = () => (
+  <div role="status" style={{ minHeight: 120, display: 'grid', placeItems: 'center', color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>
+    Opening view…
+  </div>
+);
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -636,6 +643,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     if (activeView === 'bookmarks' || activeView === 'notes') {
       return (
         <BookmarksLibraryView
+          key={`${activeView}:${scopeProjectId}:${scopeCollectionId}`}
           items={items}
           collections={collections}
           projects={projects}
@@ -686,6 +694,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             }}
           >
             <HomeView
+            key={`${scopeProjectId}:${scopeCollectionId}`}
             items={items}
             collections={collections}
             projects={projects}
@@ -2355,12 +2364,14 @@ export const MainContent: React.FC<MainContentProps> = ({
         />
         {showImportStudio && (
           <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', zIndex: 100 }}>
-            <ImportStudioView
-              projects={projects}
-              collections={collections}
-              onBack={() => setShowImportStudio(false)}
-              onImported={onRefresh}
-            />
+            <React.Suspense fallback={<LazyViewFallback />}>
+              <ImportStudioView
+                projects={projects}
+                collections={collections}
+                onBack={() => setShowImportStudio(false)}
+                onImported={onRefresh}
+              />
+            </React.Suspense>
           </div>
         )}
 
@@ -2445,7 +2456,9 @@ export const MainContent: React.FC<MainContentProps> = ({
           scrollPaddingBottom: usesContainedScroller ? 0 : 20,
         }}
       >
-        {renderContent()}
+        <React.Suspense fallback={<LazyViewFallback />}>
+          {renderContent()}
+        </React.Suspense>
       </div>
 
       {/* Top-level create modals (Projects / Collections / Bookmarks / Notes) */}

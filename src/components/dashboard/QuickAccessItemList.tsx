@@ -5,6 +5,7 @@ import { ExternalLink } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { ItemContextMenu } from './ItemContextMenu';
 import { TabScrollShell } from './TabScrollShell';
+import { uiPatterns } from '../../styles/uiPatterns';
 
 interface QuickAccessItemListProps {
   title: string;
@@ -49,16 +50,9 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
   return (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
+        ...uiPatterns.panel,
         height: '100%',
-        minHeight: 0,
-        overflow: 'hidden',
         color: 'var(--text)',
-        background: 'var(--bg-panel)',
-        borderRadius: 10,
-        border: '1px solid var(--border)',
-        boxShadow: 'var(--shadow-panel)',
       }}
     >
       {contextMenu && (
@@ -75,9 +69,11 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
 
       <div
         style={{
+          ...uiPatterns.panelHeader,
           flexShrink: 0,
-          padding: '1.25rem 1.25rem 0',
-          marginBottom: headerSubtitle ? '0.75rem' : '1rem',
+          alignItems: 'stretch',
+          flexDirection: 'column',
+          padding: '12px 14px',
         }}
       >
         <div
@@ -90,7 +86,7 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {icon}
-            <h2 style={{ margin: 0, color: 'var(--text)', letterSpacing: 0.2 }}>{title}</h2>
+            <h2 style={{ ...uiPatterns.pageTitle, fontSize: 'var(--text-lg)' }}>{title}</h2>
           </div>
           {headerExtra}
         </div>
@@ -109,16 +105,14 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
         ) : null}
       </div>
 
-      <TabScrollShell style={{ padding: '0 1.25rem 1.25rem' }}>
+      <TabScrollShell style={{ padding: 14 }}>
         {items.length === 0 ? (
           <div
             style={{
-              padding: '3rem',
-              textAlign: 'center',
-              color: 'var(--text-muted)',
-              background: 'var(--bg-glass)',
-              borderRadius: 8,
+              ...uiPatterns.emptyState,
+              minHeight: 220,
               border: '1px dashed var(--border)',
+              borderRadius: 'var(--radius-md)',
             }}
           >
             {emptyIcon}

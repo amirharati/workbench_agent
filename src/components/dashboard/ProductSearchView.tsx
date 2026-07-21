@@ -407,6 +407,13 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
         <div style={{ color: 'var(--error, #ef4444)', fontSize: 'var(--text-sm)' }}>{state.error}</div>
       )}
 
+      {state.restoring && !state.result && (
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>
+          <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+          Restoring previous results…
+        </div>
+      )}
+
       {state.result && !state.loading && (
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
           {state.result.results.length} result{state.result.results.length !== 1 ? 's' : ''}

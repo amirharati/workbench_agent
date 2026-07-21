@@ -54,7 +54,6 @@ import {
 } from './lib/backupFolder';
 import { DATA_CHANGED_BROADCAST_CHANNEL, subscribeToDataChanges } from './lib/dataChangeNotifier';
 import { ensureDbWorker, mirrorNow, getDbWorkerStatus, type DbWorkerStatus } from './lib/storage/dbClient';
-import { prewarmHubCache } from './components/dashboard/PipelineHubView';
 import { backupCoordinator, BackupStatusSnapshot, isSqliteBackupFile, type RestoreBackupResult } from './lib/backupCoordinator';
 import { ManualFolderBackupSink } from './lib/backupSinks';
 import { revisionTracker } from './lib/revisionTracker';
@@ -67,12 +66,14 @@ import { buildPipelineSnapshotExport } from './lib/pipeline/pipelineRunAnalysis'
 import { saveAndDownloadPipelineRun } from './lib/pipeline/pipelineRunStore';
 import {
   createDashboardStartupProjection,
+  loadImmediateDashboardStartupProjection,
   loadPersistedDashboardStartupProjection,
   persistDashboardStartupProjection,
   requestSharedDashboardStartupProjection,
   type DashboardStartupProjection,
 } from './lib/dashboardStartupProjection';
 import { loadWorkbenchSqliteFromFolder } from './lib/linkBackupFolder';
+import { scheduleStartupIdleWork, waitForStartupIdle } from './lib/startupScheduling';
 
 export interface WindowGroup {
   windowId: number;
@@ -80,11 +81,19 @@ export interface WindowGroup {
 }
 
 function App() {
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [items, setItems] = useState<Item[]>([]);
-  const [startupProjectionReady, setStartupProjectionReady] = useState(false);
+  const [immediateStartupProjection] = useState(() => {
+    const startedAt = performance.now();
+    const projection = loadImmediateDashboardStartupProjection();
+    if (projection) {
+      console.info(`[startup] immediate dashboard projection in ${Math.round(performance.now() - startedAt)}ms`);
+    }
+    return projection;
+  });
+  const [collections, setCollections] = useState<Collection[]>(() => immediateStartupProjection?.collections ?? []);
+  const [projects, setProjects] = useState<Project[]>(() => immediateStartupProjection?.projects ?? []);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => immediateStartupProjection?.workspaces ?? []);
+  const [items, setItems] = useState<Item[]>(() => immediateStartupProjection?.items ?? []);
+  const [startupProjectionReady, setStartupProjectionReady] = useState(Boolean(immediateStartupProjection));
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryHydrateProgress, setLibraryHydrateProgress] =
     useState<LibraryHydrateProgress | null>(null);
@@ -105,10 +114,15 @@ function App() {
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const folderFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fullLibraryReadyRef = useRef(false);
+  const startupProjectionReadyRef = useRef(Boolean(immediateStartupProjection));
+  const startupProjectionGeneratedAtRef = useRef(immediateStartupProjection?.generatedAt ?? 0);
 
   const applyStartupProjection = useCallback((projection: DashboardStartupProjection) => {
+    startupProjectionReadyRef.current = true;
     setStartupProjectionReady(true);
     if (fullLibraryReadyRef.current) return;
+    if (projection.generatedAt < startupProjectionGeneratedAtRef.current) return;
+    startupProjectionGeneratedAtRef.current = projection.generatedAt;
     setProjects(projection.projects);
     setCollections(projection.collections);
     setWorkspaces(projection.workspaces);
@@ -118,22 +132,25 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     const startedAt = performance.now();
-    void (async () => {
-      const persisted = await loadPersistedDashboardStartupProjection();
+    // Race the durable page cache and the shared DB owner. Waiting for one
+    // before starting the other made a slow chrome.storage read block the
+    // otherwise-warm worker path.
+    void loadPersistedDashboardStartupProjection().then((persisted) => {
       if (persisted && !cancelled) {
         applyStartupProjection(persisted);
         console.info(`[startup] persisted dashboard projection in ${Math.round(performance.now() - startedAt)}ms`);
       }
-      try {
-        const shared = await requestSharedDashboardStartupProjection();
+    });
+    void requestSharedDashboardStartupProjection()
+      .then((shared) => {
         if (cancelled) return;
         applyStartupProjection(shared);
         console.info(`[startup] shared dashboard projection in ${Math.round(performance.now() - startedAt)}ms`);
         void persistDashboardStartupProjection(shared);
-      } catch (error) {
+      })
+      .catch((error) => {
         console.warn('[startup] Shared dashboard projection unavailable; full hydrate will continue:', error);
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
@@ -206,11 +223,16 @@ function App() {
    * Load library from OPFS (and merge from folder when Chrome still grants access).
    * After the folder is configured once, this must work even when permission is `prompt`.
    */
-  const bootstrapAfterFolderReady = async () => {
+  const bootstrapAfterFolderReady = async (options?: { deferCanonicalHydrate?: boolean }) => {
     await ensureDbWorker();
     const folderWritable = await hasWritableBackupFolder();
+    if (options?.deferCanonicalHydrate) {
+      // The compact projection is already a usable screen. Let it paint and
+      // accept input before transferring the canonical library into this tab.
+      await waitForStartupIdle({ timeoutMs: 350 });
+    }
     await loadData();
-    void prewarmHubCache();
+    void import('./components/dashboard/PipelineHubView').then(({ prewarmHubCache }) => prewarmHubCache());
     // Cleanup, taxonomy checks, and remote conflict work are not required for
     // the first usable Home screen. Keep them behind live OPFS loading.
     void import('./lib/storage/legacyStorageCleanup')
@@ -397,7 +419,9 @@ function App() {
             /* ignore */
           }
         }
-        await bootstrapAfterFolderReady();
+        await bootstrapAfterFolderReady({
+          deferCanonicalHydrate: startupProjectionReadyRef.current,
+        });
         if (cancelled) return;
       } catch (e) {
         console.error('Backup onboarding check failed:', e);
@@ -416,7 +440,9 @@ function App() {
           setFolderGateResolved(true);
           if (configured) {
             try {
-              await bootstrapAfterFolderReady();
+              await bootstrapAfterFolderReady({
+                deferCanonicalHydrate: startupProjectionReadyRef.current,
+              });
             } catch {
               /* OPFS bootstrap best-effort */
             }
@@ -464,12 +490,18 @@ function App() {
   }, []);
 
   useEffect(() => {
-    loadCurrentWindows();
-    const handleTabUpdate = () => loadCurrentWindows();
+    let cancelled = false;
+    const refreshWindows = () => {
+      if (!cancelled) void loadCurrentWindows();
+    };
+    const cancelInitialLoad = scheduleStartupIdleWork(refreshWindows, { timeoutMs: 500 });
+    const handleTabUpdate = () => refreshWindows();
     chrome.tabs.onCreated.addListener(handleTabUpdate);
     chrome.tabs.onRemoved.addListener(handleTabUpdate);
     chrome.tabs.onUpdated.addListener(handleTabUpdate);
     return () => {
+      cancelled = true;
+      cancelInitialLoad();
       chrome.tabs.onCreated.removeListener(handleTabUpdate);
       chrome.tabs.onRemoved.removeListener(handleTabUpdate);
       chrome.tabs.onUpdated.removeListener(handleTabUpdate);
@@ -651,16 +683,19 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const loaded = await loadAISettings();
-        if (!cancelled) setAiSettings(loaded);
-      } catch (error) {
-        console.error('Failed to load AI settings:', error);
-      }
-    })();
+    const cancelLoad = scheduleStartupIdleWork(() => {
+      void (async () => {
+        try {
+          const loaded = await loadAISettings();
+          if (!cancelled) setAiSettings(loaded);
+        } catch (error) {
+          console.error('Failed to load AI settings:', error);
+        }
+      })();
+    }, { timeoutMs: 500 });
     return () => {
       cancelled = true;
+      cancelLoad();
     };
   }, []);
 

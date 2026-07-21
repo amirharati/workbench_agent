@@ -63,6 +63,25 @@ describe('dbRpc priority propagation', () => {
     expect(mutation?.priority).toBe('high');
   });
 
+  it('treats a successful shared-owner ping as ready in a newly opened dashboard', async () => {
+    const sendMessage = vi.fn(async (message: { method?: string }) => {
+      if (message.method === 'ping') return { ok: true, result: 'pong' };
+      return { ok: true, result: { stored: true } };
+    });
+    vi.stubGlobal('chrome', {
+      runtime: {
+        sendMessage,
+        onMessage: { addListener: vi.fn() },
+      },
+    });
+
+    const { ensureDbWorker } = await import('./index');
+    await Promise.all([ensureDbWorker(), ensureDbWorker(), ensureDbWorker()]);
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ method: 'ping' }));
+  });
+
   it('does not use a local transport before DB bootstrap is marked ready', async () => {
     const listeners = new Set<(message: unknown) => void>();
     vi.stubGlobal('chrome', {

@@ -1,5 +1,6 @@
 import React, { forwardRef } from 'react';
 import { tokens } from './theme';
+import { uiPatterns } from './uiPatterns';
 
 type DivProps = React.HTMLAttributes<HTMLDivElement>;
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
@@ -30,13 +31,7 @@ export const ButtonGhost: React.FC<ButtonProps> = ({ style, ...rest }) => (
   <button
     {...rest}
     style={{
-      border: '1px solid var(--border)',
-      background: 'var(--bg-glass)',
-      color: 'var(--text)',
-      borderRadius: tokens.radius.md,
-      padding: '4px 10px',
-      fontSize: 'var(--text-sm)',
-      cursor: 'pointer',
+      ...uiPatterns.secondaryButton,
       transition: 'all 0.15s ease',
       ...style,
     }}
@@ -51,14 +46,7 @@ export const ButtonPrimary: React.FC<ButtonProps> = ({ style, ...rest }) => (
   <button
     {...rest}
     style={{
-      border: 'none',
-      background: 'var(--accent-solid, var(--accent))',
-      color: 'var(--accent-text)',
-      borderRadius: tokens.radius.md,
-      padding: '4px 12px',
-      fontSize: 'var(--text-sm)',
-      fontWeight: 500,
-      cursor: 'pointer',
+      ...uiPatterns.primaryButton,
       transition: 'all 0.15s ease',
       ...style,
     }}

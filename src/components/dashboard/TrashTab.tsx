@@ -9,6 +9,7 @@ import {
   restoreItemFromTrash,
 } from '../../lib/itemQuickAccess';
 import { QuickAccessItemList } from './QuickAccessItemList';
+import { uiPatterns } from '../../styles/uiPatterns';
 
 const PERMANENT_DELETE_BODY =
   'The bookmark and its enrichment data will be removed. The URL stays on the import block list so Import Studio can skip it later.';
@@ -111,13 +112,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
               disabled={busy}
               onClick={() => handleEmptyTrash()}
               style={{
-                padding: '4px 10px',
-                borderRadius: 6,
-                border: '1px solid rgba(239, 68, 68, 0.45)',
-                background: 'rgba(239, 68, 68, 0.08)',
-                color: '#ef4444',
-                fontSize: 'var(--text-xs)',
-                cursor: busy ? 'default' : 'pointer',
+                ...uiPatterns.dangerButton,
                 opacity: busy ? 0.6 : 1,
               }}
             >
@@ -130,30 +125,14 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
             <button
               type="button"
               onClick={(e) => void handleRestore(e, item)}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 6,
-                border: '1px solid var(--border)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: 'var(--text-xs)',
-                cursor: 'pointer',
-              }}
+              style={uiPatterns.secondaryButton}
             >
               Restore
             </button>
             <button
               type="button"
               onClick={(e) => handlePermanentDelete(e, item)}
-              style={{
-                padding: '4px 8px',
-                borderRadius: 6,
-                border: '1px solid rgba(239, 68, 68, 0.45)',
-                background: 'transparent',
-                color: '#ef4444',
-                fontSize: 'var(--text-xs)',
-                cursor: 'pointer',
-              }}
+              style={uiPatterns.dangerButton}
             >
               Delete permanently
             </button>
@@ -179,14 +158,8 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
           role="dialog"
           aria-modal="true"
           style={{
-            position: 'fixed',
-            inset: 0,
+            ...uiPatterns.modalBackdrop,
             zIndex: 100000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(0,0,0,0.45)',
-            padding: 16,
           }}
           onClick={() => {
             if (!busy) setPending(null);
@@ -194,14 +167,9 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
         >
           <div
             style={{
-              width: '100%',
+              ...uiPatterns.dialog,
               maxWidth: 420,
-              background: 'var(--bg-panel, #fff)',
-              color: 'var(--text, #111)',
-              borderRadius: 12,
-              border: '1px solid var(--border, #e5e7eb)',
               padding: 20,
-              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -218,14 +186,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
                 type="button"
                 disabled={busy}
                 onClick={() => setPending(null)}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  color: 'var(--text)',
-                  cursor: busy ? 'default' : 'pointer',
-                }}
+                style={{ ...uiPatterns.secondaryButton, opacity: busy ? 0.7 : 1 }}
               >
                 Cancel
               </button>
@@ -233,16 +194,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
                 type="button"
                 disabled={busy}
                 onClick={() => void runPending()}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: '#ef4444',
-                  color: '#fff',
-                  fontWeight: 600,
-                  cursor: busy ? 'default' : 'pointer',
-                  opacity: busy ? 0.7 : 1,
-                }}
+                style={{ ...uiPatterns.dangerButton, opacity: busy ? 0.7 : 1 }}
               >
                 {busy ? 'Deleting…' : pending.kind === 'empty' ? 'Empty trash' : 'Delete permanently'}
               </button>

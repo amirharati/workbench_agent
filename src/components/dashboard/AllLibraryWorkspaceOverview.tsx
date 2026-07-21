@@ -8,6 +8,7 @@ import { ContentBrowser, useContentBrowseMode } from './ContentBrowser';
 import type { HomeProjectSummary } from './HomeBrowsePanel';
 import { ItemWorkspace } from './ItemWorkspace';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
+import { uiPatterns } from '../../styles/uiPatterns';
 
 export interface WorkspaceViewGroup {
   key: string;
@@ -51,6 +52,7 @@ interface AllLibraryWorkspaceOverviewProps {
   onOpenTrash?: () => void;
   onOpenPipeline?: () => void;
   initialView?: AllLibraryView;
+  onActiveViewChange?: (view: AllLibraryView) => void;
 }
 
 export type AllLibraryView = 'projects' | 'recent' | 'quick-access' | 'workspace';
@@ -96,6 +98,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   onOpenTrash,
   onOpenPipeline,
   initialView = 'projects',
+  onActiveViewChange,
 }) => {
   const [activeView, setActiveView] = React.useState<AllLibraryView>(initialView);
   const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:home-all-library-content-view');
@@ -133,6 +136,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
       }));
   const selectView = (view: AllLibraryView) => {
     setActiveView(view);
+    onActiveViewChange?.(view);
     onClearSelection?.();
   };
   const selectBrowseEntry = (id: string) => {
@@ -146,7 +150,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
 
   return (
     <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, display: 'flex', flexDirection: 'column' }} aria-label="All Library workspace">
-      <div data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: 5, flexWrap: 'wrap', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)' }}>
+      <div data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
         <button type="button" role="tab" aria-selected={activeView === 'projects'} onClick={() => selectView('projects')} style={viewTabStyle(activeView === 'projects')}><Folder size={12} /> Projects <span style={tabCountStyle}>{projectSummaries.length}</span></button>
         <button type="button" role="tab" aria-selected={activeView === 'recent'} onClick={() => selectView('recent')} style={viewTabStyle(activeView === 'recent')}><Clock size={12} /> Recent <span style={tabCountStyle}>{recentItems.length}</span></button>
         <button type="button" role="tab" aria-selected={activeView === 'quick-access'} onClick={() => selectView('quick-access')} style={viewTabStyle(activeView === 'quick-access')}><Star size={12} /> Favorites &amp; pins <span style={tabCountStyle}>{quickAccessItems.length}</span></button>
@@ -154,7 +158,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
           <button type="button" role="tab" aria-selected={activeView === 'workspace'} onClick={() => selectView('workspace')} style={compoundTabButtonStyle}><Layers3 size={12} /> Workspace</button>
           <select
             value={selectedView}
-            onChange={(event) => { setActiveView('workspace'); onSelectedViewChange(event.target.value); onClearSelection?.(); }}
+            onChange={(event) => { setActiveView('workspace'); onActiveViewChange?.('workspace'); onSelectedViewChange(event.target.value); onClearSelection?.(); }}
             aria-label="Workspace view"
             style={tabSelectStyle}
           >
@@ -258,9 +262,9 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
 };
 
 const previewIconStyle: React.CSSProperties = { width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-md)', background: 'var(--accent-weak)', color: 'var(--accent)' };
-const secondaryButtonStyle: React.CSSProperties = { minHeight: 29, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' };
-const primaryButtonStyle: React.CSSProperties = { ...secondaryButtonStyle, borderColor: 'var(--accent)', background: 'var(--accent)', color: '#fff' };
-const viewTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 10px', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' });
+const secondaryButtonStyle = uiPatterns.secondaryButton;
+const primaryButtonStyle = uiPatterns.primaryButton;
+const viewTabStyle = uiPatterns.viewTab;
 const compoundTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'stretch', overflow: 'hidden', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)' });
 const compoundTabButtonStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px 0 10px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' };
 const tabSelectStyle: React.CSSProperties = { minWidth: 128, maxWidth: 210, padding: '0 24px 0 7px', border: 'none', borderLeft: '1px solid var(--border)', background: 'transparent', color: 'inherit', fontSize: 'var(--text-xs)', outline: 'none', cursor: 'pointer' };

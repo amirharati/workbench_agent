@@ -13,6 +13,7 @@ import { PipelineDebugSection } from './PipelineDebugSection';
 import { CategorizationSetupSection } from './CategorizationPanel';
 import { useToast } from '../ToastContainer';
 import { ThemeSelector } from '../ThemeToggle';
+import { uiPatterns } from '../../styles/uiPatterns';
 
 type FontScalePreset = 'small' | 'normal' | 'large';
 export type SettingsSection = 'general' | 'ai' | 'backup' | 'advanced';
@@ -320,10 +321,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }}
     >
       <div>
-        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text)' }}>
+        <h1 style={uiPatterns.pageTitle}>
           Settings
         </h1>
-        <p style={{ margin: '0.35rem 0 0', color: 'var(--text-muted)' }}>
+        <p style={uiPatterns.pageDescription}>
           Configure Homebase, AI processing, and how your library is protected.
         </p>
       </div>
@@ -331,11 +332,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <nav
         aria-label="Settings sections"
         style={{
-          display: 'flex',
-          gap: 4,
+          ...uiPatterns.tabBar,
           overflowX: 'auto',
-          paddingBottom: 6,
-          borderBottom: '1px solid var(--border)',
         }}
       >
         {SETTINGS_SECTIONS.map((section) => {
@@ -348,14 +346,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               aria-current={selected ? 'page' : undefined}
               onClick={() => setActiveSection(section.id)}
               style={{
-                padding: '0.5rem 0.75rem',
-                border: 'none',
-                borderBottom: selected ? '2px solid var(--accent)' : '2px solid transparent',
-                background: 'transparent',
-                color: selected ? 'var(--text)' : 'var(--text-muted)',
-                fontSize: '0.85rem',
-                fontWeight: selected ? 700 : 600,
-                cursor: 'pointer',
+                ...uiPatterns.viewTab(selected),
                 whiteSpace: 'nowrap',
               }}
             >

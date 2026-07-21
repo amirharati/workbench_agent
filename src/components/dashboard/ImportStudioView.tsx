@@ -40,6 +40,7 @@ import {
   type BookmarkImportCandidate,
 } from '../../lib/import/bookmarkFileImport';
 import { ImportReportOverlay } from './ImportReportOverlay';
+import { uiPatterns } from '../../styles/uiPatterns';
 import { INCOMING_COLLECTION_NAME, UNFILED_COLLECTION_NAME } from '../../lib/systemDataModel';
 
 export type ImportSource = 'file' | 'chrome' | 'assistant';
@@ -1302,7 +1303,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   );
 
   return (
-    <div className="scrollbar" style={{ height: '100%', overflow: 'auto', boxSizing: 'border-box', padding: '16px 18px 72px' }}>
+    <div className="scrollbar" style={{ ...uiPatterns.pageFrame, overflow: 'auto' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 1320, margin: '0 auto', position: 'relative' }}>
       {importReport ? (
         <ImportReportOverlay
@@ -1317,12 +1318,12 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           }}
         />
       ) : null}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+      <div style={uiPatterns.pageHeader}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--text)' }}>
+          <h1 style={uiPatterns.pageTitle}>
             Import bookmarks
           </h1>
-          <p style={{ margin: '6px 0 0', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+          <p style={uiPatterns.pageDescription}>
             Bring bookmarks into your library first, then choose whether any should be processed with AI.
           </p>
         </div>
@@ -1332,13 +1333,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           disabled={processing}
           title={processing ? 'Wait for the pipeline to finish' : undefined}
           style={{
-            padding: '6px 10px',
-            borderRadius: 6,
-            border: '1px solid var(--border)',
-            background: 'var(--bg)',
-            color: 'var(--text)',
-            fontSize: 'var(--text-xs)',
-            cursor: processing ? 'not-allowed' : 'pointer',
+            ...uiPatterns.secondaryButton,
             opacity: processing ? 0.6 : 1,
           }}
         >
@@ -1346,7 +1341,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         </button>
       </div>
 
-      <div role="tablist" aria-label="Import source" style={{ display: 'flex', gap: '6px', padding: 5, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-panel)' }}>
+      <div role="tablist" aria-label="Import source" style={uiPatterns.tabBar}>
         {([
           { id: 'file', label: 'Bookmark file' },
           { id: 'chrome', label: 'Chrome bookmarks' },
@@ -1362,14 +1357,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
               onClick={() => changeSource(item.id)}
               disabled={processing || committing || !!pipelineConfirm}
               style={{
-                padding: '6px 10px',
-                borderRadius: 6,
-                border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                background: active ? 'var(--accent-weak)' : 'var(--bg)',
-                color: active ? 'var(--accent)' : 'var(--text-muted)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                cursor: processing || committing || pipelineConfirm ? 'not-allowed' : 'pointer',
+                ...uiPatterns.viewTab(active),
                 opacity: processing || committing || pipelineConfirm ? 0.65 : 1,
               }}
             >

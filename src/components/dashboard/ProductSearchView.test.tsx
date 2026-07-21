@@ -20,6 +20,7 @@ describe('ProductSearchView empty state', () => {
           selectedItemId: null,
           recentQueries: ['local first', 'browser research'],
           indexEmpty: false,
+          restoring: false,
         }}
         onQueryChange={vi.fn()}
         onFiltersChange={vi.fn()}

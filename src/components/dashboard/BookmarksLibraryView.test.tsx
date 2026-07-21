@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Item, Project } from '../../lib/db';
+import { libraryPageUiKey } from '../../lib/shell/pageUiState';
 import { GLOBAL_TAB_STATE_DEFAULT } from './GlobalTabSystem';
 import {
   addBookmarkToWorkspace,
@@ -12,6 +13,8 @@ const project: Project = { id: 'project-a', name: 'Research', isDefault: false, 
 const item: Item = { id: 'item-a', title: 'Python', url: 'https://python.org', collectionIds: [], tags: [], source: 'bookmark', created_at: 1, updated_at: 1 };
 
 describe('BookmarksLibraryView', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it('renders links and notes in the combined library surface', () => {
     const markup = renderToStaticMarkup(
       <BookmarksLibraryView
@@ -55,6 +58,40 @@ describe('BookmarksLibraryView', () => {
     expect(markup).toContain('Draft text');
     expect(markup).not.toContain('https://python.org');
     expect(markup).toContain('aria-selected="true"');
+  });
+
+  it('restores the selected item for the current library scope', () => {
+    const saved = new Map<string, string>([
+      [
+        libraryPageUiKey('library', 'all', 'all'),
+        JSON.stringify({
+          query: '',
+          typeFilter: 'all',
+          selectedItemId: item.id,
+          workspaceKey: 'global-session:all',
+        }),
+      ],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => saved.set(key, value),
+    });
+
+    const markup = renderToStaticMarkup(
+      <BookmarksLibraryView
+        items={[item]}
+        collections={[]}
+        projects={[project]}
+        scopeProjectId="all"
+        scopeCollectionId="all"
+        homeState={GLOBAL_TAB_STATE_DEFAULT}
+        onHomeStateChange={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('aria-current="true"');
+    expect(markup).toContain('aria-label="Workspace for Python"');
+    expect(markup).not.toContain('Select an item to inspect and edit it.');
   });
 
   it('offers global, live project, and named workspace destinations', () => {
