@@ -49,6 +49,7 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
 
   return (
     <div
+      className="ui-panel ui-quick-access-list"
       style={{
         ...uiPatterns.panel,
         height: '100%',
@@ -68,6 +69,7 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
       )}
 
       <div
+        className="ui-quick-access-list__header"
         style={{
           ...uiPatterns.panelHeader,
           flexShrink: 0,
@@ -105,9 +107,10 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
         ) : null}
       </div>
 
-      <TabScrollShell style={{ padding: 14 }}>
+      <TabScrollShell className="scrollbar ui-quick-access-list__body" style={{ padding: 10 }}>
         {items.length === 0 ? (
           <div
+            className="ui-quick-access-list__empty"
             style={{
               ...uiPatterns.emptyState,
               minHeight: 220,
@@ -116,41 +119,38 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
             }}
           >
             {emptyIcon}
-            <p style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
+            <p style={{ margin: '0 0 0.5rem 0', fontSize: 'var(--text-lg)', fontWeight: 650, color: 'var(--text)' }}>
               {emptyTitle}
             </p>
-            <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.6 }}>{emptyHint}</p>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }}>{emptyHint}</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div className="ui-quick-access-list__items">
             {items.map((item) => {
               const dateTs = dateField ? dateField(item) : (item.updated_at ?? item.created_at);
+              const interactive = Boolean(onItemClick);
               return (
                 <div
                   key={item.id}
+                  className="ui-quick-access-list__row"
+                  role={interactive ? 'button' : undefined}
+                  tabIndex={interactive ? 0 : undefined}
+                  data-interactive={interactive ? 'true' : 'false'}
                   onClick={() => onItemClick?.(item)}
+                  onKeyDown={(event) => {
+                    if (!interactive || event.target !== event.currentTarget) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onItemClick?.(item);
+                    }
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     setContextMenu({ item, x: e.clientX, y: e.clientY });
                   }}
                   style={{
-                    padding: '1rem',
-                    background: 'var(--bg-glass)',
-                    borderRadius: 8,
-                    border: '1px solid var(--border)',
-                    cursor: onItemClick ? 'pointer' : 'default',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!onItemClick) return;
-                    e.currentTarget.style.background = 'var(--bg-hover)';
-                    e.currentTarget.style.borderColor = 'var(--accent)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!onItemClick) return;
-                    e.currentTarget.style.background = 'var(--bg-glass)';
-                    e.currentTarget.style.borderColor = 'var(--border)';
+                    cursor: interactive ? 'pointer' : 'default',
                   }}
                 >
                   <div
@@ -173,14 +173,14 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
                         }}
                       >
                         {showQuickAccessMarkers && <ItemQuickAccessMarkers item={item} size={12} />}
-                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span className="ui-quick-access-list__title">
                           {item.title || 'Untitled'}
                         </span>
                       </div>
                       {item.url && isValidBookmarkUrl(item.url) && (
                         <div
                           style={{
-                            fontSize: '0.85rem',
+                            fontSize: 'var(--text-sm)',
                             color: 'var(--text-muted)',
                             marginBottom: '0.25rem',
                             display: 'flex',
@@ -192,11 +192,19 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
                           {getDomain(item.url)}
                         </div>
                       )}
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', marginTop: '0.5rem' }}>
                         {dateLabel}: {formatDateTime(dateTs)}
                       </div>
                     </div>
-                    {renderRowActions?.(item)}
+                    {renderRowActions ? (
+                      <div
+                        className="ui-quick-access-list__actions"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        {renderRowActions(item)}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );

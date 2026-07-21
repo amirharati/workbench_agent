@@ -373,10 +373,10 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   };
 
   const detailPanel = (
-    <section style={panelStyle} aria-label="Selected project content">
+    <section className="ui-panel ui-detail-panel" style={panelStyle} aria-label="Selected project content">
       {selectedItem ? (
         <>
-          <div style={panelHeaderStyle}>
+          <div className="ui-detail-panel__header" style={panelHeaderStyle}>
             <span style={detailLabelStyle}>Item</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {selectedItemSessionTab && <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={secondaryButtonStyle}><Maximize2 size={12} /> Focus</button>}
@@ -411,7 +411,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         </>
       ) : selectedSessionTab ? (
         <>
-          <div style={panelHeaderStyle}>
+          <div className="ui-detail-panel__header" style={panelHeaderStyle}>
             <span style={detailLabelStyle}>Workspace entry</span>
             <button type="button" onClick={() => onFocusSession(selectedSessionTab.id)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
           </div>

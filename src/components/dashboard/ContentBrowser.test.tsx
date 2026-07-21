@@ -36,8 +36,8 @@ describe('ContentBrowser', () => {
       />
     );
 
-    expect(markup).toContain('width:auto');
-    expect(markup).toContain('min-width:27px');
+    expect(markup).toContain('data-content-leading="true"');
+    expect(markup).toContain('ui-content-browser__leading');
     expect(markup).toContain('Enriched');
     expect(markup).toContain('A useful article');
   });

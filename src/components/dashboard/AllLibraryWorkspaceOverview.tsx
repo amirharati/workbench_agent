@@ -207,8 +207,8 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
           ariaLabel="All Library material"
         />}
 
-        <div className="ui-panel" style={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }}>
-          <div style={{ minHeight: 43, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '7px 11px', borderBottom: '1px solid var(--border)' }}>
+        <div className="ui-panel ui-detail-panel" style={uiPatterns.panel}>
+          <div className="ui-detail-panel__header" style={uiPatterns.panelHeader}>
             <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 650, textTransform: 'uppercase', letterSpacing: 0.4 }}>{previewItem ? 'Item' : 'Workspace entry'}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {activeSelectedTab ? (

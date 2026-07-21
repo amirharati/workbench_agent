@@ -76,20 +76,20 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   }, [renderedEntries.length, selectedId]);
 
   return (
-  <section className="ui-panel" style={panelStyle} aria-label={ariaLabel ?? title}>
-    <div style={headerStyle}>
-      <div style={{ minWidth: 0 }}>
-        <strong style={{ display: 'block', overflow: 'hidden', color: 'var(--text)', fontSize: 'var(--text-sm)', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</strong>
-        <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{entries.length} item{entries.length !== 1 ? 's' : ''}</span>
+  <section className="ui-panel ui-content-browser" style={panelStyle} aria-label={ariaLabel ?? title}>
+    <div className="ui-content-browser__header" style={headerStyle}>
+      <div className="ui-content-browser__heading">
+        <strong className="ui-content-browser__title">{title}</strong>
+        <span className="ui-content-browser__count">{entries.length.toLocaleString()} item{entries.length !== 1 ? 's' : ''}</span>
       </div>
-      <div role="group" aria-label={`${title} view`} style={toggleGroupStyle}>
-        <button className="ui-view-tab" type="button" aria-label="List view" aria-pressed={mode === 'list'} title="List view" onClick={() => onModeChange('list')} style={toggleButtonStyle(mode === 'list')}><List size={12} /></button>
-        <button className="ui-view-tab" type="button" aria-label="Gallery view" aria-pressed={mode === 'gallery'} title="Gallery view" onClick={() => onModeChange('gallery')} style={toggleButtonStyle(mode === 'gallery')}><Grid2X2 size={12} /></button>
+      <div className="ui-content-browser__view-toggle" role="group" aria-label={`${title} view`}>
+        <button className="ui-content-browser__view-button" type="button" aria-label="List view" aria-pressed={mode === 'list'} title="List view" onClick={() => onModeChange('list')}><List size={13} /></button>
+        <button className="ui-content-browser__view-button" type="button" aria-label="Gallery view" aria-pressed={mode === 'gallery'} title="Gallery view" onClick={() => onModeChange('gallery')}><Grid2X2 size={13} /></button>
       </div>
     </div>
-    <div className="scrollbar" data-content-view={mode} style={mode === 'gallery' ? galleryStyle : listStyle}>
+    <div className="scrollbar ui-content-browser__body" data-content-view={mode}>
       {entries.length === 0 ? (
-        <div style={{ gridColumn: '1 / -1', padding: 24, color: 'var(--text-faint)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>{emptyMessage}</div>
+        <div className="ui-content-browser__empty">{emptyMessage}</div>
       ) : renderedEntries.map((entry) => {
         const selected = entry.id === selectedId;
         return (
@@ -99,28 +99,39 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
             role="button"
             tabIndex={0}
             aria-current={selected ? 'true' : undefined}
+            data-content-entry
+            data-selected={selected ? 'true' : 'false'}
             onClick={() => onSelect(entry.id)}
             onContextMenu={entry.onContextMenu}
             onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 onSelect(entry.id);
               }
             }}
-            style={mode === 'gallery' ? galleryEntryStyle(selected) : listEntryStyle(selected)}
+            className="ui-content-browser__entry"
           >
-            <span style={iconStyle(selected)}>{entry.icon}</span>
-            <span style={{ minWidth: 0, flex: 1 }}>
-              <span style={mode === 'gallery' ? galleryTitleStyle : listTitleStyle}>{entry.title || 'Untitled'}</span>
-              {entry.subtitle && <span style={mode === 'gallery' ? gallerySubtitleStyle : listSubtitleStyle}>{entry.subtitle}</span>}
-              {entry.meta && <span style={{ display: 'block', marginTop: 'auto', paddingTop: 6, color: 'var(--text-faint)', fontSize: 10 }}>{entry.meta}</span>}
+            <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
+            <span className="ui-content-browser__copy">
+              <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
+              {entry.subtitle && <span className="ui-content-browser__subtitle">{entry.subtitle}</span>}
+              {entry.meta && <span className="ui-content-browser__meta">{entry.meta}</span>}
             </span>
-            {entry.actions && <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }} onClick={(event) => event.stopPropagation()}>{entry.actions}</span>}
+            {entry.actions && (
+              <span
+                className="ui-content-browser__actions"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                {entry.actions}
+              </span>
+            )}
           </div>
         );
       })}
       {renderedEntries.length < entries.length ? (
-        <div role="status" style={loadingMoreStyle}>
+        <div className="ui-content-browser__loading" role="status">
           Loading more… {renderedEntries.length} of {entries.length}
         </div>
       ) : null}
@@ -130,19 +141,4 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
 };
 
 const panelStyle = uiPatterns.panel;
-const headerStyle: React.CSSProperties = { ...uiPatterns.panelHeader, padding: '7px 10px' };
-const toggleGroupStyle: React.CSSProperties = { display: 'inline-flex', gap: 2, padding: 2, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg)' };
-const toggleButtonStyle = (active: boolean): React.CSSProperties => ({ width: 25, height: 23, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 4, background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-faint)', cursor: 'pointer' });
-const listStyle: React.CSSProperties = { flex: 1, minHeight: 0, overflowY: 'auto' };
-const galleryStyle: React.CSSProperties = { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gridAutoRows: 'minmax(128px, auto)', alignContent: 'start', gap: 8, padding: 8, overflowY: 'auto' };
-const listEntryStyle = (selected: boolean): React.CSSProperties => ({ minHeight: 52, display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderBottom: '1px solid var(--border)', borderLeft: selected ? '3px solid var(--accent)' : '3px solid transparent', background: selected ? 'var(--accent-weak)' : 'transparent', cursor: 'pointer', contentVisibility: 'auto', containIntrinsicSize: '52px' });
-const galleryEntryStyle = (selected: boolean): React.CSSProperties => ({ minWidth: 0, minHeight: 128, display: 'flex', alignItems: 'flex-start', gap: 8, padding: 10, border: selected ? '1px solid var(--accent)' : '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: selected ? 'var(--accent-weak)' : 'var(--bg-panel)', boxShadow: selected ? '0 0 0 1px var(--accent-weak)' : 'none', cursor: 'pointer', overflow: 'hidden', contentVisibility: 'auto', containIntrinsicSize: '128px' });
-// Most entries use a compact icon, while Library entries may use a full
-// pipeline-status pill here. Let the slot grow with its content so a badge
-// never paints over the title beside it.
-const iconStyle = (selected: boolean): React.CSSProperties => ({ width: 'auto', minWidth: 27, minHeight: 27, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start', borderRadius: 6, background: 'var(--bg-hover)', color: selected ? 'var(--accent)' : 'var(--text-faint)' });
-const listTitleStyle: React.CSSProperties = { display: 'block', overflow: 'hidden', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 600, textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
-const galleryTitleStyle: React.CSSProperties = { display: '-webkit-box', overflow: 'hidden', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650, lineHeight: 1.35, WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 };
-const listSubtitleStyle: React.CSSProperties = { display: 'block', marginTop: 2, overflow: 'hidden', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
-const gallerySubtitleStyle: React.CSSProperties = { display: '-webkit-box', marginTop: 6, overflow: 'hidden', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.4, wordBreak: 'break-word', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3 };
-const loadingMoreStyle: React.CSSProperties = { gridColumn: '1 / -1', padding: '10px 12px', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', textAlign: 'center' };
+const headerStyle: React.CSSProperties = uiPatterns.panelHeader;

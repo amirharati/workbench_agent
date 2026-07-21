@@ -398,10 +398,10 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
           ariaLabel="Item library"
         />
 
-        <section className="ui-panel" style={panelStyle} aria-label="Selected library item">
+        <section className="ui-panel ui-detail-panel" style={panelStyle} aria-label="Selected library item">
           {selectedItem ? (
             <>
-              <div style={{ ...panelHeaderStyle, alignItems: 'center' }}>
+              <div className="ui-detail-panel__header" style={{ ...panelHeaderStyle, alignItems: 'center' }}>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <strong style={{ display: 'block', color: 'var(--text)', fontSize: 'var(--text-sm)' }}>Item</strong>
                   {workspaceNotice && <span role="status" style={{ display: 'block', marginTop: 2, color: 'var(--accent)', fontSize: 'var(--text-xs)' }}>{workspaceNotice}</span>}
