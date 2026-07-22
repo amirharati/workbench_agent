@@ -200,7 +200,12 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   const browseEntries = visibleItems.map((item) => ({
         id: item.id,
         title: item.title || 'Untitled',
-        icon: <ItemQuickAccessMarkers item={item} size={11} />,
+        icon: (
+          <span className="ui-content-browser__item-kind">
+            {item.url ? <Link2 size={12} aria-hidden="true" /> : <FileText size={12} aria-hidden="true" />}
+            <ItemQuickAccessMarkers item={item} size={9} />
+          </span>
+        ),
         subtitle: item.url || item.notes || 'Note',
         meta: new Date(item.updated_at ?? item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
         onContextMenu: onItemContextMenu ? (event: React.MouseEvent) => onItemContextMenu(event, item) : undefined,

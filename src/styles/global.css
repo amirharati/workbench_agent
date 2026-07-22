@@ -1975,7 +1975,13 @@ button.ui-scope-chip {
   border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
   border-radius: var(--radius-sm);
   background: var(--bg-subtle);
-  color: var(--text-faint);
+  color: var(--text-muted);
+}
+
+.ui-content-browser__item-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .ui-content-browser__body[data-content-view='list'] .ui-content-browser__leading {

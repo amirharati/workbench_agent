@@ -217,6 +217,37 @@ describe('AllLibraryWorkspaceOverview', () => {
     expect(markup).not.toContain('A note');
   });
 
+  it('always renders an item-type icon instead of an empty marker square', () => {
+    const linkItem = { id: 'link-a', url: 'https://example.com/a', title: 'A link', collectionIds: [], tags: [], source: 'manual' as const, created_at: 1, updated_at: 3 };
+    const noteItem = { id: 'note-b', url: '', title: 'A note', collectionIds: [], tags: [], source: 'manual' as const, created_at: 2, updated_at: 2 };
+    const markup = renderToStaticMarkup(
+      <AllLibraryWorkspaceOverview
+        groups={groups}
+        selectedView="global"
+        onSelectedViewChange={vi.fn()}
+        selectedTab={null}
+        selectedItem={null}
+        initialView="all"
+        items={[linkItem, noteItem]}
+        projects={[]}
+        collections={[]}
+        onSelectTab={vi.fn()}
+        onRemoveGlobalTab={vi.fn()}
+        onFocusTab={vi.fn()}
+        onFocusGlobal={vi.fn()}
+        onAddItemToGlobal={vi.fn()}
+        onViewSearch={vi.fn()}
+      />
+    );
+    const host = document.createElement('div');
+    host.innerHTML = markup;
+
+    const itemKindIcons = host.querySelectorAll('[data-content-leading] .ui-content-browser__item-kind > svg');
+    expect(itemKindIcons).toHaveLength(2);
+    expect(itemKindIcons[0]?.classList.contains('lucide-link2')).toBe(true);
+    expect(itemKindIcons[1]?.classList.contains('lucide-file-text')).toBe(true);
+  });
+
   it('keeps All stable, orders Recent by access, and searches across every project', () => {
     const projectSummaries = [
       {
