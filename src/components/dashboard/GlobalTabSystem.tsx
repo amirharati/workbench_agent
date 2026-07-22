@@ -1218,6 +1218,8 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             onUpdateItem={onUpdateItem}
             onCreateProject={onCreateProject}
             onCreateCollection={onCreateCollection}
+            organizationContextProjectId={activeTab.scopeProjectId ?? (scopeProjectId === 'all' ? undefined : scopeProjectId)}
+            organizationContextCollectionId={activeTab.scopeCollectionId ?? (scopeCollectionId === 'all' ? undefined : scopeCollectionId)}
             onClearRecentQueries={librarySearch.clearRecentQueries}
             scopeLabel={
               activeTab.filters?.collectionId

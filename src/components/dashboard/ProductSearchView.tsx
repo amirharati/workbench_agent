@@ -33,6 +33,8 @@ interface ProductSearchViewProps {
   ) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
+  organizationContextProjectId?: string;
+  organizationContextCollectionId?: string;
   onClearRecentQueries?: () => void;
   scopeLabel?: string;
   autofocus?: boolean;
@@ -84,6 +86,8 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onUpdateItem,
   onCreateProject,
   onCreateCollection,
+  organizationContextProjectId,
+  organizationContextCollectionId,
   onClearRecentQueries,
   scopeLabel,
   autofocus = true,
@@ -610,6 +614,8 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                         onUpdateItem={onUpdateItem}
                         onCreateProject={onCreateProject}
                         onCreateCollection={onCreateCollection}
+                        defaultProjectId={organizationContextProjectId}
+                        defaultCollectionId={organizationContextCollectionId}
                       />
                     ) : null}
                     {workspaceDestinations.length > 0 && isItemInWorkspace && onAddItemToWorkspace ? (

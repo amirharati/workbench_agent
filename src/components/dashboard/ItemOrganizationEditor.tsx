@@ -27,6 +27,9 @@ export interface ItemOrganizationEditorProps {
   /** Inline create — shown as "+ New" next to project/collection selects when provided. */
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
+  /** Suggested destination when this editor opens from a scoped surface. */
+  defaultProjectId?: string;
+  defaultCollectionId?: string;
   compact?: boolean;
   /** Hide tag editing when this editor is used only as a save-destination picker. */
   showTags?: boolean;
@@ -59,6 +62,8 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   onLocalChange,
   onCreateProject,
   onCreateCollection,
+  defaultProjectId,
+  defaultCollectionId,
   compact = false,
   showTags = true,
 }) => {
@@ -66,8 +71,16 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   const hasWritePath = !!onUpdate || !!onLocalChange;
   const canMutate = editable && hasWritePath;
 
-  const [addProjectId, setAddProjectId] = useState('');
-  const [addCollectionId, setAddCollectionId] = useState('');
+  const [addProjectId, setAddProjectId] = useState(() =>
+    defaultProjectId && projects.some((project) => project.id === defaultProjectId)
+      ? defaultProjectId
+      : ''
+  );
+  const [addCollectionId, setAddCollectionId] = useState(() =>
+    defaultCollectionId && collections.some((collection) => collection.id === defaultCollectionId)
+      ? defaultCollectionId
+      : ''
+  );
   const [tagDraft, setTagDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,10 +201,11 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
     if (!hasWritePath) return;
     if (!addProjectId) return;
     if (collectionsForAddProject.some((c) => c.id === addCollectionId)) return;
-    const unsorted = collectionsForAddProject.find(isUnsorted);
+    const contextual = collectionsForAddProject.find((c) => c.id === defaultCollectionId);
+    const unsorted = collectionsForAddProject.find((c) => isUnsorted(c) && !membershipIds.includes(c.id));
     const available = collectionsForAddProject.find((c) => !membershipIds.includes(c.id));
-    setAddCollectionId(available?.id || unsorted?.id || collectionsForAddProject[0]?.id || '');
-  }, [addProjectId, collectionsForAddProject, addCollectionId, membershipIds, hasWritePath]);
+    setAddCollectionId(contextual?.id || unsorted?.id || available?.id || collectionsForAddProject[0]?.id || '');
+  }, [addProjectId, collectionsForAddProject, addCollectionId, defaultCollectionId, membershipIds, hasWritePath]);
 
   const applyPatch = async (patch: ItemOrganizationPatch) => {
     if (!canMutate || busyRef.current) return;

@@ -806,6 +806,8 @@ export const MainContent: React.FC<MainContentProps> = ({
             onUpdateItem={onUpdateBookmark}
             onCreateProject={onCreateProject}
             onCreateCollection={onCreateCollection}
+            organizationContextProjectId={scopeProjectId === 'all' ? undefined : scopeProjectId}
+            organizationContextCollectionId={scopeCollectionId === 'all' ? undefined : scopeCollectionId}
             onClearRecentQueries={librarySearch.clearRecentQueries}
             showOpenInTab
             onOpenInTab={() => onLibrarySearchInTab?.(librarySearch.state.query)}

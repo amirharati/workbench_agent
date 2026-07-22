@@ -947,6 +947,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onUpdateItem={onUpdateItem}
           onCreateProject={onCreateProject}
           onCreateCollection={onCreateCollection}
+          organizationContextProjectId={scopeProjectId === 'all' ? undefined : scopeProjectId}
+          organizationContextCollectionId={scopeCollectionId === 'all' ? undefined : scopeCollectionId}
           onClearRecentQueries={librarySearch.clearRecentQueries}
           scopeLabel={effectiveSearchScopeLabel}
           scopeOptions={searchScopeOptions}

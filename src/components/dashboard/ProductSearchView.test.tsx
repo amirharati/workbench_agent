@@ -118,6 +118,8 @@ describe('ProductSearchView empty state', () => {
           onOpenItem={vi.fn()}
           onUpdateItem={vi.fn()}
           itemActionLabel="Add to workspace"
+          organizationContextProjectId={otherProject.id}
+          organizationContextCollectionId={otherCollection.id}
         />
       );
     });
@@ -134,6 +136,9 @@ describe('ProductSearchView empty state', () => {
     expect(dialog?.textContent).toContain('Writing');
 
     const projectSelect = dialog?.querySelector<HTMLSelectElement>('[aria-label="Project"]');
+    const collectionSelect = dialog?.querySelector<HTMLSelectElement>('[aria-label="Collection"]');
+    expect(projectSelect?.value).toBe(otherProject.id);
+    expect(collectionSelect?.value).toBe(otherCollection.id);
     await act(async () => {
       if (!projectSelect) return;
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;

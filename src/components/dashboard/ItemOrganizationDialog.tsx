@@ -15,6 +15,8 @@ interface ItemOrganizationDialogProps {
   ) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
+  defaultProjectId?: string;
+  defaultCollectionId?: string;
 }
 
 /** Compact entry point for permanently filing an item without leaving its current browse surface. */
@@ -25,6 +27,8 @@ export const ItemOrganizationDialog: React.FC<ItemOrganizationDialogProps> = ({
   onUpdateItem,
   onCreateProject,
   onCreateCollection,
+  defaultProjectId,
+  defaultCollectionId,
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -59,6 +63,8 @@ export const ItemOrganizationDialog: React.FC<ItemOrganizationDialogProps> = ({
             collections={collections}
             compact
             showTags={false}
+            defaultProjectId={defaultProjectId}
+            defaultCollectionId={defaultCollectionId}
             onCreateProject={onCreateProject}
             onCreateCollection={onCreateCollection}
             onUpdate={(patch) => onUpdateItem(item.id, { ...patch, updated_at: Date.now() })}
