@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AllLibraryWorkspaceOverview,
   getVisibleProjectSummaries,
+  normalizeAllLibraryItemFilter,
   normalizeAllLibraryView,
   type WorkspaceViewGroup,
 } from './AllLibraryWorkspaceOverview';
@@ -25,7 +26,7 @@ function render(selectedView: string, selectedTab: GlobalTab | null = null, sele
       onSelectedViewChange={vi.fn()}
       selectedTab={selectedTab}
       selectedItem={selectedItem}
-      initialView={selectedTab ? 'workspace' : selectedItem ? 'quick-access' : 'recent'}
+      initialView={selectedTab ? 'workspace' : selectedItem ? 'quick-access' : 'all'}
       quickAccessItems={selectedItem ? [selectedItem] : []}
       projectSummaries={[{
         project: { id: 'project-a', name: 'Project Alpha', created_at: 1, updated_at: 1, isDefault: false },
@@ -112,7 +113,7 @@ describe('AllLibraryWorkspaceOverview', () => {
         onSelectedViewChange={vi.fn()}
         selectedTab={globalSearch}
         selectedItem={null}
-        initialView="recent"
+        initialView="all"
         items={[]}
         projects={[{ id: 'project-a', name: 'Project Alpha', created_at: 1, updated_at: 1, isDefault: false }]}
         projectSummaries={[{
@@ -140,16 +141,19 @@ describe('AllLibraryWorkspaceOverview', () => {
     const host = document.createElement('div');
     host.innerHTML = markup;
     const materialTabs = host.querySelector('[data-all-library-view-tabs]');
-    expect(materialTabs?.textContent).toContain('Recent');
+    expect(materialTabs?.textContent).toContain('All items');
     expect(materialTabs?.textContent).toContain('Favorites & pins');
     expect(materialTabs?.textContent).toContain('Workspace');
     expect(materialTabs?.textContent).not.toContain('Projects');
     expect(markup).not.toContain('Saved search · All Library');
   });
 
-  it('normalizes the former Projects material view to Recent', () => {
-    expect(normalizeAllLibraryView('projects')).toBe('recent');
+  it('normalizes legacy material views and item filters', () => {
+    expect(normalizeAllLibraryView('projects')).toBe('all');
+    expect(normalizeAllLibraryView('recent')).toBe('all');
     expect(normalizeAllLibraryView('workspace')).toBe('workspace');
+    expect(normalizeAllLibraryItemFilter('links')).toBe('links');
+    expect(normalizeAllLibraryItemFilter('unknown')).toBe('all');
   });
 
   it('opens the bounded full project browser when restoring a project query', () => {
@@ -180,8 +184,37 @@ describe('AllLibraryWorkspaceOverview', () => {
 
     expect(markup).toContain('data-expanded="true"');
     expect(markup).toContain('aria-label="Search projects"');
-    expect(markup).toContain('aria-label="Filter projects"');
     expect(markup).toContain('aria-label="All project navigation"');
+  });
+
+  it('shows the complete library with inline link and note filters', () => {
+    const linkItem = { id: 'link-a', url: 'https://example.com/a', title: 'A link', collectionIds: [], tags: [], source: 'manual' as const, created_at: 1, updated_at: 3 };
+    const noteItem = { id: 'note-b', url: '', title: 'A note', collectionIds: [], tags: [], source: 'manual' as const, created_at: 2, updated_at: 2 };
+    const markup = renderToStaticMarkup(
+      <AllLibraryWorkspaceOverview
+        groups={groups}
+        selectedView="global"
+        onSelectedViewChange={vi.fn()}
+        selectedTab={null}
+        selectedItem={null}
+        initialView="all"
+        initialItemFilter="links"
+        items={[linkItem, noteItem]}
+        projects={[]}
+        collections={[]}
+        onSelectTab={vi.fn()}
+        onRemoveGlobalTab={vi.fn()}
+        onFocusTab={vi.fn()}
+        onFocusGlobal={vi.fn()}
+        onAddItemToGlobal={vi.fn()}
+        onViewSearch={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('All items');
+    expect(markup).toContain('aria-label="Filter All Library items"');
+    expect(markup).toContain('A link');
+    expect(markup).not.toContain('A note');
   });
 
   it('keeps All stable, orders Recent by access, and searches across every project', () => {

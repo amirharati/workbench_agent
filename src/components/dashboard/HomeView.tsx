@@ -12,8 +12,9 @@ import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
 import { ActiveWorkspaceCard } from './ActiveWorkspaceCard';
 import {
   AllLibraryWorkspaceOverview,
+  normalizeAllLibraryItemFilter,
   normalizeAllLibraryView,
-  type ProjectLauncherFilter,
+  type AllLibraryItemFilter,
   type WorkspaceViewGroup,
 } from './AllLibraryWorkspaceOverview';
 import type { AllLibraryView } from './AllLibraryWorkspaceOverview';
@@ -35,8 +36,6 @@ import {
 } from './workspaceSession';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
-
-const RECENTLY_ADDED_LIMIT = 15;
 
 // ===== Props =====
 interface HomeViewProps {
@@ -91,8 +90,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
     selectedOverviewItemId: null as string | null,
     selectedAllLibraryWorkspaceTabId: null as string | null,
     allLibraryWorkspaceView: 'global',
-    allLibraryActiveView: 'recent' as AllLibraryView,
-    projectLauncherFilter: 'all' as ProjectLauncherFilter,
+    allLibraryActiveView: 'all' as AllLibraryView,
+    allLibraryItemFilter: 'all' as AllLibraryItemFilter,
     projectLauncherQuery: '',
   }));
   const [selectedOverviewItemId, setSelectedOverviewItemId] = React.useState<string | null>(
@@ -105,8 +104,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [allLibraryActiveView, setAllLibraryActiveView] = React.useState<AllLibraryView>(() =>
     normalizeAllLibraryView(initialPageUi.allLibraryActiveView)
   );
-  const [projectLauncherFilter, setProjectLauncherFilter] = React.useState<ProjectLauncherFilter>(
-    initialPageUi.projectLauncherFilter === 'recent' ? 'recent' : 'all'
+  const [allLibraryItemFilter, setAllLibraryItemFilter] = React.useState<AllLibraryItemFilter>(
+    normalizeAllLibraryItemFilter(initialPageUi.allLibraryItemFilter)
   );
   const [projectLauncherQuery, setProjectLauncherQuery] = React.useState(initialPageUi.projectLauncherQuery);
   const focusLayerRef = React.useRef<HTMLDivElement>(null);
@@ -119,10 +118,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
       selectedAllLibraryWorkspaceTabId,
       allLibraryWorkspaceView,
       allLibraryActiveView,
-      projectLauncherFilter,
+      allLibraryItemFilter,
       projectLauncherQuery,
     });
-  }, [allLibraryActiveView, allLibraryWorkspaceView, pageUiKey, projectLauncherFilter, projectLauncherQuery, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
+  }, [allLibraryActiveView, allLibraryItemFilter, allLibraryWorkspaceView, pageUiKey, projectLauncherQuery, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
 
   const activeProject = useMemo(
     () => (scopeProjectId === 'all' ? undefined : projects.find((project) => project.id === scopeProjectId)),
@@ -260,23 +259,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
     [projects, items, collections]
   );
   const recentProjects = useMemo(
-    () =>
-      recentProjectIds
+    () => {
+      const visibleProjects = recentProjectIds
         .map((projectId) => projects.find((project) => project.id === projectId))
-        .filter((project): project is Project => project != null),
-    [recentProjectIds, projects]
+        .filter((project): project is Project => project != null);
+      if (activeProject && !visibleProjects.some((project) => project.id === activeProject.id)) {
+        visibleProjects.unshift(activeProject);
+      }
+      return visibleProjects;
+    },
+    [activeProject, recentProjectIds, projects]
   );
-  const recentItems = useMemo(
-    () =>
-      [...scopedItems]
-        .sort(
-          (a, b) =>
-            (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at)
-        )
-        .slice(0, RECENTLY_ADDED_LIMIT),
-    [scopedItems]
-  );
-
   const quickAccessItems = useMemo(() => getQuickAccessItemsFromList(scopedItems), [scopedItems]);
   const hasStartupContent = projects.length > 0 || collections.length > 0 || items.length > 0;
 
@@ -658,8 +651,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const scopeLabel = activeCollection?.name ?? activeProject?.name ?? 'All Library';
 
   const workspaceHeader = (
-    <>
       <div
+        className="ui-home-context-bar"
         style={{
           height: 44,
           flexShrink: 0,
@@ -669,8 +662,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
           padding: '0 16px',
           borderBottom: '1px solid var(--border)',
           background: 'var(--bg-panel)',
+          minWidth: 0,
+          color: 'var(--text-muted)',
+          fontSize: 'var(--text-xs)',
         }}
       >
+        <div className="ui-home-section-tabs" style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         {(
           [
             { id: 'overview' as const, label: 'Overview', Icon: HomeIcon },
@@ -705,25 +702,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           );
         })}
-      </div>
-
-      <div
-        style={{
-          minHeight: 40,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '0 12px',
-          borderBottom: '1px solid var(--border)',
-          background: 'var(--bg)',
-          color: 'var(--text-muted)',
-          fontSize: 'var(--text-xs)',
-          minWidth: 0,
-        }}
-      >
+        </div>
+        <span className="ui-home-context-bar__divider" aria-hidden="true" />
         <div
-          className="hide-scrollbar"
+          className="hide-scrollbar ui-home-scope-switcher"
           style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto' }}
           aria-label="Open project scopes"
         >
@@ -824,7 +806,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
           {scopedItems.length} item{scopedItems.length !== 1 ? 's' : ''}
         </span>
       </div>
-    </>
   );
 
   const homeContent = (
@@ -886,10 +867,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <AllLibraryWorkspaceOverview
             initialView={allLibraryActiveView}
             onActiveViewChange={setAllLibraryActiveView}
-            initialProjectFilter={projectLauncherFilter}
             initialProjectQuery={projectLauncherQuery}
-            onProjectFilterChange={setProjectLauncherFilter}
             onProjectQueryChange={setProjectLauncherQuery}
+            initialItemFilter={allLibraryItemFilter}
+            onItemFilterChange={setAllLibraryItemFilter}
             groups={allLibraryWorkspaceGroups}
             selectedView={allLibraryWorkspaceView}
             onSelectedViewChange={(view) => {
@@ -913,7 +894,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
             getEntryScopeLabel={getWorkspaceEntryScopeLabel}
             projectSummaries={projectSummaries}
             recentProjectAccessIds={recentProjectAccessIds}
-            recentItems={recentItems}
             quickAccessItems={quickAccessItems}
             totalItems={items.length}
             onOpenProject={openProjectScope}

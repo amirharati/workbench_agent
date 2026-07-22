@@ -363,6 +363,17 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         ? selectedCollection?.name ?? 'Collection'
         : project.isDefault ? 'Incoming' : 'All project items';
   const browseSelectedId = browseSource === 'workspace' ? selectedSessionTabId : selectedItemId;
+  const workspaceHeaderActions = browseSource === 'workspace' ? (
+    <div className="ui-project-workspace-actions" data-project-workspace-actions role="toolbar" aria-label="Workspace actions">
+      {activeSavedWorkspace && <button className="ui-button ui-button--danger" type="button" onClick={() => setWorkspaceDeleteConfirm(activeSavedWorkspace)} title={`Delete ${activeSavedWorkspace.name}`} aria-label={`Delete ${activeSavedWorkspace.name}`}><Trash2 size={11} /></button>}
+      <button className="ui-button ui-button--secondary" type="button" onClick={() => { setShowSaveWorkspace((visible) => !visible); setWorkspaceError(null); }} title="Save as workspace" aria-label="Save as workspace"><Save size={12} /></button>
+      {onToggleIncludeGlobalWork && (
+        <button className="ui-button ui-button--secondary" type="button" onClick={onToggleIncludeGlobalWork} aria-pressed={includeGlobalWork} title={includeGlobalWork ? 'Including global work' : 'Include global work'} aria-label={includeGlobalWork ? 'Including global work' : 'Include global work'} style={{ borderColor: includeGlobalWork ? 'var(--border-active)' : 'var(--border)', background: includeGlobalWork ? 'var(--accent-weak)' : 'transparent', color: includeGlobalWork ? 'var(--accent)' : 'var(--text-muted)' }}><Globe2 size={12} /></button>
+      )}
+      <button className="ui-button ui-button--secondary" type="button" disabled={workspaceBrowserUrls.length === 0} onClick={openWorkspaceInBrowser} title={workspaceBrowserUrls.length === 0 ? 'This workspace has no browser links' : `Open ${workspaceBrowserUrls.length} link${workspaceBrowserUrls.length !== 1 ? 's' : ''}`} aria-label="Open workspace links"><ExternalLink size={12} /></button>
+      <button className="ui-button ui-button--primary" type="button" disabled={sessionTabs.length === 0} onClick={() => onFocusSession(selectedSessionTab?.id)} title="Focus workspace" aria-label="Focus workspace"><Maximize2 size={12} /></button>
+    </div>
+  ) : undefined;
 
   const selectBrowseEntry = (id: string) => {
     if (browseSource === 'workspace') {
@@ -459,14 +470,14 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
 
   return (
     <div
-      className="scrollbar ui-page-frame"
+      className="scrollbar ui-page-frame ui-project-home-page"
       style={{
         ...uiPatterns.pageFrame,
         overflow: 'hidden',
         overflowX: 'hidden',
       }}
     >
-      <header className="ui-page-header" style={{ ...uiPatterns.pageHeader, width: '100%', maxWidth: 1120, margin: '0 auto' }}>
+      <header className="ui-page-header ui-project-page-header" style={{ ...uiPatterns.pageHeader, width: '100%', maxWidth: 1120, margin: '0 auto' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <span style={{ width: 34, height: 34, borderRadius: 'var(--radius-md)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-weak)', color: 'var(--accent)' }}>
@@ -487,6 +498,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
       </header>
 
       <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, flex: 1, margin: '0 auto', display: 'flex', flexDirection: 'column' }} aria-label="Project workspace">
+        <div className="ui-project-view-bar">
         <div className="ui-tab-bar" data-project-view-tabs style={{ ...uiPatterns.tabBar, marginBottom: 8 }} role="tablist" aria-label="Project view">
           <button className="ui-view-tab" type="button" role="tab" aria-selected={browseSource === 'all'} onClick={() => { setBrowseSource('all'); setSelectedSessionTabId(null); if (selectedItemId && !allProjectItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); if (selectedCollectionId !== 'all') onSelectCollection('all'); }} style={viewTabStyle(browseSource === 'all')}><Folder size={12} /> {project.isDefault ? 'Incoming' : 'All items'}</button>
           <button className="ui-view-tab" type="button" role="tab" aria-selected={browseSource === 'pinned'} onClick={() => { setBrowseSource('pinned'); setSelectedSessionTabId(null); if (selectedItemId && !pinnedItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); }} style={viewTabStyle(browseSource === 'pinned')}><Pin size={12} /> Pinned <span style={{ color: 'var(--text-faint)' }}>{pinnedItems.length}</span></button>
@@ -508,23 +520,8 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </select>
           </div>
         </div>
-        {browseSource === 'workspace' && <div className="ui-toolbar scrollbar ui-project-workspace-actions" data-project-workspace-actions role="toolbar" aria-label="Workspace actions">
-            {activeSavedWorkspace && <button className="ui-button ui-button--danger" type="button" onClick={() => setWorkspaceDeleteConfirm(activeSavedWorkspace)} title={`Delete ${activeSavedWorkspace.name}`} style={secondaryButtonStyle}><Trash2 size={11} /> Delete</button>}
-            <button type="button" onClick={() => { setShowSaveWorkspace((visible) => !visible); setWorkspaceError(null); }} style={secondaryButtonStyle}>
-              <Save size={12} /> Save as workspace
-            </button>
-            {onToggleIncludeGlobalWork && (
-              <button type="button" onClick={onToggleIncludeGlobalWork} aria-pressed={includeGlobalWork} style={{ ...secondaryButtonStyle, borderColor: includeGlobalWork ? 'var(--border-active)' : 'var(--border)', background: includeGlobalWork ? 'var(--accent-weak)' : 'transparent', color: includeGlobalWork ? 'var(--accent)' : 'var(--text-muted)' }}>
-                <Globe2 size={12} /> {includeGlobalWork ? 'Including global' : 'Include global work'}
-              </button>
-            )}
-            <button type="button" disabled={workspaceBrowserUrls.length === 0} onClick={openWorkspaceInBrowser} title={workspaceBrowserUrls.length === 0 ? 'This workspace has no browser links' : `Open ${workspaceBrowserUrls.length} link${workspaceBrowserUrls.length !== 1 ? 's' : ''} in a new browser window`} style={{ ...secondaryButtonStyle, opacity: workspaceBrowserUrls.length === 0 ? 0.45 : 1, cursor: workspaceBrowserUrls.length === 0 ? 'default' : 'pointer' }}>
-              <ExternalLink size={12} /> Open links
-            </button>
-            <button type="button" disabled={sessionTabs.length === 0} onClick={() => onFocusSession(selectedSessionTab?.id)} style={{ ...primaryButtonStyle, opacity: sessionTabs.length === 0 ? 0.45 : 1, cursor: sessionTabs.length === 0 ? 'default' : 'pointer' }}>
-              <Maximize2 size={12} /> Focus
-            </button>
-          </div>}
+        <button className="ui-button ui-button--secondary ui-project-view-search" type="button" onClick={onOpenSearch} title="Search project" aria-label="Search project"><Search size={13} /></button>
+        </div>
         {showSaveWorkspace && (
           <div className="ui-inline-form" style={{ marginBottom: 9 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -682,6 +679,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             onModeChange={setBrowseMode}
             emptyMessage={browseSource === 'workspace' ? 'This workspace is empty. Add project material to begin.' : browseSource === 'pinned' ? 'Nothing is pinned to this project yet.' : 'No items in this source.'}
             ariaLabel={browseSource === 'workspace' ? 'Workspace contents' : 'Project material'}
+            headerActions={workspaceHeaderActions}
           />
           {detailPanel}
         </div>

@@ -13,13 +13,12 @@ describe('responsive dashboard layout contract', () => {
 
   it('uses compact-height density without reducing the typography scale', () => {
     expect(css).toContain('@media (max-height: 820px)');
-    expect(css).toContain('--project-launcher-grid-height: 58px');
-    expect(css).toContain("[data-all-library-working-canvas]");
     expect(css).not.toMatch(/@media \(max-height: 820px\)[\s\S]*?--font-scale:/);
+    expect(css).not.toMatch(/@media \(max-height: (?:820|700)px\)[\s\S]*?\[data-all-library-working-canvas\][\s\S]*?height:/);
   });
 
   it('keeps the compact Project view ribbon visually substantial', () => {
-    expect(css).toMatch(/\[data-project-view-tabs\] \{[\s\S]*?width: 100%;/);
+    expect(css).toMatch(/\[data-project-view-tabs\] \{[\s\S]*?flex: 1;/);
     expect(css).toMatch(/@container dashboard-workspace \(max-width: 1000px\)[\s\S]*?\[data-project-view-tabs\] \{[\s\S]*?min-height: 46px;/);
     expect(css).toMatch(/\[data-project-view-tabs\] \.ui-view-tab,[\s\S]*?min-height: 34px !important;/);
   });
@@ -40,11 +39,22 @@ describe('responsive dashboard layout contract', () => {
     expect(css).not.toContain('padding: 12px var(--space-md) 56px !important');
   });
 
-  it('keeps project navigation compact and expands the full browser on demand', () => {
-    expect(css).toMatch(/\.ui-project-switcher__row \{[\s\S]*?min-height: 44px;/);
+  it('keeps project navigation readable and expands the full browser on demand', () => {
+    expect(css).toMatch(/\.ui-all-library-controlbar \{[\s\S]*?flex-direction: column;/);
+    expect(css).toMatch(/\.ui-project-switcher__row \{[\s\S]*?min-height: 48px;/);
     expect(css).toMatch(/\.ui-project-switcher__quick-list \{[\s\S]*?overflow-x: auto;/);
+    expect(css).toMatch(/\.ui-project-switcher__quick-project \{[\s\S]*?min-width: max-content;[\s\S]*?max-width: none;/);
+    expect(css).toMatch(/\.ui-project-launcher__project-copy strong \{[\s\S]*?white-space: normal;/);
+    expect(css).not.toContain('max-width: 190px');
     expect(css).toContain(".ui-project-switcher[data-expanded='true']");
-    expect(css).toMatch(/\.ui-project-browser \{[\s\S]*?--project-launcher-grid-height: 108px;/);
+    expect(css).toMatch(/\.ui-project-browser \{[\s\S]*?position: absolute;[\s\S]*?max-height: min\(360px, calc\(100dvh - 150px\)\);/);
+    expect(css).toMatch(/\.ui-project-launcher__grid \{[\s\S]*?flex-direction: column;/);
+  });
+
+  it('consolidates compact Home and Project context chrome', () => {
+    expect(css).toMatch(/\.ui-all-library-controlbar \{[\s\S]*?display: flex;/);
+    expect(css).toMatch(/@container dashboard-workspace \(max-width: 1000px\)[\s\S]*?\.ui-project-page-header \{[\s\S]*?display: none !important;/);
+    expect(css).toMatch(/\.ui-project-workspace-actions \{[\s\S]*?display: inline-flex;/);
   });
 
   it('switches browse/detail canvases one pane at a time when narrow', () => {

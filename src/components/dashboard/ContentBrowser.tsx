@@ -23,6 +23,7 @@ interface ContentBrowserProps {
   onModeChange: (mode: ContentBrowseMode) => void;
   emptyMessage: string;
   ariaLabel?: string;
+  headerActions?: React.ReactNode;
 }
 
 export function useContentBrowseMode(storageKey: string): [ContentBrowseMode, (mode: ContentBrowseMode) => void] {
@@ -47,6 +48,7 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   onModeChange,
   emptyMessage,
   ariaLabel,
+  headerActions,
 }) => {
   const [renderLimit, setRenderLimit] = useState(60);
   const selectedEntryRef = React.useRef<HTMLDivElement>(null);
@@ -82,9 +84,12 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
         <strong className="ui-content-browser__title">{title}</strong>
         <span className="ui-content-browser__count">{entries.length.toLocaleString()} item{entries.length !== 1 ? 's' : ''}</span>
       </div>
-      <div className="ui-content-browser__view-toggle" role="group" aria-label={`${title} view`}>
-        <button className="ui-content-browser__view-button" type="button" aria-label="List view" aria-pressed={mode === 'list'} title="List view" onClick={() => onModeChange('list')}><List size={13} /></button>
-        <button className="ui-content-browser__view-button" type="button" aria-label="Gallery view" aria-pressed={mode === 'gallery'} title="Gallery view" onClick={() => onModeChange('gallery')}><Grid2X2 size={13} /></button>
+      <div className="ui-content-browser__header-actions">
+        {headerActions}
+        <div className="ui-content-browser__view-toggle" role="group" aria-label={`${title} view`}>
+          <button className="ui-content-browser__view-button" type="button" aria-label="List view" aria-pressed={mode === 'list'} title="List view" onClick={() => onModeChange('list')}><List size={13} /></button>
+          <button className="ui-content-browser__view-button" type="button" aria-label="Gallery view" aria-pressed={mode === 'gallery'} title="Gallery view" onClick={() => onModeChange('gallery')}><Grid2X2 size={13} /></button>
+        </div>
       </div>
     </div>
     <div className="scrollbar ui-content-browser__body" data-content-view={mode}>

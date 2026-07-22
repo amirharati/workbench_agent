@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ChevronDown, ChevronRight, Clock, ExternalLink, Folder, Layers3, Maximize2, Plus, Search, Star, Trash2, Workflow } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, Layers3, Link2, List, Maximize2, Plus, Search, Star, Trash2, Workflow } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
@@ -43,7 +43,6 @@ interface AllLibraryWorkspaceOverviewProps {
   getEntryScopeLabel?: (tab: GlobalTab) => string | undefined;
   projectSummaries?: HomeProjectSummary[];
   recentProjectAccessIds?: string[];
-  recentItems?: Item[];
   quickAccessItems?: Item[];
   totalItems?: number;
   onOpenProject?: (projectId: string) => void;
@@ -54,17 +53,22 @@ interface AllLibraryWorkspaceOverviewProps {
   onOpenPipeline?: () => void;
   initialView?: AllLibraryView;
   onActiveViewChange?: (view: AllLibraryView) => void;
-  initialProjectFilter?: ProjectLauncherFilter;
   initialProjectQuery?: string;
-  onProjectFilterChange?: (filter: ProjectLauncherFilter) => void;
   onProjectQueryChange?: (query: string) => void;
+  initialItemFilter?: AllLibraryItemFilter;
+  onItemFilterChange?: (filter: AllLibraryItemFilter) => void;
 }
 
-export type AllLibraryView = 'recent' | 'quick-access' | 'workspace';
+export type AllLibraryView = 'all' | 'quick-access' | 'workspace';
+export type AllLibraryItemFilter = 'all' | 'links' | 'notes';
 export type ProjectLauncherFilter = 'all' | 'recent';
 
 export function normalizeAllLibraryView(value: unknown): AllLibraryView {
-  return value === 'quick-access' || value === 'workspace' ? value : 'recent';
+  return value === 'quick-access' || value === 'workspace' ? value : 'all';
+}
+
+export function normalizeAllLibraryItemFilter(value: unknown): AllLibraryItemFilter {
+  return value === 'links' || value === 'notes' ? value : 'all';
 }
 
 export function getVisibleProjectSummaries(
@@ -120,7 +124,6 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   getEntryScopeLabel,
   projectSummaries = [],
   recentProjectAccessIds = [],
-  recentItems = [],
   quickAccessItems = [],
   totalItems = items.length,
   onOpenProject,
@@ -129,18 +132,34 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   onClearSelection,
   onOpenTrash,
   onOpenPipeline,
-  initialView = 'recent',
+  initialView = 'all',
   onActiveViewChange,
-  initialProjectFilter = 'all',
   initialProjectQuery = '',
-  onProjectFilterChange,
   onProjectQueryChange,
+  initialItemFilter = 'all',
+  onItemFilterChange,
 }) => {
   const [activeView, setActiveView] = React.useState<AllLibraryView>(() => normalizeAllLibraryView(initialView));
-  const [projectFilter, setProjectFilter] = React.useState<ProjectLauncherFilter>(initialProjectFilter);
   const [projectQuery, setProjectQuery] = React.useState(initialProjectQuery);
   const [projectBrowserOpen, setProjectBrowserOpen] = React.useState(() => initialProjectQuery.trim().length > 0);
+  const [itemFilter, setItemFilter] = React.useState<AllLibraryItemFilter>(() => normalizeAllLibraryItemFilter(initialItemFilter));
   const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:home-all-library-content-view');
+  const projectSwitcherRef = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    if (!projectBrowserOpen || typeof document === 'undefined') return;
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!projectSwitcherRef.current?.contains(event.target as Node)) setProjectBrowserOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProjectBrowserOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnPointerDown);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnPointerDown);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [projectBrowserOpen]);
   const recentProjectSummaries = getVisibleProjectSummaries(
     projectSummaries,
     recentProjectAccessIds,
@@ -150,7 +169,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   const visibleProjectSummaries = getVisibleProjectSummaries(
     projectSummaries,
     recentProjectAccessIds,
-    projectFilter,
+    'all',
     projectQuery
   );
   const quickProjectSummaries = (
@@ -164,14 +183,20 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
     ? activeSelectedTab?.kind === 'item'
       ? items.find((item) => item.id === activeSelectedTab.itemId) ?? null
       : null
-    : activeView === 'recent' || activeView === 'quick-access'
+    : activeView === 'all' || activeView === 'quick-access'
       ? selectedItem
       : null;
   const selectedTabProjectId = activeSelectedTab?.scopeProjectId ?? 'all';
   const previewInGlobalWorkspace = previewItem
     ? groups[0]?.tabs.some((tab) => tab.kind === 'item' && tab.itemId === previewItem.id) ?? false
     : false;
-  const visibleItems = activeView === 'recent' ? recentItems : quickAccessItems;
+  const sortedLibraryItems = React.useMemo(
+    () => [...items].sort((a, b) => (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at)),
+    [items]
+  );
+  const visibleItems = activeView === 'all'
+    ? sortedLibraryItems.filter((item) => itemFilter === 'all' || (itemFilter === 'links' ? Boolean(item.url) : !item.url))
+    : quickAccessItems;
   const browseEntries = visibleItems.map((item) => ({
         id: item.id,
         title: item.title || 'Untitled',
@@ -189,10 +214,16 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
     const item = visibleItems.find((candidate) => candidate.id === id);
     if (item) onSelectItem?.(item);
   };
+  const selectItemFilter = (filter: AllLibraryItemFilter) => {
+    setItemFilter(filter);
+    onItemFilterChange?.(filter);
+    onClearSelection?.();
+  };
 
   return (
     <section className="ui-all-library-workspace" style={{ width: '100%', maxWidth: 1180, minHeight: 0, display: 'flex', flexDirection: 'column' }} aria-label="All Library workspace">
-      <section className="ui-project-switcher" data-expanded={projectBrowserOpen ? 'true' : 'false'} aria-labelledby="all-library-projects-heading">
+      <div className="ui-all-library-controlbar">
+      <section ref={projectSwitcherRef} className="ui-project-switcher" data-expanded={projectBrowserOpen ? 'true' : 'false'} aria-labelledby="all-library-projects-heading">
         <div className="ui-project-switcher__row">
           <h2 className="ui-project-switcher__title" id="all-library-projects-heading">
             <Folder size={13} /> Recent projects
@@ -205,7 +236,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
                 key={project.id}
                 className="ui-project-switcher__quick-project"
                 type="button"
-                onClick={() => onOpenProject?.(project.id)}
+                onClick={() => { setProjectBrowserOpen(false); onOpenProject?.(project.id); }}
                 aria-label={`Open ${project.name}`}
                 title={`Open ${project.name}`}
               >
@@ -237,39 +268,11 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
                 const nextQuery = event.target.value;
                 setProjectQuery(nextQuery);
                 onProjectQueryChange?.(nextQuery);
-                if (nextQuery.trim()) {
-                  setProjectFilter('all');
-                  onProjectFilterChange?.('all');
-                }
               }}
               placeholder="Search projects"
               aria-label="Search projects"
             />
           </label>
-          <div className="ui-project-launcher__filters" role="group" aria-label="Filter projects">
-            <button
-              type="button"
-              aria-pressed={projectFilter === 'all'}
-              onClick={() => {
-                setProjectFilter('all');
-                onProjectFilterChange?.('all');
-              }}
-            >
-              All <span>{projectSummaries.length}</span>
-            </button>
-            <button
-              type="button"
-              aria-pressed={projectFilter === 'recent'}
-              onClick={() => {
-                setProjectQuery('');
-                setProjectFilter('recent');
-                onProjectQueryChange?.('');
-                onProjectFilterChange?.('recent');
-              }}
-            >
-              Recent <span>{recentProjectSummaries.length}</span>
-            </button>
-          </div>
           </div>
           <div className="ui-project-launcher__grid scrollbar" aria-label="All project navigation">
           {projectSummaries.length === 0 ? (
@@ -287,7 +290,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
               key={project.id}
               className="ui-project-launcher__project"
               type="button"
-              onClick={() => onOpenProject?.(project.id)}
+              onClick={() => { setProjectBrowserOpen(false); onOpenProject?.(project.id); }}
               aria-label={`Open ${project.name}`}
             >
               <span className="ui-project-launcher__icon" data-inbox={project.isDefault ? 'true' : 'false'}>
@@ -308,8 +311,8 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
         </div> : null}
       </section>
 
-      <div className="ui-tab-bar ui-all-library-tabs" data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
-        <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'recent'} onClick={() => selectView('recent')} style={viewTabStyle(activeView === 'recent')}><Clock size={12} /> Recent <span style={tabCountStyle}>{recentItems.length}</span></button>
+      <div className="ui-tab-bar ui-all-library-tabs" data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ ...uiPatterns.tabBar, marginBottom: 0 }}>
+        <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'all'} onClick={() => selectView('all')} style={viewTabStyle(activeView === 'all')}><List size={12} /> All items <span style={tabCountStyle}>{items.length}</span></button>
         <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'quick-access'} onClick={() => selectView('quick-access')} style={viewTabStyle(activeView === 'quick-access')}><Star size={12} /> Favorites &amp; pins <span style={tabCountStyle}>{quickAccessItems.length}</span></button>
         <div style={compoundTabStyle(activeView === 'workspace')}>
           <button type="button" role="tab" aria-selected={activeView === 'workspace'} onClick={() => selectView('workspace')} style={compoundTabButtonStyle}><Layers3 size={12} /> Workspace</button>
@@ -324,16 +327,17 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             {groups.slice(1).map((group) => <option key={group.key} value={group.key}>{group.contextLabel} · {group.title}</option>)}
           </select>
         </div>
-        <span style={{ marginLeft: 'auto', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{totalItems} item{totalItems !== 1 ? 's' : ''}</span>
-        {onOpenPipeline && <button className="ui-button ui-button--secondary" type="button" onClick={onOpenPipeline} style={secondaryButtonStyle}><Workflow size={11} /> Processing</button>}
-        {onOpenTrash && <button className="ui-button ui-button--secondary" type="button" onClick={onOpenTrash} style={secondaryButtonStyle}><Trash2 size={11} /> Trash</button>}
+        <span className="ui-all-library-count" style={{ marginLeft: 'auto', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{totalItems} item{totalItems !== 1 ? 's' : ''}</span>
+        {onOpenPipeline && <button className="ui-button ui-button--secondary ui-all-library-utility" type="button" onClick={onOpenPipeline} style={secondaryButtonStyle} title="Processing" aria-label="Processing"><Workflow size={11} /> <span>Processing</span></button>}
+        {onOpenTrash && <button className="ui-button ui-button--secondary ui-all-library-utility" type="button" onClick={onOpenTrash} style={secondaryButtonStyle} title="Trash" aria-label="Trash"><Trash2 size={11} /> <span>Trash</span></button>}
+      </div>
       </div>
 
       <div
         className="ui-working-canvas ui-adaptive-browser"
         data-all-library-working-canvas
         data-detail-open={activeSelectedTab || previewItem ? 'true' : 'false'}
-        style={{ height: 'clamp(400px, calc(100dvh - 245px), 620px)', minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}
+        style={{ height: 'clamp(430px, calc(100dvh - 180px), 720px)', minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}
       >
         {activeView === 'workspace' ? <div className="scrollbar" style={{ minWidth: 0, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {visibleGroups.length === 0 ? (
@@ -359,7 +363,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             />
           ))}
         </div> : <ContentBrowser
-          title={activeView === 'recent' ? 'Recent items' : 'Favorites & pins'}
+          title={activeView === 'all' ? itemFilter === 'links' ? 'Links' : itemFilter === 'notes' ? 'Notes' : 'All items' : 'Favorites & pins'}
           entries={browseEntries}
           selectedId={previewItem?.id ?? null}
           onSelect={selectBrowseEntry}
@@ -367,6 +371,13 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
           onModeChange={setBrowseMode}
           emptyMessage={activeView === 'quick-access' ? 'Favorite or pin items to keep them close.' : 'Newly captured material will appear here.'}
           ariaLabel="All Library material"
+          headerActions={activeView === 'all' ? (
+            <div className="ui-library-type-filter" role="group" aria-label="Filter All Library items">
+              <button type="button" aria-pressed={itemFilter === 'all'} onClick={() => selectItemFilter('all')}>All</button>
+              <button type="button" aria-pressed={itemFilter === 'links'} onClick={() => selectItemFilter('links')}><Link2 size={11} /> Links</button>
+              <button type="button" aria-pressed={itemFilter === 'notes'} onClick={() => selectItemFilter('notes')}><FileText size={11} /> Notes</button>
+            </div>
+          ) : undefined}
         />}
 
         <div className="ui-panel ui-detail-panel" style={uiPatterns.panel}>
@@ -422,7 +433,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             </div>
           ) : (
             <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, color: 'var(--text-faint)', textAlign: 'center' }}>
-              {activeView === 'workspace' ? <Layers3 size={23} /> : activeView === 'recent' ? <Clock size={23} /> : <Star size={23} />}
+              {activeView === 'workspace' ? <Layers3 size={23} /> : activeView === 'all' ? <List size={23} /> : <Star size={23} />}
               <strong style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
                 {activeView === 'workspace' ? 'Select a workspace entry' : 'Select an item to inspect'}
               </strong>
