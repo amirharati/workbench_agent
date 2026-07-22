@@ -22,7 +22,7 @@ import { SearchBar } from '../SearchBar';
 import { Resizer } from '../Resizer';
 import { Panel } from '../../../styles/primitives';
 import { ItemContextMenu } from '../ItemContextMenu';
-import { List, Grid, ExternalLink, Pencil, Trash2, Plus } from 'lucide-react';
+import { List, Grid, ExternalLink, Pencil, Trash2, Plus, LayoutDashboard, Search } from 'lucide-react';
 import { NewProjectModal, NewCollectionModal, NewItemModal } from '../CreateModals';
 import { DeleteConfirmDialog } from '../../DeleteConfirmDialog';
 import { TrashView } from '../TrashView';
@@ -39,6 +39,33 @@ const ProjectDashboard = React.lazy(() => import('../ProjectDashboard').then((mo
 const CollectionsView = React.lazy(() => import('../CollectionsView').then((module) => ({ default: module.CollectionsView })));
 const WorkspacesView = React.lazy(() => import('../WorkspacesView').then((module) => ({ default: module.WorkspacesView })));
 const NoteWorkspace = React.lazy(() => import('../NoteWorkspace').then((module) => ({ default: module.NoteWorkspace })));
+
+export const HomeTitleTabs: React.FC<{
+  activeSection: 'overview' | 'search';
+  onSelect: (section: 'overview' | 'search') => void;
+}> = ({ activeSection, onSelect }) => (
+  <div className="ui-home-title-tabs" role="tablist" aria-label="Home views">
+    {([
+      { id: 'overview' as const, label: 'Overview', Icon: LayoutDashboard },
+      { id: 'search' as const, label: 'Search', Icon: Search },
+    ]).map(({ id, label, Icon }) => {
+      const active = activeSection === id;
+      return (
+        <button
+          key={id}
+          className="ui-home-title-tab"
+          type="button"
+          role="tab"
+          aria-selected={active}
+          data-active={active ? 'true' : 'false'}
+          onClick={() => onSelect(id)}
+        >
+          <Icon size={12} aria-hidden="true" /> {label}
+        </button>
+      );
+    })}
+  </div>
+);
 
 const LazyViewFallback = () => (
   <div role="status" style={{ minHeight: 120, display: 'grid', placeItems: 'center', color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>
@@ -767,6 +794,8 @@ export const MainContent: React.FC<MainContentProps> = ({
           <ProductSearchView
             items={items}
             collections={collections}
+            projects={projects}
+            organizationCollections={collections}
             state={librarySearch.state}
             onQueryChange={librarySearch.setQuery}
             onFiltersChange={librarySearch.setFilters}
@@ -774,6 +803,9 @@ export const MainContent: React.FC<MainContentProps> = ({
             onSelectedItemIdChange={librarySearch.setSelectedItemId}
             onRunSearch={librarySearch.runSearch}
             onOpenItem={onOpenItemFromSearch ?? (() => {})}
+            onUpdateItem={onUpdateBookmark}
+            onCreateProject={onCreateProject}
+            onCreateCollection={onCreateCollection}
             onClearRecentQueries={librarySearch.clearRecentQueries}
             showOpenInTab
             onOpenInTab={() => onLibrarySearchInTab?.(librarySearch.state.query)}
@@ -2423,6 +2455,18 @@ export const MainContent: React.FC<MainContentProps> = ({
   }
 
   const usesContainedScroller = activeView === 'home' || activeView === 'bookmarks';
+  const selectedHomeSection = globalTabState?.homeSection === 'search' ? 'search' : 'overview';
+  const selectHomeSection = (section: 'overview' | 'search') => {
+    if (!globalTabState || !onGlobalTabStateChange) return;
+    if (section === 'search' && librarySearch?.state.query.trim()) {
+      librarySearch.openSearch({
+        query: librarySearch.state.query,
+        filters: { ...librarySearch.state.filters },
+        mode: librarySearch.state.mode,
+      });
+    }
+    onGlobalTabStateChange({ ...globalTabState, activeTabId: null, homeSection: section });
+  };
 
   return (
     <div style={{ 
@@ -2442,7 +2486,8 @@ export const MainContent: React.FC<MainContentProps> = ({
             marginBottom: '8px', 
             display: 'flex', 
             alignItems: 'center', 
-            justifyContent: 'space-between',
+            justifyContent: activeView === 'home' ? 'flex-start' : 'space-between',
+            gap: 12,
             flexShrink: 0,
             height: 28,
           }}>
@@ -2455,7 +2500,9 @@ export const MainContent: React.FC<MainContentProps> = ({
             }}>
               {activeView}
             </h1>
-            <div />
+            {activeView === 'home' ? (
+              <HomeTitleTabs activeSection={selectedHomeSection} onSelect={selectHomeSection} />
+            ) : <div />}
           </div>
       )}
       

@@ -6,6 +6,7 @@ import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { LeftSidebar } from './LeftSidebar';
 import { RightPanel } from './RightPanel';
+import { HomeTitleTabs } from './MainContent';
 import { ScopeChipsBar } from '../ScopeChipsBar';
 
 describe('dashboard shell polish contracts', () => {
@@ -33,6 +34,18 @@ describe('dashboard shell polish contracts', () => {
     expect(markup).toContain('aria-label="Collapse navigation"');
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).toContain('aria-current="page"');
+    expect(markup).toContain('Home');
+    expect(markup).not.toContain('role="tab"');
+    expect(markup).not.toContain('Overview');
+  });
+
+  it('keeps Overview and Search beside the Home page title instead of in the sidebar', () => {
+    const markup = renderToStaticMarkup(<HomeTitleTabs activeSection="search" onSelect={vi.fn()} />);
+    expect(markup).toContain('class="ui-home-title-tabs"');
+    expect(markup).toContain('aria-label="Home views"');
+    expect(markup).toContain('Overview');
+    expect(markup).toContain('role="tab" aria-selected="true"');
+    expect(markup).toContain('Search');
   });
 
   it('exposes Inspector and Ask as one accessible tab set', () => {

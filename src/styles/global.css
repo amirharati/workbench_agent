@@ -1306,11 +1306,53 @@ button.ui-scope-chip {
   margin-bottom: var(--space-sm);
 }
 
-.ui-home-context-bar__divider {
-  width: 1px;
-  height: 24px;
+.ui-home-context-bar {
+  min-height: 44px;
   flex-shrink: 0;
-  background: var(--border);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.ui-home-title-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: 11px;
+  border-left: 1px solid var(--border);
+}
+
+.ui-home-title-tab {
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.ui-home-title-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.ui-home-title-tab[data-active='true'] {
+  border-color: var(--border-active);
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-weight: 650;
 }
 
 .ui-project-switcher {
@@ -1621,14 +1663,6 @@ button.ui-scope-chip {
   display: flex;
   align-items: stretch;
   gap: 6px;
-}
-
-.ui-project-view-search {
-  display: none;
-  width: 34px;
-  flex-shrink: 0;
-  padding: 0;
-  margin-bottom: 8px;
 }
 
 .ui-all-library-workspace .ui-content-browser__body {
@@ -2513,10 +2547,6 @@ button.ui-scope-chip {
     padding-top: 8px !important;
   }
 
-  .ui-project-view-search {
-    display: inline-flex;
-  }
-
   .ui-all-library-controlbar {
     gap: 5px;
   }
@@ -2571,11 +2601,6 @@ button.ui-scope-chip {
 @container dashboard-workspace (max-width: 720px) {
   .ui-home-context-bar {
     gap: 4px !important;
-    padding-inline: 8px !important;
-  }
-
-  .ui-home-section-tabs button {
-    gap: 5px !important;
     padding-inline: 8px !important;
   }
 

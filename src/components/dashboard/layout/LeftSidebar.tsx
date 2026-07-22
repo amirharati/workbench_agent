@@ -518,7 +518,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {/* Divider before nav sections */}
         {!isCollapsed && <div className="ui-sidebar__divider" />}
 
-        {/* Home nav item */}
+        {/* Home is one primary destination; its Overview/Search views live in the page title row. */}
         {(() => {
           const isActive = activeView === 'home';
           return (
@@ -532,11 +532,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               title="Home"
             >
               <Home size={16} strokeWidth={isActive ? 2 : 1.5} style={{ flexShrink: 0 }} />
-              {!isCollapsed && (
-                <span className="ui-sidebar__nav-label">
-                  Home
-                </span>
-              )}
+              {!isCollapsed && <span className="ui-sidebar__nav-label">Home</span>}
             </button>
           );
         })()}

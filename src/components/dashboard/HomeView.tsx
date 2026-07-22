@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Search, Home as HomeIcon, Folder, GripVertical, X, Globe2 } from 'lucide-react';
+import { Home as HomeIcon, Folder, GripVertical, X, Globe2 } from 'lucide-react';
 import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { getQuickAccessItemsFromList } from '../../lib/itemQuickAccess';
 import { GlobalTabSystem, type GlobalTab, type GlobalTabState, type GlobalTabList, type GlobalTabSearch, type SavedWorkspaceSession } from './GlobalTabSystem';
@@ -475,6 +475,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const filteredSearchProject = librarySearch?.state.filters.projectId
     ? projects.find((project) => project.id === librarySearch.state.filters.projectId)
     : undefined;
+  const searchCollections = useMemo(() => {
+    if (filteredSearchProject) return getProjectCollections(collections, filteredSearchProject.id);
+    if (filteredSearchCollection) {
+      return getProjectCollections(collections, filteredSearchCollection.primaryProjectId);
+    }
+    return collections;
+  }, [collections, filteredSearchCollection, filteredSearchProject]);
   const searchScopeOptions = [
     ...(filteredSearchCollection ? [{ value: `collection:${filteredSearchCollection.id}`, label: filteredSearchCollection.name }] : []),
     ...(activeCollection && activeCollection.id !== filteredSearchCollection?.id ? [{ value: `collection:${activeCollection.id}`, label: activeCollection.name }] : []),
@@ -655,17 +662,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const homeSection = homeState.homeSection === 'search' ? 'search' : 'overview';
-  const selectHomeSection = (section: 'overview' | 'search') => {
-    if (section === 'search' && librarySearch?.state.query.trim()) {
-      librarySearch.openSearch({
-        query: librarySearch.state.query,
-        filters: { ...librarySearch.state.filters },
-        mode: librarySearch.state.mode,
-      });
-    }
-    onHomeStateChange({ ...homeState, activeTabId: null, homeSection: section });
-  };
-
   const openAllLibraryScope = () => {
     onHomeStateChange({ ...homeState, activeTabId: null, homeSection: 'overview' });
     onResetScope?.();
@@ -684,59 +680,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const scopeLabel = activeCollection?.name ?? activeProject?.name ?? 'All Library';
 
   const workspaceHeader = (
-      <div
-        className="ui-home-context-bar"
-        style={{
-          height: 44,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '0 16px',
-          borderBottom: '1px solid var(--border)',
-          background: 'var(--bg-panel)',
-          minWidth: 0,
-          color: 'var(--text-muted)',
-          fontSize: 'var(--text-xs)',
-        }}
-      >
-        <div className="ui-home-section-tabs" style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        {(
-          [
-            { id: 'overview' as const, label: 'Overview', Icon: HomeIcon },
-            { id: 'search' as const, label: 'Search', Icon: Search },
-          ]
-        ).map(({ id, label, Icon }) => {
-          const active = homeSection === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => selectHomeSection(id)}
-              style={{
-                height: 30,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 7,
-                padding: '0 11px',
-                border: '1px solid',
-                borderColor: active ? 'var(--border-active)' : 'transparent',
-                borderRadius: 'var(--radius-md)',
-                background: active ? 'var(--bg-active)' : 'transparent',
-                color: active ? 'var(--text)' : 'var(--text-muted)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: active ? 600 : 400,
-                cursor: 'pointer',
-              }}
-            >
-              <Icon size={14} />
-              {label}
-            </button>
-          );
-        })}
-        </div>
-        <span className="ui-home-context-bar__divider" aria-hidden="true" />
+    <div className="ui-home-context-bar">
         <div
           className="hide-scrollbar ui-home-scope-switcher"
           style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0, overflowX: 'auto' }}
@@ -838,7 +782,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <span style={{ color: 'var(--text-faint)', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {scopedItems.length} item{scopedItems.length !== 1 ? 's' : ''}
         </span>
-      </div>
+    </div>
   );
 
   const homeContent = (
@@ -863,7 +807,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onAddItemToSession={addItemToCurrentSession}
           onRemoveSessionTab={removeCurrentSessionTab}
           onFocusSession={focusCurrentSession}
-          onOpenSearch={() => selectHomeSection('search')}
           onUpdateItem={onUpdateItem}
           onCreateProject={onCreateProject}
           onCreateCollection={onCreateCollection}
@@ -987,8 +930,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
         <ProductSearchView
-          items={scopedItems}
-          collections={scopeProjectId === 'all' ? collections : projectCollections}
+          items={items}
+          collections={searchCollections}
+          projects={projects}
+          organizationCollections={collections}
           state={librarySearch.state}
           onQueryChange={(query) => {
             librarySearch.setQuery(query);
@@ -999,6 +944,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onSelectedItemIdChange={librarySearch.setSelectedItemId}
           onRunSearch={librarySearch.runSearch}
           onOpenItem={addItemToCurrentSession}
+          onUpdateItem={onUpdateItem}
+          onCreateProject={onCreateProject}
+          onCreateCollection={onCreateCollection}
           onClearRecentQueries={librarySearch.clearRecentQueries}
           scopeLabel={effectiveSearchScopeLabel}
           scopeOptions={searchScopeOptions}
@@ -1008,6 +956,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onOpenInTab={addSearchToCurrentWorkspace}
           openInTabLabel="Add search to workspace"
           itemActionLabel="Add to workspace"
+          workspaceDestinations={workspaceDestinations}
+          recentWorkspaceDestinationKeys={homeState.recentWorkspaceDestinationKeys}
+          isItemInWorkspace={isItemInWorkspaceDestination}
+          onAddItemToWorkspace={addItemToWorkspaceDestination}
         />
         </div>
         </div>

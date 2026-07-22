@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Loader2, Search, X } from 'lucide-react';
-import type { Collection, Item } from '../../lib/db';
+import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { SearchResult } from '../../lib/search';
 import type { LibrarySearchState } from '../../hooks/useLibrarySearch';
 import type { SearchFilters } from '../../lib/search';
@@ -10,10 +10,15 @@ import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
 import { ItemContextMenu } from './ItemContextMenu';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
+import { ItemOrganizationDialog } from './ItemOrganizationDialog';
+import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
+import type { WorkspaceDestination } from './workspaceDestinations';
 
 interface ProductSearchViewProps {
   items: Item[];
   collections: Collection[];
+  projects?: Project[];
+  organizationCollections?: Collection[];
   state: LibrarySearchState;
   onQueryChange: (query: string) => void;
   onFiltersChange: (filters: SearchFilters) => void;
@@ -21,6 +26,13 @@ interface ProductSearchViewProps {
   onSelectedItemIdChange: (id: string | null) => void;
   onRunSearch: (query?: string) => Promise<void>;
   onOpenItem: (item: Item) => void;
+  onUpdateItem?: (
+    id: string,
+    updates: Partial<Omit<Item, 'id' | 'created_at'>>,
+    options?: UpdateItemOptions
+  ) => Promise<void>;
+  onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
+  onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   onClearRecentQueries?: () => void;
   scopeLabel?: string;
   autofocus?: boolean;
@@ -32,6 +44,10 @@ interface ProductSearchViewProps {
   scopeOptions?: Array<{ value: string; label: string }>;
   scopeValue?: string;
   onScopeValueChange?: (value: string) => void;
+  workspaceDestinations?: WorkspaceDestination[];
+  recentWorkspaceDestinationKeys?: readonly string[];
+  isItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => boolean;
+  onAddItemToWorkspace?: (item: Item, destination: WorkspaceDestination) => void;
 }
 
 function getMatchReason(row: SearchResult): string {
@@ -56,6 +72,8 @@ function getSnippet(item: Item | undefined): string {
 export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   items,
   collections,
+  projects = [],
+  organizationCollections = collections,
   state,
   onQueryChange,
   onFiltersChange,
@@ -63,6 +81,9 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onSelectedItemIdChange,
   onRunSearch,
   onOpenItem,
+  onUpdateItem,
+  onCreateProject,
+  onCreateCollection,
   onClearRecentQueries,
   scopeLabel,
   autofocus = true,
@@ -74,6 +95,10 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   scopeOptions,
   scopeValue,
   onScopeValueChange,
+  workspaceDestinations = [],
+  recentWorkspaceDestinationKeys,
+  isItemInWorkspace,
+  onAddItemToWorkspace,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
@@ -573,27 +598,38 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                   )}
                 </div>
                 {isSelected && item && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenItem(item);
-                    }}
-                    style={{
-                      flexShrink: 0,
-                      marginTop: 2,
-                      padding: '4px 10px',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border)',
-                      background: 'var(--bg-glass)',
-                      color: 'var(--text)',
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
+                  <div
+                    style={{ flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}
+                    onClick={(event) => event.stopPropagation()}
                   >
-                    {itemActionLabel}
-                  </button>
+                    {onUpdateItem && projects.length > 0 && organizationCollections.length > 0 ? (
+                      <ItemOrganizationDialog
+                        item={item}
+                        projects={projects}
+                        collections={organizationCollections}
+                        onUpdateItem={onUpdateItem}
+                        onCreateProject={onCreateProject}
+                        onCreateCollection={onCreateCollection}
+                      />
+                    ) : null}
+                    {workspaceDestinations.length > 0 && isItemInWorkspace && onAddItemToWorkspace ? (
+                      <WorkspaceDestinationPicker
+                        item={item}
+                        destinations={workspaceDestinations}
+                        recentDestinationKeys={recentWorkspaceDestinationKeys}
+                        isAdded={(destination) => isItemInWorkspace(item, destination)}
+                        onAdd={(destination) => onAddItemToWorkspace(item, destination)}
+                      />
+                    ) : (
+                      <button
+                        className="ui-button ui-button--secondary ui-button--compact"
+                        type="button"
+                        onClick={() => onOpenItem(item)}
+                      >
+                        {itemActionLabel}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

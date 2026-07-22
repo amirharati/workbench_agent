@@ -34,7 +34,6 @@ interface ProjectHomeWorkspaceProps {
   onAddItemToSession: (item: Item) => void;
   onRemoveSessionTab: (tabId: string) => void;
   onFocusSession: (tabId?: string) => void;
-  onOpenSearch: () => void;
   workspaces: Workspace[];
   savedWorkspaceSessions: SavedWorkspaceSession[];
   activeWorkspaceKey: string;
@@ -81,7 +80,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   onAddItemToSession,
   onRemoveSessionTab,
   onFocusSession,
-  onOpenSearch,
   workspaces,
   savedWorkspaceSessions,
   activeWorkspaceKey,
@@ -530,10 +528,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </div>
           </div>
         </div>
-        <button className="ui-button ui-button--secondary" type="button" onClick={onOpenSearch} style={secondaryButtonStyle}>
-          <Search size={13} />
-          {browseSource === 'collection' ? 'Search collection' : 'Search project'}
-        </button>
       </header>
 
       <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, flex: 1, margin: '0 auto', display: 'flex', flexDirection: 'column' }} aria-label="Project workspace">
@@ -559,7 +553,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </select>
           </div>
         </div>
-        <button className="ui-button ui-button--secondary ui-project-view-search" type="button" onClick={onOpenSearch} title="Search project" aria-label="Search project"><Search size={13} /></button>
         </div>
         {showSaveWorkspace && (
           <div className="ui-inline-form" style={{ marginBottom: 9 }}>

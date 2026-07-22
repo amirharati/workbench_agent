@@ -53,6 +53,8 @@ describe('responsive dashboard layout contract', () => {
 
   it('consolidates compact Home and Project context chrome', () => {
     expect(css).toMatch(/\.ui-all-library-controlbar \{[\s\S]*?display: flex;/);
+    expect(css).toMatch(/\.ui-home-title-tabs \{[\s\S]*?display: inline-flex;/);
+    expect(css).toMatch(/\.ui-home-context-bar \{[\s\S]*?min-height: 44px;/);
     expect(css).toMatch(/@container dashboard-workspace \(max-width: 1000px\)[\s\S]*?\.ui-project-page-header \{[\s\S]*?display: none !important;/);
     expect(css).toMatch(/\.ui-project-workspace-actions \{[\s\S]*?display: inline-flex;/);
   });

@@ -373,7 +373,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
         boxSizing: 'border-box',
       }}
     >
-      {showTags ? <div style={{ width: '100%', minWidth: 0 }}>
+      <div style={{ width: '100%', minWidth: 0 }}>
         <div style={labelStyle}>Saved in</div>
         <div style={chipRowStyle}>
           {memberships.length === 0 ? (
@@ -440,7 +440,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
             ))
           )}
         </div>
-      </div> : null}
+      </div>
 
       {hasWritePath && (
         <div
@@ -653,7 +653,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
         </div>
       )}
 
-      <div style={{ width: '100%', minWidth: 0 }}>
+      {showTags ? <div style={{ width: '100%', minWidth: 0 }}>
         <div style={labelStyle}>Tags</div>
         <div style={chipRowStyle}>
           {tagList.length === 0 && !hasWritePath ? (
@@ -743,7 +743,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
             Changes apply when you save.
           </div>
         ) : null}
-      </div>
+      </div> : null}
 
       {error && <div className="ui-status" data-tone="error" role="alert">{error}</div>}
     </div>

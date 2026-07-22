@@ -1182,6 +1182,8 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             embedded
             items={items}
             collections={collections}
+            projects={projects}
+            organizationCollections={collections}
             state={librarySearch.state}
             onQueryChange={(query) => {
               librarySearch.setQuery(query);
@@ -1213,6 +1215,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               projectId: activeTab.scopeProjectId,
               collectionId: activeTab.scopeCollectionId,
             })}
+            onUpdateItem={onUpdateItem}
+            onCreateProject={onCreateProject}
+            onCreateCollection={onCreateCollection}
             onClearRecentQueries={librarySearch.clearRecentQueries}
             scopeLabel={
               activeTab.filters?.collectionId
