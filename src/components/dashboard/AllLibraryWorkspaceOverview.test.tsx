@@ -40,7 +40,6 @@ function render(selectedView: string, selectedTab: GlobalTab | null = null, sele
       onRemoveGlobalTab={vi.fn()}
       onFocusTab={vi.fn()}
       onFocusGlobal={vi.fn()}
-      onAddItemToGlobal={vi.fn()}
       onViewSearch={vi.fn()}
       onUpdateItem={vi.fn()}
     />
@@ -64,7 +63,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         onRemoveGlobalTab={vi.fn()}
         onFocusTab={vi.fn()}
         onFocusGlobal={vi.fn()}
-        onAddItemToGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );
@@ -103,6 +101,7 @@ describe('AllLibraryWorkspaceOverview', () => {
     });
 
     expect(markup).toContain('Add to favorites: Preview note');
+    expect(markup).toContain('Add to workspace…');
   });
 
   it('separates project navigation from selectable library material', () => {
@@ -127,7 +126,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         onRemoveGlobalTab={vi.fn()}
         onFocusTab={vi.fn()}
         onFocusGlobal={vi.fn()}
-        onAddItemToGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );
@@ -177,7 +175,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         onRemoveGlobalTab={vi.fn()}
         onFocusTab={vi.fn()}
         onFocusGlobal={vi.fn()}
-        onAddItemToGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );
@@ -206,7 +203,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         onRemoveGlobalTab={vi.fn()}
         onFocusTab={vi.fn()}
         onFocusGlobal={vi.fn()}
-        onAddItemToGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );
@@ -235,7 +231,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         onRemoveGlobalTab={vi.fn()}
         onFocusTab={vi.fn()}
         onFocusGlobal={vi.fn()}
-        onAddItemToGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );

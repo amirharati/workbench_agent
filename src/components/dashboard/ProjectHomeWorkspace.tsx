@@ -16,6 +16,8 @@ import { getHomebaseWorkspaceSessionKey, getProjectSessionWorkspaceKey, getSaved
 import { uiPatterns } from '../../styles/uiPatterns';
 import { loadPageUiState, projectPageUiKey, savePageUiState } from '../../lib/shell/pageUiState';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
+import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
+import type { WorkspaceDestination } from './workspaceDestinations';
 
 interface ProjectHomeWorkspaceProps {
   project: Project;
@@ -41,6 +43,10 @@ interface ProjectHomeWorkspaceProps {
   onSaveWorkspace: (name: string) => string | void;
   onDeleteSavedWorkspace: (sessionId: string) => void;
   workspaceDestinations: Array<{ key: string; label: string }>;
+  availableWorkspaceDestinations?: WorkspaceDestination[];
+  recentWorkspaceDestinationKeys?: readonly string[];
+  isItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => boolean;
+  onAddItemToWorkspaceDestination?: (item: Item, destination: WorkspaceDestination) => void;
   onAddItemToWorkspace: (item: Item, targetWorkspaceKey: string) => void;
   onTransferSessionEntry: (
     entry: GlobalTab,
@@ -84,6 +90,10 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   onSaveWorkspace,
   onDeleteSavedWorkspace,
   workspaceDestinations,
+  availableWorkspaceDestinations = [],
+  recentWorkspaceDestinationKeys,
+  isItemInWorkspace,
+  onAddItemToWorkspaceDestination,
   onAddItemToWorkspace,
   onTransferSessionEntry,
   onSelectedItemChange,
@@ -406,6 +416,28 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     setSelectedSessionTabId(null);
   };
 
+  const selectedItemWorkspaceAction = selectedItem &&
+    availableWorkspaceDestinations.length > 0 &&
+    isItemInWorkspace &&
+    onAddItemToWorkspaceDestination ? (
+      <WorkspaceDestinationPicker
+        item={selectedItem}
+        destinations={availableWorkspaceDestinations}
+        recentDestinationKeys={recentWorkspaceDestinationKeys}
+        isAdded={(destination) => isItemInWorkspace(selectedItem, destination)}
+        onAdd={(destination) => onAddItemToWorkspaceDestination(selectedItem, destination)}
+      />
+    ) : selectedItem && workspaceDestinations.length > 1 ? (
+      <>
+        <select value={itemTargetWorkspaceKey} onChange={(event) => setItemTargetWorkspaceKey(event.target.value)} aria-label={`Workspace for ${selectedItem.title || 'item'}`} style={destinationSelectStyle}>
+          {workspaceDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}{destination.key === activeWorkspaceKey ? ' (current)' : ''}</option>)}
+        </select>
+        <button type="button" onClick={() => onAddItemToWorkspace(selectedItem, itemTargetWorkspaceKey)} disabled={!itemTargetWorkspaceKey} style={primaryButtonStyle}><Plus size={12} /> Add</button>
+      </>
+    ) : selectedItem && !selectedItemSessionTab ? (
+      <button type="button" onClick={() => onAddItemToSession(selectedItem)} style={primaryButtonStyle}><Plus size={12} /> Add to workspace</button>
+    ) : null;
+
   const detailPanel = (
     <section className="ui-panel ui-detail-panel" style={panelStyle} aria-label="Selected project content">
       {selectedItem ? (
@@ -415,16 +447,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={clearDetailSelection} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
               {selectedItemSessionTab && <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={secondaryButtonStyle}><Maximize2 size={12} /> Focus</button>}
-              {workspaceDestinations.length > 1 ? (
-                <>
-                  <select value={itemTargetWorkspaceKey} onChange={(event) => setItemTargetWorkspaceKey(event.target.value)} aria-label={`Workspace for ${selectedItem.title || 'item'}`} style={destinationSelectStyle}>
-                    {workspaceDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}{destination.key === activeWorkspaceKey ? ' (current)' : ''}</option>)}
-                  </select>
-                  <button type="button" onClick={() => onAddItemToWorkspace(selectedItem, itemTargetWorkspaceKey)} disabled={!itemTargetWorkspaceKey} style={primaryButtonStyle}><Plus size={12} /> Add</button>
-                </>
-              ) : !selectedItemSessionTab ? (
-                <button type="button" onClick={() => onAddItemToSession(selectedItem)} style={primaryButtonStyle}><Plus size={12} /> Add to workspace</button>
-              ) : null}
+              {selectedItemWorkspaceAction}
             </div>
           </div>
           <div className="scrollbar ui-scroll-footer-safe" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
@@ -794,16 +817,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                 <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Item</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {selectedItemSessionTab && <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={secondaryButtonStyle}><Maximize2 size={12} /> Focus</button>}
-                  {workspaceDestinations.length > 1 ? (
-                    <>
-                      <select value={itemTargetWorkspaceKey} onChange={(event) => setItemTargetWorkspaceKey(event.target.value)} aria-label={`Workspace for ${selectedItem.title || 'item'}`} style={destinationSelectStyle}>
-                        {workspaceDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}{destination.key === activeWorkspaceKey ? ' (current)' : ''}</option>)}
-                      </select>
-                      <button type="button" onClick={() => onAddItemToWorkspace(selectedItem, itemTargetWorkspaceKey)} disabled={!itemTargetWorkspaceKey} style={primaryButtonStyle}><Plus size={12} /> Add</button>
-                    </>
-                  ) : !selectedItemSessionTab ? (
-                    <button type="button" onClick={() => onAddItemToSession(selectedItem)} style={primaryButtonStyle}><Plus size={12} /> Add to workspace</button>
-                  ) : null}
+                  {selectedItemWorkspaceAction}
                 </div>
               </div>
               <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px' }}>

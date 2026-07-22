@@ -22,18 +22,23 @@ import { homePageUiKey, loadPageUiState, savePageUiState } from '../../lib/shell
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
-  addEntryToProjectWorkspace,
+  addItemToWorkspaceTarget,
   deleteSavedProjectWorkspace,
   getActiveProjectWorkspaceKey,
   getHomebaseWorkspaceSessionKey,
   getProjectSessionTabs,
   getProjectSessionResumeTabId,
-  getProjectSessionWorkspaceKey,
   getSavedWorkspaceSessionKey,
   getVisibleWorkspaceTabs,
   saveCurrentProjectWorkspace,
   transferProjectWorkspaceEntry,
+  workspaceTargetContainsItem,
 } from './workspaceSession';
+import {
+  buildWorkspaceDestinations,
+  rememberWorkspaceDestination,
+  type WorkspaceDestination,
+} from './workspaceDestinations';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -242,17 +247,22 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const activeWorkspaceKey = activeProject
     ? getActiveProjectWorkspaceKey(homeState, activeProject.id)
     : '';
+  const workspaceDestinations = useMemo(
+    () => buildWorkspaceDestinations({
+      projects,
+      browserWorkspaces: workspaces,
+      state: homeState,
+      contextProjectId: scopeProjectId,
+    }),
+    [homeState, projects, scopeProjectId, workspaces]
+  );
   const projectWorkspaceDestinations = useMemo(
     () => activeProject
-      ? [
-          { key: getProjectSessionWorkspaceKey(activeProject.id), label: 'Live session' },
-          ...projectSavedWorkspaceSessions.map((session) => ({
-            key: getHomebaseWorkspaceSessionKey(session.id),
-            label: session.name,
-          })),
-        ]
+      ? workspaceDestinations
+          .filter((destination) => destination.projectId === activeProject.id && destination.kind !== 'browser')
+          .map((destination) => ({ key: destination.key, label: destination.workspaceName }))
       : [],
-    [activeProject, projectSavedWorkspaceSessions]
+    [activeProject, workspaceDestinations]
   );
   const projectSummaries = useMemo(
     () =>
@@ -589,15 +599,37 @@ export const HomeView: React.FC<HomeViewProps> = ({
     onHomeStateChange(deleteSavedProjectWorkspace({ state: homeState, sessionId }));
   };
 
-  const addItemToWorkspace = (item: Item, targetWorkspaceKey: string) => {
-    if (!activeProject) return;
-    const id = `item-${item.id}@project:${activeProject.id}`;
-    onHomeStateChange(addEntryToProjectWorkspace({
+  const browserWorkspaceForDestination = (destination: WorkspaceDestination) =>
+    destination.sourceWorkspaceId
+      ? workspaces.find((workspace) => workspace.id === destination.sourceWorkspaceId)
+      : undefined;
+
+  const isItemInWorkspaceDestination = (item: Item, destination: WorkspaceDestination) =>
+    workspaceTargetContainsItem({
       state: homeState,
-      projectId: activeProject.id,
-      targetWorkspaceKey,
-      entry: { kind: 'item', id, itemId: item.id, scopeProjectId: activeProject.id },
-    }));
+      projectId: destination.projectId,
+      targetWorkspaceKey: destination.key,
+      itemId: item.id,
+      browserWorkspace: browserWorkspaceForDestination(destination),
+      items,
+    });
+
+  const addItemToWorkspaceDestination = (item: Item, destination: WorkspaceDestination) => {
+    const next = addItemToWorkspaceTarget({
+      state: homeState,
+      projectId: destination.projectId,
+      targetWorkspaceKey: destination.key,
+      item,
+      browserWorkspace: browserWorkspaceForDestination(destination),
+      items,
+    });
+    onHomeStateChange({
+      ...next,
+      recentWorkspaceDestinationKeys: rememberWorkspaceDestination(
+        next.recentWorkspaceDestinationKeys,
+        destination.key
+      ),
+    });
   };
 
   const transferWorkspaceEntry = (
@@ -843,7 +875,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onSaveWorkspace={saveCurrentWorkspace}
           onDeleteSavedWorkspace={deleteSavedWorkspace}
           workspaceDestinations={projectWorkspaceDestinations}
-          onAddItemToWorkspace={addItemToWorkspace}
+          availableWorkspaceDestinations={workspaceDestinations}
+          recentWorkspaceDestinationKeys={homeState.recentWorkspaceDestinationKeys}
+          isItemInWorkspace={isItemInWorkspaceDestination}
+          onAddItemToWorkspace={(item, targetWorkspaceKey) => {
+            const destination = workspaceDestinations.find((candidate) => candidate.key === targetWorkspaceKey);
+            if (destination) addItemToWorkspaceDestination(item, destination);
+          }}
+          onAddItemToWorkspaceDestination={addItemToWorkspaceDestination}
           onTransferSessionEntry={transferWorkspaceEntry}
           onSelectedItemChange={onSelectedBrowseItemChange}
           onSelectSessionEntry={selectCurrentWorkspaceEntry}
@@ -888,7 +927,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
             onRemoveGlobalTab={removeCurrentSessionTab}
             onFocusTab={focusWorkspaceEntry}
             onFocusGlobal={focusCurrentSession}
-            onAddItemToGlobal={addItemToCurrentSession}
+            workspaceDestinations={workspaceDestinations}
+            recentWorkspaceDestinationKeys={homeState.recentWorkspaceDestinationKeys}
+            isItemInWorkspace={isItemInWorkspaceDestination}
+            onAddItemToWorkspace={addItemToWorkspaceDestination}
             onViewSearch={selectCurrentWorkspaceEntry}
             onUpdateItem={onUpdateItem}
             onCreateProject={onCreateProject}

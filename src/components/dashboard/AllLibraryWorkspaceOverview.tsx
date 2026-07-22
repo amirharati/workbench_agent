@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, Layers3, Link2, List, Maximize2, Plus, Search, Star, Trash2, Workflow } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, Layers3, Link2, List, Maximize2, Search, Star, Trash2, Workflow } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
@@ -9,6 +9,8 @@ import type { HomeProjectSummary } from './HomeBrowsePanel';
 import { ItemWorkspace } from './ItemWorkspace';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { uiPatterns } from '../../styles/uiPatterns';
+import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
+import type { WorkspaceDestination } from './workspaceDestinations';
 
 export interface WorkspaceViewGroup {
   key: string;
@@ -31,7 +33,10 @@ interface AllLibraryWorkspaceOverviewProps {
   onRemoveGlobalTab: (tabId: string) => void;
   onFocusTab: (tab: GlobalTab) => void;
   onFocusGlobal: () => void;
-  onAddItemToGlobal: (item: Item) => void;
+  workspaceDestinations?: WorkspaceDestination[];
+  recentWorkspaceDestinationKeys?: readonly string[];
+  isItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => boolean;
+  onAddItemToWorkspace?: (item: Item, destination: WorkspaceDestination) => void;
   onViewSearch: (tab: GlobalTab) => void;
   onUpdateItem?: (
     id: string,
@@ -116,7 +121,10 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   onRemoveGlobalTab,
   onFocusTab,
   onFocusGlobal,
-  onAddItemToGlobal,
+  workspaceDestinations = [],
+  recentWorkspaceDestinationKeys,
+  isItemInWorkspace = () => false,
+  onAddItemToWorkspace = () => {},
   onViewSearch,
   onUpdateItem,
   onCreateProject,
@@ -187,9 +195,6 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
       ? selectedItem
       : null;
   const selectedTabProjectId = activeSelectedTab?.scopeProjectId ?? 'all';
-  const previewInGlobalWorkspace = previewItem
-    ? groups[0]?.tabs.some((tab) => tab.kind === 'item' && tab.itemId === previewItem.id) ?? false
-    : false;
   const sortedLibraryItems = React.useMemo(
     () => [...items].sort((a, b) => (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at)),
     [items]
@@ -401,8 +406,14 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
               </button>
               {activeSelectedTab ? (
                 <button type="button" onClick={() => onFocusTab(activeSelectedTab)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
-              ) : previewItem && !previewInGlobalWorkspace ? (
-                <button type="button" onClick={() => onAddItemToGlobal(previewItem)} style={primaryButtonStyle}><Plus size={12} /> Add to global</button>
+              ) : previewItem ? (
+                <WorkspaceDestinationPicker
+                  item={previewItem}
+                  destinations={workspaceDestinations}
+                  recentDestinationKeys={recentWorkspaceDestinationKeys}
+                  isAdded={(destination) => isItemInWorkspace(previewItem, destination)}
+                  onAdd={(destination) => onAddItemToWorkspace(previewItem, destination)}
+                />
               ) : null}
             </div>
           </div>

@@ -4,6 +4,7 @@ import type { GlobalTabState } from './GlobalTabSystem';
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
+  addItemToWorkspaceTarget,
   addEntryToProjectWorkspace,
   deleteSavedProjectWorkspace,
   getActiveProjectWorkspaceKey,
@@ -18,6 +19,7 @@ import {
   loadWorkspaceIntoProjectSession,
   saveCurrentProjectWorkspace,
   transferProjectWorkspaceEntry,
+  workspaceTargetContainsItem,
 } from './workspaceSession';
 
 const item = (id: string, url: string): Item => ({
@@ -247,6 +249,39 @@ describe('project workspace sessions', () => {
       entry,
     });
     expect(copiedAgain.workspaceSessionSnapshots?.[savedKey]).toHaveLength(1);
+  });
+
+  it('adds an item to an inactive browser working copy without losing its captured tabs', () => {
+    const targetKey = getSavedWorkspaceSessionKey(workspace.id);
+    const state: GlobalTabState = {
+      tabs: [{ kind: 'item', id: 'other', itemId: 'other', scopeProjectId: 'project-b' }],
+      activeTabId: null,
+      bottomLayout: 'tabs',
+      isSidebarCollapsed: false,
+    };
+    const addedItem = item('new-note', '');
+    const next = addItemToWorkspaceTarget({
+      state,
+      projectId: 'project-a',
+      targetWorkspaceKey: targetKey,
+      item: addedItem,
+      browserWorkspace: workspace,
+      items: [item('docs', 'https://example.com/docs'), addedItem],
+    });
+    const targetTabs = next.workspaceSessionSnapshots?.[targetKey] ?? [];
+
+    expect(targetTabs.some((tab) => tab.kind === 'item' && tab.itemId === 'docs')).toBe(true);
+    expect(targetTabs.some((tab) => tab.kind === 'url' && tab.url === 'https://outside.example/page')).toBe(true);
+    expect(targetTabs.some((tab) => tab.kind === 'item' && tab.itemId === addedItem.id)).toBe(true);
+    expect(getActiveProjectWorkspaceKey(next, 'project-a')).toBe(getProjectSessionWorkspaceKey('project-a'));
+    expect(workspaceTargetContainsItem({
+      state: next,
+      projectId: 'project-a',
+      targetWorkspaceKey: targetKey,
+      itemId: addedItem.id,
+      browserWorkspace: workspace,
+      items: [addedItem],
+    })).toBe(true);
   });
 
   it('moves an entry to a workspace that already contains it', () => {

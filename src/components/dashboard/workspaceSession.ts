@@ -288,6 +288,108 @@ export function addEntryToProjectWorkspace({
   return setProjectWorkspaceTabs(state, projectId, targetWorkspaceKey, [...targetTabs, scopedEntry]);
 }
 
+export function getWorkspaceTargetTabs({
+  state,
+  projectId,
+  targetWorkspaceKey,
+  browserWorkspace,
+  items,
+}: {
+  state: GlobalTabState;
+  projectId: string | 'all';
+  targetWorkspaceKey: string;
+  browserWorkspace?: Workspace;
+  items: readonly Item[];
+}): GlobalTab[] {
+  const active = getActiveProjectWorkspaceKey(state, projectId) === targetWorkspaceKey;
+  const hasSnapshot = Object.prototype.hasOwnProperty.call(
+    state.workspaceSessionSnapshots ?? {},
+    targetWorkspaceKey
+  );
+  if (browserWorkspace && !active && !hasSnapshot) {
+    return loadWorkspaceIntoProjectSession({
+      workspace: browserWorkspace,
+      existingTabs: [],
+      items,
+      projectId,
+    }).tabs;
+  }
+  return getProjectWorkspaceTabs(state, projectId, targetWorkspaceKey);
+}
+
+export function workspaceTargetContainsItem({
+  state,
+  projectId,
+  targetWorkspaceKey,
+  itemId,
+  browserWorkspace,
+  items,
+}: {
+  state: GlobalTabState;
+  projectId: string | 'all';
+  targetWorkspaceKey: string;
+  itemId: string;
+  browserWorkspace?: Workspace;
+  items: readonly Item[];
+}): boolean {
+  return getWorkspaceTargetTabs({
+    state,
+    projectId,
+    targetWorkspaceKey,
+    browserWorkspace,
+    items,
+  }).some((tab) => tab.kind === 'item' && tab.itemId === itemId);
+}
+
+export function addItemToWorkspaceTarget({
+  state,
+  projectId,
+  targetWorkspaceKey,
+  item,
+  browserWorkspace,
+  items,
+}: {
+  state: GlobalTabState;
+  projectId: string | 'all';
+  targetWorkspaceKey: string;
+  item: Item;
+  browserWorkspace?: Workspace;
+  items: readonly Item[];
+}): GlobalTabState {
+  const active = getActiveProjectWorkspaceKey(state, projectId) === targetWorkspaceKey;
+  const hasSnapshot = Object.prototype.hasOwnProperty.call(
+    state.workspaceSessionSnapshots ?? {},
+    targetWorkspaceKey
+  );
+  const seededState = browserWorkspace && !active && !hasSnapshot
+    ? {
+        ...state,
+        workspaceSessionSnapshots: {
+          ...(state.workspaceSessionSnapshots ?? {}),
+          [targetWorkspaceKey]: getWorkspaceTargetTabs({
+            state,
+            projectId,
+            targetWorkspaceKey,
+            browserWorkspace,
+            items,
+          }),
+        },
+      }
+    : state;
+  const suffix = projectId === 'all' ? '' : `@project:${projectId}`;
+  return addEntryToProjectWorkspace({
+    state: seededState,
+    projectId,
+    targetWorkspaceKey,
+    entry: {
+      kind: 'item',
+      id: `item-${item.id}${suffix}`,
+      itemId: item.id,
+      ...(projectId === 'all' ? {} : { scopeProjectId: projectId }),
+    },
+  });
+}
+
 export function transferProjectWorkspaceEntry({
   state,
   projectId,

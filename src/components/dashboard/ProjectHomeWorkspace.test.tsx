@@ -292,4 +292,44 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup).toContain('Pinned item 0');
     expect(markup).not.toContain('data-project-workspace-actions="true"');
   });
+
+  it('uses the shared compact destination picker when the organization catalog is available', () => {
+    localStorage.setItem(
+      projectPageUiKey(project.id, 'all'),
+      JSON.stringify({ selectedItemId: items[0].id, selectedSessionTabId: null, browseSource: 'all' })
+    );
+    const markup = renderToStaticMarkup(
+      <ProjectHomeWorkspace
+        project={project}
+        items={items}
+        collections={collections}
+        selectedCollectionId="all"
+        onSelectCollection={vi.fn()}
+        sessionTabs={[]}
+        onAddItemToSession={vi.fn()}
+        onRemoveSessionTab={vi.fn()}
+        onFocusSession={vi.fn()}
+        onOpenSearch={vi.fn()}
+        workspaces={[]}
+        savedWorkspaceSessions={[]}
+        activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
+        onActivateWorkspace={vi.fn()}
+        onActivateSavedWorkspace={vi.fn()}
+        onSaveWorkspace={vi.fn()}
+        onDeleteSavedWorkspace={vi.fn()}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' }]}
+        availableWorkspaceDestinations={[
+          { key: 'global', projectId: 'all', projectName: 'Global', workspaceName: 'Workspace', path: 'Global / Workspace', kind: 'global', isCurrent: false },
+          { key: getProjectSessionWorkspaceKey(project.id), projectId: project.id, projectName: project.name, workspaceName: 'Live session', path: `${project.name} / Live session`, kind: 'live', isCurrent: true },
+        ]}
+        isItemInWorkspace={() => false}
+        onAddItemToWorkspaceDestination={vi.fn()}
+        onAddItemToWorkspace={vi.fn()}
+        onTransferSessionEntry={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('Add to workspace…');
+    expect(markup).not.toContain(`aria-label="Workspace for ${items[0].title}"`);
+  });
 });

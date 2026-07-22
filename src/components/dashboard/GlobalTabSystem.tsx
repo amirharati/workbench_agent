@@ -164,6 +164,8 @@ export interface GlobalTabState {
   workspaceSessionSnapshots?: Record<string, GlobalTab[]>;
   /** User-created Homebase workspaces; unlike browser workspaces these can contain every GlobalTab kind. */
   savedWorkspaceSessions?: SavedWorkspaceSession[];
+  /** Most recently targeted destinations for the shared Add to workspace picker. */
+  recentWorkspaceDestinationKeys?: string[];
 }
 
 export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
@@ -180,6 +182,7 @@ export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
   activeWorkspaceKeyByProject: {},
   workspaceSessionSnapshots: {},
   savedWorkspaceSessions: [],
+  recentWorkspaceDestinationKeys: [],
 };
 
 const LS_KEY = 'workbench-global-tabs';
@@ -265,6 +268,9 @@ export function loadGlobalTabState(): GlobalTabState {
           : {},
       workspaceSessionSnapshots,
       savedWorkspaceSessions,
+      recentWorkspaceDestinationKeys: Array.isArray(parsed.recentWorkspaceDestinationKeys)
+        ? Array.from(new Set(parsed.recentWorkspaceDestinationKeys.filter((key): key is string => typeof key === 'string'))).slice(0, 5)
+        : [],
     };
   } catch {
     return GLOBAL_TAB_STATE_DEFAULT;
