@@ -121,15 +121,19 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
             <span className="ui-content-browser__copy">
               <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
               {entry.subtitle && <span className="ui-content-browser__subtitle">{entry.subtitle}</span>}
-              {entry.meta && <span className="ui-content-browser__meta">{entry.meta}</span>}
             </span>
-            {entry.actions && (
-              <span
-                className="ui-content-browser__actions"
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-              >
-                {entry.actions}
+            {(entry.meta || entry.actions) && (
+              <span className="ui-content-browser__footer">
+                {entry.meta && <span className="ui-content-browser__meta">{entry.meta}</span>}
+                {entry.actions && (
+                  <span
+                    className="ui-content-browser__actions"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
+                    {entry.actions}
+                  </span>
+                )}
               </span>
             )}
           </div>

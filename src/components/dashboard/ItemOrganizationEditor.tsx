@@ -570,7 +570,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
           </div>
 
           {showNewProject && onCreateProject && canMutate ? (
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div className="ui-organization-editor__inline-create" style={{ display: 'flex', gap: 4 }}>
               <input
                 className="ui-field"
                 value={newProjectName}
@@ -618,7 +618,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
           ) : null}
 
           {showNewCollection && onCreateCollection && canMutate && !addProjectIsInbox ? (
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div className="ui-organization-editor__inline-create" style={{ display: 'flex', gap: 4 }}>
               <input
                 className="ui-field"
                 value={newCollectionName}

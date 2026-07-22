@@ -406,7 +406,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
                   <strong style={{ display: 'block', color: 'var(--text)', fontSize: 'var(--text-sm)' }}>Item</strong>
                   {workspaceNotice && <span role="status" style={{ display: 'block', marginTop: 2, color: 'var(--accent)', fontSize: 'var(--text-xs)' }}>{workspaceNotice}</span>}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className="ui-detail-panel__actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={() => setSelectedItemId(null)} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
                   <select value={workspaceKey} onChange={(event) => { setWorkspaceKey(event.target.value); setWorkspaceNotice(null); }} aria-label={`Workspace for ${selectedItem.title || 'item'}`} style={destinationSelectStyle}>
                     {destinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
@@ -416,7 +416,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
                   {onDeleteItem && <button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => void removeSelectedItem()} title="Move to trash" aria-label={`Move ${selectedItem.title || 'item'} to trash`} style={{ ...iconButtonStyle, color: 'var(--danger)' }}><Trash2 size={13} /></button>}
                 </div>
               </div>
-              <div className="scrollbar ui-scroll-footer-safe" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
+              <div className="scrollbar ui-scroll-footer-safe ui-detail-panel__body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
                 <ItemWorkspace
                   item={selectedItem}
                   projects={projects}

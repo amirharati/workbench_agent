@@ -442,13 +442,13 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         <>
           <div className="ui-detail-panel__header" style={panelHeaderStyle}>
             <span style={detailLabelStyle}>Item</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className="ui-detail-panel__actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={clearDetailSelection} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
               {selectedItemSessionTab && <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={secondaryButtonStyle}><Maximize2 size={12} /> Focus</button>}
               {selectedItemWorkspaceAction}
             </div>
           </div>
-          <div className="scrollbar ui-scroll-footer-safe" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
+          <div className="scrollbar ui-scroll-footer-safe ui-detail-panel__body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
             <ItemWorkspace
               item={selectedItem}
               projects={organizationProjects ?? [project]}
@@ -469,7 +469,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         <>
           <div className="ui-detail-panel__header" style={panelHeaderStyle}>
             <span style={detailLabelStyle}>Workspace entry</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className="ui-detail-panel__actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={clearDetailSelection} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
               <button type="button" onClick={() => onFocusSession(selectedSessionTab.id)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
             </div>
@@ -813,7 +813,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                   {selectedItemWorkspaceAction}
                 </div>
               </div>
-              <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px' }}>
+              <div className="scrollbar ui-scroll-footer-safe ui-detail-panel__body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px' }}>
                 <ItemWorkspace
                   item={selectedItem}
                   projects={organizationProjects ?? [project]}

@@ -46,5 +46,8 @@ describe('ItemWorkspace', () => {
     expect(markup).toContain('Project Alpha');
     expect(markup).toContain('Project Beta');
     expect(markup).toContain('Research');
+    expect(markup).toContain('ui-item-workspace__heading');
+    expect(markup).toContain('ui-item-workspace__actions');
+    expect(markup).toContain('ui-organization-editor__destination-grid');
   });
 });

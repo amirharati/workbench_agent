@@ -395,7 +395,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 650, textTransform: 'uppercase', letterSpacing: 0.4 }}>
               {activeView === 'workspace' ? 'Workspace entry' : 'Item details'}
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className="ui-detail-panel__actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button
                 className="ui-button ui-button--secondary ui-adaptive-detail-back"
                 type="button"
@@ -419,7 +419,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
           </div>
 
           {previewItem ? (
-            <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 17 }}>
+            <div className="scrollbar ui-scroll-footer-safe ui-detail-panel__body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 17 }}>
               <ItemWorkspace
                 item={previewItem}
                 projects={projects}

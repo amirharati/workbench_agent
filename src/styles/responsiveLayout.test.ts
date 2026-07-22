@@ -9,12 +9,23 @@ describe('responsive dashboard layout contract', () => {
     expect(css).toContain('@container dashboard-workspace (max-width: 1000px)');
     expect(css).toContain('@container dashboard-workspace (max-width: 720px)');
     expect(css).toContain('@container dashboard-workspace (max-width: 560px)');
+    expect(css).toContain('container-name: detail-panel');
+    expect(css).toContain('container-name: item-workspace');
   });
 
   it('uses compact-height density without reducing the typography scale', () => {
     expect(css).toContain('@media (max-height: 820px)');
     expect(css).not.toMatch(/@media \(max-height: 820px\)[\s\S]*?--font-scale:/);
     expect(css).not.toMatch(/@media \(max-height: (?:820|700)px\)[\s\S]*?\[data-all-library-working-canvas\][\s\S]*?height:/);
+  });
+
+  it('lets gallery copy and controls use distinct full-width card rows', () => {
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__entry \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);[\s\S]*?grid-template-rows: auto auto minmax\(0, 1fr\) auto;/);
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__leading \{[\s\S]*?grid-row: 1;/);
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__entry-title \{[\s\S]*?grid-row: 2;/);
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__subtitle \{[\s\S]*?grid-row: 3;/);
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__footer \{[\s\S]*?grid-row: 4;/);
+    expect(css).not.toContain(".ui-content-browser__entry:has(.ui-content-browser__actions)");
   });
 
   it('keeps the compact Project view ribbon visually substantial', () => {
@@ -60,10 +71,17 @@ describe('responsive dashboard layout contract', () => {
   });
 
   it('switches browse/detail canvases one pane at a time when narrow', () => {
-    expect(css).toContain('@container dashboard-workspace (max-width: 560px)');
+    expect(css).toMatch(/@container dashboard-workspace \(max-width: 560px\)[\s\S]*?\.ui-adaptive-browser \{/);
     expect(css).toContain(".ui-adaptive-browser[data-detail-open='false'] > :nth-child(2)");
     expect(css).toContain(".ui-adaptive-browser[data-detail-open='true'] > :first-child");
     expect(css).toContain('.ui-adaptive-detail-back');
+  });
+
+  it('adapts item details to their pane width instead of the viewport', () => {
+    expect(css).toContain('@container detail-panel (max-width: 620px)');
+    expect(css).toContain('@container item-workspace (max-width: 640px)');
+    expect(css).toMatch(/@container item-workspace \(max-width: 640px\)[\s\S]*?\.ui-organization-editor__destination-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important;/);
+    expect(css).toMatch(/@container detail-panel \(max-width: 620px\)[\s\S]*?\.ui-detail-panel__body \{[\s\S]*?padding: 14px !important;/);
   });
 
   it('keeps the Inspector in layout flow and narrows it before the workspace becomes cramped', () => {

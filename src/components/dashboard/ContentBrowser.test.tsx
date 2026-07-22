@@ -42,6 +42,30 @@ describe('ContentBrowser', () => {
     expect(markup).toContain('A useful article');
   });
 
+  it('uses a shared gallery footer for metadata and actions', () => {
+    const markup = renderToStaticMarkup(
+      <ContentBrowser
+        title="Library"
+        entries={[{
+          id: 'link-a',
+          title: 'A useful article with a longer title',
+          icon: 'L',
+          subtitle: 'A longer summary should use the full width below the icon and title.',
+          meta: 'Jul 22',
+          actions: <button type="button">Open</button>,
+        }]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        mode="gallery"
+        onModeChange={vi.fn()}
+        emptyMessage="Nothing here"
+      />
+    );
+
+    expect(markup).toContain('ui-content-browser__footer');
+    expect(markup).toMatch(/ui-content-browser__footer[\s\S]*?Jul 22[\s\S]*?Open/);
+  });
+
   it('mounts a bounded first batch for large libraries', () => {
     const markup = renderToStaticMarkup(
       <ContentBrowser

@@ -101,7 +101,7 @@ export const ItemWorkspace: React.FC<ItemWorkspaceProps> = ({
   return (
     <div className="ui-item-workspace">
       <div className="ui-item-workspace__header">
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div className="ui-item-workspace__heading" style={{ minWidth: 0, flex: 1 }}>
           {editing ? (
             <input
               value={draft.title}
@@ -143,7 +143,7 @@ export const ItemWorkspace: React.FC<ItemWorkspaceProps> = ({
         </div>
       </div>
 
-      {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 'var(--text-xs)' }}>{error}</div>}
+      {error && <div className="ui-item-workspace__error" role="alert">{error}</div>}
 
       {editing && item.url && (
         <section className="ui-item-workspace__section">
