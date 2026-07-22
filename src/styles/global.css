@@ -15,12 +15,13 @@
   --control-height-md: 29px;
   --control-height-lg: 34px;
   --page-gutter: 18px;
-  /* Chrome paints its native new-tab footer above the extension viewport.
-     Reserve that space at the shell, then keep normal breathing room in pages. */
+  /* Chrome may paint its native new-tab footer above the extension viewport.
+     Keep the shell full-height and reserve clearance only at scroll-content ends. */
   --browser-footer-clearance: 88px;
   --browser-footer-safe-clearance: calc(var(--browser-footer-clearance) + env(safe-area-inset-bottom, 0px));
   --page-bottom-clearance: 24px;
   --page-safe-bottom: calc(var(--page-bottom-clearance) + env(safe-area-inset-bottom, 0px));
+  --scroll-footer-safe-bottom: calc(var(--browser-footer-clearance) + env(safe-area-inset-bottom, 0px));
   --right-panel-width: 280px;
 
   /* ===== Typography ===== */
@@ -816,7 +817,6 @@ button:disabled {
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
-  padding-bottom: var(--browser-footer-safe-clearance);
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
@@ -1294,64 +1294,120 @@ button.ui-scope-chip {
 }
 
 /* ===== Home project navigation ===== */
-.ui-project-launcher {
-  /* Two complete rows. Keep the viewport height aligned with the row rhythm so
-     the next project is never left half-visible beneath the scroll edge. */
-  --project-launcher-grid-height: 138px;
-  --project-launcher-card-height: 55px;
-  --project-launcher-icon-size: 31px;
-  --project-launcher-card-min-width: 220px;
-  --project-launcher-grid-gap: 10px;
-  --project-launcher-grid-padding: 9px;
-  --project-launcher-card-gap: 9px;
-  --project-launcher-card-padding: 8px 9px;
-  --project-launcher-copy-gap: 3px;
+.ui-all-library-workspace {
+  gap: 0;
+}
+
+.ui-project-switcher {
   min-width: 0;
   flex-shrink: 0;
+  margin-bottom: var(--space-sm);
   overflow: hidden;
-  margin-bottom: var(--space-lg);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--bg-raised);
   box-shadow: var(--shadow-sm);
 }
 
-.ui-project-launcher__header {
-  min-height: 58px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-md);
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-subtle);
-}
-
-.ui-project-launcher__title,
-.ui-material-workspace-heading h2 {
+.ui-project-switcher__row {
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 0;
-  color: var(--text);
-  font-size: var(--text-sm);
-  font-weight: 720;
-  letter-spacing: var(--tracking-tight);
+  gap: 8px;
+  padding: 6px 7px 6px 10px;
 }
 
-.ui-project-launcher__description,
-.ui-material-workspace-heading p {
-  margin: 3px 0 0;
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-}
-
-.ui-project-launcher__count {
+.ui-project-switcher__title {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ui-project-switcher__quick-list {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.ui-project-switcher__quick-project {
+  min-width: 0;
+  max-width: 190px;
+  height: 30px;
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.ui-project-switcher__quick-project:hover,
+.ui-project-switcher__quick-project:focus-visible {
+  border-color: var(--border-active);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.ui-project-switcher__quick-project strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-project-switcher__quick-project span,
+.ui-project-switcher__browse span {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-project-switcher__empty {
   color: var(--text-faint);
   font-size: var(--text-xs);
-  white-space: nowrap;
+}
+
+.ui-project-switcher__browse {
+  flex-shrink: 0;
+}
+
+.ui-project-switcher__browse svg {
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.ui-project-switcher[data-expanded='true'] .ui-project-switcher__browse svg {
+  transform: rotate(180deg);
+}
+
+.ui-project-browser {
+  --project-launcher-grid-height: 108px;
+  --project-launcher-card-height: 44px;
+  --project-launcher-icon-size: 26px;
+  --project-launcher-card-min-width: 205px;
+  --project-launcher-grid-gap: 7px;
+  --project-launcher-grid-padding: 7px;
+  --project-launcher-card-gap: 7px;
+  --project-launcher-card-padding: 5px 7px;
+  --project-launcher-copy-gap: 1px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
 }
 
 .ui-project-launcher__controls {
@@ -1531,13 +1587,37 @@ button.ui-scope-chip {
   text-align: center;
 }
 
-.ui-material-workspace-heading {
-  min-width: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-md);
-  margin: 0 2px 8px;
+.ui-all-library-tabs {
+  flex-shrink: 0;
+}
+
+.ui-project-workspace-actions {
+  min-height: 39px;
+  flex-wrap: nowrap !important;
+  justify-content: flex-end;
+  gap: 5px;
+  margin: -2px 0 8px;
+  padding: 4px 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.ui-project-workspace-actions > * {
+  flex-shrink: 0;
+}
+
+[data-project-view-tabs] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ui-all-library-workspace .ui-content-browser__body {
+  padding-bottom: var(--space-md);
+  scroll-padding-bottom: var(--space-md);
 }
 
 /* ===== Open work tabs ===== */
@@ -1770,6 +1850,8 @@ button.ui-scope-chip {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  padding-bottom: var(--scroll-footer-safe-bottom);
+  scroll-padding-bottom: var(--scroll-footer-safe-bottom);
 }
 
 .ui-content-browser__body[data-content-view='gallery'] {
@@ -2178,10 +2260,10 @@ button.ui-scope-chip {
 }
 
 /* ===== Responsive dashboard grammar ===== */
-.ui-page-frame,
+.ui-scroll-footer-safe,
 .ui-home-overview {
-  padding-bottom: var(--page-safe-bottom) !important;
-  scroll-padding-bottom: var(--page-safe-bottom);
+  padding-bottom: var(--scroll-footer-safe-bottom) !important;
+  scroll-padding-bottom: var(--scroll-footer-safe-bottom);
 }
 
 .ui-page-header,
@@ -2196,10 +2278,14 @@ button.ui-scope-chip {
 }
 
 @container dashboard-workspace (max-width: 1000px) {
-  .ui-page-frame,
-  .ui-home-overview {
+  .ui-page-frame {
     gap: var(--space-sm) !important;
     padding: 12px var(--space-md) var(--page-safe-bottom) !important;
+  }
+
+  .ui-home-overview {
+    gap: var(--space-sm) !important;
+    padding: 12px var(--space-md) var(--scroll-footer-safe-bottom) !important;
   }
 
   .ui-page-header {
@@ -2233,12 +2319,35 @@ button.ui-scope-chip {
     flex-shrink: 0;
   }
 
+  [data-project-view-tabs] {
+    min-height: 46px;
+    padding: 6px !important;
+  }
+
+  [data-project-view-tabs] .ui-view-tab,
+  [data-project-view-tabs] > div {
+    min-height: 34px !important;
+  }
+
+  [data-project-view-tabs] .ui-view-tab {
+    padding-inline: 12px !important;
+  }
+
+  [data-project-view-tabs] > div > button {
+    height: 32px !important;
+    padding-inline: 10px !important;
+  }
+
+  [data-project-view-tabs] > div > select {
+    height: 29px !important;
+  }
+
   .ui-split-canvas,
   .ui-working-canvas {
     gap: var(--space-sm) !important;
   }
 
-  .ui-project-launcher {
+  .ui-project-browser {
     /* One full row at laptop density: 7px + 44px + 7px. The 8px row gap
        starts beyond the viewport, so another row cannot peek through. */
     --project-launcher-grid-height: 58px;
@@ -2250,11 +2359,6 @@ button.ui-scope-chip {
     --project-launcher-card-gap: 7px;
     --project-launcher-card-padding: 5px 7px;
     --project-launcher-copy-gap: 1px;
-  }
-
-  .ui-project-launcher__header {
-    min-height: 48px;
-    padding: 7px 9px;
   }
 
   .ui-project-launcher__controls {
@@ -2325,6 +2429,38 @@ button.ui-scope-chip {
     align-self: flex-start;
   }
 
+  .ui-project-switcher__title {
+    display: none;
+  }
+
+  .ui-project-switcher__quick-project {
+    max-width: 150px;
+  }
+
+  .ui-working-canvas {
+    min-height: 280px !important;
+  }
+
+  [data-tab-commander-canvas] {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(120px, 0.45fr) minmax(220px, 1fr);
+  }
+
+  .ui-responsive-sidecar,
+  .ui-responsive-form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .ui-responsive-sidecar__aside {
+    position: static !important;
+  }
+
+  .ui-responsive-form-grid > * {
+    grid-column: auto !important;
+  }
+}
+
+@container dashboard-workspace (max-width: 560px) {
   .ui-adaptive-browser {
     grid-template-columns: minmax(0, 1fr) !important;
     grid-template-rows: minmax(0, 1fr) !important;
@@ -2353,28 +2489,6 @@ button.ui-scope-chip {
     overflow-x: auto;
     overscroll-behavior-x: contain;
   }
-
-  .ui-working-canvas {
-    min-height: 280px !important;
-  }
-
-  [data-tab-commander-canvas] {
-    grid-template-columns: minmax(0, 1fr) !important;
-    grid-template-rows: minmax(120px, 0.45fr) minmax(220px, 1fr);
-  }
-
-  .ui-responsive-sidecar,
-  .ui-responsive-form-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .ui-responsive-sidecar__aside {
-    position: static !important;
-  }
-
-  .ui-responsive-form-grid > * {
-    grid-column: auto !important;
-  }
 }
 
 @container dashboard-workspace (max-width: 860px) {
@@ -2389,11 +2503,16 @@ button.ui-scope-chip {
 }
 
 @media (max-height: 820px) {
-  .ui-page-frame,
-  .ui-home-overview {
+  .ui-page-frame {
     gap: var(--space-sm) !important;
     padding-top: 12px !important;
     padding-bottom: var(--page-safe-bottom) !important;
+  }
+
+  .ui-home-overview {
+    gap: var(--space-sm) !important;
+    padding-top: 12px !important;
+    padding-bottom: var(--scroll-footer-safe-bottom) !important;
   }
 
   .ui-page-header p {
@@ -2423,7 +2542,7 @@ button.ui-scope-chip {
     flex-shrink: 0;
   }
 
-  .ui-project-launcher {
+  .ui-project-browser {
     --project-launcher-grid-height: 58px;
     --project-launcher-card-height: 44px;
     --project-launcher-icon-size: 26px;
@@ -2433,12 +2552,6 @@ button.ui-scope-chip {
     --project-launcher-card-gap: 7px;
     --project-launcher-card-padding: 5px 7px;
     --project-launcher-copy-gap: 1px;
-    margin-bottom: var(--space-md);
-  }
-
-  .ui-project-launcher__header {
-    min-height: 48px;
-    padding: 7px 9px;
   }
 
   .ui-project-launcher__controls {
@@ -2466,24 +2579,12 @@ button.ui-scope-chip {
     min-height: 310px !important;
   }
 
-  .ui-material-workspace-heading {
-    margin-bottom: 6px;
-  }
 }
 
 @media (max-height: 700px) {
   .ui-home-overview {
     padding-top: 8px !important;
     gap: 8px !important;
-  }
-
-  .ui-home-find__heading,
-  .ui-project-launcher__description {
-    display: none;
-  }
-
-  .ui-home-find__field {
-    padding: 8px 12px !important;
   }
 
   [data-all-library-working-canvas] {
@@ -2853,23 +2954,25 @@ button.ui-scope-chip {
 }
 
 .right-panel-collapsed {
-  width: 8px !important;
-  min-width: 8px !important;
-  cursor: col-resize;
+  width: 32px !important;
+  min-width: 32px !important;
+  background: var(--bg-subtle);
 }
 
 .right-panel-handle {
-  width: 8px;
+  width: 32px;
   height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 7px;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--text-faint);
-  cursor: col-resize;
-  opacity: 0.4;
+  cursor: pointer;
+  opacity: 0.82;
   transition:
     opacity var(--duration-fast) var(--ease-standard),
     background-color var(--duration-fast) var(--ease-standard);
@@ -2878,6 +2981,16 @@ button.ui-scope-chip {
 .right-panel-handle:hover {
   opacity: 1;
   background: var(--bg-hover);
+  color: var(--text);
+}
+
+.right-panel-handle span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
 }
 
 .right-panel__content {
@@ -2963,15 +3076,7 @@ button.ui-scope-chip {
   }
 
   .right-panel {
-    position: absolute;
-    z-index: var(--layer-sticky);
-    top: 0;
-    right: 0;
-    bottom: 0;
-  }
-
-  .right-panel[data-expanded='true'] {
-    box-shadow: var(--shadow-panel);
+    --right-panel-width: clamp(220px, 20vw, 260px);
   }
 }
 
@@ -2981,7 +3086,7 @@ button.ui-scope-chip {
   }
 
   .ui-dashboard-shell {
-    --right-panel-width: min(280px, calc(100vw - 40px));
+    --right-panel-width: clamp(200px, 28vw, 220px);
   }
 
   .ui-workspace-tabs__strip-label > span {

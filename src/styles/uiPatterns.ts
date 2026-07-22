@@ -27,7 +27,7 @@ export const uiPatterns = {
   pageTitle: {
     margin: 0,
     color: 'var(--text)',
-    fontSize: 'var(--text-2xl)',
+    fontSize: 'var(--text-xl)',
     fontWeight: 720,
     lineHeight: 'var(--leading-tight)',
     letterSpacing: 'var(--tracking-tight)',
@@ -79,7 +79,7 @@ export const uiPatterns = {
       borderRadius: 'var(--radius-sm)',
       background: active ? 'var(--accent-weak)' : 'transparent',
       color: active ? 'var(--accent)' : 'var(--text-muted)',
-      fontSize: 'var(--text-xs)',
+      fontSize: 'var(--text-sm)',
       fontWeight: 650,
       cursor: 'pointer',
     };

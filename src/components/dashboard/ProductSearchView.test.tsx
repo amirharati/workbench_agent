@@ -37,6 +37,7 @@ describe('ProductSearchView empty state', () => {
     expect(markup).toContain('local first');
     expect(markup).toContain('browser research');
     expect(markup).not.toContain('Inspector panel');
-    expect(markup).toContain('padding:24px 28px var(--page-safe-bottom)');
+    expect(markup).toContain('class="scrollbar ui-scroll-footer-safe"');
+    expect(markup).toContain('padding:24px 28px var(--scroll-footer-safe-bottom)');
   });
 });

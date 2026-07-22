@@ -208,4 +208,47 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup).toContain('All project items');
     expect(markup).not.toContain('Open links');
   });
+
+  it('keeps workspace actions outside the project view tab row', () => {
+    localStorage.setItem(
+      projectPageUiKey(project.id, 'all'),
+      JSON.stringify({
+        selectedItemId: null,
+        selectedSessionTabId: null,
+        browseSource: 'workspace',
+      })
+    );
+
+    const markup = renderToStaticMarkup(
+      <ProjectHomeWorkspace
+        project={project}
+        items={items.slice(0, 1)}
+        collections={collections.slice(0, 1)}
+        selectedCollectionId="all"
+        onSelectCollection={vi.fn()}
+        sessionTabs={[{ kind: 'item', id: 'item-tab', itemId: items[0].id, scopeProjectId: project.id }]}
+        onAddItemToSession={vi.fn()}
+        onRemoveSessionTab={vi.fn()}
+        onFocusSession={vi.fn()}
+        onOpenSearch={vi.fn()}
+        workspaces={[]}
+        savedWorkspaceSessions={[]}
+        activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
+        onActivateWorkspace={vi.fn()}
+        onActivateSavedWorkspace={vi.fn()}
+        onSaveWorkspace={vi.fn()}
+        onDeleteSavedWorkspace={vi.fn()}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' }]}
+        onAddItemToWorkspace={vi.fn()}
+        onTransferSessionEntry={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('data-project-view-tabs="true"');
+    expect(markup).toContain('data-project-workspace-actions="true"');
+    expect(markup).toContain('role="toolbar" aria-label="Workspace actions"');
+    expect(markup.indexOf('data-project-workspace-actions="true"')).toBeGreaterThan(
+      markup.indexOf('data-project-view-tabs="true"')
+    );
+  });
 });

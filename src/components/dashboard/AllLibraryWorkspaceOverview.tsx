@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ChevronRight, Clock, ExternalLink, Folder, Layers3, Maximize2, Plus, Search, Star, Trash2, Workflow } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, Clock, ExternalLink, Folder, Layers3, Maximize2, Plus, Search, Star, Trash2, Workflow } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
@@ -139,6 +139,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   const [activeView, setActiveView] = React.useState<AllLibraryView>(() => normalizeAllLibraryView(initialView));
   const [projectFilter, setProjectFilter] = React.useState<ProjectLauncherFilter>(initialProjectFilter);
   const [projectQuery, setProjectQuery] = React.useState(initialProjectQuery);
+  const [projectBrowserOpen, setProjectBrowserOpen] = React.useState(() => initialProjectQuery.trim().length > 0);
   const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:home-all-library-content-view');
   const recentProjectSummaries = getVisibleProjectSummaries(
     projectSummaries,
@@ -152,6 +153,9 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
     projectFilter,
     projectQuery
   );
+  const quickProjectSummaries = (
+    recentProjectSummaries.length > 0 ? recentProjectSummaries : projectSummaries
+  ).slice(0, 6);
   const visibleGroups = selectedView === 'all-active'
     ? groups.filter((group) => group.tabs.length > 0)
     : groups.filter((group) => group.key === selectedView);
@@ -187,25 +191,43 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   };
 
   return (
-    <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, display: 'flex', flexDirection: 'column' }} aria-label="All Library workspace">
-      <section className="ui-project-launcher" aria-labelledby="all-library-projects-heading">
-        <div className="ui-project-launcher__header">
-          <div>
-            <h2 className="ui-project-launcher__title" id="all-library-projects-heading">
-              <Folder size={14} /> Open a project
-            </h2>
-            <p className="ui-project-launcher__description">
-              Projects change your Home context. Opening one does not add or remove anything from a workspace.
-            </p>
+    <section className="ui-all-library-workspace" style={{ width: '100%', maxWidth: 1180, minHeight: 0, display: 'flex', flexDirection: 'column' }} aria-label="All Library workspace">
+      <section className="ui-project-switcher" data-expanded={projectBrowserOpen ? 'true' : 'false'} aria-labelledby="all-library-projects-heading">
+        <div className="ui-project-switcher__row">
+          <h2 className="ui-project-switcher__title" id="all-library-projects-heading">
+            <Folder size={13} /> Recent projects
+          </h2>
+          <div className="ui-project-switcher__quick-list hide-scrollbar" aria-label="Recent project navigation">
+            {quickProjectSummaries.length === 0 ? (
+              <span className="ui-project-switcher__empty">No projects yet</span>
+            ) : quickProjectSummaries.map(({ project, itemCount }) => (
+              <button
+                key={project.id}
+                className="ui-project-switcher__quick-project"
+                type="button"
+                onClick={() => onOpenProject?.(project.id)}
+                aria-label={`Open ${project.name}`}
+                title={`Open ${project.name}`}
+              >
+                <Folder size={12} aria-hidden="true" />
+                <strong>{project.name}</strong>
+                <span>{project.isDefault ? `${itemCount} incoming` : itemCount}</span>
+              </button>
+            ))}
           </div>
-          <span className="ui-project-launcher__count">
-            {visibleProjectSummaries.length !== projectSummaries.length
-              ? `${visibleProjectSummaries.length} of ${projectSummaries.length}`
-              : projectSummaries.length}{' '}
-            project{projectSummaries.length !== 1 ? 's' : ''}
-          </span>
+          <button
+            className="ui-button ui-button--secondary ui-project-switcher__browse"
+            type="button"
+            aria-expanded={projectBrowserOpen}
+            aria-controls="all-library-project-browser"
+            onClick={() => setProjectBrowserOpen((open) => !open)}
+          >
+            All projects <span>{projectSummaries.length}</span>
+            <ChevronDown size={12} aria-hidden="true" />
+          </button>
         </div>
-        <div className="ui-project-launcher__controls">
+        {projectBrowserOpen ? <div className="ui-project-browser" id="all-library-project-browser">
+          <div className="ui-project-launcher__controls">
           <label className="ui-project-launcher__search">
             <Search size={13} aria-hidden="true" />
             <input
@@ -248,8 +270,8 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
               Recent <span>{recentProjectSummaries.length}</span>
             </button>
           </div>
-        </div>
-        <div className="ui-project-launcher__grid scrollbar" aria-label="Project navigation">
+          </div>
+          <div className="ui-project-launcher__grid scrollbar" aria-label="All project navigation">
           {projectSummaries.length === 0 ? (
             <div className="ui-project-launcher__empty">
               Create a project when related material needs a durable home.
@@ -282,16 +304,11 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
               <ChevronRight size={14} aria-hidden="true" />
             </button>
           ))}
-        </div>
+          </div>
+        </div> : null}
       </section>
 
-      <div className="ui-material-workspace-heading">
-        <div>
-          <h2>Library material</h2>
-          <p>Select material to inspect it, or switch to Workspace to continue active work.</p>
-        </div>
-      </div>
-      <div className="ui-tab-bar" data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
+      <div className="ui-tab-bar ui-all-library-tabs" data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ ...uiPatterns.tabBar, marginBottom: 8 }}>
         <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'recent'} onClick={() => selectView('recent')} style={viewTabStyle(activeView === 'recent')}><Clock size={12} /> Recent <span style={tabCountStyle}>{recentItems.length}</span></button>
         <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'quick-access'} onClick={() => selectView('quick-access')} style={viewTabStyle(activeView === 'quick-access')}><Star size={12} /> Favorites &amp; pins <span style={tabCountStyle}>{quickAccessItems.length}</span></button>
         <div style={compoundTabStyle(activeView === 'workspace')}>
@@ -316,7 +333,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
         className="ui-working-canvas ui-adaptive-browser"
         data-all-library-working-canvas
         data-detail-open={activeSelectedTab || previewItem ? 'true' : 'false'}
-        style={{ height: 460, minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}
+        style={{ height: 'clamp(400px, calc(100dvh - 245px), 620px)', minHeight: 360, display: 'grid', gridTemplateColumns: 'minmax(280px, 0.9fr) minmax(0, 1.35fr)', gap: 12 }}
       >
         {activeView === 'workspace' ? <div className="scrollbar" style={{ minWidth: 0, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {visibleGroups.length === 0 ? (

@@ -294,7 +294,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       </div>
 
       {/* Main nav area */}
-      <nav className="ui-sidebar__nav scrollbar" aria-label="Primary navigation">
+      <nav className="ui-sidebar__nav scrollbar ui-scroll-footer-safe" aria-label="Primary navigation">
         {/* 1. PROJECT SELECTOR - Simple dropdown */}
         {!isCollapsed && (
           <div ref={dropdownRef} className="ui-sidebar__scope">

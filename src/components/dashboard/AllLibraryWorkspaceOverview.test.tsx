@@ -132,10 +132,10 @@ describe('AllLibraryWorkspaceOverview', () => {
     );
 
     expect(markup).toContain('aria-label="All Library view"');
-    expect(markup).toContain('Open a project');
-    expect(markup).toContain('aria-label="Project navigation"');
-    expect(markup).toContain('aria-label="Search projects"');
-    expect(markup).toContain('aria-label="Filter projects"');
+    expect(markup).toContain('Recent projects');
+    expect(markup).toContain('aria-label="Recent project navigation"');
+    expect(markup).toContain('All projects');
+    expect(markup).toContain('aria-expanded="false"');
     expect(markup).toContain('aria-label="Open Project Alpha"');
     const host = document.createElement('div');
     host.innerHTML = markup;
@@ -150,6 +150,38 @@ describe('AllLibraryWorkspaceOverview', () => {
   it('normalizes the former Projects material view to Recent', () => {
     expect(normalizeAllLibraryView('projects')).toBe('recent');
     expect(normalizeAllLibraryView('workspace')).toBe('workspace');
+  });
+
+  it('opens the bounded full project browser when restoring a project query', () => {
+    const markup = renderToStaticMarkup(
+      <AllLibraryWorkspaceOverview
+        groups={groups}
+        selectedView="global"
+        onSelectedViewChange={vi.fn()}
+        selectedTab={null}
+        selectedItem={null}
+        items={[]}
+        projects={[{ id: 'project-a', name: 'Project Alpha', created_at: 1, updated_at: 1, isDefault: false }]}
+        collections={[]}
+        projectSummaries={[{
+          project: { id: 'project-a', name: 'Project Alpha', created_at: 1, updated_at: 1, isDefault: false },
+          itemCount: 4,
+          collectionCount: 2,
+        }]}
+        initialProjectQuery="alpha"
+        onSelectTab={vi.fn()}
+        onRemoveGlobalTab={vi.fn()}
+        onFocusTab={vi.fn()}
+        onFocusGlobal={vi.fn()}
+        onAddItemToGlobal={vi.fn()}
+        onViewSearch={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('data-expanded="true"');
+    expect(markup).toContain('aria-label="Search projects"');
+    expect(markup).toContain('aria-label="Filter projects"');
+    expect(markup).toContain('aria-label="All project navigation"');
   });
 
   it('keeps All stable, orders Recent by access, and searches across every project', () => {

@@ -416,7 +416,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
                   {onDeleteItem && <button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => void removeSelectedItem()} title="Move to trash" aria-label={`Move ${selectedItem.title || 'item'} to trash`} style={{ ...iconButtonStyle, color: 'var(--danger)' }}><Trash2 size={13} /></button>}
                 </div>
               </div>
-              <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
+              <div className="scrollbar ui-scroll-footer-safe" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
                 <ItemWorkspace
                   item={selectedItem}
                   projects={projects}

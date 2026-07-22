@@ -400,7 +400,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
               ) : null}
             </div>
           </div>
-          <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
+          <div className="scrollbar ui-scroll-footer-safe" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
             <ItemWorkspace
               item={selectedItem}
               projects={organizationProjects ?? [project]}
@@ -435,7 +435,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
               <button type="button" onClick={() => transferEntry(selectedSessionTab, 'move')} disabled={!transferTargetWorkspaceKey} style={secondaryButtonStyle}><MoveRight size={11} /> Move</button>
             </div>
           )}
-          <div className="scrollbar" style={{ flex: 1, minHeight: 0, padding: 18, overflowY: 'auto' }}>
+          <div className="scrollbar ui-scroll-footer-safe" style={{ flex: 1, minHeight: 0, padding: 18, overflowY: 'auto' }}>
             <span style={{ width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-md)', background: 'var(--accent-weak)', color: 'var(--accent)' }}>
               {selectedSessionTab.kind === 'search' ? <Search size={15} /> : selectedSessionTab.kind === 'url' ? <ExternalLink size={15} /> : <Layers3 size={15} />}
             </span>
@@ -507,7 +507,8 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
               {workspaces.map((workspace) => <option key={workspace.id} value={getSavedWorkspaceSessionKey(workspace.id)}>{workspace.name} · browser</option>)}
             </select>
           </div>
-          {browseSource === 'workspace' && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5, marginLeft: 'auto', flexWrap: 'wrap' }}>
+        </div>
+        {browseSource === 'workspace' && <div className="ui-toolbar scrollbar ui-project-workspace-actions" data-project-workspace-actions role="toolbar" aria-label="Workspace actions">
             {activeSavedWorkspace && <button className="ui-button ui-button--danger" type="button" onClick={() => setWorkspaceDeleteConfirm(activeSavedWorkspace)} title={`Delete ${activeSavedWorkspace.name}`} style={secondaryButtonStyle}><Trash2 size={11} /> Delete</button>}
             <button type="button" onClick={() => { setShowSaveWorkspace((visible) => !visible); setWorkspaceError(null); }} style={secondaryButtonStyle}>
               <Save size={12} /> Save as workspace
@@ -524,7 +525,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
               <Maximize2 size={12} /> Focus
             </button>
           </div>}
-        </div>
         {showSaveWorkspace && (
           <div className="ui-inline-form" style={{ marginBottom: 9 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -892,8 +892,8 @@ const detailLabelStyle: React.CSSProperties = { color: 'var(--text-faint)', font
 const sourceButtonStyle = (active: boolean): React.CSSProperties => ({ minHeight: 30, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'var(--bg-panel)', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' });
 const viewTabStyle = uiPatterns.viewTab;
 const compoundTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'center', overflow: 'hidden', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)' });
-const compoundTabButtonStyle: React.CSSProperties = { height: 29, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 7px 0 9px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' };
-const tabSelectStyle: React.CSSProperties = { minWidth: 96, maxWidth: 155, height: 25, marginRight: 3, padding: '0 5px', border: 'none', borderLeft: '1px solid var(--border)', outline: 'none', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-xs)' };
+const compoundTabButtonStyle: React.CSSProperties = { height: 29, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 7px 0 9px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 'var(--text-sm)', fontWeight: 650, cursor: 'pointer' };
+const tabSelectStyle: React.CSSProperties = { minWidth: 96, maxWidth: 155, height: 25, marginRight: 3, padding: '0 5px', border: 'none', borderLeft: '1px solid var(--border)', outline: 'none', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-sm)' };
 const panelHeaderStyle: React.CSSProperties = { ...uiPatterns.panelHeader, minHeight: 48, padding: '8px 12px' };
 const sectionHeadingStyle: React.CSSProperties = { margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 650 };
 const browseListStyle: React.CSSProperties = { maxHeight: 190, overflowY: 'auto', overflowX: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };

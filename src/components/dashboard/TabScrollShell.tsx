@@ -5,7 +5,7 @@ export const TabScrollShell: React.FC<{
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
-}> = ({ children, className = 'scrollbar', style }) => (
+}> = ({ children, className = 'scrollbar ui-scroll-footer-safe', style }) => (
   <div
     className={className}
     style={{

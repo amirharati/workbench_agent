@@ -50,6 +50,24 @@ describe('dashboard shell polish contracts', () => {
     expect(markup).toContain('aria-label="Collapse Inspector panel"');
   });
 
+  it('keeps a visible control for reopening a collapsed Inspector', () => {
+    const markup = renderToStaticMarkup(
+      <RightPanel
+        activeItem={null}
+        scopeProjectId="all"
+        scopeCollectionId="all"
+        isCollapsed
+        activeTab="inspector"
+        onCollapsedChange={vi.fn()}
+        onActiveTabChange={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('right-panel-collapsed');
+    expect(markup).toContain('aria-label="Expand Inspector panel"');
+    expect(markup).toContain('<span>Inspector</span>');
+  });
+
   it('renders the current scope as a labelled, dismissible trail', () => {
     const markup = renderToStaticMarkup(
       <ScopeChipsBar

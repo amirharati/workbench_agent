@@ -244,7 +244,7 @@ function ItemInspectorBody({
         overflowY: 'auto',
         height: '100%',
       }}
-      className="scrollbar"
+      className="scrollbar ui-scroll-footer-safe"
     >
       {isSearchSurface && (
         <SearchInspectorChrome
@@ -479,7 +479,7 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
   if (!activeItem && isSearchSurface) {
     return (
       <div
-        className="scrollbar"
+        className="scrollbar ui-scroll-footer-safe"
         style={{
           padding: '10px 12px',
           overflowY: 'auto',

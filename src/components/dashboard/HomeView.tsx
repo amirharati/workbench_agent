@@ -50,7 +50,6 @@ interface HomeViewProps {
   onDeleteBookmark?: (id: string, collectionId?: string) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
-  searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   librarySearch?: LibrarySearchApi;
   workingSearch?: LibrarySearchApi;
@@ -79,7 +78,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, searchQuery, onSearchQueryChange, librarySearch, workingSearch, onOpenItemFromSearch, onOpenPipelineHub, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], recentProjectAccessIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, onSelectedBrowseItemChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, onSearchQueryChange, librarySearch, workingSearch, onOpenItemFromSearch, onOpenPipelineHub, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], recentProjectAccessIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, onSelectedBrowseItemChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const [homeItemContextMenu, setHomeItemContextMenu] = React.useState<{
     item: Item;
@@ -629,20 +628,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setHomeItemContextMenu({ item, x: e.clientX, y: e.clientY });
   };
 
-  const handleHeroSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = searchQuery.trim();
-    if (!q || !librarySearch) return;
-    librarySearch.setQuery(q);
-    void librarySearch.runSearch(q);
-    onHomeStateChange({
-      ...homeState,
-      activeTabId: null,
-      homeSection: 'search',
-      searchQuery: q,
-    });
-  };
-
   const homeSection = homeState.homeSection === 'search' ? 'search' : 'overview';
   const selectHomeSection = (section: 'overview' | 'search') => {
     if (section === 'search' && librarySearch?.state.query.trim()) {
@@ -889,38 +874,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           minHeight: 0,
           overflowY: 'auto',
           overflowX: 'hidden',
-          padding: '32px 24px var(--page-safe-bottom)',
-          scrollPaddingBottom: 'var(--page-safe-bottom)',
+          padding: '16px 20px var(--scroll-footer-safe-bottom)',
+          scrollPaddingBottom: 'var(--scroll-footer-safe-bottom)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 24,
+          gap: 12,
           alignItems: 'center',
         }}
       >
-        <section className="ui-home-find" style={{ maxWidth: 1000, width: '100%' }} aria-labelledby="home-find-heading">
-          <h2 className="ui-home-find__heading" id="home-find-heading" style={{ margin: '0 0 8px', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 650 }}>Find</h2>
-          <div style={{ maxWidth: 680 }}>
-          <form onSubmit={handleHeroSearch}>
-            <div className="ui-home-find__field" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 18px', boxShadow: 'var(--shadow-sm)' }}>
-              <Search size={18} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => onSearchQueryChange(e.target.value)}
-                placeholder={scopeProjectId === 'all' ? 'Search your library...' : `Search in ${scopeLabel}...`}
-                autoFocus
-                style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 'var(--text-lg)', fontFamily: 'var(--font-sans)' }}
-              />
-              {searchQuery && (
-                <button type="submit" className="ui-button ui-button--primary" style={{ background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', color: 'var(--accent-text)', padding: '5px 14px', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-                  Search
-                </button>
-              )}
-            </div>
-          </form>
-          </div>
-        </section>
-
         {scopeProjectId === 'all' && (
           <AllLibraryWorkspaceOverview
             initialView={allLibraryActiveView}

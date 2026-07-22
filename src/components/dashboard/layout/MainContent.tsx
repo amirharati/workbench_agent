@@ -724,7 +724,6 @@ export const MainContent: React.FC<MainContentProps> = ({
             onDeleteBookmark={onDeleteBookmark}
             onCreateProject={onCreateProject}
             onCreateCollection={onCreateCollection}
-            searchQuery={globalTabState?.searchQuery ?? ''}
             onSearchQueryChange={(q) => onGlobalTabStateChange?.({ ...globalTabState!, searchQuery: q })}
             librarySearch={librarySearch}
             workingSearch={workingLibrarySearch}
@@ -2458,6 +2457,7 @@ export const MainContent: React.FC<MainContentProps> = ({
       )}
       
       <div
+        className={usesContainedScroller ? undefined : 'scrollbar ui-scroll-footer-safe'}
         style={{
           flex: 1,
           minHeight: 0,
@@ -2465,8 +2465,8 @@ export const MainContent: React.FC<MainContentProps> = ({
           display: usesContainedScroller ? 'flex' : 'block',
           flexDirection: 'column',
           boxSizing: 'border-box',
-          paddingBottom: usesContainedScroller ? 0 : 20,
-          scrollPaddingBottom: usesContainedScroller ? 0 : 20,
+          paddingBottom: usesContainedScroller ? 0 : 'var(--scroll-footer-safe-bottom)',
+          scrollPaddingBottom: usesContainedScroller ? 0 : 'var(--scroll-footer-safe-bottom)',
         }}
       >
         <React.Suspense fallback={<LazyViewFallback />}>

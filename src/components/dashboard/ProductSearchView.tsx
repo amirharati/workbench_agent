@@ -104,12 +104,12 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
 
   return (
     <div
-      className="scrollbar"
+      className={`scrollbar${embedded ? '' : ' ui-scroll-footer-safe'}`}
       style={{
         height: '100%',
         overflowY: 'auto',
-        padding: embedded ? '12px 16px 28px' : '24px 28px var(--page-safe-bottom)',
-        scrollPaddingBottom: embedded ? 28 : 'var(--page-safe-bottom)',
+        padding: embedded ? '12px 16px 28px' : '24px 28px var(--scroll-footer-safe-bottom)',
+        scrollPaddingBottom: embedded ? 28 : 'var(--scroll-footer-safe-bottom)',
         display: 'flex',
         flexDirection: 'column',
         gap: embedded ? 12 : 20,

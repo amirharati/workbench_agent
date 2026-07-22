@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { InspectorTab } from '../InspectorTab';
 import { AskTab } from '../AskTab';
@@ -52,31 +52,25 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   onOpenItemIdInTab,
   onTestAI,
 }) => {
-  const [hoverExpanded, setHoverExpanded] = useState(false);
-
   const toggle = () => onCollapsedChange(!isCollapsed);
-  const showExpanded = !isCollapsed || hoverExpanded;
 
   return (
     <div
-      className={`right-panel${isCollapsed && !hoverExpanded ? ' right-panel-collapsed' : ''}`}
-      data-expanded={showExpanded ? 'true' : 'false'}
-      onMouseEnter={() => { if (isCollapsed) setHoverExpanded(true); }}
-      onMouseLeave={() => setHoverExpanded(false)}
-      style={{ width: showExpanded ? undefined : 8 }}
+      className={`right-panel${isCollapsed ? ' right-panel-collapsed' : ''}`}
+      data-expanded={isCollapsed ? 'false' : 'true'}
     >
-      {isCollapsed && !hoverExpanded && (
+      {isCollapsed ? (
         <button
+          type="button"
           onClick={toggle}
-          title="Expand panel"
+          title="Open Inspector"
           aria-label="Expand Inspector panel"
           className="right-panel-handle"
         >
-          <ChevronLeft size={10} />
+          <ChevronLeft size={13} />
+          <span>Inspector</span>
         </button>
-      )}
-
-      {showExpanded && (
+      ) : (
         <div className="right-panel__content">
           <div
             className="right-panel__tabs"
