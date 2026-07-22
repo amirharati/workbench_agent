@@ -138,13 +138,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           (Array.isArray(c.projectIds) && c.projectIds.includes(scopeProjectId))
       );
   const scopeProjectIsInbox = projects.find((project) => project.id === scopeProjectId)?.isDefault === true;
+  const inboxCollection = scopeProjectIsInbox
+    ? projectCollections.find((collection) => collection.isDefault) ?? projectCollections[0]
+    : undefined;
 
   const handleAddProject = async (name: string) => {
     if (!onCreateProject) return;
     const createdId = await onCreateProject({ name: name.trim() });
     if (typeof createdId === 'string') {
       onSelectProjectScope(createdId);
-      onSelectCollectionScope('all', createdId);
     }
   };
 
@@ -158,7 +160,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     const deleted = await onDeleteProject(projectId);
     if (deleted !== false && scopeProjectId === projectId) {
       onSelectProjectScope('all');
-      onSelectCollectionScope('all');
     }
   };
 
@@ -382,7 +383,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       aria-selected={scopeProjectId === project.id}
                       onClick={() => {
                         onSelectProjectScope(project.id);
-                        onSelectCollectionScope('all', project.id);
                         setProjectDropdownOpen(false);
                       }}
                     >
@@ -440,16 +440,34 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               )}
             </div>
             <div className="ui-sidebar__link-list">
-              <button
-                type="button"
-                className="ui-sidebar__nav-item"
-                data-active={scopeCollectionId === 'all' ? 'true' : 'false'}
-                aria-current={scopeCollectionId === 'all' ? 'page' : undefined}
-                onClick={() => onSelectCollectionScope('all', scopeProjectId)}
-              >
-                All
-              </button>
-              {projectCollections.map((collection) => {
+              {scopeProjectIsInbox ? (
+                <button
+                  type="button"
+                  className="ui-sidebar__nav-item"
+                  data-active="true"
+                  aria-current="page"
+                  onClick={() => onSelectCollectionScope('all', scopeProjectId)}
+                >
+                  <span className="ui-sidebar__nav-label">Incoming</span>
+                  {inboxCollection ? (
+                    <span className="ui-sidebar__count">
+                      {(collectionItemCounts.get(inboxCollection.id)?.bookmarks ?? 0) +
+                        (collectionItemCounts.get(inboxCollection.id)?.notes ?? 0)}
+                    </span>
+                  ) : null}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="ui-sidebar__nav-item"
+                    data-active={scopeCollectionId === 'all' ? 'true' : 'false'}
+                    aria-current={scopeCollectionId === 'all' ? 'page' : undefined}
+                    onClick={() => onSelectCollectionScope('all', scopeProjectId)}
+                  >
+                    All
+                  </button>
+                  {projectCollections.map((collection) => {
                 const counts = collectionItemCounts.get(collection.id) ?? { bookmarks: 0, notes: 0 };
                 const isSelected = scopeCollectionId === collection.id;
                 return (
@@ -490,7 +508,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     )}
                   </div>
                 );
-              })}
+                  })}
+                </>
+              )}
             </div>
           </section>
         )}

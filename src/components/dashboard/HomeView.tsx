@@ -61,6 +61,7 @@ interface HomeViewProps {
   onCancelBatch?: () => void;
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
+  scopeNavigationRevision?: number;
   recentProjectIds?: string[];
   recentProjectAccessIds?: string[];
   onSelectProjectScope?: (projectId: string | 'all') => void;
@@ -77,7 +78,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, onSearchQueryChange, librarySearch, workingSearch, onOpenItemFromSearch, onOpenPipelineHub, scopeProjectId = 'all', scopeCollectionId = 'all', recentProjectIds = [], recentProjectAccessIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, onSelectedBrowseItemChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, onSearchQueryChange, librarySearch, workingSearch, onOpenItemFromSearch, onOpenPipelineHub, scopeProjectId = 'all', scopeCollectionId = 'all', scopeNavigationRevision = 0, recentProjectIds = [], recentProjectAccessIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSwitchScopeForItem, onSelectedBrowseItemChange, renderListTab, statusBar, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const [homeItemContextMenu, setHomeItemContextMenu] = React.useState<{
     item: Item;
@@ -820,6 +821,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           organizationProjects={projects}
           organizationCollections={collections}
           selectedCollectionId={scopeCollectionId}
+          scopeNavigationRevision={scopeNavigationRevision}
           onSelectCollection={(collectionId) => {
             if (collectionId === 'all') openProjectScope(activeProject.id);
             else openCollectionScope(collectionId, activeProject.id);

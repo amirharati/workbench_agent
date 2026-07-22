@@ -52,6 +52,7 @@ interface MainContentProps {
   activeView: DashboardView;
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
+  scopeNavigationRevision?: number;
   recentProjectIds?: string[];
   recentProjectAccessIds?: string[];
   projects: Project[];
@@ -142,6 +143,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   activeView, 
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
+  scopeNavigationRevision = 0,
   recentProjectIds = [],
   recentProjectAccessIds = [],
   projects,
@@ -738,6 +740,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onCancelBatch={onCancelBatch}
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
+            scopeNavigationRevision={scopeNavigationRevision}
             recentProjectIds={recentProjectIds}
             recentProjectAccessIds={recentProjectAccessIds}
             onSelectProjectScope={onSelectProjectScope}

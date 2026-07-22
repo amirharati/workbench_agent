@@ -222,6 +222,12 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const [activeView, setActiveView] = useState<DashboardView>(() => initialNav.activeView as DashboardView);
   const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>(() => initialNav.scopeProjectId);
   const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>(() => initialNav.scopeCollectionId);
+  const [scopeNavigationRevision, setScopeNavigationRevision] = useState(0);
+  useEffect(() => {
+    if (scopeNavigationRevision === 0) return;
+    const timeoutId = window.setTimeout(() => setScopeNavigationRevision(0), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [scopeNavigationRevision]);
   const [selectedBrowseItemId, setSelectedBrowseItemId] = useState<string | null>(null);
   const handleSelectedBrowseItemChange = useCallback((item: Item | null) => {
     setSelectedBrowseItemId(item?.id ?? null);
@@ -234,6 +240,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     previousBrowseContextRef.current = browseContextKey;
     setSelectedBrowseItemId(null);
   }, [browseContextKey]);
+
+  useEffect(() => {
+    if (scopeProjectId === 'all' || scopeCollectionId === 'all') return;
+    const scopedProject = projects.find((project) => project.id === scopeProjectId);
+    if (!scopedProject?.isDefault) return;
+    setScopeCollectionId('all');
+    setScopeNavigationRevision((revision) => revision + 1);
+    patchNavigationState({ scopeProjectId, scopeCollectionId: 'all' });
+  }, [projects, scopeCollectionId, scopeProjectId]);
   const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() =>
     initialNav.scopeProjectId === 'all'
       ? initialNav.recentProjectIds
@@ -696,6 +711,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   };
 
   const handleSelectProjectScope = (projectId: string | 'all') => {
+    setScopeNavigationRevision((revision) => revision + 1);
     setScopeProjectId(projectId);
     setScopeCollectionId('all');
     if (projectId !== 'all') rememberProjectScope(projectId);
@@ -703,6 +719,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   };
 
   const handleSelectCollectionScope = (collectionId: string, projectId?: string) => {
+    setScopeNavigationRevision((revision) => revision + 1);
     setScopeCollectionId(collectionId);
     const nextProjectId = projectId ?? scopeProjectId;
     if (projectId) setScopeProjectId(projectId);
@@ -1035,6 +1052,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const handleSwitchScopeForItem = useCallback(
     (item: Item) => {
       const target = getItemPrimaryScope(item, collections);
+      setScopeNavigationRevision((revision) => revision + 1);
       setScopeProjectId(target.projectId);
       setScopeCollectionId(target.collectionId);
       patchNavigationState({
@@ -1046,17 +1064,20 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   );
 
   const handleClearProjectScope = useCallback(() => {
+    setScopeNavigationRevision((revision) => revision + 1);
     setScopeProjectId('all');
     setScopeCollectionId('all');
     patchNavigationState({ scopeProjectId: 'all', scopeCollectionId: 'all' });
   }, []);
 
   const handleClearCollectionScope = useCallback(() => {
+    setScopeNavigationRevision((revision) => revision + 1);
     setScopeCollectionId('all');
     patchNavigationState({ scopeCollectionId: 'all' });
   }, []);
 
   const handleResetScope = useCallback(() => {
+    setScopeNavigationRevision((revision) => revision + 1);
     setScopeProjectId('all');
     setScopeCollectionId('all');
     patchNavigationState({ scopeProjectId: 'all', scopeCollectionId: 'all' });
@@ -1146,6 +1167,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onTestAI={onTestAI}
                 scopeProjectId={scopeProjectId}
                 scopeCollectionId={scopeCollectionId}
+                scopeNavigationRevision={scopeNavigationRevision}
                 globalTabState={globalTabState}
                 onGlobalTabStateChange={handleGlobalTabStateChange}
                 categoryBrowse={categoryBrowse}
@@ -1204,6 +1226,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onTestAI={onTestAI}
               scopeProjectId={scopeProjectId}
               scopeCollectionId={scopeCollectionId}
+              scopeNavigationRevision={scopeNavigationRevision}
               recentProjectIds={recentProjectIds}
               recentProjectAccessIds={recentProjectAccessIds}
               globalTabState={globalTabState}
@@ -1289,6 +1312,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                   onTestAI={onTestAI}
                   scopeProjectId={scopeProjectId}
                   scopeCollectionId={scopeCollectionId}
+                  scopeNavigationRevision={scopeNavigationRevision}
                   listMode
                   onOpenItem={handleOpenItemTab}
                   onOpenWorkspace={handleOpenWorkspaceTab}

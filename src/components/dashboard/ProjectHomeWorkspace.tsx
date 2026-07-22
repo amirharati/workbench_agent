@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Globe2, Layers3, Link2, Maximize2, MoveRight, Pin, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
@@ -25,6 +25,7 @@ interface ProjectHomeWorkspaceProps {
   organizationProjects?: Project[];
   organizationCollections?: Collection[];
   selectedCollectionId: string | 'all';
+  scopeNavigationRevision?: number;
   onSelectCollection: (collectionId: string | 'all') => void;
   sessionTabs: GlobalTab[];
   activeSessionTabId?: string | null;
@@ -67,6 +68,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   organizationProjects,
   organizationCollections,
   selectedCollectionId,
+  scopeNavigationRevision = 0,
   onSelectCollection,
   sessionTabs,
   activeSessionTabId,
@@ -109,8 +111,11 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const [transferEntryId, setTransferEntryId] = useState<string | null>(null);
   const [transferTargetWorkspaceKey, setTransferTargetWorkspaceKey] = useState('');
   const [browseSource, setBrowseSource] = useState<'workspace' | 'all' | 'pinned' | 'collection'>(
-    initialPageUi.browseSource
+    scopeNavigationRevision > 0
+      ? selectedCollectionId === 'all' ? 'all' : 'collection'
+      : initialPageUi.browseSource
   );
+  const appliedScopeNavigationRevisionRef = useRef(scopeNavigationRevision);
   const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:project-content-view');
   const showLegacyProjectBrowser = false as boolean;
 
@@ -175,6 +180,17 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   useEffect(() => {
     savePageUiState(pageUiKey, { selectedItemId, selectedSessionTabId, browseSource });
   }, [browseSource, pageUiKey, selectedItemId, selectedSessionTabId]);
+
+  useEffect(() => {
+    if (
+      scopeNavigationRevision === 0 ||
+      scopeNavigationRevision === appliedScopeNavigationRevisionRef.current
+    ) return;
+    appliedScopeNavigationRevisionRef.current = scopeNavigationRevision;
+    setBrowseSource(selectedCollectionId === 'all' ? 'all' : 'collection');
+    setSelectedItemId(null);
+    setSelectedSessionTabId(null);
+  }, [scopeNavigationRevision, selectedCollectionId]);
 
   useEffect(() => {
     if (selectedItemId && allItems.length > 0 && !allItems.some((item) => item.id === selectedItemId)) {
