@@ -18,6 +18,7 @@ import { loadPageUiState, projectPageUiKey, savePageUiState } from '../../lib/sh
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import type { WorkspaceDestination } from './workspaceDestinations';
+import { buildItemQuickFilterText, buildQuickFilterText } from '../../lib/itemQuickFilter';
 
 interface ProjectHomeWorkspaceProps {
   project: Project;
@@ -349,6 +350,11 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             : tab.kind === 'list'
               ? 'Saved list'
               : item?.notes || 'Note',
+      searchText: buildQuickFilterText(
+        tab,
+        searchScope,
+        item ? buildItemQuickFilterText(item, organizationProjects ?? [project], organizationCollections ?? collections) : null
+      ),
       actions: (
         <>
           <button type="button" onClick={() => onFocusSession(tab.id)} title={`Focus ${label}`} aria-label={`Focus ${label}`} style={sessionIconButtonStyle}><Maximize2 size={11} /></button>
@@ -370,6 +376,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
       title: item.title || 'Untitled',
       icon: item.url ? <Link2 size={12} /> : <FileText size={12} />,
       subtitle: item.url ? <BookmarkUrlLink item={item} style={{ color: 'inherit' }} /> : item.notes || 'Empty note',
+      searchText: buildItemQuickFilterText(item, organizationProjects ?? [project], organizationCollections ?? collections),
       actions: (
         <>
           <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} stopPropagation />

@@ -31,6 +31,7 @@ describe('HomeBrowsePanel', () => {
     expect(markup).toContain('Inbox');
     expect(markup).toContain('Processing');
     expect(markup).toContain('Trash');
+    expect(markup).toContain('aria-label="Filter Browse library"');
     expect(markup).not.toContain('Processing Digest');
     expect(markup).not.toContain('Library Overview');
   });

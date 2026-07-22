@@ -1,8 +1,18 @@
+// @vitest-environment jsdom
+
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ContentBrowser } from './ContentBrowser';
 
 describe('ContentBrowser', () => {
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
   it('renders the same content as a selectable gallery', () => {
     const markup = renderToStaticMarkup(
       <ContentBrowser
@@ -86,5 +96,43 @@ describe('ContentBrowser', () => {
     expect(markup).toContain('Library item 59');
     expect(markup).not.toContain('Library item 60');
     expect(markup).toContain('Loading more… 60 of 100');
+  });
+
+  it('quick-filters on hidden item information and reports the scoped count', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ContentBrowser
+          title="Collection"
+          entries={[
+            { id: 'alpha', title: 'Architecture article', icon: 'L', searchText: 'classified systems Research project' },
+            { id: 'beta', title: 'Cooking article', icon: 'L', searchText: 'recipes Personal project' },
+          ]}
+          selectedId={null}
+          onSelect={vi.fn()}
+          mode="list"
+          onModeChange={vi.fn()}
+          emptyMessage="Nothing here"
+        />
+      );
+    });
+
+    const input = host.querySelector<HTMLInputElement>('[aria-label="Filter Collection"]');
+    expect(input).not.toBeNull();
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      valueSetter?.call(input, 'classified research');
+      input?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    expect(host.textContent).toContain('1 of 2');
+    expect(host.textContent).toContain('Architecture article');
+    expect(host.textContent).not.toContain('Cooking article');
+    expect(host.querySelector('[aria-label="Clear Collection filter"]')).not.toBeNull();
+
+    await act(async () => root.unmount());
   });
 });

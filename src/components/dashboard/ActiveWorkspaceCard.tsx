@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { ExternalLink, FileText, Layers3, Link2, Maximize2, Search, X } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import type { GlobalTab } from './GlobalTabSystem';
+import { buildItemQuickFilterText, buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 
 function workspaceEntryLabel(tab: GlobalTab, items: readonly Item[]): string {
   if (tab.kind === 'search') return tab.query.trim() || 'Search';
@@ -43,8 +44,23 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
   allowRemove = true,
   showFocus = true,
   maxListHeight = 224,
-}) => (
-  <section
+}) => {
+  const [filterQuery, setFilterQuery] = useState('');
+  const searchIndex = useMemo(
+    () => tabs.map((tab) => {
+      const item = tab.kind === 'item' ? items.find((candidate) => candidate.id === tab.itemId) : undefined;
+      return {
+        tab,
+        searchText: buildQuickFilterText(tab, workspaceEntryLabel(tab, items), getEntryScopeLabel?.(tab), item ? buildItemQuickFilterText(item) : null),
+      };
+    }),
+    [getEntryScopeLabel, items, tabs]
+  );
+  const filteredTabs = filterQuery.trim()
+    ? searchIndex.filter(({ searchText }) => matchesQuickFilter(searchText, filterQuery)).map(({ tab }) => tab)
+    : tabs;
+
+  return <section
     style={{
       padding: '10px 12px',
       border: '1px solid var(--border)',
@@ -62,7 +78,7 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
         <span style={{ minWidth: 0 }}>
           <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-xs)' }}>{title}</strong>
           <span style={{ display: 'block', marginTop: 1, color: 'var(--text-faint)', fontSize: 10 }}>
-            {tabs.length} workspace entr{tabs.length === 1 ? 'y' : 'ies'} · {contextLabel}
+            {filterQuery.trim() ? `${filteredTabs.length} of ${tabs.length}` : tabs.length} workspace entr{tabs.length === 1 ? 'y' : 'ies'} · {contextLabel}
           </span>
         </span>
       </div>
@@ -79,8 +95,18 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
       </div>
     </div>
 
+    {tabs.length > 1 ? (
+      <label className="ui-list-quick-filter" style={{ width: '100%', marginTop: 8 }}>
+        <Search size={12} aria-hidden="true" />
+        <input type="search" value={filterQuery} onChange={(event) => setFilterQuery(event.target.value)} placeholder="Filter this workspace…" aria-label={`Filter ${title}`} title="Matches all workspace entry and saved item information" />
+        {filterQuery ? <button type="button" onClick={() => setFilterQuery('')} aria-label={`Clear ${title} filter`} title="Clear filter"><X size={11} /></button> : null}
+      </label>
+    ) : null}
+
     {tabs.length === 0 ? (
       <div style={{ marginTop: 8, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{emptyMessage}</div>
+    ) : filteredTabs.length === 0 ? (
+      <div style={{ marginTop: 8, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>No workspace entries match “{filterQuery.trim()}”.</div>
     ) : (
       <div
         className="scrollbar"
@@ -93,7 +119,7 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
           background: 'var(--bg)',
         }}
       >
-        {tabs.map((tab) => {
+        {filteredTabs.map((tab) => {
           const item = tab.kind === 'item' ? items.find((candidate) => candidate.id === tab.itemId) : undefined;
           const label = workspaceEntryLabel(tab, items);
           const selected = activeEntryId === tab.id;
@@ -140,5 +166,5 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
         })}
       </div>
     )}
-  </section>
-);
+  </section>;
+};

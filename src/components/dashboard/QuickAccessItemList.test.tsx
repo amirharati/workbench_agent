@@ -35,5 +35,6 @@ describe('QuickAccessItemList', () => {
     expect(markup).toContain('Readable article');
     expect(markup).toContain('example.com');
     expect(markup).toContain('ui-quick-access-list__actions');
+    expect(markup).toContain('aria-label="Filter Favorites"');
   });
 });

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { ChevronRight, Clock, Folder, Layers3, Star, Trash2, Workflow } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ChevronRight, Clock, Folder, Layers3, Search, Star, Trash2, Workflow, X } from 'lucide-react';
 import type { Item, Project } from '../../lib/db';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
+import { buildItemQuickFilterText, buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 
 type BrowseMode = 'projects' | 'recent' | 'quick-access';
 
@@ -37,7 +38,25 @@ export const HomeBrowsePanel: React.FC<HomeBrowsePanelProps> = ({
   onOpenPipeline,
 }) => {
   const [mode, setMode] = useState<BrowseMode>('projects');
-  const visibleItems = mode === 'recent' ? recentItems : quickAccessItems;
+  const [filterQuery, setFilterQuery] = useState('');
+  const sourceItems = mode === 'recent' ? recentItems : quickAccessItems;
+  const projectSearchIndex = useMemo(
+    () => projects.map((summary) => ({
+      summary,
+      searchText: buildQuickFilterText(summary.project, summary.collectionCount, summary.itemCount),
+    })),
+    [projects]
+  );
+  const itemSearchIndex = useMemo(
+    () => sourceItems.map((item) => ({ item, searchText: buildItemQuickFilterText(item) })),
+    [sourceItems]
+  );
+  const visibleProjects = filterQuery.trim()
+    ? projectSearchIndex.filter(({ searchText }) => matchesQuickFilter(searchText, filterQuery)).map(({ summary }) => summary)
+    : projects;
+  const visibleItems = filterQuery.trim()
+    ? itemSearchIndex.filter(({ searchText }) => matchesQuickFilter(searchText, filterQuery)).map(({ item }) => item)
+    : sourceItems;
 
   return (
     <section style={{ width: '100%', maxWidth: 1000 }} aria-labelledby="home-browse-heading">
@@ -56,7 +75,7 @@ export const HomeBrowsePanel: React.FC<HomeBrowsePanelProps> = ({
       </div>
 
       <div style={{ overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }}>
-        <div style={{ minHeight: 43, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 9px', borderBottom: '1px solid var(--border)' }} aria-label="Library browse views">
+        <div className="ui-home-browse__toolbar" style={{ minHeight: 43, display: 'flex', alignItems: 'center', gap: 4, padding: '6px 9px', borderBottom: '1px solid var(--border)' }} aria-label="Library browse views">
           {([
             { id: 'projects' as const, label: 'Projects', icon: Folder, count: projects.length },
             { id: 'recent' as const, label: 'Recent', icon: Clock, count: recentItems.length },
@@ -70,15 +89,20 @@ export const HomeBrowsePanel: React.FC<HomeBrowsePanelProps> = ({
               </button>
             );
           })}
+          <label className="ui-list-quick-filter ui-home-browse__quick-filter">
+            <Search size={12} aria-hidden="true" />
+            <input type="search" value={filterQuery} onChange={(event) => setFilterQuery(event.target.value)} placeholder="Filter this list…" aria-label="Filter Browse library" title="Matches all saved item or project information" />
+            {filterQuery ? <button type="button" onClick={() => setFilterQuery('')} aria-label="Clear Browse library filter" title="Clear filter"><X size={11} /></button> : null}
+          </label>
         </div>
 
         <div className="scrollbar" style={{ minHeight: 150, maxHeight: 330, overflowY: 'auto' }}>
           {mode === 'projects' ? (
-            projects.length === 0 ? (
-              <EmptyBrowseState message="Create a project when you want a durable home for related work." />
+            visibleProjects.length === 0 ? (
+              <EmptyBrowseState message={projects.length === 0 ? 'Create a project when you want a durable home for related work.' : `No projects match “${filterQuery.trim()}”.`} />
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8, padding: 10 }}>
-                {projects.map(({ project, collectionCount, itemCount }) => (
+                {visibleProjects.map(({ project, collectionCount, itemCount }) => (
                   <button key={project.id} type="button" onClick={() => onOpenProject(project.id)} style={projectButtonStyle}>
                     <span style={{ width: 30, height: 30, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, background: project.isDefault ? 'var(--accent-weak)' : 'var(--bg-hover)', color: project.isDefault ? 'var(--accent)' : 'var(--text-faint)' }}>
                       <Folder size={14} />
@@ -93,7 +117,7 @@ export const HomeBrowsePanel: React.FC<HomeBrowsePanelProps> = ({
               </div>
             )
           ) : visibleItems.length === 0 ? (
-            <EmptyBrowseState message={mode === 'quick-access' ? 'Favorite or pin items to keep them close.' : 'Newly captured material will appear here.'} />
+            <EmptyBrowseState message={sourceItems.length === 0 ? (mode === 'quick-access' ? 'Favorite or pin items to keep them close.' : 'Newly captured material will appear here.') : `No items match “${filterQuery.trim()}”.`} />
           ) : (
             visibleItems.map((item) => {
               const selected = selectedItemId === item.id;

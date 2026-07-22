@@ -195,6 +195,7 @@ Workflow checklist (product, no new schema first):
 
 - [ ] **Fetch / enrichment improvement** — Coverage, retries, import hook, failure stats (lifts classify + search more than ranker-only work).
 - [ ] **Task 04 follow-ups (`04-defer-1` … `04-defer-3`)** — Re-run `search-eval` on embedded corpus; optional ranking mini-task; spot-check doc.
+- [ ] **Scoped semantic list filtering** — If dogfooding confirms hybrid retrieval quality, add an explicit semantic/hybrid option beside the instant local list filter. Preserve the current project/collection/workspace/list candidate set, reuse stored document embeddings and the existing hybrid-search pipeline, show when coverage is incomplete, and retain deterministic text filtering as the zero-latency fallback. Do not trigger paid embedding or LLM requests on every keystroke; define an Enter/button/debounce boundary and test latency/result stability first.
 - [ ] **Embed pipeline** — Auto-embed after extract; unify `buildSearchEmbedText` vs `buildItemText`; Web Worker batches (moved from V1 open items).
 - [ ] **Pluggable interfaces** — `Embedder`, `Retriever`, `Indexer` stubs when refactoring for product automation.
 

@@ -28,6 +28,12 @@ describe('responsive dashboard layout contract', () => {
     expect(css).not.toContain(".ui-content-browser__entry:has(.ui-content-browser__actions)");
   });
 
+  it('gives shared list filters their own compact responsive row', () => {
+    expect(css).toContain('.ui-list-quick-filter');
+    expect(css).toContain('container-name: content-browser');
+    expect(css).toMatch(/@container content-browser \(max-width: 520px\)[\s\S]*?\.ui-content-browser__quick-filter \{[\s\S]*?flex-basis: 100%;/);
+  });
+
   it('keeps the compact Project view ribbon visually substantial', () => {
     expect(css).toMatch(/\[data-project-view-tabs\] \{[\s\S]*?flex: 1;/);
     expect(css).toMatch(/@container dashboard-workspace \(max-width: 1000px\)[\s\S]*?\[data-project-view-tabs\] \{[\s\S]*?min-height: 46px;/);

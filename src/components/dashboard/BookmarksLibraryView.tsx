@@ -24,6 +24,7 @@ import {
   getProjectSessionWorkspaceKey,
 } from './workspaceSession';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
+import { buildItemQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 
 const GLOBAL_WORKSPACE_KEY = 'global-session:all';
 
@@ -234,11 +235,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
     const normalizedQuery = query.trim().toLowerCase();
     if (normalizedQuery) {
       result = result.filter((item) =>
-        [item.title, item.url, item.notes, ...(item.tags ?? [])]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-          .includes(normalizedQuery)
+        matchesQuickFilter(buildItemQuickFilterText(item, projects, collections), normalizedQuery)
       );
     }
     return [...result].sort(
@@ -246,7 +243,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
         Number(right.favoriteAt != null) - Number(left.favoriteAt != null) ||
         (right.updated_at ?? right.created_at) - (left.updated_at ?? left.created_at)
     );
-  }, [categoryBrowse, collections, items, pipelineBrowse, query, scopeCollectionId, scopeProjectId, typeFilter]);
+  }, [categoryBrowse, collections, items, pipelineBrowse, projects, query, scopeCollectionId, scopeProjectId, typeFilter]);
   const badgeMap = usePipelineBadgeMap(
     scopedItems.filter((item) => Boolean(item.url?.trim())).map((item) => item.id)
   );
@@ -265,6 +262,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
       subtitle: isLink
         ? <BookmarkUrlLink item={item} style={{ display: 'block', color: 'inherit' }} />
         : item.notes?.trim() || 'Empty note',
+      searchText: buildItemQuickFilterText(item, projects, collections),
       meta: new Date(item.updated_at ?? item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       actions: (
         <>
@@ -368,7 +366,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
         </div>
         <label style={{ ...uiPatterns.searchField, height: 36 }}>
           <Search size={14} color="var(--text-faint)" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter by title, URL, note text, or tag…" aria-label="Filter library" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter by any saved item information…" aria-label="Filter library" title="Matches title, URL, notes, tags, organization, and metadata" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)' }} />
         </label>
         <ScopeChipsBar
           scopeProjectId={scopeProjectId}
@@ -396,6 +394,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
           onModeChange={setBrowseMode}
           emptyMessage={query.trim() ? 'No items match this filter.' : 'No items in this scope.'}
           ariaLabel="Item library"
+          quickFilter={false}
         />
 
         <section className="ui-panel ui-detail-panel" style={panelStyle} aria-label="Selected library item">

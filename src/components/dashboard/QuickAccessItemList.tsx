@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Item } from '../../lib/db';
 import { getDomain, isValidBookmarkUrl, formatDateTime } from '../../lib/utils';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Search, X } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { ItemContextMenu } from './ItemContextMenu';
 import { TabScrollShell } from './TabScrollShell';
 import { uiPatterns } from '../../styles/uiPatterns';
+import { buildItemQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 
 interface QuickAccessItemListProps {
   title: string;
@@ -46,6 +47,14 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
   onOpenInNewTab,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
+  const [filterQuery, setFilterQuery] = useState('');
+  const itemSearchIndex = useMemo(
+    () => items.map((item) => ({ item, searchText: buildItemQuickFilterText(item) })),
+    [items]
+  );
+  const filteredItems = filterQuery.trim()
+    ? itemSearchIndex.filter(({ searchText }) => matchesQuickFilter(searchText, filterQuery)).map(({ item }) => item)
+    : items;
 
   return (
     <div
@@ -105,10 +114,15 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
             {headerSubtitle}
           </p>
         ) : null}
+        <label className="ui-list-quick-filter ui-quick-access-list__quick-filter">
+          <Search size={12} aria-hidden="true" />
+          <input type="search" value={filterQuery} onChange={(event) => setFilterQuery(event.target.value)} placeholder="Filter this list…" aria-label={`Filter ${title}`} title="Matches title, URL, notes, tags, organization IDs, and metadata" />
+          {filterQuery ? <button type="button" onClick={() => setFilterQuery('')} aria-label={`Clear ${title} filter`} title="Clear filter"><X size={11} /></button> : null}
+        </label>
       </div>
 
       <TabScrollShell className="scrollbar ui-quick-access-list__body" style={{ padding: 10 }}>
-        {items.length === 0 ? (
+        {filteredItems.length === 0 ? (
           <div
             className="ui-quick-access-list__empty"
             style={{
@@ -118,15 +132,15 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
               borderRadius: 'var(--radius-md)',
             }}
           >
-            {emptyIcon}
+            {items.length === 0 ? emptyIcon : <Search size={20} />}
             <p style={{ margin: '0 0 0.5rem 0', fontSize: 'var(--text-lg)', fontWeight: 650, color: 'var(--text)' }}>
-              {emptyTitle}
+              {items.length === 0 ? emptyTitle : 'No matching items'}
             </p>
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }}>{emptyHint}</p>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }}>{items.length === 0 ? emptyHint : `Nothing in this list matches “${filterQuery.trim()}”.`}</p>
           </div>
         ) : (
           <div className="ui-quick-access-list__items">
-            {items.map((item) => {
+            {filteredItems.map((item) => {
               const dateTs = dateField ? dateField(item) : (item.updated_at ?? item.created_at);
               const interactive = Boolean(onItemClick);
               return (

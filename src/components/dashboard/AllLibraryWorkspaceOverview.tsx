@@ -11,6 +11,7 @@ import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import type { WorkspaceDestination } from './workspaceDestinations';
+import { buildItemQuickFilterText } from '../../lib/itemQuickFilter';
 
 export interface WorkspaceViewGroup {
   key: string;
@@ -212,6 +213,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
           </span>
         ),
         subtitle: item.url || item.notes || 'Note',
+        searchText: buildItemQuickFilterText(item, projects, collections),
         meta: new Date(item.updated_at ?? item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
         onContextMenu: onItemContextMenu ? (event: React.MouseEvent) => onItemContextMenu(event, item) : undefined,
       }));
