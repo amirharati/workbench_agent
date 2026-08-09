@@ -34,14 +34,14 @@ describe('library search history persistence', () => {
     const storageKey = 'test:search-state';
     localStorage.setItem(storageKey, JSON.stringify({
       query: 'python',
-      filters: {},
+      filters: { excludeProjectId: 'project-research' },
       mode: 'hybrid',
       selectedItemId: 'item-python',
       indexEmpty: false,
     }));
     localStorage.setItem(`${storageKey}:results`, JSON.stringify({
       query: 'python',
-      filters: {},
+      filters: { excludeProjectId: 'project-research' },
       mode: 'hybrid',
       result: {
         query: 'python',
@@ -78,12 +78,20 @@ describe('library search history persistence', () => {
 
     expect(search!.state).toMatchObject({
       query: 'python',
+      filters: { excludeProjectId: 'project-research' },
       selectedItemId: 'item-python',
       restoring: false,
     });
     expect(search!.state.result?.query).toBe('python');
     expect(getItem.mock.calls.some(([key]) => key === `${storageKey}:results`)).toBe(true);
     expect(setItem).not.toHaveBeenCalled();
+
+    await act(async () => search!.setQuery('rust trading'));
+    expect(search!.state).toMatchObject({
+      query: 'rust trading',
+      result: null,
+      selectedItemId: null,
+    });
 
     await act(async () => root.unmount());
   });

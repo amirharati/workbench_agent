@@ -437,6 +437,12 @@ export class RemoteIdbCompatStore {
     }
   }
 
+  /** Accept a canonical worker-side item patch without hydrating the library. */
+  acceptItemMutation(item: HydrateSnapshot['items'][number], revision: number): void {
+    this.patchGenericPut('items', item);
+    this.setRevision(revision);
+  }
+
   /** Merge selected tables from worker SQLite into the tab read cache (lightweight vs full hydrate). */
   async refreshTablesFromWorker(storeNames: readonly string[]): Promise<void> {
     if (!storeNames.length) return;

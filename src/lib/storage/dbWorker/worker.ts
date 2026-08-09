@@ -29,6 +29,7 @@ import {
   createDashboardStartupProjection,
   type DashboardStartupProjection,
 } from '../../dashboardStartupProjection';
+import { cosineSimilarity } from '../../categorization/math';
 
 markDbWorkerProcess();
 setStorageBackend('opfs');
@@ -93,6 +94,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'pauseAutoMirrorForDigest',
   'resumeAutoMirrorAfterDigest',
   'getSignalsByItemIds',
+  'rankSearchEmbeddings',
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
   'getPipelineBadgeEntries',
@@ -255,7 +257,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 5;
+      return 6;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -459,6 +461,39 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       }
       return out;
     }
+    case 'rankSearchEmbeddings': {
+      const queryEmbedding = Array.isArray(args[0])
+        ? (args[0] as unknown[]).filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+        : [];
+      const itemIds = Array.isArray(args[1])
+        ? [...new Set((args[1] as unknown[]).filter((value): value is string => typeof value === 'string' && value.length > 0))]
+        : [];
+      const requestedLimit = Number(args[2]);
+      const limit = Number.isFinite(requestedLimit)
+        ? Math.min(1000, Math.max(1, Math.floor(requestedLimit)))
+        : 500;
+      if (!queryEmbedding.length || !itemIds.length) {
+        return { scores: {}, withEmbeddings: 0 };
+      }
+      const store = await getIdbCompatStore();
+      const scored: Array<[string, number]> = [];
+      let withEmbeddings = 0;
+      for (let offset = 0; offset < itemIds.length; offset += 500) {
+        const signals = store.getSignalsForItemIds(itemIds.slice(offset, offset + 500));
+        for (const signal of signals) {
+          if (!signal.embedding?.length || signal.embedding.length !== queryEmbedding.length) continue;
+          withEmbeddings++;
+          const similarity = cosineSimilarity(queryEmbedding, signal.embedding);
+          const score = Math.max(0, Math.min(1, (similarity + 1) / 2));
+          if (score > 0.05) scored.push([signal.itemId, score]);
+        }
+      }
+      scored.sort((left, right) => right[1] - left[1]);
+      return {
+        scores: Object.fromEntries(scored.slice(0, limit)),
+        withEmbeddings,
+      };
+    }
     case 'getPendingEmbeddingItemIds': {
       const requestedLimit = Number(args[0]);
       const limit = Number.isFinite(requestedLimit) ? requestedLimit : 48;
@@ -631,6 +666,20 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         revisionTracker.recordSqliteMutation();
       }
       return result;
+    }
+    case 'updateItemAtomic': {
+      const item = await dbCore.updateItemAtomic(
+        ...(args as Parameters<typeof dbCore.updateItemAtomic>)
+      );
+      if (!item) {
+        return { item: null, revision: revisionTracker.getLocalRevisionSync() };
+      }
+      invalidateHubScopeEntryCache();
+      scheduleFolderMirror();
+      return {
+        item,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
     }
     case 'exportSqliteBytes':
       return dbCore.exportSqliteBytes();

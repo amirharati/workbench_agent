@@ -159,6 +159,8 @@ function sameSearchSnapshot(
   const filterKeys: Array<keyof SearchFilters> = [
     'projectId',
     'collectionId',
+    'excludeProjectId',
+    'excludeCollectionId',
     'domain',
     'sourceKind',
     'updatedAfter',
@@ -259,7 +261,17 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
 
   const setQuery = useCallback((query: string) => {
     hasInteractedRef.current = true;
-    setState((s) => ({ ...s, query, restoring: false }));
+    setState((s) => {
+      if (query === s.query) return { ...s, restoring: false };
+      return {
+        ...s,
+        query,
+        result: null,
+        selectedItemId: null,
+        indexEmpty: false,
+        restoring: false,
+      };
+    });
   }, []);
 
   const setFilters = useCallback((filters: SearchFilters) => {
@@ -333,17 +345,19 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
   );
 
   const runSearch = useCallback(
-    async (queryInput?: string) => {
+    async (queryInput?: string, filtersInput?: SearchFilters) => {
       hasInteractedRef.current = true;
       setState((prev) => {
         const trimmed = (queryInput ?? prev.query).trim();
         if (!trimmed) return prev;
+        const filters = filtersInput ? { ...filtersInput } : prev.filters;
 
-        void executeSearch({ query: trimmed, mode: prev.mode, filters: prev.filters });
+        void executeSearch({ query: trimmed, mode: prev.mode, filters });
 
         return {
           ...prev,
           query: trimmed,
+          filters,
           loading: true,
           error: null,
           result: null,

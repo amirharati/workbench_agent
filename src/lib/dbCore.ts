@@ -20,6 +20,7 @@ import type {
 import type { TrashHistoryEntry } from './trashHistory';
 import { shouldPreferImportTitle } from './import/xImportHygiene';
 import { nowMs } from './time/clock';
+import { buildUpdatedItem } from './itemUpdate';
 import {
   assertCanCreateCollectionInProject,
   INBOX_PROJECT_NAME,
@@ -699,71 +700,33 @@ export const getItemsByCollection = async (collectionId: string | undefined) => 
   return store.getAllItems().filter(item => item.collectionIds.includes(collectionId));
 };
 
-export const updateItem = async (
+/** Apply against the latest worker-owned row without emitting UI notifications. */
+export const updateItemAtomic = async (
   id: string,
   updates: Partial<Omit<Item, 'id' | 'created_at'>>,
   options?: UpdateItemOptions
-) => {
+): Promise<Item | undefined> => {
   const store = await getDB();
   const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(store);
   const item = store.getItem(id);
   if (!item) return;
 
   const now = nowTs();
-  const hasNotesUpdate = Object.prototype.hasOwnProperty.call(updates, 'notes');
-  const notesValue = hasNotesUpdate ? updates.notes : undefined;
-  const restUpdates = { ...updates } as Partial<Item>;
-  if (hasNotesUpdate) delete restUpdates.notes;
-
-  let next: Item = { ...item, ...restUpdates, updated_at: now } as Item;
-
-  if (!Array.isArray(next.collectionIds) || next.collectionIds.length === 0) {
-    next.collectionIds = [defaultUnsortedCollectionId];
-  }
-
-  if (hasNotesUpdate) {
-    const multi = (item.collectionIds?.length ?? 0) > 1 || Object.keys(item.placements || {}).length > 1;
-
-    let placementId = options?.notesPlacementCollectionId;
-    if (!placementId && !multi) {
-      placementId = item.collectionIds?.[0] || Object.keys(item.placements || {})[0];
-    }
-    if (!placementId && multi && updates.collectionIds?.length === 1) {
-      const only = updates.collectionIds[0];
-      if ((item.collectionIds || []).includes(only)) placementId = only;
-    }
-
-    if (placementId && ((next.collectionIds || []).includes(placementId) || (item.collectionIds || []).includes(placementId))) {
-      if (!(next.collectionIds || []).includes(placementId)) {
-        next.collectionIds = [...new Set([...(next.collectionIds || []), placementId])];
-      }
-      const placements = { ...(next.placements || {}) };
-      const prev = placements[placementId];
-      placements[placementId] = {
-        collectionId: placementId,
-        addedAt: prev?.addedAt ?? now,
-        source: prev?.source ?? 'manual',
-        tags: prev?.tags,
-        notes: notesValue || undefined,
-      };
-      next.placements = placements;
-      next.notes = undefined;
-    } else if (hasNotesUpdate && !multi && !placementId) {
-      next.notes = notesValue || undefined;
-    } else if (hasNotesUpdate && multi && !placementId) {
-      next.notes = undefined;
-    }
-  }
-
-  for (const key of ['pinnedAt', 'favoriteAt', 'deletedAt'] as const) {
-    if (Object.prototype.hasOwnProperty.call(updates, key) && updates[key] === undefined) {
-      delete (next as unknown as Record<string, unknown>)[key];
-    }
-  }
-
+  const next = buildUpdatedItem(item, updates, options, defaultUnsortedCollectionId, now);
   assertNoBookmarkDuplicateInCollections(store, next.url || '', next.collectionIds, id);
   store.putItem(next);
+  return next;
+};
+
+export const updateItem = async (
+  id: string,
+  updates: Partial<Omit<Item, 'id' | 'created_at'>>,
+  options?: UpdateItemOptions
+): Promise<Item | undefined> => {
+  const next = await updateItemAtomic(id, updates, options);
+  if (!next) return undefined;
   notifyDataChanged('item.update');
+  return next;
 };
 
 // ============================================================================

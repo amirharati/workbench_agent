@@ -1,5 +1,9 @@
 import { applySearchFilters } from './filters';
 import {
+  matchesParsedSearchGuards,
+  type ParsedSearchQuery,
+} from './queryLanguage';
+import {
   expandCategoryCandidates,
   rankEmbeddingCandidates,
   scoreCategoryAffinity,
@@ -41,6 +45,8 @@ export interface ExtractSearchRelatedOptions {
   tagSampleFromTop?: number;
   filters?: SearchFilters;
   queryEmbedding?: number[];
+  embeddingScores?: Record<string, number>;
+  parsedQuery?: ParsedSearchQuery;
 }
 
 function aggregateTagsFromResults(
@@ -119,21 +125,41 @@ export function findRelatedBeyondTopResults(
   options: {
     matchedCategoryIds: Set<string>;
     queryEmbedding?: number[];
+    embeddingScores?: Record<string, number>;
     excludeItemIds: Set<string>;
     filters?: SearchFilters;
+    parsedQuery?: ParsedSearchQuery;
     limit?: number;
     candidateLimit?: number;
   }
 ): SearchResult[] {
   const limit = options.limit ?? 15;
   const candidateLimit = options.candidateLimit ?? 200;
-  const scopedDocs = applySearchFilters(index.documents, options.filters);
+  const organizationScopedDocs = applySearchFilters(index.documents, options.filters);
+  const scopedDocs = options.parsedQuery
+    ? organizationScopedDocs.filter((doc) =>
+        matchesParsedSearchGuards(doc, options.parsedQuery!, index)
+      )
+    : organizationScopedDocs;
   const scopedIndex: SearchIndex = { ...index, documents: scopedDocs };
 
   const candidateMap = new Map<
     string,
     { doc: (typeof scopedDocs)[0]; sources: Set<'embedding' | 'category'> }
   >();
+
+  if (options.embeddingScores) {
+    const docById = new Map(scopedDocs.map((doc) => [doc.itemId, doc]));
+    const ranked = Object.entries(options.embeddingScores)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, candidateLimit);
+    for (const [itemId] of ranked) {
+      if (options.excludeItemIds.has(itemId)) continue;
+      const doc = docById.get(itemId);
+      if (!doc) continue;
+      candidateMap.set(itemId, { doc, sources: new Set(['embedding']) });
+    }
+  }
 
   if (options.queryEmbedding?.length) {
     for (const hit of rankEmbeddingCandidates(
@@ -171,7 +197,7 @@ export function findRelatedBeyondTopResults(
 
   for (const { doc, sources } of candidateMap.values()) {
     const embedding = options.queryEmbedding?.length
-      ? scoreEmbedding(options.queryEmbedding, doc)
+      ? options.embeddingScores?.[doc.itemId] ?? scoreEmbedding(options.queryEmbedding, doc)
       : 0;
     const cat = scoreCategoryAffinity(
       doc,
@@ -233,8 +259,10 @@ export function extractSearchRelated(
   const relatedLinks = findRelatedBeyondTopResults(index, {
     matchedCategoryIds: queryMatched,
     queryEmbedding: options.queryEmbedding,
+    embeddingScores: options.embeddingScores,
     excludeItemIds: exclude,
     filters: options.filters,
+    parsedQuery: options.parsedQuery,
     limit: options.relatedLimit ?? 15,
   });
 

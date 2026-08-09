@@ -249,6 +249,9 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 |----|-------|------|---------|----------|--------|-------------|--------------|--------|
 | V3-001 | 2026-08-08 | Help / onboarding | Help is incomplete and describes pre-redesign workflows | P2 | READY TO RETEST | Text/icon Help shipped locally; media-ready | V3 checkpoint | User review pending |
 | V3-002 | 2026-08-08 | Import / enrichment | Finished bulk run leaves a false resumable checkpoint (`443/445`) | P1 | READY TO RETEST | Reconcile terminal leftovers and report only final IDs | V3 checkpoint | Reload + next small import pending |
+| V3-003 | 2026-08-08 | Organization / concurrency | Adding an item to a project/collection is slow or later appears applied/reverted during processing | P1 | READY TO RETEST | Atomic worker-side item patches, explicit UI priority, durable save feedback | Uncommitted | Parallel pipeline retest pending |
+| V3-004 | 2026-08-08 | Search / organization | Cannot search All Library for material not already in a target project or collection | P2 | READY TO RETEST | Pre-ranking `Not in…` project/collection filter | Uncommitted | Contextual project/collection retest pending |
+| V3-005 | 2026-08-08 | Search / query semantics | Multi-term Search syntax and result counts are unclear/non-monotonic | P2 | READY TO RETEST | Parsed AND/OR/phrase grammar, worker-owned semantic ranking, visible fallback | Uncommitted | Fixed-query and live-embedding retest pending |
 
 ### V3-001 — Replace stale Help with a comprehensive daily-use guide
 
@@ -298,6 +301,79 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   checkpoint-final item IDs. Nine focused Import/pipeline tests and the production build pass.
 - Retest: reload should remove the existing false banner; then run a small batch containing an
   unsupported/ineligible URL and confirm completion without a stale checkpoint.
+
+### V3-003 — Organization changes are unpredictable during parallel processing
+
+- Found: 2026-08-08, Run 01
+- Severity / gate: P1 / G3 + G4 + G6
+- Status: READY TO RETEST
+- Environment: `design/ui-redesign` after V3 checkpoint `e0ab965`; background link processing active
+- Reproduction:
+  1. Run enrichment/classification work in parallel.
+  2. From Search, Item/Inspector, Project, or side panel, add a saved item to another project/collection.
+  3. Observe that the action can remain disabled without a status, appear only later, or have an
+     uncertain final result.
+- Expected: organization paints immediately, visibly remains pending until the DB acknowledges it,
+  and remains durable even when enrichment updates the same item concurrently.
+- Actual: dashboard and offscreen pipeline realms each built and persisted a complete Item from their
+  own cached copy. A later enrichment title/tag write could therefore overwrite newer collection
+  membership. Organization also waited through redundant/legacy refresh work and exposed no durable
+  saving state; its dialog could close while the write was still pending.
+- Data-safety check: no specific lost item was confirmed, but a stale whole-item write could revert
+  project/collection membership. Item records and content remained present. Treat as a release-blocking
+  trust/concurrency defect until the parallel retest passes.
+- Evidence: `db.ts`/`dbCore.ts` client-side read-modify-put path, enrichment's concurrent `updateItem`
+  call, and ProjectDashboard's full-refresh update path.
+- Decision: fix immediately in V3.
+- Fix: all `updateItem` calls now send patches to one worker-side atomic update that reads the latest
+  canonical row before merging, so enrichment changes cannot overwrite unrelated organization fields.
+  Interactive dashboard and side-panel updates explicitly use the high-priority DB lane and consume
+  the canonical acknowledgment without a full-library refresh. The shared organization editor shows
+  `Saving organization…` and `Organization saved`; organization dialogs cannot close mid-save. The
+  legacy Project page now uses the same shared update path. Thirty focused organization, Search,
+  Home, Project, DB priority, and write-barrier tests plus the production build pass.
+- Retest: while a multi-item pipeline is actively processing, add one item to two collections from
+  Search and another from the Project page; wait for `Organization saved`, then revisit/reload both
+  destinations during and after pipeline completion. Repeat once from the side panel.
+
+### V3-004 — Search for material not already organized in a target
+
+- Found: 2026-08-08, Run 01
+- Severity / gate: P2 / G3
+- Status: READY TO RETEST
+- Environment: `design/ui-redesign` after V3 checkpoint `e0ab965`
+- Reproduction:
+  1. Open Search from a project or collection and widen its scope to All Library.
+  2. Search for material to add to that location.
+  3. Existing results already organized there remain mixed with genuinely new candidates.
+- Expected: Search can exclude every item already belonging to a selected project or collection,
+  while retaining matching items from elsewhere in the library.
+- Actual: Search supported positive project/collection scope and domain filters only.
+- Data-safety check: no data mutation or loss; this is a discovery/organization usability gap.
+- Decision: add the localized filter in V3 because it directly supports the organization dogfood flow.
+- Fix: Search now offers a contextual `Include existing` / `Not in current project` /
+  `Not in current collection` selector instead of a global organization list. Exclusions run before
+  lexical/embedding candidate ranking and travel with a search only while its project/collection
+  context remains valid; switching context clears an old exclusion. The initial implementation only
+  changed filter state while leaving stale results visible; the selector now immediately reruns the
+  current query with the explicit new filter snapshot. Nine focused Search/filter/state tests pass.
+- Retest: from a project, search All Library with `Not in <current project>` and confirm its existing
+  material disappears while other matches remain. Add one result, rerun the same search, and confirm
+  it disappears. Repeat with a collection exclusion.
+
+### V3-005 — Multi-term Search has no clear query semantics
+
+- Found: 2026-08-08, Run 01
+- Severity / gate: P2 / G3
+- Status: READY TO RETEST
+- Environment: `design/ui-redesign` after V3 checkpoint `e0ab965`
+- Reproduction: compare `sex,ai`, `sex,ai,ml`, `sex ai ml`, and `sex+ai+ml` in Hybrid and Text-only modes using an unchanged library scope.
+- Expected: the UI states whether multiple terms mean Any, All, or an exact phrase; equivalent separators behave predictably; Hybrid fallback is visible.
+- Actual: punctuation becomes a separator for lexical tokens, but the unparsed raw query is sent to the embedding model and used for a literal title-phrase boost. Terms are OR-like lexical signals rather than Boolean syntax; quotes, `+`, `AND`, `OR`, and `-term` are not operators. Adding a term can change the top-200 candidate pool, semantic vector, category expansion, and top-30 result set. Embedding failure silently falls back while the UI still labels the mode Hybrid.
+- Data-safety check: no mutation or loss; this is search predictability and trust.
+- Decision: fix in V3 with familiar query-box syntax and an on-screen interpretation rather than a separate advanced-search form.
+- Fix: plain meaningful terms are deterministic AND; `AND` and a leading `+` are explicit required forms; `OR` creates alternative AND groups; quotes require a normalized exact phrase; `-term`/`-“phrase”` exclude; `site:domain` is a hard domain guard; commas are spaces. Primary results must satisfy these rules across title, URL/domain, tags, notes, summaries, key points, source kind, and category names. Hybrid mode embeds only positive operator-free text. Because tab hydration intentionally strips vectors, a new protocol-v6 read-only worker RPC ranks eligible item IDs against canonical full embeddings and returns only the top scores. Semantic discoveries outside positive exact rules appear separately, while negative/site/organization guards remain enforced. The UI displays its parsed interpretation and `semantic ranking`, `text fallback`, or `text only`; changing query text clears stale results. Search no longer returns an empty index during an active local digest—it uses the essential text index instead. Help and CLI evaluation use the same grammar. Thirty-nine focused parser, engine, Search UI, Help, state, Home, Project, and All Library tests pass.
+- Retest: with an unchanged scope, confirm `ml in trading` excludes trading-only and ML-only items; `“machine learning in trading”` requires that exact normalized phrase; `ai OR quant`, `ai AND +quant`, `ai -beginner`, and `site:arxiv.org ai` follow the displayed interpretation. In Hybrid mode with embedded documents, confirm exact matches remain primary, semantic-only `ai quant` material appears under Related results, and the status says semantic ranking. Remove/disable the API key or test during a digest and confirm exact text results remain available with a visible text-fallback label.
 
 For substantial issues, add a section using this template:
 
@@ -350,7 +426,7 @@ These are not counted as Run 01 failures until reproduced.
 - Result: IN PROGRESS
 - Baseline counts/markers: bulk processing scope observed at 445 links; full library totals and
   unique marker titles remain to be recorded.
-- Issues opened: V3-001, V3-002
+- Issues opened: V3-001, V3-002, V3-003, V3-004, V3-005
 - Notes: User will report findings incrementally; Codex will assign IDs, triage, update gates,
   implement approved fixes, and move larger safe items to a focused session or post-V3 backlog.
 

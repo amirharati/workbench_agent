@@ -4,6 +4,10 @@ import type { AiCategory, ClassifyState } from '../categorization/types';
 export interface SearchFilters {
   projectId?: string;
   collectionId?: string;
+  /** Exclude items already organized anywhere in this project. */
+  excludeProjectId?: string;
+  /** Exclude items already organized in this collection. */
+  excludeCollectionId?: string;
   domain?: string;
   sourceKind?: string;
   updatedAfter?: number;
@@ -50,6 +54,8 @@ export interface SearchDocument {
   collectionIds: string[];
   projectIds: string[];
   embedding?: number[];
+  /** True when the canonical worker has a vector even if the tab cache strips it. */
+  hasEmbedding?: boolean;
   primaryCategoryId?: string;
   categoryIds: string[];
   /** Best link score per category id for this item. */
@@ -99,6 +105,8 @@ export interface HybridSearchOptions {
   weights?: Partial<SearchWeights>;
   filters?: SearchFilters;
   queryEmbedding?: number[];
+  /** Worker-computed similarities keyed by item id; vectors never leave the DB owner. */
+  embeddingScores?: Record<string, number>;
   mode?: 'hybrid' | 'lexical-only';
 }
 

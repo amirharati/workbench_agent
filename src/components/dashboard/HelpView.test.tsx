@@ -14,6 +14,9 @@ describe('HelpView', () => {
     expect(markup).toContain('Inbox / Incoming');
     expect(markup).toContain('Add to workspace');
     expect(markup).toContain('Organize…');
+    expect(markup).toContain('ml in trading');
+    expect(markup).toContain('site:arxiv.org');
+    expect(markup).toContain('Exact rules first; semantics remain visible');
     expect(markup).toContain('Backup, restore, and recovery');
     expect(markup).toContain('workbench.sqlite');
     expect(markup).not.toContain('Drag the horizontal divider');

@@ -4,7 +4,6 @@ import {
   Collection,
   findActiveItemsByUrlInReadBuffer,
   getActiveItemsByUrlFast,
-  getItem,
   Item,
   normalizeBookmarkUrl,
   Project,
@@ -19,6 +18,7 @@ import {
 import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
 import { SidePanelView } from './SidePanelView';
 import type { SessionExternalLink } from './SidePanelExternalSection';
+import { runWithDbPriority } from '../lib/storage/dbRpcPriority';
 
 function toStatusMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -331,20 +331,21 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
         );
       });
 
-      await updateItem(
-        id,
-        {
-          title: data.title,
-          url: data.url || '',
-          ...(data.notes !== undefined ? { notes: data.notes } : {}),
-          collectionIds: data.collectionIds,
-          ...(data.tags !== undefined ? { tags: data.tags } : {}),
-        },
-        data.notesPlacementCollectionId
-          ? { notesPlacementCollectionId: data.notesPlacementCollectionId }
-          : undefined
+      const fresh = await runWithDbPriority('high', () =>
+        updateItem(
+          id,
+          {
+            title: data.title,
+            url: data.url || '',
+            ...(data.notes !== undefined ? { notes: data.notes } : {}),
+            collectionIds: data.collectionIds,
+            ...(data.tags !== undefined ? { tags: data.tags } : {}),
+          },
+          data.notesPlacementCollectionId
+            ? { notesPlacementCollectionId: data.notesPlacementCollectionId }
+            : undefined
+        )
       );
-      const fresh = await getItem(id);
       if (fresh?.url) {
         pinSavedItem(fresh.url, fresh, { durable: true });
         setFastItems((prev) => {

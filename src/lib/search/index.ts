@@ -1,6 +1,7 @@
 export * from './types';
 export * from './tokenize';
 export * from './filters';
+export * from './queryLanguage';
 export * from './lexical';
 export * from './ranking';
 export * from './buildIndex';

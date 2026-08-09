@@ -73,7 +73,7 @@ A minimal, personal tool that helps organize digital work by intelligently manag
 
 #### Core Capabilities
 - **Personal Assistant**: Help organize and manage tabs, bookmarks, and notes
-- **Search Engine**: Provide resources and information (e.g., "provide resources for learning TradingView")
+- **Search Engine**: Provide predictable scoped library retrieval with default-AND terms, exact phrases, OR/AND/`+`, exclusions, and domain guards. Optional embeddings rank exact matches and surface separately labelled semantic relations without weakening hard query or organization boundaries.
 - **Project Organizer**: Help organize notes and resources around specific projects
 - **Contextual Helper**: Answer questions while reading pages with full context awareness
 

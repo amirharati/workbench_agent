@@ -1,12 +1,11 @@
 import { extractDomainHint, normalizeQuery, tokenize } from './tokenize';
 import { applySearchFilters } from './filters';
-import { rankLexicalCandidates, scoreLexical } from './lexical';
+import { scoreLexical } from './lexical';
+import { matchesParsedSearchQuery, parseSearchQuery } from './queryLanguage';
 import {
   computeBoostsAndPenalties,
   computeFinalScore,
-  expandCategoryCandidates,
   mergeWeights,
-  rankEmbeddingCandidates,
   resolveMatchedCategories,
   scoreCategoryAffinity,
   scoreEmbedding,
@@ -24,18 +23,23 @@ export function hybridSearch(
   options: HybridSearchOptions
 ): HybridSearchResult {
   const query = normalizeQuery(options.query);
+  const parsedQuery = parseSearchQuery(query);
+  const scoringQuery = parsedQuery.semanticText;
   const limit = options.limit ?? 20;
-  const candidateLimit = options.candidateLimit ?? 200;
   const categoryTopK = options.categoryTopK ?? 5;
   const weights = mergeWeights(options.weights);
   const mode = options.mode ?? 'hybrid';
-  const domainHint = extractDomainHint(query);
+  const domainHint = extractDomainHint(scoringQuery);
 
-  const scopedDocs = applySearchFilters(index.documents, options.filters);
+  const organizationScopedDocs = applySearchFilters(index.documents, options.filters);
+  const organizationScopedIndex: SearchIndex = { ...index, documents: organizationScopedDocs };
+  const scopedDocs = organizationScopedDocs.filter((doc) =>
+    matchesParsedSearchQuery(doc, parsedQuery, organizationScopedIndex)
+  );
   const scopedIndex: SearchIndex = { ...index, documents: scopedDocs };
 
   const matchedCategories = resolveMatchedCategories(
-    query,
+    scoringQuery,
     mode === 'hybrid' ? options.queryEmbedding : undefined,
     scopedIndex,
     categoryTopK
@@ -46,58 +50,32 @@ export function hybridSearch(
     { doc: (typeof scopedDocs)[0]; sources: Set<'lexical' | 'embedding' | 'category'> }
   >();
 
-  const lexicalHits = rankLexicalCandidates(query, scopedDocs, candidateLimit);
-  for (const hit of lexicalHits) {
-    const entry = candidateMap.get(hit.doc.itemId) ?? {
-      doc: hit.doc,
+  // Every deterministic match is a candidate. Candidate caps must not make an
+  // AND/phrase query appear to lose valid matches; semantic/category signals
+  // rank this exact set and are presented separately beyond it.
+  for (const doc of scopedDocs) {
+    candidateMap.set(doc.itemId, {
+      doc,
       sources: new Set<'lexical' | 'embedding' | 'category'>(),
-    };
-    entry.sources.add('lexical');
-    candidateMap.set(hit.doc.itemId, entry);
+    });
   }
 
-  if (mode === 'hybrid' && options.queryEmbedding?.length) {
-    const embHits = rankEmbeddingCandidates(
-      options.queryEmbedding,
-      scopedDocs,
-      candidateLimit
-    );
-    for (const hit of embHits) {
-      const entry = candidateMap.get(hit.doc.itemId) ?? {
-        doc: hit.doc,
-        sources: new Set<'lexical' | 'embedding' | 'category'>(),
-      };
-      entry.sources.add('embedding');
-      candidateMap.set(hit.doc.itemId, entry);
-    }
-  }
-
-  if (matchedCategories.ids.size) {
-    const catHits = expandCategoryCandidates(
-      scopedIndex,
-      matchedCategories.ids,
-      candidateLimit
-    );
-    for (const hit of catHits) {
-      const entry = candidateMap.get(hit.doc.itemId) ?? {
-        doc: hit.doc,
-        sources: new Set<'lexical' | 'embedding' | 'category'>(),
-      };
-      entry.sources.add('category');
-      candidateMap.set(hit.doc.itemId, entry);
-    }
-  }
-
-  const queryTokens = tokenize(query);
+  const queryTokens = tokenize(scoringQuery);
   const results: SearchResult[] = [];
 
   for (const { doc, sources } of candidateMap.values()) {
-    const lex = scoreLexical(query, doc, queryTokens);
+    const lex = scoreLexical(scoringQuery, doc, queryTokens);
     const embedding =
-      mode === 'hybrid' && options.queryEmbedding?.length
-        ? scoreEmbedding(options.queryEmbedding, doc)
+      mode === 'hybrid'
+        ? options.embeddingScores?.[doc.itemId] ?? (
+            options.queryEmbedding?.length ? scoreEmbedding(options.queryEmbedding, doc) : 0
+          )
         : 0;
     const cat = scoreCategoryAffinity(doc, matchedCategories.ids, index.categoryById);
+    if (lex.score > 0) sources.add('lexical');
+    if (embedding > 0) sources.add('embedding');
+    if (cat.matched.length > 0) sources.add('category');
+    if (sources.size === 0) sources.add('lexical');
     const boosts = computeBoostsAndPenalties(
       doc,
       domainHint,
@@ -150,8 +128,12 @@ export function hybridSearch(
     query,
     mode,
     results: results.slice(0, limit),
-    totalCandidates: results.length,
+    totalCandidates: scopedDocs.length,
     matchedCategoryIds: [...matchedCategories.ids],
-    embeddingPathUsed: mode === 'hybrid' && Boolean(options.queryEmbedding?.length),
+    embeddingPathUsed:
+      mode === 'hybrid' && Boolean(
+        options.queryEmbedding?.length &&
+        (Object.keys(options.embeddingScores ?? {}).length > 0 || scopedDocs.some((doc) => doc.embedding?.length))
+      ),
   };
 }

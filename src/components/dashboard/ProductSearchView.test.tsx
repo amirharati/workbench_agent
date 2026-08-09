@@ -97,6 +97,46 @@ describe('ProductSearchView empty state', () => {
     expect(markup).toContain('padding:24px 28px var(--scroll-footer-safe-bottom)');
   });
 
+  it('explains parsed long-query semantics and semantic fallback results', () => {
+    const semanticRow = resultState.result.results[0];
+    const markup = renderToStaticMarkup(
+      <ProductSearchView
+        items={[item]}
+        collections={[collection]}
+        projects={[project]}
+        state={{
+          ...resultState,
+          query: 'ml in trading',
+          result: {
+            ...resultState.result,
+            query: 'ml in trading',
+            results: [],
+            totalCandidates: 0,
+            embeddingPathUsed: true,
+            related: {
+              topics: [],
+              tags: [],
+              relatedLinks: [semanticRow],
+            },
+          },
+        }}
+        onQueryChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onModeChange={vi.fn()}
+        onSelectedItemIdChange={vi.fn()}
+        onRunSearch={vi.fn()}
+        onOpenItem={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('All: ml + trading');
+    expect(markup).toContain('Syntax: “exact phrase” · OR · AND / + · -exclude · site:domain');
+    expect(markup).toContain('semantic ranking · exact rules');
+    expect(markup).toContain('No exact matches. Related semantic results are shown below.');
+    expect(markup).toContain('Related results');
+    expect(markup).toContain('Semantic matches outside the exact query rules');
+  });
+
   it('keeps workspace and full-library organization actions together in scoped search', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -147,6 +187,100 @@ describe('ProductSearchView empty state', () => {
     });
     expect(dialog?.textContent).toContain('Drafts');
     expect(dialog?.textContent).not.toContain('Tags');
+
+    await act(async () => root.unmount());
+    document.body.innerHTML = '';
+  });
+
+  it('adds a true negative organization filter to search', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onFiltersChange = vi.fn();
+    const onRunSearch = vi.fn(async () => {});
+
+    await act(async () => {
+      root.render(
+        <ProductSearchView
+          items={[item]}
+          collections={[collection]}
+          projects={[project, otherProject]}
+          organizationCollections={[collection, otherCollection]}
+          organizationContextProjectId={otherProject.id}
+          organizationContextCollectionId={otherCollection.id}
+          state={resultState}
+          onQueryChange={vi.fn()}
+          onFiltersChange={onFiltersChange}
+          onModeChange={vi.fn()}
+          onSelectedItemIdChange={vi.fn()}
+          onRunSearch={onRunSearch}
+          onOpenItem={vi.fn()}
+        />
+      );
+    });
+
+    const exclusion = host.querySelector<HTMLSelectElement>('[aria-label="Exclude organization"]');
+    expect(exclusion?.options).toHaveLength(3);
+    expect(exclusion?.textContent).toContain('Not in current project · Writing');
+    expect(exclusion?.textContent).toContain('Not in current collection · Drafts');
+    expect(exclusion?.textContent).not.toContain('Research');
+    expect(exclusion?.textContent).not.toContain('Reading');
+
+    await act(async () => {
+      if (!exclusion) return;
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+      valueSetter?.call(exclusion, 'current-collection');
+      exclusion.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    expect(onFiltersChange).toHaveBeenCalledWith({
+      excludeProjectId: undefined,
+      excludeCollectionId: otherCollection.id,
+    });
+    expect(onRunSearch).toHaveBeenCalledWith(undefined, {
+      excludeProjectId: undefined,
+      excludeCollectionId: otherCollection.id,
+    });
+
+    await act(async () => root.unmount());
+    document.body.innerHTML = '';
+  });
+
+  it('clears a negative filter when its organization context changes', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onFiltersChange = vi.fn();
+    const onRunSearch = vi.fn(async () => {});
+
+    await act(async () => {
+      root.render(
+        <ProductSearchView
+          items={[item]}
+          collections={[collection]}
+          projects={[project, otherProject]}
+          organizationCollections={[collection, otherCollection]}
+          organizationContextProjectId={otherProject.id}
+          organizationContextCollectionId={otherCollection.id}
+          state={{ ...resultState, filters: { excludeProjectId: project.id } }}
+          onQueryChange={vi.fn()}
+          onFiltersChange={onFiltersChange}
+          onModeChange={vi.fn()}
+          onSelectedItemIdChange={vi.fn()}
+          onRunSearch={onRunSearch}
+          onOpenItem={vi.fn()}
+        />
+      );
+    });
+
+    expect(onFiltersChange).toHaveBeenCalledWith({
+      excludeProjectId: undefined,
+      excludeCollectionId: undefined,
+    });
+    expect(onRunSearch).toHaveBeenCalledWith(undefined, {
+      excludeProjectId: undefined,
+      excludeCollectionId: undefined,
+    });
 
     await act(async () => root.unmount());
     document.body.innerHTML = '';

@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import type { Project, Collection, Item, Workspace } from '../../lib/db';
 import { addProject, addCollection, deleteCollection, updateItem, updateCollection, addItemWithMerge, getItem, getAllWorkspaces, ensureProjectUnsortedCollection, ALL_PROJECTS_ID, normalizeBookmarkUrl, type UpdateItemOptions } from '../../lib/db';
+import { runWithDbPriority } from '../../lib/storage/dbRpcPriority';
 import { CollectionPills } from './CollectionPills';
 import { SearchBar } from './SearchBar';
 import { QuickActions } from './QuickActions';
@@ -34,14 +35,8 @@ interface ProjectDashboardProps {
   onBack: () => void;
   onUpdateItem?: (
     id: string,
-    data: {
-      title: string;
-      url?: string;
-      notes?: string;
-      collectionIds: string[];
-      tags?: string[];
-      notesPlacementCollectionId?: string;
-    }
+    updates: Partial<Omit<Item, 'id' | 'created_at'>>,
+    options?: UpdateItemOptions
   ) => Promise<void>;
   onDeleteItem?: (id: string, collectionId?: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -61,7 +56,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   items,
   projects = [],
   onBack,
-  onUpdateItem: _onUpdateItem,
+  onUpdateItem,
   onDeleteItem,
   onRefresh,
 }) => {
@@ -801,20 +796,32 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         ? { notesPlacementCollectionId: data.notesPlacementCollectionId }
         : undefined;
 
-      await updateItem(
-        id,
-        {
-          title: data.title,
-          url: data.url || '',
-          notes: data.notes,
-          collectionIds: finalCollectionIds,
-          ...(data.tags ? { tags: data.tags } : {}),
-        },
-        opts
-      );
+      const current = items.find((item) => item.id === id);
+      const updates: Partial<Omit<Item, 'id' | 'created_at'>> = {};
+      if (
+        !current ||
+        finalCollectionIds.length !== current.collectionIds.length ||
+        finalCollectionIds.some((collectionId) => !current.collectionIds.includes(collectionId))
+      ) {
+        updates.collectionIds = finalCollectionIds;
+      }
+      if (!current || data.title !== current.title) updates.title = data.title;
+      if (!current || (data.url || '') !== current.url) updates.url = data.url || '';
+      if (!current || data.notes !== current.notes) updates.notes = data.notes;
+      if (
+        data.tags &&
+        (!current ||
+          data.tags.length !== current.tags.length ||
+          data.tags.some((tag, index) => current.tags[index] !== tag))
+      ) {
+        updates.tags = data.tags;
+      }
 
-      // Refresh data
-      if (onRefresh) await onRefresh();
+      if (onUpdateItem) {
+        await onUpdateItem(id, updates, opts);
+      } else {
+        await runWithDbPriority('high', () => updateItem(id, updates, opts));
+      }
       
       // The edit happens in-place, so no need to close/edit tabs
     } catch (error) {
@@ -1017,10 +1024,13 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         newCollectionIds = [projectUnsortedId];
       }
       
-      await updateItem(itemId, {
-        collectionIds: newCollectionIds,
-      });
-      if (onRefresh) await onRefresh();
+      if (onUpdateItem) {
+        await onUpdateItem(itemId, { collectionIds: newCollectionIds });
+      } else {
+        await runWithDbPriority('high', () =>
+          updateItem(itemId, { collectionIds: newCollectionIds })
+        );
+      }
     } catch (error) {
       console.error('Failed to move item to collection:', error);
       alert('Failed to move item. Please try again.');

@@ -111,12 +111,14 @@ export function SearchRelatedPanel({
   onTagClick,
   onRelatedClick,
   variant = 'dev',
+  semanticRelated = false,
 }: {
   related: SearchRelatedFacets;
   onTopicClick?: (name: string) => void;
   onTagClick?: (tag: string) => void;
   onRelatedClick?: (itemId: string, title: string) => void;
   variant?: 'dev' | 'product';
+  semanticRelated?: boolean;
 }) {
   const hideScore = variant === 'product';
   const chipFontSize = variant === 'product' ? 'var(--text-xs)' : 'var(--dev-fs-caption)';
@@ -147,7 +149,7 @@ export function SearchRelatedPanel({
           color: 'var(--text-muted)',
         }}
       >
-        Also explore
+        {semanticRelated && hasRelated ? 'Related results' : 'Also explore'}
       </h3>
 
       {hasTopics ? (
@@ -214,7 +216,9 @@ export function SearchRelatedPanel({
               marginBottom: 4,
             }}
           >
-            Related links (not in top results)
+            {semanticRelated
+              ? 'Semantic matches outside the exact query rules'
+              : 'Related links (not in top results)'}
           </div>
           {related.relatedLinks.map((row) => (
             <LinkRow

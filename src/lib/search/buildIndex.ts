@@ -83,6 +83,9 @@ export function buildSearchIndex(input: BuildSearchIndexInput): SearchIndex {
       collectionIds,
       projectIds: [...projectIds],
       embedding: signal?.embedding?.length ? signal.embedding : undefined,
+      hasEmbedding: Boolean(
+        signal?.embedding?.length || (signal?.textHash && signal?.embeddingModel)
+      ),
       primaryCategoryId: primaryLink?.categoryId,
       categoryIds,
       categoryScores,

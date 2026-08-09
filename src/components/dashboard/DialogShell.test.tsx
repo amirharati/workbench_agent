@@ -49,4 +49,25 @@ describe('DialogShell', () => {
     act(() => root.unmount());
     expect(document.activeElement).toBe(opener);
   });
+
+  it('prevents dismissal while a durable action is pending', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onClose = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <DialogShell title="Organize item" onClose={onClose} closeDisabled>
+          <div>Saving organization…</div>
+        </DialogShell>
+      );
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.querySelector<HTMLButtonElement>('.ui-dialog__close')?.disabled).toBe(true);
+    act(() => root.unmount());
+  });
 });

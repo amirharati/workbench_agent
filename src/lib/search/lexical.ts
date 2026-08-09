@@ -26,11 +26,12 @@ export function scoreLexical(
   doc: SearchDocument,
   queryTokens: string[]
 ): LexicalScoreResult {
-  if (!queryTokens.length) return { score: 0, matchedTerms: [], phraseMatch: false };
-
   const qLower = query.toLowerCase();
   const titleLower = doc.title.toLowerCase();
-  const phraseMatch = titleLower.includes(qLower) || qLower.includes(titleLower);
+  const phraseMatch = qLower.length > 1 && titleLower.includes(qLower);
+  if (!queryTokens.length) {
+    return { score: phraseMatch ? 0.35 : 0, matchedTerms: [], phraseMatch };
+  }
 
   const fields: Array<{ weight: number; tokens: string[] }> = [
     { weight: FIELD_WEIGHTS.title, tokens: fieldTokens(doc.title) },

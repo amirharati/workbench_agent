@@ -14,6 +14,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { loadPipelineCorpus } from '../categorize/lib/corpus.mjs';
 import { hybridSearch } from '../../src/lib/search/hybridSearch';
+import { parseSearchQuery } from '../../src/lib/search/queryLanguage';
 import { extractSearchRelated } from '../../src/lib/search/searchRelated';
 import { mergeWeights } from '../../src/lib/search/ranking';
 import { searchIndexStats } from '../../src/lib/search/categoryCentroids';
@@ -161,9 +162,10 @@ async function main() {
   for (const mode of modes) {
     const modeRows = [];
     for (const q of queries) {
+      const parsedQuery = parseSearchQuery(q.text);
       let queryEmbedding: number[] | undefined;
-      if (mode === 'hybrid' && canEmbed && q.text?.trim()) {
-        queryEmbedding = await embedSingleQuery(q.text.trim());
+      if (mode === 'hybrid' && canEmbed && parsedQuery.semanticText) {
+        queryEmbedding = await embedSingleQuery(parsedQuery.semanticText);
       }
 
       const result = hybridSearch(index, {
@@ -175,7 +177,11 @@ async function main() {
       });
 
       const related = opts.withRelated
-        ? extractSearchRelated(index, result, { queryEmbedding, filters: q.filters })
+        ? extractSearchRelated(index, result, {
+            queryEmbedding,
+            filters: q.filters,
+            parsedQuery,
+          })
         : undefined;
 
       modeRows.push({

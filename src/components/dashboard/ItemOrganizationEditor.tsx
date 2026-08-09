@@ -33,6 +33,8 @@ export interface ItemOrganizationEditorProps {
   compact?: boolean;
   /** Hide tag editing when this editor is used only as a save-destination picker. */
   showTags?: boolean;
+  /** Lets containing dialogs prevent dismissal while a durable write is pending. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 const chipBase: React.CSSProperties = {
@@ -66,6 +68,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   defaultCollectionId,
   compact = false,
   showTags = true,
+  onBusyChange,
 }) => {
   // Write path exists → always render the same chrome (view/edit won't reflow).
   const hasWritePath = !!onUpdate || !!onLocalChange;
@@ -83,8 +86,10 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   );
   const [tagDraft, setTagDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
+  const savedTimerRef = useRef<number | null>(null);
   const [showNewProject, setShowNewProject] = useState(false);
   const [showNewCollection, setShowNewCollection] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -97,6 +102,11 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
   /** Keep chips in sync immediately after persist while parent item props catch up. */
   const [optimisticMembershipIds, setOptimisticMembershipIds] = useState<string[] | null>(null);
   const [optimisticTags, setOptimisticTags] = useState<string[] | null>(null);
+
+  useEffect(() => () => {
+    if (savedTimerRef.current != null) window.clearTimeout(savedTimerRef.current);
+    onBusyChange?.(false);
+  }, [onBusyChange]);
 
   const effectiveCollections = useMemo(() => {
     if (pendingCollections.length === 0) return collections;
@@ -223,6 +233,8 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
 
     busyRef.current = true;
     setBusy(true);
+    setSaved(false);
+    onBusyChange?.(true);
     if (patch.collectionIds) setOptimisticMembershipIds(nextCollectionIds);
     if (patch.tags) setOptimisticTags(nextTags);
     try {
@@ -231,6 +243,9 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
       if (onLocalChange) {
         onLocalChange({ collectionIds: nextCollectionIds, tags: nextTags });
       }
+      setSaved(true);
+      if (savedTimerRef.current != null) window.clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = window.setTimeout(() => setSaved(false), 1800);
     } catch (e) {
       setOptimisticMembershipIds(null);
       setOptimisticTags(null);
@@ -238,6 +253,7 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
     } finally {
       busyRef.current = false;
       setBusy(false);
+      onBusyChange?.(false);
     }
   };
 
@@ -759,6 +775,15 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
         ) : null}
       </div> : null}
 
+      {busy ? (
+        <div className="ui-status" data-tone="info" role="status" aria-live="polite">
+          Saving organization…
+        </div>
+      ) : saved ? (
+        <div className="ui-status" data-tone="success" role="status" aria-live="polite">
+          Organization saved
+        </div>
+      ) : null}
       {error && <div className="ui-status" data-tone="error" role="alert">{error}</div>}
     </div>
   );

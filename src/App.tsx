@@ -67,6 +67,7 @@ import type { AISettings } from './lib/ai/types';
 import { runAITestPrompt } from './lib/ai/client';
 import { notifyUser } from './lib/userNotify';
 import { isTransientDbRpcError } from './lib/storage/dbClient';
+import { runWithDbPriority } from './lib/storage/dbRpcPriority';
 import { buildPipelineSnapshotExport } from './lib/pipeline/pipelineRunAnalysis';
 import { saveAndDownloadPipelineRun } from './lib/pipeline/pipelineRunStore';
 import {
@@ -822,9 +823,17 @@ function App() {
     options?: UpdateItemOptions
   ) => {
     try {
-      await updateItem(id, updates, options);
-      // Surgical UI refresh — never full libraryLoading flash while editing.
-      await refreshLibraryRef.current({ itemIds: [id] });
+      // Explicit UI lane: background pipeline work must never downgrade this
+      // mutation. updateItem returns the canonical worker-side merged row.
+      const saved = await runWithDbPriority('high', () => updateItem(id, updates, options));
+      if (saved) {
+        setItems((prev) => {
+          const byId = new Map(prev.map((item) => [item.id, item]));
+          if (isActiveItem(saved)) byId.set(saved.id, saved);
+          else byId.delete(saved.id);
+          return [...byId.values()].sort((a, b) => b.created_at - a.created_at);
+        });
+      }
     } catch (error) {
       const { isBackupFolderPermissionPaused } = await import('./lib/backupFolder');
       // Linked folder + Chrome permission pause must never look like a save failure.

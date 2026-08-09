@@ -4,6 +4,7 @@ import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db'
 import type { SearchResult } from '../../lib/search';
 import type { LibrarySearchState } from '../../hooks/useLibrarySearch';
 import type { SearchFilters } from '../../lib/search';
+import { describeParsedSearchQuery, parseSearchQuery } from '../../lib/search';
 import { SearchRelatedPanel } from './SearchDiscoveryBlocks';
 import { isValidBookmarkUrl } from '../../lib/utils';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
@@ -24,7 +25,7 @@ interface ProductSearchViewProps {
   onFiltersChange: (filters: SearchFilters) => void;
   onModeChange: (mode: 'hybrid' | 'lexical-only') => void;
   onSelectedItemIdChange: (id: string | null) => void;
-  onRunSearch: (query?: string) => Promise<void>;
+  onRunSearch: (query?: string, filters?: SearchFilters) => Promise<void>;
   onOpenItem: (item: Item) => void;
   onUpdateItem?: (
     id: string,
@@ -111,7 +112,20 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
     () => state.result?.results.map((r) => r.itemId) ?? [],
     [state.result]
   );
+  const contextProject = projects.find((project) => project.id === organizationContextProjectId);
+  const contextCollection = organizationCollections.find(
+    (collection) => collection.id === organizationContextCollectionId
+  );
+  const onFiltersChangeRef = useRef(onFiltersChange);
+  const onRunSearchRef = useRef(onRunSearch);
+  onFiltersChangeRef.current = onFiltersChange;
+  onRunSearchRef.current = onRunSearch;
   const badgeMap = usePipelineBadgeMap(resultItemIds);
+  const parsedQuery = useMemo(() => parseSearchQuery(state.query), [state.query]);
+  const queryInterpretation = useMemo(
+    () => describeParsedSearchQuery(parsedQuery),
+    [parsedQuery]
+  );
 
   useEffect(() => {
     if (autofocus) {
@@ -120,12 +134,32 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
     }
   }, [autofocus]);
 
+  useEffect(() => {
+    const exclusionBelongsToContext =
+      (!state.filters.excludeProjectId || state.filters.excludeProjectId === organizationContextProjectId) &&
+      (!state.filters.excludeCollectionId || state.filters.excludeCollectionId === organizationContextCollectionId);
+    if (exclusionBelongsToContext) return;
+
+    const nextFilters: SearchFilters = {
+      ...state.filters,
+      excludeProjectId: undefined,
+      excludeCollectionId: undefined,
+    };
+    onFiltersChangeRef.current(nextFilters);
+    if (state.query.trim()) void onRunSearchRef.current(undefined, nextFilters);
+  }, [organizationContextCollectionId, organizationContextProjectId, state.filters.excludeCollectionId, state.filters.excludeProjectId, state.query]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!state.loading) void onRunSearch();
   };
 
   const collectionFilter = state.filters.collectionId ?? 'all';
+  const exclusionFilter = organizationContextCollectionId && state.filters.excludeCollectionId === organizationContextCollectionId
+    ? 'current-collection'
+    : organizationContextProjectId && state.filters.excludeProjectId === organizationContextProjectId
+      ? 'current-project'
+      : 'none';
   const domainFilter = state.filters.domain ?? '';
 
   const showRecent = !state.query.trim() && !state.result;
@@ -333,6 +367,50 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             ))}
           </select>
 
+          {(organizationContextProjectId || organizationContextCollectionId) && (
+            <select
+              aria-label="Exclude organization"
+              value={exclusionFilter}
+              onChange={(event) => {
+                const value = event.target.value;
+                const nextFilters: SearchFilters = {
+                  ...state.filters,
+                  excludeProjectId: value === 'current-project' ? organizationContextProjectId : undefined,
+                  excludeCollectionId: value === 'current-collection' ? organizationContextCollectionId : undefined,
+                };
+                onFiltersChange(nextFilters);
+                // A discrete exclusion should visibly affect the current result
+                // set immediately. Pass the snapshot explicitly so React state
+                // timing cannot make this rerun use the previous filters.
+                if (state.query.trim()) void onRunSearch(undefined, nextFilters);
+              }}
+              title="Show only results not already organized in the selected location"
+              style={{
+                padding: '6px 10px',
+                borderRadius: 'var(--radius-sm)',
+                border: `1px solid ${exclusionFilter === 'none' ? 'var(--border)' : 'var(--accent)'}`,
+                background: exclusionFilter === 'none'
+                  ? 'var(--input-bg, var(--bg-input))'
+                  : 'var(--accent-weak)',
+                color: exclusionFilter === 'none' ? 'var(--text)' : 'var(--accent)',
+                fontSize: 'var(--text-xs)',
+                fontWeight: exclusionFilter === 'none' ? 400 : 600,
+              }}
+            >
+              <option value="none">Include existing</option>
+              {organizationContextProjectId && (
+                <option value="current-project">
+                  Not in current project{contextProject?.name ? ` · ${contextProject.name}` : ''}
+                </option>
+              )}
+              {organizationContextCollectionId && (
+                <option value="current-collection">
+                  Not in current collection{contextCollection?.name ? ` · ${contextCollection.name}` : ''}
+                </option>
+              )}
+            </select>
+          )}
+
           <input
             type="text"
             value={domainFilter}
@@ -392,6 +470,27 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             ))}
           </div>
         </div>
+        {state.query.trim() && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: '4px 10px',
+              marginTop: 9,
+              color: 'var(--text-faint)',
+              fontSize: 'var(--text-xs)',
+              lineHeight: 1.45,
+            }}
+          >
+            {queryInterpretation && (
+              <strong style={{ color: 'var(--text-muted)', fontWeight: 600 }}>
+                {queryInterpretation}
+              </strong>
+            )}
+            <span>Syntax: “exact phrase” · OR · AND / + · -exclude · site:domain</span>
+          </div>
+        )}
       </div>
 
       {showRecent && (
@@ -453,7 +552,11 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             ? ` (top ${state.result.results.length} of ${state.result.totalCandidates})`
             : ''}
           {' · '}
-          {state.result.mode === 'hybrid' ? 'hybrid' : 'text only'}
+          {state.result.mode === 'lexical-only'
+            ? 'text only · exact rules'
+            : state.result.embeddingPathUsed
+              ? 'semantic ranking · exact rules'
+              : 'text fallback · exact rules'}
           {hasResults && (
             <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
               Click to inspect · Click the URL to open the website · Double-click, Enter, or use {itemActionLabel.toLowerCase()}
@@ -472,7 +575,9 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               fontSize: 'var(--text-sm)',
             }}
           >
-            No matches. Try different words or clear filters.
+            {state.result.related.relatedLinks.length > 0
+              ? 'No exact matches. Related semantic results are shown below.'
+              : 'No exact matches. Try OR, different words, or clear filters.'}
           </div>
         )}
 
@@ -643,10 +748,11 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
         })}
       </div>
 
-      {hasResults && state.result && (
+      {state.result && (
         <SearchRelatedPanel
           variant="product"
           related={state.result.related}
+          semanticRelated={state.result.embeddingPathUsed}
           onTopicClick={(name) => {
             onQueryChange(name);
             void onRunSearch(name);

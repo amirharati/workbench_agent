@@ -22,6 +22,7 @@ export interface DialogShellProps {
   raised?: boolean;
   bodyClassName?: string;
   bodyStyle?: React.CSSProperties;
+  closeDisabled?: boolean;
 }
 
 /** Shared modal frame with Escape handling, focus containment, and focus restoration. */
@@ -36,12 +37,15 @@ export const DialogShell: React.FC<DialogShellProps> = ({
   raised = false,
   bodyClassName,
   bodyStyle,
+  closeDisabled = false,
 }) => {
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const closeDisabledRef = useRef(closeDisabled);
+  closeDisabledRef.current = closeDisabled;
   const previousFocusRef = useRef<HTMLElement | null>(
     typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -58,7 +62,7 @@ export const DialogShell: React.FC<DialogShellProps> = ({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onCloseRef.current();
+        if (!closeDisabledRef.current) onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panel) return;
@@ -94,7 +98,7 @@ export const DialogShell: React.FC<DialogShellProps> = ({
       role="presentation"
       data-layer={raised ? 'raised' : 'default'}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && !closeDisabled) onClose();
       }}
     >
       <div
@@ -113,7 +117,7 @@ export const DialogShell: React.FC<DialogShellProps> = ({
             <h2 className="ui-dialog__title" id={titleId}>{title}</h2>
             {description ? <div className="ui-dialog__description" id={descriptionId}>{description}</div> : null}
           </div>
-          <button className="ui-button ui-button--icon ui-dialog__close" type="button" onClick={onClose} title="Close" aria-label={`Close ${title}`}>
+          <button className="ui-button ui-button--icon ui-dialog__close" type="button" onClick={onClose} disabled={closeDisabled} title={closeDisabled ? 'Wait for the current save to finish' : 'Close'} aria-label={`Close ${title}`}>
             <X size={15} />
           </button>
         </header>

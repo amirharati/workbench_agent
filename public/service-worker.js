@@ -3,7 +3,7 @@
 const OFFSCREEN_URL = 'offscreen.html';
 // Increment when the dashboard requires new DB-owner/worker RPC capabilities.
 // Keep this in sync with src/offscreen/offscreen.ts and the DB worker response.
-const DB_OWNER_PROTOCOL_VERSION = 5;
+const DB_OWNER_PROTOCOL_VERSION = 6;
 let offscreenCreating = null;
 let offscreenProtocolVerified = false;
 

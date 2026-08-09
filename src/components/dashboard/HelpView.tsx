@@ -252,7 +252,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     title: 'Search and list filtering',
     summary: 'Use full Search for discovery and local filters for quickly narrowing the list in front of you.',
     icon: Search,
-    keywords: ['search', 'hybrid', 'scope', 'filter', 'recent query', 'workspace', 'organize', 'command palette'],
+    keywords: ['search', 'hybrid', 'scope', 'filter', 'recent query', 'workspace', 'organize', 'command palette', 'exact phrase', 'boolean', 'site', 'exclude'],
     content: (
       <>
         <DefinitionGrid entries={[
@@ -265,6 +265,15 @@ export const HELP_TOPICS: HelpTopic[] = [
             <>Select a result to inspect it. Use <strong>Add to workspace…</strong> for temporary working context or <strong>Organize…</strong> for permanent membership.</>,
             <>Use <strong>Open in tab</strong> when you want a frozen search snapshot in Open work; later Home searches will not mutate it.</>,
           ]} />
+        <DefinitionGrid entries={[
+          { icon: Search, term: 'All terms', description: <><code>ml in trading</code> requires both meaningful terms. Connector words such as “in” do not become requirements.</> },
+          { icon: Search, term: 'Exact phrase', description: <>Use quotes: <code>“machine learning in trading”</code>.</> },
+          { icon: Search, term: 'Alternatives', description: <>Use uppercase or lowercase <code>OR</code>: <code>ai OR quant</code>. Plain spacing, <code>AND</code>, and a leading <code>+</code> are required-term forms.</> },
+          { icon: Search, term: 'Exclude / site', description: <>Use <code>-beginner</code>, <code>-“intro course”</code>, or <code>site:arxiv.org</code>.</> },
+        ]} />
+        <Callout title="Exact rules first; semantics remain visible">
+          Primary results obey the parsed terms, phrases, exclusions, site, and current organization scope. Hybrid mode uses available embeddings to rank those matches and shows semantic discoveries separately. If embeddings are unavailable or processing is using the heavy index, Search labels the run as a text fallback instead of silently changing the query meaning.
+        </Callout>
       </>
     ),
   },

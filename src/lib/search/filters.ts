@@ -13,6 +13,12 @@ export function applySearchFilters(
   if (filters.collectionId) {
     out = out.filter((d) => d.collectionIds.includes(filters.collectionId!));
   }
+  if (filters.excludeProjectId) {
+    out = out.filter((d) => !d.projectIds.includes(filters.excludeProjectId!));
+  }
+  if (filters.excludeCollectionId) {
+    out = out.filter((d) => !d.collectionIds.includes(filters.excludeCollectionId!));
+  }
   if (filters.domain) {
     const dom = filters.domain.toLowerCase().replace(/^www\./, '');
     out = out.filter((d) => d.domain.toLowerCase().includes(dom));

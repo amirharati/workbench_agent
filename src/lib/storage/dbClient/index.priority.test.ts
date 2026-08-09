@@ -63,6 +63,38 @@ describe('dbRpc priority propagation', () => {
     expect(mutation?.priority).toBe('high');
   });
 
+  it('lets an explicit interactive write jump ahead of an ambient low-priority task', async () => {
+    const listeners = new Set<(message: unknown) => void>();
+    const sendMessage = vi.fn(async (message: { method?: string }) => {
+      if (message.method === 'ping') {
+        for (const listener of listeners) listener({ type: 'db-owner-ready' });
+        return { ok: true, result: 'pong' };
+      }
+      return { ok: true, result: { item: null, revision: 1 } };
+    });
+    vi.stubGlobal('chrome', {
+      runtime: {
+        sendMessage,
+        onMessage: {
+          addListener: (listener: (message: unknown) => void) => listeners.add(listener),
+        },
+      },
+    });
+
+    const [{ dbRpc }, { runWithDbPriority }] = await Promise.all([
+      import('./index'),
+      import('../dbRpcPriority'),
+    ]);
+    await runWithDbPriority('low', () =>
+      runWithDbPriority('high', () => dbRpc('updateItemAtomic', ['item-1', {}, undefined]))
+    );
+
+    const mutation = sendMessage.mock.calls.find(
+      ([message]) => (message as { method?: string }).method === 'updateItemAtomic'
+    )?.[0] as { priority?: string } | undefined;
+    expect(mutation?.priority).toBe('high');
+  });
+
   it('treats a successful shared-owner ping as ready in a newly opened dashboard', async () => {
     const sendMessage = vi.fn(async (message: { method?: string }) => {
       if (message.method === 'ping') return { ok: true, result: 'pong' };

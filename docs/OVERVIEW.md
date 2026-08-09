@@ -23,7 +23,7 @@ Today the app delivers **projects ↔ collections ↔ items**, **Tab Commander**
 | Theme | Direction |
 |-------|-----------|
 | **Bookmarks & sources** | Scale beyond one-off adds: **manual bulk import** (e.g. Netscape/HTML export, structured files) first; optional later **guided capture from a tab** (“harvest links on this page”) and per-site helpers—not a prerequisite for AI. |
-| **Search / RAG** | **Hybrid is the default**: retrieval and storage local; embeddings can be API or **browser-side** later (tradeoffs on quality/size). Turns the corpus into a **personal searchable library** grounded in bookmarks. |
+| **Search / RAG** | **Hybrid is the default**: parsed exact rules stay deterministic, while query embeddings rank matches and surface separately labelled related material against worker-owned document vectors. Retrieval/storage remain local; query embedding uses optional key-backed AI and visibly falls back to text. |
 | **Agentic research** | Separate from always-on search: **user-triggered**, budgeted flows (simple chat + optional tools)—not silent crawling. Cost and scope stay explicit in settings. |
 | **Workspaces + tabs + AI** | Summaries, naming, clustering open tabs/workspaces onto projects—additive metadata and assists, building on existing workspace model. |
 | **Planning & study paths** | Ordered views / “playlists” over items plus AI-drafted outlines; human edits—comes after robust bookmark corpus + basic chat. |
@@ -120,7 +120,7 @@ When Homebase overrides the **New Tab Page** (`chrome_url_overrides.newtab`), Ch
 | **AI Agent** | Infra baseline + first bookmark-grounded ask flow shipped. Next: explicit selection UX, richer citations, then broader RAG/embeddings later. |
 | **V2 — Product** | ✅ **Closed** 2026-05-29. **Active:** V3 pipeline — discover algo mostly done; staged hydrate + Hub SQL paging for large libraries; staging workflow + import waves next — [`BACKLOG.md`](BACKLOG.md). |
 | **AI Categorization (V1)** | Backend shipped. Product: browse taxonomy (Tools), accept/reject suggestions (Inspector), digest queues (Home). |
-| **Search** | Product hybrid search shipped (**05.2**); dev score breakdown in `SearchDevPanel`. |
+| **Search** | Product parsed hybrid search shipped: default AND, exact phrases, OR/AND/`+`, exclusions, `site:`, scoped negative organization filters, worker-owned embedding rank, related semantic results, and visible text fallback. Dev score breakdown remains in `SearchDevPanel`. |
 | **Enrichment / fetch** | **D-10 shipped:** headless hardening, X threads, tab-session + `file://` single-file. **D-45 tracked:** bulk folder scan for local PDFs/papers (not implemented). |
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | **Shipped (05.B + 05.C):** pin/fav/trash; pin sort-to-top; batch classify from Home. Open: 30-day purge, per-project quick-access filters. |

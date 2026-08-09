@@ -1115,7 +1115,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             items={items}
             projects={projects}
             onBack={() => setSelectedProjectId(null)}
-            onUpdateItem={forwardTabUpdateItem}
+            onUpdateItem={onUpdateBookmark}
             onDeleteItem={
               onDeleteBookmark
                 ? async (id, collectionId) => {

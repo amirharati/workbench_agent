@@ -31,6 +31,7 @@ export const ItemOrganizationDialog: React.FC<ItemOrganizationDialogProps> = ({
   defaultCollectionId,
 }) => {
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   return (
     <>
@@ -50,10 +51,11 @@ export const ItemOrganizationDialog: React.FC<ItemOrganizationDialogProps> = ({
           title="Add to project or collection"
           description={<>Choose permanent library locations for <strong>{item.title || 'Untitled'}</strong>. Workspaces remain separate.</>}
           onClose={() => setOpen(false)}
+          closeDisabled={saving}
           maxWidth={560}
           footer={(
-            <button className="ui-button ui-button--primary" type="button" onClick={() => setOpen(false)}>
-              Done
+            <button className="ui-button ui-button--primary" type="button" disabled={saving} onClick={() => setOpen(false)}>
+              {saving ? 'Saving…' : 'Done'}
             </button>
           )}
         >
@@ -65,6 +67,7 @@ export const ItemOrganizationDialog: React.FC<ItemOrganizationDialogProps> = ({
             showTags={false}
             defaultProjectId={defaultProjectId}
             defaultCollectionId={defaultCollectionId}
+            onBusyChange={setSaving}
             onCreateProject={onCreateProject}
             onCreateCollection={onCreateCollection}
             onUpdate={(patch) => onUpdateItem(item.id, { ...patch, updated_at: Date.now() })}
