@@ -4,6 +4,7 @@ import {
   getDefaultImportSelection,
   resolveImportDestinationLabel,
   resolveImportProcessingPercent,
+  resolveImportReportProcessedIds,
 } from './ImportStudioView';
 
 const project: Project = {
@@ -46,5 +47,11 @@ describe('Import Studio workflow', () => {
     expect(resolveImportProcessingPercent({ phase: 'enrich', waveIndex: 0, waveTotal: 2, enrichDone: 5, enrichTotal: 10 })).toBe(38);
     expect(resolveImportProcessingPercent({ phase: 'wave', waveIndex: 1, waveTotal: 2 })).toBe(83);
     expect(resolveImportProcessingPercent({ phase: 'done', waveIndex: 2, waveTotal: 2 })).toBe(100);
+  });
+
+  it('reports only checkpoint-final items after a partial pipeline run', () => {
+    expect(
+      [...resolveImportReportProcessedIds({ completedItemIds: ['done-a', 'done-b'] })]
+    ).toEqual(['done-a', 'done-b']);
   });
 });

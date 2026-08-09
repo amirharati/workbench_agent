@@ -1,22 +1,28 @@
 import React from 'react';
 import {
-  Home,
+  AlertTriangle,
   BookMarked,
-  Search,
-  Star,
-  Pin,
-  Trash2,
-  MousePointerClick,
-  Keyboard,
+  Database,
+  ExternalLink,
+  FileText,
+  FolderTree,
+  HelpCircle,
+  Home,
+  Layers3,
+  MonitorUp,
   PanelLeft,
-  Upload,
-  Tags,
-  Terminal,
+  Pencil,
+  Pin,
+  Search,
   Settings,
-  Layers,
-  GripHorizontal,
-  Zap,
+  ShieldCheck,
+  Star,
+  Tags,
+  Trash2,
+  Upload,
   Workflow,
+  X,
+  type LucideIcon,
 } from 'lucide-react';
 import { uiPatterns } from '../../styles/uiPatterns';
 
@@ -27,387 +33,475 @@ function modKeyLabel(): string {
 
 const mod = modKeyLabel();
 
-type HelpSection = {
+export type HelpMedia =
+  | {
+      kind: 'image';
+      src: string;
+      alt: string;
+      caption?: string;
+    }
+  | {
+      kind: 'video';
+      src: string;
+      title: string;
+      caption?: string;
+      poster?: string;
+    };
+
+export type HelpTopic = {
   id: string;
+  group: 'Start here' | 'Daily workflows' | 'Safety & reference';
   title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
+  summary: string;
+  icon: LucideIcon;
+  keywords: string[];
+  content: React.ReactNode;
+  /** Add local image/video descriptors here; the page needs no structural change. */
+  media?: HelpMedia[];
 };
 
 const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <kbd
-    style={{
-      display: 'inline-block',
-      padding: '2px 7px',
-      borderRadius: 4,
-      border: '1px solid var(--border)',
-      background: 'var(--bg-glass)',
-      fontSize: 'var(--text-xs)',
-      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
-      color: 'var(--text)',
-      lineHeight: 1.4,
-    }}
-  >
-    {children}
-  </kbd>
+  <kbd className="ui-help__kbd">{children}</kbd>
 );
 
-const ShortcutRow: React.FC<{ keys: React.ReactNode; desc: string }> = ({ keys, desc }) => (
-  <div
-    style={{
-      display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      gap: 16,
-      padding: '8px 0',
-      borderBottom: '1px solid var(--border)',
-      fontSize: 'var(--text-sm)',
-    }}
-  >
-    <span style={{ color: 'var(--text-muted)', flex: 1 }}>{desc}</span>
-    <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end', flexShrink: 0 }}>
-      {keys}
-    </span>
-  </div>
+const GuideSteps: React.FC<{ steps: React.ReactNode[] }> = ({ steps }) => (
+  <ol className="ui-help__steps">
+    {steps.map((step, index) => (
+      <li key={index}>
+        <span aria-hidden="true">{index + 1}</span>
+        <div>{step}</div>
+      </li>
+    ))}
+  </ol>
 );
 
-const FeatureRow: React.FC<{ icon: React.ReactNode; title: string; desc: string }> = ({
-  icon,
-  title,
-  desc,
-}) => (
-  <div style={{ display: 'flex', gap: 12, padding: '10px 0' }}>
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        borderRadius: 8,
-        background: 'var(--accent-weak)',
-        color: 'var(--accent)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-      }}
-    >
-      {icon}
-    </div>
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: 4 }}>{title}</div>
-      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', lineHeight: 1.55 }}>{desc}</div>
-    </div>
-  </div>
-);
-
-export const HelpView: React.FC = () => {
-  const sections: HelpSection[] = [
-    {
-      id: 'start',
-      title: 'Getting started',
-      icon: <Home size={18} />,
-      children: (
-        <>
-          <p style={para}>
-            Homebase is your personal library for bookmarks and notes. Save links from the browser side panel,
-            organize them into projects and collections, enrich them with AI, and open items in tabs on Home or
-            Bookmarks.
-          </p>
-          <ol style={list}>
-            <li>Use the <strong>side panel</strong> (extension) to save the current page.</li>
-            <li>Pick a <strong>project</strong> and <strong>collection</strong> in the left sidebar to scope your view.</li>
-            <li>Open <strong>Home</strong> for search, quick links, and tabbed item detail.</li>
-            <li>Visit <strong>Settings</strong> to connect backup and AI providers.</li>
-          </ol>
-        </>
-      ),
-    },
-    {
-      id: 'shortcuts',
-      title: 'Keyboard shortcuts',
-      icon: <Keyboard size={18} />,
-      children: (
-        <>
-          <ShortcutRow
-            keys={
-              <>
-                <Kbd>{mod}</Kbd>
-                <Kbd>K</Kbd>
-              </>
-            }
-            desc="Open command palette — jump to library search"
-          />
-          <ShortcutRow
-            keys={
-              <>
-                <Kbd>{mod}</Kbd>
-                <Kbd>W</Kbd>
-              </>
-            }
-            desc="Close the active tab on Home (when focus is not in a text field)"
-          />
-          <ShortcutRow keys={<Kbd>Esc</Kbd>} desc="Close command palette, context menus, or dialogs" />
-          <ShortcutRow keys={<Kbd>Enter</Kbd>} desc="Submit search from Home hero or command palette" />
-          <ShortcutRow
-            keys={
-              <>
-                <Kbd>{mod}</Kbd>
-                <Kbd>Enter</Kbd>
-              </>
-            }
-            desc="Open search result URL in a new browser tab (Search view)"
-          />
-          <ShortcutRow
-            keys={
-              <>
-                <Kbd>{mod}</Kbd>
-                <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>click</span>
-              </>
-            }
-            desc="Open an item in another panel space (when split layout is available)"
-          />
-          <ShortcutRow
-            keys={<span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>× on scope chip</span>}
-            desc="Clear project, collection, category, or pipeline browse filter (Bookmarks / Notes)"
-          />
-        </>
-      ),
-    },
-    {
-      id: 'processing',
-      title: 'Processing digest (Home)',
-      icon: <Zap size={18} />,
-      children: (
-        <>
-          <p style={para}>
-            The <strong>Processing Digest</strong> card on Home summarizes pipeline queues. Click a row to open a
-            filtered list tab on Home (same as Library Overview).
-          </p>
-          <ul style={list}>
-            <li>
-              <strong>Classify queue</strong> — total waiting on AI categories. The row also shows how many are{' '}
-              <strong>AI-ready</strong> (can run now). Click <strong>Review & classify</strong> for a checklist;
-              items marked &quot;Won&apos;t run&quot; are skipped. After a run, the summary explains sent to AI vs got
-              a category vs still in queue.
-            </li>
-            <li>
-              <strong>Process not enriched (N)</strong> — same checklist flow for fetch + classify; Cancel stops
-              mid-batch (saved work is kept).
-            </li>
-            <li>
-              <strong>Cancel</strong> — stops an in-flight <em>not enriched</em> batch; work already saved is kept.
-            </li>
-          </ul>
-          <p style={{ ...para, marginBottom: 0 }}>
-            <strong>Collections vs AI categories:</strong> Collections are manual folders in the sidebar. AI categories
-            are semantic tags assigned by the pipeline — review them under Tools → AI Categories or in the Inspector.
-          </p>
-        </>
-      ),
-    },
-    {
-      id: 'navigation',
-      title: 'Navigation',
-      icon: <PanelLeft size={18} />,
-      children: (
-        <>
-          <FeatureRow
-            icon={<Home size={16} />}
-            title="Home"
-            desc="Landing page with library search, favorites & pins, recent items, and tabbed detail below. Drag the divider to give more room to landing or tabs."
-          />
-          <FeatureRow
-            icon={<BookMarked size={16} />}
-            title="Library"
-            desc="Browse links and notes together or filter by type. Scope by project/collection, organize material, add it to any workspace, or enter Focus explicitly."
-          />
-          <FeatureRow
-            icon={<Layers size={16} />}
-            title="Workspaces"
-            desc="Manage project working sets and browser snapshots together; activate Homebase work or restore captured browser windows."
-          />
-          <FeatureRow
-            icon={<Search size={16} />}
-            title="Search"
-            desc="Full library search with filters. You can also search from Home or open search in a Home tab."
-          />
-          <FeatureRow
-            icon={<Workflow size={16} />}
-            title="Enrichment Hub"
-            desc="Fetch, AI, embed, and classify — inspect items, filter by issue type, and run bulk or per-step actions."
-          />
-          <FeatureRow
-            icon={<Upload size={16} />}
-            title="Import Studio"
-            desc="Import bookmarks from exports and other formats."
-          />
-          <FeatureRow
-            icon={<Tags size={16} />}
-            title="Categories (in Enrichment Hub)"
-            desc="Semantic tags from enrichment — not the same as Collections (manual folders). Browse taxonomy, run discover, and review assignments in Enrichment Hub → Categories."
-          />
-          <FeatureRow
-            icon={<Terminal size={16} />}
-            title="Tab Commander"
-            desc="Manage live Chrome windows and tabs, then capture a selection as a browser snapshot or project workspace."
-          />
-          <FeatureRow
-            icon={<Settings size={16} />}
-            title="Settings"
-            desc="Backup folder, AI keys, enrichment, categorization, and appearance."
-          />
-        </>
-      ),
-    },
-    {
-      id: 'home-tabs',
-      title: 'Home & tabs',
-      icon: <GripHorizontal size={18} />,
-      children: (
-        <>
-          <p style={para}>
-            When you open an item, search, or a utility list (Pinned, Favorites, Recent, Trash), a{' '}
-            <strong>tab strip</strong> appears at the bottom of Home. Drag the horizontal divider to resize the
-            landing section vs. tabs — both areas scroll independently.
-          </p>
-          <ul style={list}>
-            <li>Click a tab to switch; click <strong>×</strong> on a tab to close it.</li>
-            <li>Item tabs show ⭐ and 📌 toggles in the header for favorites and pins.</li>
-            <li>Quick links on Home open utility lists in tabs without leaving the page.</li>
-            <li>Library Overview and Processing Digest rows open a filtered list tab on Home (not Bookmarks).</li>
-          </ul>
-        </>
-      ),
-    },
-    {
-      id: 'quick-access',
-      title: 'Pins, favorites & trash',
-      icon: <Star size={18} />,
-      children: (
-        <>
-          <FeatureRow
-            icon={<Star size={16} style={{ color: 'var(--favorite)' }} />}
-            title="Favorites"
-            desc="Star an item from its tab header, side panel, or right-click menu. Favorites appear on Home and in the Favorites tab."
-          />
-          <FeatureRow
-            icon={<Pin size={16} />}
-            title="Pinned"
-            desc="Pin important items for quick access. In collection lists, pinned items sort to the top. Pinned-only items show 📌; both flags show ⭐ then 📌 on cards."
-          />
-          <FeatureRow
-            icon={<Trash2 size={16} style={{ color: 'var(--danger)' }} />}
-            title="Trash"
-            desc="Deleting removes from one collection, or moves to trash when it was the last placement. Restore from the Trash tab or context menu."
-          />
-          <p style={{ ...para, marginTop: 8 }}>
-            <MousePointerClick size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-            Right-click any item card or list row for pin, favorite, trash, and open actions.
-          </p>
-        </>
-      ),
-    },
-    {
-      id: 'side-panel',
-      title: 'Browser side panel',
-      icon: <BookMarked size={18} />,
-      children: (
-        <>
-          <p style={para}>
-            The extension side panel saves the current tab. If the URL already exists, you can edit an existing
-            placement or add to another collection.
-          </p>
-          <ul style={list}>
-            <li><strong>Quick access</strong> — ⭐ / 📌 while editing a saved bookmark.</li>
-            <li><strong>Remove</strong> — drops this collection placement; last placement moves the item to trash.</li>
-            <li><strong>Trash</strong> — shown when removing the only placement.</li>
-          </ul>
-        </>
-      ),
-    },
-    {
-      id: 'more',
-      title: 'More to come',
-      icon: <Tags size={18} />,
-      children: (
-        <p style={para}>
-          This help page is updated as features ship — check back from the <strong>Help</strong> link at the bottom of
-          the left sidebar.
-        </p>
-      ),
-    },
-  ];
-
-  return (
-    <div className="ui-page-frame" style={{ ...uiPatterns.pageFrame, overflow: 'auto' }}>
-      <div style={{ width: '100%', maxWidth: 720, margin: '0 auto' }}>
-      <div className="ui-page-header" style={{ ...uiPatterns.pageHeader, marginBottom: 20 }}>
+const DefinitionGrid: React.FC<{
+  entries: Array<{ icon: LucideIcon; term: string; description: React.ReactNode }>;
+}> = ({ entries }) => (
+  <div className="ui-help__definition-grid">
+    {entries.map(({ icon: Icon, term, description }) => (
+      <div className="ui-help__definition" key={term}>
+        <span className="ui-help__definition-icon"><Icon size={15} aria-hidden="true" /></span>
         <div>
-        <h1 style={uiPatterns.pageTitle}>Help</h1>
-        <p style={{ ...uiPatterns.pageDescription, fontSize: 'var(--text-sm)' }}>
-          Homebase guide — basics, shortcuts, and where to find things. v2
-        </p>
+          <strong>{term}</strong>
+          <p>{description}</p>
         </div>
       </div>
+    ))}
+  </div>
+);
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {sections.map((section) => (
-          <section
-            className="ui-panel"
-            key={section.id}
-            id={`help-${section.id}`}
-            style={{
-              ...uiPatterns.panel,
-              overflow: 'visible',
-              padding: '16px 18px',
-            }}
-          >
-            <h2
-              style={{
-                margin: '0 0 12px',
-                fontSize: 'var(--text-base)',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                color: 'var(--text)',
-              }}
-            >
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 28,
-                  height: 28,
-                  borderRadius: 6,
-                  background: 'var(--accent-weak)',
-                  color: 'var(--accent)',
-                }}
-              >
-                {section.icon}
-              </span>
-              {section.title}
-            </h2>
-            <div style={{ color: 'var(--text)' }}>{section.children}</div>
-          </section>
-        ))}
-      </div>
-      </div>
+const Callout: React.FC<{
+  tone?: 'info' | 'warning' | 'success';
+  title: string;
+  children: React.ReactNode;
+}> = ({ tone = 'info', title, children }) => (
+  <aside className="ui-help__callout" data-tone={tone}>
+    {tone === 'warning'
+      ? <AlertTriangle size={16} aria-hidden="true" />
+      : tone === 'success'
+        ? <ShieldCheck size={16} aria-hidden="true" />
+        : <HelpCircle size={16} aria-hidden="true" />}
+    <div><strong>{title}</strong><p>{children}</p></div>
+  </aside>
+);
+
+const ShortcutRow: React.FC<{ keys: React.ReactNode; children: React.ReactNode }> = ({ keys, children }) => (
+  <div className="ui-help__shortcut">
+    <span>{children}</span>
+    <span className="ui-help__shortcut-keys">{keys}</span>
+  </div>
+);
+
+export const HelpMediaGallery: React.FC<{ media?: HelpMedia[] }> = ({ media }) => {
+  if (!media?.length) return null;
+  return (
+    <div className="ui-help__media-grid" aria-label="Topic media">
+      {media.map((entry) => (
+        <figure className="ui-help__media" data-kind={entry.kind} key={`${entry.kind}:${entry.src}`}>
+          {entry.kind === 'image' ? (
+            <img src={entry.src} alt={entry.alt} loading="lazy" />
+          ) : (
+            <video controls preload="metadata" poster={entry.poster} aria-label={entry.title}>
+              <source src={entry.src} />
+            </video>
+          )}
+          {entry.caption ? <figcaption>{entry.caption}</figcaption> : null}
+        </figure>
+      ))}
     </div>
   );
 };
 
-const para: React.CSSProperties = {
-  margin: '0 0 12px',
-  fontSize: 'var(--text-sm)',
-  color: 'var(--text-muted)',
-  lineHeight: 1.6,
-};
+export const HELP_TOPICS: HelpTopic[] = [
+  {
+    id: 'first-run',
+    group: 'Start here',
+    title: 'First run and your data folder',
+    summary: 'Connect storage, understand what is local, and make your first capture safely.',
+    icon: ShieldCheck,
+    keywords: ['setup', 'install', 'onboarding', 'dropbox', 'folder', 'sqlite', 'backup', 'inbox', 'incoming'],
+    content: (
+      <>
+        <p>Homebase is local-first. Your live browser database is protected by a mirror in the data folder you choose during setup.</p>
+        <GuideSteps steps={[
+            <>Choose a dedicated data folder. A Dropbox folder is useful for transport and backup on <strong>one active device</strong>.</>,
+            <>If the folder already contains <code>workbench.sqlite</code>, Homebase loads it. An empty browser database must not replace it.</>,
+            <>Save an initial link with the side panel or create a note in Library. Unscoped captures go to <strong>Inbox / Incoming</strong>.</>,
+            <>Open <strong>Settings → Backup &amp; restore</strong> and confirm the live mirror reports a successful write.</>,
+          ]} />
+        <Callout tone="warning" title="Dropbox is not multi-device sync">
+          Do not let two Homebase installations write the same shared SQLite file. Multi-device merge is a later feature.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    id: 'mental-model',
+    group: 'Start here',
+    title: 'How Homebase is organized',
+    summary: 'Learn which structures are durable organization and which are temporary working context.',
+    icon: Layers3,
+    keywords: ['model', 'item', 'link', 'note', 'project', 'collection', 'favorite', 'pin', 'workspace', 'focus'],
+    content: (
+      <>
+        <DefinitionGrid entries={[
+          { icon: BookMarked, term: 'Library item', description: <>A saved link or a note. One item can belong to several collections without creating separate copies.</> },
+          { icon: FolderTree, term: 'Project', description: <>A durable area of work. It owns collections, project Pins, and project workspaces.</> },
+          { icon: Tags, term: 'Collection', description: <>A manual folder inside a project. Collections are not AI categories.</> },
+          { icon: Star, term: 'Favorite', description: <>A global quick-access flag visible across the library.</> },
+          { icon: Pin, term: 'Pin', description: <>A project-local quick-access flag. The same item can be pinned in one project and not another.</> },
+          { icon: Layers3, term: 'Workspace', description: <>A working set of links, notes, saved searches, or captured browser tabs. It does not replace permanent project/collection membership.</> },
+        ]} />
+        <Callout title="Temporary versus permanent">
+          <strong>Add to workspace</strong> changes the working set. <strong>Organize…</strong> changes durable project and collection membership.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    id: 'home-library',
+    group: 'Daily workflows',
+    title: 'Home and Library',
+    summary: 'Use Home for active context and Library for complete maintenance and browsing.',
+    icon: Home,
+    keywords: ['home', 'overview', 'library', 'all items', 'links', 'notes', 'gallery', 'list', 'inspector', 'focus'],
+    content: (
+      <>
+        <DefinitionGrid entries={[
+          { icon: Home, term: 'Home · Overview', description: <>Resume recent material, open projects, browse Favorites &amp; pins, and see the active workspace.</> },
+          { icon: Search, term: 'Home · Search', description: <>Search without leaving the current Home context. Search state is retained when you return to Overview.</> },
+          { icon: BookMarked, term: 'Library', description: <>Browse the full catalog with All items, Links, Notes, Favorites &amp; pins, and Workspace views.</> },
+          { icon: PanelLeft, term: 'Inspector / Item', description: <>Selecting an item opens its editable details. Focus gives the same work a larger canvas; it is not a separate capability level.</> },
+        ]} />
+        <ul>
+          <li>Use the context row to switch between <strong>All Library</strong> and recently used projects.</li>
+          <li>Use list/gallery view for density, then use the local filter to narrow the visible list without leaving it.</li>
+          <li>Click the displayed URL to visit a page. Clicking elsewhere on an item row selects it instead.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'capture-edit',
+    group: 'Daily workflows',
+    title: 'Capture, edit, and organize material',
+    summary: 'Save the current page, create notes, edit details, and place material deliberately.',
+    icon: Pencil,
+    keywords: ['capture', 'save', 'side panel', 'bookmark', 'note', 'edit', 'organize', 'tags', 'url', 'favorite'],
+    content: (
+      <>
+        <GuideSteps steps={[
+            <>Open the browser side panel on a page. Confirm the title and URL, add notes if useful, then choose a project and collection.</>,
+            <>For an existing URL, edit the existing saved item or add it to another location. Homebase keeps one canonical item with several placements.</>,
+            <>In Home, Library, Project, Search, or Inspector, select an item and use <strong>Edit</strong> to change title, URL, notes, or tags.</>,
+            <>Use <strong>Organize…</strong> to add or remove project/collection memberships, or create a destination inline.</>,
+            <>Use <strong>Favorite</strong> for global quick access and <strong>Pin</strong> for the active project.</>,
+          ]} />
+        <Callout title="A URL is the navigation target">
+          Only the URL itself opens the external page. The rest of the card or row is for selection and item actions.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    id: 'projects-collections',
+    group: 'Daily workflows',
+    title: 'Projects and collections',
+    summary: 'Keep durable work grouped without losing the ability to browse the whole library.',
+    icon: FolderTree,
+    keywords: ['project', 'collection', 'incoming', 'inbox', 'unfiled', 'scope', 'pin', 'delete'],
+    content: (
+      <>
+        <ul>
+          <li>Select a project in the sidebar or Home context row. The project page keeps All items, Pinned, Collection, and Workspace as explicit views.</li>
+          <li>Selecting a collection changes the visible project material; it does not create a new workspace.</li>
+          <li>Normal projects have an <strong>Unfiled</strong> destination for material not assigned to a named collection.</li>
+          <li><strong>Inbox</strong> is the unscoped capture project and intentionally has one <strong>Incoming</strong> collection. Additional Inbox collections are not allowed.</li>
+          <li>Deleting a collection keeps its items; material with no remaining named placement is reassigned to the safe default destination described by the confirmation.</li>
+        </ul>
+        <Callout title="Scope is a view, not ownership">
+          Widening a view to All Library does not remove project membership. Search scope and organization are separate choices.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    id: 'search',
+    group: 'Daily workflows',
+    title: 'Search and list filtering',
+    summary: 'Use full Search for discovery and local filters for quickly narrowing the list in front of you.',
+    icon: Search,
+    keywords: ['search', 'hybrid', 'scope', 'filter', 'recent query', 'workspace', 'organize', 'command palette'],
+    content: (
+      <>
+        <DefinitionGrid entries={[
+          { icon: Search, term: 'Full Search', description: <>Searches the chosen library/project/collection scope and can use the configured hybrid retrieval path.</> },
+          { icon: FileText, term: 'List filter', description: <>Instantly narrows the currently visible list using item fields, tags, placement names, and metadata. It does not run AI or embeddings.</> },
+        ]} />
+        <GuideSteps steps={[
+            <>Open <strong>Home · Search</strong> or press <Kbd>{mod}</Kbd> + <Kbd>K</Kbd>.</>,
+            <>Choose All Library, a project, or a collection as the search scope.</>,
+            <>Select a result to inspect it. Use <strong>Add to workspace…</strong> for temporary working context or <strong>Organize…</strong> for permanent membership.</>,
+            <>Use <strong>Open in tab</strong> when you want a frozen search snapshot in Open work; later Home searches will not mutate it.</>,
+          ]} />
+      </>
+    ),
+  },
+  {
+    id: 'workspaces-tabs',
+    group: 'Daily workflows',
+    title: 'Workspaces, Open work, and browser tabs',
+    summary: 'Separate Homebase working sets from live Chrome windows while moving between them deliberately.',
+    icon: Layers3,
+    keywords: ['workspace', 'live session', 'saved workspace', 'open work', 'focus', 'tab commander', 'browser snapshot', 'copy', 'move'],
+    content: (
+      <>
+        <DefinitionGrid entries={[
+          { icon: Layers3, term: 'Live session', description: <>The project’s current mutable working set. Add links, notes, and saved searches as you work.</> },
+          { icon: BookMarked, term: 'Named workspace', description: <>A saved Homebase working set. Activating another workspace preserves the one you leave.</> },
+          { icon: MonitorUp, term: 'Browser snapshot', description: <>A saved Chrome window/tab capture. Restore it as browser windows or add its tabs to a project workspace.</> },
+          { icon: ExternalLink, term: 'Open work / Focus', description: <>Open work holds interactive item/search/list views. Focus expands one entry without changing its underlying membership.</> },
+        ]} />
+        <ul>
+          <li>Use <strong>Add to workspace…</strong> to target Global, a project Live session, a named workspace, or a browser-derived working copy.</li>
+          <li>An item may exist in several workspaces. Copy keeps the source entry; Move removes it from the source after adding it to the destination.</li>
+          <li>Use <strong>Open links</strong> to open URL-capable workspace entries. Notes remain in Homebase.</li>
+          <li>Use <strong>Tab Commander</strong> to inspect live Chrome windows and capture selected windows or tabs. Live tabs are not automatically a saved workspace.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'import',
+    group: 'Daily workflows',
+    title: 'Import bookmarks',
+    summary: 'Preview and commit a controlled batch before optionally spending money on processing.',
+    icon: Upload,
+    keywords: ['import', 'bookmark file', 'chrome bookmarks', 'csv', 'json', 'html', 'preview', 'dedupe', 'pipeline'],
+    content: (
+      <>
+        <GuideSteps steps={[
+            <>Open <strong>Import Studio</strong> and choose Bookmark file or Chrome bookmarks. Format assistant is visibly marked not implemented.</>,
+            <>Review detected format, valid/invalid rows, duplicates, and the proposed destination. Inbox / Incoming is the safe default.</>,
+            <>Filter and select the rows you actually want, then commit them to the database.</>,
+            <>After the bookmarks are saved, choose whether to run enrichment. Importing and AI processing are separate decisions.</>,
+            <>Read the completion report for imported, merged, skipped, restored, or failed rows.</>,
+          ]} />
+        <Callout tone="success" title="Saved before optional AI">
+          A processing cancellation keeps database work already committed. Verify the report rather than assuming every selected row ran through AI.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    id: 'enrichment',
+    group: 'Daily workflows',
+    title: 'Enrichment, classification, and taxonomy',
+    summary: 'Inspect what happened, understand what is suggested, and rerun only the scope you intend.',
+    icon: Workflow,
+    keywords: ['enrichment', 'pipeline', 'fetch', 'ai', 'embed', 'classification', 'taxonomy', 'status', 'retry', 'discover'],
+    content: (
+      <>
+        <DefinitionGrid entries={[
+          { icon: Workflow, term: 'Enrichment review', description: <>Inspect fetch and AI quality, failures, raw/extracted content, and the next available action.</> },
+          { icon: Tags, term: 'Classification review', description: <>Review readiness, blockers, assigned categories, and suggested categories before reruns.</> },
+          { icon: FolderTree, term: 'Taxonomy', description: <>The library-wide semantic category tree used by classification. It is separate from manual collections.</> },
+        ]} />
+        <ul>
+          <li>Click a status badge for item-specific meaning and suggested next steps.</li>
+          <li>Use per-item actions while diagnosing; use selected/bulk actions only after confirming their scope and expected AI cost.</li>
+          <li>Suggested categories are not assigned categories. Accept/reject signals should remain visible and distinct.</li>
+          <li>Cancel or pause stops future work; completed writes are retained. The final outcome should distinguish processed, skipped, failed, and still queued.</li>
+        </ul>
+        <Callout tone="warning" title="Discover is a library-level maintenance action">
+          Review its selected scope and outcome carefully. V3 testing is specifically checking that skipped classification cannot look like deleted categories.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    id: 'backup-restore',
+    group: 'Safety & reference',
+    title: 'Backup, restore, and recovery',
+    summary: 'Know which file is live, what automatic copies exist, and how to recover without clobbering data.',
+    icon: Database,
+    keywords: ['backup', 'restore', 'recovery', 'workbench.sqlite', 'prev', 'manual', 'safety', 'undo', 'conflict', 'reconnect'],
+    content: (
+      <>
+        <DefinitionGrid entries={[
+          { icon: Database, term: 'workbench.sqlite', description: <>The live portable mirror in your chosen folder. Normal browser mutations commit locally first, then mirror to this file.</> },
+          { icon: ShieldCheck, term: 'Automatic previous copies', description: <><code>workbench.prev.sqlite</code> and <code>workbench.prev2.sqlite</code> rotate before live replacement.</> },
+          { icon: BookMarked, term: 'Manual snapshot', description: <>Backup now creates a timestamped SQLite snapshot. JSON export is an optional portable representation.</> },
+          { icon: Trash2, term: 'Safety / undo snapshot', description: <>Restore protects the state being replaced so an accidental rollback can itself be reversed.</> },
+        ]} />
+        <GuideSteps steps={[
+            <>Check <strong>Settings → Backup &amp; restore</strong> for the linked folder, last mirror, and any error or conflict.</>,
+            <>If folder access is paused, reconnect the saved folder. Do not choose a new empty folder just to dismiss the message.</>,
+            <>Use <strong>Backup now</strong> before destructive testing or major imports.</>,
+            <>Restore replaces the current library. Compare the snapshot date/size and read the confirmation; Homebase saves the current state first.</>,
+            <>After reinstall, choose the existing folder and verify counts and recognizable items before making new edits.</>,
+          ]} />
+        <Callout tone="warning" title="Never ignore suspected loss">
+          Stop writing, preserve the folder files, and record counts, timestamps, and the exact action. Do not repeatedly reload or restore until the cause is understood.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    id: 'settings-shortcuts',
+    group: 'Safety & reference',
+    title: 'Settings, shortcuts, and troubleshooting',
+    summary: 'Adjust appearance, configure optional AI, move quickly, and collect useful evidence when something fails.',
+    icon: Settings,
+    keywords: ['settings', 'theme', 'font', 'shortcut', 'keyboard', 'troubleshoot', 'console', 'reload', 'api key'],
+    content: (
+      <>
+        <h3>Settings</h3>
+        <ul>
+          <li><strong>General:</strong> dashboard theme, font size, and browser Home/New Tab guidance.</li>
+          <li><strong>AI &amp; processing:</strong> provider, model routing, API key, and a test prompt. AI is optional and user-triggered.</li>
+          <li><strong>Backup &amp; restore:</strong> folder health, mirror status, snapshots, restore, and conflict choices.</li>
+          <li><strong>Advanced:</strong> taxonomy repair and diagnostics. Use destructive controls only after reading their confirmation.</li>
+        </ul>
+        <h3>Keyboard</h3>
+        <div className="ui-help__shortcuts">
+          <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>K</Kbd></>}>Open library search from anywhere in the dashboard.</ShortcutRow>
+          <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>W</Kbd></>}>Close the active Open work tab when focus is not inside an editor.</ShortcutRow>
+          <ShortcutRow keys={<Kbd>Esc</Kbd>}>Close the command palette, menus, or dialogs.</ShortcutRow>
+          <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>S</Kbd></>}>Save while editing a note.</ShortcutRow>
+          <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>Enter</Kbd></>}>Submit the current prompt in Ask.</ShortcutRow>
+        </div>
+        <h3>Troubleshooting evidence</h3>
+        <ul>
+          <li>Record the current branch/commit, Chrome version, screen size, active project/collection, and exact steps.</li>
+          <li>For storage problems, also record item counts and data-folder filenames, sizes, and timestamps.</li>
+          <li>Copy the first application-owned console error. Repeated third-party preload warnings usually belong to the visited site, not Homebase.</li>
+          <li>After a code fix, rebuild and reload the unpacked extension, then repeat the same action before broader testing.</li>
+        </ul>
+      </>
+    ),
+  },
+];
 
-const list: React.CSSProperties = {
-  margin: 0,
-  paddingLeft: 20,
-  fontSize: 'var(--text-sm)',
-  color: 'var(--text-muted)',
-  lineHeight: 1.65,
+export function filterHelpTopics(query: string, topics: HelpTopic[] = HELP_TOPICS): HelpTopic[] {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return topics;
+  return topics.filter((topic) => {
+    const searchable = [topic.title, topic.summary, topic.group, ...topic.keywords].join(' ').toLocaleLowerCase();
+    return terms.every((term) => searchable.includes(term));
+  });
+}
+
+const GROUPS: HelpTopic['group'][] = ['Start here', 'Daily workflows', 'Safety & reference'];
+
+export const HelpView: React.FC = () => {
+  const [query, setQuery] = React.useState('');
+  const visibleTopics = React.useMemo(() => filterHelpTopics(query), [query]);
+
+  const goToTopic = (id: string) => {
+    document.getElementById(`help-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  return (
+    <div className="scrollbar ui-page-frame ui-help-page" style={{ ...uiPatterns.pageFrame, overflow: 'auto' }}>
+      <header className="ui-help__hero">
+        <div className="ui-help__hero-copy">
+          <span className="ui-help__eyebrow"><HelpCircle size={13} aria-hidden="true" /> Homebase guide</span>
+          <h1 style={uiPatterns.pageTitle}>Help</h1>
+          <p>Learn the current workflow, understand where data lives, and find the right action without leaving Homebase.</p>
+        </div>
+        <label className="ui-help__search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search Help…"
+            aria-label="Search Help"
+          />
+          {query ? (
+            <button type="button" onClick={() => setQuery('')} aria-label="Clear Help search"><X size={14} /></button>
+          ) : null}
+        </label>
+      </header>
+
+      <div className="ui-help__orientation" role="note">
+        <ShieldCheck size={16} aria-hidden="true" />
+        <span><strong>New here?</strong> Read First run, How Homebase is organized, then Capture and edit. Your data-safety guide is always under Backup and recovery.</span>
+      </div>
+
+      <div className="ui-help__layout">
+        <nav className="ui-panel ui-help__contents" aria-label="Help contents">
+          <div className="ui-help__contents-title">Contents</div>
+          {GROUPS.map((group) => {
+            const topics = visibleTopics.filter((topic) => topic.group === group);
+            if (!topics.length) return null;
+            return (
+              <div className="ui-help__contents-group" key={group}>
+                <div>{group}</div>
+                {topics.map((topic) => {
+                  const Icon = topic.icon;
+                  return (
+                    <button type="button" key={topic.id} onClick={() => goToTopic(topic.id)}>
+                      <Icon size={14} aria-hidden="true" />
+                      <span>{topic.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+          <div className="ui-help__contents-note">Images and videos can be attached to any topic later without changing this layout.</div>
+        </nav>
+
+        <main className="ui-help__articles" aria-label="Help articles" aria-live="polite">
+          {visibleTopics.length ? visibleTopics.map((topic) => {
+            const Icon = topic.icon;
+            return (
+              <article className="ui-panel ui-help__article" id={`help-${topic.id}`} key={topic.id}>
+                <header>
+                  <span className="ui-help__article-icon"><Icon size={19} aria-hidden="true" /></span>
+                  <div>
+                    <div className="ui-help__article-group">{topic.group}</div>
+                    <h2>{topic.title}</h2>
+                    <p>{topic.summary}</p>
+                  </div>
+                </header>
+                <div className="ui-help__article-body">{topic.content}</div>
+                <HelpMediaGallery media={topic.media} />
+              </article>
+            );
+          }) : (
+            <div className="ui-panel ui-help__empty">
+              <Search size={22} aria-hidden="true" />
+              <h2>No Help topics match “{query.trim()}”</h2>
+              <p>Try a broader term such as backup, workspace, Search, project, or import.</p>
+              <button className="ui-button ui-button--secondary" type="button" onClick={() => setQuery('')}>Show all topics</button>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
 };

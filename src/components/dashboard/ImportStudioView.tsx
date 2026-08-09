@@ -111,6 +111,12 @@ export function resolveImportProcessingPercent(progress: ImportProcessingProgres
   return 5;
 }
 
+export function resolveImportReportProcessedIds(result: {
+  completedItemIds: string[];
+}): Set<string> {
+  return new Set(result.completedItemIds);
+}
+
 const sectionStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
   borderRadius: 8,
@@ -377,7 +383,9 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       if (onImported) {
         await onImported();
       }
-      await openImportReport(lastCommitMeta, new Set(ids));
+      // Report only items the checkpoint considers final. A paused run must not
+      // present its remaining scope as successfully processed.
+      await openImportReport(lastCommitMeta, resolveImportReportProcessedIds(result));
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Post-import processing failed';
       addToast({ type: 'error', message: msg });

@@ -4,6 +4,11 @@
 
 Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIEW.md`, `CURRENT_STATE.md`, etc.). **Edit this file** as priorities change; keep `docs/old/` as read-only history.
 
+> **Active release gate (2026-08-08):** product V3 is in daily-use dogfood and release
+> stabilization. Log test results, defects, severity, fixes, and signoff in
+> [`V3_RELEASE_ISSUES.md`](V3_RELEASE_ISSUES.md). Until V3 closes, that file overrides
+> stale phase labels below. Advanced “AI V3” scale ideas remain post-release backlog.
+
 **Maintenance:** When something ships, add a **one-line** bullet under **✅ Done** (and remove or check off the matching item below). Trim **Done** only if it grows unwieldy—optional archive line can point to `docs/old/` or a git tag.
 
 **Legend:** 🔴 urgent quality / risk · 🟡 UX or features · 🟢 maintenance · ⏸ deferred / needs design
@@ -228,6 +233,7 @@ Brief: [`docs/temp/TASK-05-v2-product-ux.md`](temp/TASK-05-v2-product-ux.md).
 
 ## 🟢 Engineering hygiene
 
+- [ ] **Semi-automated product documentation capture** — investigate an extension-aware Chrome workflow that loads a deterministic demo library, navigates a declarative topic manifest, and captures standardized screenshots or short videos with captions/alt text for Help. Prefer real extension state over mocked or generated UI. First prove dashboard + side-panel capture and reliable regeneration; if 2026 browser tooling cannot control unpacked-extension surfaces safely, keep manual capture behind the same manifest and revisit later. This may be reusable tooling/product work, not a V3 blocker; Help v3 already accepts optional image/video descriptors per topic.
 - [ ] **Loading states** for `loadData`, long imports (commit progress / chunked UI), workspace restore.
 - [ ] **Listener cleanup audit** (`useEffect` + Chrome listeners) on hot paths.
 - [ ] **Split large components** incrementally (`MainContent.tsx`, layout/tab files)—only when touching those areas.

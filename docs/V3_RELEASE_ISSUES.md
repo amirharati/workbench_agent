@@ -1,0 +1,369 @@
+# Homebase V3 — Release checklist and issue ledger
+
+**Status:** active dogfood / release candidate  
+**Owner:** Codex maintains this file from user testing reports  
+**Opened:** 2026-08-08  
+**Testing branch:** `design/ui-redesign`  
+**Starting product commit:** `b1114b4` (`Improve scoped list filtering`)
+
+This is the single operating document for closing V3. Historical V3 plans explain how
+features were built; they do not determine the remaining release scope.
+
+## V3 goal
+
+V3 is done when Homebase is trustworthy and comfortable enough to become the user's
+daily tool:
+
+1. **Trust and recoverability:** ordinary use must not silently lose, replace, duplicate,
+   or mis-associate data. A fresh install can recover the library from its data folder.
+2. **Complete core usability:** capture, browse, organize, search, edit, workspaces,
+   import, trash/restore, and settings form a coherent end-to-end workflow.
+3. **Clean baseline UX/UI:** the redesigned dashboard and side panel are readable,
+   responsive, internally consistent, and do not hide essential actions or content.
+4. **Honest system behavior:** loading, backup, pipeline, error, paused, and incomplete
+   states say what actually happened. Expensive AI actions remain user-triggered.
+5. **Daily-use stability:** startup and common navigation feel responsive; reload,
+   browser restart, extension reload, and a second dashboard do not break state.
+
+After V3, work moves feature by feature through `docs/backlog.md`. A desirable feature
+does not become a V3 blocker merely because it already has an old V3 planning document.
+
+## Scope boundary
+
+### Required for V3
+
+- Single-device SQLite/OPFS durability and Dropbox-folder mirror/recovery.
+- Protection against empty or stale state overwriting an existing `workbench.sqlite`.
+- Manual backup and restore with a safety copy and understandable confirmation.
+- Reliable item, note, project, collection, favorite/pin, workspace, and trash actions.
+- Search and organization from global, project, and collection contexts.
+- Usable Home, Library, Project, Workspaces, Tab Commander, Import, Enrichment Hub,
+  Settings, Inspector/Item, and side-panel paths.
+- Responsive large/small-display behavior, light/dark dashboard readability, and
+  page-native side-panel styling.
+- Honest progress/errors and no unbounded or mysteriously empty content regions.
+- A production build and focused automated tests passing at final signoff.
+
+### Not required for V3 unless testing exposes a trust or core-workflow failure
+
+- Perfect taxonomy or classification quality.
+- New-parent taxonomy generation, multi-topic classification, or user-signals Phase 2.
+- Notes AI, workspace AI, pre-save AI digest, and agentic/RAG additions.
+- Multi-device concurrent writing or automatic cross-device merge.
+- Scheduled backup policy controls or advanced cloud-provider integrations.
+- Semantic quick-filter expansion; current deterministic in-list filtering is sufficient.
+- Visual perfection or feature expansion beyond a clean, coherent daily-use baseline.
+
+An out-of-scope subsystem may still block release if its current UI falsely implies data
+was deleted, charges unexpectedly, corrupts state, or prevents a core workflow. The V3
+resolution may be a fix, clearer limitation, or temporarily disabling the unsafe action.
+
+## Release gates
+
+V3 closes only when every gate is **PASS** or has an explicit signed-off exception.
+
+| Gate | Requirement | Status | Evidence / remaining work |
+|------|-------------|--------|---------------------------|
+| G0 | Clean build and fresh-install onboarding | IN PROGRESS | Build passed; fresh install pending |
+| G1 | Data durability, Dropbox mirror, reinstall recovery, restore | NOT RUN | Zero-tolerance gate |
+| G2 | Core daily workflows work end to end | NOT RUN | Run 01 + continued dogfood |
+| G3 | UI/UX is readable, coherent, and responsive | NOT RUN | Large + small display review |
+| G4 | Search, import, and AI pipeline are honest and controllable | NOT RUN | Small, cost-bounded test |
+| G5 | Startup, reload, and normal use are stable and responsive | NOT RUN | Record cold/warm behavior |
+| G6 | Blockers closed, limitations documented, version/release integrated | NOT RUN | Final signoff only |
+
+### Gate rules
+
+- Automated tests support a gate but never substitute for the manual scenario.
+- A suspected data-loss event immediately sets G1 to **FAIL** until explained and retested.
+- “Could not reproduce” is not a pass without recording the environment and attempts.
+- A workaround can close P2/P3 friction. A P0/P1 issue needs a fix, removal/disablement
+  of the unsafe path, or an explicit user decision before V3 closes.
+- Do not check a manual box merely because the code appears to handle it.
+
+## Dogfood environment — Run 01
+
+Use disposable data, but treat every unexpected disappearance or mutation as a real P0.
+
+| Field | Value |
+|-------|-------|
+| Date started | 2026-08-08 |
+| Branch / commit | `design/ui-redesign` / `b1114b4` |
+| Chrome version | TO RECORD |
+| Install source | Local, non-synced `dist/` path — TO RECORD |
+| Data folder | Fresh dedicated Dropbox subfolder — exact path TO RECORD |
+| Chrome profile/device | One profile on one device — TO RECORD |
+| Starting item/project counts | 0 expected; confirm after onboarding |
+| Status | PLANNED |
+
+Important boundary: the **data folder** should be inside Dropbox for this test. The
+unpacked extension's `dist/` must stay in a stable local, non-synced directory. Loading
+unpacked code directly from Dropbox previously correlated with the extension vanishing
+during rebuild/sync. V3 supports one active device writing the folder; multi-device
+Dropbox synchronization is post-V3.
+
+### A. Fresh setup
+
+- [ ] Record current commit and Chrome version.
+- [x] Run `npm run build` successfully. (2026-08-08)
+- [ ] Uninstall the previous development extension.
+- [ ] Load the fresh unpacked extension from a stable local `dist/`.
+- [ ] Open Homebase and choose a new, empty, dedicated Dropbox data folder.
+- [ ] Confirm onboarding clearly explains where data lives and completes without reload loops.
+- [ ] Confirm the dashboard opens with a coherent empty state.
+- [ ] After the first mutation and mirror interval, confirm the folder contains
+      `workbench.sqlite` and expected metadata/snapshot files without conflict copies.
+- [ ] Confirm the extension remains installed after closing and reopening Chrome.
+
+### B. Establish a recognizable baseline library
+
+Use unique names so recovery can be checked by content, not only counts.
+
+- [ ] Create two normal projects plus Inbox.
+- [ ] Create at least two collections in each normal project.
+- [ ] Confirm Inbox cannot create or display extra collections.
+- [ ] Save at least ten links from a mix of dashboard, Search, and side panel.
+- [ ] Add at least three notes, including one long note.
+- [ ] Put some items in multiple projects/collections.
+- [ ] Mark global Favorites and project-local Pins independently.
+- [ ] Create one named workspace with links and notes; create a second workspace.
+- [ ] Copy and move items between workspaces; verify source/destination membership.
+- [ ] Save one browser window from Tab Commander as a workspace.
+- [ ] Import one small bookmark file and record imported/skipped/merged counts.
+- [ ] Record baseline totals and several unique marker titles in the run log.
+
+### C. Core workflow and state retention
+
+- [ ] Home: switch Overview/Search and All Library/project contexts without losing state.
+- [ ] Project: switch collections/workspaces and always understand which list is active.
+- [ ] Library: switch All/Links/Notes/Favorites/Workspace and list/gallery views.
+- [ ] Filter a long list using title, URL, notes, tags, placement, and metadata terms.
+- [ ] Select/edit an item, reload, and confirm selection plus edits return.
+- [ ] Search inside a project, widen to All Library, then organize the result; current
+      project/collection remains the suggested destination.
+- [ ] Add one item to several workspaces without changing permanent organization.
+- [ ] Direct URL clicks open only from the URL target; card background clicks do not navigate.
+- [ ] Trash and restore an item; confirm its expected organization and workspace behavior.
+- [ ] Exercise focus mode, Inspector/Item editing, and direct external-link opening.
+- [ ] Side panel: save, edit, Favorite, organize into any project/collection, and create a
+      destination inline.
+- [ ] Reload the extension and confirm the active page, scope, view, selected item, and
+      meaningful search/workspace state restore where intended.
+
+### D. Data safety and destructive recovery
+
+Run these after the baseline is recorded. Before each destructive step, note counts and
+two or three unique marker items.
+
+- [ ] Make an edit, wait for mirror completion, reload the dashboard, and verify it.
+- [ ] Make another edit, close Chrome, reopen, and verify it.
+- [ ] Open a second dashboard while one is already open; both show the same committed data.
+- [ ] Reload the unpacked extension from `chrome://extensions`; verify all baseline data.
+- [ ] Revoke/pause folder permission if Chrome permits it; confirm Homebase clearly requests
+      reconnection and does not overwrite or pretend the mirror succeeded.
+- [ ] Reconnect the saved folder without accidentally selecting or creating another folder.
+- [ ] Use **Backup now**; confirm the named `.sqlite` exists and Settings reports success.
+- [ ] Mutate several records, restore the named snapshot, and verify counts, relationships,
+      notes, favorites/pins, workspaces, and trash state.
+- [ ] Confirm a safety/undo snapshot exists around restore and can recover the pre-restore state.
+- [ ] Uninstall Homebase, reinstall from the same local `dist/`, choose the existing Dropbox
+      folder, and verify the complete baseline library is recovered before making new edits.
+- [ ] Confirm reinstall did not shrink or replace the existing folder database with an empty DB.
+- [ ] Pause Dropbox sync, make ordinary edits, verify local folder writes, resume sync, and
+      confirm no app error or OS conflict copy appears.
+- [ ] Inspect Settings at the end: last mirror/backup/error state matches what actually happened.
+
+### E. UX, responsiveness, and accessibility
+
+- [ ] Large display: all major pages have clear hierarchy and usable list/detail balance.
+- [ ] Small/laptop display: test every major page; no clipped actions, overlapping labels,
+      unusable item details, or content hidden under Chrome's footer.
+- [ ] Long lists and previews have bounded height, visible scrolling, and bottom breathing room.
+- [ ] Light and dark dashboard themes maintain readable labels, badges, controls, and focus states.
+- [ ] Side panel follows the current page appearance and remains readable on narrow width.
+- [ ] Dialog focus returns correctly; no `aria-hidden` focused-descendant warning.
+- [ ] Primary tabs, dialogs, list selection, and close actions are keyboard-usable.
+- [ ] Empty, loading, error, paused, and completed states are distinguishable without DevTools.
+- [ ] No repeated application-owned console exception during ordinary workflows. Third-party
+      page warnings are logged only if Homebase caused them or they affect functionality.
+
+### F. Performance and stability
+
+- [ ] Record cold dashboard time to meaningful Home content.
+- [ ] Record warm dashboard time with another dashboard already open.
+- [ ] Record Library time to usable list and restored selection.
+- [ ] No recurring 3–4 second blank/loading state on normal warm Library opens.
+- [ ] Switching project, collection, workspace, and list/gallery view feels immediate.
+- [ ] Filtering and selecting do not visibly stall on the current test library.
+- [ ] Background hydrate/pipeline work does not reset navigation or selected-item state.
+- [ ] Leave Homebase open during normal browsing for at least one extended session; no growing
+      error loop, stale cross-window data, or stuck progress banner.
+
+### G. Import and enrichment honesty
+
+Keep AI runs small and explicitly initiated during release testing.
+
+- [ ] Import preview identifies the input correctly and keeps Process controls visible.
+- [ ] Commit progress, completion, cancellation, and partial outcomes match actual item counts.
+- [ ] Enrich one or a small selection; inspect fetched content, AI result, status, and error detail.
+- [ ] Retry a failed item and confirm the action/result scope is clear.
+- [ ] Pause/cancel and reload a small batch; no permanently false “paused” banner remains.
+- [ ] Run classification on a small eligible selection; assignments and suggestions remain distinct.
+- [ ] Reproduce or clear Risk R2 below before signoff: Discover must not make General items
+      appear deleted merely because downstream classification skipped them.
+- [ ] No AI action runs unexpectedly or without an understandable cost-bearing user action.
+
+## Issue policy
+
+### Severity
+
+| Level | Meaning | V3 disposition |
+|-------|---------|----------------|
+| **P0** | Suspected data loss/corruption, unsafe overwrite, unrecoverable startup, or destructive action without protection | Stop that test path; preserve files/logs; fix and retest before continuing toward release |
+| **P1** | Core workflow broken, materially misleading trust state, repeated crash/error, unusable primary layout, or severe performance regression | Must fix in V3, or remove/disable the affected path with explicit approval |
+| **P2** | Significant friction or inconsistency with a safe workaround | Fix in place when localized; otherwise group into one focused pre-close session or explicitly defer |
+| **P3** | Cosmetic detail, refinement, or new capability | Usually post-V3 feature/backlog |
+
+### Status lifecycle
+
+`NEW` → `REPRODUCED` → `FIXING` → `READY TO RETEST` → `CLOSED`
+
+Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
+`DEFERRED POST-V3`, or `ACCEPTED LIMITATION`.
+
+### Fix-now versus defer
+
+- Fix immediately when the issue is reproducible, localized, low-risk, and can be retested in
+  the same workflow.
+- Use a dedicated V3 session when the fix crosses storage boundaries, changes data semantics,
+  affects several pages, or needs a migration/recovery test.
+- Defer only when the current behavior remains safe, understandable, and usable. Record the
+  workaround and destination backlog entry.
+- Never use disposable test data as justification to defer a real durability defect.
+- After every fix: rebuild, reload extension, retest the exact reproduction, then run the nearest
+  neighboring workflow and relevant automated tests before marking it closed.
+
+## Active issue ledger
+
+| ID | Found | Area | Summary | Severity | Status | V3 decision | Fix / commit | Retest |
+|----|-------|------|---------|----------|--------|-------------|--------------|--------|
+| V3-001 | 2026-08-08 | Help / onboarding | Help is incomplete and describes pre-redesign workflows | P2 | READY TO RETEST | Text/icon Help shipped locally; media-ready | V3 checkpoint | User review pending |
+| V3-002 | 2026-08-08 | Import / enrichment | Finished bulk run leaves a false resumable checkpoint (`443/445`) | P1 | READY TO RETEST | Reconcile terminal leftovers and report only final IDs | V3 checkpoint | Reload + next small import pending |
+
+### V3-001 — Replace stale Help with a comprehensive daily-use guide
+
+- Found: 2026-08-08, Run 01
+- Severity / gate: P2 / G2 + G3
+- Status: READY TO RETEST
+- Environment: `design/ui-redesign` at `b1114b4`
+- Reproduction:
+  1. Open Help from the dashboard sidebar.
+  2. Compare its Home, tab, navigation, workspace, backup, and pipeline guidance with the redesigned app.
+- Expected: Help explains the current product model and gives task-based guidance for setup,
+  capture, organization, projects/collections, workspaces/browser tabs, Search, item editing,
+  import, enrichment, backup/recovery, shortcuts, and troubleshooting.
+- Actual: Help v2 is brief and materially stale. It still describes the removed split Home landing/tab
+  layout, bottom tab strip, draggable divider, and older navigation/workflow labels.
+- Data-safety check: no loss observed; stale recovery guidance could nevertheless undermine user trust.
+- Evidence: `src/components/dashboard/HelpView.tsx`.
+- Decision: fix in V3. The first pass uses accurate text, task-based information architecture,
+  search/contents navigation, icons, and optional image/video descriptors. Durable screenshots remain
+  post-V3 tooling work after the workflows stabilize or a real extension-controlled Chrome surface is available.
+- Fix: `HelpView.tsx`, `global.css`, and `HelpView.test.tsx`; production build passes and 4 focused tests pass. Included in the V3 checkpoint commit.
+- Retest: pending user review on large/small screens and light/dark dashboard themes.
+
+### V3-002 — Finished bulk import leaves a false Resume checkpoint
+
+- Found: 2026-08-08, Run 01
+- Severity / gate: P1 / G4 + G6
+- Status: READY TO RETEST
+- Environment: `design/ui-redesign` at `b1114b4`; fresh-install Dropbox-folder dogfood
+- Reproduction:
+  1. Import and process a large bookmark batch.
+  2. Let the pipeline finish, then reopen the dashboard.
+  3. Observe `445 links · 443 processed · 2 remaining · saved checkpoint` and a Resume action.
+- Expected: a run that reached a terminal result for every selected item clears its checkpoint.
+  Unsupported/skipped/failed items remain inspectable in Enrichment Hub but do not masquerade as
+  interrupted work. A genuinely interrupted scope remains resumable.
+- Actual: `enrichBatch` could return a terminal skip without persisting an enrichment record, while
+  the scoped runner interpreted the absent record as never attempted. Import Studio separately marked
+  every selected ID as processed in its report, creating two contradictory completion states.
+- Data-safety check: no item loss or DB corruption observed; this is misleading checkpoint/report
+  accounting. The affected items remain stored in the library.
+- Evidence: user-reported banner text; `scopedPipelineJobRunner.ts` final accounting and
+  `ImportStudioView.tsx` report handoff.
+- Decision: fix immediately in V3 because pipeline state must be trustworthy.
+- Fix: the scoped runner now captures per-item batch outcomes, finalizes deterministic terminal
+  skips/failures, heals legacy no-error partial checkpoints on read, and reports only
+  checkpoint-final item IDs. Nine focused Import/pipeline tests and the production build pass.
+- Retest: reload should remove the existing false banner; then run a small batch containing an
+  unsupported/ineligible URL and confirm completion without a stale checkpoint.
+
+For substantial issues, add a section using this template:
+
+```md
+### V3-### — Short title
+
+- Found: YYYY-MM-DD, Run ##
+- Severity / gate: P# / G#
+- Status: NEW
+- Environment: branch, commit, Chrome version, screen size when relevant
+- Reproduction:
+  1. ...
+- Expected: ...
+- Actual: ...
+- Data-safety check: counts/files/markers affected or confirmed intact
+- Evidence: console excerpt, screenshot, file timestamps/sizes
+- Decision: fix now / focused V3 session / proposed post-V3
+- Fix: files and commit
+- Retest: result and date
+```
+
+## Known pre-test risks to target
+
+These are not counted as Run 01 failures until reproduced.
+
+| Risk | Why it matters | Required disposition |
+|------|----------------|----------------------|
+| **R1 — Dropbox folder behavior** | Cloud-folder locks/delays can make atomic move fall back to copy or expose stale/conflict files | Complete G1 Dropbox cases; any failed move+copy or clobber becomes P0 |
+| **R2 — Discover General-count drop (#13)** | Historical run moved many General items to `ineligible`, making categories appear deleted without successful reassignment | Reproduce and fix behavior, or disable/clearly constrain the unsafe combined action before signoff |
+| **R3 — Unpacked extension lifecycle (#19)** | Loading `dist/` from a synced folder previously correlated with the extension disappearing | Keep code local; verify restart/reload/reinstall. Dropbox data folder remains the intended test |
+| **R4 — Library startup regression** | Library previously showed a recurring 3–4 second load while other pages were fast | Measure cold/warm/second-dashboard behavior and state restoration |
+| **R5 — Restore/merge complexity** | Current release path is replace/restore with safety snapshots; merge semantics are not a required V3 feature | Keep unimplemented merge clearly disabled; thoroughly test replace/undo paths |
+
+## Test run log
+
+### Automated preflight — 2026-08-08
+
+- `npm run build`: PASS. Vite reported existing chunk-size/static-plus-dynamic import
+  optimization warnings; no compile or build error.
+- Focused storage safety tests: PASS — 4 files, 32 tests covering folder mirror guards,
+  snapshot naming/rotation validation, backup-folder error formatting, and SQLite merge/tombstones.
+- Manual gates: unchanged; no manual durability or UI scenario is credited by this preflight.
+
+### Run 01 — Fresh install with Dropbox data folder
+
+- Date: 2026-08-08
+- Build: `design/ui-redesign` at `b1114b4`
+- Purpose: establish a clean disposable library, begin daily-use testing, and exercise the
+  single-device Dropbox mirror/recovery path.
+- Result: IN PROGRESS
+- Baseline counts/markers: bulk processing scope observed at 445 links; full library totals and
+  unique marker titles remain to be recorded.
+- Issues opened: V3-001, V3-002
+- Notes: User will report findings incrementally; Codex will assign IDs, triage, update gates,
+  implement approved fixes, and move larger safe items to a focused session or post-V3 backlog.
+
+## Final signoff
+
+- [ ] G0–G6 are PASS or explicitly accepted exceptions are recorded.
+- [ ] No open P0 or P1 issue.
+- [ ] Every P2 has a fix or explicit disposition; P3 items are in the normal backlog if useful.
+- [ ] Final production build passes.
+- [ ] Relevant focused tests pass; known unrelated test debt is documented.
+- [ ] `docs/OVERVIEW.md`, `docs/backlog.md`, and `docs/KNOWN_LIMITATIONS.md` match shipped behavior.
+- [ ] Historical V3 dogfood/discover documents are marked closed, superseded, or parked.
+- [ ] Version is chosen and release commit/tag created.
+- [ ] `design/ui-redesign` is integrated through the agreed branch path and pushed.
+- [ ] Begin feature-by-feature development; do not create another broad phase without a new
+      explicit product reason.

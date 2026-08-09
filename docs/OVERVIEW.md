@@ -4,6 +4,12 @@
 
 Living summary of goals, architecture, and status. **Detailed history** lives in `docs/old/`; **product narrative** in [`workbench_agent.prd`](workbench_agent.prd) (refresh that file when the model below diverges).
 
+> **Current release focus (2026-08-08):** close product V3 through real-use testing,
+> single-device data-safety/recovery verification, and UX stabilization. The managed
+> checklist and issue ledger is [`V3_RELEASE_ISSUES.md`](V3_RELEASE_ISSUES.md). After
+> signoff, work returns to small feature-by-feature tickets. Historical references to
+> “AI V3” scale work are post-release ideas, not this release gate.
+
 ---
 
 ## Vision

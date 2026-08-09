@@ -9,8 +9,8 @@ import { mergeTopicClassifySummaries } from '../categorization/classifyPolicy';
 import type { TopicClassifySummary } from '../categorization/types';
 import type { EnrichmentResult } from '../enrichment';
 import { notifyDataChanged } from '../dataChangeNotifier';
-import { commitPendingDbWrites, refreshPipelineCacheFromWorker } from '../db';
-import { enrichBatch } from '../enrichment';
+import { commitPendingDbWrites, getItem, refreshPipelineCacheFromWorker } from '../db';
+import { checkEligibility, enrichBatch } from '../enrichment';
 import {
   prepBatchPipelineItems,
   runEnrichmentBatchPostProcess,
@@ -22,6 +22,7 @@ import {
   type ImportPipelineWaveCheckpoint,
   clearImportPipelineJob,
   preflightImportPipelineStart,
+  shouldFinalizeImportPipelineItem,
   writeImportPipelineJob,
   writeScopedPipelineRunSummary,
 } from './importPipelineJob';
@@ -336,6 +337,7 @@ async function runScopedPipelineJobBody(
   // ── Overlap: start enrichBatch, poll + classify in parallel ──
   let enrichSettled = false;
   let enrichError: unknown = null;
+  const settledEnrichIds = new Set<string>();
 
   const enrichPromise = (async () => {
     if (remainingEnrich.length === 0) {
@@ -350,7 +352,9 @@ async function runScopedPipelineJobBody(
         force: options.forceEnrich === true,
         skipAi: options.skipAi,
         refetchCompare: options.refetchCompare,
-        collectItemResults: options.collectItemResults,
+        // The runner always needs compact per-item outcomes to distinguish a
+        // terminal skip/failure from work that was genuinely interrupted.
+        collectItemResults: true,
         signal,
         onProgress: (p) => {
           enrichProcessed = p.processed + p.skipped + p.failed;
@@ -366,6 +370,9 @@ async function runScopedPipelineJobBody(
       enriched = enrichResult.processed;
       skipped = enrichResult.skipped;
       failed = enrichResult.failed;
+      for (const result of enrichResult.itemResults ?? []) {
+        settledEnrichIds.add(result.itemId);
+      }
       if (options.collectItemResults) {
         itemEnrichResults = enrichResult.itemResults;
       }
@@ -421,13 +428,27 @@ async function runScopedPipelineJobBody(
         for (const id of currentJob.itemIds) {
           if (completedSet.has(id) || readySet.has(id)) continue;
           const enrichment = await getEnrichment(id);
-          if (!fetchAttemptedForLinkQuality(enrichment)) {
-            // Never enriched — leave incomplete for resume.
-            continue;
-          }
-          if (!isDownstreamClassifyEligible(enrichment)) {
+          const fetchAttempted = fetchAttemptedForLinkQuality(enrichment);
+          const downstreamEligible = isDownstreamClassifyEligible(enrichment);
+          const item = fetchAttempted ? undefined : await getItem(id);
+          const enrichEligible = item
+            ? checkEligibility(item, enrichment, {
+                force: options.forceEnrich === true,
+                refetchCompare: options.refetchCompare,
+              }).eligible
+            : false;
+          if (
+            shouldFinalizeImportPipelineItem({
+              itemExists: fetchAttempted || Boolean(item),
+              hasUrl: fetchAttempted || Boolean(item?.url?.trim()),
+              fetchAttempted,
+              downstreamEligible,
+              enrichEligible,
+              batchSettled: settledEnrichIds.has(id),
+            })
+          ) {
             completedSet.add(id);
-          } else {
+          } else if (downstreamEligible) {
             readySet.add(id);
           }
         }
@@ -542,7 +563,14 @@ async function runScopedPipelineJobBody(
   await commitPendingDbWrites();
   await refreshPipelineCacheFromWorker();
 
-  report('done', 'Pipeline complete', waveIndex, scopeWaveTotal());
+  report(
+    'done',
+    currentJob.status === 'completed'
+      ? 'Pipeline complete'
+      : `Pipeline paused — ${Math.max(0, currentJob.itemIds.length - completedSet.size)} remaining`,
+    waveIndex,
+    scopeWaveTotal()
+  );
   return {
     job: currentJob,
     classifySummary,

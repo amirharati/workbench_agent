@@ -224,6 +224,112 @@ export function isImportPipelineJobTerminal(job: ImportPipelineJob): boolean {
   return allItemsCompleted || job.status === 'completed' || job.lastError === 'Cancelled';
 }
 
+export type ImportPipelineItemCompletionProbe = {
+  itemExists: boolean;
+  hasUrl: boolean;
+  fetchAttempted: boolean;
+  downstreamEligible: boolean;
+  enrichEligible: boolean;
+  /** The batch worker returned a per-item outcome during this run. */
+  batchSettled?: boolean;
+};
+
+/**
+ * A resumable checkpoint is for interrupted work, not for terminal skips/failures.
+ * Items that cannot be fetched, were deliberately skipped, or reached a final
+ * non-downstream outcome must count as finished for this run.
+ */
+export function shouldFinalizeImportPipelineItem(
+  probe: ImportPipelineItemCompletionProbe
+): boolean {
+  if (!probe.itemExists || !probe.hasUrl) return true;
+  if (probe.fetchAttempted) return !probe.downstreamEligible;
+  if (probe.batchSettled) return true;
+  return !probe.enrichEligible;
+}
+
+/**
+ * Older scoped-wave builds could leave a no-error checkpoint when enrichBatch
+ * deliberately skipped an invalid/ineligible URL without persisting an
+ * enrichment row. Heal only this "finished but partial" shape; genuine errors
+ * and interrupted jobs remain resumable.
+ */
+async function reconcileNoErrorPartialJob(
+  job: ImportPipelineJob
+): Promise<ImportPipelineJob | null> {
+  if (job.status !== 'paused' || job.lastError || job.runner !== 'scoped_wave') {
+    return job;
+  }
+
+  const completed = new Set(job.completedItemIds);
+  const remaining = job.itemIds.filter((id) => !completed.has(id));
+  if (remaining.length === 0) return job;
+
+  const [{ getItem }, { checkEligibility, getEnrichment }, { fetchAttemptedForLinkQuality }, downstream] =
+    await Promise.all([
+      import('../db'),
+      import('../enrichment'),
+      import('../categorization/linkQuality'),
+      import('./downstreamEligible'),
+    ]);
+
+  const terminalIds = await Promise.all(
+    remaining.map(async (itemId) => {
+      const [item, enrichment] = await Promise.all([
+        getItem(itemId),
+        getEnrichment(itemId),
+      ]);
+      const itemExists = Boolean(item);
+      const hasUrl = Boolean(item?.url?.trim());
+      const fetchAttempted = fetchAttemptedForLinkQuality(enrichment);
+      const downstreamEligible = downstream.isDownstreamClassifyEligible(enrichment);
+      const enrichEligible = item
+        ? checkEligibility(item, enrichment, { force: false, refetchCompare: false }).eligible
+        : false;
+      return shouldFinalizeImportPipelineItem({
+        itemExists,
+        hasUrl,
+        fetchAttempted,
+        downstreamEligible,
+        enrichEligible,
+      })
+        ? itemId
+        : null;
+    })
+  );
+
+  let changed = false;
+  for (const itemId of terminalIds) {
+    if (!itemId) continue;
+    completed.add(itemId);
+    changed = true;
+  }
+  if (!changed) return job;
+
+  const healed: ImportPipelineJob = {
+    ...job,
+    completedItemIds: job.itemIds.filter((id) => completed.has(id)),
+    pendingEnrich: job.pendingEnrich.filter((id) => !completed.has(id)),
+    pendingDownstream: job.pendingDownstream.filter((id) => !completed.has(id)),
+    updatedAt: Date.now(),
+  };
+  if (isImportPipelineJobTerminal(healed)) {
+    try {
+      await clearImportPipelineJob();
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  try {
+    await writeImportPipelineJob(healed);
+  } catch {
+    /* still return the accurate in-memory checkpoint */
+  }
+  return healed;
+}
+
 /**
  * Heal orphaned / fully-done job files so the Resume banner does not stick around
  * after a finished run or a crashed window that left status: running.
@@ -241,6 +347,10 @@ export async function reconcileImportPipelineJob(
     }
     return null;
   }
+
+  const reconciledPartial = await reconcileNoErrorPartialJob(job);
+  if (!reconciledPartial) return null;
+  job = reconciledPartial;
 
   if (job.status === 'running') {
     const { isPipelineRunLockFresh, readPipelineRunLock } = await import('./pipelineRunLock');
