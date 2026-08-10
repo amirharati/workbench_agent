@@ -4,6 +4,10 @@
 > runs prove durable execution advances and terminates; the first classification retest exposed and fixed
 > an offscreen AI-settings handoff regression. Automated tests and the production build pass.
 
+> Acceptance checkpoint — 2026-08-10: one-link processing passed and the first v13 bulk/urgent-single test
+> appears correct. Cancellation is the next gate. Taxonomy discovery and `pending_discover` cleanup are
+> explicitly outside this pipeline-lifecycle acceptance.
+
 ## Decision
 
 Homebase has one extension-wide processing authority. Import Studio, Enrichment Hub, the side panel,

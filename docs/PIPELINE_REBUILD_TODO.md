@@ -21,6 +21,17 @@ Completed in code:
 Automated status: production build and focused coordinator/client/import/Hub tests pass. Real-extension
 acceptance is pending.
 
+Real-extension checkpoint — 2026-08-10:
+
+- One-link full digest completed in the installed extension.
+- The first protocol-v13 five-link/urgent-single run appears to honor the intended priority boundary: finish
+  the active bulk item, run the interactive link, and resume the bulk. Treat this as provisional until the
+  final item counts are checked.
+- No further coordinator implementation is planned before the remaining lifecycle gates. Stop and diagnose
+  durable job/task state at the first failure.
+- Taxonomy discovery and the existing `pending_discover` pool are a separate product issue and are not part
+  of pipeline lifecycle acceptance.
+
 ## Preserve these design rules
 
 - Clients send IDs/options only; never a full tab-built cache seed or AI key.
@@ -56,3 +67,17 @@ acceptance is pending.
 
 Stop at the first failing gate and diagnose from durable job/task state. Do not compensate with uninstall,
 manual lock deletion, checkpoint-file deletion, or another page-owned fallback runner.
+
+## Exact resume point
+
+Run the cancellation gate next:
+
+1. Start a five-link full-digest job.
+2. While a link is actively fetching, extracting, or embedding, press Cancel once.
+3. Wait for the shared durable status to become `Cancelled`; do not reload to force the display.
+4. Confirm no queued item continues after cancellation.
+5. Immediately submit one new link and confirm it starts without stale `queued behind` state and completes.
+
+If this passes, continue with navigation/refresh, closing the initiating dashboard while observing from a
+second dashboard, sleep/wake, and finally a large batch. If it fails, inspect the durable job/task rows and
+fix that concrete failure before advancing.
