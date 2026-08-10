@@ -14,18 +14,23 @@ implementation dependency.
    navigation.
 2. Create `workbench-content.sqlite` with its own content worker. Keep raw/review bodies compressed and
    hash-guarded; core-library startup must not depend on content availability.
-3. Make content-folder snapshots asynchronous, coarse, and atomically replaced. No folder I/O belongs on
+3. Store immutable content rows keyed by `(item_id, kind, content_hash)`, then use a fenced core commit to
+   reference the accepted row. Orphan cleanup is asynchronous.
+4. Make content-folder snapshots asynchronous, coarse, and atomically replaced. No folder I/O belongs on
    fetch, cancellation, completion, Resume, or dashboard-navigation paths.
-4. Add core-owned durable jobs and per-item, per-stage tasks in `workbench.sqlite`. Required stages are fetch,
-   content save, enrichment/core save, embedding, classification, and finalization.
-5. Build one offscreen coordinator with one serialized lane. All surfaces submit/observe the same job API;
+5. Add core-owned durable jobs and per-item, per-stage tasks in `workbench.sqlite`. Full processing stages are
+   preflight, fetch, content store, AI extraction, enrichment commit, embedding, classification, and finalization.
+6. Split existing write-through functions into compute plus fenced-commit operations. In particular,
+   enrichment persistence must not implicitly trigger embedding.
+7. Build one offscreen coordinator with one serialized executor. All surfaces submit/observe the same job API;
    none executes fetch/AI/embed/classify locally.
-6. Implement durable cancellation: commit `cancel_requested`, abort every stage including embedding, fence
+8. Implement durable cancellation: commit `cancel_requested`, abort every stage including embedding, fence
    stale lease owners, then publish `cancelled` only after work stops.
-7. Implement recovery with renewable leases and a generation/fencing token. Wake recovery must replace a
-   stale in-memory executor and resume only uncompleted stages.
-8. Migrate Enrichment Hub single-link first, then five-link selection, Import, sidebar/Inspector, and finally
+9. Implement recovery with renewable leases and a generation/fencing token. Safe stages resume automatically;
+   interrupted paid AI stages become `uncertain` unless provider retry is idempotent.
+10. Migrate Enrichment Hub single-link first, then five-link selection, Import, sidebar/Inspector, and finally
    maintenance/stage-only actions. Remove each legacy page runner only after its replacement is proven.
+11. Keep taxonomy discovery as a separate coordinator action. Do not hide it inside ordinary URL processing.
 
 ## Discoveries to preserve when rebuilding
 
@@ -37,19 +42,41 @@ implementation dependency.
 - Bookmark import completion must refresh only its changed scope; it must not wait for a full cache hydrate.
 - Hub page/count reads need a timeout and explicit Retry state rather than an indefinite spinner.
 - No second single-item lane or extra concurrency until the one-lane acceptance suite passes.
+- Pause is out of scope for the first rebuild. Cancellation, automatic recovery, and explicit Retry have
+  distinct durable meanings.
+
+## Implementation checkpoints
+
+Each checkpoint is independently buildable and reviewable:
+
+1. **Baseline restoration:** V3-006 only; user verifies Search scope restoration.
+2. **Content storage:** separate worker, immutable compressed rows, on-demand reads, local clear/delete, and
+   asynchronous one-file snapshot. Existing pipeline ownership remains unchanged for this checkpoint.
+3. **Durable core API:** schema plus submit, claim, heartbeat, cancel, fenced commit, recovery, and query RPCs;
+   no UI runner migration yet.
+4. **One-link vertical slice:** Hub submission through the coordinator using explicit stage boundaries.
+5. **Small-batch correctness:** five sequential items, exact final counts, deduplication, and durable cancel.
+6. **Surface migration:** Import, sidebar, Inspector, re-extract, re-embed, classify, and discover all submit
+   the shared job contract; then remove legacy locks/checkpoints/runners.
+7. **Lifecycle hardening:** navigation, refresh, multiple dashboards, dashboard closure, sleep/wake, stale
+   executor fencing, and uncertain paid-call handling.
+8. **Scale:** large batch, responsive core DB reads, scoped refreshes, and async backup behavior. Only after
+   this gate may bounded concurrency be considered.
 
 ## Acceptance gates
 
 Run each gate manually in the real extension before proceeding to the next:
 
-1. One Hub link: completion, both database records, refresh.
-2. Five links: exact completed/failed counts and no duplicate execution.
-3. Cancel during fetch and during embedding: no late writes or continued provider work.
-4. Navigate and refresh while running: job and progress remain stable.
-5. Close the initiating dashboard and observe from another dashboard: work continues and final scoped refresh
+1. V3-006 Search scope: refresh preserves Search's scope; later explicit shell navigation updates it.
+2. Content-store smoke test: one fetched body survives reload, Chrome restart, and clean reinstall restore.
+3. One Hub link: completion, both database references, and one scoped UI refresh.
+4. Five links: exact completed/failed counts and no duplicate execution.
+5. Cancel during fetch and during embedding: no late writes or continued authoritative work.
+6. Navigate and refresh while running: job and progress remain stable.
+7. Close the initiating dashboard and observe from another dashboard: work continues and final scoped refresh
    reaches every observer.
-6. Sleep/wake mid-stage: only unfinished work resumes and stale executors cannot commit.
-7. Large batch: responsive Hub/import UI, durable recovery, no critical-path content/folder checkpoint.
+8. Sleep/wake mid-stage: only unfinished safe work resumes and stale executors cannot commit.
+9. Large batch: responsive Hub/import UI, durable recovery, no critical-path content/folder checkpoint.
 
 ## Explicitly do not restore
 

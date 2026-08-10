@@ -80,7 +80,7 @@ decompressing the complete archive.
 
 Minimum document fields:
 
-- `item_id` — primary lookup key
+- `item_id` — owning library item
 - `kind` — current body or pending-review body
 - `content_hash` — identity shared with the main enrichment row
 - `codec` — explicit compression format
@@ -88,11 +88,27 @@ Minimum document fields:
 - `raw_bytes` and `stored_bytes`
 - `fetched_at` and `updated_at`
 
-A body is usable only when its item ID, kind, and expected content hash match. A mismatch is treated as
-unavailable content, never as a reason to show the wrong source body.
+The stable identity is `(item_id, kind, content_hash)`. Rows are immutable for that identity, and the core
+enrichment row stores an opaque reference to the exact hash it accepted. A body is usable only when its item
+ID, kind, and expected content hash match. A mismatch is treated as unavailable content, never as a reason to
+show the wrong source body.
 
 SQLite transactions protect local row updates. Before publishing a folder snapshot, Homebase checks
 SQLite integrity plus basic size and row-count expectations.
+
+## Cross-database commit protocol
+
+The two SQLite files cannot share one transaction. Processing therefore uses an idempotent content-first
+protocol:
+
+1. The coordinator computes the fetched body and content hash.
+2. The content worker inserts the immutable compressed row and returns its opaque reference.
+3. The coordinator asks the core worker to conditionally commit the enrichment row and complete the task.
+4. The core worker accepts the commit only when the job/task lease epoch still matches.
+
+A crash between steps 2 and 3 leaves an unreferenced content row, never a core record pointing at missing
+content. A later best-effort garbage collector may delete unreferenced historical rows. A stale executor may
+write the same immutable content identity, but it cannot change the current core reference.
 
 ## Snapshot policy
 
@@ -119,6 +135,8 @@ affected raw bodies are shown as not yet backed up rather than blocking normal u
 - Corrupt content snapshot: keep core data available, preserve the suspect file, and offer an explicit
   rebuild or replacement path.
 - Failed content mirror: retain the previous valid folder snapshot and report content backup pending.
+- Failed local content write: fail/retry that item before paid extraction; do not silently continue without
+  the promised fetched-content record.
 - Missing individual body: allow a deliberate selected-item or batch rebuild; never spend network or AI
   budget automatically.
 - Main/content mismatch: content hash wins as the guard; do not attach stale content to an item.
@@ -145,7 +163,8 @@ installation and a clean selected folder. Existing legacy content files can be d
 - A fresh extension installation can restore the core DB and the one content snapshot without
   re-downloading matching bodies.
 - Core restore succeeds when the content snapshot is absent or invalid.
-- Re-enrichment replaces the indexed body without increasing folder file count.
+- Re-enrichment changes the core reference without increasing folder file count; unreferenced historical
+  content rows are eligible for later garbage collection.
 - Deleting/resetting content removes the corresponding sidecar rows without risking Tier 1 data.
 - Content snapshots are not written per URL and never accumulate historical copies automatically.
 - Automatic pipeline diagnostics do not create an unbounded folder tree.
