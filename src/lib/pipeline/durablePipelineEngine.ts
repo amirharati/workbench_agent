@@ -48,6 +48,14 @@ export type DurablePipelineRunInput = {
   signal: AbortSignal;
   onAbortRequired?: (reason: string) => void;
   onProgress?: (progress: BatchDigestProgress) => void;
+  /** Re-evaluated only after the current item reaches a terminal boundary. */
+  shouldYieldAfterItem?: () => boolean;
+};
+
+export type DurablePipelineRunResult = {
+  snapshot: PipelineJobSnapshot;
+  yielded: boolean;
+  result?: BatchDigestResult;
 };
 
 function abortError(): DOMException {
@@ -315,9 +323,10 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
 
 export async function runDurablePipelineJob(
   input: DurablePipelineRunInput
-): Promise<BatchDigestResult> {
+): Promise<DurablePipelineRunResult> {
   let seededItemId: string | null = null;
   let finalSnapshot: PipelineJobSnapshot | null = null;
+  let yieldRequested = false;
 
   while (true) {
     throwIfAborted(input.signal);
@@ -394,13 +403,42 @@ export async function runDurablePipelineJob(
     } finally {
       window.clearInterval(heartbeat);
     }
+
+    if (finalSnapshot && input.shouldYieldAfterItem?.()) {
+      const itemIsTerminal = finalSnapshot.tasks
+        .filter((task) => task.item_id === claim.task.item_id)
+        .every((task) => !['pending', 'running'].includes(task.status));
+      const jobHasMoreWork = finalSnapshot.tasks
+        .some((task) => ['pending', 'running'].includes(task.status));
+      if (itemIsTerminal && jobHasMoreWork) {
+        yieldRequested = true;
+        break;
+      }
+    }
   }
 
-  const snapshot = finalSnapshot ?? await dbRpc<PipelineJobSnapshot | null>(
+  let snapshot = finalSnapshot ?? await dbRpc<PipelineJobSnapshot | null>(
     'pipelineGetJob',
     [input.jobId],
     { priority: 'high' }
   );
   if (!snapshot) throw new Error('Durable pipeline job disappeared');
-  return buildResult(snapshot);
+  if (yieldRequested) {
+    const yielded = await dbRpc<{ accepted: boolean; snapshot: PipelineJobSnapshot | null }>(
+      'pipelineYieldJob',
+      [{
+        jobId: input.jobId,
+        ownerId: input.ownerId,
+        jobLeaseEpoch: snapshot.job.lease_epoch,
+      }],
+      { priority: 'high' }
+    );
+    throwIfAborted(input.signal);
+    if (!yielded.accepted || !yielded.snapshot) {
+      throw new Error('Durable pipeline job could not yield its lease safely');
+    }
+    snapshot = yielded.snapshot;
+    return { snapshot, yielded: true };
+  }
+  return { snapshot, yielded: false, result: await buildResult(snapshot) };
 }

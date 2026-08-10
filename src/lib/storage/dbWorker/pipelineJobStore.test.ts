@@ -9,6 +9,7 @@ import {
   recoverExpiredPipelineTasks,
   requestPipelineCancellation,
   submitPipelineJob,
+  yieldPipelineJob,
 } from './pipelineJobStore';
 
 let db: Database;
@@ -168,6 +169,44 @@ describe('durable pipeline job store', () => {
     expect([second.task.item_id, second.task.stage]).toEqual(['item-1', 'embed']);
   });
 
+  it('yields a bulk job between items so a higher-priority single runs first', () => {
+    submitPipelineJob(db, {
+      id: 'bulk-job', dedupeKey: 'bulk:1', action: 'full_digest_v2', source: 'hub',
+      priority: 50, itemIds: ['item-1', 'item-2'], stages: ['enrich', 'finalize'], now: 100,
+    });
+    submitPipelineJob(db, {
+      id: 'single-job', dedupeKey: 'single:1', action: 'full_digest_v2', source: 'sidebar',
+      priority: 10, itemIds: ['item-3'], stages: ['enrich', 'finalize'], now: 101,
+    });
+
+    const enrich = claimNextPipelineTask(db, 'owner-a', 5_000, 200, 'bulk-job')!;
+    const enriched = finishPipelineTask(db, {
+      jobId: 'bulk-job', itemId: 'item-1', stage: 'enrich', ownerId: 'owner-a',
+      jobLeaseEpoch: enrich.jobLeaseEpoch, taskLeaseEpoch: enrich.taskLeaseEpoch,
+      outcome: 'completed', now: 201,
+    });
+    const finalize = claimNextPipelineTask(db, 'owner-a', 5_000, 202, 'bulk-job')!;
+    const finalized = finishPipelineTask(db, {
+      jobId: 'bulk-job', itemId: 'item-1', stage: 'finalize', ownerId: 'owner-a',
+      jobLeaseEpoch: finalize.jobLeaseEpoch, taskLeaseEpoch: finalize.taskLeaseEpoch,
+      outcome: 'completed', now: 203,
+    });
+    expect(finalized.snapshot?.job.completed_items).toBe(1);
+
+    const yielded = yieldPipelineJob(db, {
+      jobId: 'bulk-job', ownerId: 'owner-a',
+      jobLeaseEpoch: finalized.snapshot!.job.lease_epoch, now: 204,
+    });
+    expect(yielded.accepted).toBe(true);
+    expect(yielded.snapshot?.job.status).toBe('queued');
+    expect(yielded.snapshot?.tasks.filter((task) => task.item_id === 'item-2')
+      .every((task) => task.status === 'pending')).toBe(true);
+
+    const urgent = claimNextPipelineTask(db, 'owner-b', 5_000, 300)!;
+    expect([urgent.job.id, urgent.task.item_id]).toEqual(['single-job', 'item-3']);
+    expect(enriched.accepted).toBe(true);
+  });
+
   it('makes cancellation durable before terminal acknowledgement and fences late work', () => {
     submitPipelineJob(db, {
       id: 'job-1',
@@ -249,6 +288,24 @@ describe('durable pipeline job store', () => {
     claimNextPipelineTask(db, 'owner-c', 5_000, 12_100, 'coarse-job');
     expect(recoverExpiredPipelineTasks(db, 17_101)).toMatchObject({ requeued: 0, uncertain: 1 });
     expect(getPipelineJobSnapshot(db, 'coarse-job')?.tasks[0].status).toBe('uncertain');
+  });
+
+  it('recovers an expired job lease between two safe task claims', () => {
+    submitPipelineJob(db, {
+      id: 'between-items', dedupeKey: 'between:1', action: 'full_digest_v2', source: 'hub',
+      itemIds: ['item-1'], stages: ['finalize-a', 'finalize-b'], now: 100,
+    });
+    const first = claimNextPipelineTask(db, 'owner-a', 5_000, 200, 'between-items')!;
+    finishPipelineTask(db, {
+      jobId: first.job.id, itemId: first.task.item_id, stage: first.task.stage,
+      ownerId: 'owner-a', jobLeaseEpoch: first.jobLeaseEpoch,
+      taskLeaseEpoch: first.taskLeaseEpoch, outcome: 'completed', now: 300,
+    });
+
+    const recovered = recoverExpiredPipelineTasks(db, 5_201);
+    expect(recovered.affectedJobs).toContain('between-items');
+    expect(getPipelineJobSnapshot(db, 'between-items')?.job.status).toBe('queued');
+    expect(claimNextPipelineTask(db, 'owner-b', 5_000, 5_300)?.task.stage).toBe('finalize-b');
   });
 
   it('continues a batch after an interrupted paid stage without restarting completed items', () => {

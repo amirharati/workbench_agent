@@ -43,6 +43,8 @@ Import / Hub / sidebar / inspectors / maintenance UI
 - The job and all item/stage task rows commit before submission is acknowledged.
 - One serialized offscreen lane executes every job; there is no separate single-link lane.
 - The coordinator processes all stages for item 1 before beginning item 2.
+- Interactive one-link jobs have priority over bulk jobs. A running bulk finishes its current item, releases
+  its fenced lease, runs queued urgent links first, and then resumes at its next unfinished item.
 - Active jobs with overlapping item scopes are rejected instead of running concurrently.
 - Dashboard navigation, refresh, or closure does not affect execution ownership.
 - Every dashboard polls the same durable job table and displays a shared status/cancel banner.
@@ -136,10 +138,12 @@ Run in order on the real unpacked extension:
 
 1. One Hub link completes and creates/updates both appropriate database records.
 2. Five links finish sequentially with exact completed/failed counts.
-3. Cancel during fetch or embedding; wait for `Cancelled`, then immediately start another job.
-4. Navigate and refresh during a job; the shared banner remains stable and work continues.
-5. Open another dashboard and close the initiator; the second dashboard observes the same job and result.
-6. Sleep/wake mid-batch; completed items stay complete and remaining items continue.
-7. Run a large batch; Hub/import reads remain responsive and no backup/content serialization blocks finish.
+3. During a five-link batch, submit a new side-panel link; the batch finishes its current item, the single
+   runs next, and the batch then resumes without repeating completed work.
+4. Cancel during fetch or embedding; wait for `Cancelled`, then immediately start another job.
+5. Navigate and refresh during a job; the shared banner remains stable and work continues.
+6. Open another dashboard and close the initiator; the second dashboard observes the same job and result.
+7. Sleep/wake mid-batch; completed items stay complete and remaining items continue.
+8. Run a large batch; Hub/import reads remain responsive and no backup/content serialization blocks finish.
 
 Do not increase concurrency or further split stages until this sequence passes.

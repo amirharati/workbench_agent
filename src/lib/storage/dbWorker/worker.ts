@@ -40,6 +40,7 @@ import {
   recoverExpiredPipelineTasks,
   requestPipelineCancellation,
   submitPipelineJob,
+  yieldPipelineJob,
 } from './pipelineJobStore';
 
 markDbWorkerProcess();
@@ -115,6 +116,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'pipelineClaimNextTask',
   'pipelineHeartbeatTask',
   'pipelineFinishTask',
+  'pipelineYieldJob',
   'pipelineRequestCancel',
   'pipelineAcknowledgeCancel',
   'pipelineRecoverExpired',
@@ -286,7 +288,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 12;
+      return 13;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -359,6 +361,11 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       return finishPipelineTask(
         await getPipelineDatabase(),
         args[0] as Parameters<typeof finishPipelineTask>[1]
+      );
+    case 'pipelineYieldJob':
+      return yieldPipelineJob(
+        await getPipelineDatabase(),
+        args[0] as Parameters<typeof yieldPipelineJob>[1]
       );
     case 'pipelineRequestCancel':
       return requestPipelineCancellation(

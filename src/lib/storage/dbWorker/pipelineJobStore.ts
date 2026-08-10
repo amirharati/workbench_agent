@@ -481,6 +481,41 @@ export function finishPipelineTask(
   });
 }
 
+/**
+ * Cooperatively release a job between items so the coordinator can run a
+ * higher-priority job. No task is interrupted and every completed stage stays
+ * committed. The fenced job lease is revoked before the job returns to queue.
+ */
+export function yieldPipelineJob(
+  db: Database,
+  input: {
+    jobId: string;
+    ownerId: string;
+    jobLeaseEpoch: number;
+    now?: number;
+  }
+): { accepted: boolean; snapshot: PipelineJobSnapshot | null } {
+  const now = input.now ?? Date.now();
+  return transaction(db, () => {
+    db.exec({
+      sql: `UPDATE pipeline_jobs
+            SET status = 'queued', lease_owner = NULL, lease_epoch = lease_epoch + 1,
+                lease_expires_at = NULL, heartbeat_at = NULL, updated_at = ?
+            WHERE id = ? AND status = 'running' AND cancel_requested_at IS NULL
+              AND lease_owner = ? AND lease_epoch = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM pipeline_tasks t
+                WHERE t.job_id = pipeline_jobs.id AND t.status = 'running'
+              );`,
+      bind: [now, input.jobId, input.ownerId, input.jobLeaseEpoch],
+    });
+    return {
+      accepted: db.changes() === 1,
+      snapshot: getPipelineJobSnapshot(db, input.jobId),
+    };
+  });
+}
+
 export function requestPipelineCancellation(
   db: Database,
   jobId: string,
@@ -547,7 +582,28 @@ export function recoverExpiredPipelineTasks(
        WHERE status = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?;`,
       [now]
     );
-    const affectedJobs = [...new Set(expired.map((task) => task.job_id))];
+    // A process can disappear in the small safe gap after finishing one task
+    // and before claiming the next. There is no running task to recover in
+    // that case, so requeue the expired job lease itself.
+    const orphaned = rows<{ id: string }>(
+      db,
+      `SELECT j.id FROM pipeline_jobs j
+       WHERE j.status = 'running' AND j.lease_expires_at IS NOT NULL
+         AND j.lease_expires_at <= ?
+         AND EXISTS (
+           SELECT 1 FROM pipeline_tasks pending
+           WHERE pending.job_id = j.id AND pending.status = 'pending'
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM pipeline_tasks active
+           WHERE active.job_id = j.id AND active.status = 'running'
+         );`,
+      [now]
+    );
+    const affectedJobs = [...new Set([
+      ...expired.map((task) => task.job_id),
+      ...orphaned.map((job) => job.id),
+    ])];
     let requeued = 0;
     let uncertain = 0;
     for (const task of expired) {

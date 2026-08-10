@@ -30,9 +30,18 @@ import {
 } from './offscreenPipelineProtocol';
 
 const controllers = new Map<string, AbortController>();
-const queuedJobIds = new Set<string>();
-let executionTail: Promise<void> = Promise.resolve();
-let queuedCount = 0;
+type QueuedPipelineJob = {
+  jobId: string;
+  itemIds: string[];
+  options: OffscreenPipelineJobOptions;
+  operation: PipelineJobOperation;
+  priority: number;
+  createdAt: number;
+  controller: AbortController;
+};
+const queuedJobs = new Map<string, QueuedPipelineJob>();
+let queuePumpRunning = false;
+let activeJobId: string | null = null;
 let recoveryTimer: number | undefined;
 const ownerId = `pipeline-coordinator:${crypto.randomUUID()}`;
 const LEASE_LOST_REASON = 'pipeline-lease-lost';
@@ -147,91 +156,153 @@ function enqueueAcceptedJob(
   jobId: string,
   itemIds: string[],
   options: OffscreenPipelineJobOptions,
-  operation: PipelineJobOperation
+  operation: PipelineJobOperation,
+  priority: number,
+  createdAt: number
 ): void {
-  if (queuedJobIds.has(jobId) || controllers.has(jobId)) return;
-  queuedJobIds.add(jobId);
+  if (queuedJobs.has(jobId) || controllers.has(jobId)) return;
   const controller = new AbortController();
   controllers.set(jobId, controller);
-  const position = queuedCount;
-  queuedCount += 1;
+  const position = queuedJobs.size;
+  queuedJobs.set(jobId, {
+    jobId,
+    itemIds,
+    options,
+    operation,
+    priority,
+    createdAt,
+    controller,
+  });
   if (position > 0) {
     broadcastProgress(jobId, {
       phase: 'prep',
-      label: `Queued behind ${position.toLocaleString()} pipeline job${position === 1 ? '' : 's'}…`,
+      label: priority < 50
+        ? 'Queued for priority processing after the current item…'
+        : `Queued behind ${position.toLocaleString()} pipeline job${position === 1 ? '' : 's'}…`,
       current: 0,
       total: Math.max(itemIds.length, 1),
     });
   }
+  armRecoveryWake();
+  void pumpPipelineQueue();
+}
 
-  const run = async () => {
-    try {
-      if (controller.signal.aborted) {
-        await dbRpc('pipelineAcknowledgeCancel', [jobId], { priority: 'high' });
-        throw new DOMException('Cancelled', 'AbortError');
-      }
-      // Pipeline domain functions load settings internally. Install the
-      // submission-time settings in this serialized offscreen realm so they do
-      // not silently fall back to an empty worker configuration. Recovered jobs
-      // omit secrets from SQLite and reload the saved settings here instead.
-      setAISettingsOverride(null);
-      const aiSettings = options.aiSettings?.apiKey.trim()
-        ? options.aiSettings
-        : await loadAISettings();
-      setAISettingsOverride(aiSettings);
-      const result = await runWithDbPriority('high', () => runDurablePipelineJob({
-        jobId,
-        itemIds,
-        options,
-        ownerId,
-        signal: controller.signal,
-        onAbortRequired: (reason) => controller.abort(
-          reason.includes('lost its lease') ? LEASE_LOST_REASON : reason
-        ),
-        onProgress: (progress) => broadcastProgress(jobId, progress),
-      }));
-      notifyDataChanged('pipeline.complete', { entityIds: itemIds });
-      broadcastDone({
-        type: 'pipeline-offscreen-done',
-        requestId: jobId,
-        ok: true,
-        result,
-        singleResult: operation === 'full_digest' && itemIds.length === 1
-          ? singleResult(itemIds[0], result, options)
-          : undefined,
+function hasHigherPriorityWaiting(current: QueuedPipelineJob): boolean {
+  for (const candidate of queuedJobs.values()) {
+    if (
+      candidate.jobId !== current.jobId &&
+      !candidate.controller.signal.aborted &&
+      candidate.priority < current.priority
+    ) return true;
+  }
+  return false;
+}
+
+function nextQueuedJob(): QueuedPipelineJob | null {
+  return [...queuedJobs.values()].sort((a, b) =>
+    a.priority - b.priority || a.createdAt - b.createdAt
+  )[0] ?? null;
+}
+
+async function executeQueuedJob(entry: QueuedPipelineJob): Promise<'yielded' | 'finished'> {
+  const { jobId, itemIds, options, operation, controller } = entry;
+  let leaseLost = false;
+  try {
+    if (controller.signal.aborted) {
+      await dbRpc('pipelineAcknowledgeCancel', [jobId], { priority: 'high' });
+      throw new DOMException('Cancelled', 'AbortError');
+    }
+    // Pipeline domain functions load settings internally. Install the
+    // submission-time settings in this serialized offscreen realm so they do
+    // not silently fall back to an empty worker configuration. Recovered jobs
+    // omit secrets from SQLite and reload the saved settings here instead.
+    setAISettingsOverride(null);
+    const aiSettings = options.aiSettings?.apiKey.trim()
+      ? options.aiSettings
+      : await loadAISettings();
+    setAISettingsOverride(aiSettings);
+    const execution = await runWithDbPriority('high', () => runDurablePipelineJob({
+      jobId,
+      itemIds,
+      options,
+      ownerId,
+      signal: controller.signal,
+      onAbortRequired: (reason) => controller.abort(
+        reason.includes('lost its lease') ? LEASE_LOST_REASON : reason
+      ),
+      onProgress: (progress) => broadcastProgress(jobId, progress),
+      shouldYieldAfterItem: () => hasHigherPriorityWaiting(entry),
+    }));
+    if (execution.yielded) {
+      broadcastProgress(jobId, {
+        phase: 'prep',
+        label: 'Paused safely for an urgent link; bulk will resume automatically…',
+        current: execution.snapshot.job.completed_items,
+        total: Math.max(execution.snapshot.job.total_items, 1),
       });
-    } catch (error) {
-      const leaseLost = controller.signal.reason === LEASE_LOST_REASON;
-      const cancelled =
-        !leaseLost && (
-          controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')
-        );
-      if (leaseLost) return;
-      if (cancelled) {
-        await dbRpc('pipelineAcknowledgeCancel', [jobId], { priority: 'high' }).catch(() => {});
-      }
-      notifyDataChanged('pipeline.complete', { entityIds: itemIds });
-      broadcastDone({
-        type: 'pipeline-offscreen-done',
-        requestId: jobId,
-        ok: false,
-        error: cancelled ? 'Cancelled' : error instanceof Error ? error.message : String(error),
+      return 'yielded';
+    }
+    if (!execution.result) throw new Error('Pipeline completed without a durable result');
+    const result = execution.result;
+    notifyDataChanged('pipeline.complete', { entityIds: itemIds });
+    broadcastDone({
+      type: 'pipeline-offscreen-done',
+      requestId: jobId,
+      ok: true,
+      result,
+      singleResult: operation === 'full_digest' && itemIds.length === 1
+        ? singleResult(itemIds[0], result, options)
+        : undefined,
+    });
+    return 'finished';
+  } catch (error) {
+    leaseLost = controller.signal.reason === LEASE_LOST_REASON;
+    const cancelled =
+      !leaseLost && (
+        controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')
+      );
+    if (leaseLost) return 'finished';
+    if (cancelled) {
+      await dbRpc('pipelineAcknowledgeCancel', [jobId], { priority: 'high' }).catch(() => {});
+    }
+    notifyDataChanged('pipeline.complete', { entityIds: itemIds });
+    broadcastDone({
+      type: 'pipeline-offscreen-done',
+      requestId: jobId,
+      ok: false,
+      error: cancelled ? 'Cancelled' : error instanceof Error ? error.message : String(error),
+    });
+    return 'finished';
+  } finally {
+    setAISettingsOverride(null);
+    if (leaseLost) {
+      void recoverDurableJobs().catch((error) => {
+        console.error('[pipeline] lease-loss recovery failed:', error);
       });
-    } finally {
-      setAISettingsOverride(null);
-      const leaseLost = controller.signal.reason === LEASE_LOST_REASON;
-      controllers.delete(jobId);
-      queuedJobIds.delete(jobId);
-      queuedCount = Math.max(0, queuedCount - 1);
-      if (leaseLost) {
-        void recoverDurableJobs().catch((error) => {
-          console.error('[pipeline] lease-loss recovery failed:', error);
-        });
+    }
+  }
+}
+
+async function pumpPipelineQueue(): Promise<void> {
+  if (queuePumpRunning) return;
+  queuePumpRunning = true;
+  try {
+    while (queuedJobs.size > 0) {
+      const entry = nextQueuedJob();
+      if (!entry) break;
+      activeJobId = entry.jobId;
+      const outcome = await executeQueuedJob(entry);
+      activeJobId = null;
+      if (outcome === 'finished') {
+        queuedJobs.delete(entry.jobId);
+        controllers.delete(entry.jobId);
       }
     }
-  };
-  executionTail = executionTail.then(run, run);
-  armRecoveryWake();
+  } finally {
+    activeJobId = null;
+    queuePumpRunning = false;
+    if (queuedJobs.size > 0) void pumpPipelineQueue();
+  }
 }
 
 async function recoverDurableJobs(): Promise<boolean> {
@@ -261,7 +332,7 @@ async function recoverDurableJobs(): Promise<boolean> {
       const itemIds = operation === 'discover'
         ? options.discoverItemIds ?? []
         : itemIdsFromSnapshot(snapshot);
-      enqueueAcceptedJob(job.id, itemIds, options, operation);
+      enqueueAcceptedJob(job.id, itemIds, options, operation, job.priority, job.created_at);
     }
   }
   if (snapshots.length > 0) armRecoveryWake();
@@ -275,8 +346,19 @@ export function installOffscreenPipelineHost(): void {
     if (message.action === 'cancel') {
       const cancel = message as PipelineOffscreenCancel;
       void dbRpc('pipelineRequestCancel', [cancel.requestId], { priority: 'high' })
-        .then(() => {
+        .then(async () => {
           controllers.get(cancel.requestId)?.abort(cancel.reason);
+          if (activeJobId !== cancel.requestId && queuedJobs.has(cancel.requestId)) {
+            await dbRpc('pipelineAcknowledgeCancel', [cancel.requestId], { priority: 'high' });
+            queuedJobs.delete(cancel.requestId);
+            controllers.delete(cancel.requestId);
+            broadcastDone({
+              type: 'pipeline-offscreen-done',
+              requestId: cancel.requestId,
+              ok: false,
+              error: 'Cancelled',
+            });
+          }
           sendResponse({ ok: true });
         })
         .catch((error) => sendResponse({ ok: false, error: String(error) }));
@@ -314,7 +396,7 @@ export function installOffscreenPipelineHost(): void {
         enqueueAcceptedJob(start.requestId, itemIds, {
           ...start.options,
           discoverItemIds: start.operation === 'discover' ? itemIds : start.options.discoverItemIds,
-        }, start.operation ?? 'full_digest');
+        }, start.operation ?? 'full_digest', submitted.snapshot.job.priority, submitted.snapshot.job.created_at);
         sendResponse({ ok: true, requestId: start.requestId } satisfies PipelineOffscreenStartResponse);
       })
       .catch((error) => sendResponse({
