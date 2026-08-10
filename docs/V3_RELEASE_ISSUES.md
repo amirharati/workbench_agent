@@ -252,7 +252,7 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-003 | 2026-08-08 | Organization / concurrency | Adding an item to a project/collection is slow or later appears applied/reverted during processing | P1 | READY TO RETEST | Atomic worker-side item patches, explicit UI priority, durable save feedback | Uncommitted | Parallel pipeline retest pending |
 | V3-004 | 2026-08-08 | Search / organization | Cannot search All Library for material not already in a target project or collection | P2 | READY TO RETEST | Pre-ranking `Not in…` project/collection filter | Uncommitted | Contextual project/collection retest pending |
 | V3-005 | 2026-08-08 | Search / query semantics | Multi-term Search syntax and result counts are unclear/non-monotonic | P2 | READY TO RETEST | Parsed AND/OR/phrase grammar, worker-owned semantic ranking, visible fallback | Uncommitted | Fixed-query and live-embedding retest pending |
-| V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | READY TO RETEST | Preserve restored Search scope; follow later shell navigation only | V3-006 checkpoint | Refresh/context-change retest pending |
+| V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | CLOSED | Preserve restored Search scope; follow later shell navigation only | `cfad800` | PASS — refresh and later navigation, 2026-08-09 |
 | V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | FIXING | Rebuild compressed content sidecar with a separate content worker | Safety branch only | Clean-install enrichment/reinstall recovery pending |
 | V3-008 | 2026-08-09 | Pipeline / resume recovery | System sleep can strand a batch; first coordinator build stalled at 5% and blocked Hub loading | P1 | FIXING | Rebuild one shared serialized coordinator, then expand only after acceptance gates | Safety branch only | One link through sleep/wake, then large batch |
 
@@ -382,7 +382,7 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 
 - Found: 2026-08-09, Run 01
 - Severity / gate: P2 / G3
-- Status: READY TO RETEST
+- Status: CLOSED
 - Environment: `design/ui-redesign` after architecture checkpoint `33ee5f5`
 - Reproduction:
   1. Open Search while Home is scoped to Inbox or another project/collection.
@@ -403,6 +403,8 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 - Retest: from Inbox Search choose All Library, set a collection/domain/negative filter, run a query,
   select a result, and refresh. Confirm all choices and the cached result return. Then explicitly
   navigate Home to another project and confirm Search adopts that new project as its default scope.
+- Retest result: PASS on 2026-08-09 after a full extension reinstall. Search state survived refresh,
+  and later explicit shell navigation updated the default scope as designed.
 
 ### V3-007 — Fetched content creates an unbounded sync-folder file set
 
