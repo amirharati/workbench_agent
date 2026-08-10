@@ -1,178 +1,197 @@
 # Content Storage and Backup
 
-> Status — 2026-08-09: checkpoint 2 is implemented on `design/ui-redesign` and awaits real-extension
-> acceptance. It gives the content database its own worker and keeps the existing pipeline runners
-> unchanged. The fenced coordinator commit protocol described below remains a later checkpoint.
+> Status — 2026-08-09: checkpoint 2 storage smoke test accepted. The earlier implementation used an OPFS content database plus
+> a selected-folder snapshot, creating two durable copies and an unnecessary replication lifecycle. That
+> implementation is being replaced by the folder-owned design below. The core database design is unchanged.
 
 ## Decision
 
-Homebase uses one user-selected folder as a provider-neutral recovery target. The folder may be
-inside Dropbox, Google Drive, OneDrive, a local disk, or any other writable filesystem location;
-Homebase does not integrate with or configure the sync provider.
+Homebase has two SQLite files with deliberately different ownership and lifecycles:
 
-Two SQLite databases have different durability and update policies:
-
-| Store | Purpose | Runtime truth | Folder recovery policy |
+| Store | Contents | Exclusive owner | Durable location |
 |---|---|---|---|
-| `workbench.sqlite` | Irreplaceable library and user decisions | OPFS, owned by the core DB worker | Current mirror plus bounded recovery snapshots |
-| `workbench-content.sqlite` | Expensive but rebuildable fetched/derived content | OPFS, owned by a separate content worker | One current atomically replaced snapshot; no history rotation |
+| `workbench.sqlite` | Library, user decisions, derived metadata, and durable pipeline jobs/tasks | Core DB worker | OPFS runtime database plus the existing selected-folder recovery mirror |
+| `workbench-content.sqlite` | Compressed fetched and review bodies | Content-store worker | Exactly one current file in the user-selected folder |
 
-The dashboard remains light because UI tabs receive projections and paged metadata from the worker;
-neither raw bodies nor embedding vectors are bulk-hydrated into a tab.
+`workbench-content.sqlite` is not replicated into OPFS. The content worker may hold an in-memory SQLite
+connection while the extension is running, but that memory is a volatile working copy, not a second durable
+store. On startup or folder relink, the worker loads the selected-folder file before serving content requests.
+
+The pipeline coordinator is a third authority. It owns fetch, AI extraction, embedding, classification,
+scheduling, and cancellation. It does not own either database and never reads or writes SQLite directly:
+it calls the core DB and content-store APIs.
+
+## Required interfaces
+
+Callers see an opaque key/value store, not SQLite rows or archive coordinates:
+
+```ts
+contentStore.put(contentKey, body, metadata)
+contentStore.get(contentKey)
+contentStore.delete(contentKey)
+contentStore.flush() // explicit durability boundary; never hidden inside job completion
+```
+
+The core database stores only an opaque logical key such as:
+
+```text
+content:v1:raw:<item-id>:<content-hash>
+```
+
+It never stores a folder filename, byte offset, compressed-block location, or SQLite row ID. The content
+worker is free to change the physical schema without migrating core-library relationships.
+
+## Authority boundaries
+
+```text
+Dashboard / Import / Enrichment Hub / side panel
+                    |
+                    | submit, cancel, observe
+                    v
+        one offscreen pipeline coordinator
+          fetch / AI / embed / classify only
+                    |
+          +---------+----------+
+          |                    |
+          v                    v
+   core DB API          content-store API
+   core DB worker       content worker
+          |                    |
+          v                    v
+   OPFS workbench.sqlite   volatile SQLite connection
+          |                    |
+          v                    v
+   folder recovery mirror  selected folder/
+                           workbench-content.sqlite
+                           (only durable content copy)
+```
+
+Invariants:
+
+- UI documents submit and observe jobs; they never execute URL processing or own database connections.
+- The core DB worker alone owns `workbench.sqlite` and durable job/task state.
+- The content worker alone owns content compression, lookup, integrity checks, serialization, and flushing.
+- The pipeline coordinator alone executes processing stages, initially in one serialized lane.
+- Folder I/O is never a prerequisite for dashboard navigation, progress rendering, cancellation, or core DB
+  availability.
 
 ## Data tiers
 
-### Tier 1 — Critical
+### Tier 1 — Critical core data
 
 Stored in `workbench.sqlite`:
 
 - URLs, notes, projects, collections, placements, and workspaces
-- user decisions such as Favorite, Pin, accepted organization, and deletion
-- enrichment status, summary, key points, tags, content hash, and content availability metadata
-- item-level search/categorization signals
-- pipeline recovery state required to resume safely
+- Favorite, Pin, accepted organization, deletion, and other user decisions
+- summaries, key points, tags, enrichment status, and the opaque content key
+- search/categorization signals
+- pipeline jobs, tasks, leases, cancellation state, and committed stage progress
 
-Tier 1 receives the existing live mirror and recovery rotation.
+The existing OPFS runtime database and bounded folder recovery policy remain unchanged.
 
-### Tier 2 — Valuable and rebuildable
+### Tier 2 — Valuable, rebuildable content
 
-Stored in `workbench-content.sqlite`:
+Stored only in the folder's `workbench-content.sqlite`:
 
 - fetched Markdown/raw bodies
 - pending-review raw bodies
 - content identity and integrity metadata
-- later, RAG chunks, full-text indexes, and chunk embeddings if needed
+- later, content chunks or other large rebuildable inputs if justified
 
-This data can theoretically be fetched or derived again, but rebuilding may cost time, network
-access, AI spend, or fail because a source disappeared. It therefore receives one durable folder
-copy, without historical rotations.
+The worker stores bodies as independently compressed values so one key can be read without decompressing
+the entire database.
 
 ### Tier 3 — Disposable diagnostics
 
-High-volume pipeline diagnostics remain in local database state or are exported explicitly as one
-user-requested artifact. Normal enrichment must not create an unbounded `pipeline-runs/` folder tree.
+High-volume pipeline diagnostics stay bounded in database state or are exported explicitly. Normal
+processing must not create `enrichment-cache/<item>.md` or automatic `pipeline-runs/*` trees.
 
-## Runtime and recovery flow
+## Content identity and schema
 
-```text
-UI tab caches
-     |
-     v
-offscreen owner
-     |-- core DB worker: OPFS workbench.sqlite ------> chosen folder/workbench.sqlite
-     |                                      frequent bounded mirror
-     |
-     `-- content worker: OPFS workbench-content.sqlite -> chosen folder/workbench-content.sqlite
-                                            coarse checkpoint / one current copy
-```
+The current logical identity is `(item_id, kind, content_hash)`, encoded into an opaque `content:v1:` key.
+Rows are immutable for that identity. A repeated put is idempotent.
 
-Normal reads and writes never use the chosen folder as a live database. The folder contains recovery
-snapshots. On a clean installation, Homebase restores folder files into OPFS and then serves reads
-from the local workers.
+Minimum physical fields:
 
-When a writable folder is linked and no content snapshot exists yet, the content worker publishes a valid
-empty `workbench-content.sqlite` in the background. This makes storage initialization independently
-verifiable before any fetch or AI work starts.
-
-The core database restores first. Missing, stale, or corrupt content storage must never prevent the
-library from opening.
-
-## Content schema and integrity
-
-The content database stores independently compressed records so one body can be read without
-decompressing the complete archive.
-
-Minimum document fields:
-
-- `item_id` — owning library item
-- `kind` — current body or pending-review body
-- `content_hash` — identity shared with the main enrichment row
-- `codec` — explicit compression format
-- `body` — compressed bytes
+- `item_id`
+- `kind` (`raw` or `review`)
+- `content_hash` and independently verified `body_hash`
+- `codec`
+- compressed `body`
 - `raw_bytes` and `stored_bytes`
 - `fetched_at` and `created_at`
 
-The stable identity is `(item_id, kind, content_hash)`. Rows are immutable for that identity, and the core
-enrichment row stores an opaque reference to the exact hash it accepted. A body is usable only when its item
-ID, kind, and expected content hash match. A mismatch is treated as unavailable content, never as a reason to
-show the wrong source body.
-
-SQLite transactions protect local row updates. Before publishing a folder snapshot, Homebase checks
-SQLite integrity plus basic size and row-count expectations.
+The core enrichment row may use content only when its opaque reference resolves and the expected hash
+matches. Missing or corrupt content is reported as unavailable; it never causes the wrong body to be shown.
 
 ## Cross-database commit protocol
 
-The two SQLite files cannot share one transaction. The completed coordinator will therefore use an
-idempotent content-first protocol:
+The two files cannot share a transaction. The durable coordinator therefore uses content first:
 
-1. The coordinator computes the fetched body and content hash.
-2. The content worker inserts the immutable compressed row and returns its opaque reference.
-3. The coordinator asks the core worker to conditionally commit the enrichment row and complete the task.
-4. The core worker accepts the commit only when the job/task lease epoch still matches.
+1. Fetch computes the body and stable content hash.
+2. The content worker idempotently inserts the compressed value and returns its opaque key.
+3. The core worker conditionally commits enrichment metadata plus that key and completes the task, fenced by
+   the current job/task lease epoch.
+4. A later asynchronous content flush publishes accumulated content changes to the one folder file.
 
-A crash between steps 2 and 3 leaves an unreferenced content row, never a core record pointing at missing
-content. A later best-effort garbage collector may delete unreferenced historical rows. A stale executor may
-write the same immutable content identity, but it cannot change the current core reference.
+A crash before step 3 can leave an unreferenced content row, never a core row that points to a different
+body. Garbage collection may later remove unreferenced immutable rows.
 
-## Snapshot policy
+Step 4 is deliberately not part of job completion. The core task records whether its content revision is
+still pending flush so the UI can distinguish "processed" from "content file is current" without blocking
+the pipeline.
 
-Content writes commit immediately to OPFS. In checkpoint 2, folder publication is deliberately coarse:
+## Folder-only persistence policy
 
-- after 60 seconds of content-write inactivity
-- when the user explicitly requests Backup now
+Browser SQLite cannot directly mount a user-selected `FileSystemFileHandle` with the supported OPFS VFS.
+The first implementation therefore uses a worker-owned in-memory SQLite connection and atomically replaces
+the selected-folder file with serialized database bytes.
 
-A later coordinator may request the same asynchronous checkpoint at a job boundary, but job completion
-must not await it.
+To prevent a continuously running import from postponing persistence forever:
 
-Pipeline completion, pause, cancellation, and recovery never wait for this publication.
+- the first dirty write starts a fixed maximum-latency flush timer;
+- later writes coalesce into that flush but do not restart the timer;
+- an explicit **Backup now** or destructive clear forces a flush;
+- pipeline completion, cancellation, progress, and navigation never await an ordinary background flush;
+- only `workbench-content.sqlite` is retained—no rotated history and no OPFS replica.
 
-Publication writes `workbench-content.sqlite.tmp`, validates it, and only then replaces
-`workbench-content.sqlite`. The old good file remains until the new snapshot is complete. The temporary
-file is staging, not backup history.
+This trades a bounded recent-content loss window for one-copy storage and browser-only operation. Requiring
+zero-loss durability after every fetched item at large scale would require a custom SQLite VFS/native helper
+or relaxing the one-file/one-copy constraint; repeated full-file replacement after every item is not an
+acceptable large-import design.
 
-`workbench.meta.json` remains the conflict envelope for the core database. The content database keeps
-its own revision and last-export facts in `content_meta`, so publishing content never races with or
-rewrites core conflict metadata. A core snapshot may be newer than the content snapshot. This is valid:
-affected raw bodies are shown as not yet backed up rather than blocking normal use.
+## Startup, permission, and failure behavior
 
-## Availability and failure behavior
+- Core DB startup never waits for content startup.
+- Content RPCs wait until the content worker has either loaded the selected-folder file or established a new
+  empty database for a writable selected folder.
+- If Chrome has paused folder permission, core/library features remain available but content reads and writes
+  report that content storage is unavailable until a user gesture restores permission.
+- Missing file with a writable linked folder creates one valid empty `workbench-content.sqlite`.
+- Corrupt file is not silently replaced; preserve it and require an explicit rebuild/replacement decision.
+- Failed background flush leaves the previous valid file intact and reports a pending durability error.
+- Failed content insertion fails that item's content-store stage before paid extraction.
+- Missing content never triggers automatic refetch or AI spend.
 
-- Missing content DB: open the library normally; mark raw bodies unavailable.
-- Stale content snapshot: restore all matching rows and report incomplete coverage.
-- Corrupt content snapshot: keep core data available, preserve the suspect file, and offer an explicit
-  rebuild or replacement path.
-- Failed content mirror: retain the previous valid folder snapshot and report content backup pending.
-- Failed local content write: fail/retry that item before paid extraction; do not silently continue without
-  the promised fetched-content record.
-- Missing individual body: allow a deliberate selected-item or batch rebuild; never spend network or AI
-  budget automatically.
-- Main/content mismatch: content hash wins as the guard; do not attach stale content to an item.
+## Implementation checkpoints
 
-## Scale and provider neutrality
-
-Ten thousand URLs produce database rows, not ten thousand files in the selected folder. The folder has
-a small bounded file set, and Homebase requires no ignore rules, provider client, OAuth setup, or sync
-configuration.
-
-SQLite is the active indexed archive. A `tar.gz` containing Markdown plus `manifest.tsv` may be offered
-later as an explicit portable export, but it is not the runtime store or automatic backup format.
-
-## Clean-install boundary
-
-This change is implemented before release and intentionally has no automated migration from legacy
-`enrichment-cache/*.md` or accumulated `pipeline-runs/` artifacts. A temporary read/delete bridge preserves
-existing raw-body access, while all new bodies go to the sidecar. Acceptance testing still starts from a
-fresh extension installation and a clean selected folder.
+1. **Accepted — content-store ownership:** remove the OPFS content database, keep one dedicated worker and the opaque-key
+   API, load from the folder before serving calls, and use a fixed maximum-latency background flush.
+2. **One-link vertical slice:** route one Enrichment Hub link through the shared coordinator and explicit
+   `fetch -> content_store -> extract -> core commit` stages.
+3. **Durable jobs/cancellation:** add core-owned jobs/tasks, leases, fenced commits, and durable cancel.
+4. **Surface migration:** move Import, sidebar, Inspector, and maintenance actions onto the same job API.
+5. **Lifecycle and scale:** navigation, dashboard closure, multiple tabs, sleep/wake, then a large batch.
 
 ## Acceptance criteria
 
-- Enriching 10,000 items does not create per-item files in the selected folder.
-- Full raw content remains readable after dashboard reload and Chrome restart.
-- A fresh extension installation can restore the core DB and the one content snapshot without
-  re-downloading matching bodies.
-- Core restore succeeds when the content snapshot is absent or invalid.
-- Re-enrichment changes the core reference without increasing folder file count; unreferenced historical
-  content rows are eligible for later garbage collection.
-- Deleting/resetting content removes the corresponding sidecar rows without risking Tier 1 data.
-- Content snapshots are not written per URL and never accumulate historical copies automatically.
-- Automatic pipeline diagnostics do not create an unbounded folder tree.
+- The selected folder contains exactly one current `workbench-content.sqlite` and no per-item content files.
+- The content file is the only durable copy of fetched bodies; no content database exists in OPFS.
+- A body is addressable through one opaque key and survives dashboard reload and Chrome restart.
+- A clean reinstall can reload matching bodies after the user reselects the folder.
+- Continuous processing cannot defer the first pending flush indefinitely.
+- Core/library startup succeeds when content storage is unavailable.
+- Re-enrichment does not increase the selected-folder file count.
+- Ordinary job completion, cancellation, navigation, and progress never wait for a whole-file content flush.
+- One-link, five-link, cancel, navigation/refresh, closing dashboards, sleep/wake, and large-batch gates pass in
+  that order before concurrency is increased.

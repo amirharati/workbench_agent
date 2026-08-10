@@ -3,7 +3,7 @@
 const OFFSCREEN_URL = 'offscreen.html';
 // Increment when the dashboard requires new DB-owner/worker RPC capabilities.
 // Keep this in sync with src/offscreen/offscreen.ts and the DB worker response.
-const DB_OWNER_PROTOCOL_VERSION = 7;
+const DB_OWNER_PROTOCOL_VERSION = 8;
 let offscreenCreating = null;
 let offscreenProtocolVerified = false;
 
@@ -45,7 +45,7 @@ async function ensureOffscreenDocument() {
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_URL,
       reasons: ['WORKERS'],
-      justification: 'Shared core and content SQLite workers with OPFS persistence',
+      justification: 'Shared core SQLite, folder content-store, and pipeline workers',
     });
     offscreenProtocolVerified = true;
   })();

@@ -2,9 +2,9 @@
 
 Living design for how Homebase protects user data and mirrors it outside IndexedDB. This now includes a shipped file-based backup core (live + manual + sync conflict guard), with scheduled rotation and a few hardening steps still pending (see [`BACKLOG.md`](BACKLOG.md)).
 
-> Status — 2026-08-09: the core SQLite mirror is active. The content-sidecar and durable pipeline sections
-> below are V3 rebuild targets; their first implementation was deliberately removed from the active branch
-> after real-extension failures. See [`PIPELINE_REBUILD_TODO.md`](PIPELINE_REBUILD_TODO.md).
+> Status — 2026-08-09: the core SQLite mirror is active. The corrected folder-only content-sidecar is being
+> implemented; durable pipeline coordination remains a V3 rebuild target. See
+> [`PIPELINE_REBUILD_TODO.md`](PIPELINE_REBUILD_TODO.md).
 
 ---
 
@@ -23,7 +23,7 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 ## Principles
 
 1. **V2 (superseded for domain data):** IndexedDB was runtime source of truth; live backup debounced full JSON → `latest.json`.
-2. **V2.1 active storage / V3 target:** **SQLite WASM on OPFS** in a core DB worker (offscreen document). **Mandatory backup folder.** **Live truth = OPFS**; **`workbench.sqlite`** in the user folder is a debounced core mirror. V3 will add a separately worker-owned compressed **`workbench-content.sqlite`** sidecar with one coarse, atomically replaced folder snapshot. **`workbench.meta.json`** carries core revision/deviceId. **JSON export/import retained for core data.**
+2. **V2.1 core storage / V3 content target:** the core **SQLite WASM on OPFS** remains owned by the core DB worker; **`workbench.sqlite`** in the user folder is its debounced recovery mirror. The separately worker-owned compressed **`workbench-content.sqlite`** has a different lifecycle: its selected-folder file is the only durable content copy, with no OPFS content replica. **`workbench.meta.json`** carries core revision/deviceId. **JSON export/import retained for core data.**
 3. **Canonical interchange format (V2 + V2.1):** JSON from `exportDB()` / `importDB()` + `verifyBackup()` — for manual export, migration, and cross-version import.
 4. **Backup is snapshot export**, not a live second database. Cross‑machine consistency via shared folders (e.g. Dropbox) is **transport + redundancy** on a **single device** — **not** multi-writer sync. **V4:** per-device replicas + app sync layer ([`temp/TASK-V4-sync-replicas.md`](temp/TASK-V4-sync-replicas.md)).
 5. **Defense in depth:** manual export + occasional **`manual-*.sqlite` / `manual-*.json`** snapshots + scheduled rotation (pending) + import verification. No full JSON rewrite on every edit when folder live mode is active.
@@ -48,14 +48,15 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
    - Legacy **`latest.sqlite`** / **`latest.json`** read for migration only — not rewritten on every edit.
    - Live JSON backup **disabled**; manual snapshots on demand.
 
-1a. **Fetched-content sidecar (V3 checkpoint 2 — implemented, awaiting extension acceptance)**
-   - Raw and pending-review bodies are independently gzip-compressed rows in worker-owned OPFS
-     `workbench-content.sqlite`; the dashboard loads one body only when requested.
-   - The selected folder contains one current `workbench-content.sqlite`, atomically replaced after
-     60 seconds of write inactivity or **Backup now**. It has no history rotation and pipeline completion
-     does not wait for it.
-   - Core recovery never depends on content recovery. On reinstall, the linked folder's content
-     snapshot is restored after the core database and matching hashes guard against stale bodies.
+1a. **Fetched-content sidecar (V3 checkpoint 2 — corrected implementation in progress)**
+   - Raw and pending-review bodies are independently compressed values behind opaque keys; the dashboard
+     loads one body only when requested.
+   - A dedicated content worker owns a volatile SQLite working connection and serializes it to the one current
+     selected-folder `workbench-content.sqlite`. There is no OPFS content database and no history rotation.
+   - The first dirty write starts a bounded background flush which subsequent writes cannot postpone forever;
+     ordinary pipeline completion does not wait for full-file replacement.
+   - Core recovery never depends on content recovery. On reinstall, reselecting the folder reloads content
+     independently and matching hashes guard against stale bodies.
    - Normal pipeline runs keep diagnostics in SQLite and do not create `pipeline-runs/app-*` trees;
      the explicit user export remains available.
    - Full rationale and failure policy: [`CONTENT_STORAGE_AND_BACKUP.md`](CONTENT_STORAGE_AND_BACKUP.md).

@@ -1164,6 +1164,19 @@ function App() {
         return { ok: false, error: msg };
       }
     }
+    // Every successful folder-link path must also establish or load the
+    // independently owned, folder-only content store. Fresh folders previously
+    // skipped this because only the core allowEmptyMirror branch ran.
+    try {
+      const { bootstrapContentFromBackupFolderFile } = await import(
+        './lib/storage/content/contentClient'
+      );
+      await bootstrapContentFromBackupFolderFile();
+    } catch (error) {
+      const message = `Core database linked, but content database setup failed: ${String(error)}`;
+      showStatus(message);
+      return { ok: false, error: message };
+    }
     await setBackupFolderOnboarding('done');
     setFolderConfigured(true);
     setFolderLinkLost(false);

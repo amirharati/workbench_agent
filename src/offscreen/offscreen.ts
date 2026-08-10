@@ -26,7 +26,7 @@ import { installOffscreenPipelineHost } from '../lib/pipeline/offscreenPipelineH
 void syncClock();
 
 // Keep this in sync with public/service-worker.js and the worker response.
-const DB_OWNER_PROTOCOL_VERSION = 7;
+const DB_OWNER_PROTOCOL_VERSION = 8;
 
 const worker = new DbWorker({ name: 'workbench-db' });
 const contentWorker = new ContentWorker({ name: 'workbench-content-db' });
@@ -36,6 +36,11 @@ let rpcId = 1;
 const pendingRpc = new Map<number, (msg: WorkerResponse) => void>();
 let contentRpcId = 1;
 const pendingContentRpc = new Map<number, (msg: ContentWorkerResponse) => void>();
+let resolveContentWorkerStarted: (() => void) | null = null;
+const contentWorkerStarted = new Promise<void>((resolve) => {
+  resolveContentWorkerStarted = resolve;
+});
+let contentInitializationPromise: Promise<unknown> | null = null;
 
 type WorkerResponse =
   | { id: number; ok: true; result: unknown }
@@ -128,7 +133,12 @@ async function writeContentSnapshotToFolder(
 
 async function bootstrapContentFromFolderIfNeeded(): Promise<unknown> {
   if (!(await hasWritableBackupFolder())) {
-    return { imported: false, reason: 'folder-unavailable', rowCount: 0 };
+    const linked = await hasConfiguredBackupFolder();
+    throw new Error(
+      linked
+        ? 'Content folder permission is paused until the next user gesture'
+        : 'Choose a backup folder before storing fetched content'
+    );
   }
   const snapshot = await readBinaryFromBackupFolder(WORKBENCH_CONTENT_DB_FILE);
   if (!snapshot.ok && !snapshot.notFound) {
@@ -137,10 +147,29 @@ async function bootstrapContentFromFolderIfNeeded(): Promise<unknown> {
   if (snapshot.notFound || !snapshot.data || snapshot.data.byteLength < 16) {
     // Establish the visible recovery file independently of enrichment. This is
     // background initialization and never delays core DB availability.
-    const checkpoint = await contentWorkerRpc('checkpointNow', []);
-    return { imported: false, reason: 'created-empty-snapshot', rowCount: 0, checkpoint };
+    const checkpoint = await contentWorkerRpcDirect('checkpointNow', []) as {
+      ok: boolean;
+      error?: string;
+    };
+    if (!checkpoint.ok) {
+      throw new Error(checkpoint.error ?? 'Could not create the content database snapshot');
+    }
+    return { imported: false, reason: 'created-empty-snapshot', rowCount: 0 };
   }
-  return contentWorkerRpcBinary('bootstrapFromFolderBytes', snapshot.data);
+  return contentWorkerRpcBinaryDirect('bootstrapFromFolderBytes', snapshot.data);
+}
+
+async function ensureContentStoreInitialized(): Promise<unknown> {
+  await contentWorkerStarted;
+  if (!contentInitializationPromise) {
+    contentInitializationPromise = bootstrapContentFromFolderIfNeeded().catch((error) => {
+      // Folder permission can become available after a user gesture. Allow the
+      // next content request to retry initialization instead of caching failure.
+      contentInitializationPromise = null;
+      throw error;
+    });
+  }
+  return contentInitializationPromise;
 }
 
 function workerRpc(
@@ -180,7 +209,7 @@ function workerRpcBinary(
   });
 }
 
-function contentWorkerRpc(method: string, args: unknown[] = []): Promise<unknown> {
+function contentWorkerRpcDirect(method: string, args: unknown[] = []): Promise<unknown> {
   const id = contentRpcId++;
   return new Promise((resolve, reject) => {
     pendingContentRpc.set(id, (msg) => {
@@ -193,7 +222,7 @@ function contentWorkerRpc(method: string, args: unknown[] = []): Promise<unknown
   });
 }
 
-function contentWorkerRpcBinary(method: string, bytes: Uint8Array): Promise<unknown> {
+function contentWorkerRpcBinaryDirect(method: string, bytes: Uint8Array): Promise<unknown> {
   const id = contentRpcId++;
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
@@ -206,6 +235,12 @@ function contentWorkerRpcBinary(method: string, bytes: Uint8Array): Promise<unkn
     });
     contentWorker.postMessage({ id, method, args: [copy.buffer] }, [copy.buffer]);
   });
+}
+
+async function contentWorkerRpc(method: string, args: unknown[] = []): Promise<unknown> {
+  // Protocol verification must remain independent from selected-folder state.
+  if (method !== 'getProtocolVersion') await ensureContentStoreInitialized();
+  return contentWorkerRpcDirect(method, args);
 }
 
 type FolderFileWorkerMethod =
@@ -260,7 +295,7 @@ setLocalDbRpcTransport(async (method, args, priority) => {
 
 setLocalContentRpcTransport(async (method, args) => {
   if (method === 'bootstrapFromBackupFolderFile') {
-    return bootstrapContentFromFolderIfNeeded();
+    return ensureContentStoreInitialized();
   }
   return contentWorkerRpc(method, args ?? []);
 });
@@ -331,8 +366,11 @@ contentWorker.onmessage = async (event: MessageEvent<ContentWorkerResponse>) => 
   const msg = event.data;
   if (msg && typeof msg === 'object' && 'type' in msg) {
     if (msg.type === 'content-worker-ready') {
-      // Content recovery is independent and must never delay core DB availability.
-      void bootstrapContentFromFolderIfNeeded().catch((error) => {
+      resolveContentWorkerStarted?.();
+      resolveContentWorkerStarted = null;
+      // Content initialization is independent and must never delay core DB
+      // availability, but content RPCs themselves wait for this same promise.
+      void ensureContentStoreInitialized().catch((error) => {
         console.error('[Content owner] background folder recovery failed:', error);
       });
       return;
@@ -381,7 +419,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.target === 'content-owner') {
     const { id, method, args } = message;
     const operation = method === 'bootstrapFromBackupFolderFile'
-      ? bootstrapContentFromFolderIfNeeded()
+      ? ensureContentStoreInitialized()
       : contentWorkerRpc(method, args ?? []);
     operation
       .then((result) => sendResponse({ id, ok: true, result }))

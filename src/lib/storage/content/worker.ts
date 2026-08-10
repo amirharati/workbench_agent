@@ -10,8 +10,10 @@ import {
   putContentDocument,
 } from './contentDatabase';
 
-const CONTENT_WORKER_PROTOCOL_VERSION = 7;
-const SNAPSHOT_IDLE_MS = 60_000;
+const CONTENT_WORKER_PROTOCOL_VERSION = 8;
+// Fixed maximum delay from the first dirty write. Do not debounce by resetting
+// this timer: a continuous large import must still publish bounded checkpoints.
+const SNAPSHOT_MAX_DELAY_MS = 60_000;
 const SNAPSHOT_WRITE_TIMEOUT_MS = 120_000;
 
 type RpcRequest = { id: number; method: string; args: unknown[] };
@@ -68,7 +70,7 @@ async function checkpointContentDatabase(): Promise<{ ok: boolean; error?: strin
 }
 
 function scheduleContentSnapshot(): void {
-  if (snapshotTimer) clearTimeout(snapshotTimer);
+  if (snapshotTimer) return;
   snapshotTimer = setTimeout(() => {
     snapshotTimer = null;
     void checkpointContentDatabase().then((result) => {
@@ -76,7 +78,7 @@ function scheduleContentSnapshot(): void {
     }).catch((error) => {
       console.warn('[Content worker] background snapshot failed:', error);
     });
-  }, SNAPSHOT_IDLE_MS);
+  }, SNAPSHOT_MAX_DELAY_MS);
 }
 
 async function handleMethod(method: string, args: unknown[]): Promise<unknown> {

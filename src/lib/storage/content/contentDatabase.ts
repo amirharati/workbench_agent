@@ -1,10 +1,5 @@
 /** Worker-local storage engine for fetched and review bodies. */
 import { normalizeBinaryPayload } from '../../binaryPayload';
-import {
-  exportNamedDatabaseBytes,
-  importNamedOpfsDatabaseBytes,
-  openNamedOpfsDatabase,
-} from '../sqlite/connectionOpfs';
 import { deserializeFromBytes, initSqlite3, type Database } from '../sqlite/connectionShared';
 import type { SqliteStorageMode } from '../sqlite/types';
 
@@ -65,14 +60,10 @@ type ContentMetaRow = {
   last_exported_at: number | null;
 };
 
-const config = {
-  dbName: CONTENT_DATABASE_NAME,
-  schemaVersion: CONTENT_SCHEMA_VERSION,
-  opfsVfsName: 'workbench-content-opfs',
-  opfsDirectory: '.workbench-content-opfs',
-};
 let database: Database | null = null;
-let storageMode: SqliteStorageMode = 'opfs';
+// The selected-folder file is the only durable content copy. SQLite runs in
+// worker memory and is serialized to that file by the offscreen owner.
+let storageMode: SqliteStorageMode = 'folder';
 let openPromise: Promise<Database> | null = null;
 
 const encoder = new TextEncoder();
@@ -179,9 +170,9 @@ async function getDatabase(): Promise<Database> {
   if (database) return database;
   if (openPromise) return openPromise;
   openPromise = (async () => {
-    const opened = await openNamedOpfsDatabase(config);
-    database = opened.database;
-    storageMode = opened.mode;
+    const sqlite = await initSqlite3();
+    database = new sqlite.oo1.DB();
+    storageMode = 'folder';
     initContentSchema(database);
     return database;
   })();
@@ -418,7 +409,8 @@ export async function exportContentDatabaseBytes(): Promise<Uint8Array> {
   if (String(integrity[0]?.[0] ?? '').toLowerCase() !== 'ok') {
     throw new Error('Content database integrity check failed');
   }
-  return exportNamedDatabaseBytes(db);
+  const sqlite = await initSqlite3();
+  return sqlite.capi.sqlite3_js_db_export(db);
 }
 
 export async function markContentDatabaseExported(revision: number): Promise<void> {
@@ -473,9 +465,9 @@ export async function bootstrapContentDatabaseFromBytes(
   await validateContentSnapshot(bytes);
   if (database) database.close();
   database = null;
-  const opened = await importNamedOpfsDatabaseBytes(bytes, config);
-  database = opened.database;
-  storageMode = opened.mode;
+  const sqlite = await initSqlite3();
+  database = deserializeFromBytes(sqlite, bytes);
+  storageMode = 'folder';
   initContentSchema(database);
   const now = Date.now();
   database.exec({
@@ -493,5 +485,5 @@ export function resetContentDatabaseConnectionForTests(): void {
   if (database) database.close();
   database = null;
   openPromise = null;
-  storageMode = 'opfs';
+  storageMode = 'folder';
 }

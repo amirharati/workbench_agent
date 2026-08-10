@@ -13,13 +13,15 @@ implementation dependency.
 
 1. **Done / accepted:** reapply V3-006 as a small independent Search scope-restoration change and retest
    refresh plus later shell navigation.
-2. **Implemented / awaiting acceptance:** create `workbench-content.sqlite` with its own content worker.
-   Keep raw/review bodies compressed and hash-guarded; core-library startup must not depend on content
-   availability.
+2. **Done / storage smoke accepted — corrected content ownership:** keep `workbench-content.sqlite` behind its own content
+   worker, but remove the rejected OPFS content replica. The selected-folder file is the only durable content
+   copy; the worker uses an opaque-key API and a volatile working connection. Keep raw/review bodies compressed
+   and hash-guarded; core-library startup must not depend on content availability.
 3. **Partly implemented:** store immutable content rows keyed by `(item_id, kind, content_hash)`. The fenced
    core commit and asynchronous orphan cleanup arrive with the durable job API/coordinator.
-4. **Implemented / awaiting acceptance:** make content-folder snapshots asynchronous, coarse, and atomically
-   replaced. No folder I/O belongs on fetch, cancellation, completion, Resume, or dashboard-navigation paths.
+4. **Done / storage smoke accepted:** serialize dirty content to the sole folder file asynchronously, coarsely, and atomically.
+   The first dirty write starts a fixed maximum-latency timer that later writes do not postpone. No whole-file
+   flush belongs on cancellation, completion, Resume, or dashboard-navigation paths.
 5. Add core-owned durable jobs and per-item, per-stage tasks in `workbench.sqlite`. Full processing stages are
    preflight, fetch, content store, AI extraction, enrichment commit, embedding, classification, and finalization.
 6. Split existing write-through functions into compute plus fenced-commit operations. In particular,
@@ -52,10 +54,10 @@ implementation dependency.
 Each checkpoint is independently buildable and reviewable:
 
 1. **Accepted — baseline restoration:** V3-006 only; user verified Search scope restoration.
-2. **Ready to test — content storage:** separate worker, immutable compressed rows, on-demand reads, local
-   clear/delete, and asynchronous one-file snapshot. Existing pipeline ownership remains unchanged for this
-   checkpoint.
-3. **Durable core API:** schema plus submit, claim, heartbeat, cancel, fenced commit, recovery, and query RPCs;
+2. **Accepted — content storage:** separate worker, one durable folder file (no OPFS content
+   replica), immutable compressed values behind opaque keys, startup readiness, on-demand reads, clear/delete,
+   and bounded asynchronous serialization. Existing pipeline ownership remains unchanged for this checkpoint.
+3. **Next — durable core API:** schema plus submit, claim, heartbeat, cancel, fenced commit, recovery, and query RPCs;
    no UI runner migration yet.
 4. **One-link vertical slice:** Hub submission through the coordinator using explicit stage boundaries.
 5. **Small-batch correctness:** five sequential items, exact final counts, deduplication, and durable cancel.

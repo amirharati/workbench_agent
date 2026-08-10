@@ -422,25 +422,38 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   core user data remains more critical and keeps its existing recovery rotation.
 - Decision: fix before the real import. No legacy migration is required because V3 is unreleased and
   testing will restart from a clean extension/folder.
-- Current checkpoint: a dedicated content worker owns immutable `(item_id, kind, content_hash)` rows in
-  OPFS `workbench-content.sqlite`; raw/review bodies are independently compressed, referenced by exact hash,
-  and loaded only on demand. Content recovery starts independently after core recovery. Normal writes never
-  touch the selected folder; 60 seconds of write inactivity schedules one atomic snapshot, while the explicit
-  Backup now action waits for it. Existing legacy files remain read/delete compatible, but new writes do not
-  create them. Pipeline runners and automatic run-artifact behavior are intentionally unchanged until later
-  coordinator checkpoints. Protocol is v7; focused content/backup tests and the production build pass.
+- Rejected checkpoint: the first sidecar implementation kept a live OPFS content database and replicated it
+  to the selected folder. That contradicted the intended lifecycle: fetched content needs one durable folder
+  copy, not a second local database plus backup coordination. It also used an inactivity debounce, so a
+  continuously running import could postpone the first folder publication indefinitely.
+- Corrected checkpoint in progress: a dedicated content worker still owns immutable
+  `(item_id, kind, content_hash)` values and opaque-key lookup, but its SQLite connection is volatile and the
+  selected folder's `workbench-content.sqlite` is the only durable copy. The first dirty write starts a fixed
+  maximum-latency atomic flush which later writes do not postpone. Content RPCs wait for folder load or empty
+  file initialization; core-library startup remains independent. Protocol is v8. Existing pipeline runners
+  remain unchanged until this storage checkpoint passes in the real extension.
 - First extension retest: a 32-item selection reduced to three re-digest candidates but stalled at
   `Enriching 1/3`, and no folder snapshot appeared. The content worker awaited a compression-stream write
   before consuming its readable output, which deadlocked under backpressure for realistic bodies. The stream
   now pipes input and consumes output concurrently; a 400 KB incompressible-body regression test and the
   production build pass. Reloading the extension is required to replace the already blocked worker.
-- Simplified acceptance: linking/reloading a writable selected folder now creates a valid empty
-  `workbench-content.sqlite` in the background when none exists. This verifies worker/OPFS/folder snapshot
-  wiring independently; enrichment is tested only after the empty database file is visible.
-- Retest: on a clean install, enrich several links and inspect raw content. After 60 seconds (or Backup now),
+- Simplified acceptance: linking/reloading a writable selected folder creates a valid empty
+  `workbench-content.sqlite` when none exists. This verifies worker/folder initialization independently;
+  enrichment is tested only after the empty database file is visible.
+- Clean-folder retest exposed that only the existing-`workbench.sqlite` load path invoked content setup;
+  the fresh-folder `allowEmptyMirror` branch created the core DB and skipped the content worker. All successful
+  folder-link paths now await content restore/initialization, and an empty-snapshot write failure is surfaced
+  instead of reporting folder setup complete.
+- Retest: on a clean install, confirm there is no content SQLite file in OPFS, enrich several links, and inspect
+  raw content. Within 60 seconds of the first dirty write (or after Backup now),
   confirm the folder contains `workbench.sqlite`, `workbench.meta.json`, and one
   `workbench-content.sqlite`, with no new files in `enrichment-cache/`. Reload Chrome and re-open raw content. Then
   uninstall/reinstall, select the same folder, and confirm raw content opens without another fetch.
+- Retest result: CONTENT STORAGE PASS on 2026-08-09. The folder-only database appeared and fetched content was
+  readable. The first one-link processing attempt nevertheless stalled until Cancel and a second run; this is
+  not attributed to the accepted storage layout. Source inspection confirms the remaining split ownership:
+  singles still execute inside the invoking dashboard while bulk executes offscreen. The one-link coordinator
+  gate therefore remains failed and is the next implementation checkpoint.
 
 ### V3-008 — Interruption or refresh strands a running pipeline and Dashboard navigation
 

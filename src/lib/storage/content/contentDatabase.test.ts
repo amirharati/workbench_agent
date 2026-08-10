@@ -35,6 +35,10 @@ describe('content sidecar database', () => {
     await deleteContentDocument('large-body');
   }, 10_000);
 
+  it('reports the selected folder as its sole durable storage mode', async () => {
+    await expect(getContentDatabaseStats()).resolves.toMatchObject({ storageMode: 'folder' });
+  });
+
   it('stores compressed immutable hash-addressed bodies and exact references', async () => {
     const body = '# Example\n\n' + 'repeatable fetched content '.repeat(300);
     const first = await putContentDocument({

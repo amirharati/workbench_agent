@@ -13,10 +13,11 @@ The runtime has three intentionally separate authorities:
 
 1. **Pipeline coordinator (offscreen document):** owns scheduling and all fetch/AI/embed/classify work.
 2. **Core DB worker:** exclusively owns `workbench.sqlite`, including library state and durable jobs/tasks.
-3. **Content worker:** exclusively owns `workbench-content.sqlite` and its compression/export lifecycle.
+3. **Content worker:** exclusively owns the opaque-key content store, its volatile SQLite connection, and
+   serialization to the folder's sole durable `workbench-content.sqlite` file.
 
-There is one logical pipeline coordinator, not one thread for orchestration and storage. Tabs never run
-jobs themselves.
+There is one logical pipeline coordinator, not one thread for orchestration and storage. It performs actual
+fetch/AI/embed/classify work but owns neither database. Tabs never run jobs themselves.
 
 ## Invariants
 
@@ -55,12 +56,13 @@ One offscreen Pipeline Coordinator
           |-- Core DB worker ------> workbench.sqlite
           |                          jobs, tasks, library, derived metadata
           |
-          `-- Content worker ------> workbench-content.sqlite
-                                     compressed fetched bodies
+          `-- Content worker ------> selected folder/workbench-content.sqlite
+                                     sole durable compressed-content file
 ```
 
 The service worker does not own mutable pipeline state. It only ensures the offscreen document exists and
-forwards messages. Chrome may suspend it freely.
+forwards messages. Chrome may suspend it freely. The content worker and pipeline coordinator are separate
+authorities: processing can call the content API, but it cannot open or mutate the content database itself.
 
 ## Durable model
 
