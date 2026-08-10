@@ -1,7 +1,8 @@
 # Durable Pipeline Coordinator
 
-> Status — 2026-08-09: the clean coordinator implementation is complete enough for real-extension
-> acceptance. Automated tests and the production build pass; Chrome acceptance has not yet been run.
+> Status — 2026-08-09: the clean coordinator implementation is in real-extension acceptance. Initial
+> runs prove durable execution advances and terminates; the first classification retest exposed and fixed
+> an offscreen AI-settings handoff regression. Automated tests and the production build pass.
 
 ## Decision
 
@@ -49,11 +50,13 @@ Import / Hub / sidebar / inspectors / maintenance UI
   embedding, classification, and discovery.
 - Pipeline progress events update presentation only; they do not trigger dashboard/library reloads.
 - Content serialization and backup mirroring are not on the job-completion critical path.
+- Saved AI settings cross the dashboard-to-offscreen boundary only in the internal submission message and
+  are installed in memory for the serialized run. The API key is omitted from durable job/task storage.
 - Automatic `pipeline-runs/` output has been removed from normal and test processing paths.
 
 ## Durable model
 
-`pipeline_jobs` stores the job ID, versioned action, source, options payload, item counts, status, lease,
+`pipeline_jobs` stores the job ID, versioned action, source, non-secret options payload, item counts, status, lease,
 timestamps, and last error. `pipeline_tasks` stores `(job_id, item_id, stage)`, global ordinal, status,
 attempt count, fenced lease generation, result reference, timestamps, and error.
 
@@ -82,7 +85,8 @@ task state rather than a page-owned counter.
 
 The coordinator heartbeats its active task with a fenced lease. Recovery runs at offscreen startup, every
 15 seconds while the offscreen document lives, from a one-minute service-worker wake alarm while work is
-active, and on browser startup.
+active, and on browser startup. Because API credentials are never written to a job row, a recovered job
+reloads the saved extension-local AI settings before resuming.
 
 On expiry:
 

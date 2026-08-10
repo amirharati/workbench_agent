@@ -5,6 +5,7 @@
  * durable job/task state remains owned by the core DB worker.
  */
 import { dbRpc } from '../storage/dbClient';
+import { loadAISettings, setAISettingsOverride } from '../ai/settings';
 import { notifyDataChanged } from '../dataChangeNotifier';
 import { runWithDbPriority } from '../storage/dbRpcPriority';
 import type {
@@ -169,6 +170,15 @@ function enqueueAcceptedJob(
         await dbRpc('pipelineAcknowledgeCancel', [jobId], { priority: 'high' });
         throw new DOMException('Cancelled', 'AbortError');
       }
+      // Pipeline domain functions load settings internally. Install the
+      // submission-time settings in this serialized offscreen realm so they do
+      // not silently fall back to an empty worker configuration. Recovered jobs
+      // omit secrets from SQLite and reload the saved settings here instead.
+      setAISettingsOverride(null);
+      const aiSettings = options.aiSettings?.apiKey.trim()
+        ? options.aiSettings
+        : await loadAISettings();
+      setAISettingsOverride(aiSettings);
       const result = await runWithDbPriority('high', () => runDurablePipelineJob({
         jobId,
         itemIds,
@@ -208,6 +218,7 @@ function enqueueAcceptedJob(
         error: cancelled ? 'Cancelled' : error instanceof Error ? error.message : String(error),
       });
     } finally {
+      setAISettingsOverride(null);
       const leaseLost = controller.signal.reason === LEASE_LOST_REASON;
       controllers.delete(jobId);
       queuedJobIds.delete(jobId);

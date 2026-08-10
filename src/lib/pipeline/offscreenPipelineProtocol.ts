@@ -30,6 +30,7 @@ export type OffscreenBatchJobOptions = {
   skipDiscover?: boolean;
   drainPendingClassifyQueue?: boolean;
   useScopedWave?: boolean;
+  /** Ephemeral submission-only settings; the host never persists this in the job payload. */
   aiSettings?: AISettings;
 };
 
@@ -41,6 +42,7 @@ export type OffscreenSingleJobOptions = {
   preferTabSession?: boolean;
   tabId?: number;
   tabSessionOnly?: boolean;
+  /** Ephemeral submission-only settings; the host never persists this in the job payload. */
   aiSettings?: AISettings;
 };
 

@@ -286,7 +286,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 11;
+      return 12;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();

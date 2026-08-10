@@ -2,6 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('offscreenPipelineClient', () => {
   const listeners = new Set<(message: unknown) => void>();
+  const storedAISettings = {
+    provider: 'openrouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: 'stored-model',
+    apiKey: 'stored-key',
+    timeoutMs: 45_000,
+    temperature: 0.2,
+    maxOutputTokens: 700,
+    strictModelMatch: false,
+    routingMode: 'single',
+    taskModels: {},
+  };
   const sendMessage = vi.fn(async (message: { action?: string; requestId?: string }) => {
     if (message.action === 'start-job') {
       return { ok: true, requestId: message.requestId };
@@ -14,6 +26,11 @@ describe('offscreenPipelineClient', () => {
     sendMessage.mockClear();
     vi.stubGlobal('window', globalThis);
     vi.stubGlobal('chrome', {
+      storage: {
+        local: {
+          get: vi.fn(async () => ({ 'ai.settings.v1': storedAISettings })),
+        },
+      },
       runtime: {
         sendMessage,
         onMessage: {
@@ -34,9 +51,14 @@ describe('offscreenPipelineClient', () => {
       action: string;
       requestId: string;
       itemIds: string[];
+      options: { aiSettings?: { apiKey?: string; model?: string } };
     };
     expect(start.action).toBe('start-job');
     expect(start.itemIds).toEqual(['item-1']);
+    expect(start.options.aiSettings).toMatchObject({
+      model: 'stored-model',
+      apiKey: 'stored-key',
+    });
 
     for (const listener of listeners) {
       listener({
@@ -67,7 +89,21 @@ describe('offscreenPipelineClient', () => {
   it('submits a single to offscreen and resolves from its observed completion', async () => {
     const { runSingleOnOffscreen } = await import('./offscreenPipelineClient');
     const progress = vi.fn();
-    const pending = runSingleOnOffscreen('item-1', { onProgress: progress });
+    const pending = runSingleOnOffscreen('item-1', {
+      onProgress: progress,
+      aiSettings: {
+        provider: 'openrouter',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'test-model',
+        apiKey: 'test-key',
+        timeoutMs: 45_000,
+        temperature: 0.2,
+        maxOutputTokens: 700,
+        strictModelMatch: false,
+        routingMode: 'single',
+        taskModels: {},
+      },
+    });
 
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
     const start = sendMessage.mock.calls[0][0] as {
@@ -78,7 +114,12 @@ describe('offscreenPipelineClient', () => {
     };
     expect(start.action).toBe('start-job');
     expect(start.itemIds).toEqual(['item-1']);
-    expect(start.options).not.toHaveProperty('aiSettings');
+    expect(start.options.aiSettings).toMatchObject({
+      model: 'test-model',
+      apiKey: 'test-key',
+    });
+    expect(start.options).not.toHaveProperty('signal');
+    expect(start.options).not.toHaveProperty('onProgress');
 
     for (const listener of listeners) {
       listener({
