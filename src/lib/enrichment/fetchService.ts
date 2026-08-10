@@ -1374,11 +1374,14 @@ export async function enrichOne(
     };
   } catch (e) {
     console.error('[enrichOne] unexpected error:', e);
-    const isAbort = e instanceof DOMException && e.name === 'AbortError';
+    const isAbort =
+      options?.signal?.aborted ||
+      (e instanceof Error && e.name === 'AbortError');
+    // Cancellation is coordinator state, not an enrichment failure. Do not
+    // convert it into retry metadata or allow downstream stages to continue.
+    if (isAbort) throw new DOMException('Cancelled', 'AbortError');
     const rawMsg = e instanceof Error ? e.message.trim() : String(e).trim();
-    const errorCode: EnrichmentErrorCode = isAbort
-      ? 'timeout'
-      : /SQLITE|database|Db is closed/i.test(rawMsg)
+    const errorCode: EnrichmentErrorCode = /SQLITE|database|Db is closed/i.test(rawMsg)
         ? 'provider_error'
         : 'network';
     if (existing && hasValuablePriorEnrichment(existing) && !options?.force) {
@@ -1386,9 +1389,7 @@ export async function enrichOne(
       flushDebug();
       return preservePriorOnSuspiciousFetch(item, existing, pending, errorCode, undefined, deferPostProcess);
     }
-    const lastErrorDetail = isAbort
-      ? 'Request timed out before the page finished loading'
-      : rawMsg || 'Unexpected error during fetch or save';
+    const lastErrorDetail = rawMsg || 'Unexpected error during fetch or save';
     const failed: ItemEnrichment = {
       ...pending,
       status: 'failed',
@@ -1413,7 +1414,7 @@ export async function enrichOne(
 /** Re-run AI extraction from cached snippet — no network fetch. */
 export async function reextractAI(
   itemId: string,
-  options?: { force?: boolean }
+  options?: { force?: boolean; signal?: AbortSignal }
 ): Promise<EnrichmentResult> {
   const item = await getItem(itemId);
   if (!item?.url) {
@@ -1457,6 +1458,7 @@ export async function reextractAI(
     {
       sourceKind,
       forceShort: options?.force === true,
+      signal: options?.signal,
       hints: {
         quotedText: existing.quotedText,
         quotedAuthor: existing.quotedAuthor,
@@ -1468,6 +1470,7 @@ export async function reextractAI(
   );
 
   const aiExtract = aiOutcome.data;
+  if (options?.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
   let tier2Applied = existing.tier2Applied;
   if (aiExtract) {
     const applied = await applyItemTier2Updates(

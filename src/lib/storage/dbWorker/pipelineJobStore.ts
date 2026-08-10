@@ -222,6 +222,21 @@ export function submitPipelineJob(
       return { accepted: false, snapshot };
     }
 
+    const overlapping = one<PipelineJobRow>(
+      db,
+      `SELECT j.* FROM pipeline_jobs j
+       JOIN pipeline_tasks t ON t.job_id = j.id
+       WHERE j.status IN ('queued', 'running', 'cancel_requested', 'cancelling')
+         AND t.item_id IN (${itemIds.map(() => '?').join(', ')})
+       ORDER BY j.priority ASC, j.created_at ASC LIMIT 1;`,
+      itemIds
+    );
+    if (overlapping) {
+      const snapshot = getPipelineJobSnapshot(db, overlapping.id);
+      if (!snapshot) throw new Error('Overlapping pipeline job disappeared');
+      return { accepted: false, snapshot };
+    }
+
     db.exec({
       sql: `INSERT INTO pipeline_jobs
         (id, dedupe_key, action, source, priority, status, payload_json,
@@ -229,16 +244,16 @@ export function submitPipelineJob(
         VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?);`,
       bind: [id, dedupeKey, action, source, priority, payloadJson, itemIds.length, now, now],
     });
-    for (const itemId of itemIds) {
+    itemIds.forEach((itemId, itemIndex) => {
       stages.forEach((stage, ordinal) => {
         db.exec({
           sql: `INSERT INTO pipeline_tasks
             (job_id, item_id, stage, ordinal, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'pending', ?, ?);`,
-          bind: [id, itemId, stage, ordinal, now, now],
+          bind: [id, itemId, stage, itemIndex * stages.length + ordinal, now, now],
         });
       });
-    }
+    });
     const snapshot = getPipelineJobSnapshot(db, id);
     if (!snapshot) throw new Error('Submitted pipeline job could not be read back');
     return { accepted: true, snapshot };
@@ -374,8 +389,9 @@ function refreshJobCounts(db: Database, jobId: string, now: number): PipelineJob
   if (!job) throw new Error('Pipeline job not found');
   const activeTasks = Number(counts?.active_tasks ?? 0);
   const cancelRequested = job.cancel_requested_at != null || job.status === 'cancel_requested';
+  const failedItems = Number(counts?.failed_items ?? 0);
   const nextStatus: PipelineJobStatus = activeTasks === 0
-    ? (cancelRequested ? 'cancelled' : job.status === 'failed' ? 'failed' : 'completed')
+    ? (cancelRequested ? 'cancelled' : failedItems > 0 ? 'failed' : 'completed')
     : job.status;
   db.exec({
     sql: `UPDATE pipeline_jobs
@@ -538,8 +554,15 @@ export function recoverExpiredPipelineTasks(
       // `full_digest` is the intentionally coarse task used by the first
       // coordinator vertical slice. It can include paid AI/embedding calls, so
       // an interrupted lease must never be retried automatically.
-      const paid =
-        task.stage === 'extract_ai' || task.stage === 'embed' || task.stage === 'full_digest';
+      const paid = [
+        'enrich',
+        'reextract',
+        'discover',
+        'extract_ai',
+        'embed',
+        'classify',
+        'full_digest',
+      ].includes(task.stage);
       db.exec({
         sql: `UPDATE pipeline_tasks
               SET status = ?, lease_owner = NULL, lease_expires_at = NULL,
@@ -568,6 +591,13 @@ export function recoverExpiredPipelineTasks(
          WHERE job_id = ? AND status = 'uncertain';`,
         [jobId]
       );
+      const hasPending = one<{ count: number }>(
+        db,
+        `SELECT COUNT(*) AS count FROM pipeline_tasks
+         WHERE job_id = ? AND status = 'pending';`,
+        [jobId]
+      );
+      const shouldContinue = Number(hasPending?.count ?? 0) > 0;
       db.exec({
         sql: `UPDATE pipeline_jobs
               SET status = ?, lease_owner = NULL, lease_expires_at = NULL,
@@ -576,11 +606,11 @@ export function recoverExpiredPipelineTasks(
                   last_error = CASE WHEN ? THEN 'Interrupted paid stage requires explicit retry' ELSE last_error END
               WHERE id = ? AND status = 'running';`,
         bind: [
-          Number(hasUncertain?.count ?? 0) > 0 ? 'failed' : 'queued',
+          shouldContinue ? 'queued' : Number(hasUncertain?.count ?? 0) > 0 ? 'failed' : 'queued',
           now,
-          Number(hasUncertain?.count ?? 0) > 0 ? 1 : 0,
+          shouldContinue ? 0 : Number(hasUncertain?.count ?? 0) > 0 ? 1 : 0,
           now,
-          Number(hasUncertain?.count ?? 0) > 0 ? 1 : 0,
+          shouldContinue ? 0 : Number(hasUncertain?.count ?? 0) > 0 ? 1 : 0,
           jobId,
         ],
       });

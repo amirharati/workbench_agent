@@ -21,6 +21,7 @@ import { StatusBar, useStatusBar } from '../StatusBar';
 import { ToastProvider, useToast } from '../../ToastContainer';
 import { PipelineProgressProvider, usePipelineProgress } from '../PipelineProgressProvider';
 import { PipelineBatchConfirmModal } from '../PipelineBatchConfirmModal';
+import { PipelineCoordinatorBanner } from '../PipelineCoordinatorBanner';
 import { CommandPalette } from '../CommandPalette';
 import {
   useLibrarySearch,
@@ -28,8 +29,6 @@ import {
   LIBRARY_SEARCH_TAB_ID,
   loadLastSearchQuery,
 } from '../../../hooks/useLibrarySearch';
-import { useImportPipelineJob } from '../../../hooks/useImportPipelineJob';
-import { ImportPipelineJobBanner } from '../ImportPipelineJobBanner';
 import { addProjectToSwitcher, rememberProjectAccess, rememberRecentCollection } from '../homeScope';
 import {
   loadItemIdsForCategory,
@@ -197,7 +196,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   onTestAI,
 }) => {
   const { addToast } = useToast();
-  const importPipelineJob = useImportPipelineJob(backupFolderReady);
   const pipeline = usePipelineProgress();
   const { messages: statusMessages, addStatusMessage, dismissStatusMessage } = useStatusBar();
   const librarySearch = useLibrarySearch((message) => {
@@ -656,10 +654,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       } catch {
         // Summary shown in modal
       } finally {
-        void importPipelineJob.refresh();
+        // Durable coordinator state is independent of dashboard lifecycle.
       }
     },
-    [batchConfirm, importPipelineJob, pipeline]
+    [batchConfirm, pipeline]
   );
 
   const rememberProjectScope = (projectId: string) => {
@@ -1121,16 +1119,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         
         {/* Middle workspace */}
         <main className="ui-dashboard-shell__workspace">
-          {backupFolderReady ? (
-            <ImportPipelineJobBanner
-              job={importPipelineJob.job}
-              loading={importPipelineJob.loading}
-              isResumable={importPipelineJob.isResumable}
-              onDismiss={importPipelineJob.dismissJob}
-              onJobChanged={importPipelineJob.refresh}
-            />
-          ) : null}
-
+          <PipelineCoordinatorBanner />
           {isFullPageView ? (
             // Full-page views (Settings, Tab Commander, Workspaces)
             <div className="ui-dashboard-shell__full-page scrollbar">

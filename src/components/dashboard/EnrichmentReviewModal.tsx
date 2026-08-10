@@ -2,7 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import { getAllItems } from '../../lib/db';
-import { enrichBatch, enrichOne, getAllEnrichments, loadRawBody, reextractAI, type ItemEnrichment } from '../../lib/enrichment';
+import { getAllEnrichments, loadRawBody, type ItemEnrichment } from '../../lib/enrichment';
+import {
+  runBatchOnOffscreen,
+  runPipelineActionOnOffscreen,
+  runSingleOnOffscreen,
+} from '../../lib/pipeline/offscreenPipelineClient';
 import { ItemFieldInventory } from './ItemFieldInventory';
 import { CategorizationPanel, ItemCategoryLinks } from './CategorizationPanel';
 import { ItemSimilarSection } from './SearchDiscoveryBlocks';
@@ -442,9 +447,12 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
     setRerunningAi(true);
     setRefetchError('');
     try {
-      const result = await reextractAI(active.item.id);
+      const batch = await runPipelineActionOnOffscreen('reextract', [active.item.id], {
+        forceReclassify: true,
+      });
+      const result = batch.itemEnrichResults?.[0];
       await load();
-      if (result.skipped || result.message) {
+      if (result && (result.skipped || result.message)) {
         if (result.skipped && result.message !== 'ok') {
           setRefetchError(`Re-run AI: ${result.message}`);
         } else if (result.message && result.message !== 'ok') {
@@ -464,7 +472,11 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
     setRefetchError('');
     setRawDump(null);
     try {
-      const result = await enrichOne(active.item.id, { force: true });
+      const result = (await runSingleOnOffscreen(active.item.id, {
+        forceEnrich: true,
+        skipClassify: false,
+        forceReclassify: true,
+      })).enrich;
       await load();
       if (result.status === 'failed' || result.skipped) {
         setRefetchError(result.message || result.errorCode || result.status);
@@ -484,19 +496,18 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
     setRawDump(null);
     try {
       const ids = rows.map((r) => r.item.id);
-      const result = await enrichBatch({
-        itemIds: ids,
-        force: true,
-        mode: 'full',
-        maxItems: ids.length,
+      const result = await runBatchOnOffscreen(ids, {
+        enrich: true,
+        classify: true,
+        forceEnrich: true,
+        forceReclassify: true,
         onProgress: (p) => {
-          const done = p.processed + p.skipped + p.failed;
-          setRefetchAllProgress({ done: Math.min(done, p.total), total: p.total });
+          setRefetchAllProgress({ done: Math.min(p.current, p.total), total: p.total });
         },
       });
       await load();
       if (result.failed > 0) {
-        setRefetchError(`Re-fetch all done: ${result.processed} ok, ${result.failed} failed, ${result.skipped} skipped`);
+        setRefetchError(`Re-fetch all done: ${result.enriched} ok, ${result.failed} failed, ${result.skipped} skipped`);
       }
     } catch (e) {
       setRefetchError(e instanceof Error ? e.message : 'Re-fetch all failed');

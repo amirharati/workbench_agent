@@ -1190,16 +1190,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         .map((r) => [r.item.id, r.item.title || r.item.url || r.item.id])
     );
     try {
-      if (ids.length === 1) {
-        await pipeline.runSingle(ids[0], {
-          title: 'Re-digest (1)',
-          forceEnrich: true,
-          forceReclassify: true,
-          skipClassify: false,
-          itemLabel: itemLabels[ids[0]],
-        });
-        return;
-      }
       await pipeline.runBatch(ids, {
         title: `Re-digest (${ids.length})`,
         enrich: true,
@@ -1615,9 +1605,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           }}
         >
           <Loader2 size={16} className="spin" />
-          {pipeline.queuedCount > 0
-            ? `Job running · ${pipeline.queuedCount} queued — you can still select links and submit; new runs join the queue.`
-            : 'Job running — you can still select links and submit; new runs join the queue.'}
+          Job running in the shared coordinator — you can navigate away or close this dashboard safely.
         </div>
       ) : null}
 
@@ -1666,6 +1654,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           <button
             type="button"
             onClick={() => void handleBulkRedigest()}
+            disabled={pipeline.isRunning}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -1677,16 +1666,17 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               color: '#fff',
               fontSize: 'var(--text-xs)',
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: pipeline.isRunning ? 'not-allowed' : 'pointer',
+              opacity: pipeline.isRunning ? 0.65 : 1,
             }}
             title={
               pipeline.isRunning
-                ? 'Queues a full re-digest behind the current job'
+                ? 'Wait for the current dashboard job to finish'
                 : 'Force full pipeline (fetch, AI, embed, classify) on every selected item'
             }
           >
             <RotateCcw size={13} />
-            {pipeline.isRunning ? 'Queue re-digest' : 'Re-digest'}
+            Re-digest
           </button>
           <button
             type="button"

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  embedIncrementalBatch,
   getEmbedBackfillStats,
   type EmbedBackfillProgress,
   type EmbedBackfillStats,
 } from '../../lib/enrichment/embedItemSignal';
 import { getPendingEmbeddingItemIds } from '../../lib/storage/dbClient';
+import { runPipelineActionOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
 
 type Props = {
   onComplete?: () => void;
@@ -18,7 +18,7 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<EmbedBackfillProgress | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const cancelRef = useRef(false);
+  const cancelRef = useRef<AbortController | null>(null);
 
   const refreshStats = useCallback(async () => {
     const s = await getEmbedBackfillStats();
@@ -31,7 +31,8 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
   }, [refreshStats]);
 
   const runBackfill = useCallback(async () => {
-    cancelRef.current = false;
+    const controller = new AbortController();
+    cancelRef.current = controller;
     setRunning(true);
     setMessage(null);
     setProgress(null);
@@ -41,7 +42,7 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
       let rounds = 0;
       const maxRounds = 200;
 
-      while (!cancelRef.current && rounds < maxRounds) {
+      while (!controller.signal.aborted && rounds < maxRounds) {
         rounds++;
         const itemIds = await getPendingEmbeddingItemIds(batchSize);
         if (itemIds.length === 0) {
@@ -52,20 +53,27 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
           );
           break;
         }
-        const summary = await embedIncrementalBatch({
-          itemIds,
-          max: itemIds.length,
-          onProgress: setProgress,
+        const result = await runPipelineActionOnOffscreen('reembed', itemIds, {
+          signal: controller.signal,
+          onProgress: (update) => setProgress({
+            phase: update.phase === 'save' ? 'write' : update.phase === 'prep' ? 'prepare' : 'embed',
+            batchIndex: update.current,
+            batchTotal: update.total,
+            embeddedSoFar: 0,
+          }),
         });
-        totalEmbedded += summary.embedded;
+        const embedded = result.embedded ?? 0;
+        const embedFailed = result.embedFailed ?? 0;
+        totalEmbedded += embedded;
+        const pendingAfter = Math.max(0, itemIds.length - embedded - embedFailed);
 
-        if (summary.embedded === 0 || summary.pendingAfter === 0) {
+        if (embedded === 0 || pendingAfter === 0) {
           setMessage(
             totalEmbedded > 0
-              ? `Done — embedded ${totalEmbedded} this run (${summary.pendingAfter} still pending).`
-              : summary.pendingAfter === 0
+              ? `Done — embedded ${totalEmbedded} this run (${pendingAfter} still pending).`
+              : pendingAfter === 0
                 ? 'All enriched items already have embeddings.'
-                : `Stopped — ${summary.embedFailed} failed · ${summary.skippedNoKey ? 'check API key' : ''}`
+                : `Stopped — ${embedFailed} failed`
           );
           break;
         }
@@ -73,7 +81,7 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
         await refreshStats();
       }
 
-      if (rounds >= maxRounds && !cancelRef.current) {
+      if (rounds >= maxRounds && !controller.signal.aborted) {
         setMessage(`Paused after ${totalEmbedded} embeddings — click again to continue.`);
       }
     } catch (err) {
@@ -81,6 +89,7 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
     } finally {
       setRunning(false);
       setProgress(null);
+      if (cancelRef.current === controller) cancelRef.current = null;
       const s = await refreshStats();
       onComplete?.();
       if (s.pendingEmbed > 0 && s.withEmbedding > 0) {
@@ -90,7 +99,7 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
   }, [batchSize, onComplete, refreshStats]);
 
   const cancel = () => {
-    cancelRef.current = true;
+    cancelRef.current?.abort('user-cancelled');
   };
 
   const pct =

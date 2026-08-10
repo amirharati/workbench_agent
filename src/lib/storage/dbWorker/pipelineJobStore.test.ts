@@ -135,6 +135,39 @@ describe('durable pipeline job store', () => {
     expect(claim?.task.item_id).toBe('item-2');
   });
 
+  it('orders all stages for one item before starting the next and rejects overlapping scopes', () => {
+    submitPipelineJob(db, {
+      id: 'batch-job',
+      dedupeKey: 'batch:1',
+      action: 'full_digest_v2',
+      source: 'hub',
+      itemIds: ['item-1', 'item-2'],
+      stages: ['enrich', 'embed'],
+      now: 100,
+    });
+    const overlap = submitPipelineJob(db, {
+      id: 'single-job',
+      dedupeKey: 'single:item-2',
+      action: 'full_digest_v2',
+      source: 'sidebar',
+      itemIds: ['item-2'],
+      stages: ['enrich', 'embed'],
+      now: 101,
+    });
+    expect(overlap.accepted).toBe(false);
+    expect(overlap.snapshot.job.id).toBe('batch-job');
+
+    const first = claimNextPipelineTask(db, 'owner-a', 5_000, 200, 'batch-job')!;
+    expect([first.task.item_id, first.task.stage]).toEqual(['item-1', 'enrich']);
+    finishPipelineTask(db, {
+      jobId: 'batch-job', itemId: 'item-1', stage: 'enrich', ownerId: 'owner-a',
+      jobLeaseEpoch: first.jobLeaseEpoch, taskLeaseEpoch: first.taskLeaseEpoch,
+      outcome: 'completed', now: 201,
+    });
+    const second = claimNextPipelineTask(db, 'owner-a', 5_000, 300, 'batch-job')!;
+    expect([second.task.item_id, second.task.stage]).toEqual(['item-1', 'embed']);
+  });
+
   it('makes cancellation durable before terminal acknowledgement and fences late work', () => {
     submitPipelineJob(db, {
       id: 'job-1',
@@ -216,5 +249,32 @@ describe('durable pipeline job store', () => {
     claimNextPipelineTask(db, 'owner-c', 5_000, 12_100, 'coarse-job');
     expect(recoverExpiredPipelineTasks(db, 17_101)).toMatchObject({ requeued: 0, uncertain: 1 });
     expect(getPipelineJobSnapshot(db, 'coarse-job')?.tasks[0].status).toBe('uncertain');
+  });
+
+  it('continues a batch after an interrupted paid stage without restarting completed items', () => {
+    submitPipelineJob(db, {
+      id: 'batch-job',
+      dedupeKey: 'batch:resume',
+      action: 'full_digest_v2',
+      source: 'hub',
+      itemIds: ['item-1', 'item-2'],
+      stages: ['enrich', 'finalize'],
+      now: 100,
+    });
+    const interrupted = claimNextPipelineTask(db, 'owner-a', 5_000, 200, 'batch-job')!;
+    expect([interrupted.task.item_id, interrupted.task.stage]).toEqual(['item-1', 'enrich']);
+
+    expect(recoverExpiredPipelineTasks(db, 5_201)).toMatchObject({ uncertain: 1 });
+    const recovered = getPipelineJobSnapshot(db, 'batch-job')!;
+    expect(recovered.job.status).toBe('queued');
+    expect(recovered.tasks.map((task) => [task.item_id, task.stage, task.status])).toEqual([
+      ['item-1', 'enrich', 'uncertain'],
+      ['item-1', 'finalize', 'skipped'],
+      ['item-2', 'enrich', 'pending'],
+      ['item-2', 'finalize', 'pending'],
+    ]);
+
+    const next = claimNextPipelineTask(db, 'owner-b', 5_000, 5_300, 'batch-job')!;
+    expect([next.task.item_id, next.task.stage]).toEqual(['item-2', 'enrich']);
   });
 });

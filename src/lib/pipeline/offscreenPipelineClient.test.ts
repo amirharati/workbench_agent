@@ -1,45 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../ai/settings', () => ({
-  loadAISettings: vi.fn(async () => ({
-    provider: 'openrouter',
-    baseUrl: 'https://example.test',
-    model: 'test-model',
-    apiKey: 'test-key',
-    timeoutMs: 10_000,
-    temperature: 0,
-    maxOutputTokens: 100,
-    strictModelMatch: false,
-    routingMode: 'single',
-    taskModels: {},
-  })),
-}));
-
-vi.mock('./singleLinkDigest', () => ({
-  runSingleLinkDigest: vi.fn(),
-}));
-
-vi.mock('../storage/dbClient/remoteStore', () => ({
-  getRemoteStore: () => ({
-    createPipelineCacheSeed: vi.fn(async () => ({
-      projects: [],
-      collections: [],
-      items: [],
-      workspaces: [],
-      enrichment: [],
-      categories: [],
-      links: [],
-      signals: [],
-      taxonomy: undefined,
-      revision: 1,
-    })),
-  }),
-}));
-
 describe('offscreenPipelineClient', () => {
   const listeners = new Set<(message: unknown) => void>();
   const sendMessage = vi.fn(async (message: { action?: string; requestId?: string }) => {
-    if (message.action === 'start-batch') {
+    if (message.action === 'start-job') {
       return { ok: true, requestId: message.requestId };
     }
     return { ok: true };
@@ -70,11 +34,9 @@ describe('offscreenPipelineClient', () => {
       action: string;
       requestId: string;
       itemIds: string[];
-      cacheSeed: { revision: number };
     };
-    expect(start.action).toBe('start-batch');
+    expect(start.action).toBe('start-job');
     expect(start.itemIds).toEqual(['item-1']);
-    expect(start.cacheSeed.revision).toBe(1);
 
     for (const listener of listeners) {
       listener({
@@ -98,7 +60,7 @@ describe('offscreenPipelineClient', () => {
 
     await expect(pending).resolves.toMatchObject({ enriched: 1, classified: 1 });
     expect(progress).toHaveBeenCalledTimes(2);
-    expect(progress.mock.calls[0][0].label).toBe('Preparing pipeline memory…');
+    expect(progress.mock.calls[0][0].label).toBe('Submitting durable pipeline…');
     expect(listeners.size).toBe(0);
   });
 
@@ -111,12 +73,12 @@ describe('offscreenPipelineClient', () => {
     const start = sendMessage.mock.calls[0][0] as {
       action: string;
       requestId: string;
-      itemId: string;
-      options: { aiSettings?: { apiKey?: string } };
+      itemIds: string[];
+      options: Record<string, unknown>;
     };
-    expect(start.action).toBe('start-single');
-    expect(start.itemId).toBe('item-1');
-    expect(start.options.aiSettings?.apiKey).toBe('test-key');
+    expect(start.action).toBe('start-job');
+    expect(start.itemIds).toEqual(['item-1']);
+    expect(start.options).not.toHaveProperty('aiSettings');
 
     for (const listener of listeners) {
       listener({
@@ -169,5 +131,36 @@ describe('offscreenPipelineClient', () => {
       });
     }
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('submits taxonomy discovery through the same coordinator even with a global scope', async () => {
+    const { runPipelineActionOnOffscreen } = await import('./offscreenPipelineClient');
+    const pending = runPipelineActionOnOffscreen('discover', [], { discoverMaxBatches: 2 });
+
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    const start = sendMessage.mock.calls[0][0] as {
+      action: string;
+      operation: string;
+      requestId: string;
+      itemIds: string[];
+    };
+    expect(start).toMatchObject({ action: 'start-job', operation: 'discover', itemIds: [] });
+
+    for (const listener of listeners) {
+      listener({
+        type: 'pipeline-offscreen-done',
+        requestId: start.requestId,
+        ok: true,
+        result: {
+          enriched: 0,
+          skipped: 0,
+          failed: 0,
+          classified: 0,
+          message: '0 processed',
+          discoverResult: { itemsSampled: 0, newParents: 0, newLeaves: 0 },
+        },
+      });
+    }
+    await expect(pending).resolves.toMatchObject({ discoverResult: { itemsSampled: 0 } });
   });
 });

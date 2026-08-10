@@ -1,0 +1,406 @@
+import {
+  APP_DISCOVER_MAP_BATCH_SIZE,
+  classifyIncremental,
+  discoverBatch,
+} from '../categorization';
+import { emptyTopicClassifySummary } from '../categorization/classifyPolicy';
+import type { TopicClassifySummary } from '../categorization/types';
+import { commitPendingDbWrites, installPipelineCacheSeed } from '../db';
+import {
+  embedIncrementalBatch,
+  enrichOne,
+  getEnrichment,
+  reextractAI,
+  type EnrichmentResult,
+} from '../enrichment';
+import { isDownstreamClassifyEligible } from './downstreamEligible';
+import type { BatchDigestProgress, BatchDigestResult } from './batchDigest';
+import { dbRpc } from '../storage/dbClient';
+import { runWithDataChangeNotificationsSuppressed } from '../dataChangeNotifier';
+import { getRemoteStore } from '../storage/dbClient/remoteStore';
+import type {
+  ClaimedPipelineTask,
+  PipelineJobSnapshot,
+} from '../storage/dbWorker/pipelineJobStore';
+import type { OffscreenPipelineJobOptions } from './offscreenPipelineProtocol';
+
+export const DURABLE_FULL_DIGEST_STAGES = [
+  'enrich',
+  'embed',
+  'classify',
+  'finalize',
+] as const;
+
+const LEASE_MS = 45_000;
+const HEARTBEAT_MS = 10_000;
+
+type StageOutcome = {
+  outcome: 'completed' | 'skipped' | 'failed';
+  resultRef?: string;
+  error?: string;
+};
+
+export type DurablePipelineRunInput = {
+  jobId: string;
+  itemIds: string[];
+  options: OffscreenPipelineJobOptions;
+  ownerId: string;
+  signal: AbortSignal;
+  onAbortRequired?: (reason: string) => void;
+  onProgress?: (progress: BatchDigestProgress) => void;
+};
+
+function abortError(): DOMException {
+  return new DOMException('Cancelled', 'AbortError');
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw abortError();
+}
+
+function stageLabel(stage: string, itemIndex: number, total: number): string {
+  const suffix = `${itemIndex + 1}/${Math.max(total, 1)}`;
+  switch (stage) {
+    case 'enrich': return `Fetching & extracting… ${suffix}`;
+    case 'embed': return `Building search embedding… ${suffix}`;
+    case 'classify': return `Classifying… ${suffix}`;
+    case 'discover': return 'Discovering taxonomy gaps…';
+    case 'finalize': return `Finalizing… ${suffix}`;
+    default: return `Processing… ${suffix}`;
+  }
+}
+
+function progressPhase(stage: string): BatchDigestProgress['phase'] {
+  if (stage === 'enrich') return 'enrich';
+  if (stage === 'embed') return 'embed';
+  if (stage === 'classify') return 'classify';
+  if (stage === 'discover') return 'classify';
+  return 'save';
+}
+
+async function runStage(
+  claim: ClaimedPipelineTask,
+  input: DurablePipelineRunInput
+): Promise<StageOutcome> {
+  const itemId = claim.task.item_id;
+  const { options, signal } = input;
+  throwIfAborted(signal);
+
+  switch (claim.task.stage) {
+    case 'enrich': {
+      const result = await enrichOne(itemId, {
+        force: options.forceEnrich === true,
+        skipAi: options.skipAi,
+        deferPostProcess: true,
+        signal,
+        preferTabSession: options.preferTabSession,
+        tabId: options.tabId,
+        tabSessionOnly: options.tabSessionOnly,
+      });
+      throwIfAborted(signal);
+      await commitPendingDbWrites();
+      return {
+        outcome: result.status === 'failed' ? 'failed' : result.skipped ? 'skipped' : 'completed',
+        resultRef: `enrich:${result.status}:${result.skipped ? 'skipped' : 'processed'}`,
+        error: result.status === 'failed' ? result.message ?? 'Enrichment failed' : undefined,
+      };
+    }
+
+    case 'reextract': {
+      const result = await reextractAI(itemId, {
+        force: options.forceReextract === true,
+        signal,
+      });
+      throwIfAborted(signal);
+      await commitPendingDbWrites();
+      return {
+        outcome: result.status === 'failed' ? 'failed' : result.skipped ? 'skipped' : 'completed',
+        resultRef: `reextract:${result.status}:${result.skipped ? 'skipped' : 'processed'}`,
+        error: result.status === 'failed' ? result.message ?? 'AI extraction failed' : undefined,
+      };
+    }
+
+    case 'embed': {
+      if (options.skipAi) return { outcome: 'skipped', resultRef: 'embed:skip-ai' };
+      const enrichment = await getEnrichment(itemId);
+      if (enrichment?.aiStatus !== 'ok') {
+        return { outcome: 'skipped', resultRef: 'embed:not-ai-ready' };
+      }
+      const summary = await embedIncrementalBatch({
+        itemIds: [itemId],
+        max: 1,
+        force: options.forceEnrich === true || options.forceReclassify === true,
+        signal,
+        onProgress: (progress) => input.onProgress?.({
+          phase: 'embed',
+          label: progress.phase === 'write' ? 'Saving search embedding…' : 'Building search embedding…',
+          current: progress.batchIndex,
+          total: Math.max(progress.batchTotal, 1),
+        }),
+      });
+      throwIfAborted(signal);
+      await commitPendingDbWrites();
+      return {
+        outcome: summary.embedFailed > 0 && summary.embedded === 0 ? 'failed' : 'completed',
+        resultRef: `embed:${summary.embedded}:${summary.embedFailed}`,
+        error: summary.embedFailed > 0 && summary.embedded === 0
+          ? 'Search embedding failed'
+          : undefined,
+      };
+    }
+
+    case 'classify': {
+      if (options.skipClassify || options.classify === false || options.skipAi) {
+        return { outcome: 'skipped', resultRef: 'classify:disabled' };
+      }
+      const enrichment = await getEnrichment(itemId);
+      if (!isDownstreamClassifyEligible(enrichment)) {
+        return { outcome: 'skipped', resultRef: 'classify:ineligible' };
+      }
+      const classified = await classifyIncremental({
+        itemIds: [itemId],
+        maxItems: 1,
+        autoDiscover: false,
+        forceReclassify: options.forceReclassify === true,
+        retryManualReview: options.retryManualReview,
+        signal,
+        onProgress: (progress) => input.onProgress?.({
+          phase: progress.phase === 'save' ? 'save' : 'classify',
+          label: progress.label || 'Classifying…',
+          current: progress.current,
+          total: Math.max(progress.total, 1),
+        }),
+      });
+      throwIfAborted(signal);
+      await commitPendingDbWrites();
+      return {
+        outcome: classified.summary.llmErrors > 0 && classified.summary.processed === 0
+          ? 'failed'
+          : 'completed',
+        resultRef: `classify-json:${JSON.stringify(classified.summary)}`,
+        error: classified.summary.llmErrors > 0 && classified.summary.processed === 0
+          ? 'Classification AI call failed'
+          : undefined,
+      };
+    }
+
+    case 'discover': {
+      const result = await discoverBatch({
+        itemIds: options.discoverItemIds,
+        stuckOnly: options.discoverStuckOnly !== false,
+        maxBatches: options.discoverMaxBatches,
+        sampleBatchSize: APP_DISCOVER_MAP_BATCH_SIZE,
+        enforceBulkRunCap: false,
+        signal,
+        onProgress: (progress) => input.onProgress?.({
+          phase: 'classify',
+          label: progress.label || 'Discovering taxonomy gaps…',
+          current: progress.current,
+          total: Math.max(progress.total, 1),
+        }),
+      });
+      throwIfAborted(signal);
+      await commitPendingDbWrites();
+      return {
+        outcome: 'completed',
+        resultRef: `discover-json:${JSON.stringify(result)}`,
+      };
+    }
+
+    case 'finalize':
+      throwIfAborted(signal);
+      await commitPendingDbWrites();
+      return { outcome: 'completed', resultRef: `item:${itemId}` };
+
+    default:
+      throw new Error(`Unknown durable pipeline stage: ${claim.task.stage}`);
+  }
+}
+
+async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestResult> {
+  const enrichTasks = snapshot.tasks.filter(
+    (task) => task.stage === 'enrich' || task.stage === 'reextract'
+  );
+  const classifyTasks = snapshot.tasks.filter((task) => task.stage === 'classify');
+  const embedTasks = snapshot.tasks.filter((task) => task.stage === 'embed');
+  const discoverTask = snapshot.tasks.find((task) => task.stage === 'discover');
+  const itemEnrichResults: EnrichmentResult[] = [];
+  let enriched = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const task of enrichTasks) {
+    const enrichment = await getEnrichment(task.item_id);
+    const wasSkipped = task.result_ref?.endsWith(':skipped') === true;
+    if (task.status === 'failed' || task.status === 'uncertain' || enrichment?.status === 'failed') {
+      failed += 1;
+    } else if (wasSkipped || task.status === 'skipped') {
+      skipped += 1;
+    } else {
+      enriched += 1;
+    }
+    itemEnrichResults.push({
+      itemId: task.item_id,
+      status: enrichment?.status ?? (task.status === 'failed' ? 'failed' : 'none'),
+      skipped: wasSkipped,
+      message: task.last_error ?? undefined,
+    });
+  }
+
+  const classifySummary = emptyTopicClassifySummary();
+  const mergeSummary = (next: TopicClassifySummary) => {
+    for (const key of [
+      'totalConsidered', 'processed', 'skippedIneligible', 'skippedHash', 'skippedLlm',
+      'skippedManualReview', 'assignedPrimary', 'classifiedSpecific', 'classifiedGeneral',
+      'classifiedRemoval', 'assignedSecondary', 'multiLabel', 'unassigned',
+      'pendingDiscover', 'llmErrors', 'batches',
+    ] as const) classifySummary[key] += next[key];
+    for (const [key, value] of Object.entries(next.failureBuckets)) {
+      classifySummary.failureBuckets[key] = (classifySummary.failureBuckets[key] ?? 0) + value;
+    }
+    classifySummary.inputQuality.high += next.inputQuality.high;
+    classifySummary.inputQuality.medium += next.inputQuality.medium;
+    classifySummary.inputQuality.low += next.inputQuality.low;
+  };
+  for (const task of classifyTasks) {
+    const raw = task.result_ref?.startsWith('classify-json:')
+      ? task.result_ref.slice('classify-json:'.length)
+      : '';
+    if (!raw) continue;
+    try { mergeSummary(JSON.parse(raw) as TopicClassifySummary); } catch { /* ignore corrupt diagnostics */ }
+  }
+  const classified =
+    classifySummary.classifiedSpecific +
+    classifySummary.classifiedGeneral +
+    classifySummary.classifiedRemoval;
+  let embedded = 0;
+  let embedFailed = 0;
+  for (const task of embedTasks) {
+    const match = /^embed:(\d+):(\d+)$/.exec(task.result_ref ?? '');
+    if (match) {
+      embedded += Number(match[1]);
+      embedFailed += Number(match[2]);
+    }
+  }
+  const parts = [
+    enriched ? `${enriched} enriched` : '',
+    skipped ? `${skipped} skipped` : '',
+    failed ? `${failed} failed` : '',
+    classified ? `${classified} classified` : '',
+  ].filter(Boolean);
+  let discoverResult: BatchDigestResult['discoverResult'];
+  const discoverJson = discoverTask?.result_ref?.startsWith('discover-json:')
+    ? discoverTask.result_ref.slice('discover-json:'.length)
+    : '';
+  if (discoverJson) {
+    try { discoverResult = JSON.parse(discoverJson) as NonNullable<BatchDigestResult['discoverResult']>; }
+    catch { /* ignore corrupt diagnostics */ }
+  }
+
+  return {
+    enriched,
+    skipped,
+    failed,
+    classified,
+    classifySummary,
+    discoverResult,
+    embedded,
+    embedFailed,
+    message: parts.join(' · ') || (discoverResult
+      ? `${discoverResult.itemsSampled} processed · +${discoverResult.newLeaves} topics`
+      : `${snapshot.job.total_items} processed`),
+    itemEnrichResults,
+  };
+}
+
+export async function runDurablePipelineJob(
+  input: DurablePipelineRunInput
+): Promise<BatchDigestResult> {
+  let seededItemId: string | null = null;
+  let finalSnapshot: PipelineJobSnapshot | null = null;
+
+  while (true) {
+    throwIfAborted(input.signal);
+    const claim = await dbRpc<ClaimedPipelineTask | null>(
+      'pipelineClaimNextTask',
+      [input.ownerId, LEASE_MS, Date.now(), input.jobId],
+      { priority: 'high' }
+    );
+    if (!claim) break;
+
+    const itemIndex = Math.max(0, input.itemIds.indexOf(claim.task.item_id));
+    input.onProgress?.({
+      phase: progressPhase(claim.task.stage),
+      label: stageLabel(claim.task.stage, itemIndex, input.itemIds.length),
+      current: itemIndex,
+      total: Math.max(input.itemIds.length, 1),
+    });
+
+    const leaseInput = {
+      jobId: input.jobId,
+      itemId: claim.task.item_id,
+      stage: claim.task.stage,
+      ownerId: input.ownerId,
+      jobLeaseEpoch: claim.jobLeaseEpoch,
+      taskLeaseEpoch: claim.taskLeaseEpoch,
+    };
+    const heartbeat = window.setInterval(() => {
+      void dbRpc<{ accepted: boolean; cancelRequested: boolean }>(
+        'pipelineHeartbeatTask',
+        [{ ...leaseInput, leaseMs: LEASE_MS }],
+        { priority: 'high' }
+      ).then((result) => {
+        if (!result.accepted || result.cancelRequested) {
+          input.onAbortRequired?.(
+            result.cancelRequested ? 'Durable cancellation requested' : 'Pipeline stage lost its lease'
+          );
+        }
+      }).catch(() => {});
+    }, HEARTBEAT_MS);
+
+    try {
+      if (claim.task.stage !== 'discover' && seededItemId !== claim.task.item_id) {
+        const seed = await getRemoteStore().createPipelineCacheSeed([claim.task.item_id]);
+        throwIfAborted(input.signal);
+        installPipelineCacheSeed(seed);
+        seededItemId = claim.task.item_id;
+      }
+      const outcome = await runWithDataChangeNotificationsSuppressed(() => runStage(claim, input));
+      throwIfAborted(input.signal);
+      const finished = await dbRpc<{ accepted: boolean; snapshot: PipelineJobSnapshot | null }>(
+        'pipelineFinishTask',
+        [{ ...leaseInput, ...outcome }],
+        { priority: 'high' }
+      );
+      if (!finished.accepted) {
+        throwIfAborted(input.signal);
+        throw new Error('Durable pipeline stage lost its lease before commit');
+      }
+      finalSnapshot = finished.snapshot;
+    } catch (error) {
+      if (input.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        throw abortError();
+      }
+      const failedStage = await dbRpc<{ accepted: boolean; snapshot: PipelineJobSnapshot | null }>(
+        'pipelineFinishTask',
+        [{
+          ...leaseInput,
+          outcome: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        }],
+        { priority: 'high' }
+      );
+      finalSnapshot = failedStage.snapshot;
+    } finally {
+      window.clearInterval(heartbeat);
+    }
+  }
+
+  const snapshot = finalSnapshot ?? await dbRpc<PipelineJobSnapshot | null>(
+    'pipelineGetJob',
+    [input.jobId],
+    { priority: 'high' }
+  );
+  if (!snapshot) throw new Error('Durable pipeline job disappeared');
+  return buildResult(snapshot);
+}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { classifyIncremental } from '../../lib/categorization';
+import { runPipelineActionOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
 import {
   describeClassifyQueueStatus,
   type ClassifyQueueActionId,
@@ -15,16 +15,11 @@ type Props = ClassifyQueueReasonInput & {
 };
 
 async function runQueueAction(actionId: ClassifyQueueActionId, itemId: string): Promise<void> {
-  const base = { itemIds: [itemId], maxItems: 1, autoDiscover: false as const };
-  if (actionId === 'force_reclassify') {
-    await classifyIncremental({ ...base, forceReclassify: true });
-    return;
-  }
-  if (actionId === 'retry_manual') {
-    await classifyIncremental({ ...base, retryManualReview: true });
-    return;
-  }
-  await classifyIncremental(base);
+  await runPipelineActionOnOffscreen('classify', [itemId], {
+    classify: true,
+    forceReclassify: actionId === 'force_reclassify' || actionId === 'retry_manual',
+    retryManualReview: actionId === 'retry_manual',
+  });
 }
 
 export function ClassifyQueueReasonBlock({

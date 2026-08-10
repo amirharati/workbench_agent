@@ -7,7 +7,6 @@
 import type { AISettings } from '../ai/types';
 import type { BatchDigestProgress, BatchDigestResult } from './batchDigest';
 import type { SingleLinkDigestResult } from './singleLinkDigest';
-import type { PipelineCacheSeed } from '../storage/dbClient/remoteStore';
 
 export const PIPELINE_OFFSCREEN_TARGET = 'pipeline-offscreen';
 export const PIPELINE_OFFSCREEN_OWNER = 'pipeline-offscreen-owner';
@@ -21,8 +20,13 @@ export type OffscreenBatchJobOptions = {
   collectItemResults?: boolean;
   refetchCompare?: boolean;
   forceEnrich?: boolean;
+  forceReextract?: boolean;
   skipAi?: boolean;
   forceReclassify?: boolean;
+  retryManualReview?: boolean;
+  discoverItemIds?: string[];
+  discoverStuckOnly?: boolean;
+  discoverMaxBatches?: number;
   skipDiscover?: boolean;
   drainPendingClassifyQueue?: boolean;
   useScopedWave?: boolean;
@@ -40,21 +44,21 @@ export type OffscreenSingleJobOptions = {
   aiSettings?: AISettings;
 };
 
-export type PipelineOffscreenStartBatch = {
+export type OffscreenPipelineJobOptions = OffscreenBatchJobOptions & OffscreenSingleJobOptions;
+export type PipelineJobOperation =
+  | 'full_digest'
+  | 'reextract'
+  | 'reembed'
+  | 'classify'
+  | 'discover';
+
+export type PipelineOffscreenStartJob = {
   target: typeof PIPELINE_OFFSCREEN_TARGET | typeof PIPELINE_OFFSCREEN_OWNER;
-  action: 'start-batch';
+  action: 'start-job';
   requestId: string;
   itemIds: string[];
-  options: OffscreenBatchJobOptions;
-  cacheSeed: PipelineCacheSeed;
-};
-
-export type PipelineOffscreenStartSingle = {
-  target: typeof PIPELINE_OFFSCREEN_TARGET | typeof PIPELINE_OFFSCREEN_OWNER;
-  action: 'start-single';
-  requestId: string;
-  itemId: string;
-  options: OffscreenSingleJobOptions;
+  options: OffscreenPipelineJobOptions;
+  operation?: PipelineJobOperation;
 };
 
 export type PipelineOffscreenCancel = {

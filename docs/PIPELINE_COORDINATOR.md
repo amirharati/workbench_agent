@@ -1,208 +1,141 @@
 # Durable Pipeline Coordinator
 
-> Status — 2026-08-09: core schema-v5 durable job/task primitives are implemented and the Enrichment Hub's
-> one-item re-digest is connected as the first acceptance slice. It commits before acknowledgement, executes
-> in the shared serialized offscreen lane, and carries Cancel through embedding. The legacy processor remains
-> monolithic, so this slice uses one non-auto-retriable `full_digest` task until real stage boundaries are built.
-> Bulk and other surfaces remain unmigrated pending the one-link real-extension test.
+> Status — 2026-08-09: the clean coordinator implementation is complete enough for real-extension
+> acceptance. Automated tests and the production build pass; Chrome acceptance has not yet been run.
 
 ## Decision
 
-Homebase has one extension-wide pipeline authority. Dashboard tabs, side panels, and import pages are
-clients: they may submit, cancel, or inspect work, but they never own or execute a pipeline job.
+Homebase has one extension-wide processing authority. Import Studio, Enrichment Hub, the side panel,
+inspectors, review tools, taxonomy controls, and maintenance controls submit jobs to the same offscreen
+coordinator. A page may submit, observe, or request cancellation; it never executes fetch, AI, embedding,
+classification, or taxonomy-discovery work.
 
-The runtime has three intentionally separate authorities:
+Three owners have deliberately separate lifecycles:
 
-1. **Pipeline coordinator (offscreen document):** owns scheduling and all fetch/AI/embed/classify work.
-2. **Core DB worker:** exclusively owns `workbench.sqlite`, including library state and durable jobs/tasks.
-3. **Content worker:** exclusively owns the opaque-key content store, its volatile SQLite connection, and
-   serialization to the folder's sole durable `workbench-content.sqlite` file.
+1. **Offscreen pipeline coordinator** — owns job scheduling and all processing calls.
+2. **Core DB worker** — exclusively owns `workbench.sqlite`, including durable jobs/tasks and library data.
+3. **Content worker** — exclusively owns the opaque-key fetched-content API and the selected folder's sole
+   durable `workbench-content.sqlite` file.
 
-There is one logical pipeline coordinator, not one thread for orchestration and storage. It performs actual
-fetch/AI/embed/classify work but owns neither database. Tabs never run jobs themselves.
-
-## Invariants
-
-- Exactly one coordinator is active per installed extension profile.
-- Exactly one stage attempt executes at a time in the first implementation.
-- Interactive and bulk work use the same executor. Priority is reconsidered only at an item boundary; an
-  interactive item never starts a second lane or interrupts a stage already in flight.
-- File parsing and import preview may remain page-local; post-import processing is coordinator-owned.
-- The core SQLite database is authoritative for job, task, lease, and progress state.
-- The selected folder is a recovery mirror, never a live coordination mechanism.
-- UI state, `chrome.storage.session`, and `import-pipeline-job.json` are not authoritative checkpoints.
-- A dashboard can close or reload without changing job ownership.
-- Every completed stage is committed before the coordinator reports it complete.
-- Recovery is idempotent: committed stages are not intentionally repeated.
-
-Submission messages stay small: clients send item IDs and options only. The coordinator commits the
-job/task rows before acknowledging the request, then loads its pipeline cache seed directly from SQLite.
-Seed reads use bounded bulk queries; they never perform one worker RPC or one SQL statement per item. This
-keeps ordinary library/Hub reads responsive while a large job is being accepted and removes the pre-durable
-"preparing" window in which a dashboard refresh could lose the request.
-
-## Runtime shape
+The coordinator writes through those two storage owners. It does not open either database itself.
 
 ```text
-Dashboard tabs / side panel / Import Studio
-          |  submit IDs/options, cancel, subscribe
-          v
-Extension service worker (routing and wake-up only)
-          |
-          v
-One offscreen Pipeline Coordinator
-          |-- one serialized executor
-          |-- AbortController + lease generation
-          |-- no permanent data ownership
-          |
-          |-- Core DB worker ------> workbench.sqlite
-          |                          jobs, tasks, library, derived metadata
-          |
-          `-- Content worker ------> selected folder/workbench-content.sqlite
-                                     sole durable compressed-content file
+Import / Hub / sidebar / inspectors / maintenance UI
+                 | submit IDs + options; observe; cancel
+                 v
+       service worker (routing + wake alarm)
+                 |
+                 v
+       one offscreen pipeline coordinator
+                 |  one serialized execution lane
+                 |
+                 +--> core DB worker --> workbench.sqlite
+                 |                     library + jobs/tasks
+                 |
+                 `--> content worker --> workbench-content.sqlite
+                                       fetched bodies by opaque key
 ```
 
-The service worker does not own mutable pipeline state. It only ensures the offscreen document exists and
-forwards messages. Chrome may suspend it freely. The content worker and pipeline coordinator are separate
-authorities: processing can call the content API, but it cannot open or mutate the content database itself.
+## Implemented invariants
+
+- One generic `start-job` message is used for single links, selections, imports, and maintenance actions.
+- The job and all item/stage task rows commit before submission is acknowledged.
+- One serialized offscreen lane executes every job; there is no separate single-link lane.
+- The coordinator processes all stages for item 1 before beginning item 2.
+- Active jobs with overlapping item scopes are rejected instead of running concurrently.
+- Dashboard navigation, refresh, or closure does not affect execution ownership.
+- Every dashboard polls the same durable job table and displays a shared status/cancel banner.
+- Cancellation is durable before the UI changes to terminal state, then Abort reaches fetch, extraction,
+  embedding, classification, and discovery.
+- Pipeline progress events update presentation only; they do not trigger dashboard/library reloads.
+- Content serialization and backup mirroring are not on the job-completion critical path.
+- Automatic `pipeline-runs/` output has been removed from normal and test processing paths.
 
 ## Durable model
 
-### `pipeline_jobs`
+`pipeline_jobs` stores the job ID, versioned action, source, options payload, item counts, status, lease,
+timestamps, and last error. `pipeline_tasks` stores `(job_id, item_id, stage)`, global ordinal, status,
+attempt count, fenced lease generation, result reference, timestamps, and error.
 
-- `id` — stable job/run ID
-- `action` — versioned operation such as `full_enrich`, `fetch_only`, `reextract`, `reembed`,
-  `classify`, or `discover`
-- `source` — informational UI origin; it never selects a different runner
-- `priority` — interactive work sorts before bulk work
-- `status` — `queued`, `running`, `cancel_requested`, `cancelling`, `completed`, `failed`, or `cancelled`
-- `payload_json` — versioned execution options only, not a second progress checkpoint
-- `total_tasks`, `completed_tasks`, `failed_tasks`
-- `lease_owner`, `lease_epoch`, `lease_expires_at`, `heartbeat_at`
-- `created_at`, `started_at`, `updated_at`, `finished_at`
-- `last_error`
-
-### `pipeline_tasks`
-
-- `(job_id, item_id, stage)` — stable task identity
-- `priority`, `ordinal`
-- `status` — `pending`, `running`, `completed`, `skipped`, `failed`, `uncertain`, or `cancelled`
-- `attempts`
-- `lease_owner`, `lease_epoch`, `lease_expires_at`
-- `input_hash` / `result_ref` where a stage has an idempotency identity
-- timestamps and `last_error`
-
-The normalized task rows are the only progress checkpoint. Item progress shown as `N/M` is derived from
-finalized items, not from the number of internal stage rows.
-
-## Stage boundaries
-
-The target model below is not yet claimed by the first one-link slice. Until the legacy processor is split,
-that slice records one `full_digest` task. This preserves honest recovery semantics: an interrupted task is
-`uncertain` because it may already have crossed a paid call, rather than being automatically restarted or
-represented as eight completed checkpoints that never committed independently.
-
-A full URL-processing item uses explicit compute/commit boundaries:
+The clean URL-processing stages are currently:
 
 ```text
-preflight -> fetch -> content_store -> extract_ai
-          -> enrichment_commit -> embed -> classify -> finalize
+enrich -> embed -> classify -> finalize
 ```
 
-- Network/AI stages compute a result without directly mutating permanent tables.
-- The content worker commits a fetched body before paid extraction begins.
-- Core writes use one RPC that verifies `(job_id, item_id, stage, lease_epoch)` and atomically writes the
-  domain result plus task completion.
-- `putEnrichment` must not implicitly launch embedding; embedding and classification are coordinator stages.
-- Taxonomy discovery is a separate coordinator action, not a hidden side effect of every enrichment job.
-- A failed item is finalized and counted without preventing the coordinator from continuing other items.
+`enrich` is one honest domain boundary around fetch, fetched-body persistence, AI extraction, and the core
+enrichment write. It is not represented as smaller durable stages because those existing domain functions
+have not yet been split into compute-plus-fenced-commit APIs. If sleep or process loss interrupts `enrich`,
+the task becomes `uncertain` rather than risking a duplicate paid call.
 
-## Scheduling and priority
+Stage-only actions use the same engine:
 
-Priority order (queue order only in the first implementation):
+- `reextract -> embed -> classify -> finalize`
+- `reembed -> finalize`
+- `classify -> finalize`
+- global/scoped `discover -> finalize`; optional follow-up classification is submitted as the next job
 
-1. Interactive single-link work
-2. Small explicit user selections
-3. Bulk import and library processing
-4. Maintenance/backfill
-
-The first coordinator completes one item at a time. At the next item boundary it may select a higher-priority
-queued job, then later continue the bulk job from its next unfinished item. There is never more than one
-active stage attempt. Additional concurrency is a later optimization behind the same durable model.
-
-The coordinator deduplicates the same active item/action request. Different actions for the same item may be
-queued explicitly rather than silently discarded.
+A failed item skips only its later stages. The next item continues. Final job counts are derived from durable
+task state rather than a page-owned counter.
 
 ## Recovery
 
-An active job and task receive renewable leases plus a lease generation/fencing token. On coordinator startup
-or wake:
+The coordinator heartbeats its active task with a fenced lease. Recovery runs at offscreen startup, every
+15 seconds while the offscreen document lives, from a one-minute service-worker wake alarm while work is
+active, and on browser startup.
 
-1. Expire leases whose deadline passed and increment the lease epoch.
-2. Abort and discard any stale in-memory executor owned by the old epoch.
-3. Return safe, idempotent stages such as fetch to `pending`.
-4. Mark an interrupted paid AI stage `uncertain` unless the provider guarantees idempotent retry.
-5. Continue other runnable items from committed stage state.
-6. Reject every core commit from an older epoch and broadcast the canonical snapshot to all open clients.
+On expiry:
 
-If an offscreen document survives system sleep, its timers and network requests may continue or time out
-normally. If it is destroyed, the replacement coordinator performs the same lease recovery. Extension reload
-and browser restart use the same path.
+1. A safe unfinished stage may return to `pending`.
+2. An interrupted paid/ambiguous stage (`enrich`, `reextract`, `embed`, `classify`, or `discover`) becomes
+   `uncertain` and is not charged again automatically.
+3. Later stages for that item are skipped.
+4. Remaining items stay queued and continue from their first unfinished task.
+5. A stale executor is fenced from committing and aborted when it learns that its lease is gone.
 
-Normal interruption recovery is automatic. Explicit **Retry** requeues failed or uncertain work; it does not
-destroy a worker, clear a cross-tab lock, or reconstruct ownership in a dashboard.
+This means a 445-item job does not restart at item 1 after sleep. Completed items remain complete, the one
+ambiguous in-flight item is reported for explicit retry, and the remaining items continue.
 
 ## Cancellation
 
-- The coordinator durably records `cancel_requested` before the caller receives acknowledgement.
-- It increments/revokes the lease epoch, aborts fetch, tab extraction, AI, embedding, and classification, and
-  rejects any late result from the prior epoch.
-- Pending tasks become `cancelled`; completed outputs remain.
-- The UI displays `Cancelling...` until the durable terminal state is visible.
-- Pause is deliberately excluded from the first implementation.
-- A tab disappearing is neither Pause nor Cancel.
+The coordinator first writes `cancel_requested`, revokes the job/task lease generation, and marks pending
+tasks cancelled. Only then does it acknowledge the cancel request and abort the in-memory stage. The UI
+shows `Cancelling…` until durable state no longer reports an active job. A late result from the revoked lease
+cannot commit authoritative state.
 
-## Progress
+## Storage and backup
 
-All clients observe the same coordinator snapshot:
+The core database contains library metadata, enrichment state, search/classification state, and job control
+rows. Fetched raw bodies live only in `workbench-content.sqlite`, accessed by opaque key through its own
+worker. The content database has a different lifecycle and is not replicated into the core database.
 
-- queued/running/cancelling state
-- total, completed, failed, and pending counts
-- active task count and current stage
-- heartbeat/elapsed time
-- latest bounded error summary
+The content worker may serialize its dirty SQLite image to the selected folder asynchronously and coarsely.
+Neither that serialization nor a whole-library backup/checkpoint is awaited by normal processing completion,
+cancellation, navigation, or recovery.
 
-Long fetch/AI operations emit a heartbeat without falsely incrementing completed work.
+## Removed ownership model
 
-## Cost and idempotency
+The rebuild removes the dashboard-owned batch/single executors, import checkpoint files and Resume banner,
+scoped/wave runners, page cross-window execution lock, independent single/bulk queues, and old monolithic
+item/batch orchestration modules. The retained fetch, extraction, embedding, and classification functions are
+domain operations called only by the coordinator—not alternative schedulers.
 
-Fetch, AI, embedding, and classification stages check their durable result identity before repeating work.
-Where an AI provider supports an idempotency key, Homebase uses the stable task/attempt ID. A browser crash
-after a provider accepted a request but before its response committed is recorded as `uncertain`; the batch
-continues, but that item is not automatically charged again without an explicit retry.
+## Known deliberate limitation
 
-## Removal of the old ownership model
+The `enrich` domain call is still coarser than the eventual ideal fetch/content/AI/commit split. This is safe
+but conservative: interruption can leave one item `uncertain` and require an explicit retry. It must not be
+split into pretend checkpoints until each compute result and fenced commit can actually be separated.
 
-After the coordinator path is active:
+## Acceptance sequence
 
-- dashboard-owned bulk and single runners are removed;
-- the cross-window pipeline execution lock is removed from job ownership;
-- folder checkpoint reads/writes are removed from runtime Resume;
-- `import-pipeline-job.json` becomes obsolete;
-- restarting the shared DB owner is not a Resume operation;
-- page-local progress is a presentation of shared coordinator state only.
+Run in order on the real unpacked extension:
 
-## Acceptance criteria
+1. One Hub link completes and creates/updates both appropriate database records.
+2. Five links finish sequentially with exact completed/failed counts.
+3. Cancel during fetch or embedding; wait for `Cancelled`, then immediately start another job.
+4. Navigate and refresh during a job; the shared banner remains stable and work continues.
+5. Open another dashboard and close the initiator; the second dashboard observes the same job and result.
+6. Sleep/wake mid-batch; completed items stay complete and remaining items continue.
+7. Run a large batch; Hub/import reads remain responsive and no backup/content serialization blocks finish.
 
-- Starting jobs from multiple dashboards still produces one global executor.
-- A single-link digest submitted during bulk may run at the next item boundary without overlapping the bulk
-  stage already in flight.
-- Closing every dashboard does not cancel processing.
-- All dashboards display the same active job and progress after reopening.
-- Sleep, offscreen loss, extension reload, and browser restart recover expired work from SQLite.
-- Recovery continues only unfinished safe tasks and never waits on a page-owned lock.
-- Cancel is durable before acknowledgement and stale executors cannot commit late results.
-- A 10,000-link job does not require a large runtime message or one file per item.
-- Accepting/preparing a bulk job does not monopolize the SQLite worker or block Enrichment Hub reads.
-- Folder permission/sync delay does not block live processing, recovery, or explicit Retry.
-- Production tests prove serialization, single priority, lease recovery, deduplication, and cross-client status.
+Do not increase concurrency or further split stages until this sequence passes.

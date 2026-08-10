@@ -1,9 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Tags, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import {
-  classifyIncremental,
-  discoverBatch,
-  APP_DISCOVER_MAP_BATCH_SIZE,
   ensurePendingClassifySignals,
   getAiCategories,
   getAiLinksForItem,
@@ -18,7 +15,9 @@ import {
 import { ClassifyQueueReasonBlock } from './ClassifyQueueReasonBlock';
 import { assessCategorizationEligibility } from '../../lib/enrichment/categorizationEligibility';
 import { getEnrichment } from '../../lib/enrichment/storage';
-import { getItem } from '../../lib/db';
+import { getAllItems, getItem } from '../../lib/db';
+import { loadItemIdsForPipelineQueue } from '../../lib/pipeline';
+import { runPipelineActionOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
 import {
   clearPipelineData,
   syncClassifySignalsFromLinks,
@@ -101,30 +100,27 @@ export function CategorizationPanel({
     void loadStats();
   }, [loadStats]);
 
-  const onProgress = useCallback((u: ClassifyProgressUpdate) => {
-    setProgress(u);
+  const onCoordinatorProgress = useCallback((update: import('../../lib/pipeline').BatchDigestProgress) => {
+    const phase: ClassifyProgressUpdate['phase'] =
+      update.phase === 'prep' ? 'prepare'
+        : update.phase === 'save' ? 'save'
+          : update.phase === 'done' ? 'done'
+            : update.phase === 'discover' ? 'discover'
+              : 'classify';
+    setProgress({ ...update, phase });
   }, []);
 
-  const classifyOpts = useMemo(
-    () => ({
-      itemIds: scopedItemIds?.length ? scopedItemIds : undefined,
-      maxItems: scopedItemIds?.length ? Math.min(maxItems, scopedItemIds.length) : maxItems,
-      autoDiscover,
-      onProgress,
-    }),
-    [scopedItemIds, maxItems, autoDiscover, onProgress]
-  );
-
-  const discoverOpts = useMemo(
-    () => ({
-      itemIds: scopedItemIds?.length ? scopedItemIds : undefined,
-      stuckOnly: true as const,
-      maxBatches: maxDiscoverBatches,
-      sampleBatchSize: APP_DISCOVER_MAP_BATCH_SIZE,
-      onProgress,
-    }),
-    [scopedItemIds, maxDiscoverBatches, onProgress]
-  );
+  const resolveClassifyIds = async (
+    mode: 'pending' | 'batch' | 'force' | 'manual',
+    limit: number
+  ): Promise<string[]> => {
+    if (scopedItemIds?.length) return scopedItemIds.slice(0, limit);
+    if (mode === 'force') {
+      return (await getAllItems()).filter((item) => item.url?.trim()).slice(0, limit).map((item) => item.id);
+    }
+    return (await loadItemIdsForPipelineQueue(mode === 'manual' ? 'manual_review' : 'pending_classify'))
+      .slice(0, limit);
+  };
 
   const runWithProgress = async (label: string, fn: () => Promise<void>) => {
     setRunning(true);
@@ -161,12 +157,40 @@ export function CategorizationPanel({
       } else if (mode === 'batch') {
         limit = Math.min(maxItems, pending > 0 ? pending : maxItems);
       }
-      const r = await classifyIncremental({
-        ...classifyOpts,
+      const ids = await resolveClassifyIds(mode, limit);
+      const batch = await runPipelineActionOnOffscreen('classify', ids, {
+        classify: true,
         forceReclassify: mode === 'force',
-        maxItems: scopedItemIds?.length ? Math.min(limit, scopedItemIds.length) : limit,
+        onProgress: onCoordinatorProgress,
       });
+      const r: TopicClassifyResult = {
+        summary: batch.classifySummary ?? {
+          totalConsidered: 0, processed: 0, skippedIneligible: 0, skippedHash: 0,
+          skippedLlm: 0, skippedManualReview: 0, assignedPrimary: 0,
+          classifiedSpecific: 0, classifiedGeneral: 0, classifiedRemoval: 0,
+          assignedSecondary: 0, multiLabel: 0, unassigned: 0, pendingDiscover: 0,
+          llmErrors: 0, batches: 0, failureBuckets: {},
+          inputQuality: { high: 0, medium: 0, low: 0 },
+        },
+        categories: [],
+      };
       setResult(r);
+      if (autoDiscover && r.summary.pendingDiscover > 0) {
+        const discovered = await runPipelineActionOnOffscreen('discover', ids, {
+          discoverStuckOnly: true,
+          discoverMaxBatches: maxDiscoverBatches,
+          onProgress: onCoordinatorProgress,
+        });
+        setDiscoverResult(discovered.discoverResult ?? null);
+        if ((discovered.discoverResult?.newLeaves ?? 0) > 0) {
+          const retried = await runPipelineActionOnOffscreen('classify', ids, {
+            classify: true,
+            forceReclassify: true,
+            onProgress: onCoordinatorProgress,
+          });
+          if (retried.classifySummary) setResult({ summary: retried.classifySummary, categories: [] });
+        }
+      }
       if (r.summary.processed === 0 && r.summary.batches === 0) {
         setInfo(
           mode === 'force'
@@ -185,7 +209,13 @@ export function CategorizationPanel({
   const handleDiscoverStuck = (andClassify: boolean) =>
     runWithProgress('Discover', async () => {
       setDiscoverResult(null);
-      const d = await discoverBatch(discoverOpts);
+      const discovered = await runPipelineActionOnOffscreen('discover', scopedItemIds ?? [], {
+        discoverStuckOnly: true,
+        discoverMaxBatches: maxDiscoverBatches,
+        onProgress: onCoordinatorProgress,
+      });
+      const d = discovered.discoverResult;
+      if (!d) throw new Error('Taxonomy discovery completed without a result');
       setDiscoverResult(d);
       const s = d.summary;
       if (d.newParents || d.newLeaves) {
@@ -194,7 +224,18 @@ export function CategorizationPanel({
           `+${d.newParents} parents · +${d.newLeaves} leaves · ` +
           `${s?.itemsMarkedForReclassify ?? 0} queued reclassify`;
         if (andClassify && (d.shouldReclassify || d.newLeaves)) {
-          const r = await classifyIncremental({ ...classifyOpts, autoDiscover: false });
+          const classifyIds = d.sampledItemIds?.length
+            ? d.sampledItemIds
+            : d.reclassifyItemIds ?? [];
+          const classified = await runPipelineActionOnOffscreen('classify', classifyIds, {
+            classify: true,
+            forceReclassify: true,
+            onProgress: onCoordinatorProgress,
+          });
+          const r: TopicClassifyResult = {
+            summary: classified.classifySummary!,
+            categories: [],
+          };
           setResult(r);
           msg +=
             ` · classify: ${r.summary.processed} LLM · ${r.summary.classifiedSpecific} specific`;
@@ -223,12 +264,14 @@ export function CategorizationPanel({
   const handleRetryManualReview = () =>
     runWithProgress('Retry manual review', async () => {
       const n = queue?.manualReview ?? 0;
-      const r = await classifyIncremental({
-        ...classifyOpts,
+      const ids = await resolveClassifyIds('manual', scopedItemIds?.length ? scopedItemIds.length : n || maxItems);
+      const classified = await runPipelineActionOnOffscreen('classify', ids, {
+        classify: true,
         retryManualReview: true,
-        autoDiscover: false,
-        maxItems: scopedItemIds?.length ? scopedItemIds.length : n || maxItems,
+        forceReclassify: true,
+        onProgress: onCoordinatorProgress,
       });
+      const r: TopicClassifyResult = { summary: classified.classifySummary!, categories: [] };
       setResult(r);
       setInfo(
         `Manual review retry: ${r.summary.processed} LLM · ${r.summary.classifiedSpecific} specific · ` +

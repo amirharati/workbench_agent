@@ -14,8 +14,7 @@ export function enrichmentHasFetchContentSignal(enrichment: ItemEnrichment): boo
 
 /**
  * Whether an item should run classify downstream after enrich (embed only when aiStatus=ok).
- * Shared by runItemPipeline and runScopedPipelineJob — wave path is the same pipeline
- * with chunked queue/checkpoints, not different gating rules.
+ * Shared downstream eligibility rule used by the durable coordinator.
  */
 export function isDownstreamClassifyEligible(enrichment?: ItemEnrichment | null): boolean {
   if (!fetchAttemptedForLinkQuality(enrichment) || !enrichment) return false;

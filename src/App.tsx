@@ -621,6 +621,11 @@ function App() {
     const store = getRemoteStore();
     const revision = typeof event.revision === 'number' ? event.revision : undefined;
 
+    if (event.reason === 'pipeline.complete' && event.entityIds?.length) {
+      await refreshLibraryItems(event.entityIds);
+      return;
+    }
+
     if (event.entityId && event.reason.startsWith('item.')) {
       const row = await store.refreshItemFromWorker(event.entityId, revision);
       setItems((prev) => {

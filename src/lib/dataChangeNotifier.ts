@@ -30,6 +30,7 @@ export type DataChangeReason =
   | 'enrichment.update'
   | 'categorization.update'
   | 'categorization.review'
+  | 'pipeline.complete'
   | 'pipeline.clear'
   | 'unknown';
 
@@ -40,15 +41,30 @@ export interface DataChangeEvent {
   sourceId?: string;
   /** Primary domain row touched by an ordinary CRUD operation. */
   entityId?: string;
+  /** Bounded scope for a completed coordinator job. */
+  entityIds?: string[];
   /** Worker revision acknowledged for this mutation, when available. */
   revision?: number;
 }
 
-export type DataChangeDetail = Pick<DataChangeEvent, 'entityId' | 'revision'>;
+export type DataChangeDetail = Pick<DataChangeEvent, 'entityId' | 'entityIds' | 'revision'>;
 
 type Listener = (event: DataChangeEvent) => void;
 
 const listeners = new Set<Listener>();
+let notificationSuppressionDepth = 0;
+
+/** Suppress chatty intermediate domain notifications inside one coordinator stage. */
+export async function runWithDataChangeNotificationsSuppressed<T>(
+  work: () => Promise<T>
+): Promise<T> {
+  notificationSuppressionDepth += 1;
+  try {
+    return await work();
+  } finally {
+    notificationSuppressionDepth = Math.max(0, notificationSuppressionDepth - 1);
+  }
+}
 
 export function subscribeToDataChanges(listener: Listener): () => void {
   listeners.add(listener);
@@ -68,6 +84,7 @@ export function notifyDataChanged(
   reason: DataChangeReason = 'unknown',
   detail?: DataChangeDetail
 ): void {
+  if (notificationSuppressionDepth > 0) return;
   const event: DataChangeEvent = {
     reason,
     at: Date.now(),

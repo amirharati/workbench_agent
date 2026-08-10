@@ -4,13 +4,11 @@ import type { Item } from '../../lib/db';
 import { getAllItems } from '../../lib/db';
 import {
   clearPipelineData,
-  enrichBatch,
   getAllEnrichments,
   type EnrichBatchResult,
   type ItemEnrichment,
 } from '../../lib/enrichment';
-import { buildPipelineRunExport } from '../../lib/pipeline/pipelineRunAnalysis';
-import { persistPipelineRunExport, downloadPipelineRunBundle } from '../../lib/pipeline/pipelineRunStore';
+import { runBatchOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
 import { EnrichmentReviewModal } from './EnrichmentReviewModal';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 
@@ -187,39 +185,30 @@ export const EnrichmentTestModal: React.FC<Props> = ({
     setResult(null);
     abortRef.current = new AbortController();
     try {
-      const res = await enrichBatch({
-        mode: 'full',
-        itemIds: ids,
-        maxItems: ids.length,
-        force: true,
+      const batch = await runBatchOnOffscreen(ids, {
+        enrich: true,
+        classify: false,
+        forceEnrich: true,
         collectItemResults: true,
         signal: abortRef.current.signal,
         onProgress: (p) => {
           setProgress({
-            processed: p.processed,
-            skipped: p.skipped,
-            failed: p.failed,
+            processed: p.current,
+            skipped: 0,
+            failed: 0,
             total: p.total,
           });
         },
       });
+      const res: EnrichBatchResult = {
+        runId: crypto.randomUUID(),
+        processed: batch.enriched,
+        skipped: batch.skipped,
+        failed: batch.failed,
+        itemResults: batch.itemEnrichResults,
+      };
       setResult(res);
       setLastRunIds(ids);
-      if (res.itemResults?.length) {
-        try {
-          const exported = await buildPipelineRunExport({
-            itemIds: ids,
-            runId: res.runId,
-            kind: 'batch_enrich',
-            enrichResults: res.itemResults,
-            includeClassify: false,
-          });
-          const saved = await persistPipelineRunExport(exported);
-          if (!saved.ok) downloadPipelineRunBundle(exported);
-        } catch {
-          /* non-fatal */
-        }
-      }
       await refreshStatuses();
       setReviewOpen(true);
       onComplete?.();

@@ -3,7 +3,8 @@
 const OFFSCREEN_URL = 'offscreen.html';
 // Increment when the dashboard requires new DB-owner/worker RPC capabilities.
 // Keep this in sync with src/offscreen/offscreen.ts and the DB worker response.
-const DB_OWNER_PROTOCOL_VERSION = 10;
+const DB_OWNER_PROTOCOL_VERSION = 11;
+const PIPELINE_RECOVERY_ALARM = 'pipeline-recovery-wake';
 let offscreenCreating = null;
 let offscreenProtocolVerified = false;
 
@@ -156,8 +157,46 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
   console.log("Homebase:", details.reason);
 });
+
+function armPipelineRecoveryAlarm() {
+  chrome.alarms.create(PIPELINE_RECOVERY_ALARM, { when: Date.now() + 60_000 });
+}
+
+async function wakePipelineCoordinator() {
+  await ensureOffscreenDocument();
+  const response = await chrome.runtime.sendMessage({
+    target: 'pipeline-offscreen-owner',
+    action: 'recover',
+  });
+  if (response?.active) armPipelineRecoveryAlarm();
+  return response;
+}
+
+chrome.runtime.onStartup.addListener(() => {
+  void wakePipelineCoordinator().catch((error) => {
+    console.error('[pipeline] startup recovery failed:', error);
+    armPipelineRecoveryAlarm();
+  });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== PIPELINE_RECOVERY_ALARM) return;
+  void (async () => {
+    try {
+      await wakePipelineCoordinator();
+    } catch (error) {
+      console.error('[pipeline] wake recovery failed:', error);
+      armPipelineRecoveryAlarm();
+    }
+  })();
+});
 // Listen for focus-tab messages (must be at top level, not inside onInstalled)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'pipeline-recovery-arm') {
+    armPipelineRecoveryAlarm();
+    sendResponse({ ok: true });
+    return false;
+  }
   if (message?.target === 'db-owner' || message?.target === 'content-owner') {
     return false;
   }

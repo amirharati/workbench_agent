@@ -1,16 +1,8 @@
-import { getEnrichment } from '../enrichment';
 import type { EnrichmentResult } from '../enrichment';
-import { notifyDataChanged } from '../dataChangeNotifier';
 import { PIPELINE_STAGE_LABELS } from './pipelineDictionary';
-import {
-  runPipelineScopeBatch,
-  scopedProgressToItemProgress,
-  shouldUseScopedPipelineForSingle,
-} from './pipelineScopeRun';
-import { runItemPipeline, type ItemPipelineProgress } from './itemPipeline';
+import type { ItemPipelineProgress } from './itemPipeline';
 
 export type SingleLinkDigestPhase = ItemPipelineProgress['phase'];
-
 export interface SingleLinkDigestProgress extends ItemPipelineProgress {}
 
 export interface SingleLinkDigestResult {
@@ -22,149 +14,27 @@ export interface SingleLinkDigestResult {
   message: string;
 }
 
-const inFlight = new Set<string>();
-
-export function isAnyDigestInFlight(): boolean {
-  return inFlight.size > 0;
+// Compatibility signal for UI refresh guards. Execution is never owned here.
+let activeClientJobs = 0;
+export function setPipelineClientJobActive(active: boolean): void {
+  activeClientJobs = Math.max(0, activeClientJobs + (active ? 1 : -1));
 }
-
-export function isDigestInFlight(itemId: string): boolean {
-  return inFlight.has(itemId);
+export function isAnyDigestInFlight(): boolean {
+  return activeClientJobs > 0;
+}
+export function isDigestInFlight(_itemId: string): boolean {
+  return activeClientJobs > 0;
 }
 
 export function formatDigestProgressLabel(phase: SingleLinkDigestPhase): string {
   switch (phase) {
-    case 'prep':
-      return 'Preparing…';
-    case 'enrich':
-      return `${PIPELINE_STAGE_LABELS.fetch} & ${PIPELINE_STAGE_LABELS.enrich}…`;
-    case 'embed':
-      return `${PIPELINE_STAGE_LABELS.embed}…`;
-    case 'classify':
-      return `${PIPELINE_STAGE_LABELS.classify}…`;
-    case 'discover':
-      return `${PIPELINE_STAGE_LABELS.discover}…`;
-    case 'save':
-      return 'Saving…';
-    case 'done':
-      return 'Complete';
-    default:
-      return 'Processing…';
-  }
-}
-
-/** Re-export for callers that build progress labels before running. */
-export { resolveEnrichProgressLabel } from './singleLinkDigestLabels';
-
-/**
- * Run full pipeline for one bookmark — delegates to runItemPipeline (same path as Hub/Import).
- */
-export async function runSingleLinkDigest(
-  itemId: string,
-  options?: {
-    forceEnrich?: boolean;
-    skipClassify?: boolean;
-    skipAi?: boolean;
-    forceReclassify?: boolean;
-    onProgress?: (update: ItemPipelineProgress) => void;
-    signal?: AbortSignal;
-    preferTabSession?: boolean;
-    tabId?: number;
-    tabSessionOnly?: boolean;
-  }
-): Promise<SingleLinkDigestResult> {
-  if (inFlight.has(itemId)) {
-    const enrich = await getEnrichment(itemId);
-    return {
-      itemId,
-      enrich: {
-        itemId,
-        status: enrich?.status ?? 'none',
-        skipped: true,
-        message: 'digest_already_running',
-      },
-      classifyAttempted: false,
-      classifyProcessed: 0,
-      message: 'Digest already running for this item',
-    };
-  }
-
-  inFlight.add(itemId);
-  try {
-    const wantsForceReclassify =
-      options?.forceReclassify === true ||
-      (options?.forceEnrich === true && options?.skipClassify !== true);
-    const forceClassify = options?.forceReclassify !== false;
-
-    if (shouldUseScopedPipelineForSingle(options)) {
-      const batch = await runPipelineScopeBatch([itemId], {
-        forceEnrich: options?.forceEnrich === true,
-        forceReclassify: wantsForceReclassify,
-        collectItemResults: true,
-        writeJobFile: false,
-        signal: options?.signal,
-        onProgress: options?.onProgress
-          ? (p) => options.onProgress!(scopedProgressToItemProgress(p, 1))
-          : undefined,
-      });
-      const enrich =
-        batch.itemEnrichResults?.[0] ??
-        ({
-          itemId,
-          status: 'none' as const,
-          skipped: true,
-          message: 'no_enrich_result',
-        } satisfies EnrichmentResult);
-      return {
-        itemId,
-        enrich,
-        classifyAttempted: batch.classifySummary !== undefined,
-        classifyProcessed: batch.classifySummary?.processed ?? 0,
-        classifyError: batch.classifyError,
-        message: batch.message,
-      };
-    }
-
-    const result = await runItemPipeline({
-      itemIds: [itemId],
-      enrich: true,
-      classify: options?.skipClassify !== true,
-      skipAi: options?.skipAi,
-      forceEnrich: options?.forceEnrich === true,
-      forceClassify: forceClassify,
-      processAll: true,
-      skipDiscover: true,
-      collectItemResults: true,
-      signal: options?.signal,
-      enrichOneOptions: {
-        preferTabSession: options?.preferTabSession,
-        tabId: options?.tabId,
-        tabSessionOnly: options?.tabSessionOnly,
-      },
-      onProgress: options?.onProgress,
-    });
-
-    const enrich =
-      result.itemEnrichResults?.[0] ??
-      ({
-        itemId,
-        status: 'none' as const,
-        skipped: true,
-        message: 'no_enrich_result',
-      } satisfies EnrichmentResult);
-
-    return {
-      itemId,
-      enrich,
-      classifyAttempted: result.classifySummary !== undefined,
-      classifyProcessed: result.classifySummary?.processed ?? 0,
-      classifyError: result.classifyError,
-      message: result.message,
-    };
-  } finally {
-    inFlight.delete(itemId);
-    // Pipeline writes notify while this item is still marked in-flight. Emit once
-    // more after clearing the guard so digest views can load the committed result.
-    notifyDataChanged('enrichment.update');
+    case 'prep': return 'Preparing…';
+    case 'enrich': return `${PIPELINE_STAGE_LABELS.fetch} & ${PIPELINE_STAGE_LABELS.enrich}…`;
+    case 'embed': return `${PIPELINE_STAGE_LABELS.embed}…`;
+    case 'classify': return `${PIPELINE_STAGE_LABELS.classify}…`;
+    case 'discover': return `${PIPELINE_STAGE_LABELS.discover}…`;
+    case 'save': return 'Saving…';
+    case 'done': return 'Complete';
+    default: return 'Processing…';
   }
 }

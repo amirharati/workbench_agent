@@ -76,11 +76,10 @@ export function PipelineDebugSection() {
         Pipeline debug timing
       </div>
       <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-        When enabled, every Import Studio or Hub pipeline run writes{' '}
-        <code>pipeline-run-in-progress.json</code>, <code>pipeline-run-latest.json</code>, and a{' '}
-        <code>pipeline-runs/</code> folder in your backup folder (next to{' '}
-        Per-item fetch timings and <strong>AI call audit</strong> (model, tokens, raw
-        response text) go in <code>pipeline_debug</code> (sqlite). Uncheck to stop file dumps.
+        When enabled, per-item fetch timings and <strong>AI call audit</strong> details
+        (model, tokens, and raw response text) are recorded in the core{' '}
+        <code>pipeline_debug</code> table. Normal processing does not create checkpoint or{' '}
+        <code>pipeline-runs/</code> files in the backup folder.
       </p>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
         <label
@@ -93,7 +92,7 @@ export function PipelineDebugSection() {
           }}
         >
           <input type="checkbox" checked={enabled} onChange={handleToggle} />
-          Record debug timings
+          Record debug rows
         </label>
         {rowCount !== null && rowCount > 0 ? (
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{rowCount} row(s)</span>

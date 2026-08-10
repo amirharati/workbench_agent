@@ -36,6 +36,7 @@ const btnStyle: React.CSSProperties = {
 
 export interface HubBulkStagedActionsProps {
   selectedRows: EnrichmentHubRow[];
+  /** Disable submission while the current dashboard already observes a job. */
   disabled?: boolean;
 }
 
@@ -50,8 +51,7 @@ export const HubBulkStagedActions: React.FC<HubBulkStagedActionsProps> = ({
   disabled = false,
 }) => {
   const pipeline = usePipelineProgress();
-  /** Allow staging/submit while another job runs — acquireSharedRun queues it. */
-  const running = disabled;
+  const running = disabled || pipeline.isRunning;
   const jobBusy = pipeline.isRunning;
 
   const [expanded, setExpanded] = useState(false);
@@ -365,7 +365,7 @@ export const HubBulkStagedActions: React.FC<HubBulkStagedActionsProps> = ({
               }}
               title={
                 jobBusy
-                  ? 'Queues these steps behind the current job'
+                  ? 'Wait for the current dashboard job to finish'
                   : undefined
               }
             >

@@ -16,23 +16,11 @@ import {
   type TrashHistoryEntry,
 } from '../../lib/trashHistory';
 import {
-  formatScopedPipelineJobProgress,
   buildImportReport,
-  createImportPipelineJob,
-  formatPipelineDurationMs,
-  IMPORT_WAVE_PIPELINE_ENABLED,
   preflightImportPipelineStart,
-  runScopedPipelineJob,
-  writeImportPipelineJob,
   type ImportReport,
 } from '../../lib/pipeline';
-import {
-  createPipelineOwnerId,
-  PIPELINE_HARD_CANCEL_REASON,
-  releasePipelineRunLock,
-  startPipelineLockHeartbeat,
-  tryAcquirePipelineRunLock,
-} from '../../lib/pipeline/pipelineRunLock';
+import { runBatchOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
 import { useToast } from '../ToastContainer';
 import {
   formatAllImportSchemaHelp,
@@ -147,7 +135,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   const [processProgressPercent, setProcessProgressPercent] = React.useState(0);
   const pipelineAbortRef = React.useRef<AbortController | null>(null);
   const cancelPipelineProcessing = () => {
-    pipelineAbortRef.current?.abort(PIPELINE_HARD_CANCEL_REASON);
+    pipelineAbortRef.current?.abort('user-cancelled');
   };
   const [skipPreviouslyTrashed, setSkipPreviouslyTrashed] = React.useState(readSkipTrashedImportPref);
   const [trashHistoryMap, setTrashHistoryMap] = React.useState<Map<string, TrashHistoryEntry>>(
@@ -290,11 +278,6 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
       return;
     }
 
-    if (!IMPORT_WAVE_PIPELINE_ENABLED) {
-      addToast({ type: 'error', message: 'Import pipeline is not enabled.' });
-      return;
-    }
-
     const pre = await preflightImportPipelineStart();
     if (!pre.ok) {
       addToast({ type: 'error', message: pre.reason ?? 'Cannot start import pipeline.' });
@@ -309,90 +292,39 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     setProcessProgressPercent(2);
     addToast({
       type: 'info',
-      message: `Running fetch + AI + classify on ${ids.length} link${ids.length === 1 ? '' : 's'} — progress is checkpointed. Keep this tab open.`,
+      message: `Running fetch + AI + classify on ${ids.length} link${ids.length === 1 ? '' : 's'} in the shared coordinator.`,
     });
 
-    const ownerId = createPipelineOwnerId();
-    let stopHeartbeat: (() => void) | null = null;
     try {
-      console.info('[import-studio] pipeline path: scoped_wave', {
-        selected: ids.length,
-      });
-      const job = createImportPipelineJob(ids);
-      const acq = await tryAcquirePipelineRunLock({
-        ownerId,
-        title: `Import pipeline (${ids.length} links)`,
-        itemCount: ids.length,
-        importRunId: job.importRunId,
-        kind: 'bulk',
-      });
-      if (!acq.ok) {
-        addToast({
-          type: 'info',
-          message: `Queued behind “${acq.lock.title}” — wait for that job to finish, or cancel it from the other window.`,
-        });
-        // Wait until the other window releases, then continue.
-        const { waitAndAcquirePipelineRunLock } = await import(
-          '../../lib/pipeline/pipelineRunLock'
-        );
-        const waited = await waitAndAcquirePipelineRunLock({
-          ownerId,
-          title: `Import pipeline (${ids.length} links)`,
-          itemCount: ids.length,
-          importRunId: job.importRunId,
-          kind: 'bulk',
-        });
-        if (!waited.ok) {
-          addToast({ type: 'error', message: 'Could not start import pipeline.' });
-          return;
-        }
-      }
       const ac = new AbortController();
       pipelineAbortRef.current = ac;
-      stopHeartbeat = startPipelineLockHeartbeat(ownerId, () => ac.abort());
-      await writeImportPipelineJob(job);
-      const { job: result } = await runScopedPipelineJob(job, {
+      const result = await runBatchOnOffscreen(ids, {
+        enrich: true,
+        classify: true,
+        forceEnrich: true,
+        forceReclassify: true,
         signal: ac.signal,
         onProgress: (p) => {
-          setProcessProgress(formatScopedPipelineJobProgress(p));
-          setProcessProgressPercent((current) =>
-            Math.max(current, resolveImportProcessingPercent(p))
-          );
+          setProcessProgress(p.label);
+          const ratio = p.total > 0 ? p.current / p.total : 0;
+          setProcessProgressPercent((current) => Math.max(current, Math.round(ratio * 95)));
         },
       });
-      const dur = formatPipelineDurationMs(result.durationMs);
-      const durSuffix = dur ? ` in ${dur}` : '';
-      if (result.runner !== 'scoped_wave') {
-        console.warn('[import-studio] expected runner=scoped_wave on result job', result.runner);
-      }
-      if (result.status === 'completed') {
-        addToast({
-          type: 'info',
-          message: `Pipeline complete — ${result.completedItemIds.length} of ${result.itemIds.length} processed${durSuffix}.`,
-        });
-      } else if (result.lastError === 'Cancelled') {
-        addToast({ type: 'info', message: `Pipeline cancelled${durSuffix}.` });
-      } else if (result.lastError) {
-        addToast({ type: 'error', message: `Pipeline paused: ${result.lastError}${durSuffix}` });
-      } else {
-        addToast({
-          type: 'info',
-          message: `Pipeline paused — ${result.completedItemIds.length} of ${result.itemIds.length} processed${durSuffix}.`,
-        });
-      }
+      setProcessProgressPercent(100);
+      addToast({ type: result.failed > 0 ? 'error' : 'info', message: result.message });
       if (onImported) {
         await onImported();
       }
-      // Report only items the checkpoint considers final. A paused run must not
-      // present its remaining scope as successfully processed.
-      await openImportReport(lastCommitMeta, resolveImportReportProcessedIds(result));
+      await openImportReport(
+        lastCommitMeta,
+        new Set(result.itemEnrichResults?.map((row) => row.itemId) ?? [])
+      );
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Post-import processing failed';
+      const cancelled = pipelineAbortRef.current?.signal.aborted;
+      const msg = cancelled ? 'Pipeline cancelled.' : e instanceof Error ? e.message : 'Post-import processing failed';
       addToast({ type: 'error', message: msg });
-      setCommitError(msg);
+      if (!cancelled) setCommitError(msg);
     } finally {
-      stopHeartbeat?.();
-      await releasePipelineRunLock(ownerId);
       setProcessing(false);
       setWavePipelineRunning(false);
       setProcessProgress('');
