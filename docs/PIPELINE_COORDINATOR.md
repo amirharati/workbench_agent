@@ -4,10 +4,10 @@
 > runs prove durable execution advances and terminates; the first classification retest exposed and fixed
 > an offscreen AI-settings handoff regression. Automated tests and the production build pass.
 
-> Acceptance checkpoint — 2026-08-10: one-link processing and close/reopen passed provisionally, and the
-> first v13 bulk/urgent-single test appears correct. Protocol v14 repairs authenticated browser fetching by
-> delegating tab access to the service worker. Authenticated-tab and cancellation retests are next. Taxonomy
-> discovery and `pending_discover` cleanup are outside this pipeline-lifecycle acceptance.
+> Acceptance checkpoint — 2026-08-10: one-link processing, browser-first fetching, and closing the initiating
+> dashboard while another observes have passed. A live 451-link job continued after dashboard closure; its
+> first six items completed every stage with `tab-session` fetches and no failures. Cancellation is the next
+> lifecycle gate. Taxonomy discovery and `pending_discover` cleanup remain outside this acceptance.
 
 ## Decision
 
@@ -69,11 +69,12 @@ Import / Hub / sidebar / inspectors / maintenance UI
 ## Browser-session fetching
 
 The offscreen document cannot call `chrome.tabs` or `chrome.scripting`, so protocol v14 sends a cancellable
-browser-fetch request to the service worker. For ordinary pages, the fetch path first reuses a matching open
-tab when one exists, then tries the headless provider, and after a failed/suspicious headless response may
-open one inactive temporary tab in the user's authenticated Chrome profile. Known session-required URLs and
-explicit `Fetch in browser` requests use the browser path first. Temporary tabs are serialized, bounded by
-the existing fetch timeout, and always closed after success, failure, or cancellation.
+browser-fetch request to the service worker. Ordinary pages use the authenticated browser path first: reuse
+an exact matching tab when one exists, otherwise open one inactive temporary tab in the user's Chrome
+profile, extract the rendered page, and close it. If browser extraction fails, the headless provider remains
+a fallback. X and video retain their specialized provider-first routing because their rendered DOM often
+contains application chrome rather than the requested post or media content. Temporary tabs are serialized,
+bounded by the existing fetch timeout, and always closed after success, failure, or cancellation.
 
 The service worker returns extracted markdown, title, final page URL, and `tab-session` source metadata. The
 offscreen coordinator remains responsible for accepting the result and writing through the content/core

@@ -50,7 +50,7 @@ describe('tab-session URL matching', () => {
 });
 
 describe('ephemeral browser-tab policy', () => {
-  it('does not create hidden tabs for ordinary public pages', () => {
+  it('does not classify ordinary pages as host-specific forced-tab sources', () => {
     expect(shouldUseEphemeralTab('https://www.apartmentguide.com/')).toBe(false);
     expect(shouldUseEphemeralTab('https://www.dell.com/')).toBe(false);
     expect(shouldUseEphemeralTab('https://www.kadenze.com/')).toBe(false);

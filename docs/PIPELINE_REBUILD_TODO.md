@@ -18,10 +18,11 @@ Completed in code:
 - Shared read-only dashboard job banner and durable cross-tab cancellation.
 - Service-worker wake alarm plus browser-start recovery.
 - Protocol-v14 service-worker browser-fetch capability for reusing matching authenticated tabs and opening
-  one serialized temporary tab when browser-session fallback is required.
+  one serialized temporary tab. Ordinary URL processing is browser-session first; X/video retain their
+  specialized provider-first routes.
 
 Automated status: production build and focused coordinator/client/import/Hub tests pass. Real-extension
-acceptance is pending.
+acceptance is in progress.
 
 Real-extension checkpoint — 2026-08-10:
 
@@ -32,8 +33,12 @@ Real-extension checkpoint — 2026-08-10:
 - Close/reopen also appears to preserve processing. The next audit exposed that tab-session code could not
   access `chrome.tabs` or `chrome.scripting` from the offscreen document. Protocol v14 now delegates only
   that browser capability to the service worker while leaving scheduling and writes in the coordinator.
-- Authenticated tab reuse, temporary-tab fallback, and browser-fetch cancellation are automated-tested and
-  await real-extension acceptance.
+  The first live bulk audit then showed all 23 ordinary URLs going headless after only a matching-tab probe;
+  the policy is corrected so those URLs now create/reuse a serialized browser tab before headless fallback.
+- The corrected browser-first policy passed its first live lifecycle check: after the initiating dashboard
+  closed, a second dashboard continued observing a 451-link job while temporary tabs kept opening. At the
+  audit point, six items had completed enrich/embed/classify/finalize, all six recorded `tab-session`, the
+  seventh was running, and there were no failures. Browser-fetch cancellation still awaits manual acceptance.
 - Taxonomy discovery and the existing `pending_discover` pool are a separate product issue and are not part
   of pipeline lifecycle acceptance.
 

@@ -564,6 +564,17 @@ function headlessResultIsGoodEnough(
   return isFetchBodyUsable(cleanMarkdown, ENRICHMENT_DEFAULTS.minUsefulSnippetChars, qualityCtx);
 }
 
+/**
+ * Normal URL processing uses Chrome's rendered, authenticated page first.
+ * X and video URLs retain their specialized provider-first routing because a
+ * DOM scrape of those applications is commonly navigation/UI chrome rather
+ * than the requested post or media content.
+ */
+export function shouldUseBrowserSessionFirstForUrl(url: string): boolean {
+  const sourceKind = classifySourceKind(url);
+  return sourceKind !== 'x' && sourceKind !== 'video';
+}
+
 async function resolveItemFetch(
   item: Item,
   pending: ItemEnrichment,
@@ -618,22 +629,12 @@ async function resolveItemFetch(
     const debug = options?.debug;
     const isXStatus = classifySourceKind(item.url) === 'x';
     const isVideo = classifySourceKind(item.url) === 'video';
-    const wantsTab =
-      options?.tabSessionOnly ||
-      options?.preferTabSession ||
-      prefersBrowserTabFirst(item.url);
-    // Generic public URLs may reuse an already-open matching tab, but must not
-    // silently create a real background tab after a headless miss. Besides
-    // being distracting, loading the full site emits its own console warnings.
     const allowEphemeralTab = Boolean(
       options?.tabSessionOnly || options?.preferTabSession || shouldUseEphemeralTab(item.url)
     );
     const tabFirst =
-      wantsTab &&
       !options?.tabSessionOnly &&
-      !isXStatus &&
-      !isVideo &&
-      (options?.preferTabSession || prefersBrowserTabFirst(item.url));
+      shouldUseBrowserSessionFirstForUrl(item.url);
 
     if (options?.tabSessionOnly) {
       debug?.phase('tab_session_only_start');
@@ -718,9 +719,9 @@ async function resolveItemFetch(
       return headless;
     }
 
-    // A failed/suspicious headless response is exactly where the user's logged-in
-    // Chrome session adds value. Keep X/video on their specialized providers,
-    // but restore the serialized temporary-tab fallback for ordinary pages.
+    // X/video normally reach this path after their specialized provider fails.
+    // Ordinary pages already attempted the authenticated browser path first,
+    // but may retry after a headless fallback if their earlier tab load failed.
     const allowEphemeralRetry = allowEphemeralTab || (!isXStatus && !isVideo);
     const tabRetry = await runTabFetch(allowEphemeralRetry);
     debug?.phase(
