@@ -102,13 +102,13 @@ async function transformBytes(
 ): Promise<Uint8Array> {
   const StreamCtor = mode === 'compress' ? globalThis.CompressionStream : globalThis.DecompressionStream;
   if (typeof StreamCtor !== 'function') throw new Error(`${mode} stream unavailable`);
-  const stream = new StreamCtor('gzip');
-  const writer = stream.writable.getWriter();
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
-  await writer.write(copy);
-  await writer.close();
-  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
+  // Consume the readable side while writing. Awaiting writer.write() before a
+  // reader exists deadlocks once compressed output exceeds stream backpressure.
+  const source = new Blob([copy.buffer]).stream();
+  const transformed = source.pipeThrough(new StreamCtor('gzip'));
+  return new Uint8Array(await new Response(transformed).arrayBuffer());
 }
 
 async function encodeBody(body: string): Promise<{

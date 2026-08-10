@@ -429,6 +429,11 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   Backup now action waits for it. Existing legacy files remain read/delete compatible, but new writes do not
   create them. Pipeline runners and automatic run-artifact behavior are intentionally unchanged until later
   coordinator checkpoints. Protocol is v7; focused content/backup tests and the production build pass.
+- First extension retest: a 32-item selection reduced to three re-digest candidates but stalled at
+  `Enriching 1/3`, and no folder snapshot appeared. The content worker awaited a compression-stream write
+  before consuming its readable output, which deadlocked under backpressure for realistic bodies. The stream
+  now pipes input and consumes output concurrently; a 400 KB incompressible-body regression test and the
+  production build pass. Reloading the extension is required to replace the already blocked worker.
 - Retest: on a clean install, enrich several links and inspect raw content. After 60 seconds (or Backup now),
   confirm the folder contains `workbench.sqlite`, `workbench.meta.json`, and one
   `workbench-content.sqlite`, with no new files in `enrichment-cache/`. Reload Chrome and re-open raw content. Then

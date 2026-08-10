@@ -17,6 +17,24 @@ describe('content sidecar database', () => {
     await clearContentDatabase();
   });
 
+  it('compresses a large body without stream backpressure deadlock', async () => {
+    let state = 0x12345678;
+    const chars = new Array<string>(400_000);
+    for (let index = 0; index < chars.length; index++) {
+      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+      chars[index] = String.fromCharCode(32 + (state % 95));
+    }
+    const body = chars.join('');
+    const stored = await putContentDocument({
+      itemId: 'large-body',
+      kind: 'raw',
+      body,
+      contentHash: 'large-body-hash',
+    });
+    expect((await getContentDocumentByRef(stored.rawRef))?.body).toBe(body);
+    await deleteContentDocument('large-body');
+  }, 10_000);
+
   it('stores compressed immutable hash-addressed bodies and exact references', async () => {
     const body = '# Example\n\n' + 'repeatable fetched content '.repeat(300);
     const first = await putContentDocument({
