@@ -252,12 +252,15 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-003 | 2026-08-08 | Organization / concurrency | Adding an item to a project/collection is slow or later appears applied/reverted during processing | P1 | READY TO RETEST | Atomic worker-side item patches, explicit UI priority, durable save feedback | Uncommitted | Parallel pipeline retest pending |
 | V3-004 | 2026-08-08 | Search / organization | Cannot search All Library for material not already in a target project or collection | P2 | READY TO RETEST | Pre-ranking `Not in…` project/collection filter | Uncommitted | Contextual project/collection retest pending |
 | V3-005 | 2026-08-08 | Search / query semantics | Multi-term Search syntax and result counts are unclear/non-monotonic | P2 | READY TO RETEST | Parsed AND/OR/phrase grammar, worker-owned semantic ranking, visible fallback | Uncommitted | Fixed-query and live-embedding retest pending |
+| V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | FIXING | Reapply the isolated scope-restoration fix after the pipeline rebuild baseline is established | Safety branch only | Refresh/context-change retest pending |
+| V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | FIXING | Rebuild compressed content sidecar with a separate content worker | Safety branch only | Clean-install enrichment/reinstall recovery pending |
+| V3-008 | 2026-08-09 | Pipeline / resume recovery | System sleep can strand a batch; first coordinator build stalled at 5% and blocked Hub loading | P1 | FIXING | Rebuild one shared serialized coordinator, then expand only after acceptance gates | Safety branch only | One link through sleep/wake, then large batch |
 
 ### V3-001 — Replace stale Help with a comprehensive daily-use guide
 
 - Found: 2026-08-08, Run 01
 - Severity / gate: P2 / G2 + G3
-- Status: READY TO RETEST
+- Status: REPRODUCED
 - Environment: `design/ui-redesign` at `b1114b4`
 - Reproduction:
   1. Open Help from the dashboard sidebar.
@@ -375,6 +378,130 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 - Fix: plain meaningful terms are deterministic AND; `AND` and a leading `+` are explicit required forms; `OR` creates alternative AND groups; quotes require a normalized exact phrase; `-term`/`-“phrase”` exclude; `site:domain` is a hard domain guard; commas are spaces. Primary results must satisfy these rules across title, URL/domain, tags, notes, summaries, key points, source kind, and category names. Hybrid mode embeds only positive operator-free text. Because tab hydration intentionally strips vectors, a new protocol-v6 read-only worker RPC ranks eligible item IDs against canonical full embeddings and returns only the top scores. Semantic discoveries outside positive exact rules appear separately, while negative/site/organization guards remain enforced. The UI displays its parsed interpretation and `semantic ranking`, `text fallback`, or `text only`; changing query text clears stale results. Search no longer returns an empty index during an active local digest—it uses the essential text index instead. Help and CLI evaluation use the same grammar. Thirty-nine focused parser, engine, Search UI, Help, state, Home, Project, and All Library tests pass.
 - Retest: with an unchanged scope, confirm `ml in trading` excludes trading-only and ML-only items; `“machine learning in trading”` requires that exact normalized phrase; `ai OR quant`, `ai AND +quant`, `ai -beginner`, and `site:arxiv.org ai` follow the displayed interpretation. In Hybrid mode with embedded documents, confirm exact matches remain primary, semantic-only `ai quant` material appears under Related results, and the status says semantic ranking. Remove/disable the API key or test during a digest and confirm exact text results remain available with a visible text-fallback label.
 
+### V3-006 — Search scope resets to the surrounding Home scope after refresh
+
+- Found: 2026-08-09, Run 01
+- Severity / gate: P2 / G3
+- Status: READY TO RETEST
+- Environment: `design/ui-redesign` at `33396e1`
+- Reproduction:
+  1. Open Search while Home is scoped to Inbox or another project/collection.
+  2. Change Search itself to All Library or a different project/collection.
+  3. Refresh the dashboard.
+- Expected: Search restores its latest query, mode, selected result, scope, and filters. The
+  surrounding Home scope remains independent; a later explicit Home project/collection navigation
+  may establish a new Search default.
+- Actual: `useLibrarySearch` restored the saved filter state correctly, but Dashboard startup
+  immediately replaced its project/collection filters with the surrounding shell scope.
+- Data-safety check: no canonical data mutation or loss; only resumable Search UI context was reset.
+- Decision: fix immediately because reliable state restoration is part of the V3 usability gate.
+- Prior attempt (not active branch): Search continues using the same browser-local UI-state persistence as Home, Library, shell
+  navigation, layout, and open-work state. Shell scope synchronization now ignores the initial mount
+  (including React Strict Mode's repeated startup effect) and applies only after project/collection
+  navigation actually changes. Existing domain and negative filters remain intact when that happens.
+  Ten focused Search/Home tests and the production build pass.
+- Retest: from Inbox Search choose All Library, set a collection/domain/negative filter, run a query,
+  select a result, and refresh. Confirm all choices and the cached result return. Then explicitly
+  navigate Home to another project and confirm Search adopts that new project as its default scope.
+
+### V3-007 — Fetched content creates an unbounded sync-folder file set
+
+- Found: 2026-08-09, pre-import storage review
+- Severity / gate: P1 / G1 + G4 + G5
+- Status: READY TO RETEST
+- Environment: `design/ui-redesign` at `33396e1`; planned clean install before a 10k+ URL import
+- Reproduction: enrich/import a large library while using a Dropbox or similar selected backup folder.
+- Expected: Homebase remains provider-neutral, keeps one small bounded file set in the selected folder,
+  preserves expensive fetched content across reinstall, and does not make dashboard hydration heavier.
+- Actual: each fetched URL wrote `enrichment-cache/<item>.md`, suspicious fetches wrote another file,
+  and automatic debug runs could add a multi-file `pipeline-runs/app-*` directory. At 10k URLs this
+  creates sync churn and a failure surface unrelated to the core SQLite database.
+- Data-safety check: content is rebuildable but expensive and sometimes impossible to fetch again;
+  core user data remains more critical and keeps its existing recovery rotation.
+- Decision: fix before the real import. No legacy migration is required because V3 is unreleased and
+  testing will restart from a clean extension/folder.
+- Prior attempt (not active branch): raw and review bodies are independently compressed rows in worker-owned
+  `workbench-content.sqlite`; they are read individually and never bulk-hydrated. Pipeline completion,
+  60 seconds of inactivity, and Backup now publish one atomic folder snapshot without history copies.
+  Folder recovery restores core first and content second; missing/corrupt content cannot block Homebase.
+  Automatic runs no longer create diagnostic folder artifacts, while explicit export remains available.
+  Protocol is v8. Twenty-eight focused content/search/backup/settings tests and the production build pass.
+- Retest: on a clean install, enrich several links and inspect raw content. Confirm the folder contains
+  `workbench.sqlite`, `workbench.meta.json`, and one `workbench-content.sqlite` but no
+  `enrichment-cache/` or automatic `pipeline-runs/`. Reload Chrome and re-open raw content. Then
+  uninstall/reinstall, select the same folder, and confirm raw content opens without another fetch.
+
+### V3-008 — Interruption or refresh strands a running pipeline and Dashboard navigation
+
+- Found: 2026-08-09, Run 01
+- Severity / gate: P1 / G4 + G5
+- Status: READY TO RETEST
+- Environment: `design/ui-redesign` after `33396e1`; initially reported after an interrupted batch,
+  then the false pause was reproduced while the computer was running normally
+- Reproduction:
+  1. Start a multi-item pipeline and refresh/reopen the dashboard while it is processing.
+  2. Separately, allow one normal slow fetch/AI operation to remain quiet for more than 90 seconds.
+  3. Observe a stalled job: Resume may be hidden, may wait indefinitely, or may not continue.
+  4. From the side panel, press Dashboard; the existing panel can remain unchanged with no new tab.
+- Expected: committed progress survives interruption; dashboard pages never own execution; one shared
+  coordinator serializes bulk work, lets interactive singles start in a priority lane, and automatically
+  resumes an expired lease without a duplicate runner. Manual Resume requeues durable work without
+  destroying the DB owner. Dashboard navigation remains independent of processing.
+- Actual: the authoritative checkpoint and banner depended on selected-folder permission, the page
+  owned the cross-window heartbeat while the offscreen batch could outlive it, and resumed work ran
+  in a different execution realm. The side-panel Dashboard action also waited for a forced folder
+  mirror, so a slow/stalled worker prevented navigation. On the first coordinator retest, a 445-item
+  request remained at 5%, refresh showed no recoverable work, and Enrichment Hub never finished loading:
+  the dashboard performed roughly two SQL lookups per item before durable submission, monopolizing the
+  single DB worker. A subsequent one-link Hub retest exposed three more coordinator integration failures:
+  every two-second progress heartbeat invalidated shared state, offscreen enrichment writes caused peer
+  dashboards to reload repeatedly, and pipeline completion synchronously waited for a whole content-sidecar
+  export to the selected folder. Cancel also did not propagate into embedding, so work could continue after
+  the user cancelled it.
+- Data-safety check: no loss has been reported, but recovery was not trustworthy and duplicate/racing
+  processing was possible. Pipeline database mutations remain committed independently of the UI page.
+- Decision: fix immediately as a V3 stability/trust blocker.
+- Prior attempt (not active branch): one extension-wide offscreen coordinator now owns all full bulk and interactive single-item digest
+  execution. A SQLite `pipeline_jobs`/`pipeline_tasks` queue is committed before acknowledgement, bulk is
+  serialized, and singles use an independent high-priority lane. Renewable leases make abandoned running
+  jobs queued again on coordinator startup/wake; a one-minute Chrome alarm wakes recovery even with no
+  dashboard open. Resume is a durable requeue and no longer closes/recreates the offscreen document or DB
+  worker. Cancel and Pause are separate durable terminal/non-terminal transitions. The selected folder is
+  only a later database mirror and is not read for runtime recovery. Dashboard banners read shared SQLite
+  state and refresh across windows. Long fetch/AI operations retain the truthful two-second heartbeat.
+  The side-panel Dashboard action remains independent of backup flushing. The retest regression is fixed
+  by sending only IDs/options, committing queue state before acknowledgement, loading the cache seed in
+  the coordinator after acceptance, replacing per-item seed reads with bounded bulk queries, and writing
+  task checkpoints in 100-row statements rather than one statement per item. Hub page/count requests are
+  now bounded to 15 seconds; a failure exits the spinner, preserves cached rows, and presents a Retry action
+  instead of leaving an indefinite loading state. A follow-up audit found Import Studio was the final
+  page-owned bulk runner; it now submits to the same coordinator client used by Home, Library, and the Hub.
+  Bookmark import no longer performs a complete library-and-pipeline hydrate after its atomic save; it
+  refreshes only Items and Trash, preventing an already-committed import from sitting on `Saving bookmarks…`.
+  The coordinator also preserves a normally-returned paused/failed checkpoint instead of overwriting it as
+  completed. Progress heartbeats now update progress only; durable state invalidates only on lifecycle
+  transitions. Dashboard peers ignore intermediate enrichment/classification broadcasts and refresh once
+  through the invoking completion path. Raw-body writes retain the worker's scheduled coarse mirror, but
+  pipeline completion no longer waits for a full folder/Dropbox export. Cancellation is propagated through
+  embedding fetches and the coordinator durably records Cancel before acknowledging it.
+- Automated evidence: coordinator tests prove commit-before-acknowledgement, serialized bulk, an immediately
+  independent single lane, and startup recovery of queued durable work. Real SQLite coverage also commits
+  and reads a 445-task durable batch. Client/checkpoint lifecycle tests, TypeScript, `git diff --check`, and
+  the production build are part of the release gate.
+- Retest:
+  1. Reload protocol-v12 `dist`; first process one link from Enrichment Hub. Confirm the page remains stable,
+     the job reaches completion, and Cancel stops an in-flight fetch/embedding promptly. Then start the
+     445-link pipeline and confirm it moves beyond submission/loading
+     promptly. Open Enrichment Hub during preparation and confirm its links load normally.
+  2. While it runs, start one single-link digest from another surface. Confirm the single starts promptly
+     while bulk continues, and two dashboards show the same durable bulk state.
+  3. Reload/close every dashboard during another batch. Reopen and confirm work continued without a page.
+  4. Start another batch and put the Mac to sleep. On wake, allow automatic recovery first; if the job was
+     deliberately paused/failed, press Resume and confirm only unfinished committed work continues.
+  5. Test Pause and Cancel as different outcomes, then confirm completed/cancelled jobs leave no stale banner.
+  6. Cancel a running Import Studio batch, immediately import the same file again, and confirm saving finishes
+     promptly and the newly submitted processing job uses the shared coordinator rather than a dashboard tab.
+
 For substantial issues, add a section using this template:
 
 ```md
@@ -426,7 +553,7 @@ These are not counted as Run 01 failures until reproduced.
 - Result: IN PROGRESS
 - Baseline counts/markers: bulk processing scope observed at 445 links; full library totals and
   unique marker titles remain to be recorded.
-- Issues opened: V3-001, V3-002, V3-003, V3-004, V3-005
+- Issues opened: V3-001, V3-002, V3-003, V3-004, V3-005, V3-006, V3-007, V3-008
 - Notes: User will report findings incrementally; Codex will assign IDs, triage, update gates,
   implement approved fixes, and move larger safe items to a focused session or post-V3 backlog.
 

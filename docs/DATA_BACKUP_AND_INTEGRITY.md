@@ -2,6 +2,10 @@
 
 Living design for how Homebase protects user data and mirrors it outside IndexedDB. This now includes a shipped file-based backup core (live + manual + sync conflict guard), with scheduled rotation and a few hardening steps still pending (see [`BACKLOG.md`](BACKLOG.md)).
 
+> Status — 2026-08-09: the core SQLite mirror is active. The content-sidecar and durable pipeline sections
+> below are V3 rebuild targets; their first implementation was deliberately removed from the active branch
+> after real-extension failures. See [`PIPELINE_REBUILD_TODO.md`](PIPELINE_REBUILD_TODO.md).
+
 ---
 
 ## Goals
@@ -19,7 +23,7 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 ## Principles
 
 1. **V2 (superseded for domain data):** IndexedDB was runtime source of truth; live backup debounced full JSON → `latest.json`.
-2. **V2.1 + V2.1.1 (shipped — [`temp/TASK-V2.1-sqlite-wasm-storage.md`](temp/TASK-V2.1-sqlite-wasm-storage.md), [`temp/TASK-V2.1.1-opfs-db-worker.md`](temp/TASK-V2.1.1-opfs-db-worker.md)):** **SQLite WASM on OPFS** in a **single DB worker** (offscreen document). **Mandatory backup folder.** **Live truth = OPFS**; **`workbench.sqlite`** in the user folder is a **debounced mirror** (3s after last edit, max once per 60s unless forced). **`workbench.meta.json`** sidecar carries revision/deviceId. **JSON export/import retained.** **Fetch raw bodies** unchanged in `enrichment-cache/`.
+2. **V2.1 active storage / V3 target:** **SQLite WASM on OPFS** in a core DB worker (offscreen document). **Mandatory backup folder.** **Live truth = OPFS**; **`workbench.sqlite`** in the user folder is a debounced core mirror. V3 will add a separately worker-owned compressed **`workbench-content.sqlite`** sidecar with one coarse, atomically replaced folder snapshot. **`workbench.meta.json`** carries core revision/deviceId. **JSON export/import retained for core data.**
 3. **Canonical interchange format (V2 + V2.1):** JSON from `exportDB()` / `importDB()` + `verifyBackup()` — for manual export, migration, and cross-version import.
 4. **Backup is snapshot export**, not a live second database. Cross‑machine consistency via shared folders (e.g. Dropbox) is **transport + redundancy** on a **single device** — **not** multi-writer sync. **V4:** per-device replicas + app sync layer ([`temp/TASK-V4-sync-replicas.md`](temp/TASK-V4-sync-replicas.md)).
 5. **Defense in depth:** manual export + occasional **`manual-*.sqlite` / `manual-*.json`** snapshots + scheduled rotation (pending) + import verification. No full JSON rewrite on every edit when folder live mode is active.
@@ -43,6 +47,25 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
    - Debounced export → **`workbench.sqlite`** + **`workbench.meta.json`** (offscreen writes bytes from worker).
    - Legacy **`latest.sqlite`** / **`latest.json`** read for migration only — not rewritten on every edit.
    - Live JSON backup **disabled**; manual snapshots on demand.
+
+1a. **Fetched-content sidecar (V3 rebuild target — not active)**
+   - Raw and pending-review bodies are independently gzip-compressed rows in worker-owned OPFS
+     `workbench-content.sqlite`; the dashboard loads one body only when requested.
+   - The selected folder contains one current `workbench-content.sqlite`, atomically replaced after
+     a pipeline boundary, 60 seconds of write inactivity, or **Backup now**. It has no history rotation.
+   - Core recovery never depends on content recovery. On reinstall, the linked folder's content
+     snapshot is restored after the core database and matching hashes guard against stale bodies.
+   - Normal pipeline runs keep diagnostics in SQLite and do not create `pipeline-runs/app-*` trees;
+     the explicit user export remains available.
+   - Full rationale and failure policy: [`CONTENT_STORAGE_AND_BACKUP.md`](CONTENT_STORAGE_AND_BACKUP.md).
+
+1b. **Durable pipeline coordination (V3 rebuild target — not active)**
+   - One offscreen coordinator owns serialized bulk work and priority single-item digests.
+   - SQLite `pipeline_jobs` and `pipeline_tasks` hold queue state, checkpoints, leases, and terminal outcome.
+   - Runtime Resume/recovery never reads the selected folder; the normal database mirror later includes
+     queue state with the rest of core SQLite.
+   - A Chrome alarm wakes lease recovery; this alarm is unrelated to historical backup rotation.
+   - Full design: [`PIPELINE_COORDINATOR.md`](PIPELINE_COORDINATOR.md).
 
 2. **Manual backup**
    - "Backup now" writes `manual-YYYY-MM-DD_HHMMSS.json` **and** matching `manual-*.sqlite` via `ManualFolderBackupSink`.
@@ -68,7 +91,7 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 ### Not shipped yet
 
 1. **Scheduled rotation backups**
-   - `chrome.alarms` integration not implemented yet.
+   - The scheduled *backup rotation* alarm is not implemented yet. The pipeline recovery wake alarm is shipped.
    - Rotation policy (period + max N retained files) still pending.
 
 2. **Runtime remote polling/re-check**
@@ -93,7 +116,7 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 
 | Question | Current answer |
 |----------|----------------|
-| What syncs on pin/fav/trash/import/pipeline? | Worker commit to OPFS → debounced **`workbench.sqlite`** mirror (folder required). |
+| What syncs on pin/fav/trash/import/pipeline? | Core commits → debounced **`workbench.sqlite`**. The V3 content sidecar will replace the current legacy per-item raw-body folder files. |
 | What does *not* sync? | Ephemeral UI: open tabs, shell/home split prefs, font scale, search history (localStorage). |
 | What must improve before V2 close? | **Nothing** — V2 closes with current backup at today's scale. **Post-V2:** big storage/backup epic (SQLite and/or multi-file dump — not small patches). |
 
@@ -191,6 +214,7 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 - `src/lib/backupCoordinator.ts` — debounced live/manual orchestration + conflict checks/resolution helpers.
 - `src/lib/backupSinks.ts` — sink interface + `FileSystemSqliteBackupSink` (json + sqlite bytes).
 - `src/lib/storage/dbWorker/` — worker, `mirrorToFolder.ts`, OPFS connection.
+- Planned: separate content worker and compressed, on-demand fetched-content sidecar.
 - `src/lib/storage/dbClient/` — tab RPC client, `RemoteIdbCompatStore`.
 - `src/offscreen/offscreen.ts` — DB owner, bootstrap from folder, mirror write.
 - `src/lib/backupFolder.ts` — folder handle persistence + read/write helpers.
@@ -208,4 +232,4 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 
 ---
 
-*Last updated: 2026-05-30 — V2.2 restore + atomic mirror shipped; multi-device sync → V4*
+*Last updated: 2026-08-09 — V3 content/pipeline rebuild target; multi-device sync → V4*
