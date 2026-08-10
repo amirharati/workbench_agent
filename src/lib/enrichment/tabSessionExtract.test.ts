@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { shouldUseEphemeralTab } from './tabSessionExtract';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  fetchThroughBrowserService,
+  shouldUseEphemeralTab,
+} from './tabSessionExtract';
 import { sharedAuthSessionPathPrefix, urlsMatchForTabSession } from './tabSessionMatch';
 
 describe('tab-session URL matching', () => {
@@ -57,5 +60,36 @@ describe('ephemeral browser-tab policy', () => {
     expect(shouldUseEphemeralTab('https://www.reddit.com/r/typescript/')).toBe(true);
     expect(shouldUseEphemeralTab('https://docs.google.com/document/d/example/edit')).toBe(true);
     expect(shouldUseEphemeralTab('https://mail.google.com/mail/u/0/')).toBe(true);
+  });
+});
+
+describe('offscreen browser-fetch client', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('routes authenticated extraction through the service worker', async () => {
+    const sendMessage = vi.fn(async (message: { action?: string }) => {
+      expect(message.action).toBe('extract');
+      return {
+        ok: true,
+        markdown: '# Private\n\nAuthenticated article body '.repeat(5),
+        title: 'Private',
+        pageUrl: 'https://private.example.com/article',
+        fetchSourceId: 'tab-session',
+      };
+    });
+    vi.stubGlobal('chrome', { runtime: { sendMessage } });
+
+    const result = await fetchThroughBrowserService(
+      'https://private.example.com/article',
+      { allowEphemeral: true }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.fetchSourceId).toBe('tab-session');
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      target: 'browser-fetch-service',
+      action: 'extract',
+      allowEphemeral: true,
+    }));
   });
 });

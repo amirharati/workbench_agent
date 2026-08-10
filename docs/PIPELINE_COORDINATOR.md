@@ -4,9 +4,10 @@
 > runs prove durable execution advances and terminates; the first classification retest exposed and fixed
 > an offscreen AI-settings handoff regression. Automated tests and the production build pass.
 
-> Acceptance checkpoint — 2026-08-10: one-link processing passed and the first v13 bulk/urgent-single test
-> appears correct. Cancellation is the next gate. Taxonomy discovery and `pending_discover` cleanup are
-> explicitly outside this pipeline-lifecycle acceptance.
+> Acceptance checkpoint — 2026-08-10: one-link processing and close/reopen passed provisionally, and the
+> first v13 bulk/urgent-single test appears correct. Protocol v14 repairs authenticated browser fetching by
+> delegating tab access to the service worker. Authenticated-tab and cancellation retests are next. Taxonomy
+> discovery and `pending_discover` cleanup are outside this pipeline-lifecycle acceptance.
 
 ## Decision
 
@@ -23,12 +24,14 @@ Three owners have deliberately separate lifecycles:
    durable `workbench-content.sqlite` file.
 
 The coordinator writes through those two storage owners. It does not open either database itself.
+The service worker is additionally a narrow browser capability provider: it may resolve, open, script, and
+close a tab for one coordinator fetch request, but it owns no jobs and writes no application data.
 
 ```text
 Import / Hub / sidebar / inspectors / maintenance UI
                  | submit IDs + options; observe; cancel
                  v
-       service worker (routing + wake alarm)
+       service worker (routing + wake alarm + browser-tab capability)
                  |
                  v
        one offscreen pipeline coordinator
@@ -39,6 +42,8 @@ Import / Hub / sidebar / inspectors / maintenance UI
                  |
                  `--> content worker --> workbench-content.sqlite
                                        fetched bodies by opaque key
+
+       coordinator -- browser-fetch RPC --> service worker --> matching/temporary Chrome tab
 ```
 
 ## Implemented invariants
@@ -53,12 +58,26 @@ Import / Hub / sidebar / inspectors / maintenance UI
 - Dashboard navigation, refresh, or closure does not affect execution ownership.
 - Every dashboard polls the same durable job table and displays a shared status/cancel banner.
 - Cancellation is durable before the UI changes to terminal state, then Abort reaches fetch, extraction,
-  embedding, classification, and discovery.
+  browser-tab load/extraction, embedding, classification, and discovery. Cancellation closes only a
+  temporary tab created for that request; an existing user tab is never closed.
 - Pipeline progress events update presentation only; they do not trigger dashboard/library reloads.
 - Content serialization and backup mirroring are not on the job-completion critical path.
 - Saved AI settings cross the dashboard-to-offscreen boundary only in the internal submission message and
   are installed in memory for the serialized run. The API key is omitted from durable job/task storage.
 - Automatic `pipeline-runs/` output has been removed from normal and test processing paths.
+
+## Browser-session fetching
+
+The offscreen document cannot call `chrome.tabs` or `chrome.scripting`, so protocol v14 sends a cancellable
+browser-fetch request to the service worker. For ordinary pages, the fetch path first reuses a matching open
+tab when one exists, then tries the headless provider, and after a failed/suspicious headless response may
+open one inactive temporary tab in the user's authenticated Chrome profile. Known session-required URLs and
+explicit `Fetch in browser` requests use the browser path first. Temporary tabs are serialized, bounded by
+the existing fetch timeout, and always closed after success, failure, or cancellation.
+
+The service worker returns extracted markdown, title, final page URL, and `tab-session` source metadata. The
+offscreen coordinator remains responsible for accepting the result and writing through the content/core
+workers.
 
 ## Durable model
 
@@ -144,10 +163,11 @@ Run in order on the real unpacked extension:
 2. Five links finish sequentially with exact completed/failed counts.
 3. During a five-link batch, submit a new side-panel link; the batch finishes its current item, the single
    runs next, and the batch then resumes without repeating completed work.
-4. Cancel during fetch or embedding; wait for `Cancelled`, then immediately start another job.
-5. Navigate and refresh during a job; the shared banner remains stable and work continues.
-6. Open another dashboard and close the initiator; the second dashboard observes the same job and result.
-7. Sleep/wake mid-batch; completed items stay complete and remaining items continue.
-8. Run a large batch; Hub/import reads remain responsive and no backup/content serialization blocks finish.
+4. Re-digest an authenticated URL already open in Chrome, then close it and confirm the temporary-tab path.
+5. Cancel during temporary-tab load, another fetch, or embedding; wait for `Cancelled`, then start another job.
+6. Navigate and refresh during a job; the shared banner remains stable and work continues.
+7. Open another dashboard and close the initiator; the second dashboard observes the same job and result.
+8. Sleep/wake mid-batch; completed items stay complete and remaining items continue.
+9. Run a large batch; Hub/import reads remain responsive and no backup/content serialization blocks finish.
 
 Do not increase concurrency or further split stages until this sequence passes.

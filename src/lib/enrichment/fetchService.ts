@@ -48,8 +48,10 @@ import { noopProvider } from './providers/noop';
 import type { FetchProvider, FetchProviderResult } from './providers/types';
 import { timedAbortSignal } from './fetchAbort';
 import {
+  fetchThroughBrowserService,
   fetchFromOpenTab,
   findTabForUrl,
+  hasDirectBrowserTabAccess,
   openEphemeralTabAndExtract,
   resolveTabSessionForUrl,
   shouldUseEphemeralTab,
@@ -387,6 +389,39 @@ async function tryOpenTabFetch(
   tabId?: number,
   options?: { allowEphemeral?: boolean; signal?: AbortSignal }
 ): Promise<{ result: FetchProviderResult | null; error?: FetchProviderResult }> {
+  if (!hasDirectBrowserTabAccess()) {
+    const remote = await fetchThroughBrowserService(url, {
+      tabId,
+      mode: 'any',
+      allowEphemeral: options?.allowEphemeral,
+      signal: options?.signal,
+    });
+    if (!remote.ok || !remote.markdown?.trim()) {
+      return {
+        result: null,
+        error: {
+          ok: false,
+          errorCode: remote.errorCode ?? 'parse_empty',
+          error: remote.error ?? 'Could not read content from the browser tab',
+          fetchSourceId: 'tab-session',
+        },
+      };
+    }
+    return {
+      result: attachFetchRedirectFields(
+        {
+          ok: true,
+          markdown: remote.markdown.trim(),
+          title: remote.title,
+          fetchSourceId: remote.fetchSourceId,
+          rawBytesApprox: new TextEncoder().encode(remote.markdown).length,
+        },
+        url,
+        remote.pageUrl
+      ),
+    };
+  }
+
   const tried = new Set<number>();
   let lastError: FetchProviderResult | undefined;
 
@@ -683,7 +718,11 @@ async function resolveItemFetch(
       return headless;
     }
 
-    const tabRetry = await runTabFetch(allowEphemeralTab);
+    // A failed/suspicious headless response is exactly where the user's logged-in
+    // Chrome session adds value. Keep X/video on their specialized providers,
+    // but restore the serialized temporary-tab fallback for ordinary pages.
+    const allowEphemeralRetry = allowEphemeralTab || (!isXStatus && !isVideo);
+    const tabRetry = await runTabFetch(allowEphemeralRetry);
     debug?.phase(
       'tab_retry',
       !!tabRetry.result?.ok,

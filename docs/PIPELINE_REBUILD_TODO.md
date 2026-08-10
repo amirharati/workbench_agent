@@ -17,6 +17,8 @@ Completed in code:
   run-artifact generation removed from processing.
 - Shared read-only dashboard job banner and durable cross-tab cancellation.
 - Service-worker wake alarm plus browser-start recovery.
+- Protocol-v14 service-worker browser-fetch capability for reusing matching authenticated tabs and opening
+  one serialized temporary tab when browser-session fallback is required.
 
 Automated status: production build and focused coordinator/client/import/Hub tests pass. Real-extension
 acceptance is pending.
@@ -27,8 +29,11 @@ Real-extension checkpoint — 2026-08-10:
 - The first protocol-v13 five-link/urgent-single run appears to honor the intended priority boundary: finish
   the active bulk item, run the interactive link, and resume the bulk. Treat this as provisional until the
   final item counts are checked.
-- No further coordinator implementation is planned before the remaining lifecycle gates. Stop and diagnose
-  durable job/task state at the first failure.
+- Close/reopen also appears to preserve processing. The next audit exposed that tab-session code could not
+  access `chrome.tabs` or `chrome.scripting` from the offscreen document. Protocol v14 now delegates only
+  that browser capability to the service worker while leaving scheduling and writes in the coordinator.
+- Authenticated tab reuse, temporary-tab fallback, and browser-fetch cancellation are automated-tested and
+  await real-extension acceptance.
 - Taxonomy discovery and the existing `pending_discover` pool are a separate product issue and are not part
   of pipeline lifecycle acceptance.
 
@@ -38,6 +43,8 @@ Real-extension checkpoint — 2026-08-10:
 - Submission commits durable job/task rows before acknowledgement.
 - Progress is presentation-only and never causes library hydration or page reload.
 - The content worker owns fetched bodies; the core worker owns metadata and job state.
+- The service worker may query/create/script/close browser tabs for a coordinator fetch request, but owns no
+  pipeline state and performs no database writes.
 - Folder serialization and backup mirroring stay outside processing completion/cancel/recovery.
 - One serialized lane remains until the complete lifecycle acceptance suite passes.
 - Interrupted ambiguous paid work becomes `uncertain`; other items continue without restarting completed work.
@@ -70,12 +77,21 @@ manual lock deletion, checkpoint-file deletion, or another page-owned fallback r
 
 ## Exact resume point
 
-Run the cancellation gate next:
+Reload protocol v14, then run the authenticated-fetch gate:
+
+1. Re-digest one login-protected URL that is already open at the matching page in Chrome.
+2. Confirm the result records `tab-session` as its fetch source and contains the logged-in page content,
+   not a login wall.
+3. Close that page, then re-digest it again and confirm one inactive temporary tab opens, is extracted using
+   the Chrome login session, and closes automatically.
+
+Then run the cancellation gate:
 
 1. Start a five-link full-digest job.
-2. While a link is actively fetching, extracting, or embedding, press Cancel once.
+2. While a temporary browser tab is loading—or while another link is fetching, extracting, or embedding—
+   press Cancel once.
 3. Wait for the shared durable status to become `Cancelled`; do not reload to force the display.
-4. Confirm no queued item continues after cancellation.
+4. Confirm the temporary tab closes and no queued item continues after cancellation.
 5. Immediately submit one new link and confirm it starts without stale `queued behind` state and completes.
 
 If this passes, continue with navigation/refresh, closing the initiating dashboard while observing from a

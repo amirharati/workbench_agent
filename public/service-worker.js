@@ -1,12 +1,15 @@
 // Background service worker
 
+importScripts('browser-fetch-service.js');
+
 const OFFSCREEN_URL = 'offscreen.html';
 // Increment when the dashboard requires new DB-owner/worker RPC capabilities.
 // Keep this in sync with src/offscreen/offscreen.ts and the DB worker response.
-const DB_OWNER_PROTOCOL_VERSION = 13;
+const DB_OWNER_PROTOCOL_VERSION = 14;
 const PIPELINE_RECOVERY_ALARM = 'pipeline-recovery-wake';
 let offscreenCreating = null;
 let offscreenProtocolVerified = false;
+const browserFetchService = globalThis.HomebaseBrowserFetchService.createBrowserFetchService(chrome);
 
 async function notifyDbOwnerLost() {
   try {
@@ -199,6 +202,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.target === 'db-owner' || message?.target === 'content-owner') {
     return false;
+  }
+
+  if (message?.target === 'browser-fetch-service') {
+    (async () => {
+      try {
+        if (message.action === 'cancel') {
+          sendResponse(await browserFetchService.cancel(message.requestId));
+          return;
+        }
+        if (message.action !== 'extract') {
+          sendResponse({ ok: false, error: 'Unknown browser-fetch action' });
+          return;
+        }
+        sendResponse(await browserFetchService.extract({
+          ...message,
+          sidePanelHostTabId: await readSidePanelHostTabId(),
+        }));
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error), errorCode: 'provider_error' });
+      }
+    })();
+    return true;
   }
 
   if (message?.target === 'db-rpc') {

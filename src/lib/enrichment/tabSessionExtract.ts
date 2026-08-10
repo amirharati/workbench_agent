@@ -68,6 +68,82 @@ export type TabExtractResult = {
   errorCode?: EnrichmentErrorCode;
 };
 
+type BrowserFetchServiceResult = TabExtractResult & { fetchSourceId: 'tab-session' };
+
+export function hasDirectBrowserTabAccess(): boolean {
+  const runtimeGlobal = globalThis as typeof globalThis & {
+    chrome?: {
+      tabs?: { query?: unknown; get?: unknown };
+      scripting?: { executeScript?: unknown };
+    };
+  };
+  return (
+    typeof runtimeGlobal.chrome?.tabs?.query === 'function' &&
+    typeof runtimeGlobal.chrome.tabs.get === 'function' &&
+    typeof runtimeGlobal.chrome?.scripting?.executeScript === 'function'
+  );
+}
+
+/**
+ * Ask the MV3 service worker to use chrome.tabs/chrome.scripting for us.
+ * Offscreen documents only have chrome.runtime, so authenticated fetches cross
+ * this narrow capability boundary without moving pipeline ownership.
+ */
+export async function fetchThroughBrowserService(
+  url: string,
+  options?: {
+    tabId?: number;
+    mode?: 'active' | 'any';
+    allowEphemeral?: boolean;
+    signal?: AbortSignal;
+  }
+): Promise<BrowserFetchServiceResult> {
+  const fail = (
+    error: string,
+    errorCode: EnrichmentErrorCode = 'provider_error'
+  ): BrowserFetchServiceResult => ({
+    ok: false,
+    error,
+    errorCode,
+    fetchSourceId: 'tab-session',
+  });
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+    return fail('Browser-session fetch service is unavailable');
+  }
+  if (options?.signal?.aborted) return fail('Fetch cancelled');
+
+  const requestId = crypto.randomUUID();
+  const cancel = () => {
+    chrome.runtime.sendMessage({
+      target: 'browser-fetch-service',
+      action: 'cancel',
+      requestId,
+    }).catch(() => {});
+  };
+  options?.signal?.addEventListener('abort', cancel, { once: true });
+  try {
+    const response = await chrome.runtime.sendMessage({
+      target: 'browser-fetch-service',
+      action: 'extract',
+      requestId,
+      url,
+      tabId: options?.tabId,
+      mode: options?.mode ?? 'any',
+      allowEphemeral: options?.allowEphemeral === true,
+    }) as BrowserFetchServiceResult | undefined;
+    if (options?.signal?.aborted) return fail('Fetch cancelled');
+    if (!response || typeof response.ok !== 'boolean') {
+      return fail('Browser-session fetch service returned no result');
+    }
+    return { ...response, fetchSourceId: 'tab-session' };
+  } catch (error) {
+    if (options?.signal?.aborted) return fail('Fetch cancelled');
+    return fail(error instanceof Error ? error.message : String(error));
+  } finally {
+    options?.signal?.removeEventListener('abort', cancel);
+  }
+}
+
 /** Match aiExtract minimum — reject error-shell snippets that slip through DOM scrape. */
 export const MIN_TAB_SESSION_MARKDOWN_CHARS = 80;
 
