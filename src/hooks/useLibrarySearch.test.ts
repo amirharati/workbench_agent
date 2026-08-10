@@ -7,6 +7,7 @@ import {
   clearLibrarySearchHistory,
   LIBRARY_SEARCH_HISTORY_KEY,
   useLibrarySearch,
+  useSearchNavigationScope,
 } from './useLibrarySearch';
 
 describe('library search history persistence', () => {
@@ -91,6 +92,40 @@ describe('library search history persistence', () => {
       query: 'rust trading',
       result: null,
       selectedItemId: null,
+    });
+
+    await act(async () => root.unmount());
+  });
+
+  it('preserves restored Search scope on startup and follows later shell navigation', async () => {
+    const setFilters = vi.fn();
+    let scope = { projectId: 'project-inbox', collectionId: 'collection-incoming' };
+    const filters = { domain: 'example.com' };
+    const Probe = () => {
+      useSearchNavigationScope(filters, setFilters, scope.projectId, scope.collectionId);
+      return null;
+    };
+    const host = document.createElement('div');
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      React.createElement(React.StrictMode, null, React.createElement(Probe))
+    ));
+
+    // Search may deliberately be set to All Library while Home remains in
+    // Inbox. Startup must not replace the restored Search choice with Inbox.
+    expect(setFilters).not.toHaveBeenCalled();
+
+    scope = { projectId: 'project-research', collectionId: 'all' };
+    await act(async () => root.render(
+      React.createElement(React.StrictMode, null, React.createElement(Probe))
+    ));
+
+    expect(setFilters).toHaveBeenCalledTimes(1);
+    expect(setFilters).toHaveBeenCalledWith({
+      domain: 'example.com',
+      projectId: 'project-research',
+      collectionId: undefined,
     });
 
     await act(async () => root.unmount());

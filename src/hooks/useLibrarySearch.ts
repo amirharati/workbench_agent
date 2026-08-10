@@ -43,6 +43,40 @@ export interface LibrarySearchSnapshot {
   mode: 'hybrid' | 'lexical-only';
 }
 
+/**
+ * Treat shell navigation as a new Search default only after the user actually
+ * changes shell scope. On the first render, Search has already restored its
+ * own last-used filters and must not be reset to the surrounding Home scope.
+ */
+export function useSearchNavigationScope(
+  filters: SearchFilters,
+  setFilters: (filters: SearchFilters) => void,
+  scopeProjectId: string | 'all',
+  scopeCollectionId: string | 'all'
+): void {
+  const previousScopeRef = useRef({ scopeProjectId, scopeCollectionId });
+  const filtersRef = useRef(filters);
+  const setFiltersRef = useRef(setFilters);
+  filtersRef.current = filters;
+  setFiltersRef.current = setFilters;
+
+  useEffect(() => {
+    const previous = previousScopeRef.current;
+    if (
+      previous.scopeProjectId === scopeProjectId &&
+      previous.scopeCollectionId === scopeCollectionId
+    ) {
+      return;
+    }
+    previousScopeRef.current = { scopeProjectId, scopeCollectionId };
+    setFiltersRef.current({
+      ...filtersRef.current,
+      projectId: scopeProjectId === 'all' ? undefined : scopeProjectId,
+      collectionId: scopeCollectionId === 'all' ? undefined : scopeCollectionId,
+    });
+  }, [scopeCollectionId, scopeProjectId]);
+}
+
 function loadRecentQueries(): string[] {
   try {
     const raw = localStorage.getItem(LIBRARY_SEARCH_HISTORY_KEY);

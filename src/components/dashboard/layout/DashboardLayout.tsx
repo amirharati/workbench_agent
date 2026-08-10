@@ -22,7 +22,12 @@ import { ToastProvider, useToast } from '../../ToastContainer';
 import { PipelineProgressProvider, usePipelineProgress } from '../PipelineProgressProvider';
 import { PipelineBatchConfirmModal } from '../PipelineBatchConfirmModal';
 import { CommandPalette } from '../CommandPalette';
-import { useLibrarySearch, LIBRARY_SEARCH_TAB_ID, loadLastSearchQuery } from '../../../hooks/useLibrarySearch';
+import {
+  useLibrarySearch,
+  useSearchNavigationScope,
+  LIBRARY_SEARCH_TAB_ID,
+  loadLastSearchQuery,
+} from '../../../hooks/useLibrarySearch';
 import { useImportPipelineJob } from '../../../hooks/useImportPipelineJob';
 import { ImportPipelineJobBanner } from '../ImportPipelineJobBanner';
 import { addProjectToSwitcher, rememberProjectAccess, rememberRecentCollection } from '../homeScope';
@@ -280,13 +285,12 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const [globalTabState, setGlobalTabState] = useState<GlobalTabState>(() => loadGlobalTabState());
   const prevSearchViewRef = useRef(false);
 
-  useEffect(() => {
-    librarySearch.setFilters({
-      ...librarySearch.state.filters,
-      projectId: scopeProjectId === 'all' ? undefined : scopeProjectId,
-      collectionId: scopeCollectionId === 'all' ? undefined : scopeCollectionId,
-    });
-  }, [scopeProjectId, scopeCollectionId]);
+  useSearchNavigationScope(
+    librarySearch.state.filters,
+    librarySearch.setFilters,
+    scopeProjectId,
+    scopeCollectionId
+  );
 
   const handleGlobalTabStateChange = (next: GlobalTabState) => {
     setGlobalTabState(next);

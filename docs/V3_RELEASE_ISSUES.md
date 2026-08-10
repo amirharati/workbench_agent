@@ -252,7 +252,7 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-003 | 2026-08-08 | Organization / concurrency | Adding an item to a project/collection is slow or later appears applied/reverted during processing | P1 | READY TO RETEST | Atomic worker-side item patches, explicit UI priority, durable save feedback | Uncommitted | Parallel pipeline retest pending |
 | V3-004 | 2026-08-08 | Search / organization | Cannot search All Library for material not already in a target project or collection | P2 | READY TO RETEST | Pre-ranking `Not in…` project/collection filter | Uncommitted | Contextual project/collection retest pending |
 | V3-005 | 2026-08-08 | Search / query semantics | Multi-term Search syntax and result counts are unclear/non-monotonic | P2 | READY TO RETEST | Parsed AND/OR/phrase grammar, worker-owned semantic ranking, visible fallback | Uncommitted | Fixed-query and live-embedding retest pending |
-| V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | FIXING | Reapply the isolated scope-restoration fix after the pipeline rebuild baseline is established | Safety branch only | Refresh/context-change retest pending |
+| V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | READY TO RETEST | Preserve restored Search scope; follow later shell navigation only | V3-006 checkpoint | Refresh/context-change retest pending |
 | V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | FIXING | Rebuild compressed content sidecar with a separate content worker | Safety branch only | Clean-install enrichment/reinstall recovery pending |
 | V3-008 | 2026-08-09 | Pipeline / resume recovery | System sleep can strand a batch; first coordinator build stalled at 5% and blocked Hub loading | P1 | FIXING | Rebuild one shared serialized coordinator, then expand only after acceptance gates | Safety branch only | One link through sleep/wake, then large batch |
 
@@ -383,7 +383,7 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 - Found: 2026-08-09, Run 01
 - Severity / gate: P2 / G3
 - Status: READY TO RETEST
-- Environment: `design/ui-redesign` at `33396e1`
+- Environment: `design/ui-redesign` after architecture checkpoint `33ee5f5`
 - Reproduction:
   1. Open Search while Home is scoped to Inbox or another project/collection.
   2. Change Search itself to All Library or a different project/collection.
@@ -395,11 +395,11 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   immediately replaced its project/collection filters with the surrounding shell scope.
 - Data-safety check: no canonical data mutation or loss; only resumable Search UI context was reset.
 - Decision: fix immediately because reliable state restoration is part of the V3 usability gate.
-- Prior attempt (not active branch): Search continues using the same browser-local UI-state persistence as Home, Library, shell
+- Fix restored: Search continues using the same browser-local UI-state persistence as Home, Library, shell
   navigation, layout, and open-work state. Shell scope synchronization now ignores the initial mount
   (including React Strict Mode's repeated startup effect) and applies only after project/collection
   navigation actually changes. Existing domain and negative filters remain intact when that happens.
-  Ten focused Search/Home tests and the production build pass.
+  Three focused hook tests and the production build pass.
 - Retest: from Inbox Search choose All Library, set a collection/domain/negative filter, run a query,
   select a result, and refresh. Confirm all choices and the cached result return. Then explicitly
   navigate Home to another project and confirm Search adopts that new project as its default scope.
