@@ -70,6 +70,10 @@ Normal reads and writes never use the chosen folder as a live database. The fold
 snapshots. On a clean installation, Homebase restores folder files into OPFS and then serves reads
 from the local workers.
 
+When a writable folder is linked and no content snapshot exists yet, the content worker publishes a valid
+empty `workbench-content.sqlite` in the background. This makes storage initialization independently
+verifiable before any fetch or AI work starts.
+
 The core database restores first. Missing, stale, or corrupt content storage must never prevent the
 library from opening.
 

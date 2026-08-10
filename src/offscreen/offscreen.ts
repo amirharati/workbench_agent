@@ -131,8 +131,14 @@ async function bootstrapContentFromFolderIfNeeded(): Promise<unknown> {
     return { imported: false, reason: 'folder-unavailable', rowCount: 0 };
   }
   const snapshot = await readBinaryFromBackupFolder(WORKBENCH_CONTENT_DB_FILE);
-  if (!snapshot.ok || snapshot.notFound || !snapshot.data || snapshot.data.byteLength < 16) {
-    return { imported: false, reason: 'empty', rowCount: 0 };
+  if (!snapshot.ok && !snapshot.notFound) {
+    throw new Error(snapshot.error ?? 'Could not read the content database snapshot');
+  }
+  if (snapshot.notFound || !snapshot.data || snapshot.data.byteLength < 16) {
+    // Establish the visible recovery file independently of enrichment. This is
+    // background initialization and never delays core DB availability.
+    const checkpoint = await contentWorkerRpc('checkpointNow', []);
+    return { imported: false, reason: 'created-empty-snapshot', rowCount: 0, checkpoint };
   }
   return contentWorkerRpcBinary('bootstrapFromFolderBytes', snapshot.data);
 }

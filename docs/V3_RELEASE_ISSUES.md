@@ -434,6 +434,9 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   before consuming its readable output, which deadlocked under backpressure for realistic bodies. The stream
   now pipes input and consumes output concurrently; a 400 KB incompressible-body regression test and the
   production build pass. Reloading the extension is required to replace the already blocked worker.
+- Simplified acceptance: linking/reloading a writable selected folder now creates a valid empty
+  `workbench-content.sqlite` in the background when none exists. This verifies worker/OPFS/folder snapshot
+  wiring independently; enrichment is tested only after the empty database file is visible.
 - Retest: on a clean install, enrich several links and inspect raw content. After 60 seconds (or Backup now),
   confirm the folder contains `workbench.sqlite`, `workbench.meta.json`, and one
   `workbench-content.sqlite`, with no new files in `enrichment-cache/`. Reload Chrome and re-open raw content. Then
