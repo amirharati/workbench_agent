@@ -13,6 +13,7 @@ import type {
 import { DEFAULT_CONFIG } from './types';
 import { nowMs } from '../../time/clock';
 import { INBOX_PROJECT_NAME, INCOMING_COLLECTION_NAME } from '../../systemDataModel';
+import { PIPELINE_JOB_SCHEMA_SQL } from '../dbWorker/pipelineJobStore';
 
 function runSchemaMigrations(database: Database, from: number, to: number): void {
   if (from < 3 && to >= 3) {
@@ -37,6 +38,9 @@ function runSchemaMigrations(database: Database, from: number, to: number): void
     } catch {
       /* table may already exist */
     }
+  }
+  if (from < 5 && to >= 5) {
+    database.exec(PIPELINE_JOB_SCHEMA_SQL);
   }
 }
 
@@ -122,11 +126,15 @@ export function initSchema(database: Database, schemaVersion: number): void {
               VALUES ('default', 0, NULL);`,
       });
     }
-  } else {
-    runSchemaMigrations(database, currentVersion, schemaVersion);
   }
 
+  runSchemaMigrations(database, currentVersion, schemaVersion);
+
   database.exec(`PRAGMA user_version = ${schemaVersion};`);
+  database.exec({
+    sql: `UPDATE app_meta SET schema_version = ? WHERE id = 'default';`,
+    bind: [schemaVersion],
+  });
   database.exec('PRAGMA journal_mode = WAL;');
   database.exec('PRAGMA synchronous = NORMAL;');
   database.exec('PRAGMA foreign_keys = ON;');

@@ -454,6 +454,12 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   not attributed to the accepted storage layout. Source inspection confirms the remaining split ownership:
   singles still execute inside the invoking dashboard while bulk executes offscreen. The one-link coordinator
   gate therefore remains failed and is the next implementation checkpoint.
+- Rebuild checkpoint after that result: core SQLite schema v5 now has independent `pipeline_jobs` and
+  per-item/per-stage `pipeline_tasks` primitives. Submission is atomic and active work is deduplicated;
+  claims are ordered and leased; heartbeat/finish requires matching job and task fencing epochs; cancellation
+  is durable before acknowledgement and invalidates stale commits; expired safe work requeues while interrupted
+  AI extraction or embedding becomes `uncertain`. These APIs do not yet execute work or alter any UI runner.
+  Protocol is v9; five focused queue/migration tests and the production build pass.
 
 ### V3-008 — Interruption or refresh strands a running pipeline and Dashboard navigation
 

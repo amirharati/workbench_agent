@@ -30,6 +30,17 @@ import {
   type DashboardStartupProjection,
 } from '../../dashboardStartupProjection';
 import { cosineSimilarity } from '../../categorization/math';
+import {
+  acknowledgePipelineCancellation,
+  claimNextPipelineTask,
+  finishPipelineTask,
+  getPipelineJobSnapshot,
+  heartbeatPipelineTask,
+  listRecoverablePipelineJobs,
+  recoverExpiredPipelineTasks,
+  requestPipelineCancellation,
+  submitPipelineJob,
+} from './pipelineJobStore';
 
 markDbWorkerProcess();
 setStorageBackend('opfs');
@@ -98,6 +109,17 @@ const READ_ONLY_RPC_METHODS = new Set([
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
   'getPipelineBadgeEntries',
+  // Durable pipeline mutations publish coordinator-specific snapshots. They
+  // must not trigger the dashboard's general library hydration path.
+  'pipelineSubmitJob',
+  'pipelineClaimNextTask',
+  'pipelineHeartbeatTask',
+  'pipelineFinishTask',
+  'pipelineRequestCancel',
+  'pipelineAcknowledgeCancel',
+  'pipelineRecoverExpired',
+  'pipelineGetJob',
+  'pipelineListRecoverable',
 ]);
 
 const MUTATING_STORE_METHODS = new Set([
@@ -229,6 +251,13 @@ async function ensureOpfsOpenedAndHasDomainData(): Promise<boolean> {
   return workerDatabaseHasDomainDataSync();
 }
 
+async function getPipelineDatabase() {
+  await openOpfsConnection();
+  const live = getOpfsDatabaseSync();
+  if (!live) throw new Error('SQLite database is not open');
+  return live;
+}
+
 function liveItemCountSync(): number {
   const live = getOpfsDatabaseSync();
   if (!live) return 0;
@@ -257,7 +286,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 8;
+      return 9;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -311,6 +340,46 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         return badge ? [[id, badge]] : [];
       });
     }
+    case 'pipelineSubmitJob':
+      return submitPipelineJob(await getPipelineDatabase(), args[0] as Parameters<typeof submitPipelineJob>[1]);
+    case 'pipelineClaimNextTask':
+      return claimNextPipelineTask(
+        await getPipelineDatabase(),
+        String(args[0] ?? ''),
+        Number(args[1]) || 30_000,
+        typeof args[2] === 'number' ? args[2] : Date.now()
+      );
+    case 'pipelineHeartbeatTask':
+      return heartbeatPipelineTask(
+        await getPipelineDatabase(),
+        args[0] as Parameters<typeof heartbeatPipelineTask>[1]
+      );
+    case 'pipelineFinishTask':
+      return finishPipelineTask(
+        await getPipelineDatabase(),
+        args[0] as Parameters<typeof finishPipelineTask>[1]
+      );
+    case 'pipelineRequestCancel':
+      return requestPipelineCancellation(
+        await getPipelineDatabase(),
+        String(args[0] ?? ''),
+        typeof args[1] === 'number' ? args[1] : Date.now()
+      );
+    case 'pipelineAcknowledgeCancel':
+      return acknowledgePipelineCancellation(
+        await getPipelineDatabase(),
+        String(args[0] ?? ''),
+        typeof args[1] === 'number' ? args[1] : Date.now()
+      );
+    case 'pipelineRecoverExpired':
+      return recoverExpiredPipelineTasks(
+        await getPipelineDatabase(),
+        typeof args[0] === 'number' ? args[0] : Date.now()
+      );
+    case 'pipelineGetJob':
+      return getPipelineJobSnapshot(await getPipelineDatabase(), String(args[0] ?? ''));
+    case 'pipelineListRecoverable':
+      return listRecoverablePipelineJobs(await getPipelineDatabase());
     case 'mirrorNow': {
       const payload = args[0] as { force?: boolean; allowEmptyMirror?: boolean } | undefined;
       return mirrorNow(Boolean(payload?.force), {

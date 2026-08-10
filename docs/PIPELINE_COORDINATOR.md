@@ -1,8 +1,9 @@
 # Durable Pipeline Coordinator
 
-> Status — 2026-08-09: this is the approved rebuild design, not a claim about the active code.
-> The previous coordinator attempt is retained only as a safety snapshot. The first rebuilt version
-> has one serialized execution lane; priority is queue ordering, not a parallel single-item runner.
+> Status — 2026-08-09: approved rebuild design. Core schema-v5 durable job/task primitives are implemented
+> and tested, but no UI runner uses them yet. The previous coordinator attempt is retained only as a safety
+> snapshot. The first rebuilt executor has one serialized lane; priority is queue ordering, not a parallel
+> single-item runner.
 
 ## Decision
 

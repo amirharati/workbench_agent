@@ -22,7 +22,7 @@ implementation dependency.
 4. **Done / storage smoke accepted:** serialize dirty content to the sole folder file asynchronously, coarsely, and atomically.
    The first dirty write starts a fixed maximum-latency timer that later writes do not postpone. No whole-file
    flush belongs on cancellation, completion, Resume, or dashboard-navigation paths.
-5. Add core-owned durable jobs and per-item, per-stage tasks in `workbench.sqlite`. Full processing stages are
+5. **Implemented / API-only checkpoint:** add core-owned durable jobs and per-item, per-stage tasks in `workbench.sqlite`. Full processing stages are
    preflight, fetch, content store, AI extraction, enrichment commit, embedding, classification, and finalization.
 6. Split existing write-through functions into compute plus fenced-commit operations. In particular,
    enrichment persistence must not implicitly trigger embedding.
@@ -57,9 +57,10 @@ Each checkpoint is independently buildable and reviewable:
 2. **Accepted — content storage:** separate worker, one durable folder file (no OPFS content
    replica), immutable compressed values behind opaque keys, startup readiness, on-demand reads, clear/delete,
    and bounded asynchronous serialization. Existing pipeline ownership remains unchanged for this checkpoint.
-3. **Next — durable core API:** schema plus submit, claim, heartbeat, cancel, fenced commit, recovery, and query RPCs;
-   no UI runner migration yet.
-4. **One-link vertical slice:** Hub submission through the coordinator using explicit stage boundaries.
+3. **Implemented / automated acceptance — durable core API:** schema v5 plus atomic submit, ordered claim,
+   heartbeat, durable cancel, fenced commit, safe-stage recovery, paid-stage uncertainty, deduplication, and
+   query RPCs. No UI runner migration yet.
+4. **Next — one-link vertical slice:** Hub submission through the coordinator using explicit stage boundaries.
 5. **Small-batch correctness:** five sequential items, exact final counts, deduplication, and durable cancel.
 6. **Surface migration:** Import, sidebar, Inspector, re-extract, re-embed, classify, and discover all submit
    the shared job contract; then remove legacy locks/checkpoints/runners.
