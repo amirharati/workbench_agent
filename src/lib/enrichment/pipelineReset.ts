@@ -5,7 +5,7 @@ import { linkCountsForCategories } from '../categorization/counts';
 import { isGeneralLeafId } from '../categorization/taxonomyCatalog';
 import { deleteEnrichmentForItem, getEnrichment } from './fetchService';
 import { putEnrichment } from './storage';
-import { deleteRawBody, reviewRawRefForItem } from './rawBodyStore';
+import { deleteRawBody, deleteReviewRawBody } from './rawBodyStore';
 
 const COUNTABLE_STATUSES = new Set(['suggested', 'accepted']);
 
@@ -15,26 +15,6 @@ export type ClearItemPipelineStageResult = {
   stage: PipelineStageClear;
   itemIds: string[];
 };
-
-async function deleteReviewRawBody(itemId: string): Promise<void> {
-  const dir = await (async () => {
-    try {
-      const { getBackupDirectoryHandle, hasWritableBackupFolder } = await import('../backupFolder');
-      if (!(await hasWritableBackupFolder())) return null;
-      const root = await getBackupDirectoryHandle();
-      if (!root) return null;
-      return root.getDirectoryHandle('enrichment-cache');
-    } catch {
-      return null;
-    }
-  })();
-  if (!dir) return;
-  try {
-    await dir.removeEntry(reviewRawRefForItem(itemId));
-  } catch {
-    /* may not exist */
-  }
-}
 
 async function removeCategoryLinksForItems(idSet: Set<string>): Promise<number> {
   const db = await getDB();

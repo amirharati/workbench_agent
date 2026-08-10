@@ -1368,8 +1368,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   }
                   setClearLibraryConfirm('');
                   const bits: string[] = ['Library cleared — import from scratch.'];
-                  if (result.enrichmentCacheFilesRemoved) {
-                    bits.push(`${result.enrichmentCacheFilesRemoved} cache file(s) removed`);
+                  if (result.fetchedContentEntriesRemoved) {
+                    bits.push(`${result.fetchedContentEntriesRemoved} fetched-content entry(s) removed`);
                   }
                   if (result.pipelineArtifactEntriesRemoved) {
                     bits.push(`${result.pipelineArtifactEntriesRemoved} pipeline debug file(s) removed`);

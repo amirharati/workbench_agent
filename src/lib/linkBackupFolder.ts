@@ -28,6 +28,12 @@ export async function loadWorkbenchSqliteFromFolder(): Promise<LoadFolderResult>
     return { ok: false, error: 'No workbench.sqlite in this folder.' };
   }
 
+  // Content recovery is intentionally independent: start it after the folder
+  // is linked, but never make the core library wait for the sidecar.
+  void import('./storage/content/contentClient')
+    .then(({ bootstrapContentFromBackupFolderFile }) => bootstrapContentFromBackupFolderFile())
+    .catch((error) => console.warn('[linkBackupFolder] content recovery failed:', error));
+
   const result = await mergeWithBackupFolderFile(WORKBENCH_DB_FILE);
   if (result.mode === 'empty' || (result.reason === 'empty' && !result.imported && !result.merged)) {
     return {

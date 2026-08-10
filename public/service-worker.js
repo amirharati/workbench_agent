@@ -3,7 +3,7 @@
 const OFFSCREEN_URL = 'offscreen.html';
 // Increment when the dashboard requires new DB-owner/worker RPC capabilities.
 // Keep this in sync with src/offscreen/offscreen.ts and the DB worker response.
-const DB_OWNER_PROTOCOL_VERSION = 6;
+const DB_OWNER_PROTOCOL_VERSION = 7;
 let offscreenCreating = null;
 let offscreenProtocolVerified = false;
 
@@ -45,7 +45,7 @@ async function ensureOffscreenDocument() {
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_URL,
       reasons: ['WORKERS'],
-      justification: 'Shared SQLite database worker with OPFS persistence',
+      justification: 'Shared core and content SQLite workers with OPFS persistence',
     });
     offscreenProtocolVerified = true;
   })();
@@ -158,7 +158,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 // Listen for focus-tab messages (must be at top level, not inside onInstalled)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.target === 'db-owner') {
+  if (message?.target === 'db-owner' || message?.target === 'content-owner') {
     return false;
   }
 
@@ -174,6 +174,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           priority: message.priority === 'low' ? 'low' : 'high',
         });
         sendResponse(response ?? { ok: false, error: 'No response from DB owner' });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e) });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.target === 'content-rpc') {
+    (async () => {
+      try {
+        await ensureOffscreenDocument();
+        const response = await chrome.runtime.sendMessage({
+          target: 'content-owner',
+          id: message.id,
+          method: message.method,
+          args: message.args ?? [],
+        });
+        sendResponse(response ?? { ok: false, error: 'No response from content owner' });
       } catch (e) {
         sendResponse({ ok: false, error: String(e) });
       }

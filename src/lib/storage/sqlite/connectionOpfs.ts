@@ -100,7 +100,8 @@ function databaseHasDomainData(database: Database): boolean {
 
 /** Resolve an OPFS-backed DB constructor (SAH pool first — works without SharedArrayBuffer). */
 async function resolveOpfsDbConstructor(
-  s3: Sqlite3Static
+  s3: Sqlite3Static,
+  config: SqliteConfig = DEFAULT_CONFIG
 ): Promise<(new (filename: string) => Database) | null> {
   if (opfsDbCtor) return opfsDbCtor;
   if (opfsInitPromise) return opfsInitPromise;
@@ -110,8 +111,8 @@ async function resolveOpfsDbConstructor(
     if (typeof install === 'function') {
       try {
         const pool = await install({
-          name: 'workbench-opfs',
-          directory: '.workbench-opfs',
+          name: config.opfsVfsName ?? 'workbench-opfs',
+          directory: config.opfsDirectory ?? '.workbench-opfs',
           initialCapacity: 8,
         });
         if (pool?.OpfsSAHPoolDb) {
@@ -163,7 +164,7 @@ async function persistBytesToOpfsAndOpen(
   bytes: Uint8Array,
   config: SqliteConfig = DEFAULT_CONFIG
 ): Promise<{ database: Database; mode: SqliteStorageMode }> {
-  const OpfsDbClass = await resolveOpfsDbConstructor(s3);
+  const OpfsDbClass = await resolveOpfsDbConstructor(s3, config);
   if (!OpfsDbClass) {
     return { database: deserializeFromBytes(s3, bytes), mode: 'memory' };
   }
@@ -218,7 +219,7 @@ async function persistBytesToOpfsAndOpen(
 
 async function openWorkerDatabase(config: SqliteConfig): Promise<{ database: Database; mode: SqliteStorageMode }> {
   const s3 = await initSqlite3();
-  const OpfsDbClass = await resolveOpfsDbConstructor(s3);
+  const OpfsDbClass = await resolveOpfsDbConstructor(s3, config);
   if (OpfsDbClass) {
     try {
       const path = opfsOpenPath(config);
@@ -231,6 +232,36 @@ async function openWorkerDatabase(config: SqliteConfig): Promise<{ database: Dat
   }
   const database = new s3.oo1.DB(':memory:', 'c');
   return { database, mode: 'memory' };
+}
+
+/**
+ * Open a caller-owned SQLite file. This is used from a separate worker, so it
+ * deliberately does not touch the core DB singleton in this module.
+ */
+export async function openNamedOpfsDatabase(
+  config: SqliteConfig
+): Promise<{ database: Database; mode: SqliteStorageMode }> {
+  return openWorkerDatabase(config);
+}
+
+/** Replace a caller-owned OPFS SQLite file from already validated bytes. */
+export async function importNamedOpfsDatabaseBytes(
+  bytes: Uint8Array,
+  config: SqliteConfig
+): Promise<{ database: Database; mode: SqliteStorageMode }> {
+  const normalized = normalizeSqliteFileBytes(bytes);
+  if (!normalized || normalized.byteLength < 16) {
+    throw new Error(`Invalid sqlite bytes for ${config.dbName}`);
+  }
+  const s3 = await initSqlite3();
+  await resolveOpfsDbConstructor(s3, config);
+  return persistBytesToOpfsAndOpen(s3, normalized, config);
+}
+
+/** Export one caller-owned database without routing through the core connection. */
+export async function exportNamedDatabaseBytes(database: Database): Promise<Uint8Array> {
+  const s3 = await initSqlite3();
+  return s3.capi.sqlite3_js_db_export(database);
 }
 
 function connectionFromCurrentDb(): SqliteConnection {
@@ -319,7 +350,7 @@ export async function importFolderBytesIntoOpfs(bytes: Uint8Array): Promise<void
   resetTxnDepth();
 
   // Ensure SAH/Opfs constructors are resolved before persist.
-  await resolveOpfsDbConstructor(s3);
+  await resolveOpfsDbConstructor(s3, DEFAULT_CONFIG);
   const opened = await persistBytesToOpfsAndOpen(s3, normalized, DEFAULT_CONFIG);
   db = opened.database;
   storageMode = opened.mode;

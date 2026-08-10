@@ -1295,7 +1295,10 @@ export async function enrichOne(
     });
 
     if (diskBody.trim()) {
-      const disk = await writeRawBody(item.id, diskBody);
+      const disk = await writeRawBody(item.id, diskBody, {
+        contentHash,
+        fetchedAt: now,
+      });
       if (disk.ok && disk.rawRef) {
         rawRef = disk.rawRef;
         rawBytes = disk.rawBytes;

@@ -60,6 +60,7 @@ describe('auto snapshot filenames', () => {
 describe('classifyFolderSqliteBackup', () => {
   it('classifies live / auto / manual / safety', () => {
     expect(classifyFolderSqliteBackup('workbench.sqlite')).toBe('live');
+    expect(classifyFolderSqliteBackup('workbench-content.sqlite')).toBeNull();
     expect(classifyFolderSqliteBackup('workbench.prev.sqlite')).toBe('auto');
     expect(classifyFolderSqliteBackup('workbench.prev2.sqlite')).toBe('auto');
     expect(classifyFolderSqliteBackup('manual-2026-07-11_120000.sqlite')).toBe('manual');

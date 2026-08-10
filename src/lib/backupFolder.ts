@@ -33,6 +33,8 @@ const DIRECTORY_PICKER_ID = 'homebase-backup-folder';
 
 /** Canonical live database file in the user backup folder. */
 export const WORKBENCH_DB_FILE = 'workbench.sqlite';
+/** Coarse recovery snapshot for the independently owned fetched-content store. */
+export const WORKBENCH_CONTENT_DB_FILE = 'workbench-content.sqlite';
 /** Staging file for Settings restore — written in tab, imported by offscreen (avoids 64MiB sendMessage). */
 export const IMPORT_STAGING_FILE = 'import-staging.sqlite';
 /** Single undo slot for last Settings restore (outside prev/prev2 rotation). */

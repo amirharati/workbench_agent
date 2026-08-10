@@ -1736,13 +1736,13 @@ export const exportSqliteBytes = async (): Promise<Uint8Array | null> => {
 export type ClearAllLibraryDataResult = {
   ok: boolean;
   error?: string;
-  enrichmentCacheFilesRemoved?: number;
+  fetchedContentEntriesRemoved?: number;
   pipelineArtifactEntriesRemoved?: number;
 };
 
 /**
- * Wipe the library for a clean import test run: OPFS SQLite, folder mirror,
- * enrichment disk cache, and pipeline debug artifacts. Re-creates default project/collection.
+ * Wipe the library for a clean import test run: core OPFS SQLite, content sidecar,
+ * legacy enrichment files, folder mirrors, and pipeline artifacts. Re-creates defaults.
  */
 export async function clearAllLibraryData(): Promise<ClearAllLibraryDataResult> {
   try {
@@ -1760,8 +1760,16 @@ export async function clearAllLibraryData(): Promise<ClearAllLibraryDataResult> 
     await ensureDefaultProjectAndCollection(store as unknown as IdbCompatStore);
     await commitPendingDbWrites();
 
-    const enrichmentCacheFilesRemoved = await purgeAllEnrichmentCacheFiles();
+    const fetchedContentEntriesRemoved = await purgeAllEnrichmentCacheFiles();
     const pipelineArtifactEntriesRemoved = await purgePipelineRunArtifactsFromBackupFolder();
+
+    // Clear is an explicit destructive action: publish the empty sidecar before
+    // returning so an old folder snapshot cannot revive deleted content.
+    const { checkpointContentStore } = await import('./storage/content/contentClient');
+    const contentCheckpoint = await checkpointContentStore();
+    if (!contentCheckpoint.ok) {
+      throw new Error(contentCheckpoint.error ?? 'Could not clear the content backup snapshot');
+    }
 
     await flushFolderMirror();
 
@@ -1783,7 +1791,7 @@ export async function clearAllLibraryData(): Promise<ClearAllLibraryDataResult> 
 
     return {
       ok: true,
-      enrichmentCacheFilesRemoved,
+      fetchedContentEntriesRemoved,
       pipelineArtifactEntriesRemoved,
     };
   } catch (e) {

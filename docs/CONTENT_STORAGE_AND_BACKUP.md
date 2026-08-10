@@ -1,8 +1,8 @@
 # Content Storage and Backup
 
-> Status — 2026-08-09: this is the approved target design. The first implementation attempt is
-> preserved only on a safety branch and is intentionally not active on `design/ui-redesign`.
-> The rebuild must give this database its own content worker rather than sharing the core DB worker.
+> Status — 2026-08-09: checkpoint 2 is implemented on `design/ui-redesign` and awaits real-extension
+> acceptance. It gives the content database its own worker and keeps the existing pipeline runners
+> unchanged. The fenced coordinator commit protocol described below remains a later checkpoint.
 
 ## Decision
 
@@ -86,7 +86,7 @@ Minimum document fields:
 - `codec` — explicit compression format
 - `body` — compressed bytes
 - `raw_bytes` and `stored_bytes`
-- `fetched_at` and `updated_at`
+- `fetched_at` and `created_at`
 
 The stable identity is `(item_id, kind, content_hash)`. Rows are immutable for that identity, and the core
 enrichment row stores an opaque reference to the exact hash it accepted. A body is usable only when its item
@@ -98,8 +98,8 @@ SQLite integrity plus basic size and row-count expectations.
 
 ## Cross-database commit protocol
 
-The two SQLite files cannot share one transaction. Processing therefore uses an idempotent content-first
-protocol:
+The two SQLite files cannot share one transaction. The completed coordinator will therefore use an
+idempotent content-first protocol:
 
 1. The coordinator computes the fetched body and content hash.
 2. The content worker inserts the immutable compressed row and returns its opaque reference.
@@ -112,10 +112,13 @@ write the same immutable content identity, but it cannot change the current core
 
 ## Snapshot policy
 
-Content writes commit immediately to OPFS. Folder publication is deliberately coarse:
+Content writes commit immediately to OPFS. In checkpoint 2, folder publication is deliberately coarse:
 
-- after a bounded time/volume checkpoint while content is dirty
+- after 60 seconds of content-write inactivity
 - when the user explicitly requests Backup now
+
+A later coordinator may request the same asynchronous checkpoint at a job boundary, but job completion
+must not await it.
 
 Pipeline completion, pause, cancellation, and recovery never wait for this publication.
 
@@ -152,9 +155,10 @@ later as an explicit portable export, but it is not the runtime store or automat
 
 ## Clean-install boundary
 
-This change is implemented before release and intentionally has no migration from legacy
-`enrichment-cache/*.md` or accumulated `pipeline-runs/` artifacts. Testing starts from a fresh extension
-installation and a clean selected folder. Existing legacy content files can be discarded.
+This change is implemented before release and intentionally has no automated migration from legacy
+`enrichment-cache/*.md` or accumulated `pipeline-runs/` artifacts. A temporary read/delete bridge preserves
+existing raw-body access, while all new bodies go to the sidecar. Acceptance testing still starts from a
+fresh extension installation and a clean selected folder.
 
 ## Acceptance criteria
 

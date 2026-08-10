@@ -3,10 +3,12 @@
  */
 
 import DbWorker from '../lib/storage/dbWorker/worker.ts?worker';
+import ContentWorker from '../lib/storage/content/worker.ts?worker';
 import { wrapExport } from '../lib/backupEnvelope';
 import { normalizeBinaryPayload } from '../lib/binaryPayload';
 import {
   WORKBENCH_DB_FILE,
+  WORKBENCH_CONTENT_DB_FILE,
   WORKBENCH_META_FILE,
   hasConfiguredBackupFolder,
   hasWritableBackupFolder,
@@ -18,18 +20,22 @@ import { revisionTracker } from '../lib/revisionTracker';
 import { wouldMirrorShrinkWorkbenchSqlite } from '../lib/folderMirrorGuard';
 import { syncClock } from '../lib/time/clock';
 import { markDbOwnerReady, setLocalDbRpcTransport } from '../lib/storage/dbClient';
+import { setLocalContentRpcTransport } from '../lib/storage/content/contentClient';
 import { installOffscreenPipelineHost } from '../lib/pipeline/offscreenPipelineHost';
 
 void syncClock();
 
 // Keep this in sync with public/service-worker.js and the worker response.
-const DB_OWNER_PROTOCOL_VERSION = 6;
+const DB_OWNER_PROTOCOL_VERSION = 7;
 
 const worker = new DbWorker({ name: 'workbench-db' });
+const contentWorker = new ContentWorker({ name: 'workbench-content-db' });
 
 let bootstrapComplete = false;
 let rpcId = 1;
 const pendingRpc = new Map<number, (msg: WorkerResponse) => void>();
+let contentRpcId = 1;
+const pendingContentRpc = new Map<number, (msg: ContentWorkerResponse) => void>();
 
 type WorkerResponse =
   | { id: number; ok: true; result: unknown }
@@ -38,6 +44,13 @@ type WorkerResponse =
   | { type: 'mirror-bytes'; bytes: Uint8Array; revision: number }
   | { type: 'request-folder-bytes' }
   | { type: 'data-changed'; revision: number };
+
+type ContentWorkerResponse =
+  | { id: number; ok: true; result: unknown }
+  | { id: number; ok: false; error: string }
+  | { type: 'content-worker-ready' }
+  | { type: 'content-worker-error'; error: string }
+  | { type: 'content-mirror-bytes'; bytes: ArrayBuffer | Uint8Array; revision: number };
 
 async function writeMirrorToFolder(
   bytes: Uint8Array,
@@ -93,6 +106,37 @@ async function bootstrapFromFolderIfNeeded(): Promise<void> {
   await workerRpcBinary('mergeWithFolderBytes', bytes, 'low');
 }
 
+async function writeContentSnapshotToFolder(
+  bytes: ArrayBuffer | Uint8Array
+): Promise<{ ok: boolean; error?: string }> {
+  if (!(await hasWritableBackupFolder())) {
+    const linked = await hasConfiguredBackupFolder();
+    return {
+      ok: false,
+      error: linked
+        ? 'Backup folder permission paused — click the page once to resume sync'
+        : 'No backup folder configured',
+    };
+  }
+  const payload = normalizeBinaryPayload(bytes);
+  if (!payload || payload.byteLength < 16) {
+    return { ok: false, error: 'Content export produced an empty database' };
+  }
+  // Unlike the core DB, this sidecar has one replaceable snapshot and no rotation.
+  return writeBinaryAtomicallyToBackupFolder(WORKBENCH_CONTENT_DB_FILE, payload);
+}
+
+async function bootstrapContentFromFolderIfNeeded(): Promise<unknown> {
+  if (!(await hasWritableBackupFolder())) {
+    return { imported: false, reason: 'folder-unavailable', rowCount: 0 };
+  }
+  const snapshot = await readBinaryFromBackupFolder(WORKBENCH_CONTENT_DB_FILE);
+  if (!snapshot.ok || snapshot.notFound || !snapshot.data || snapshot.data.byteLength < 16) {
+    return { imported: false, reason: 'empty', rowCount: 0 };
+  }
+  return contentWorkerRpcBinary('bootstrapFromFolderBytes', snapshot.data);
+}
+
 function workerRpc(
   method: string,
   args: unknown[],
@@ -127,6 +171,34 @@ function workerRpcBinary(
       }
     });
     worker.postMessage({ id, method, args: [copy.buffer], priority }, [copy.buffer]);
+  });
+}
+
+function contentWorkerRpc(method: string, args: unknown[] = []): Promise<unknown> {
+  const id = contentRpcId++;
+  return new Promise((resolve, reject) => {
+    pendingContentRpc.set(id, (msg) => {
+      if ('id' in msg && msg.id === id) {
+        if (msg.ok) resolve(msg.result);
+        else reject(new Error(msg.error));
+      }
+    });
+    contentWorker.postMessage({ id, method, args });
+  });
+}
+
+function contentWorkerRpcBinary(method: string, bytes: Uint8Array): Promise<unknown> {
+  const id = contentRpcId++;
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return new Promise((resolve, reject) => {
+    pendingContentRpc.set(id, (msg) => {
+      if ('id' in msg && msg.id === id) {
+        if (msg.ok) resolve(msg.result);
+        else reject(new Error(msg.error));
+      }
+    });
+    contentWorker.postMessage({ id, method, args: [copy.buffer] }, [copy.buffer]);
   });
 }
 
@@ -178,6 +250,13 @@ setLocalDbRpcTransport(async (method, args, priority) => {
   }
   // Worker already broadcasts data-changed for mutations — don't double-notify.
   return workerRpc(method, args ?? [], priority);
+});
+
+setLocalContentRpcTransport(async (method, args) => {
+  if (method === 'bootstrapFromBackupFolderFile') {
+    return bootstrapContentFromFolderIfNeeded();
+  }
+  return contentWorkerRpc(method, args ?? []);
 });
 
 installOffscreenPipelineHost();
@@ -242,15 +321,65 @@ worker.onmessage = async (event: MessageEvent<WorkerResponse>) => {
   }
 };
 
+contentWorker.onmessage = async (event: MessageEvent<ContentWorkerResponse>) => {
+  const msg = event.data;
+  if (msg && typeof msg === 'object' && 'type' in msg) {
+    if (msg.type === 'content-worker-ready') {
+      // Content recovery is independent and must never delay core DB availability.
+      void bootstrapContentFromFolderIfNeeded().catch((error) => {
+        console.error('[Content owner] background folder recovery failed:', error);
+      });
+      return;
+    }
+    if (msg.type === 'content-worker-error') {
+      console.error('[Content owner] worker startup failed:', msg.error);
+      return;
+    }
+    if (msg.type === 'content-mirror-bytes') {
+      const result = await writeContentSnapshotToFolder(msg.bytes);
+      contentWorker.postMessage({
+        type: 'content-mirror-ack',
+        ok: result.ok,
+        error: result.error,
+      });
+      return;
+    }
+  }
+  if (msg && typeof msg === 'object' && 'id' in msg) {
+    const handler = pendingContentRpc.get(msg.id);
+    if (handler) {
+      pendingContentRpc.delete(msg.id);
+      handler(msg);
+    }
+  }
+};
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.target === 'db-owner-control' && message?.type === 'get-protocol-version') {
-    // Verify the child worker too. An offscreen page can otherwise outlive a
-    // rebuilt worker bundle during extension development.
-    workerRpc('getProtocolVersion', [])
-      .then((version) => sendResponse({
-        version: version === DB_OWNER_PROTOCOL_VERSION ? version : 0,
+    // Verify both child workers. The offscreen page can outlive rebuilt worker
+    // bundles during extension development.
+    Promise.all([
+      workerRpc('getProtocolVersion', []),
+      contentWorkerRpc('getProtocolVersion', []),
+    ])
+      .then(([coreVersion, contentVersion]) => sendResponse({
+        version:
+          coreVersion === DB_OWNER_PROTOCOL_VERSION &&
+          contentVersion === DB_OWNER_PROTOCOL_VERSION
+            ? DB_OWNER_PROTOCOL_VERSION
+            : 0,
       }))
       .catch(() => sendResponse({ version: 0 }));
+    return true;
+  }
+  if (message?.target === 'content-owner') {
+    const { id, method, args } = message;
+    const operation = method === 'bootstrapFromBackupFolderFile'
+      ? bootstrapContentFromFolderIfNeeded()
+      : contentWorkerRpc(method, args ?? []);
+    operation
+      .then((result) => sendResponse({ id, ok: true, result }))
+      .catch((error) => sendResponse({ id, ok: false, error: String(error) }));
     return true;
   }
   if (message?.target !== 'db-owner') return false;

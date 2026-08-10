@@ -1,30 +1,35 @@
+/**
+ * Fetched-body facade. New writes use the worker-owned content SQLite sidecar;
+ * legacy per-item folder files remain read/delete compatible during V3.
+ */
+import { getBackupDirectoryHandle, hasWritableBackupFolder } from '../backupFolder';
 import {
-  getBackupDirectoryHandle,
-  hasWritableBackupFolder,
-} from '../backupFolder';
+  clearContent,
+  deleteContent,
+  getContentByRef,
+  putContent,
+} from '../storage/content/contentClient';
 
-const CACHE_DIR = 'enrichment-cache';
+const LEGACY_CACHE_DIR = 'enrichment-cache';
 
 type DirectoryWithEntries = FileSystemDirectoryHandle & {
   entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
 };
 
-async function getCacheDirectory(): Promise<FileSystemDirectoryHandle | null> {
+async function getLegacyCacheDirectory(
+  create = false
+): Promise<FileSystemDirectoryHandle | null> {
   if (!(await hasWritableBackupFolder())) return null;
   const root = await getBackupDirectoryHandle();
   if (!root) return null;
   try {
-    const perm = await root.queryPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') {
-      const req = await root.requestPermission({ mode: 'readwrite' });
-      if (req !== 'granted') return null;
-    }
-    return root.getDirectoryHandle(CACHE_DIR, { create: true });
+    return await root.getDirectoryHandle(LEGACY_CACHE_DIR, { create });
   } catch {
     return null;
   }
 }
 
+/** Legacy reference helpers retained only for old core rows and cleanup. */
 export function rawRefForItem(itemId: string): string {
   return `${itemId}.md`;
 }
@@ -33,91 +38,95 @@ export function reviewRawRefForItem(itemId: string): string {
   return `${itemId}.review-pending.md`;
 }
 
-export async function writeReviewRawBody(itemId: string, body: string): Promise<{
-  ok: boolean;
-  rawRef?: string;
-  rawBytes?: number;
-  error?: string;
-}> {
-  const dir = await getCacheDirectory();
-  if (!dir) {
-    return { ok: false, error: 'no_backup_folder' };
-  }
-  const rawRef = reviewRawRefForItem(itemId);
+type WriteBodyOptions = { contentHash?: string; fetchedAt?: number };
+
+async function writeBody(
+  itemId: string,
+  kind: 'raw' | 'review',
+  body: string,
+  options?: WriteBodyOptions
+): Promise<{ ok: boolean; rawRef?: string; rawBytes?: number; error?: string }> {
   try {
-    const fileHandle = await dir.getFileHandle(rawRef, { create: true });
-    const writable = await fileHandle.createWritable();
-    await writable.write(body);
-    await writable.close();
-    const rawBytes = new TextEncoder().encode(body).length;
-    return { ok: true, rawRef, rawBytes };
-  } catch (e) {
-    return { ok: false, error: String(e) };
+    const stored = await putContent({ itemId, kind, body, ...options });
+    return { ok: true, rawRef: stored.rawRef, rawBytes: stored.rawBytes };
+  } catch (error) {
+    return { ok: false, error: String(error) };
   }
 }
 
-export async function writeRawBody(itemId: string, body: string): Promise<{
-  ok: boolean;
-  rawRef?: string;
-  rawBytes?: number;
-  error?: string;
-}> {
-  const dir = await getCacheDirectory();
-  if (!dir) {
-    return { ok: false, error: 'no_backup_folder' };
-  }
-  const rawRef = rawRefForItem(itemId);
-  try {
-    const fileHandle = await dir.getFileHandle(rawRef, { create: true });
-    const writable = await fileHandle.createWritable();
-    await writable.write(body);
-    await writable.close();
-    const rawBytes = new TextEncoder().encode(body).length;
-    return { ok: true, rawRef, rawBytes };
-  } catch (e) {
-    return { ok: false, error: String(e) };
-  }
+export function writeReviewRawBody(
+  itemId: string,
+  body: string,
+  options?: WriteBodyOptions
+): Promise<{ ok: boolean; rawRef?: string; rawBytes?: number; error?: string }> {
+  return writeBody(itemId, 'review', body, options);
+}
+
+export function writeRawBody(
+  itemId: string,
+  body: string,
+  options?: WriteBodyOptions
+): Promise<{ ok: boolean; rawRef?: string; rawBytes?: number; error?: string }> {
+  return writeBody(itemId, 'raw', body, options);
 }
 
 export async function loadRawBody(rawRef: string): Promise<string | null> {
-  const dir = await getCacheDirectory();
+  if (rawRef.startsWith('content:v1:')) {
+    try {
+      return (await getContentByRef(rawRef))?.body ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Read-only bridge for libraries whose core rows still reference V2 files.
+  const dir = await getLegacyCacheDirectory(false);
   if (!dir) return null;
   try {
     const fileHandle = await dir.getFileHandle(rawRef);
-    const file = await fileHandle.getFile();
-    return await file.text();
+    return await (await fileHandle.getFile()).text();
   } catch {
     return null;
   }
 }
 
-export async function deleteRawBody(itemId: string): Promise<void> {
-  const dir = await getCacheDirectory();
+async function removeLegacyFile(filename: string): Promise<void> {
+  const dir = await getLegacyCacheDirectory(false);
   if (!dir) return;
-  const rawRef = rawRefForItem(itemId);
   try {
-    await dir.removeEntry(rawRef);
+    await dir.removeEntry(filename);
   } catch {
-    /* file may not exist */
+    // File may not exist.
   }
 }
 
-/** Remove every file in backup-folder enrichment-cache (testing reset). */
+export async function deleteRawBody(itemId: string): Promise<void> {
+  await deleteContent(itemId, 'raw');
+  await removeLegacyFile(rawRefForItem(itemId));
+}
+
+export async function deleteReviewRawBody(itemId: string): Promise<void> {
+  await deleteContent(itemId, 'review');
+  await removeLegacyFile(reviewRawRefForItem(itemId));
+}
+
+/** Clear sidecar rows plus any legacy per-item cache files (testing reset). */
 export async function purgeAllEnrichmentCacheFiles(): Promise<number> {
-  const root = await getCacheDirectory();
-  if (!root) return 0;
-  let removed = 0;
+  const content = await clearContent();
+  const root = await getLegacyCacheDirectory(false);
+  if (!root) return content.removed;
+  let legacyRemoved = 0;
   try {
     for await (const [name] of (root as DirectoryWithEntries).entries()) {
       try {
         await root.removeEntry(name, { recursive: true });
-        removed++;
+        legacyRemoved++;
       } catch {
-        /* skip */
+        // Skip entries that disappeared concurrently.
       }
     }
   } catch {
-    return removed;
+    // Return the rows already cleared from the sidecar.
   }
-  return removed;
+  return content.removed + legacyRemoved;
 }

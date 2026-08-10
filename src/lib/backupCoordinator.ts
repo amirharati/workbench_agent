@@ -344,6 +344,17 @@ class BackupCoordinatorImpl {
         return summary;
       }
 
+      const { checkpointContentStore } = await import('./storage/content/contentClient');
+      const contentSnapshot = await checkpointContentStore();
+      summary.outcomes.push({
+        sinkId: 'content-folder-snapshot',
+        result: {
+          ok: contentSnapshot.ok,
+          ref: contentSnapshot.ok ? 'workbench-content.sqlite' : undefined,
+          error: contentSnapshot.error,
+        },
+      });
+
       const live = await readBinaryFromBackupFolder(WORKBENCH_DB_FILE);
       const bytes = live.ok ? normalizeBinaryPayload(live.data) : null;
       if (!bytes || bytes.byteLength < 16) {
@@ -359,11 +370,14 @@ class BackupCoordinatorImpl {
         sinkId: 'folder-mirror',
         result: { ok: res.ok, ref: res.ok ? filename : undefined, error: res.error },
       });
-      summary.ok = res.ok;
-      if (res.ok) {
+      summary.ok = res.ok && contentSnapshot.ok;
+      if (summary.ok) {
         this.publishStatus({ lastManualOkAt: at });
       } else {
-        this.publishStatus({ lastErrorAt: at, lastError: res.error ?? 'Manual backup failed' });
+        this.publishStatus({
+          lastErrorAt: at,
+          lastError: res.error ?? contentSnapshot.error ?? 'Manual backup failed',
+        });
       }
       return summary;
     } catch (e) {

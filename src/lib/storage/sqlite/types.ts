@@ -3,6 +3,9 @@
 export interface SqliteConfig {
   dbName: string;
   schemaVersion: number;
+  /** Optional isolated OPFS pool for a worker with a separate storage lifecycle. */
+  opfsVfsName?: string;
+  opfsDirectory?: string;
 }
 
 export interface TransactionContext {

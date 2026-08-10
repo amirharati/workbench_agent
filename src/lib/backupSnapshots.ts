@@ -5,6 +5,7 @@
 import { kvGet, kvPut } from './metaDb';
 import {
   WORKBENCH_DB_FILE,
+  WORKBENCH_CONTENT_DB_FILE,
   getBackupDirectoryHandle,
   readBinaryFromBackupFolder,
   writeBinaryAtomicallyToBackupFolder,
@@ -25,6 +26,7 @@ const MIN_LIVE_BYTES_FOR_ROTATION = 16;
 
 /** Private temps / staging — never show in Settings backup list. */
 const HIDDEN_SQLITE_FILES = new Set([
+  WORKBENCH_CONTENT_DB_FILE,
   IMPORT_STAGING_FILE,
   RESTORE_INCOMING_TEMP,
   'import-staging.sqlite',

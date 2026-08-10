@@ -253,7 +253,7 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-004 | 2026-08-08 | Search / organization | Cannot search All Library for material not already in a target project or collection | P2 | READY TO RETEST | Pre-ranking `Not in…` project/collection filter | Uncommitted | Contextual project/collection retest pending |
 | V3-005 | 2026-08-08 | Search / query semantics | Multi-term Search syntax and result counts are unclear/non-monotonic | P2 | READY TO RETEST | Parsed AND/OR/phrase grammar, worker-owned semantic ranking, visible fallback | Uncommitted | Fixed-query and live-embedding retest pending |
 | V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | CLOSED | Preserve restored Search scope; follow later shell navigation only | `cfad800` | PASS — refresh and later navigation, 2026-08-09 |
-| V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | FIXING | Rebuild compressed content sidecar with a separate content worker | Safety branch only | Clean-install enrichment/reinstall recovery pending |
+| V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | FIXING | Content sidecar checkpoint ready; automatic run artifacts remain with coordinator cleanup | Checkpoint 2 uncommitted | Content reload/reinstall recovery pending |
 | V3-008 | 2026-08-09 | Pipeline / resume recovery | System sleep can strand a batch; first coordinator build stalled at 5% and blocked Hub loading | P1 | FIXING | Rebuild one shared serialized coordinator, then expand only after acceptance gates | Safety branch only | One link through sleep/wake, then large batch |
 
 ### V3-001 — Replace stale Help with a comprehensive daily-use guide
@@ -422,15 +422,16 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   core user data remains more critical and keeps its existing recovery rotation.
 - Decision: fix before the real import. No legacy migration is required because V3 is unreleased and
   testing will restart from a clean extension/folder.
-- Prior attempt (not active branch): raw and review bodies are independently compressed rows in worker-owned
-  `workbench-content.sqlite`; they are read individually and never bulk-hydrated. Pipeline completion,
-  60 seconds of inactivity, and Backup now publish one atomic folder snapshot without history copies.
-  Folder recovery restores core first and content second; missing/corrupt content cannot block Homebase.
-  Automatic runs no longer create diagnostic folder artifacts, while explicit export remains available.
-  Protocol is v8. Twenty-eight focused content/search/backup/settings tests and the production build pass.
-- Retest: on a clean install, enrich several links and inspect raw content. Confirm the folder contains
-  `workbench.sqlite`, `workbench.meta.json`, and one `workbench-content.sqlite` but no
-  `enrichment-cache/` or automatic `pipeline-runs/`. Reload Chrome and re-open raw content. Then
+- Current checkpoint: a dedicated content worker owns immutable `(item_id, kind, content_hash)` rows in
+  OPFS `workbench-content.sqlite`; raw/review bodies are independently compressed, referenced by exact hash,
+  and loaded only on demand. Content recovery starts independently after core recovery. Normal writes never
+  touch the selected folder; 60 seconds of write inactivity schedules one atomic snapshot, while the explicit
+  Backup now action waits for it. Existing legacy files remain read/delete compatible, but new writes do not
+  create them. Pipeline runners and automatic run-artifact behavior are intentionally unchanged until later
+  coordinator checkpoints. Protocol is v7; focused content/backup tests and the production build pass.
+- Retest: on a clean install, enrich several links and inspect raw content. After 60 seconds (or Backup now),
+  confirm the folder contains `workbench.sqlite`, `workbench.meta.json`, and one
+  `workbench-content.sqlite`, with no new files in `enrichment-cache/`. Reload Chrome and re-open raw content. Then
   uninstall/reinstall, select the same folder, and confirm raw content opens without another fetch.
 
 ### V3-008 — Interruption or refresh strands a running pipeline and Dashboard navigation

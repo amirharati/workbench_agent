@@ -2,22 +2,24 @@
 
 ## Status
 
-The implementation attempted after `33396e1` is preserved on a safety branch only. The active branch returns
-to that checkpoint for application code; this document is the independent restoration plan.
+The implementation attempted after `33396e1` is preserved on a safety branch only. The active branch was
+returned to that checkpoint and is rebuilding independently. Checkpoint 1 is accepted; checkpoint 2 is
+implemented and awaiting real-extension acceptance.
 
 Do not copy the safety patch wholesale. It is evidence and a source of tests and lessons, not an
 implementation dependency.
 
 ## Restore deliberately
 
-1. Reapply V3-006 as a small independent Search scope-restoration change and retest refresh plus later shell
-   navigation.
-2. Create `workbench-content.sqlite` with its own content worker. Keep raw/review bodies compressed and
-   hash-guarded; core-library startup must not depend on content availability.
-3. Store immutable content rows keyed by `(item_id, kind, content_hash)`, then use a fenced core commit to
-   reference the accepted row. Orphan cleanup is asynchronous.
-4. Make content-folder snapshots asynchronous, coarse, and atomically replaced. No folder I/O belongs on
-   fetch, cancellation, completion, Resume, or dashboard-navigation paths.
+1. **Done / accepted:** reapply V3-006 as a small independent Search scope-restoration change and retest
+   refresh plus later shell navigation.
+2. **Implemented / awaiting acceptance:** create `workbench-content.sqlite` with its own content worker.
+   Keep raw/review bodies compressed and hash-guarded; core-library startup must not depend on content
+   availability.
+3. **Partly implemented:** store immutable content rows keyed by `(item_id, kind, content_hash)`. The fenced
+   core commit and asynchronous orphan cleanup arrive with the durable job API/coordinator.
+4. **Implemented / awaiting acceptance:** make content-folder snapshots asynchronous, coarse, and atomically
+   replaced. No folder I/O belongs on fetch, cancellation, completion, Resume, or dashboard-navigation paths.
 5. Add core-owned durable jobs and per-item, per-stage tasks in `workbench.sqlite`. Full processing stages are
    preflight, fetch, content store, AI extraction, enrichment commit, embedding, classification, and finalization.
 6. Split existing write-through functions into compute plus fenced-commit operations. In particular,
@@ -49,9 +51,10 @@ implementation dependency.
 
 Each checkpoint is independently buildable and reviewable:
 
-1. **Baseline restoration:** V3-006 only; user verifies Search scope restoration.
-2. **Content storage:** separate worker, immutable compressed rows, on-demand reads, local clear/delete, and
-   asynchronous one-file snapshot. Existing pipeline ownership remains unchanged for this checkpoint.
+1. **Accepted — baseline restoration:** V3-006 only; user verified Search scope restoration.
+2. **Ready to test — content storage:** separate worker, immutable compressed rows, on-demand reads, local
+   clear/delete, and asynchronous one-file snapshot. Existing pipeline ownership remains unchanged for this
+   checkpoint.
 3. **Durable core API:** schema plus submit, claim, heartbeat, cancel, fenced commit, recovery, and query RPCs;
    no UI runner migration yet.
 4. **One-link vertical slice:** Hub submission through the coordinator using explicit stage boundaries.

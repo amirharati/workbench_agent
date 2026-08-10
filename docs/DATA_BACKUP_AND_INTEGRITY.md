@@ -48,11 +48,12 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
    - Legacy **`latest.sqlite`** / **`latest.json`** read for migration only — not rewritten on every edit.
    - Live JSON backup **disabled**; manual snapshots on demand.
 
-1a. **Fetched-content sidecar (V3 rebuild target — not active)**
+1a. **Fetched-content sidecar (V3 checkpoint 2 — implemented, awaiting extension acceptance)**
    - Raw and pending-review bodies are independently gzip-compressed rows in worker-owned OPFS
      `workbench-content.sqlite`; the dashboard loads one body only when requested.
    - The selected folder contains one current `workbench-content.sqlite`, atomically replaced after
-     a pipeline boundary, 60 seconds of write inactivity, or **Backup now**. It has no history rotation.
+     60 seconds of write inactivity or **Backup now**. It has no history rotation and pipeline completion
+     does not wait for it.
    - Core recovery never depends on content recovery. On reinstall, the linked folder's content
      snapshot is restored after the core database and matching hashes guard against stale bodies.
    - Normal pipeline runs keep diagnostics in SQLite and do not create `pipeline-runs/app-*` trees;
@@ -214,7 +215,7 @@ Introduce a small internal layer so file backup is **one implementation**, not s
 - `src/lib/backupCoordinator.ts` — debounced live/manual orchestration + conflict checks/resolution helpers.
 - `src/lib/backupSinks.ts` — sink interface + `FileSystemSqliteBackupSink` (json + sqlite bytes).
 - `src/lib/storage/dbWorker/` — worker, `mirrorToFolder.ts`, OPFS connection.
-- Planned: separate content worker and compressed, on-demand fetched-content sidecar.
+- `src/lib/storage/content/` — separate content worker/client plus immutable compressed, on-demand sidecar.
 - `src/lib/storage/dbClient/` — tab RPC client, `RemoteIdbCompatStore`.
 - `src/offscreen/offscreen.ts` — DB owner, bootstrap from folder, mirror write.
 - `src/lib/backupFolder.ts` — folder handle persistence + read/write helpers.
