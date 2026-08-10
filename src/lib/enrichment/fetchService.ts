@@ -387,13 +387,14 @@ async function tabSessionFetchResult(
 async function tryOpenTabFetch(
   url: string,
   tabId?: number,
-  options?: { allowEphemeral?: boolean; signal?: AbortSignal }
+  options?: { allowEphemeral?: boolean; windowId?: number; signal?: AbortSignal }
 ): Promise<{ result: FetchProviderResult | null; error?: FetchProviderResult }> {
   if (!hasDirectBrowserTabAccess()) {
     const remote = await fetchThroughBrowserService(url, {
       tabId,
       mode: 'any',
       allowEphemeral: options?.allowEphemeral,
+      windowId: options?.windowId,
       signal: options?.signal,
     });
     if (!remote.ok || !remote.markdown?.trim()) {
@@ -586,6 +587,7 @@ async function resolveItemFetch(
     tabId?: number;
     /** Skip headless — open/match tab (incl. ephemeral) only. */
     tabSessionOnly?: boolean;
+    browserWindowId?: number;
     debug?: PipelineDebugCollector;
   }
 ): Promise<FetchProviderResult> {
@@ -597,6 +599,7 @@ async function resolveItemFetch(
     try {
       return await tryOpenTabFetch(item.url, options?.tabId, {
         allowEphemeral,
+        windowId: options?.browserWindowId,
         signal: tabPhase.signal,
       });
     } finally {
@@ -846,6 +849,8 @@ export async function enrichOne(
     tabId?: number;
     /** Browser tab only (skip headless). Used by Inspector “Fetch in browser”. */
     tabSessionOnly?: boolean;
+    /** Chrome window reserved for temporary browser-session fetch tabs. */
+    browserWindowId?: number;
     /** Fetch and parse only — preserve existing AI fields; no extractEnrichmentWithAI. */
     skipAi?: boolean;
     /** Batch import: defer embed + classify queue until batch post-process. */
@@ -961,6 +966,7 @@ export async function enrichOne(
       preferTabSession,
       tabId,
       tabSessionOnly: options?.tabSessionOnly,
+      browserWindowId: options?.browserWindowId,
       debug: collector,
     });
     fetchMs = Date.now() - fetchStart;

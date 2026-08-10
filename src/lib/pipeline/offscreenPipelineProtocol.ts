@@ -42,6 +42,9 @@ export type OffscreenSingleJobOptions = {
   preferTabSession?: boolean;
   tabId?: number;
   tabSessionOnly?: boolean;
+  /** Runtime placement for temporary browser-fetch tabs. */
+  browserOwnerTabId?: number;
+  browserWindowId?: number;
   /** Ephemeral submission-only settings; the host never persists this in the job payload. */
   aiSettings?: AISettings;
 };
@@ -68,6 +71,24 @@ export type PipelineOffscreenCancel = {
   action: 'cancel';
   requestId: string;
   reason?: string;
+};
+
+export type PipelineOffscreenPause = {
+  target: typeof PIPELINE_OFFSCREEN_TARGET | typeof PIPELINE_OFFSCREEN_OWNER;
+  action: 'pause';
+  requestId: string;
+  reason?: string;
+};
+
+export type PipelineOffscreenResume = {
+  target: typeof PIPELINE_OFFSCREEN_TARGET | typeof PIPELINE_OFFSCREEN_OWNER;
+  action: 'resume';
+  requestId: string;
+  /** Filled by the service worker from the dashboard that requested Resume. */
+  browserOwnerTabId?: number;
+  browserWindowId?: number;
+  /** Ephemeral Resume handoff; never merged into the durable payload. */
+  aiSettings?: AISettings;
 };
 
 export type PipelineOffscreenProgressEvent = {

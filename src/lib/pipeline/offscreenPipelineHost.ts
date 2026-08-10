@@ -22,6 +22,8 @@ import {
   PIPELINE_OFFSCREEN_OWNER,
   type OffscreenPipelineJobOptions,
   type PipelineOffscreenCancel,
+  type PipelineOffscreenPause,
+  type PipelineOffscreenResume,
   type PipelineOffscreenDoneEvent,
   type PipelineOffscreenProgressEvent,
   type PipelineOffscreenStartJob,
@@ -40,9 +42,9 @@ type QueuedPipelineJob = {
   controller: AbortController;
 };
 const queuedJobs = new Map<string, QueuedPipelineJob>();
+const pauseRequestedJobs = new Set<string>();
 let queuePumpRunning = false;
 let activeJobId: string | null = null;
-let recoveryTimer: number | undefined;
 const ownerId = `pipeline-coordinator:${crypto.randomUUID()}`;
 const LEASE_LOST_REASON = 'pipeline-lease-lost';
 
@@ -97,6 +99,8 @@ function durablePayload(options: OffscreenPipelineJobOptions): Record<string, un
     preferTabSession: options.preferTabSession,
     tabId: options.tabId,
     tabSessionOnly: options.tabSessionOnly,
+    browserOwnerTabId: options.browserOwnerTabId,
+    browserWindowId: options.browserWindowId,
   };
 }
 
@@ -232,7 +236,18 @@ async function executeQueuedJob(entry: QueuedPipelineJob): Promise<'yielded' | '
       ),
       onProgress: (progress) => broadcastProgress(jobId, progress),
       shouldYieldAfterItem: () => hasHigherPriorityWaiting(entry),
+      shouldPauseAfterStage: () => pauseRequestedJobs.has(jobId),
     }));
+    if (execution.paused) {
+      pauseRequestedJobs.delete(jobId);
+      broadcastProgress(jobId, {
+        phase: 'prep',
+        label: 'Paused because the processing dashboard closed…',
+        current: execution.snapshot.job.completed_items,
+        total: Math.max(execution.snapshot.job.total_items, 1),
+      });
+      return 'finished';
+    }
     if (execution.yielded) {
       broadcastProgress(jobId, {
         phase: 'prep',
@@ -305,7 +320,7 @@ async function pumpPipelineQueue(): Promise<void> {
   }
 }
 
-async function recoverDurableJobs(): Promise<boolean> {
+async function recoverDurableJobs(hostedJobIds?: Set<string>): Promise<boolean> {
   await dbRpc('pipelineRecoverExpired', [Date.now()], { priority: 'high' });
   const snapshots = await dbRpc<PipelineJobSnapshot[]>(
     'pipelineListRecoverable',
@@ -327,6 +342,13 @@ async function recoverDurableJobs(): Promise<boolean> {
     }
     if (job.action.endsWith('_v2') && job.status === 'queued') {
       const options = parseOptions(snapshot);
+      const requiresDashboardHost =
+        typeof options.browserOwnerTabId === 'number' &&
+        typeof options.browserWindowId === 'number';
+      if (requiresDashboardHost && hostedJobIds && !hostedJobIds.has(job.id)) {
+        await dbRpc('pipelineRequestPause', [job.id], { priority: 'high' });
+        continue;
+      }
       const operation = (options as OffscreenPipelineJobOptions & { operation?: PipelineJobOperation }).operation
         ?? job.action.replace(/_v2$/, '') as PipelineJobOperation;
       const itemIds = operation === 'discover'
@@ -348,10 +370,11 @@ export function installOffscreenPipelineHost(): void {
       void dbRpc('pipelineRequestCancel', [cancel.requestId], { priority: 'high' })
         .then(async () => {
           controllers.get(cancel.requestId)?.abort(cancel.reason);
-          if (activeJobId !== cancel.requestId && queuedJobs.has(cancel.requestId)) {
+          if (activeJobId !== cancel.requestId) {
             await dbRpc('pipelineAcknowledgeCancel', [cancel.requestId], { priority: 'high' });
             queuedJobs.delete(cancel.requestId);
             controllers.delete(cancel.requestId);
+            pauseRequestedJobs.delete(cancel.requestId);
             broadcastDone({
               type: 'pipeline-offscreen-done',
               requestId: cancel.requestId,
@@ -365,8 +388,71 @@ export function installOffscreenPipelineHost(): void {
       return true;
     }
 
+    if (message.action === 'pause') {
+      const pause = message as PipelineOffscreenPause;
+      pauseRequestedJobs.add(pause.requestId);
+      void dbRpc<PipelineJobSnapshot | null>(
+        'pipelineRequestPause',
+        [pause.requestId],
+        { priority: 'high' }
+      )
+        .then((snapshot) => {
+          if (activeJobId !== pause.requestId && snapshot?.job.status === 'paused') {
+            queuedJobs.delete(pause.requestId);
+            controllers.delete(pause.requestId);
+            pauseRequestedJobs.delete(pause.requestId);
+          } else if (snapshot && ['completed', 'failed', 'cancelled'].includes(snapshot.job.status)) {
+            pauseRequestedJobs.delete(pause.requestId);
+          }
+          sendResponse({ ok: true, status: snapshot?.job.status ?? 'missing' });
+        })
+        .catch((error) => sendResponse({ ok: false, error: String(error) }));
+      return true;
+    }
+
+    if (message.action === 'resume') {
+      const resume = message as PipelineOffscreenResume;
+      void dbRpc<{ accepted: boolean; snapshot: PipelineJobSnapshot | null }>(
+        'pipelineResumeJob',
+        [resume.requestId, resume.browserOwnerTabId, resume.browserWindowId],
+        { priority: 'high' }
+      )
+        .then((resumed) => {
+          if (!resumed.accepted || !resumed.snapshot) {
+            sendResponse({ ok: false, error: 'Pipeline is not paused' });
+            return;
+          }
+          const durableOptions = parseOptions(resumed.snapshot);
+          const options: OffscreenPipelineJobOptions = {
+            ...durableOptions,
+            aiSettings: resume.aiSettings?.apiKey.trim() ? resume.aiSettings : undefined,
+          };
+          const operation = (options as OffscreenPipelineJobOptions & { operation?: PipelineJobOperation }).operation
+            ?? resumed.snapshot.job.action.replace(/_v2$/, '') as PipelineJobOperation;
+          const itemIds = operation === 'discover'
+            ? options.discoverItemIds ?? []
+            : itemIdsFromSnapshot(resumed.snapshot);
+          enqueueAcceptedJob(
+            resumed.snapshot.job.id,
+            itemIds,
+            options,
+            operation,
+            resumed.snapshot.job.priority,
+            resumed.snapshot.job.created_at
+          );
+          sendResponse({ ok: true, requestId: resume.requestId });
+        })
+        .catch((error) => sendResponse({ ok: false, error: String(error) }));
+      return true;
+    }
+
     if (message.action === 'recover') {
-      void recoverDurableJobs()
+      const hostedJobIds = new Set<string>(
+        Array.isArray(message.hostedJobIds)
+          ? message.hostedJobIds.filter((value: unknown): value is string => typeof value === 'string')
+          : []
+      );
+      void recoverDurableJobs(hostedJobIds)
         .then((active) => sendResponse({ ok: true, active }))
         .catch((error) => sendResponse({ ok: false, active: true, error: String(error) }));
       return true;
@@ -406,14 +492,8 @@ export function installOffscreenPipelineHost(): void {
     return true;
   });
 
-  void recoverDurableJobs().catch((error) => {
-    console.error('[pipeline] startup recovery failed:', error);
-  });
-  recoveryTimer = window.setInterval(() => {
-    void recoverDurableJobs().catch((error) => {
-      console.error('[pipeline] periodic recovery failed:', error);
-    });
-  }, 15_000);
-  void recoveryTimer;
+  // Recovery is initiated by the service worker, which supplies the dashboard
+  // host bindings retained in chrome.storage.session. A Chrome restart can
+  // therefore pause stale hosted jobs instead of using an arbitrary window.
   console.log('[pipeline] Durable coordinator ready (one serialized lane)');
 }

@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initSchema, initSqlite3, type Database } from '../sqlite/connectionShared';
 import {
   PIPELINE_JOB_SCHEMA_SQL,
+  acknowledgePipelinePause,
   acknowledgePipelineCancellation,
   claimNextPipelineTask,
   finishPipelineTask,
   getPipelineJobSnapshot,
   recoverExpiredPipelineTasks,
+  requestPipelinePause,
   requestPipelineCancellation,
+  resumePipelineJob,
   submitPipelineJob,
   yieldPipelineJob,
 } from './pipelineJobStore';
@@ -24,7 +27,7 @@ describe('durable pipeline job store', () => {
 
   afterEach(() => db.close());
 
-  it('migrates an existing schema-v4 database to the durable job tables', () => {
+  it('migrates an existing schema-v4 database to the current durable job tables', () => {
     db.exec('DROP TABLE pipeline_tasks; DROP TABLE pipeline_jobs;');
     db.exec(`
       CREATE TABLE app_meta (
@@ -36,7 +39,7 @@ describe('durable pipeline job store', () => {
       INSERT INTO app_meta (id, schema_version, created_at) VALUES ('default', 4, 1);
       PRAGMA user_version = 4;
     `);
-    initSchema(db, 5);
+    initSchema(db, 6);
     const names = db.exec({
       sql: `SELECT name FROM sqlite_master
             WHERE type = 'table' AND name IN ('pipeline_jobs', 'pipeline_tasks')
@@ -45,7 +48,7 @@ describe('durable pipeline job store', () => {
       rowMode: 'array',
     }) as unknown[][];
     expect(names).toEqual([['pipeline_jobs'], ['pipeline_tasks']]);
-    expect(db.exec({ sql: 'PRAGMA user_version;', returnValue: 'resultRows' })[0]?.[0]).toBe(5);
+    expect(db.exec({ sql: 'PRAGMA user_version;', returnValue: 'resultRows' })[0]?.[0]).toBe(6);
   });
 
   it('commits staged tasks before acknowledging and deduplicates active work', () => {
@@ -233,6 +236,40 @@ describe('durable pipeline job store', () => {
     });
     expect(late.accepted).toBe(false);
     expect(acknowledgePipelineCancellation(db, 'job-1', 350)?.job.status).toBe('cancelled');
+  });
+
+  it('pauses after a running stage commits and resumes with a new dashboard window', () => {
+    submitPipelineJob(db, {
+      id: 'job-pause', dedupeKey: 'pause:item-1', action: 'full_digest_v2', source: 'hub',
+      itemIds: ['item-1', 'item-2'], stages: ['enrich', 'finalize'],
+      payload: { browserOwnerTabId: 10, browserWindowId: 20 }, now: 100,
+    });
+    const claim = claimNextPipelineTask(db, 'owner-a', 5_000, 200, 'job-pause')!;
+    expect(requestPipelinePause(db, 'job-pause', 210)?.job.status).toBe('pause_requested');
+
+    const committed = finishPipelineTask(db, {
+      jobId: 'job-pause', itemId: claim.task.item_id, stage: claim.task.stage,
+      ownerId: 'owner-a', jobLeaseEpoch: claim.jobLeaseEpoch,
+      taskLeaseEpoch: claim.taskLeaseEpoch, outcome: 'completed', now: 220,
+    });
+    expect(committed.accepted).toBe(true);
+    expect(acknowledgePipelinePause(db, 'job-pause', 230)?.job.status).toBe('paused');
+    expect(claimNextPipelineTask(db, 'owner-a', 5_000, 240, 'job-pause')).toBeNull();
+
+    const duplicate = submitPipelineJob(db, {
+      id: 'duplicate', dedupeKey: 'pause:item-1', action: 'full_digest_v2', source: 'hub',
+      itemIds: ['item-1'], stages: ['enrich'], now: 250,
+    });
+    expect(duplicate.accepted).toBe(false);
+
+    const resumed = resumePipelineJob(db, 'job-pause', 30, 40, 260);
+    expect(resumed.accepted).toBe(true);
+    expect(resumed.snapshot?.job.status).toBe('queued');
+    expect(JSON.parse(resumed.snapshot!.job.payload_json)).toMatchObject({
+      browserOwnerTabId: 30,
+      browserWindowId: 40,
+    });
+    expect(claimNextPipelineTask(db, 'owner-b', 5_000, 270, 'job-pause')?.task.stage).toBe('finalize');
   });
 
   it('requeues expired safe work but leaves interrupted paid work uncertain', () => {

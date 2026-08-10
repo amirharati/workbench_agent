@@ -7,9 +7,74 @@ const OFFSCREEN_URL = 'offscreen.html';
 // Keep this in sync with src/offscreen/offscreen.ts and the DB worker response.
 const DB_OWNER_PROTOCOL_VERSION = 14;
 const PIPELINE_RECOVERY_ALARM = 'pipeline-recovery-wake';
+const PIPELINE_JOB_HOSTS_KEY = 'pipelineJobHosts';
 let offscreenCreating = null;
 let offscreenProtocolVerified = false;
 const browserFetchService = globalThis.HomebaseBrowserFetchService.createBrowserFetchService(chrome);
+const pipelineJobHosts = new Map();
+let pipelineJobHostsLoaded = false;
+
+async function loadPipelineJobHosts() {
+  if (pipelineJobHostsLoaded) return;
+  pipelineJobHostsLoaded = true;
+  try {
+    const stored = (await chrome.storage.session.get(PIPELINE_JOB_HOSTS_KEY))[PIPELINE_JOB_HOSTS_KEY];
+    if (!stored || typeof stored !== 'object') return;
+    for (const [jobId, host] of Object.entries(stored)) {
+      if (host && typeof host.tabId === 'number' && typeof host.windowId === 'number') {
+        pipelineJobHosts.set(jobId, host);
+      }
+    }
+  } catch {
+    // Session storage is an optimization; durable job state remains in SQLite.
+  }
+}
+
+async function persistPipelineJobHosts() {
+  try {
+    await chrome.storage.session.set({
+      [PIPELINE_JOB_HOSTS_KEY]: Object.fromEntries(pipelineJobHosts),
+    });
+  } catch {
+    // Ignore unavailable session storage.
+  }
+}
+
+async function bindPipelineJobHost(jobId, tabId, windowId) {
+  await loadPipelineJobHosts();
+  if (typeof tabId !== 'number' || typeof windowId !== 'number') return;
+  pipelineJobHosts.set(jobId, { tabId, windowId });
+  await persistPipelineJobHosts();
+}
+
+async function unbindPipelineJobHost(jobId) {
+  await loadPipelineJobHosts();
+  if (!pipelineJobHosts.delete(jobId)) return;
+  await persistPipelineJobHosts();
+}
+
+async function pausePipelinesOwnedByTab(tabId) {
+  await loadPipelineJobHosts();
+  const jobIds = [...pipelineJobHosts]
+    .filter(([, host]) => host.tabId === tabId)
+    .map(([jobId]) => jobId);
+  for (const jobId of jobIds) {
+    try {
+      await ensureOffscreenDocument();
+      await chrome.runtime.sendMessage({
+        target: 'pipeline-offscreen-owner',
+        action: 'pause',
+        requestId: jobId,
+        reason: 'owner-dashboard-closed',
+      });
+    } catch (error) {
+      console.error('[pipeline] owner-close pause failed:', error);
+    } finally {
+      pipelineJobHosts.delete(jobId);
+    }
+  }
+  if (jobIds.length) await persistPipelineJobHosts();
+}
 
 async function notifyDbOwnerLost() {
   try {
@@ -152,6 +217,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   if (enabledSidePanelTabIds.has(tabId)) {
     void clearSidePanelHostTabId(tabId);
   }
+  void pausePipelinesOwnedByTab(tabId);
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
@@ -167,9 +233,11 @@ function armPipelineRecoveryAlarm() {
 
 async function wakePipelineCoordinator() {
   await ensureOffscreenDocument();
+  await loadPipelineJobHosts();
   const response = await chrome.runtime.sendMessage({
     target: 'pipeline-offscreen-owner',
     action: 'recover',
+    hostedJobIds: [...pipelineJobHosts.keys()],
   });
   if (response?.active) armPipelineRecoveryAlarm();
   return response;
@@ -194,7 +262,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   })();
 });
 // Listen for focus-tab messages (must be at top level, not inside onInstalled)
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'pipeline-offscreen-done' && typeof message.requestId === 'string') {
+    void unbindPipelineJobHost(message.requestId);
+    return false;
+  }
   if (message?.type === 'pipeline-recovery-arm') {
     armPipelineRecoveryAlarm();
     sendResponse({ ok: true });
@@ -267,10 +339,39 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     (async () => {
       try {
         await ensureOffscreenDocument();
+        const ownerTabId = sender.tab?.id;
+        const ownerWindowId = sender.tab?.windowId;
+        const forwarded = message.action === 'start-job'
+          ? {
+              ...message,
+              target: 'pipeline-offscreen-owner',
+              options: {
+                ...(message.options ?? {}),
+                browserOwnerTabId: ownerTabId,
+                browserWindowId: ownerWindowId,
+              },
+            }
+          : message.action === 'resume'
+            ? {
+                ...message,
+                target: 'pipeline-offscreen-owner',
+                browserOwnerTabId: ownerTabId,
+                browserWindowId: ownerWindowId,
+              }
+            : { ...message, target: 'pipeline-offscreen-owner' };
+        const bindsDashboard = message.action === 'start-job' || message.action === 'resume';
+        if (bindsDashboard) {
+          await bindPipelineJobHost(message.requestId, ownerTabId, ownerWindowId);
+        }
         const response = await chrome.runtime.sendMessage({
-          ...message,
-          target: 'pipeline-offscreen-owner',
+          ...forwarded,
         });
+        if (!response?.ok && bindsDashboard) {
+          await unbindPipelineJobHost(message.requestId);
+        }
+        if (response?.ok && message.action === 'cancel') {
+          await unbindPipelineJobHost(message.requestId);
+        }
         sendResponse(response ?? { ok: false, error: 'No response from pipeline host' });
       } catch (e) {
         sendResponse({ ok: false, error: String(e) });

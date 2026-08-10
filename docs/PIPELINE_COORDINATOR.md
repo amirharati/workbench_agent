@@ -4,10 +4,11 @@
 > runs prove durable execution advances and terminates; the first classification retest exposed and fixed
 > an offscreen AI-settings handoff regression. Automated tests and the production build pass.
 
-> Acceptance checkpoint — 2026-08-10: one-link processing, browser-first fetching, and closing the initiating
-> dashboard while another observes have passed. A live 451-link job continued after dashboard closure; its
-> first six items completed every stage with `tab-session` fetches and no failures. Cancellation is the next
-> lifecycle gate. Taxonomy discovery and `pending_discover` cleanup remain outside this acceptance.
+> Acceptance checkpoint — 2026-08-10: one-link processing and browser-first fetching passed, but the first
+> large run exposed that Chrome inserted temporary tabs into whichever window was currently focused. Schema
+> v6 now binds a job to the dashboard tab/window that started or resumed it. Closing that owner dashboard
+> requests a safe stage-boundary pause; Resume rebinds the unfinished job to the new dashboard window. This
+> window-affinity/pause behavior awaits real-extension acceptance.
 
 ## Decision
 
@@ -55,8 +56,9 @@ Import / Hub / sidebar / inspectors / maintenance UI
 - Interactive one-link jobs have priority over bulk jobs. A running bulk finishes its current item, releases
   its fenced lease, runs queued urgent links first, and then resumes at its next unfinished item.
 - Active jobs with overlapping item scopes are rejected instead of running concurrently.
-- Dashboard navigation, refresh, or closure does not affect execution ownership.
-- Every dashboard polls the same durable job table and displays a shared status/cancel banner.
+- Dashboard navigation and refresh do not affect execution ownership. Closing the dashboard tab that owns
+  browser placement requests a durable pause after the current stage commits; completed work is retained.
+- Every dashboard polls the same durable job table and displays shared status, Cancel, and paused-job Resume.
 - Cancellation is durable before the UI changes to terminal state, then Abort reaches fetch, extraction,
   browser-tab load/extraction, embedding, classification, and discovery. Cancellation closes only a
   temporary tab created for that request; an existing user tab is never closed.
@@ -75,6 +77,15 @@ profile, extract the rendered page, and close it. If browser extraction fails, t
 a fallback. X and video retain their specialized provider-first routing because their rendered DOM often
 contains application chrome rather than the requested post or media content. Temporary tabs are serialized,
 bounded by the existing fetch timeout, and always closed after success, failure, or cancellation.
+
+At Start or Resume, the service worker derives the caller's tab and window from Chrome's trusted message
+sender and stores that placement with the durable job. Matching-tab lookup and temporary-tab creation are
+scoped to that window, so changing focus to another Chrome window cannot redirect pipeline tabs into it.
+Closing the owner dashboard requests `pause_requested`; the active stage commits, the job becomes `paused`,
+and no next stage starts. Resume from any dashboard replaces the stale placement with that dashboard's
+tab/window IDs, resends AI settings ephemerally, and continues pending tasks. The API key is never merged
+into the durable payload. Browser restart without a live session binding also pauses a hosted job instead of
+guessing a window.
 
 The service worker returns extracted markdown, title, final page URL, and `tab-session` source metadata. The
 offscreen coordinator remains responsible for accepting the result and writing through the content/core
@@ -167,8 +178,10 @@ Run in order on the real unpacked extension:
 4. Re-digest an authenticated URL already open in Chrome, then close it and confirm the temporary-tab path.
 5. Cancel during temporary-tab load, another fetch, or embedding; wait for `Cancelled`, then start another job.
 6. Navigate and refresh during a job; the shared banner remains stable and work continues.
-7. Open another dashboard and close the initiator; the second dashboard observes the same job and result.
-8. Sleep/wake mid-batch; completed items stay complete and remaining items continue.
+7. Start from dashboard window A, work in window B, and confirm every temporary tab stays in A. Close the
+   owner dashboard, confirm a safe pause, then click Resume in B and confirm remaining tabs stay in B.
+8. Sleep/wake mid-batch while the owner dashboard remains open; completed items stay complete and remaining
+   items continue. Restarting Chrome without the owner binding should pause until Resume.
 9. Run a large batch; Hub/import reads remain responsive and no backup/content serialization blocks finish.
 
 Do not increase concurrency or further split stages until this sequence passes.

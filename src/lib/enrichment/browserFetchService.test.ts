@@ -90,12 +90,13 @@ describe('service-worker browser fetch capability', () => {
         requestId: 'temporary-tab',
         url: tab.url,
         allowEphemeral: true,
+        windowId: 17,
       });
       await vi.runAllTimersAsync();
       const result = await pending;
 
       expect(result.ok).toBe(true);
-      expect(tabs.create).toHaveBeenCalledWith({ url: tab.url, active: false });
+      expect(tabs.create).toHaveBeenCalledWith({ url: tab.url, active: false, windowId: 17 });
       expect(tabs.remove).toHaveBeenCalledWith(52);
     } finally {
       vi.useRealTimers();

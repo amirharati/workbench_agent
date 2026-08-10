@@ -11,6 +11,7 @@ import {
   type OffscreenPipelineJobOptions,
   type OffscreenSingleJobOptions,
   type PipelineOffscreenCancel,
+  type PipelineOffscreenResume,
   type PipelineOffscreenDoneEvent,
   type PipelineOffscreenProgressEvent,
   type PipelineOffscreenStartJob,
@@ -48,6 +49,19 @@ export async function requestPipelineJobCancellation(
   reason = 'user-cancelled'
 ): Promise<void> {
   await cancelOffscreenRequest(requestId, reason);
+}
+
+/** Resume a paused job and bind browser fetching to this dashboard's window. */
+export async function requestPipelineJobResume(requestId: string): Promise<void> {
+  const aiSettings = await loadAISettings();
+  const message: PipelineOffscreenResume = {
+    target: PIPELINE_OFFSCREEN_TARGET,
+    action: 'resume',
+    requestId,
+    aiSettings,
+  };
+  const response = await chrome.runtime.sendMessage(message) as { ok?: boolean; error?: string } | undefined;
+  if (!response?.ok) throw new Error(response?.error ?? 'Pipeline coordinator rejected Resume');
 }
 
 async function runJob(

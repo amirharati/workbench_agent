@@ -81,7 +81,7 @@ describe('offscreen browser-fetch client', () => {
 
     const result = await fetchThroughBrowserService(
       'https://private.example.com/article',
-      { allowEphemeral: true }
+      { allowEphemeral: true, windowId: 17 }
     );
 
     expect(result.ok).toBe(true);
@@ -90,6 +90,7 @@ describe('offscreen browser-fetch client', () => {
       target: 'browser-fetch-service',
       action: 'extract',
       allowEphemeral: true,
+      windowId: 17,
     }));
   });
 });

@@ -1,6 +1,6 @@
 import type { Database } from '../sqlite/connectionShared';
 
-export const PIPELINE_SCHEMA_VERSION = 5;
+export const PIPELINE_SCHEMA_VERSION = 6;
 
 export const PIPELINE_JOB_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS pipeline_jobs (
@@ -27,9 +27,10 @@ export const PIPELINE_JOB_SCHEMA_SQL = `
   );
   CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_queue
     ON pipeline_jobs(status, priority, created_at);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_pipeline_jobs_active_dedupe
+  DROP INDEX IF EXISTS idx_pipeline_jobs_active_dedupe;
+  CREATE UNIQUE INDEX idx_pipeline_jobs_active_dedupe
     ON pipeline_jobs(dedupe_key)
-    WHERE status IN ('queued', 'running', 'cancel_requested', 'cancelling');
+    WHERE status IN ('queued', 'running', 'pause_requested', 'paused', 'cancel_requested', 'cancelling');
 
   CREATE TABLE IF NOT EXISTS pipeline_tasks (
     job_id TEXT NOT NULL,
@@ -72,6 +73,8 @@ export type PipelineStage = (typeof FULL_ENRICH_STAGES)[number];
 export type PipelineJobStatus =
   | 'queued'
   | 'running'
+  | 'pause_requested'
+  | 'paused'
   | 'cancel_requested'
   | 'cancelling'
   | 'completed'
@@ -212,7 +215,7 @@ export function submitPipelineJob(
       db,
       `SELECT * FROM pipeline_jobs
        WHERE id = ? OR (dedupe_key = ? AND status IN
-         ('queued', 'running', 'cancel_requested', 'cancelling'))
+         ('queued', 'running', 'pause_requested', 'paused', 'cancel_requested', 'cancelling'))
        ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END LIMIT 1;`,
       [id, dedupeKey, id]
     );
@@ -226,7 +229,7 @@ export function submitPipelineJob(
       db,
       `SELECT j.* FROM pipeline_jobs j
        JOIN pipeline_tasks t ON t.job_id = j.id
-       WHERE j.status IN ('queued', 'running', 'cancel_requested', 'cancelling')
+       WHERE j.status IN ('queued', 'running', 'pause_requested', 'paused', 'cancel_requested', 'cancelling')
          AND t.item_id IN (${itemIds.map(() => '?').join(', ')})
        ORDER BY j.priority ASC, j.created_at ASC LIMIT 1;`,
       itemIds
@@ -345,7 +348,7 @@ export function heartbeatPipelineTask(
     if (!job) return { accepted: false, cancelRequested: false };
     const cancelRequested = job.cancel_requested_at != null || job.status === 'cancel_requested';
     if (
-      cancelRequested || job.status !== 'running' || job.lease_owner !== input.ownerId ||
+      cancelRequested || !['running', 'pause_requested'].includes(job.status) || job.lease_owner !== input.ownerId ||
       Number(job.lease_epoch) !== input.jobLeaseEpoch
     ) {
       return { accepted: false, cancelRequested };
@@ -443,7 +446,7 @@ export function finishPipelineTask(
               AND lease_owner = ? AND lease_epoch = ?
               AND EXISTS (
                 SELECT 1 FROM pipeline_jobs j WHERE j.id = pipeline_tasks.job_id
-                  AND j.status = 'running' AND j.cancel_requested_at IS NULL
+                  AND j.status IN ('running', 'pause_requested') AND j.cancel_requested_at IS NULL
                   AND j.lease_owner = ? AND j.lease_epoch = ?
               );`,
       bind: [
@@ -544,6 +547,81 @@ export function requestPipelineCancellation(
       bind: [now, jobId],
     });
     return getPipelineJobSnapshot(db, jobId);
+  });
+}
+
+/** Request a cooperative pause. A running stage finishes before the job stops. */
+export function requestPipelinePause(
+  db: Database,
+  jobId: string,
+  now = Date.now()
+): PipelineJobSnapshot | null {
+  return transaction(db, () => {
+    const job = one<PipelineJobRow>(db, 'SELECT * FROM pipeline_jobs WHERE id = ?;', [jobId]);
+    if (!job) return null;
+    if (['completed', 'failed', 'cancelled', 'paused'].includes(job.status)) {
+      return getPipelineJobSnapshot(db, jobId);
+    }
+    db.exec({
+      sql: `UPDATE pipeline_jobs
+            SET status = CASE WHEN status = 'queued' THEN 'paused' ELSE 'pause_requested' END,
+                lease_owner = CASE WHEN status = 'queued' THEN NULL ELSE lease_owner END,
+                lease_expires_at = CASE WHEN status = 'queued' THEN NULL ELSE lease_expires_at END,
+                updated_at = ?
+            WHERE id = ? AND status IN ('queued', 'running', 'pause_requested');`,
+      bind: [now, jobId],
+    });
+    return getPipelineJobSnapshot(db, jobId);
+  });
+}
+
+/** Finalize a cooperative pause after the current stage has committed. */
+export function acknowledgePipelinePause(
+  db: Database,
+  jobId: string,
+  now = Date.now()
+): PipelineJobSnapshot | null {
+  return transaction(db, () => {
+    db.exec({
+      sql: `UPDATE pipeline_jobs
+            SET status = 'paused', lease_owner = NULL, lease_epoch = lease_epoch + 1,
+                lease_expires_at = NULL, heartbeat_at = NULL, updated_at = ?
+            WHERE id = ? AND status = 'pause_requested'
+              AND NOT EXISTS (
+                SELECT 1 FROM pipeline_tasks t
+                WHERE t.job_id = pipeline_jobs.id AND t.status = 'running'
+              );`,
+      bind: [now, jobId],
+    });
+    return getPipelineJobSnapshot(db, jobId);
+  });
+}
+
+/** Resume a paused job and replace its transient dashboard/window affinity. */
+export function resumePipelineJob(
+  db: Database,
+  jobId: string,
+  browserOwnerTabId?: number,
+  browserWindowId?: number,
+  now = Date.now()
+): { accepted: boolean; snapshot: PipelineJobSnapshot | null } {
+  return transaction(db, () => {
+    const job = one<PipelineJobRow>(db, 'SELECT * FROM pipeline_jobs WHERE id = ?;', [jobId]);
+    if (!job || job.status !== 'paused') {
+      return { accepted: false, snapshot: job ? getPipelineJobSnapshot(db, jobId) : null };
+    }
+    let payload: Record<string, unknown> = {};
+    try { payload = JSON.parse(job.payload_json) as Record<string, unknown>; } catch { /* replace invalid payload */ }
+    payload.browserOwnerTabId = browserOwnerTabId;
+    payload.browserWindowId = browserWindowId;
+    db.exec({
+      sql: `UPDATE pipeline_jobs
+            SET status = 'queued', payload_json = ?, updated_at = ?, finished_at = NULL,
+                last_error = NULL
+            WHERE id = ? AND status = 'paused';`,
+      bind: [JSON.stringify(payload), now, jobId],
+    });
+    return { accepted: db.changes() === 1, snapshot: getPipelineJobSnapshot(db, jobId) };
   });
 }
 
@@ -681,6 +759,19 @@ export function listRecoverablePipelineJobs(db: Database): PipelineJobSnapshot[]
     db,
     `SELECT id FROM pipeline_jobs
      WHERE status IN ('queued', 'running', 'cancel_requested', 'cancelling')
+     ORDER BY priority ASC, created_at ASC;`
+  );
+  return jobs.flatMap(({ id }) => {
+    const snapshot = getPipelineJobSnapshot(db, id);
+    return snapshot ? [snapshot] : [];
+  });
+}
+
+export function listVisiblePipelineJobs(db: Database): PipelineJobSnapshot[] {
+  const jobs = rows<{ id: string }>(
+    db,
+    `SELECT id FROM pipeline_jobs
+     WHERE status IN ('queued', 'running', 'pause_requested', 'paused', 'cancel_requested', 'cancelling')
      ORDER BY priority ASC, created_at ASC;`
   );
   return jobs.flatMap(({ id }) => {

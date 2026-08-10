@@ -20,6 +20,9 @@ Completed in code:
 - Protocol-v14 service-worker browser-fetch capability for reusing matching authenticated tabs and opening
   one serialized temporary tab. Ordinary URL processing is browser-session first; X/video retain their
   specialized provider-first routes.
+- Schema-v6 job/window affinity: Start and Resume bind temporary fetch tabs to the calling dashboard's
+  Chrome window; owner-dashboard closure pauses safely after the current stage and preserves pending work.
+  Resume also resends AI settings ephemerally without persisting the key.
 
 Automated status: production build and focused coordinator/client/import/Hub tests pass. Real-extension
 acceptance is in progress.
@@ -35,10 +38,11 @@ Real-extension checkpoint — 2026-08-10:
   that browser capability to the service worker while leaving scheduling and writes in the coordinator.
   The first live bulk audit then showed all 23 ordinary URLs going headless after only a matching-tab probe;
   the policy is corrected so those URLs now create/reuse a serialized browser tab before headless fallback.
-- The corrected browser-first policy passed its first live lifecycle check: after the initiating dashboard
-  closed, a second dashboard continued observing a 451-link job while temporary tabs kept opening. At the
-  audit point, six items had completed enrich/embed/classify/finalize, all six recorded `tab-session`, the
-  seventh was running, and there were no failures. Browser-fetch cancellation still awaits manual acceptance.
+- The corrected browser-first policy recorded six consecutive `tab-session` completions in a live 451-link
+  job, but temporary tabs followed the currently focused Chrome window. Window affinity plus cooperative
+  owner-close pause/Resume passed its first live interaction test. Review then found seven post-Resume
+  classification failures because Resume did not resend the AI settings; all seven fetches themselves
+  succeeded with `tab-session`. The ephemeral Resume settings handoff is fixed and awaits retest.
 - Taxonomy discovery and the existing `pending_discover` pool are a separate product issue and are not part
   of pipeline lifecycle acceptance.
 
@@ -72,7 +76,8 @@ Real-extension checkpoint — 2026-08-10:
 2. **Five links:** sequential execution, exact counts, no duplicate or `queued behind` residue.
 3. **Cancel:** cancel during fetch or embedding, wait for durable terminal state, then start a new link.
 4. **Navigation/refresh:** move between pages and reload while processing; work and shared banner persist.
-5. **Close dashboards:** observe from a second dashboard, close the initiator, and confirm completion.
+5. **Window affinity / close dashboard:** start in window A, work in B, verify tabs stay in A; close the owner
+   dashboard, verify `Paused`, then Resume from B and verify unfinished work continues there.
 6. **Sleep/wake:** sleep during a multi-link run; completed items remain complete, one ambiguous active item
    may become `uncertain`, and later items continue.
 7. **Large batch:** verify responsive UI/DB reads and that content serialization/backup does not delay finish.
@@ -99,6 +104,6 @@ Then run the cancellation gate:
 4. Confirm the temporary tab closes and no queued item continues after cancellation.
 5. Immediately submit one new link and confirm it starts without stale `queued behind` state and completes.
 
-If this passes, continue with navigation/refresh, closing the initiating dashboard while observing from a
-second dashboard, sleep/wake, and finally a large batch. If it fails, inspect the durable job/task rows and
+If this passes, continue with navigation/refresh, owner-close pause/Resume from a second dashboard,
+sleep/wake, and finally a large batch. If it fails, inspect the durable job/task rows and
 fix that concrete failure before advancing.

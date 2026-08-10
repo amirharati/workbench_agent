@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { dbRpc } from '../../lib/storage/dbClient';
 import type { PipelineJobSnapshot } from '../../lib/storage/dbWorker/pipelineJobStore';
-import { requestPipelineJobCancellation } from '../../lib/pipeline/offscreenPipelineClient';
+import {
+  requestPipelineJobCancellation,
+  requestPipelineJobResume,
+} from '../../lib/pipeline/offscreenPipelineClient';
 
 const POLL_MS = 2_000;
 
@@ -31,7 +34,7 @@ export function PipelineCoordinatorBanner() {
 
   const refresh = useCallback(async () => {
     try {
-      setJobs(await dbRpc<PipelineJobSnapshot[]>('pipelineListRecoverable', [], { priority: 'high' }));
+      setJobs(await dbRpc<PipelineJobSnapshot[]>('pipelineListVisible', [], { priority: 'high' }));
     } catch {
       // The owner may be recreating after an extension reload; the next poll retries.
     }
@@ -54,6 +57,8 @@ export function PipelineCoordinatorBanner() {
   if (!active) return null;
   const runningTask = active.tasks.find((task) => task.status === 'running');
   const cancelling = active.job.status === 'cancel_requested' || active.job.status === 'cancelling';
+  const paused = active.job.status === 'paused';
+  const pausing = active.job.status === 'pause_requested';
   const completed = Math.min(
     active.job.total_items,
     active.job.completed_items + active.job.failed_items
@@ -66,6 +71,16 @@ export function PipelineCoordinatorBanner() {
       await refresh();
     } catch (error) {
       setCancelError(error instanceof Error ? error.message : 'Cancellation request failed');
+    }
+  };
+
+  const resume = async () => {
+    setCancelError('');
+    try {
+      await requestPipelineJobResume(active.job.id);
+      await refresh();
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : 'Resume request failed');
     }
   };
 
@@ -84,13 +99,33 @@ export function PipelineCoordinatorBanner() {
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <strong>{cancelling ? 'Cancelling pipeline' : actionLabel(active.job.action)}</strong>
+        <strong>{cancelling
+          ? 'Cancelling pipeline'
+          : paused
+            ? 'Pipeline paused'
+            : pausing
+              ? 'Pausing pipeline'
+              : actionLabel(active.job.action)}</strong>
         <span style={{ color: 'var(--text-muted)' }}>
-          {' '}· {completed}/{active.job.total_items} · {stageLabel(runningTask?.stage)}
+          {' '}· {completed}/{active.job.total_items} · {paused
+            ? 'choose Resume to use this dashboard window'
+            : pausing
+              ? 'finishing the current stage safely'
+              : stageLabel(runningTask?.stage)}
           {jobs.length > 1 ? ` · ${jobs.length - 1} queued` : ''}
         </span>
         {cancelError ? <span style={{ color: 'var(--danger)', marginLeft: 8 }}>{cancelError}</span> : null}
       </div>
+      {paused ? (
+        <button
+          type="button"
+          onClick={() => void resume()}
+          className="ui-button ui-button--primary"
+          style={{ minHeight: 28, padding: '4px 10px' }}
+        >
+          Resume
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={() => void cancel()}

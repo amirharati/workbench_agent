@@ -50,11 +50,14 @@ export type DurablePipelineRunInput = {
   onProgress?: (progress: BatchDigestProgress) => void;
   /** Re-evaluated only after the current item reaches a terminal boundary. */
   shouldYieldAfterItem?: () => boolean;
+  /** Cooperative owner-close pause, evaluated after a stage safely commits. */
+  shouldPauseAfterStage?: () => boolean;
 };
 
 export type DurablePipelineRunResult = {
   snapshot: PipelineJobSnapshot;
   yielded: boolean;
+  paused?: boolean;
   result?: BatchDigestResult;
 };
 
@@ -104,6 +107,7 @@ async function runStage(
         preferTabSession: options.preferTabSession,
         tabId: options.tabId,
         tabSessionOnly: options.tabSessionOnly,
+        browserWindowId: options.browserWindowId,
       });
       throwIfAborted(signal);
       await commitPendingDbWrites();
@@ -404,6 +408,22 @@ export async function runDurablePipelineJob(
       window.clearInterval(heartbeat);
     }
 
+    if (finalSnapshot && input.shouldPauseAfterStage?.()) {
+      const hasMoreWork = finalSnapshot.tasks.some(
+        (task) => task.status === 'pending' || task.status === 'running'
+      );
+      if (hasMoreWork) {
+        const paused = await dbRpc<PipelineJobSnapshot | null>(
+          'pipelineAcknowledgePause',
+          [input.jobId],
+          { priority: 'high' }
+        );
+        if (paused?.job.status === 'paused') {
+          return { snapshot: paused, yielded: false, paused: true };
+        }
+      }
+    }
+
     if (finalSnapshot && input.shouldYieldAfterItem?.()) {
       const itemIsTerminal = finalSnapshot.tasks
         .filter((task) => task.item_id === claim.task.item_id)
@@ -423,6 +443,17 @@ export async function runDurablePipelineJob(
     { priority: 'high' }
   );
   if (!snapshot) throw new Error('Durable pipeline job disappeared');
+  if (snapshot.job.status === 'pause_requested' || input.shouldPauseAfterStage?.()) {
+    const paused = await dbRpc<PipelineJobSnapshot | null>(
+      'pipelineAcknowledgePause',
+      [input.jobId],
+      { priority: 'high' }
+    );
+    if (paused?.job.status === 'paused') {
+      return { snapshot: paused, yielded: false, paused: true };
+    }
+    if (paused) snapshot = paused;
+  }
   if (yieldRequested) {
     const yielded = await dbRpc<{ accepted: boolean; snapshot: PipelineJobSnapshot | null }>(
       'pipelineYieldJob',

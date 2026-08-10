@@ -42,6 +42,11 @@ function runSchemaMigrations(database: Database, from: number, to: number): void
   if (from < 5 && to >= 5) {
     database.exec(PIPELINE_JOB_SCHEMA_SQL);
   }
+  if (from < 6 && to >= 6) {
+    // Recreates the active-job dedupe index so paused jobs keep ownership of
+    // their item scope until Resume or Cancel.
+    database.exec(PIPELINE_JOB_SCHEMA_SQL);
+  }
 }
 
 export type Sqlite3Static = Awaited<ReturnType<typeof sqlite3InitModule>>;

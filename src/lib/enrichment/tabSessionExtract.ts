@@ -95,6 +95,7 @@ export async function fetchThroughBrowserService(
     tabId?: number;
     mode?: 'active' | 'any';
     allowEphemeral?: boolean;
+    windowId?: number;
     signal?: AbortSignal;
   }
 ): Promise<BrowserFetchServiceResult> {
@@ -130,6 +131,7 @@ export async function fetchThroughBrowserService(
       tabId: options?.tabId,
       mode: options?.mode ?? 'any',
       allowEphemeral: options?.allowEphemeral === true,
+      windowId: options?.windowId,
     }) as BrowserFetchServiceResult | undefined;
     if (options?.signal?.aborted) return fail('Fetch cancelled');
     if (!response || typeof response.ok !== 'boolean') {

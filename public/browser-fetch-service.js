@@ -210,7 +210,10 @@
       return null;
     }
 
-    async function findMatchingTab(url, mode) {
+    async function findMatchingTab(url, mode, windowId) {
+      if (typeof windowId === 'number') {
+        return pickMatchingTab(await chromeApi.tabs.query({ windowId }), url);
+      }
       const focused = await chromeApi.tabs.query({ active: true, lastFocusedWindow: true });
       const focusedMatch = await pickMatchingTab(focused, url);
       if (focusedMatch) return focusedMatch;
@@ -317,14 +320,16 @@
       });
     }
 
-    async function runEphemeral(url, state) {
+    async function runEphemeral(url, state, windowId) {
       const previous = ephemeralTail;
       let release;
       ephemeralTail = new Promise((resolve) => { release = resolve; });
       await previous.catch(() => {});
       try {
         throwIfCancelled(state);
-        const created = await chromeApi.tabs.create({ url, active: false });
+        const createProperties = { url, active: false };
+        if (typeof windowId === 'number') createProperties.windowId = windowId;
+        const created = await chromeApi.tabs.create(createProperties);
         if (!created || typeof created.id !== 'number') return failure('Could not open a background browser tab');
         state.tabId = created.id;
         state.ephemeral = true;
@@ -383,11 +388,15 @@
         }
 
         throwIfCancelled(state);
-        const matching = await findMatchingTab(url, input.mode === 'active' ? 'active' : 'any');
+        const matching = await findMatchingTab(
+          url,
+          input.mode === 'active' ? 'active' : 'any',
+          input.windowId
+        );
         if (matching && typeof matching.id === 'number') {
           return await extractFromTab(matching.id, state);
         }
-        if (input.allowEphemeral === true) return await runEphemeral(url, state);
+        if (input.allowEphemeral === true) return await runEphemeral(url, state, input.windowId);
         return failure('No open browser tab matches this URL');
       } catch (error) {
         if (state.cancelled || (error && error.message === 'browser_fetch_cancelled')) {

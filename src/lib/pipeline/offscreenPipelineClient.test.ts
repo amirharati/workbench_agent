@@ -204,4 +204,15 @@ describe('offscreenPipelineClient', () => {
     }
     await expect(pending).resolves.toMatchObject({ discoverResult: { itemsSampled: 0 } });
   });
+
+  it('requests Resume so the service worker can rebind the paused job to this dashboard', async () => {
+    const { requestPipelineJobResume } = await import('./offscreenPipelineClient');
+    await expect(requestPipelineJobResume('paused-job')).resolves.toBeUndefined();
+    expect(sendMessage).toHaveBeenCalledWith({
+      target: 'pipeline-offscreen',
+      action: 'resume',
+      requestId: 'paused-job',
+      aiSettings: storedAISettings,
+    });
+  });
 });

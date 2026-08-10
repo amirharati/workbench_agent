@@ -37,8 +37,12 @@ import {
   getPipelineJobSnapshot,
   heartbeatPipelineTask,
   listRecoverablePipelineJobs,
+  listVisiblePipelineJobs,
   recoverExpiredPipelineTasks,
+  acknowledgePipelinePause,
   requestPipelineCancellation,
+  requestPipelinePause,
+  resumePipelineJob,
   submitPipelineJob,
   yieldPipelineJob,
 } from './pipelineJobStore';
@@ -117,11 +121,15 @@ const READ_ONLY_RPC_METHODS = new Set([
   'pipelineHeartbeatTask',
   'pipelineFinishTask',
   'pipelineYieldJob',
+  'pipelineRequestPause',
+  'pipelineAcknowledgePause',
+  'pipelineResumeJob',
   'pipelineRequestCancel',
   'pipelineAcknowledgeCancel',
   'pipelineRecoverExpired',
   'pipelineGetJob',
   'pipelineListRecoverable',
+  'pipelineListVisible',
 ]);
 
 const MUTATING_STORE_METHODS = new Set([
@@ -288,7 +296,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 13;
+      return 14;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -367,6 +375,26 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         await getPipelineDatabase(),
         args[0] as Parameters<typeof yieldPipelineJob>[1]
       );
+    case 'pipelineRequestPause':
+      return requestPipelinePause(
+        await getPipelineDatabase(),
+        String(args[0] ?? ''),
+        typeof args[1] === 'number' ? args[1] : Date.now()
+      );
+    case 'pipelineAcknowledgePause':
+      return acknowledgePipelinePause(
+        await getPipelineDatabase(),
+        String(args[0] ?? ''),
+        typeof args[1] === 'number' ? args[1] : Date.now()
+      );
+    case 'pipelineResumeJob':
+      return resumePipelineJob(
+        await getPipelineDatabase(),
+        String(args[0] ?? ''),
+        typeof args[1] === 'number' ? args[1] : undefined,
+        typeof args[2] === 'number' ? args[2] : undefined,
+        typeof args[3] === 'number' ? args[3] : Date.now()
+      );
     case 'pipelineRequestCancel':
       return requestPipelineCancellation(
         await getPipelineDatabase(),
@@ -388,6 +416,8 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       return getPipelineJobSnapshot(await getPipelineDatabase(), String(args[0] ?? ''));
     case 'pipelineListRecoverable':
       return listRecoverablePipelineJobs(await getPipelineDatabase());
+    case 'pipelineListVisible':
+      return listVisiblePipelineJobs(await getPipelineDatabase());
     case 'mirrorNow': {
       const payload = args[0] as { force?: boolean; allowEmptyMirror?: boolean } | undefined;
       return mirrorNow(Boolean(payload?.force), {
