@@ -692,6 +692,7 @@ async function runItemPipelineBody(
       try {
         const post = await runEnrichmentBatchPostProcess(uniqueIds, {
           forceEmbed: options.forceEnrich === true,
+          signal: options.signal,
           onEmbedProgress: (p) => {
             if (p.phase === 'embed' && p.batchTotal > 0) {
               report(
@@ -713,6 +714,7 @@ async function runItemPipelineBody(
           embedMessage = embedMessage ?? 'embed skipped (no AI key)';
         }
       } catch (e) {
+        if (options.signal?.aborted || (e instanceof Error && e.name === 'AbortError')) throw e;
         embedMessage = e instanceof Error ? e.message : 'Embed backfill failed';
         console.warn('[itemPipeline] embed post-process failed:', e);
       }
@@ -722,6 +724,7 @@ async function runItemPipelineBody(
     await yieldToUi();
     try {
       const post = await runEnrichmentBatchPostProcess(uniqueIds, {
+        signal: options.signal,
         onEmbedProgress: (p) => {
           if (p.phase === 'embed' && p.batchTotal > 0) {
             report(
@@ -738,6 +741,7 @@ async function runItemPipelineBody(
       embedFailed = post.embed.embedFailed;
       embedMessage = formatEmbedBatchMessage(post.embed);
     } catch (e) {
+      if (options.signal?.aborted || (e instanceof Error && e.name === 'AbortError')) throw e;
       console.warn('[itemPipeline] embed before classify failed:', e);
     }
   }

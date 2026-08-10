@@ -49,6 +49,7 @@ export interface EmbedIncrementalOptions {
   itemIds?: string[];
   /** Re-embed even when text hash unchanged (full digest / re-digest). */
   force?: boolean;
+  signal?: AbortSignal;
   onProgress?: (p: EmbedBackfillProgress) => void;
 }
 
@@ -113,6 +114,8 @@ export async function embedIncrementalBatch(
     pendingAfter: 0,
   };
 
+  if (opts.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+
   opts.onProgress?.({ phase: 'prepare', batchIndex: 0, batchTotal: 0, embeddedSoFar: 0 });
 
   const db = await getDB();
@@ -170,6 +173,7 @@ export async function embedIncrementalBatch(
   let embeddedSoFar = 0;
 
   for (let b = 0; b < batchTotal; b++) {
+    if (opts.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
     const batch = pending.slice(b * EMBED_BATCH_SIZE, (b + 1) * EMBED_BATCH_SIZE);
     opts.onProgress?.({
       phase: 'embed',
@@ -187,8 +191,11 @@ export async function embedIncrementalBatch(
           timeoutMs: 60_000,
         },
         batch.map((row) => row.text),
-        EMBED_BATCH_SIZE
+        EMBED_BATCH_SIZE,
+        opts.signal
       );
+
+      if (opts.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
 
       opts.onProgress?.({
         phase: 'write',
@@ -211,7 +218,10 @@ export async function embedIncrementalBatch(
 
       embeddedSoFar += batch.length;
       summary.embedded += batch.length;
-    } catch {
+    } catch (error) {
+      if (opts.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        throw error;
+      }
       const now = Date.now();
       const tx = db.transaction(['ai_item_signals'], 'readwrite');
       for (const row of batch) {

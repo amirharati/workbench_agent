@@ -26,9 +26,10 @@ implementation dependency.
    preflight, fetch, content store, AI extraction, enrichment commit, embedding, classification, and finalization.
 6. Split existing write-through functions into compute plus fenced-commit operations. In particular,
    enrichment persistence must not implicitly trigger embedding.
-7. Build one offscreen coordinator with one serialized executor. All surfaces submit/observe the same job API;
-   none executes fetch/AI/embed/classify locally.
-8. Implement durable cancellation: commit `cancel_requested`, abort every stage including embedding, fence
+7. **Implemented for one-link acceptance:** build one offscreen coordinator with one serialized executor. The
+   Enrichment Hub one-item action submits/observes this job API; bulk and other surfaces remain on their legacy
+   paths until the one-link gate passes.
+8. **Implemented for one-link acceptance:** commit `cancel_requested`, abort every stage including embedding, fence
    stale lease owners, then publish `cancelled` only after work stops.
 9. Implement recovery with renewable leases and a generation/fencing token. Safe stages resume automatically;
    interrupted paid AI stages become `uncertain` unless provider retry is idempotent.
@@ -60,7 +61,11 @@ Each checkpoint is independently buildable and reviewable:
 3. **Implemented / automated acceptance — durable core API:** schema v5 plus atomic submit, ordered claim,
    heartbeat, durable cancel, fenced commit, safe-stage recovery, paid-stage uncertainty, deduplication, and
    query RPCs. No UI runner migration yet.
-4. **Next — one-link vertical slice:** Hub submission through the coordinator using explicit stage boundaries.
+4. **Implemented / awaiting real-extension acceptance — one-link vertical slice:** a one-item Hub re-digest is
+   committed before acknowledgement and runs in the shared serialized offscreen lane. Because the existing
+   processor is still monolithic, this checkpoint deliberately uses one `full_digest` task rather than writing
+   false per-stage completion rows. An interrupted task becomes `uncertain` and is not automatically retried.
+   The next code checkpoint splits the processor into real compute/fenced-commit stages after this smoke test.
 5. **Small-batch correctness:** five sequential items, exact final counts, deduplication, and durable cancel.
 6. **Surface migration:** Import, sidebar, Inspector, re-extract, re-embed, classify, and discover all submit
    the shared job contract; then remove legacy locks/checkpoints/runners.

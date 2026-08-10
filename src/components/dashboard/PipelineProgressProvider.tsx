@@ -619,7 +619,18 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
 
   const cancel = useCallback(() => {
     const hadLocalRun = isRunningRef.current || Boolean(abortRef.current);
-    applyLocalCancelUiAndAbort();
+    userCancelRef.current = true;
+    resumeBulkAfterSingleRef.current = false;
+    clearSlotQueue();
+    waitAbortRef.current?.abort();
+    waitAbortRef.current = null;
+    abortRef.current?.abort(PIPELINE_HARD_CANCEL_REASON);
+    setIsCancellable(false);
+    setModalState((current) =>
+      current.open && current.phase === 'running'
+        ? { ...current, progressLabel: 'Cancelling…', cancellable: false }
+        : current
+    );
 
     stopHeartbeatRef.current?.();
     stopHeartbeatRef.current = null;
@@ -645,7 +656,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         }
       }
     })();
-  }, [applyLocalCancelUiAndAbort]);
+  }, [clearSlotQueue]);
 
   const endPipelineRun = useCallback(() => {
     setIsCancellable(false);
@@ -904,7 +915,13 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
       options?: RunSingleWithProgressOptions
     ): Promise<SingleLinkDigestResult> => {
       const title = options?.title ?? 'Running digest';
-      // Immediate page lane, separate from offscreen bulk; no soft-pause of bulk.
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setIsRunning(true);
+      setIsCancellable(true);
+      userCancelRef.current = false;
+      suppressPipelineUiRef.current = false;
+      // The offscreen coordinator serializes this with every other pipeline job.
       parallelSingleRef.current = true;
       setModalState({
         open: true,
@@ -913,7 +930,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         progressLabel: 'Starting…',
         current: 0,
         total: 100,
-        cancellable: false,
+        cancellable: true,
       });
 
       const singleSetModal: React.Dispatch<React.SetStateAction<ModalState>> = (update) => {
@@ -933,6 +950,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           tabSessionOnly: options?.tabSessionOnly,
           preferTabSession: options?.preferTabSession,
           tabId: options?.tabId,
+          signal: controller.signal,
           onProgress: (p) => applyPipelineProgress(singleSetModal, p),
         });
 
@@ -955,18 +973,23 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         await refreshAfterPipeline(onRefresh, { itemIds: [itemId] });
         return result;
       } catch (e) {
-        const summary = e instanceof Error ? e.message : 'Digest failed';
+        const cancelled = controller.signal.aborted;
+        const summary = cancelled ? 'Cancelled' : e instanceof Error ? e.message : 'Digest failed';
         setModalState({
           open: true,
           phase: 'done',
           title,
           summary,
-          tone: 'error',
+          tone: cancelled ? 'info' : 'error',
         });
         throw e;
       } finally {
         parallelSingleRef.current = false;
-        // Do not endPipelineRun — bulk may still own the shared lock.
+        if (abortRef.current === controller) abortRef.current = null;
+        setIsRunning(false);
+        setIsCancellable(false);
+        userCancelRef.current = false;
+        suppressPipelineUiRef.current = false;
       }
     },
     [onRefresh]

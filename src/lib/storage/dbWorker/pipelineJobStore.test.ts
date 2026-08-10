@@ -120,6 +120,21 @@ describe('durable pipeline job store', () => {
     expect(claimNextPipelineTask(db, 'owner-a', 5_000, 400)?.task.stage).toBe('fetch');
   });
 
+  it('can restrict a claim to the accepted job', () => {
+    submitPipelineJob(db, {
+      id: 'older-job', dedupeKey: 'full:item-1', action: 'full_enrich', source: 'hub',
+      itemIds: ['item-1'], stages: ['full_digest'], now: 100,
+    });
+    submitPipelineJob(db, {
+      id: 'requested-job', dedupeKey: 'full:item-2', action: 'full_enrich', source: 'hub',
+      itemIds: ['item-2'], stages: ['full_digest'], now: 200,
+    });
+
+    const claim = claimNextPipelineTask(db, 'owner-a', 5_000, 300, 'requested-job');
+    expect(claim?.job.id).toBe('requested-job');
+    expect(claim?.task.item_id).toBe('item-2');
+  });
+
   it('makes cancellation durable before terminal acknowledgement and fences late work', () => {
     submitPipelineJob(db, {
       id: 'job-1',
@@ -188,5 +203,18 @@ describe('durable pipeline job store', () => {
     expect(paid?.job.status).toBe('failed');
     expect(paid?.job.failed_items).toBe(1);
     expect(paid?.tasks.map((task) => task.status)).toEqual(['uncertain', 'skipped']);
+
+    submitPipelineJob(db, {
+      id: 'coarse-job',
+      dedupeKey: 'full:item-3',
+      action: 'full_enrich',
+      source: 'hub',
+      itemIds: ['item-3'],
+      stages: ['full_digest'],
+      now: 12_000,
+    });
+    claimNextPipelineTask(db, 'owner-c', 5_000, 12_100, 'coarse-job');
+    expect(recoverExpiredPipelineTasks(db, 17_101)).toMatchObject({ requeued: 0, uncertain: 1 });
+    expect(getPipelineJobSnapshot(db, 'coarse-job')?.tasks[0].status).toBe('uncertain');
   });
 });

@@ -249,7 +249,8 @@ export function claimNextPipelineTask(
   db: Database,
   ownerId: string,
   leaseMs = 30_000,
-  now = Date.now()
+  now = Date.now(),
+  jobId?: string
 ): ClaimedPipelineTask | null {
   const owner = required(ownerId, 'Lease owner');
   const duration = Math.max(5_000, Math.trunc(leaseMs));
@@ -262,6 +263,7 @@ export function claimNextPipelineTask(
        WHERE t.status = 'pending'
          AND j.status IN ('queued', 'running')
          AND j.cancel_requested_at IS NULL
+         AND (? IS NULL OR t.job_id = ?)
          AND NOT EXISTS (
            SELECT 1 FROM pipeline_tasks earlier
            WHERE earlier.job_id = t.job_id AND earlier.item_id = t.item_id
@@ -269,7 +271,8 @@ export function claimNextPipelineTask(
              AND earlier.status NOT IN ('completed', 'skipped')
          )
        ORDER BY j.priority ASC, j.created_at ASC, t.ordinal ASC, t.item_id ASC
-       LIMIT 1;`
+       LIMIT 1;`,
+      [jobId ?? null, jobId ?? null]
     );
     if (!candidate) return null;
     const expiresAt = now + duration;
@@ -532,7 +535,11 @@ export function recoverExpiredPipelineTasks(
     let requeued = 0;
     let uncertain = 0;
     for (const task of expired) {
-      const paid = task.stage === 'extract_ai' || task.stage === 'embed';
+      // `full_digest` is the intentionally coarse task used by the first
+      // coordinator vertical slice. It can include paid AI/embedding calls, so
+      // an interrupted lease must never be retried automatically.
+      const paid =
+        task.stage === 'extract_ai' || task.stage === 'embed' || task.stage === 'full_digest';
       db.exec({
         sql: `UPDATE pipeline_tasks
               SET status = ?, lease_owner = NULL, lease_expires_at = NULL,

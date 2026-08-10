@@ -1,6 +1,7 @@
 /**
  * Dashboard <-> offscreen pipeline messages.
- * Bulk runs offscreen. Singles use the invoking page's separate, warm lane.
+ * Pipeline jobs run in one serialized offscreen execution lane. Dashboard tabs
+ * submit, cancel, and observe; they never execute enrichment work themselves.
  */
 
 import type { AISettings } from '../ai/types';

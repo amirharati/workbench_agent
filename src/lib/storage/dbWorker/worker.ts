@@ -286,7 +286,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 9;
+      return 10;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -347,7 +347,8 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         await getPipelineDatabase(),
         String(args[0] ?? ''),
         Number(args[1]) || 30_000,
-        typeof args[2] === 'number' ? args[2] : Date.now()
+        typeof args[2] === 'number' ? args[2] : Date.now(),
+        typeof args[3] === 'string' ? args[3] : undefined
       );
     case 'pipelineHeartbeatTask':
       return heartbeatPipelineTask(

@@ -1,9 +1,10 @@
 # Durable Pipeline Coordinator
 
-> Status — 2026-08-09: approved rebuild design. Core schema-v5 durable job/task primitives are implemented
-> and tested, but no UI runner uses them yet. The previous coordinator attempt is retained only as a safety
-> snapshot. The first rebuilt executor has one serialized lane; priority is queue ordering, not a parallel
-> single-item runner.
+> Status — 2026-08-09: core schema-v5 durable job/task primitives are implemented and the Enrichment Hub's
+> one-item re-digest is connected as the first acceptance slice. It commits before acknowledgement, executes
+> in the shared serialized offscreen lane, and carries Cancel through embedding. The legacy processor remains
+> monolithic, so this slice uses one non-auto-retriable `full_digest` task until real stage boundaries are built.
+> Bulk and other surfaces remain unmigrated pending the one-link real-extension test.
 
 ## Decision
 
@@ -95,6 +96,11 @@ The normalized task rows are the only progress checkpoint. Item progress shown a
 finalized items, not from the number of internal stage rows.
 
 ## Stage boundaries
+
+The target model below is not yet claimed by the first one-link slice. Until the legacy processor is split,
+that slice records one `full_digest` task. This preserves honest recovery semantics: an interrupted task is
+`uncertain` because it may already have crossed a paid call, rather than being automatically restarted or
+represented as eight completed checkpoints that never committed independently.
 
 A full URL-processing item uses explicit compute/commit boundaries:
 

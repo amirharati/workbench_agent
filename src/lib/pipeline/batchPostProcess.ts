@@ -27,6 +27,7 @@ export async function runEnrichmentBatchPostProcess(
     onEmbedProgress?: (p: EmbedBackfillProgress) => void;
     /** Re-embed even when hash matches (full digest / re-digest). */
     forceEmbed?: boolean;
+    signal?: AbortSignal;
   }
 ): Promise<EnrichmentBatchPostProcessResult> {
   const uniqueIds = [...new Set(itemIds.filter(Boolean))];
@@ -70,6 +71,7 @@ export async function runEnrichmentBatchPostProcess(
     itemIds: aiOkIds,
     max: aiOkIds.length,
     force: opts?.forceEmbed,
+    signal: opts?.signal,
     onProgress: opts?.onEmbedProgress,
   });
 

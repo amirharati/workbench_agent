@@ -1,16 +1,12 @@
 /**
  * Pipeline execution boundary.
  *
- * Bulk work runs in the offscreen document so fetch/AI orchestration cannot
- * monopolize the dashboard event loop. Singles stay in the invoking page: that
- * is a separate JS realm from bulk, already has a warm cache, and gives its DB
- * writes an independent high-priority context.
+ * All enrichment work runs in the offscreen document. UI pages only submit,
+ * cancel, and observe jobs.
  */
 import { loadAISettings } from '../ai/settings';
-import { runWithDbPriority } from '../storage/dbRpcPriority';
 import type { BatchDigestProgress, BatchDigestResult } from './batchDigest';
 import type { SingleLinkDigestResult } from './singleLinkDigest';
-import { runSingleLinkDigest } from './singleLinkDigest';
 import {
   PIPELINE_OFFSCREEN_TARGET,
   type OffscreenBatchJobOptions,
@@ -19,6 +15,7 @@ import {
   type PipelineOffscreenDoneEvent,
   type PipelineOffscreenProgressEvent,
   type PipelineOffscreenStartBatch,
+  type PipelineOffscreenStartSingle,
   type PipelineOffscreenStartResponse,
 } from './offscreenPipelineProtocol';
 
@@ -157,7 +154,7 @@ export async function runBatchOnOffscreen(
   });
 }
 
-/** Immediate single digest in the invoking page's warm, high-priority lane. */
+/** Durable single digest in the shared offscreen execution lane. */
 export async function runSingleOnOffscreen(
   itemId: string,
   options: OffscreenSingleJobOptions & {
@@ -165,24 +162,88 @@ export async function runSingleOnOffscreen(
     onProgress?: (p: BatchDigestProgress) => void;
   } = {}
 ): Promise<SingleLinkDigestResult> {
-  if (!options.aiSettings) {
-    try {
-      await loadAISettings();
-    } catch {
-      /* Defaults remain available. */
-    }
-  }
-  return runWithDbPriority('high', () =>
-    runSingleLinkDigest(itemId, {
-      forceEnrich: options.forceEnrich,
-      skipClassify: options.skipClassify,
-      skipAi: options.skipAi,
-      forceReclassify: options.forceReclassify,
-      preferTabSession: options.preferTabSession,
-      tabId: options.tabId,
-      tabSessionOnly: options.tabSessionOnly,
-      signal: options.signal,
-      onProgress: options.onProgress,
-    })
-  );
+  if (options.signal?.aborted) throw cancelledError();
+
+  const requestId = createRequestId('single');
+  const aiSettings = options.aiSettings ?? (await loadAISettings());
+  const { signal, onProgress, ...wireOptions } = options;
+  onProgress?.({
+    phase: 'prep',
+    label: 'Submitting durable pipeline…',
+    current: 0,
+    total: 1,
+  });
+
+  return new Promise<SingleLinkDigestResult>((resolve, reject) => {
+    let settled = false;
+    let cancelRequested = false;
+    let cancelTimer: number | undefined;
+    const startTimer = window.setTimeout(() => {
+      void cancelOffscreenRequest(requestId);
+      finish(() => reject(new Error('Offscreen pipeline did not start within 30 seconds')));
+    }, START_TIMEOUT_MS);
+
+    const cleanup = () => {
+      window.clearTimeout(startTimer);
+      if (cancelTimer != null) window.clearTimeout(cancelTimer);
+      chrome.runtime.onMessage.removeListener(onMessage);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const finish = (complete: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      complete();
+    };
+    const onMessage = (message: unknown) => {
+      const event = message as PipelineOffscreenProgressEvent | PipelineOffscreenDoneEvent;
+      if (!event || event.requestId !== requestId) return;
+      if (event.type === 'pipeline-offscreen-progress') {
+        onProgress?.(event.progress);
+        return;
+      }
+      if (event.type !== 'pipeline-offscreen-done') return;
+      if (!event.ok || !event.singleResult) {
+        const error = new Error(event.error ?? 'Offscreen pipeline failed');
+        if (signal?.aborted) error.name = 'AbortError';
+        finish(() => reject(error));
+        return;
+      }
+      finish(() => resolve(event.singleResult!));
+    };
+    const onAbort = () => {
+      cancelRequested = true;
+      void cancelOffscreenRequest(requestId, signal?.reason);
+      cancelTimer = window.setTimeout(() => {
+        finish(() => reject(cancelledError()));
+      }, CANCEL_TIMEOUT_MS);
+    };
+
+    chrome.runtime.onMessage.addListener(onMessage);
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    const message: PipelineOffscreenStartSingle = {
+      target: PIPELINE_OFFSCREEN_TARGET,
+      action: 'start-single',
+      requestId,
+      itemId,
+      options: { ...wireOptions, aiSettings },
+    };
+    void chrome.runtime
+      .sendMessage(message)
+      .then((response: PipelineOffscreenStartResponse | undefined) => {
+        if (settled) return;
+        if (!response?.ok) {
+          finish(() => reject(new Error(response?.error ?? 'Offscreen pipeline unavailable')));
+          return;
+        }
+        window.clearTimeout(startTimer);
+        if (cancelRequested || signal?.aborted) {
+          void cancelOffscreenRequest(requestId, signal?.reason);
+        }
+      })
+      .catch((error) => {
+        finish(() => reject(error instanceof Error ? error : new Error(String(error))));
+      });
+  });
 }

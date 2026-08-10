@@ -1190,6 +1190,16 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         .map((r) => [r.item.id, r.item.title || r.item.url || r.item.id])
     );
     try {
+      if (ids.length === 1) {
+        await pipeline.runSingle(ids[0], {
+          title: 'Re-digest (1)',
+          forceEnrich: true,
+          forceReclassify: true,
+          skipClassify: false,
+          itemLabel: itemLabels[ids[0]],
+        });
+        return;
+      }
       await pipeline.runBatch(ids, {
         title: `Re-digest (${ids.length})`,
         enrich: true,

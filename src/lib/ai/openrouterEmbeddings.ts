@@ -21,7 +21,8 @@ const buildEmbeddingsEndpoint = (baseUrl: string): string => {
 export async function embedTexts(
   settings: EmbeddingSettings,
   inputs: string[],
-  batchSize = 48
+  batchSize = 48,
+  signal?: AbortSignal
 ): Promise<number[][]> {
   if (!settings.apiKey.trim()) {
     throw new AIClientError('invalid-config', 'Missing API key for embeddings.');
@@ -32,9 +33,12 @@ export async function embedTexts(
   const all: number[][] = new Array(inputs.length);
 
   for (let offset = 0; offset < inputs.length; offset += batchSize) {
+    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
     const chunk = inputs.slice(offset, offset + batchSize);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), settings.timeoutMs ?? 60_000);
+    const abortFromCaller = () => controller.abort(signal?.reason);
+    signal?.addEventListener('abort', abortFromCaller, { once: true });
 
     try {
       const response = await fetch(endpoint, {
@@ -68,6 +72,7 @@ export async function embedTexts(
       }
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener('abort', abortFromCaller);
     }
   }
 

@@ -128,7 +128,10 @@ export async function runWaveDownstream(
   const signal = opts?.signal;
   if (waveIds.length === 0) return undefined;
   if (signal?.aborted) return undefined;
-  await runEnrichmentBatchPostProcess(waveIds, { forceEmbed: opts?.forceEmbed });
+  await runEnrichmentBatchPostProcess(waveIds, {
+    forceEmbed: opts?.forceEmbed,
+    signal,
+  });
   if (signal?.aborted) return undefined;
   const classifyResult = await classifyIncremental({
     itemIds: waveIds,
