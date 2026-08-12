@@ -9,6 +9,7 @@ import {
   type ItemEnrichment,
 } from '../../lib/enrichment';
 import { runBatchOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
+import { pipelineProgressBar } from '../../lib/pipeline';
 import { EnrichmentReviewModal } from './EnrichmentReviewModal';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 
@@ -192,11 +193,12 @@ export const EnrichmentTestModal: React.FC<Props> = ({
         collectItemResults: true,
         signal: abortRef.current.signal,
         onProgress: (p) => {
+          const bar = pipelineProgressBar(p);
           setProgress({
-            processed: p.current,
+            processed: bar.completed,
             skipped: 0,
             failed: 0,
-            total: p.total,
+            total: bar.total,
           });
         },
       });

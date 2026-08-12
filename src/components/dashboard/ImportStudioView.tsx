@@ -17,6 +17,7 @@ import {
 } from '../../lib/trashHistory';
 import {
   buildImportReport,
+  pipelineProgressBar,
   preflightImportPipelineStart,
   type ImportReport,
 } from '../../lib/pipeline';
@@ -32,14 +33,6 @@ import { uiPatterns } from '../../styles/uiPatterns';
 import { INCOMING_COLLECTION_NAME, UNFILED_COLLECTION_NAME } from '../../lib/systemDataModel';
 
 export type ImportSource = 'file' | 'chrome' | 'assistant';
-
-type ImportProcessingProgress = {
-  phase: 'prep' | 'enrich' | 'embed' | 'classify' | 'wave' | 'done';
-  waveIndex: number;
-  waveTotal: number;
-  enrichDone?: number;
-  enrichTotal?: number;
-};
 
 interface ImportStudioViewProps {
   projects: Project[];
@@ -84,19 +77,6 @@ export function resolveImportDestinationLabel(
     return `${projectName} / ${UNFILED_COLLECTION_NAME}`;
   }
   return `Inbox / ${INCOMING_COLLECTION_NAME}`;
-}
-
-export function resolveImportProcessingPercent(progress: ImportProcessingProgress): number {
-  if (progress.phase === 'done') return 100;
-  if (progress.phase === 'prep') return 3;
-  if (progress.phase === 'enrich' && progress.enrichTotal) {
-    return Math.min(70, Math.round(5 + (65 * (progress.enrichDone ?? 0)) / progress.enrichTotal));
-  }
-  if (progress.phase === 'wave' || progress.phase === 'embed' || progress.phase === 'classify') {
-    const total = Math.max(1, progress.waveTotal);
-    return Math.min(95, Math.round(70 + (25 * progress.waveIndex) / total));
-  }
-  return 5;
 }
 
 export function resolveImportReportProcessedIds(result: {
@@ -289,7 +269,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     setProcessing(true);
     setWavePipelineRunning(true);
     setProcessProgress(`Starting pipeline on ${ids.length} selected link${ids.length === 1 ? '' : 's'}…`);
-    setProcessProgressPercent(2);
+    setProcessProgressPercent(0);
     addToast({
       type: 'info',
       message: `Running fetch + AI + classify on ${ids.length} link${ids.length === 1 ? '' : 's'} in the shared coordinator.`,
@@ -306,8 +286,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         signal: ac.signal,
         onProgress: (p) => {
           setProcessProgress(p.label);
-          const ratio = p.total > 0 ? p.current / p.total : 0;
-          setProcessProgressPercent((current) => Math.max(current, Math.round(ratio * 95)));
+          const bar = pipelineProgressBar(p);
+          setProcessProgressPercent((current) => Math.max(current, bar.percent));
         },
       });
       setProcessProgressPercent(100);

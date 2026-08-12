@@ -16,7 +16,7 @@ import { ClassifyQueueReasonBlock } from './ClassifyQueueReasonBlock';
 import { assessCategorizationEligibility } from '../../lib/enrichment/categorizationEligibility';
 import { getEnrichment } from '../../lib/enrichment/storage';
 import { getAllItems, getItem } from '../../lib/db';
-import { loadItemIdsForPipelineQueue } from '../../lib/pipeline';
+import { loadItemIdsForPipelineQueue, pipelineProgressBar } from '../../lib/pipeline';
 import { runPipelineActionOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
 import {
   clearPipelineData,
@@ -101,13 +101,14 @@ export function CategorizationPanel({
   }, [loadStats]);
 
   const onCoordinatorProgress = useCallback((update: import('../../lib/pipeline').BatchDigestProgress) => {
+    const bar = pipelineProgressBar(update);
     const phase: ClassifyProgressUpdate['phase'] =
       update.phase === 'prep' ? 'prepare'
         : update.phase === 'save' ? 'save'
           : update.phase === 'done' ? 'done'
             : update.phase === 'discover' ? 'discover'
               : 'classify';
-    setProgress({ ...update, phase });
+    setProgress({ ...update, phase, current: bar.current, total: bar.total });
   }, []);
 
   const resolveClassifyIds = async (
@@ -281,10 +282,8 @@ export function CategorizationPanel({
 
   const pct =
     progress && progress.total > 0
-      ? Math.round((Math.min(progress.current + 1, progress.total) / progress.total) * 100)
-      : running
-        ? 8
-        : 0;
+      ? Math.round((Math.min(progress.current, progress.total) / progress.total) * 100)
+      : 0;
 
   const leafCount = queue?.leafCount ?? 0;
   const needsSeed = leafCount === 0;
@@ -457,6 +456,11 @@ export function CategorizationPanel({
           }}
         >
           <div
+            role="progressbar"
+            aria-label={progress?.label ?? 'Classification progress'}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={pct}
             style={{
               height: 6,
               borderRadius: 3,

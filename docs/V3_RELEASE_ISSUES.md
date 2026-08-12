@@ -274,6 +274,7 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | CLOSED | Preserve restored Search scope; follow later shell navigation only | `cfad800` | PASS — refresh and later navigation, 2026-08-09 |
 | V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | READY TO RETEST | One folder-owned content DB; no per-URL files or automatic run trees | `e9aef10` + coordinator cleanup | Layout/content reads pass; Chrome restart/reinstall recovery remains |
 | V3-008 | 2026-08-09 | Pipeline / resume recovery | System sleep can strand a batch; first coordinator build stalled at 5% and blocked Hub loading | P1 | READY TO RETEST | One shared serialized coordinator with durable jobs, tab fetching, pause/Resume, priority, and recovery | `2f9c4d0` through `6b503c3` + Resume UI checkpoint | Normal processing and pause/Resume mostly pass; cancel, sleep/restart, and final scale checks remain |
+| V3-009 | 2026-08-12 | Pipeline / progress UI | Large-job bars appear nearly complete while item count is still low | P2 | READY TO RETEST | Use authoritative whole-job item progress across every pipeline surface | Uncommitted | Reload and compare bar with a large-job count |
 
 ### V3-001 — Replace stale Help with a comprehensive daily-use guide
 
@@ -559,6 +560,26 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   5. Test Pause and Cancel as different outcomes, then confirm completed/cancelled jobs leave no stale banner.
   6. Cancel a running Import Studio batch, immediately import the same file again, and confirm saving finishes
      promptly and the newly submitted processing job uses the shared coordinator rather than a dashboard tab.
+
+### V3-009 — Pipeline progress bars disagree with completed item counts
+
+- Found: 2026-08-12, Run 01 continuation
+- Severity / gate: P2 / G3 + G4
+- Status: READY TO RETEST
+- Reproduction: run a large pipeline and compare the progress bar with a label such as `540/3000`.
+- Expected: every pipeline bar reflects whole-job item progress, so `540/3000` displays about 18% regardless
+  of whether the current link is fetching, embedding, classifying, or saving.
+- Actual: nested one-item embedding/classification callbacks reported stage-local `1/1`; phase weighting treated
+  that as whole-job progress and the monotonic UI then retained a nearly full bar.
+- Data-safety check: presentation only; durable item/task counts and processing order were unaffected.
+- Fix: progress events now carry separate stage-local and authoritative overall item counts. The shared progress
+  calculation prefers the overall values, and the normal/Resume modal, Import Studio, categorization controls,
+  enrichment review/test tools, and embedding backfill status all consume it. Determinate bars also expose
+  consistent progressbar accessibility values. The obsolete Import wave-percentage model was removed.
+- Automated evidence: 23 focused pipeline/client/job-store/Import/Resume tests pass, including `540/3000`
+  regression coverage across enrich/embed/classify/save; TypeScript and production build pass.
+- Retest: reload the extension and observe a running large job. The visible percentage and fill should track
+  the item count throughout stage changes, remain monotonic, and reach 100% only when the job completes.
 
 For substantial issues, add a section using this template:
 

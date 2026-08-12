@@ -210,7 +210,7 @@ function applyPipelineProgress(
   update: ItemPipelineProgress
 ) {
   const bar = pipelineProgressBar(update);
-  const ratio = bar.total > 0 ? bar.current / bar.total : 0;
+  const ratio = bar.percent / 100;
   setRunningProgress(setModal, formatItemPipelineProgress(update), ratio);
 }
 
@@ -1328,6 +1328,11 @@ function PipelineProgressModal({
             </div>
             {modal.total > 0 ? (
               <div
+                role="progressbar"
+                aria-label={modal.progressLabel}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={pct}
                 style={{
                   height: 6,
                   borderRadius: 999,

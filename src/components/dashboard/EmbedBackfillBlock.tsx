@@ -6,6 +6,7 @@ import {
 } from '../../lib/enrichment/embedItemSignal';
 import { getPendingEmbeddingItemIds } from '../../lib/storage/dbClient';
 import { runPipelineActionOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
+import { pipelineProgressBar } from '../../lib/pipeline';
 
 type Props = {
   onComplete?: () => void;
@@ -55,12 +56,15 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
         }
         const result = await runPipelineActionOnOffscreen('reembed', itemIds, {
           signal: controller.signal,
-          onProgress: (update) => setProgress({
-            phase: update.phase === 'save' ? 'write' : update.phase === 'prep' ? 'prepare' : 'embed',
-            batchIndex: update.current,
-            batchTotal: update.total,
-            embeddedSoFar: 0,
-          }),
+          onProgress: (update) => {
+            const bar = pipelineProgressBar(update);
+            setProgress({
+              phase: update.phase === 'save' ? 'write' : update.phase === 'prep' ? 'prepare' : 'embed',
+              batchIndex: bar.completed,
+              batchTotal: bar.total,
+              embeddedSoFar: 0,
+            });
+          },
         });
         const embedded = result.embedded ?? 0;
         const embedFailed = result.embedFailed ?? 0;
@@ -177,6 +181,11 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
 
       {stats && stats.aiSummaryOk > 0 ? (
         <div
+          role="progressbar"
+          aria-label="Search vector coverage"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
           style={{
             marginTop: 8,
             height: 4,

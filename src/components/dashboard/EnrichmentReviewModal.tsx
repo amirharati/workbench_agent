@@ -29,6 +29,7 @@ import {
   FAILURE_CATEGORY_LABELS,
   type FailureCategory,
 } from '../../lib/enrichment';
+import { pipelineProgressBar } from '../../lib/pipeline';
 
 type StatusFilter = 'all' | 'ok' | 'failed' | 'skipped' | 'other';
 type FailureCategoryFilter = 'all' | FailureCategory;
@@ -502,7 +503,8 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
         forceEnrich: true,
         forceReclassify: true,
         onProgress: (p) => {
-          setRefetchAllProgress({ done: Math.min(p.current, p.total), total: p.total });
+          const bar = pipelineProgressBar(p);
+          setRefetchAllProgress({ done: bar.completed, total: bar.total });
         },
       });
       await load();

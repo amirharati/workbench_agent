@@ -3,7 +3,6 @@ import type { Collection, Project } from '../../lib/db';
 import {
   getDefaultImportSelection,
   resolveImportDestinationLabel,
-  resolveImportProcessingPercent,
   resolveImportReportProcessedIds,
 } from './ImportStudioView';
 
@@ -40,13 +39,6 @@ describe('Import Studio workflow', () => {
     expect(resolveImportDestinationLabel([project], [collection], '', '')).toBe('Inbox / Incoming');
     expect(resolveImportDestinationLabel([project], [collection], project.id, '')).toBe('Research / Unfiled');
     expect(resolveImportDestinationLabel([project], [collection], project.id, collection.id)).toBe('Reading');
-  });
-
-  it('turns pipeline phases into bounded determinate progress', () => {
-    expect(resolveImportProcessingPercent({ phase: 'prep', waveIndex: 0, waveTotal: 2 })).toBe(3);
-    expect(resolveImportProcessingPercent({ phase: 'enrich', waveIndex: 0, waveTotal: 2, enrichDone: 5, enrichTotal: 10 })).toBe(38);
-    expect(resolveImportProcessingPercent({ phase: 'wave', waveIndex: 1, waveTotal: 2 })).toBe(83);
-    expect(resolveImportProcessingPercent({ phase: 'done', waveIndex: 2, waveTotal: 2 })).toBe(100);
   });
 
   it('reports only checkpoint-final items after a partial pipeline run', () => {

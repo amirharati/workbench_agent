@@ -89,6 +89,27 @@ function progressPhase(stage: string): BatchDigestProgress['phase'] {
   return 'save';
 }
 
+function overallItemProgress(
+  input: DurablePipelineRunInput,
+  itemId: string
+): Pick<BatchDigestProgress, 'overallCurrent' | 'overallTotal'> {
+  const itemIndex = input.itemIds.indexOf(itemId);
+  return itemIndex >= 0 && input.itemIds.length > 0
+    ? { overallCurrent: itemIndex, overallTotal: input.itemIds.length }
+    : {};
+}
+
+function withOverallItemLabel(
+  label: string,
+  input: DurablePipelineRunInput,
+  itemId: string
+): string {
+  const itemIndex = input.itemIds.indexOf(itemId);
+  return itemIndex >= 0 && input.itemIds.length > 0
+    ? `${label} · Link ${itemIndex + 1}/${input.itemIds.length}`
+    : label;
+}
+
 async function runStage(
   claim: ClaimedPipelineTask,
   input: DurablePipelineRunInput
@@ -145,9 +166,14 @@ async function runStage(
         signal,
         onProgress: (progress) => input.onProgress?.({
           phase: 'embed',
-          label: progress.phase === 'write' ? 'Saving search embedding…' : 'Building search embedding…',
+          label: withOverallItemLabel(
+            progress.phase === 'write' ? 'Saving search embedding…' : 'Building search embedding…',
+            input,
+            itemId
+          ),
           current: progress.batchIndex,
           total: Math.max(progress.batchTotal, 1),
+          ...overallItemProgress(input, itemId),
         }),
       });
       throwIfAborted(signal);
@@ -178,9 +204,10 @@ async function runStage(
         signal,
         onProgress: (progress) => input.onProgress?.({
           phase: progress.phase === 'save' ? 'save' : 'classify',
-          label: progress.label || 'Classifying…',
+          label: withOverallItemLabel(progress.label || 'Classifying…', input, itemId),
           current: progress.current,
           total: Math.max(progress.total, 1),
+          ...overallItemProgress(input, itemId),
         }),
       });
       throwIfAborted(signal);
@@ -347,6 +374,8 @@ export async function runDurablePipelineJob(
       label: stageLabel(claim.task.stage, itemIndex, input.itemIds.length),
       current: itemIndex,
       total: Math.max(input.itemIds.length, 1),
+      overallCurrent: itemIndex,
+      overallTotal: Math.max(input.itemIds.length, 1),
     });
 
     const leaseInput = {
