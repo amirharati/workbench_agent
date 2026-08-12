@@ -51,17 +51,83 @@ export async function requestPipelineJobCancellation(
   await cancelOffscreenRequest(requestId, reason);
 }
 
-/** Resume a paused job and bind browser fetching to this dashboard's window. */
-export async function requestPipelineJobResume(requestId: string): Promise<void> {
+/**
+ * Resume a durable job and observe it through the same progress/completion
+ * channel used by a newly submitted job. The listener is installed before the
+ * Resume message so a fast first progress event cannot be missed.
+ */
+export async function resumePipelineJobOnOffscreen(
+  requestId: string,
+  options: {
+    signal?: AbortSignal;
+    onProgress?: (progress: BatchDigestProgress) => void;
+  } = {}
+): Promise<PipelineOffscreenDoneEvent> {
+  if (options.signal?.aborted) throw cancelledError();
   const aiSettings = await loadAISettings();
-  const message: PipelineOffscreenResume = {
-    target: PIPELINE_OFFSCREEN_TARGET,
-    action: 'resume',
-    requestId,
-    aiSettings,
-  };
-  const response = await chrome.runtime.sendMessage(message) as { ok?: boolean; error?: string } | undefined;
-  if (!response?.ok) throw new Error(response?.error ?? 'Pipeline coordinator rejected Resume');
+  if (options.signal?.aborted) throw cancelledError();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let cancelTimer: number | undefined;
+    const cleanup = () => {
+      if (cancelTimer != null) window.clearTimeout(cancelTimer);
+      chrome.runtime.onMessage.removeListener(onMessage);
+      options.signal?.removeEventListener('abort', onAbort);
+      setPipelineClientJobActive(false);
+    };
+    const finish = (complete: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      complete();
+    };
+    const onMessage = (message: unknown) => {
+      const event = message as PipelineOffscreenProgressEvent | PipelineOffscreenDoneEvent;
+      if (!event || event.requestId !== requestId) return;
+      if (event.type === 'pipeline-offscreen-progress') {
+        options.onProgress?.(event.progress);
+        return;
+      }
+      if (event.type !== 'pipeline-offscreen-done') return;
+      if (!event.ok) {
+        finish(() => reject(
+          options.signal?.aborted ? cancelledError(event.error) : new Error(event.error ?? 'Pipeline failed')
+        ));
+        return;
+      }
+      finish(() => resolve(event));
+    };
+    const onAbort = () => {
+      void cancelOffscreenRequest(requestId, options.signal?.reason).catch(() => {});
+      cancelTimer = window.setTimeout(() => {
+        finish(() => reject(new Error('Cancellation could not be confirmed by the coordinator')));
+      }, CANCEL_TIMEOUT_MS);
+    };
+
+    setPipelineClientJobActive(true);
+    chrome.runtime.onMessage.addListener(onMessage);
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    const message: PipelineOffscreenResume = {
+      target: PIPELINE_OFFSCREEN_TARGET,
+      action: 'resume',
+      requestId,
+      aiSettings,
+    };
+    void chrome.runtime.sendMessage(message)
+      .then((response: { ok?: boolean; error?: string } | undefined) => {
+        if (!response?.ok) {
+          finish(() => reject(new Error(response?.error ?? 'Pipeline coordinator rejected Resume')));
+          return;
+        }
+        if (options.signal?.aborted) {
+          void cancelOffscreenRequest(requestId, options.signal.reason).catch(() => {});
+        }
+      })
+      .catch((error) => finish(() => reject(
+        error instanceof Error ? error : new Error(String(error))
+      )));
+  });
 }
 
 async function runJob(

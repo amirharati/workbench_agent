@@ -205,14 +205,46 @@ describe('offscreenPipelineClient', () => {
     await expect(pending).resolves.toMatchObject({ discoverResult: { itemsSampled: 0 } });
   });
 
-  it('requests Resume so the service worker can rebind the paused job to this dashboard', async () => {
-    const { requestPipelineJobResume } = await import('./offscreenPipelineClient');
-    await expect(requestPipelineJobResume('paused-job')).resolves.toBeUndefined();
+  it('observes progress and completion after Resume', async () => {
+    const { resumePipelineJobOnOffscreen } = await import('./offscreenPipelineClient');
+    const progress = vi.fn();
+    const pending = resumePipelineJobOnOffscreen('paused-job', { onProgress: progress });
+
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
     expect(sendMessage).toHaveBeenCalledWith({
       target: 'pipeline-offscreen',
       action: 'resume',
       requestId: 'paused-job',
       aiSettings: storedAISettings,
     });
+    expect(listeners.size).toBe(1);
+    for (const listener of listeners) {
+      listener({
+        type: 'pipeline-offscreen-progress',
+        requestId: 'paused-job',
+        progress: { phase: 'embed', label: 'Building search embedding… 3/5', current: 2, total: 5 },
+      });
+      listener({
+        type: 'pipeline-offscreen-done',
+        requestId: 'paused-job',
+        ok: true,
+        result: {
+          enriched: 5,
+          skipped: 0,
+          failed: 0,
+          classified: 5,
+          message: '5 enriched · 5 classified',
+        },
+      });
+    }
+
+    await expect(pending).resolves.toMatchObject({
+      ok: true,
+      result: { enriched: 5, classified: 5 },
+    });
+    expect(progress).toHaveBeenCalledWith(expect.objectContaining({
+      label: 'Building search embedding… 3/5',
+    }));
+    expect(listeners.size).toBe(0);
   });
 });

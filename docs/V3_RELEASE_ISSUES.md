@@ -68,7 +68,7 @@ V3 closes only when every gate is **PASS** or has an explicit signed-off excepti
 | G1 | Data durability, Dropbox mirror, reinstall recovery, restore | NOT RUN | Zero-tolerance gate |
 | G2 | Core daily workflows work end to end | NOT RUN | Run 01 + continued dogfood |
 | G3 | UI/UX is readable, coherent, and responsive | NOT RUN | Large + small display review |
-| G4 | Search, import, and AI pipeline are honest and controllable | NOT RUN | Small, cost-bounded test |
+| G4 | Search, import, and AI pipeline are honest and controllable | IN PROGRESS | Shared pipeline and Resume mostly pass; continue bounded dogfood |
 | G5 | Startup, reload, and normal use are stable and responsive | NOT RUN | Record cold/warm behavior |
 | G6 | Blockers closed, limitations documented, version/release integrated | NOT RUN | Final signoff only |
 
@@ -94,7 +94,7 @@ Use disposable data, but treat every unexpected disappearance or mutation as a r
 | Data folder | Fresh dedicated Dropbox subfolder — exact path TO RECORD |
 | Chrome profile/device | One profile on one device — TO RECORD |
 | Starting item/project counts | 0 expected; confirm after onboarding |
-| Status | PLANNED |
+| Status | IN PROGRESS |
 
 Important boundary: the **data folder** should be inside Dropbox for this test. The
 unpacked extension's `dist/` must stay in a stable local, non-synced directory. Loading
@@ -253,8 +253,8 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-004 | 2026-08-08 | Search / organization | Cannot search All Library for material not already in a target project or collection | P2 | READY TO RETEST | Pre-ranking `Not in…` project/collection filter | Uncommitted | Contextual project/collection retest pending |
 | V3-005 | 2026-08-08 | Search / query semantics | Multi-term Search syntax and result counts are unclear/non-monotonic | P2 | READY TO RETEST | Parsed AND/OR/phrase grammar, worker-owned semantic ranking, visible fallback | Uncommitted | Fixed-query and live-embedding retest pending |
 | V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | CLOSED | Preserve restored Search scope; follow later shell navigation only | `cfad800` | PASS — refresh and later navigation, 2026-08-09 |
-| V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | FIXING | Content sidecar checkpoint ready; automatic run artifacts remain with coordinator cleanup | Checkpoint 2 uncommitted | Content reload/reinstall recovery pending |
-| V3-008 | 2026-08-09 | Pipeline / resume recovery | System sleep can strand a batch; first coordinator build stalled at 5% and blocked Hub loading | P1 | FIXING | Rebuild one shared serialized coordinator, then expand only after acceptance gates | Safety branch only | One link through sleep/wake, then large batch |
+| V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | READY TO RETEST | One folder-owned content DB; no per-URL files or automatic run trees | `e9aef10` + coordinator cleanup | Layout/content reads pass; Chrome restart/reinstall recovery remains |
+| V3-008 | 2026-08-09 | Pipeline / resume recovery | System sleep can strand a batch; first coordinator build stalled at 5% and blocked Hub loading | P1 | READY TO RETEST | One shared serialized coordinator with durable jobs, tab fetching, pause/Resume, priority, and recovery | `2f9c4d0` through `6b503c3` + Resume UI checkpoint | Normal processing and pause/Resume mostly pass; cancel, sleep/restart, and final scale checks remain |
 
 ### V3-001 — Replace stale Help with a comprehensive daily-use guide
 
@@ -518,6 +518,15 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   independent single lane, and startup recovery of queued durable work. Real SQLite coverage also commits
   and reads a 445-task durable batch. Client/checkpoint lifecycle tests, TypeScript, `git diff --check`, and
   the production build are part of the release gate.
+- Return retest — 2026-08-12: the worker/content-store paths mostly worked, but pressing Resume exposed a
+  presentation gap: the banner sent a one-shot Resume command and did not attach the dashboard observer used
+  by a normal Start, so users saw neither the live processing modal nor the final results modal. Resume now
+  installs the same progress/completion observer before requeueing the existing durable job, opens the shared
+  modal at its saved completed count, supports Cancel through the observer, and renders the normal final
+  summary/report. The job is not duplicated and coordinator ownership is unchanged. Focused Resume client/UI
+  coverage and the production build pass. Real-extension retest passed on 2026-08-12 for the live Resume
+  and final-results modals; broader cancellation, sleep/restart, and large-batch checks remain part of normal
+  release dogfood.
 - Retest:
   1. Reload protocol-v12 `dist`; first process one link from Enrichment Hub. Confirm the page remains stable,
      the job reaches completion, and Cancel stops an in-flight fetch/embedding promptly. Then start the

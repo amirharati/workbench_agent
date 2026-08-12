@@ -3,8 +3,8 @@ import { dbRpc } from '../../lib/storage/dbClient';
 import type { PipelineJobSnapshot } from '../../lib/storage/dbWorker/pipelineJobStore';
 import {
   requestPipelineJobCancellation,
-  requestPipelineJobResume,
 } from '../../lib/pipeline/offscreenPipelineClient';
+import { usePipelineProgress } from './PipelineProgressProvider';
 
 const POLL_MS = 2_000;
 
@@ -29,8 +29,10 @@ function stageLabel(stage?: string): string {
 }
 
 export function PipelineCoordinatorBanner() {
+  const pipeline = usePipelineProgress();
   const [jobs, setJobs] = useState<PipelineJobSnapshot[]>([]);
   const [cancelError, setCancelError] = useState('');
+  const [resumePending, setResumePending] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -76,11 +78,14 @@ export function PipelineCoordinatorBanner() {
 
   const resume = async () => {
     setCancelError('');
+    setResumePending(true);
     try {
-      await requestPipelineJobResume(active.job.id);
+      await pipeline.resumeJob(active);
       await refresh();
     } catch (error) {
       setCancelError(error instanceof Error ? error.message : 'Resume request failed');
+    } finally {
+      setResumePending(false);
     }
   };
 
@@ -120,10 +125,11 @@ export function PipelineCoordinatorBanner() {
         <button
           type="button"
           onClick={() => void resume()}
+          disabled={resumePending}
           className="ui-button ui-button--primary"
           style={{ minHeight: 28, padding: '4px 10px' }}
         >
-          Resume
+          {resumePending ? 'Resuming…' : 'Resume'}
         </button>
       ) : null}
       <button

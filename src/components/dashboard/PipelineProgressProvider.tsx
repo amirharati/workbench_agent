@@ -40,6 +40,7 @@ import {
   resolvePipelineSummaryTone,
 } from '../../lib/pipeline/pipelineDictionary';
 import type { LibraryRefreshScope } from '../../lib/libraryRefresh';
+import type { PipelineJobSnapshot } from '../../lib/storage/dbWorker/pipelineJobStore';
 
 type SummaryTone = 'success' | 'error' | 'info';
 
@@ -174,6 +175,7 @@ interface PipelineProgressContextValue {
     summary: TopicClassifySummary;
     categories: import('../../lib/categorization/types').AiCategory[];
   }>;
+  resumeJob: (snapshot: PipelineJobSnapshot) => Promise<void>;
   closeModal: () => void;
 }
 
@@ -235,6 +237,14 @@ function setRunningProgress(
         }
       : prev
   );
+}
+
+function resumedJobTitle(action: string): string {
+  if (action.startsWith('reextract')) return 'Resuming AI extraction';
+  if (action.startsWith('reembed')) return 'Resuming search embeddings';
+  if (action.startsWith('classify')) return 'Resuming classification';
+  if (action.startsWith('discover')) return 'Resuming taxonomy discovery';
+  return 'Resuming link processing';
 }
 
 export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> = ({
@@ -1072,6 +1082,115 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
     [beginLocalRun, onRefresh]
   );
 
+  const resumeJob = useCallback(
+    async (snapshot: PipelineJobSnapshot): Promise<void> => {
+      const controller = beginLocalRun();
+      const title = resumedJobTitle(snapshot.job.action);
+      const itemIds = [...new Set(snapshot.tasks.map((task) => task.item_id).filter(Boolean))];
+      const completed = Math.min(
+        snapshot.job.total_items,
+        snapshot.job.completed_items + snapshot.job.failed_items
+      );
+      const initialRatio = snapshot.job.total_items > 0
+        ? completed / snapshot.job.total_items
+        : 0;
+
+      setIsRunning(true);
+      setIsCancellable(true);
+      setModal({
+        open: true,
+        phase: 'running',
+        title,
+        progressLabel: `Resuming from ${completed}/${snapshot.job.total_items} completed…`,
+        current: Math.round(clampRatio(initialRatio) * 100),
+        total: 100,
+        cancellable: true,
+      });
+
+      try {
+        const { resumePipelineJobOnOffscreen } = await import(
+          '../../lib/pipeline/offscreenPipelineClient'
+        );
+        const done = await resumePipelineJobOnOffscreen(snapshot.job.id, {
+          signal: controller.signal,
+          onProgress: (progress) => applyPipelineProgress(setModal, progress),
+        });
+        const result = done.result;
+        if (!result) throw new Error('Resumed pipeline completed without a result');
+
+        let reportRows: PipelineReportRow[] | undefined;
+        let reportRowsTotal: number | undefined;
+        if (itemIds.length > 0 && !snapshot.job.action.startsWith('discover')) {
+          reportRowsTotal = itemIds.length;
+          const sampleIds = itemIds.length > CLASSIFY_DONE_REPORT_SAMPLE_CAP
+            ? itemIds.slice(0, CLASSIFY_DONE_REPORT_SAMPLE_CAP)
+            : itemIds;
+          if (snapshot.job.action.startsWith('classify')) {
+            reportRows = await buildClassifyOutcomeReportRows(sampleIds, {});
+          } else if (!snapshot.job.action.startsWith('reembed')) {
+            reportRows = await buildEnrichOutcomeReportRows(sampleIds, {}, {
+              action: snapshot.job.action.startsWith('reextract')
+                ? 'ai_extract'
+                : itemIds.length === 1 ? 'full_digest' : 'batch_full',
+              enrichResults: result.itemEnrichResults?.filter((entry) => sampleIds.includes(entry.itemId)),
+            });
+          }
+        }
+
+        const summary = reportRows?.length
+          ? snapshot.job.action.startsWith('classify') && result.classifySummary
+            ? formatClassifyDoneModalSummary({
+                summary: result.classifySummary,
+                selectedCount: itemIds.length,
+                reportRowCount: reportRows.length,
+                reportRowTotal: reportRowsTotal,
+              })
+            : formatPipelineReportSummaryFromRows(reportRows) || result.message
+          : result.message;
+        const tone: SummaryTone = reportRows?.length
+          ? resolveReportRowsSummaryTone(reportRows, result.classifySummary)
+          : resolvePipelineSummaryTone({
+              enriched: result.enriched,
+              skipped: result.skipped,
+              failed: result.failed,
+              classified: result.classified,
+              classifyError: result.classifyError,
+              classifySummary: result.classifySummary,
+            });
+
+        setModal({
+          open: true,
+          phase: 'done',
+          title: `${title} — complete`,
+          summary,
+          tone,
+          reportRows,
+          reportScopeCount: itemIds.length || undefined,
+          reportRowsTotal,
+        });
+        await refreshAfterPipeline(onRefresh, itemIds.length ? { itemIds } : undefined);
+      } catch (error) {
+        const cancelled = controller.signal.aborted ||
+          (error instanceof Error && error.name === 'AbortError');
+        setModal({
+          open: true,
+          phase: 'done',
+          title: cancelled ? `${title} — cancelled` : title,
+          summary: cancelled
+            ? 'Cancelled — completed work was retained.'
+            : error instanceof Error ? error.message : 'Resume failed',
+          tone: cancelled ? 'info' : 'error',
+        });
+        if (!cancelled) throw error;
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null;
+        setIsRunning(false);
+        setIsCancellable(false);
+      }
+    },
+    [beginLocalRun, onRefresh]
+  );
+
   return (
     <PipelineProgressContext.Provider
       value={{
@@ -1086,6 +1205,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         runEmbedBatch,
         runDiscover,
         runClassify,
+        resumeJob,
         closeModal,
       }}
     >
