@@ -4,10 +4,29 @@
 **Owner:** Codex maintains this file from user testing reports  
 **Opened:** 2026-08-08  
 **Testing branch:** `design/ui-redesign`  
-**Starting product commit:** `b1114b4` (`Improve scoped list filtering`)
+**Starting product commit:** `b1114b4` (`Improve scoped list filtering`)  
+**Current test checkpoint:** `4506de7` (`Show progress and results after pipeline resume`)
 
 This is the single operating document for closing V3. Historical V3 plans explain how
 features were built; they do not determine the remaining release scope.
+
+## How to use this document during dogfood
+
+This file remains authoritative even when an individual session is diverted to diagnose
+or fix a newly found issue:
+
+1. Test against the current checkpoint above and work through sections A–G opportunistically.
+2. Report findings as they occur; Codex adds or updates a `V3-###` ledger entry and identifies
+   the affected release gate.
+3. A fix is not considered finished merely because it builds: its ledger entry remains
+   `READY TO RETEST` until the original browser scenario passes.
+4. Checked test boxes, gate evidence, and the Run log record durable progress across sessions.
+5. Return to the remaining unchecked boxes after each issue detour. V3 is complete only when
+   G0–G6 pass or have explicit accepted exceptions and the Final signoff list is complete.
+
+Current focus is ordinary daily-use testing across core workflows and UI/UX, while watching
+data integrity continuously. Destructive restore/reinstall recovery should be tested only after
+a recognizable baseline library and marker items have been recorded.
 
 ## V3 goal
 
@@ -249,9 +268,9 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 |----|-------|------|---------|----------|--------|-------------|--------------|--------|
 | V3-001 | 2026-08-08 | Help / onboarding | Help is incomplete and describes pre-redesign workflows | P2 | READY TO RETEST | Text/icon Help shipped locally; media-ready | V3 checkpoint | User review pending |
 | V3-002 | 2026-08-08 | Import / enrichment | Finished bulk run leaves a false resumable checkpoint (`443/445`) | P1 | READY TO RETEST | Reconcile terminal leftovers and report only final IDs | V3 checkpoint | Reload + next small import pending |
-| V3-003 | 2026-08-08 | Organization / concurrency | Adding an item to a project/collection is slow or later appears applied/reverted during processing | P1 | READY TO RETEST | Atomic worker-side item patches, explicit UI priority, durable save feedback | Uncommitted | Parallel pipeline retest pending |
-| V3-004 | 2026-08-08 | Search / organization | Cannot search All Library for material not already in a target project or collection | P2 | READY TO RETEST | Pre-ranking `Not in…` project/collection filter | Uncommitted | Contextual project/collection retest pending |
-| V3-005 | 2026-08-08 | Search / query semantics | Multi-term Search syntax and result counts are unclear/non-monotonic | P2 | READY TO RETEST | Parsed AND/OR/phrase grammar, worker-owned semantic ranking, visible fallback | Uncommitted | Fixed-query and live-embedding retest pending |
+| V3-003 | 2026-08-08 | Organization / concurrency | Adding an item to a project/collection is slow or later appears applied/reverted during processing | P1 | READY TO RETEST | Atomic worker-side item patches, explicit UI priority, durable save feedback | `33396e1` | Parallel pipeline retest pending |
+| V3-004 | 2026-08-08 | Search / organization | Cannot search All Library for material not already in a target project or collection | P2 | READY TO RETEST | Pre-ranking `Not in…` project/collection filter | `33396e1` | Contextual project/collection retest pending |
+| V3-005 | 2026-08-08 | Search / query semantics | Multi-term Search syntax and result counts are unclear/non-monotonic | P2 | READY TO RETEST | Parsed AND/OR/phrase grammar, worker-owned semantic ranking, visible fallback | `33396e1` | Fixed-query and live-embedding retest pending |
 | V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | CLOSED | Preserve restored Search scope; follow later shell navigation only | `cfad800` | PASS — refresh and later navigation, 2026-08-09 |
 | V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | READY TO RETEST | One folder-owned content DB; no per-URL files or automatic run trees | `e9aef10` + coordinator cleanup | Layout/content reads pass; Chrome restart/reinstall recovery remains |
 | V3-008 | 2026-08-09 | Pipeline / resume recovery | System sleep can strand a batch; first coordinator build stalled at 5% and blocked Hub loading | P1 | READY TO RETEST | One shared serialized coordinator with durable jobs, tab fetching, pause/Resume, priority, and recovery | `2f9c4d0` through `6b503c3` + Resume UI checkpoint | Normal processing and pause/Resume mostly pass; cancel, sleep/restart, and final scale checks remain |
@@ -595,6 +614,16 @@ These are not counted as Run 01 failures until reproduced.
 - Issues opened: V3-001, V3-002, V3-003, V3-004, V3-005, V3-006, V3-007, V3-008
 - Notes: User will report findings incrementally; Codex will assign IDs, triage, update gates,
   implement approved fixes, and move larger safe items to a focused session or post-V3 backlog.
+
+### Run 01 continuation — 2026-08-12 checkpoint
+
+- Build: `design/ui-redesign` at `4506de7`.
+- Pipeline architecture and folder-owned content database are implemented. Normal processing and
+  pause/Resume are mostly accepted; broader Cancel, sleep/restart, reinstall recovery, and final
+  large-batch checks remain open.
+- Resume now shows both the live progress modal and final-results modal.
+- Primary activity returns to general usability, UI/UX, state-retention, and data-integrity dogfood.
+- New findings continue in the issue ledger; fixing one issue does not replace the A–G checklist.
 
 ## Final signoff
 
