@@ -700,8 +700,9 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
     }
   };
 
-  const openInspect = (itemId: string) => {
-    setInspectState({ ids: [itemId], index: 0 });
+  const openInspect = (item: Item) => {
+    setInspectState({ ids: [item.id], index: 0 });
+    onOpenItem?.(item);
   };
 
   const inspectRow = inspectState
@@ -1124,7 +1125,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button
                           type="button"
-                          onClick={() => openInspect(row.item.id)}
+                          onClick={() => openInspect(row.item)}
                           title="Inspect pipeline"
                           style={{
                             display: 'inline-flex',
@@ -1178,7 +1179,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                         navIndex={0}
                         navTotal={1}
                         onClose={() => setInspectState(null)}
-                        onOpenInTab={onOpenItem ? () => onOpenItem(inspectRow.item) : undefined}
                         onActionComplete={() => applyHoldForIds(inspectState!.ids)}
                       />
                     ) : null}

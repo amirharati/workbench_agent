@@ -53,7 +53,6 @@ interface PipelineItemInspectorPanelProps {
   onPrev?: () => void;
   onNext?: () => void;
   onClose: () => void;
-  onOpenInTab?: () => void;
   onActionComplete?: () => void;
 }
 
@@ -213,7 +212,6 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
   onPrev,
   onNext,
   onClose,
-  onOpenInTab,
   onActionComplete,
 }) => {
   const pipeline = usePipelineProgress();
@@ -634,11 +632,6 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           />
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          {onOpenInTab ? (
-            <button type="button" onClick={onOpenInTab} style={actionBtnStyle} title="Open in right Inspector sidebar">
-              Inspector
-            </button>
-          ) : null}
           <button type="button" onClick={onClose} aria-label="Close" style={actionBtnStyle}>
             <X size={14} />
           </button>
@@ -802,17 +795,6 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
                 <span>Updated: {new Date(item.updated_at).toLocaleDateString()}</span>
                 {item.source ? <span>Source: {item.source}</span> : null}
               </div>
-              {onOpenInTab ? (
-                <button
-                  type="button"
-                  onClick={onOpenInTab}
-                  style={{ ...actionBtnStyle, alignSelf: 'flex-start' }}
-                  title="Open in right Inspector sidebar"
-                >
-                  <ExternalLink size={13} />
-                  Open in Inspector sidebar
-                </button>
-              ) : null}
             </div>
           ) : null}
         </div>

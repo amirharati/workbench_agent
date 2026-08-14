@@ -2821,6 +2821,121 @@ button.ui-scope-chip {
   white-space: nowrap;
 }
 
+/* ===== Related / Similar links ===== */
+.ui-similar-bookmarks__header {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.ui-similar-bookmarks__title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--dev-fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.ui-similar-bookmarks__title svg {
+  flex: 0 0 auto;
+}
+
+.ui-similar-bookmarks__method {
+  padding-left: 19px;
+  color: var(--text-faint);
+  font-size: var(--dev-fs-caption);
+  line-height: 1.35;
+}
+
+.ui-related-link-row {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ui-related-link-row[data-has-workspace-action='true'] {
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ui-related-link-row__copy,
+.ui-related-link-row__title-line {
+  min-width: 0;
+  width: 100%;
+}
+
+.ui-related-link-row__title-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.ui-related-link-row__title {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--text);
+  font-size: var(--dev-fs-sm);
+  font-weight: 600;
+  line-height: 1.38;
+  overflow-wrap: anywhere;
+}
+
+.ui-related-link-row__title--button {
+  all: unset;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: var(--dev-fs-sm);
+  font-weight: 600;
+  line-height: 1.38;
+  overflow-wrap: anywhere;
+}
+
+.ui-related-link-row__title--button:hover {
+  text-decoration: underline;
+}
+
+.ui-related-link-row__external {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.ui-related-link-row__meta {
+  min-width: 0;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: var(--dev-fs-caption);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.ui-related-link-row__workspace {
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.ui-related-link-row__workspace .ui-workspace-picker-trigger {
+  max-width: 100%;
+  min-height: 28px;
+  padding: 4px 9px;
+  font-size: var(--text-xs);
+}
+
 .ui-workspace-picker {
   gap: 12px;
 }

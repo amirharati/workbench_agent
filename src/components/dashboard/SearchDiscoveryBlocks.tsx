@@ -40,48 +40,41 @@ function LinkRow({
 }) {
   return (
     <div
-      style={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 8,
-        padding: '6px 0',
-        borderBottom: '1px solid var(--border)',
-      }}
+      className="ui-related-link-row"
+      data-has-workspace-action={workspaceAction ? 'true' : 'false'}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {onSelect ? (
-          <button
-            type="button"
-            onClick={onSelect}
-            style={{
-              all: 'unset',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: 'var(--dev-fs-sm)',
-              color: 'var(--accent)',
-            }}
-          >
-            {title}
-          </button>
-        ) : (
-          <div style={{ fontWeight: 600, fontSize: 'var(--dev-fs-sm)' }}>{title}</div>
-        )}
-        <div style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-muted)' }}>
+      <div className="ui-related-link-row__copy">
+        <div className="ui-related-link-row__title-line">
+          {onSelect ? (
+            <button
+              type="button"
+              onClick={onSelect}
+              className="ui-related-link-row__title ui-related-link-row__title--button"
+            >
+              {title}
+            </button>
+          ) : (
+            <div className="ui-related-link-row__title">{title}</div>
+          )}
+          {url ? (
+            <ExtensionPageUrlLink
+              url={url}
+              className="ui-related-link-row__external"
+              title="Open URL"
+            >
+              <ExternalLink size={13} />
+            </ExtensionPageUrlLink>
+          ) : null}
+        </div>
+        <div className="ui-related-link-row__meta">
           {domain}
           {category ? ` · ${category}` : ''}
           {!hideScore && score != null ? ` · ${score.toFixed(2)}` : ''}
         </div>
       </div>
-      {url ? (
-        <ExtensionPageUrlLink
-          url={url}
-          style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 2, display: 'inline-flex' }}
-          title="Open URL"
-        >
-          <ExternalLink size={14} />
-        </ExtensionPageUrlLink>
+      {workspaceAction ? (
+        <div className="ui-related-link-row__workspace">{workspaceAction}</div>
       ) : null}
-      {workspaceAction}
     </div>
   );
 }
@@ -258,31 +251,15 @@ export function SimilarItemsBlock({
 
   return (
     <section style={{ marginBottom: compact ? 8 : 16 }}>
-      <h3
-        style={{
-          margin: '0 0 8px',
-          fontSize: 'var(--dev-fs-sm)',
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          color: 'var(--text-muted)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        <Sparkles size={14} />
-        Similar bookmarks
-        {similar.anchorHasEmbedding ? (
-          <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--text-faint)' }}>
-            · semantic
-          </span>
-        ) : (
-          <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--text-faint)' }}>
-            · category + tags
-          </span>
-        )}
-      </h3>
+      <div className="ui-similar-bookmarks__header">
+        <h3 className="ui-similar-bookmarks__title">
+          <Sparkles size={13} />
+          Similar bookmarks
+        </h3>
+        <span className="ui-similar-bookmarks__method">
+          {similar.anchorHasEmbedding ? 'Semantic matches' : 'Category and tag matches'}
+        </span>
+      </div>
 
       {!similar.results.length ? (
         <p style={{ fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)', margin: 0 }}>
@@ -292,9 +269,9 @@ export function SimilarItemsBlock({
         <>
           {!compact ? (
             <p style={{ fontSize: 'var(--dev-fs-caption)', color: 'var(--text-faint)', margin: '0 0 8px' }}>
-              {similar.results.length} shown
+              {similar.results.length.toLocaleString()} shown
               {similar.totalCandidates > similar.results.length
-                ? ` of ${similar.totalCandidates} candidates`
+                ? ` of ${similar.totalCandidates.toLocaleString()} candidates`
                 : ''}
             </p>
           ) : null}

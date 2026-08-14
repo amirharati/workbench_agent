@@ -1291,6 +1291,18 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     );
   }, [inspectState, rows, tableRowsForList]);
 
+  const lastSyncedInspectorItemIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const activeItem = activeInspectRow?.item ?? null;
+    if (!activeItem) {
+      lastSyncedInspectorItemIdRef.current = null;
+      return;
+    }
+    if (lastSyncedInspectorItemIdRef.current === activeItem.id) return;
+    lastSyncedInspectorItemIdRef.current = activeItem.id;
+    onOpenItem?.(activeItem);
+  }, [activeInspectRow, onOpenItem]);
+
   return (
     <div
       className="scrollbar ui-page-frame"
@@ -1819,6 +1831,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                 }
               >
                 <div
+                  onClick={() => onOpenItem?.(item)}
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '32px 1fr 140px 1fr 120px 100px',
@@ -1828,13 +1841,18 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                     alignItems: 'center',
                     fontSize: 'var(--text-sm)',
                     background: rowBackground,
+                    cursor: onOpenItem ? 'pointer' : undefined,
                   }}
                 >
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <input
                       type="checkbox"
                       checked={selectedIds.has(item.id)}
-                      onChange={(e) => toggleSelect(item.id, e.target.checked)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        toggleSelect(item.id, checked);
+                        if (checked) onOpenItem?.(item);
+                      }}
                       aria-label={`Select ${item.title || item.url}`}
                     />
                   </label>
@@ -1943,7 +1961,11 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     <button
                       type="button"
-                      onClick={() => handleInspectClick(item.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleInspectClick(item.id);
+                        onOpenItem?.(item);
+                      }}
                       title={
                         inspectState?.ids.includes(item.id)
                           ? 'Inspect (selected set)'
@@ -2028,7 +2050,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                   )
                 }
                 onClose={closeInspect}
-                onOpenInTab={onOpenItem ? () => onOpenItem(activeInspectRow.item) : undefined}
                 onActionComplete={() =>
                   applyHoldForIds(
                     inspectState.ids.slice(inspectState.index, inspectState.index + 1)

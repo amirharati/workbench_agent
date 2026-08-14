@@ -30,6 +30,8 @@ describe('SimilarItemsBlock', () => {
     expect(markup).toContain('Similar bookmarks');
     expect(markup).toContain('Related bookmark');
     expect(markup).toContain('Add to workspace…');
+    expect(markup).toContain('ui-related-link-row__workspace');
+    expect(markup).toContain('Semantic matches');
     expect(markup).not.toContain('Inspect');
     expect(markup).not.toContain('Open tab');
   });
