@@ -122,7 +122,6 @@ export function shouldPreferImportTitle(
   if (!inc || inc === url) return false;
   const ex = existingTitle?.trim();
   if (!ex || ex === url) return true;
-  if (inc.length > ex.length) return true;
   if (/https?:\/\/(?:www\.)?t\.co\/\S+/i.test(ex) && !/https?:\/\/(?:www\.)?t\.co\/\S+/i.test(inc)) {
     const exStripped = ex
       .replace(/\s*https?:\/\/(?:www\.)?t\.co\/\S+/gi, ' ')
@@ -132,6 +131,38 @@ export function shouldPreferImportTitle(
     if (exStripped === incNorm) return true;
   }
   return false;
+}
+
+/**
+ * Preserve an existing per-collection note while retaining distinct imported text.
+ * Re-importing the same note is idempotent.
+ */
+export function mergeImportedPlacementNotes(
+  existingNotes: string | undefined,
+  incomingNotes: string | undefined
+): string | undefined {
+  const existing = existingNotes?.trim();
+  const incoming = incomingNotes?.trim();
+  if (!existing) return incoming || undefined;
+  if (!incoming || existing === incoming || existing.includes(incoming)) return existingNotes;
+  return `${existingNotes!.trimEnd()}\n\n${incoming}`;
+}
+
+/** Preserve existing per-collection tags and add any new imported tags. */
+export function mergeImportedPlacementTags(
+  existingTags: string[] | undefined,
+  incomingTags: string[] | undefined
+): string[] {
+  const merged = [...(existingTags ?? [])];
+  const seen = new Set(merged.map((tag) => tag.trim().toLocaleLowerCase()).filter(Boolean));
+  for (const rawTag of incomingTags ?? []) {
+    const tag = rawTag.trim();
+    const key = tag.toLocaleLowerCase();
+    if (!tag || seen.has(key)) continue;
+    merged.push(tag);
+    seen.add(key);
+  }
+  return merged;
 }
 
 export function cleanXImportText(

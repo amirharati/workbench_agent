@@ -31,7 +31,11 @@ import type {
   AiTaxonomyState,
 } from './categorization/types';
 import type { TrashHistoryEntry } from './trashHistory';
-import { shouldPreferImportTitle } from './import/xImportHygiene';
+import {
+  mergeImportedPlacementNotes,
+  mergeImportedPlacementTags,
+  shouldPreferImportTitle,
+} from './import/xImportHygiene';
 import { nowMs } from './time/clock';
 import { buildUpdatedItem } from './itemUpdate';
 import {
@@ -1331,11 +1335,11 @@ export const bulkImportBookmarks = async (
             addedAt: now,
             source: best.source || 'import',
           };
-        } else if (incomingNotes) {
+        } else if (incomingNotes || (best.tags && best.tags.length > 0)) {
           placements[targetCollection] = {
             ...existingPlacement,
-            notes: incomingNotes,
-            tags: best.tags && best.tags.length > 0 ? best.tags : existingPlacement.tags,
+            notes: mergeImportedPlacementNotes(existingPlacement.notes, incomingNotes),
+            tags: mergeImportedPlacementTags(existingPlacement.tags, best.tags),
           };
         }
 

@@ -8,6 +8,7 @@ import type { RightPanelTab } from '../../../lib/shell/shellLayoutState';
 
 interface RightPanelProps {
   activeItem: Item | null;
+  activeItemLoading?: boolean;
   aiSettings?: AISettings;
   scopeProjectId: string | 'all';
   scopeCollectionId: string | 'all';
@@ -35,6 +36,7 @@ interface RightPanelProps {
 
 export const RightPanel: React.FC<RightPanelProps> = ({
   activeItem,
+  activeItemLoading,
   aiSettings,
   scopeProjectId,
   scopeCollectionId,
@@ -106,6 +108,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             {activeTab === 'inspector' ? (
               <InspectorTab
                 activeItem={activeItem}
+                activeItemLoading={activeItemLoading}
                 isSearchSurface={isSearchSurface}
                 enrichmentPrimaryInItemTab={enrichmentPrimaryInItemTab}
                 currentQuery={currentSearchQuery}

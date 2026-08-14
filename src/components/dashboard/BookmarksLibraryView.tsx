@@ -64,6 +64,7 @@ interface BookmarksLibraryViewProps {
   onClearPipelineBrowse?: () => void;
   onSelectedItemChange?: (item: Item | null) => void;
   initialTypeFilter?: LibraryTypeFilter;
+  libraryLoading?: boolean;
 }
 
 export type LibraryTypeFilter = 'all' | 'links' | 'notes';
@@ -81,6 +82,17 @@ const LIBRARY_PAGE_UI_DEFAULT: LibraryPageUiState = {
   selectedItemId: null,
   workspaceKey: GLOBAL_WORKSPACE_KEY,
 };
+
+export function loadLibraryPageUi(
+  view: 'library' | 'notes',
+  projectId: string,
+  collectionId: string
+): LibraryPageUiState {
+  return loadPageUiState(
+    libraryPageUiKey(view, projectId, collectionId),
+    LIBRARY_PAGE_UI_DEFAULT
+  );
+}
 
 export function buildBookmarkWorkspaceDestinations(
   projects: readonly Project[],
@@ -196,13 +208,20 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   onClearPipelineBrowse,
   onSelectedItemChange,
   initialTypeFilter = 'all',
+  libraryLoading = false,
 }) => {
   const pageUiKey = libraryPageUiKey(
     initialTypeFilter === 'notes' ? 'notes' : 'library',
     scopeProjectId,
     scopeCollectionId
   );
-  const [initialPageUi] = useState(() => loadPageUiState(pageUiKey, LIBRARY_PAGE_UI_DEFAULT));
+  const [initialPageUi] = useState(() =>
+    loadLibraryPageUi(
+      initialTypeFilter === 'notes' ? 'notes' : 'library',
+      scopeProjectId,
+      scopeCollectionId
+    )
+  );
   const [query, setQuery] = useState(initialPageUi.query);
   const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>(
     initialTypeFilter === 'all' ? initialPageUi.typeFilter : initialTypeFilter
@@ -289,10 +308,10 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   }, [destinations, scopeProjectId]);
 
   useEffect(() => {
-    if (selectedItemId && items.length > 0 && !scopedItems.some((item) => item.id === selectedItemId)) {
+    if (!libraryLoading && selectedItemId && items.length > 0 && !scopedItems.some((item) => item.id === selectedItemId)) {
       setSelectedItemId(null);
     }
-  }, [items.length, scopedItems, selectedItemId]);
+  }, [items.length, libraryLoading, scopedItems, selectedItemId]);
 
   useEffect(() => {
     savePageUiState<LibraryPageUiState>(pageUiKey, {
@@ -308,8 +327,12 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   }, [initialTypeFilter]);
 
   useEffect(() => {
-    onSelectedItemChange?.(selectedItem);
-  }, [onSelectedItemChange, selectedItem]);
+    // A restored ID may be available before the canonical item finishes
+    // hydrating. Do not erase the shell's restored Inspector selection during
+    // that window; report null only when there is genuinely no selection.
+    if (selectedItem) onSelectedItemChange?.(selectedItem);
+    else if (!selectedItemId) onSelectedItemChange?.(null);
+  }, [onSelectedItemChange, selectedItem, selectedItemId]);
 
   const addToWorkspace = (focus = false) => {
     if (!selectedItem || !selectedDestination) return;

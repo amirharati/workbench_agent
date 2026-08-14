@@ -61,6 +61,7 @@ import {
   parseFetchedContent,
 } from './parse';
 import { buildReferenceIndex, referencesForMeta } from './referenceIndex';
+import { appendXLinkFollowBodies } from './providers/xLinkFollow';
 import { deleteRawBody, loadRawBody, writeRawBody, writeReviewRawBody } from './rawBodyStore';
 import {
   deleteEnrichment,
@@ -111,7 +112,7 @@ export function useHybridProvider(): void {
 }
 
 export { checkEligibility, checkUrlEligibility } from './eligibility';
-export { getEnrichment, getAllEnrichments } from './storage';
+export { getEnrichment, getEnrichmentsForItemIds, getAllEnrichments } from './storage';
 export { loadRawBody } from './rawBodyStore';
 export { buildItemText, buildItemTextAsync } from './itemText';
 
@@ -520,18 +521,16 @@ function headlessSyndicationIsGoodEnough(
   );
 }
 
-function shouldRetryWithBrowserTab(
+export function shouldRetryWithBrowserTab(
   headless: FetchProviderResult,
   url: string,
   cleanMarkdown?: string
 ): boolean {
   if (classifySourceKind(url) === 'x') {
     if (headless.ok && isSyndicationFetchSourceId(headless.fetchSourceId)) return false;
-    if (!headless.ok) {
-      if (headless.error === 'tweet_unavailable') return false;
-      const code = headless.errorCode;
-      if (code === 'parse_empty' || code === 'rate_limited' || code === 'timeout') return false;
-    }
+    // Public syndication failed or returned an unusable X shell. Try the
+    // dashboard-bound authenticated session before declaring private/deleted.
+    if (!headless.ok) return true;
   }
 
   if (prefersBrowserTabFirst(url)) return true;
@@ -551,6 +550,13 @@ function shouldRetryWithBrowserTab(
   }
 
   return false;
+}
+
+export function shouldAllowEphemeralTabRetry(
+  url: string,
+  alreadyAllowed: boolean
+): boolean {
+  return alreadyAllowed || classifySourceKind(url) !== 'video';
 }
 
 function headlessResultIsGoodEnough(
@@ -613,12 +619,32 @@ async function resolveItemFetch(
       return await activeProvider.fetchUrl({
         url: item.url,
         normalizedUrl: pending.normalizedUrl,
-        hints: { sourceKind, force: options?.force, requestedUrl: item.url },
+        hints: {
+          sourceKind,
+          force: options?.force,
+          requestedUrl: item.url,
+          browserWindowId: options?.browserWindowId,
+        },
         signal: headlessPhase.signal,
       });
     } finally {
       headlessPhase.dispose();
     }
+  };
+
+  const expandAcceptedTabResult = async (
+    result: FetchProviderResult
+  ): Promise<FetchProviderResult> => {
+    if (sourceKind !== 'x' || !result.markdown?.trim()) return result;
+    const markdown = await appendXLinkFollowBodies(result.markdown, item.url, {
+      signal: overall.signal,
+      browserWindowId: options?.browserWindowId,
+    });
+    return {
+      ...result,
+      markdown,
+      rawBytesApprox: new TextEncoder().encode(markdown).length,
+    };
   };
 
   const tabSessionEmptyError = (): FetchProviderResult => ({
@@ -631,7 +657,6 @@ async function resolveItemFetch(
   try {
     const debug = options?.debug;
     const isXStatus = classifySourceKind(item.url) === 'x';
-    const isVideo = classifySourceKind(item.url) === 'video';
     const allowEphemeralTab = Boolean(
       options?.tabSessionOnly || options?.preferTabSession || shouldUseEphemeralTab(item.url)
     );
@@ -648,7 +673,7 @@ async function resolveItemFetch(
         tabOnly.result?.fetchSourceId ?? tabOnly.error?.fetchSourceId
       );
       if (tabOnly.result && acceptTabFetchResult(tabOnly.result, item.url)) {
-        return tabOnly.result;
+        return expandAcceptedTabResult(tabOnly.result);
       }
       if (!isXStatus) {
         return tabOnly.error ?? tabSessionEmptyError();
@@ -665,7 +690,7 @@ async function resolveItemFetch(
         tabAttempt.result?.fetchSourceId ?? tabAttempt.error?.fetchSourceId
       );
       if (tabAttempt.result && acceptTabFetchResult(tabAttempt.result, item.url)) {
-        return tabAttempt.result;
+        return expandAcceptedTabResult(tabAttempt.result);
       }
       if (tabAttempt.result && isXStatus) {
         debug?.phase('tab_first_rejected', false, 'x_not_acceptable');
@@ -682,7 +707,7 @@ async function resolveItemFetch(
         quickTab.result?.fetchSourceId ?? quickTab.error?.fetchSourceId
       );
       if (quickTab.result && acceptTabFetchResult(quickTab.result, item.url)) {
-        return quickTab.result;
+        return expandAcceptedTabResult(quickTab.result);
       }
     } else {
       debug?.phase(
@@ -725,7 +750,7 @@ async function resolveItemFetch(
     // X/video normally reach this path after their specialized provider fails.
     // Ordinary pages already attempted the authenticated browser path first,
     // but may retry after a headless fallback if their earlier tab load failed.
-    const allowEphemeralRetry = allowEphemeralTab || (!isXStatus && !isVideo);
+    const allowEphemeralRetry = shouldAllowEphemeralTabRetry(item.url, allowEphemeralTab);
     const tabRetry = await runTabFetch(allowEphemeralRetry);
     debug?.phase(
       'tab_retry',
@@ -750,7 +775,7 @@ async function resolveItemFetch(
           };
         }
         if (acceptTabFetchResult(tabRetry.result, item.url)) {
-          return tabRetry.result;
+          return expandAcceptedTabResult(tabRetry.result);
         }
         return headless;
       }

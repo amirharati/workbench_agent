@@ -83,6 +83,7 @@ export {
   buildItemTextAsync,
   loadRawBody,
   getEnrichment,
+  getEnrichmentsForItemIds,
   getAllEnrichments,
 } from './fetchService';
 export {

@@ -13,6 +13,7 @@ import {
   pruneGlobalTabs,
   saveGlobalTabState,
   GlobalTabSystem,
+  type GlobalTab,
   type GlobalTabSearch,
 } from '../GlobalTabSystem';
 import { WorkspaceTabRenderer } from '../WorkspaceTabRenderer';
@@ -50,6 +51,7 @@ import {
 import { getItemPrimaryScope } from '../../../lib/shell/itemScope';
 import { Resizer } from '../Resizer';
 import { TabPaneFrame, TabScrollShell } from '../TabScrollShell';
+import { loadLibraryPageUi } from '../BookmarksLibraryView';
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -92,12 +94,60 @@ const FULL_PAGE_VIEWS = new Set<DashboardView>([
   'trash',
   'workspaces',
   'tab-commander',
-  'pipeline',
   'import-studio',
   'help',
 ]);
-/** Keep right Inspector visible (Home, Search, Enrichment Hub). */
-const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'bookmarks', 'notes']);
+/** Keep the right Inspector visible beside the primary browse surfaces. */
+const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'pipeline', 'bookmarks', 'notes']);
+
+export function isFullPageDashboardView(activeView: DashboardView): boolean {
+  return FULL_PAGE_VIEWS.has(activeView);
+}
+
+export function isFullMiddleDashboardView(activeView: DashboardView): boolean {
+  return FULL_MIDDLE_VIEWS.has(activeView);
+}
+
+export function resolveShellInspectorItemId({
+  activeView,
+  isSearchSurface,
+  selectedSearchItemId,
+  selectedBrowseItemId,
+  activeGlobalTab,
+}: {
+  activeView: DashboardView;
+  isSearchSurface: boolean;
+  selectedSearchItemId: string | null;
+  selectedBrowseItemId: string | null;
+  activeGlobalTab: GlobalTab | null;
+}): string | null {
+  if (isSearchSurface) return selectedSearchItemId;
+  // Library and Notes own their visible selection independently of the Home
+  // workspace tabs. Their selection must therefore win over a stale tab.
+  if (activeView === 'bookmarks' || activeView === 'notes' || activeView === 'pipeline') {
+    return selectedBrowseItemId;
+  }
+  if (activeGlobalTab?.kind === 'item') return activeGlobalTab.itemId;
+  if (activeView === 'home' && activeGlobalTab == null) return selectedBrowseItemId;
+  return null;
+}
+
+export function shouldRevealInspectorWorkspace(activeView: DashboardView): boolean {
+  return activeView === 'search';
+}
+
+export function loadRestoredBrowseItemId(
+  activeView: DashboardView,
+  projectId: string,
+  collectionId: string
+): string | null {
+  if (activeView !== 'bookmarks' && activeView !== 'notes') return null;
+  return loadLibraryPageUi(
+    activeView === 'notes' ? 'notes' : 'library',
+    projectId,
+    collectionId
+  ).selectedItemId;
+}
 
 interface DashboardLayoutProps {
   windows: WindowGroup[];
@@ -231,7 +281,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     const timeoutId = window.setTimeout(() => setScopeNavigationRevision(0), 0);
     return () => window.clearTimeout(timeoutId);
   }, [scopeNavigationRevision]);
-  const [selectedBrowseItemId, setSelectedBrowseItemId] = useState<string | null>(null);
+  const [selectedBrowseItemId, setSelectedBrowseItemId] = useState<string | null>(() =>
+    loadRestoredBrowseItemId(
+      initialNav.activeView as DashboardView,
+      initialNav.scopeProjectId,
+      initialNav.scopeCollectionId
+    )
+  );
   const handleSelectedBrowseItemChange = useCallback((item: Item | null) => {
     setSelectedBrowseItemId(item?.id ?? null);
   }, []);
@@ -241,8 +297,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   useEffect(() => {
     if (previousBrowseContextRef.current === browseContextKey) return;
     previousBrowseContextRef.current = browseContextKey;
-    setSelectedBrowseItemId(null);
-  }, [browseContextKey]);
+    setSelectedBrowseItemId(
+      loadRestoredBrowseItemId(activeView, scopeProjectId, scopeCollectionId)
+    );
+  }, [activeView, browseContextKey, scopeCollectionId, scopeProjectId]);
 
   useEffect(() => {
     if (scopeProjectId === 'all' || scopeCollectionId === 'all') return;
@@ -535,6 +593,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         pipelineHub: { hubLane: 'categories', categoriesSubTab: 'taxonomy' },
       });
       setActiveView('pipeline');
+      setSelectedBrowseItemId(null);
       setPipelineBrowse(null);
       setCategoryBrowse(null);
       return;
@@ -560,6 +619,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       setScopeProjectId('all');
       setScopeCollectionId('all');
       setActiveView('pipeline');
+      setSelectedBrowseItemId(null);
       patchNavigationState({ activeView: 'pipeline', scopeProjectId: 'all', scopeCollectionId: 'all' });
       setPipelineBrowse(null);
       setCategoryBrowse(null);
@@ -590,6 +650,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         },
       });
       setActiveView('pipeline');
+      setSelectedBrowseItemId(null);
       setPipelineBrowse(null);
       setCategoryBrowse(null);
     },
@@ -809,19 +870,25 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     });
   };
 
-  /** Dedicated Search has no GlobalTabSystem — switch to Home so the open tab is visible. */
+  /** Dedicated Search hides workspace tabs and the right Inspector. */
   const revealWorkspaceTabsIfNeeded = () => {
-    if (activeView !== 'search') return;
+    if (!shouldRevealInspectorWorkspace(activeView)) return;
     setActiveView('home');
     patchNavigationState({ activeView: 'home' });
   };
 
-  /** Open item and focus the right-side Inspector (Hub / search). */
+  /** Open an item tab and focus the right Inspector where that panel exists. */
   const handleOpenItemInInspector = (item: Item, origin?: { projectId?: string; collectionId?: string }) => {
     handleOpenItemTab(item, origin);
     patchShellLayoutState({ rightPanelCollapsed: false, rightPanelTab: 'inspector' });
     revealWorkspaceTabsIfNeeded();
   };
+
+  /** Inspect a Hub item without creating or activating a Home workspace tab. */
+  const handleInspectPipelineItem = useCallback((item: Item) => {
+    setSelectedBrowseItemId(item.id);
+    patchShellLayoutState({ rightPanelCollapsed: false, rightPanelTab: 'inspector' });
+  }, [patchShellLayoutState]);
 
   const handleAddItemToWorkspace = (
     item: Item,
@@ -988,45 +1055,53 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   );
   const activeSearch = activeGlobalTab?.kind === 'search' ? workingLibrarySearch : librarySearch;
 
-  const inspectorItemId = useMemo(() => {
-    if (isSearchSurface) {
-      return activeSearch.state.selectedItemId;
-    }
-    const activeGlobalTab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
-    if (activeGlobalTab?.kind === 'item') return activeGlobalTab.itemId;
-    if (activeView === 'home' && activeGlobalTab == null) return selectedBrowseItemId;
-    return null;
-  }, [
+  const inspectorItemId = useMemo(() => resolveShellInspectorItemId({
+    activeView,
+    isSearchSurface,
+    selectedSearchItemId: activeSearch.state.selectedItemId,
+    selectedBrowseItemId,
+    activeGlobalTab,
+  }), [
+    activeView,
     isSearchSurface,
     activeSearch.state.selectedItemId,
-    activeView,
     selectedBrowseItemId,
-    globalTabState.tabs,
-    globalTabState.activeTabId,
+    activeGlobalTab,
   ]);
 
   const [inspectorResolvedItem, setInspectorResolvedItem] = React.useState<Item | null>(null);
+  const [inspectorItemLoading, setInspectorItemLoading] = React.useState(false);
 
   React.useEffect(() => {
     if (!inspectorItemId) {
       setInspectorResolvedItem(null);
+      setInspectorItemLoading(false);
       return;
     }
     const fromList = items.find((i) => i.id === inspectorItemId);
     if (fromList) {
       setInspectorResolvedItem(fromList);
+      setInspectorItemLoading(false);
       return;
     }
     let cancelled = false;
-    void getItem(inspectorItemId).then((item) => {
-      if (!cancelled) setInspectorResolvedItem(item ?? null);
-    });
+    setInspectorResolvedItem(null);
+    setInspectorItemLoading(true);
+    void getItem(inspectorItemId)
+      .then((item) => {
+        if (!cancelled) setInspectorResolvedItem(item ?? null);
+      })
+      .finally(() => {
+        if (!cancelled) setInspectorItemLoading(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [inspectorItemId, items]);
 
-  const inspectorItem = inspectorItemId ? inspectorResolvedItem : null;
+  const inspectorItem = inspectorResolvedItem?.id === inspectorItemId
+    ? inspectorResolvedItem
+    : null;
 
   const searchContext = useMemo(() => {
     if (!isSearchSurface || !activeSearch.state.result?.results.length) return null;
@@ -1085,8 +1160,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     patchNavigationState({ scopeProjectId: 'all', scopeCollectionId: 'all' });
   }, []);
 
-  const isFullPageView = FULL_PAGE_VIEWS.has(activeView);
-  const isFullMiddleView = FULL_MIDDLE_VIEWS.has(activeView);
+  const isFullPageView = isFullPageDashboardView(activeView);
+  const isFullMiddleView = isFullMiddleDashboardView(activeView);
 
   return (
     <div className="ui-dashboard-shell">
@@ -1174,6 +1249,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 onOpenHomeWorkspace={handleOpenHomeWorkspace}
                 onSelectProjectScope={handleSelectProjectScope}
                 onOpenItemFromSearch={handleOpenItemInInspector}
+                onInspectItem={handleInspectPipelineItem}
                 onClearProjectScope={handleClearProjectScope}
                 onClearCollectionScope={handleClearCollectionScope}
                 onResetScope={handleResetScope}
@@ -1231,6 +1307,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onLibrarySearch={openLibrarySearch}
               onLibrarySearchInTab={openLibrarySearchInTab}
               onOpenItemFromSearch={handleOpenItemInInspector}
+              onInspectItem={handleInspectPipelineItem}
               categoryBrowse={categoryBrowse}
               onClearCategoryBrowse={handleClearCategoryBrowse}
               onBrowseCategory={handleBrowseCategory}
@@ -1379,6 +1456,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         {!isFullPageView && (
           <RightPanel
             activeItem={inspectorItem}
+            activeItemLoading={inspectorItemLoading}
             aiSettings={aiSettings}
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}

@@ -228,6 +228,12 @@ export async function getSignalsByItemIds<T = unknown>(itemIds: string[]): Promi
   return dbRpc('getSignalsByItemIds', [itemIds]);
 }
 
+/** Scoped enrichment rows without hydrating the tab's entire pipeline cache. */
+export async function getEnrichmentsByItemIds<T = unknown>(itemIds: string[]): Promise<T[]> {
+  if (!itemIds.length) return [];
+  return dbRpc('getEnrichmentsByItemIds', [itemIds]);
+}
+
 /** Capped worker-side candidate scope for manual embedding backfill. */
 export async function getPendingEmbeddingItemIds(limit = 48): Promise<string[]> {
   return dbRpc('getPendingEmbeddingItemIds', [limit]);

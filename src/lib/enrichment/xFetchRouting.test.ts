@@ -55,6 +55,13 @@ Don't use Fiverr and Linkedin. Here are 10 best sites to get a remote job that p
 
 const jafarUrl = 'https://x.com/JafarNajafov/status/1893182618679869943';
 console.assert(!isXTabFetchAcceptable(JAFAR_TAB_OPENER, jafarUrl), 'jafar tab opener rejected');
+const PRIVATE_SINGLE = `# @private_author
+
+This protected post contains enough authenticated text to preserve from the browser session.`;
+console.assert(
+  isXTabFetchAcceptable(PRIVATE_SINGLE, 'https://x.com/private_author/status/123'),
+  'authenticated single post accepted'
+);
 console.assert(
   isXTabFetchAcceptable(SYNDICATION_THREAD, xStatus),
   'syndication thread acceptable'

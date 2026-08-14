@@ -7,6 +7,7 @@ import {
   type FetchQualityContext,
 } from '../fetchQuality';
 import { isShortLinkHost, isXHost, normalizeHost, resolveFetchUrl } from '../urlPolicy';
+import { fetchThroughBrowserService } from '../tabSessionExtract';
 import { jinaProvider } from './jina';
 import { localProvider } from './local';
 
@@ -16,7 +17,6 @@ const MAX_LINK_BODY_CHARS = 10_000;
 const SKIP_LINK_HOSTS = new Set([
   'twitter.com',
   'x.com',
-  't.co',
   'pic.twitter.com',
   'pbs.twimg.com',
   'video.twimg.com',
@@ -65,14 +65,33 @@ export function extractXLinkFollowUrls(markdown: string, bookmarkUrl: string): s
 
 async function fetchArticleBody(
   url: string,
-  signal?: AbortSignal
+  options: { signal?: AbortSignal; browserWindowId?: number }
 ): Promise<{ markdown: string; title?: string } | null> {
   if (classifySourceKind(url) === 'x') return null;
+
+  if (typeof options.browserWindowId === 'number') {
+    const tab = await fetchThroughBrowserService(url, {
+      mode: 'any',
+      allowEphemeral: true,
+      windowId: options.browserWindowId,
+      signal: options.signal,
+    });
+    if (tab.ok && tab.markdown?.trim()) {
+      const clean = stripProviderWrapper(tab.markdown);
+      const ctx: FetchQualityContext = { url, title: tab.title };
+      if (!explainHardFetchFailure(clean, ctx) && isFetchBodyUsable(clean, undefined, ctx)) {
+        return {
+          markdown: clean.slice(0, MAX_LINK_BODY_CHARS),
+          title: tab.title,
+        };
+      }
+    }
+  }
 
   const input = {
     url,
     normalizedUrl: url,
-    signal,
+    signal: options.signal,
   };
   const ctx: FetchQualityContext = { url };
 
@@ -90,23 +109,44 @@ async function fetchArticleBody(
   return null;
 }
 
+/**
+ * Follow an external link only when the tweet/thread itself is too thin to
+ * provide useful context. The URL remains mechanically indexed either way.
+ */
+export function shouldFollowXLinks(markdown: string): boolean {
+  const meaningful = markdown
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line || /^#{1,3}\s/.test(line) || line === '---') return false;
+      if (/^(?:Image|Video|Source):\s*https?:\/\//i.test(line)) return false;
+      if (/^\(\d+\s+(?:photo|media item)\(s\) attached\)$/i.test(line)) return false;
+      return true;
+    })
+    .join(' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return meaningful.length < 600;
+}
+
 /** Append linked article bodies after X thread markdown (depth 1). */
 export async function appendXLinkFollowBodies(
   markdown: string,
   bookmarkUrl: string,
-  signal?: AbortSignal
+  options: { signal?: AbortSignal; browserWindowId?: number } = {}
 ): Promise<string> {
   const candidates = extractXLinkFollowUrls(markdown, bookmarkUrl);
-  if (!candidates.length) return markdown;
+  if (!candidates.length || !shouldFollowXLinks(markdown)) return markdown;
 
   const sections: string[] = [markdown];
 
   for (const raw of candidates) {
-    if (signal?.aborted) break;
+    if (options.signal?.aborted) break;
     let target = raw;
     try {
       if (isShortLinkHost(raw)) {
-        const resolved = await resolveFetchUrl(raw, signal);
+        const resolved = await resolveFetchUrl(raw, options.signal);
         target = resolved.url;
       }
     } catch {
@@ -116,7 +156,7 @@ export async function appendXLinkFollowBodies(
 
     target = rewriteLinkFollowUrl(target);
 
-    const body = await fetchArticleBody(target, signal);
+    const body = await fetchArticleBody(target, options);
     if (!body?.markdown?.trim()) continue;
 
     let host = target;

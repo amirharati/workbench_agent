@@ -450,15 +450,90 @@
   /** Main tweet text plus embedded quote tweet when present in the same article card. */
   function tweetBodyFromArticle(article) {
     var textEls = article.querySelectorAll('[data-testid="tweetText"]');
-    if (!textEls.length) return '';
-    var main = cleanText(textEls[0].innerText || textEls[0].textContent);
-    if (!main || isXErrorShell(main)) return '';
-    if (textEls.length < 2) return main;
-    var quoted = cleanText(
-      textEls[textEls.length - 1].innerText || textEls[textEls.length - 1].textContent
+    var parts = [];
+    var main = textEls.length
+      ? cleanText(textEls[0].innerText || textEls[0].textContent)
+      : '';
+    if (main && !isXErrorShell(main)) parts.push(main);
+
+    if (textEls.length >= 2) {
+      var quoted = cleanText(
+        textEls[textEls.length - 1].innerText || textEls[textEls.length - 1].textContent
+      );
+      if (quoted && quoted !== main && !isXErrorShell(quoted)) {
+        parts.push('> Quote:\n> ' + quoted.replace(/\n/g, '\n> '));
+      }
+    }
+
+    var seenLinks = {};
+    var links = article.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length && Object.keys(seenLinks).length < 5; i++) {
+      var href = links[i].href || links[i].getAttribute('href') || '';
+      if (!/^https?:\/\//i.test(href)) continue;
+      try {
+        var host = new URL(href).hostname.replace(/^www\./, '').toLowerCase();
+        if (host === 'x.com' || host === 'twitter.com') continue;
+      } catch (e) {
+        continue;
+      }
+      if (seenLinks[href]) continue;
+      seenLinks[href] = true;
+      parts.push('Link: ' + href);
+    }
+
+    var seenMedia = {};
+    var images = article.querySelectorAll('img[src*="pbs.twimg.com/media"], img[src*="twimg.com/media"]');
+    for (var j = 0; j < images.length && j < 8; j++) {
+      var src = images[j].src || images[j].getAttribute('src') || '';
+      if (!src || seenMedia[src]) continue;
+      seenMedia[src] = true;
+      parts.push('Image: ' + src);
+    }
+    var videos = article.querySelectorAll('video[poster]');
+    for (var k = 0; k < videos.length && k < 4; k++) {
+      var poster = videos[k].poster || videos[k].getAttribute('poster') || '';
+      if (!poster || seenMedia[poster]) continue;
+      seenMedia[poster] = true;
+      parts.push('Video poster: ' + poster);
+    }
+
+    return parts.join('\n\n').trim();
+  }
+
+  function collectXArticleEntries(entries, seen) {
+    var articles = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+    for (var i = 0; i < articles.length && entries.length < 20; i++) {
+      var body = tweetBodyFromArticle(articles[i]);
+      if (!body) continue;
+      var handle = handleFromArticle(articles[i]);
+      var key = handle + '\n' + body;
+      if (seen[key]) continue;
+      seen[key] = true;
+      entries.push({ body: body, handle: handle });
+    }
+  }
+
+  async function extractXWithBoundedScroll() {
+    var entries = [];
+    var seen = {};
+    collectXArticleEntries(entries, seen);
+
+    var root = document.documentElement;
+    var viewport = window.innerHeight || 0;
+    var canScroll = root && root.scrollHeight > viewport + 100 && typeof window.scrollBy === 'function';
+    for (var pass = 0; canScroll && pass < 4 && entries.length < 20; pass++) {
+      var before = entries.length;
+      window.scrollBy(0, Math.max(600, Math.floor(viewport * 0.8)));
+      await sleep(450);
+      collectXArticleEntries(entries, seen);
+      if (entries.length === before && pass >= 1) break;
+    }
+
+    if (!entries.length) return null;
+    return extractXFromTexts(
+      entries.map(function (entry) { return entry.body; }),
+      entries.map(function (entry) { return entry.handle; })
     );
-    if (!quoted || quoted === main || isXErrorShell(quoted)) return main;
-    return main + '\n\n> Quote:\n> ' + quoted.replace(/\n/g, '\n> ');
   }
 
   function extractXFromTexts(texts, handlesHint) {
@@ -637,11 +712,11 @@
 
   window.workbenchExtractPageContentAsync = async function workbenchExtractPageContentAsync() {
     if (isXHost()) {
-      var waited = await waitForTweetTexts();
-      if (waited.length) {
-        var fromWait = extractXFromTexts(waited, []);
-        if (fromWait && fromWait.markdown.length >= MIN_MARKDOWN_CHARS) return fromWait;
-      }
+      await waitForTweetTexts();
+      // Re-read article cards after waiting so author handles and quote/thread
+      // structure are retained. Returning the raw text list here labeled every
+      // authenticated post as @unknown, causing the safety gate to reject it.
+      return (await extractXWithBoundedScroll()) || extractX();
     }
     if (isGmailHost()) {
       await waitForGmailBody();

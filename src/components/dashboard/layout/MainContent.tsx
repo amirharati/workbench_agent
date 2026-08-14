@@ -141,6 +141,7 @@ interface MainContentProps {
   onLibrarySearch?: (query?: string) => void;
   onLibrarySearchInTab?: (query?: string) => void;
   onOpenItemFromSearch?: (item: Item, origin?: { projectId?: string; collectionId?: string }) => void;
+  onInspectItem?: (item: Item) => void;
   categoryBrowse?: CategoryBrowseFilter | null;
   onClearCategoryBrowse?: () => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
@@ -219,6 +220,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   workingLibrarySearch,
   onLibrarySearchInTab,
   onOpenItemFromSearch,
+  onInspectItem,
   categoryBrowse,
   onClearCategoryBrowse,
   onBrowseCategory,
@@ -719,6 +721,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           onClearPipelineBrowse={onClearPipelineBrowse}
           onSelectedItemChange={onSelectedBrowseItemChange}
           initialTypeFilter={activeView === 'notes' ? 'notes' : 'all'}
+          libraryLoading={libraryLoading}
         />
       );
     }
@@ -868,7 +871,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             projects={projects}
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
-            onOpenItem={onOpenItemFromSearch ?? onOpenItem}
+            onOpenItem={onInspectItem ?? onOpenItemFromSearch ?? onOpenItem}
             onBrowseCategory={onBrowseCategory}
             onClearProjectScope={onClearProjectScope}
             onClearCollectionScope={onClearCollectionScope}
@@ -892,7 +895,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             projects={projects}
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}
-            onOpenItem={onOpenItemFromSearch ?? onOpenItem}
+            onOpenItem={onInspectItem ?? onOpenItemFromSearch ?? onOpenItem}
             onBrowseCategory={onBrowseCategory}
             onClearProjectScope={onClearProjectScope}
             onClearCollectionScope={onClearCollectionScope}

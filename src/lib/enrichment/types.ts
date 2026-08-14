@@ -57,6 +57,8 @@ export type ContentHints = {
   force?: boolean;
   /** Original bookmark URL for redirect comparison (may differ from resolved fetch URL). */
   requestedUrl?: string;
+  /** Dashboard-bound Chrome window used for authenticated linked-page retrieval. */
+  browserWindowId?: number;
 };
 
 export interface ItemEnrichment {

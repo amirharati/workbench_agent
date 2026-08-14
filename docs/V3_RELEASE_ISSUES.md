@@ -226,6 +226,10 @@ Keep AI runs small and explicitly initiated during release testing.
 - [ ] Commit progress, completion, cancellation, and partial outcomes match actual item counts.
 - [ ] Enrich one or a small selection; inspect fetched content, AI result, status, and error detail.
 - [ ] Retry a failed item and confirm the action/result scope is clear.
+- [ ] Re-import the same URL with no note, the same note, and a different note; confirm existing
+      notes, tags, title, project/collection memberships, enrichment, and accepted decisions survive.
+- [ ] On repeat import, confirm complete AI enrichment is unselected by default; exercise one age
+      threshold and the explicit reprocess-all option.
 - [ ] Pause/cancel and reload a small batch; no permanently false “paused” banner remains.
 - [ ] Run classification on a small eligible selection; assignments and suggestions remain distinct.
 - [ ] Reproduce or clear Risk R2 below before signoff: Discover must not make General items
@@ -274,7 +278,11 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-006 | 2026-08-09 | Search / persistence | Search scope resets to the surrounding Home scope after refresh | P2 | CLOSED | Preserve restored Search scope; follow later shell navigation only | `cfad800` | PASS — refresh and later navigation, 2026-08-09 |
 | V3-007 | 2026-08-09 | Storage / enrichment | Per-URL raw files and automatic run folders do not scale to 10k URLs or sync folders | P1 | READY TO RETEST | One folder-owned content DB; no per-URL files or automatic run trees | `e9aef10` + coordinator cleanup | Layout/content reads pass; Chrome restart/reinstall recovery remains |
 | V3-008 | 2026-08-09 | Pipeline / resume recovery | System sleep can strand a batch; first coordinator build stalled at 5% and blocked Hub loading | P1 | READY TO RETEST | One shared serialized coordinator with durable jobs, tab fetching, pause/Resume, priority, and recovery | `2f9c4d0` through `6b503c3` + Resume UI checkpoint | Normal processing and pause/Resume mostly pass; cancel, sleep/restart, and final scale checks remain |
-| V3-009 | 2026-08-12 | Pipeline / progress UI | Large-job bars appear nearly complete while item count is still low | P2 | READY TO RETEST | Use authoritative whole-job item progress across every pipeline surface | Uncommitted | Reload and compare bar with a large-job count |
+| V3-009 | 2026-08-12 | Pipeline / progress UI | Large-job bars appear nearly complete while item count is still low | P2 | READY TO RETEST | Use authoritative whole-job item progress across every pipeline surface | `ef99e72` | Reload and compare bar with a large-job count |
+| V3-010 | 2026-08-12 | Import / data integrity | Repeat import can replace same-placement notes/tags/title and needlessly rerun fresh AI enrichment | P0 | READY TO RETEST | Preserve/merge user fields and default processing to missing/incomplete enrichment with explicit age policy | 2026-08-14 checkpoint | Repeat-import preservation matrix pending |
+| V3-011 | 2026-08-12 | Pipeline / sleep recovery | A recovered bulk continues fetching but begins recording AI `not_configured` | P1 | REPRODUCED | Preserve/reload the saved AI configuration across sleep recovery before accepting more stages | Unfixed | Cancel current batch; focused recovery diagnosis pending |
+| V3-012 | 2026-08-12 | X enrichment / authenticated fetch | Public X expansion is rich, but protected/private posts are not reliably retried through the logged-in browser | P1 | READY TO RETEST | Syndication-first public X; authenticated tab fallback plus browser-bound linked-page expansion for thin posts | 2026-08-14 checkpoint | Public/private X acceptance corpus needed |
+| V3-013 | 2026-08-13 | Navigation / Inspector | Restored Library selection leaves the right Inspector empty; Enrichment Hub lacks the shared Inspector target | P2 | READY TO RETEST | Restore selection before hydration and render the shared right Inspector beside Hub | 2026-08-14 checkpoint | First-open Library and Hub Inspector retest pending; workspace-tab semantics separate |
 
 ### V3-001 — Replace stale Help with a comprehensive daily-use guide
 
@@ -580,6 +588,99 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   regression coverage across enrich/embed/classify/save; TypeScript and production build pass.
 - Retest: reload the extension and observe a running large job. The visible percentage and fill should track
   the item count throughout stage changes, remain monotonic, and reach 100% only when the job completes.
+
+### V3-010 — Repeat import must preserve user data and avoid unnecessary AI work
+
+- Found: 2026-08-12, Run 01 continuation
+- Severity / gate: P0 / G0 + G3 + G4
+- Status: READY TO RETEST
+- Reproduction: edit the title, note, tags, and organization of an existing bookmark, then import a file
+  containing the same URL with empty, matching, or different metadata and continue to the optional Process step.
+- Expected: repeat import never silently removes user-authored fields or organization. Distinct incoming notes
+  and tags merge idempotently. Existing complete AI enrichment does not incur another paid run by default.
+- Actual: the import merge replaced same-placement notes and non-empty tags, preferred any longer imported title,
+  and selected every affected existing bookmark for forced fetch/AI/classification.
+- Data-safety check: global notes/tags, other placements, organization memberships, enrichment rows, embeddings,
+  and manual/accepted classification were not directly changed by the save merge. The unsafe overwrite scope was
+  the destination placement's note/tags and the title; explicit Process could replace derived AI output.
+- Fix: existing placement notes now retain both distinct values without duplicating the same imported note;
+  placement tags use a case-insensitive union; an existing meaningful title is preserved (the established narrow
+  X-media-title cleanup remains). Projects/collections remain additive. Import Step 3 inspects only the affected
+  enrichment rows through a scoped worker RPC and defaults to new, missing, failed, or AI-incomplete items.
+  A dropdown can additionally refresh complete enrichment older than 7, 30, or 90 days, or explicitly reprocess all.
+  The synchronized core/content owner protocol is v15 so extension reload replaces a stale worker that lacks the
+  new scoped enrichment query.
+- Automated evidence: 12 focused merge/policy/Import tests and the production build pass. The repository-wide
+  Vitest command still reports its pre-existing standalone-script empty suites and unrelated categorization assertion.
+- Retest: use one existing URL with a manually edited title, same-collection note/tags, another collection placement,
+  complete enrichment, and an accepted category. Re-import with no note, then the same note, then a distinct note and
+  tags. Confirm nothing disappears, the distinct note appears once, tags union, all memberships and manual decisions
+  remain, and the complete item is unchecked under the default processing policy.
+
+### V3-011 — Sleep recovery must not continue without AI configuration
+
+- Found: 2026-08-12, Run 01 continuation
+- Severity / gate: P1 / G3 + G4
+- Status: REPRODUCED
+- Reproduction: run the current 4,482-item X/Twitter import pipeline, sleep/wake the computer, and let the
+  durable coordinator continue.
+- Expected: recovery reloads the saved AI settings before processing another item, or pauses with a clear error.
+- Actual: the mirrored DB shows AI `ok` through 17:44, then predominantly `not_configured` from 17:45 onward
+  while fetch work continues. At inspection, 505 recent enrichments were `not_configured`; downstream tasks were
+  correspondingly skipped/failed. The durable payload correctly excludes the secret and remains bound to the
+  originating dashboard/window, so recovery-time settings restoration is the suspect boundary.
+- Data-safety check: fetched content is being saved, but paid/derived AI, embedding, and classification work is
+  incomplete. Continuing the batch would produce a misleading partial result.
+- Decision: stop the current batch and diagnose recovery/settings ownership before another large sleep test.
+
+### V3-012 — Protected/private X posts need authenticated fallback
+
+- Found: 2026-08-12, Run 01 continuation
+- Severity / gate: P1 / G3 + G4
+- Status: READY TO RETEST
+- Expected: public X uses the richer public thread source; when that source cannot see a post that the user can
+  access while logged into X, the same dashboard-bound browser session retrieves at least the bookmarked post and
+  reports any thread/link limits honestly.
+- Previous actual: public X was intentionally syndication-first and performed meaningful expansion, but X failures did
+  not open a temporary authenticated tab. An already-open matching X tab could be attempted, yet a single-post result
+  was rejected because it lacked multi-part thread headings. Linked pages were followed headlessly, so authenticated
+  linked pages remained link-only.
+- Evidence: current database has 1,700 successful strict X syndication rows with matching raw content documents;
+  829 contain multi-part thread/conversation markers, 1,587 have indexed references, and 1,106 contain followed linked
+  bodies. It also has 47 failed strict X rows (43 auth shells, three short parse failures, one timeout) and zero strict X
+  successes via `tab-session`.
+- Known completeness bounds: ancestor walk is capped at 20; root-author self-thread plus the bookmarked ancestor path
+  is captured, not every conversation reply branch; at most two quoted threads are expanded; at most three external
+  linked pages are followed and each body is capped at 10,000 characters; AI input is capped at the 12,000-character
+  parsed snippet although the larger fetched dump is retained in the content database.
+- Fix ready for retest: preserve syndication-first public quality, but retry failed/unavailable X posts through a
+  temporary authenticated tab in the job's dashboard-bound browser window. Accept a substantive known-author private
+  single post as well as a rendered thread. Re-read X article cards after load, retain handles, external links, images,
+  and video posters, and collect up to 20 rendered cards over at most four bounded scroll passes. When the captured
+  tweet/thread text is thin (under 600 meaningful characters), follow up to three external links through background
+  tabs in the same bound window before falling back to the existing public fetchers.
+- Honest limit: authenticated fallback captures the bookmarked post and the bounded conversation cards X actually
+  renders in that session; it does not claim to enumerate every reply branch or an arbitrarily long private thread.
+- Automated evidence: 20 focused tests pass across X fallback routing, browser-window link follow, X DOM extraction,
+  browser fetch service, routing policy, and tab-session extraction; the production build passes. Chrome acceptance is
+  still required with known public, protected/private, and short-post-with-link examples.
+
+### V3-013 — Inspector selection is inconsistent across Library and Enrichment Hub
+
+- Found: 2026-08-13, Run 01 continuation
+- Severity / gate: P2 / G2
+- Status: READY TO RETEST
+- Previous actual: Library's local item workspace showed the selected item, but the shared right Inspector stayed empty
+  because the shell consumed that selection only on Home. Enrichment Hub's internal detail panel offered “Open in
+  Inspector sidebar,” but the action left the user on the full-width Hub where the shared Inspector is intentionally
+  hidden.
+- Revised fix ready for retest: Library and Notes selections directly feed the shared Inspector and the shell restores
+  the persisted selection before the child view finishes hydrating. It preserves that ID during partial library loading,
+  loads the selected item directly when necessary, and shows “Loading selected item…” instead of a false empty state.
+  Enrichment Hub now renders beside the shared right Inspector. Its Inspector action selects and expands that panel in
+  place without navigating to Home or creating/activating a Home workspace tab.
+- Deferred by agreement: workspace-tab actions and labels outside Home are a separate design issue and were not changed.
+- Automated evidence: 20 focused Hub/Library/shell tests and the production build pass.
 
 For substantial issues, add a section using this template:
 

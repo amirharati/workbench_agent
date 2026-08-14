@@ -7,7 +7,7 @@ import { fetchXThreadFromFx, parseXStatusUser } from './xThread';
 /** Public syndication API for X/Twitter — FxTwitter /2/thread (author self-reply chain). */
 export const syndicationProvider: FetchProvider = {
   id: 'syndication',
-  async fetchUrl({ url, signal }) {
+  async fetchUrl({ url, signal, hints }) {
     if (classifySourceKind(url) !== 'x') {
       return { ok: false, errorCode: 'excluded' };
     }
@@ -35,6 +35,7 @@ export const syndicationProvider: FetchProvider = {
       fallbackUser: ids.user,
       bookmarkUrl: url,
       linkFollow: true,
+      browserWindowId: hints?.browserWindowId,
     });
 
     if (!result.ok) {

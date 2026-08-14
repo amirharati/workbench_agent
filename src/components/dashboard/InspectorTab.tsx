@@ -13,6 +13,7 @@ import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 interface InspectorTabProps {
   activeItem: Item | null;
+  activeItemLoading?: boolean;
   isSearchSurface?: boolean;
   enrichmentPrimaryInItemTab?: boolean;
   currentQuery?: string;
@@ -452,6 +453,7 @@ function ItemInspectorBody({
 
 export const InspectorTab: React.FC<InspectorTabProps> = ({
   activeItem,
+  activeItemLoading = false,
   isSearchSurface = false,
   enrichmentPrimaryInItemTab = false,
   currentQuery,
@@ -471,7 +473,9 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
           lineHeight: 1.6,
         }}
       >
-        Select an item or search result to see details.
+        {activeItemLoading
+          ? 'Loading selected item…'
+          : 'Select an item or search result to see details.'}
       </div>
     );
   }

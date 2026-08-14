@@ -11,7 +11,11 @@ import type {
 } from './categorization/types';
 import type { TrashHistoryEntry } from './trashHistory';
 import { getTrashHistoryMap, recordTrashHistory } from './trashHistory';
-import { shouldPreferImportTitle } from './import/xImportHygiene';
+import {
+  mergeImportedPlacementNotes,
+  mergeImportedPlacementTags,
+  shouldPreferImportTitle,
+} from './import/xImportHygiene';
 import {
   assertCanCreateCollectionInProject,
   INBOX_PROJECT_NAME,
@@ -1737,12 +1741,11 @@ export const bulkImportBookmarks = async (
           addedAt: now,
           source: best.source || 'import',
         };
-      } else if (incomingNotes) {
-        // Only enrich notes when non-empty; do not clear existing notes in batch import.
+      } else if (incomingNotes || (best.tags && best.tags.length > 0)) {
         placements[targetCollection] = {
           ...existingPlacement,
-          notes: incomingNotes,
-          tags: best.tags && best.tags.length > 0 ? best.tags : existingPlacement.tags,
+          notes: mergeImportedPlacementNotes(existingPlacement.notes, incomingNotes),
+          tags: mergeImportedPlacementTags(existingPlacement.tags, best.tags),
         };
       }
 

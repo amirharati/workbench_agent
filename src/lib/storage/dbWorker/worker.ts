@@ -110,6 +110,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'pauseAutoMirrorForDigest',
   'resumeAutoMirrorAfterDigest',
   'getSignalsByItemIds',
+  'getEnrichmentsByItemIds',
   'rankSearchEmbeddings',
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
@@ -296,7 +297,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 14;
+      return 15;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -567,6 +568,11 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         if (row) out.push(row);
       }
       return out;
+    }
+    case 'getEnrichmentsByItemIds': {
+      const ids = Array.isArray(args[0]) ? (args[0] as string[]) : [];
+      const store = await getIdbCompatStore();
+      return store.getEnrichmentForItemIds(ids.filter(Boolean));
     }
     case 'rankSearchEmbeddings': {
       const queryEmbedding = Array.isArray(args[0])

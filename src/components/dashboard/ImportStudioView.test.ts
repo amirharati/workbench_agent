@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Collection, Project } from '../../lib/db';
 import {
+  getDefaultImportPipelineSelection,
   getDefaultImportSelection,
   resolveImportDestinationLabel,
   resolveImportReportProcessedIds,
 } from './ImportStudioView';
+import type { ItemEnrichment } from '../../lib/enrichment';
 
 const project: Project = {
   id: 'project-research',
@@ -45,5 +47,41 @@ describe('Import Studio workflow', () => {
     expect(
       [...resolveImportReportProcessedIds({ completedItemIds: ['done-a', 'done-b'] })]
     ).toEqual(['done-a', 'done-b']);
+  });
+
+  it('selects new or incomplete imports while skipping completed enrichment by default', () => {
+    const complete: ItemEnrichment = {
+      itemId: 'existing-complete',
+      normalizedUrl: 'https://complete.example/',
+      status: 'ok',
+      providerId: 'test',
+      attempts: 1,
+      hasRawBody: true,
+      aiStatus: 'ok',
+      fetchedAt: 100,
+      updated_at: 100,
+    };
+    const selected = getDefaultImportPipelineSelection(
+      [
+        { itemId: 'new', url: 'https://new.example/', title: 'New', outcome: 'created' },
+        {
+          itemId: 'existing-complete',
+          url: 'https://complete.example/',
+          title: 'Complete',
+          outcome: 'merged',
+        },
+        {
+          itemId: 'existing-incomplete',
+          url: 'https://incomplete.example/',
+          title: 'Incomplete',
+          outcome: 'merged',
+        },
+      ],
+      new Map([[complete.itemId, complete]]),
+      'missing',
+      200
+    );
+
+    expect([...selected]).toEqual(['new', 'existing-incomplete']);
   });
 });

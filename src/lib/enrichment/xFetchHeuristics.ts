@@ -104,7 +104,11 @@ export function isXTabChromeDominant(markdown: string, url: string): boolean {
   return false;
 }
 
-/** Tab-session X scrape good enough to skip syndication (B13). */
+/**
+ * Authenticated X fallback is acceptable when it contains a known author and
+ * substantive tweet text. Multi-part thread structure is preferred but not
+ * required: protected single posts are otherwise impossible to retain.
+ */
 export function isXTabFetchAcceptable(markdown: string, url: string): boolean {
   if (!isXBookmarkUrl(url)) return true;
   const raw = rawBody(markdown);
@@ -116,15 +120,13 @@ export function isXTabFetchAcceptable(markdown: string, url: string): boolean {
   const header = raw.match(/^#\s*@([\w]+)/m);
   if (!header || header[1].toLowerCase() === 'unknown') return false;
 
-  // Thread opener only — no ## N/M parts; syndication should expand the chain.
-  if (!/^##\s*\d+\/\d+/m.test(raw)) return false;
-
   const bodyLen = raw
     .split('\n')
     .filter((l) => l.trim() && !l.startsWith('#') && l !== '---')
     .join('\n')
     .trim().length;
-  return bodyLen >= 120;
+  const hasThreadParts = /^##\s*\d+\/\d+/m.test(raw);
+  return bodyLen >= (hasThreadParts ? 120 : 60);
 }
 
 /** After syndication succeeds, never downgrade to tab-session for the same status URL. */

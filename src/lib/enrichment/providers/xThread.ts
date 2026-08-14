@@ -435,9 +435,16 @@ export async function fetchXThreadFromFx(
     fallbackUser?: string;
     bookmarkUrl?: string;
     linkFollow?: boolean;
+    browserWindowId?: number;
   } = {}
 ): Promise<FxThreadFetchResult> {
-  const { signal, fallbackUser = 'i', bookmarkUrl, linkFollow = true } = options;
+  const {
+    signal,
+    fallbackUser = 'i',
+    bookmarkUrl,
+    linkFollow = true,
+    browserWindowId,
+  } = options;
 
   try {
     let thread = await buildFullThread(statusId, fallbackUser, signal);
@@ -472,7 +479,10 @@ export async function fetchXThreadFromFx(
     let linkFollowCount = 0;
     if (linkFollow && bookmarkUrl) {
       const beforeLen = markdown.length;
-      markdown = await appendXLinkFollowBodies(markdown, bookmarkUrl, signal);
+      markdown = await appendXLinkFollowBodies(markdown, bookmarkUrl, {
+        signal,
+        browserWindowId,
+      });
       if (markdown.length > beforeLen) {
         linkFollowCount = extractLinkFollowCount(markdown, beforeLen);
       }

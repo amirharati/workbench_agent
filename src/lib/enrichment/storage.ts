@@ -10,6 +10,15 @@ export async function getEnrichment(itemId: string): Promise<ItemEnrichment | un
   return db.get('item_enrichment', itemId);
 }
 
+export async function getEnrichmentsForItemIds(
+  itemIds: string[]
+): Promise<Map<string, ItemEnrichment>> {
+  if (!itemIds.length) return new Map();
+  const { getEnrichmentsByItemIds } = await import('../storage/dbClient');
+  const records = await getEnrichmentsByItemIds<ItemEnrichment>(itemIds);
+  return new Map(records.map((record) => [record.itemId, record]));
+}
+
 export async function putEnrichment(
   record: ItemEnrichment,
   opts?: { deferPostProcess?: boolean; silent?: boolean }

@@ -10,7 +10,7 @@ import {
   putContentDocument,
 } from './contentDatabase';
 
-const CONTENT_WORKER_PROTOCOL_VERSION = 14;
+const CONTENT_WORKER_PROTOCOL_VERSION = 15;
 // Fixed maximum delay from the first dirty write. Do not debounce by resetting
 // this timer: a continuous large import must still publish bounded checkpoints.
 const SNAPSHOT_MAX_DELAY_MS = 60_000;

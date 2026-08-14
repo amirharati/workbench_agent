@@ -22,6 +22,12 @@ import {
   type ImportReport,
 } from '../../lib/pipeline';
 import { runBatchOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
+import { getEnrichmentsForItemIds, type ItemEnrichment } from '../../lib/enrichment';
+import {
+  isCompleteAiEnrichment,
+  shouldProcessImportedBookmark,
+  type ImportEnrichmentRefreshPolicy,
+} from '../../lib/import/importProcessingPolicy';
 import { useToast } from '../ToastContainer';
 import {
   formatAllImportSchemaHelp,
@@ -85,6 +91,19 @@ export function resolveImportReportProcessedIds(result: {
   return new Set(result.completedItemIds);
 }
 
+export function getDefaultImportPipelineSelection(
+  items: BulkImportAffectedItem[],
+  enrichments: Map<string, ItemEnrichment>,
+  policy: ImportEnrichmentRefreshPolicy,
+  now = Date.now()
+): Set<string> {
+  return new Set(
+    items
+      .filter((item) => shouldProcessImportedBookmark(enrichments.get(item.itemId), policy, now))
+      .map((item) => item.itemId)
+  );
+}
+
 const sectionStyle: React.CSSProperties = {
   border: '1px solid var(--border)',
   borderRadius: 8,
@@ -127,6 +146,12 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     items: BulkImportAffectedItem[];
   } | null>(null);
   const [pipelineSelectedIds, setPipelineSelectedIds] = React.useState<Set<string>>(() => new Set());
+  const [pipelineRefreshPolicy, setPipelineRefreshPolicy] =
+    React.useState<ImportEnrichmentRefreshPolicy>('missing');
+  const [pipelineEnrichments, setPipelineEnrichments] = React.useState<Map<string, ItemEnrichment>>(
+    () => new Map()
+  );
+  const [pipelinePolicyLoading, setPipelinePolicyLoading] = React.useState(false);
   const [pipelineFilter, setPipelineFilter] = React.useState('');
   const [commitMessage, setCommitMessage] = React.useState('');
   const [commitError, setCommitError] = React.useState('');
@@ -180,6 +205,49 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
   }, [pipelineConfirm, pipelineFilter]);
 
   const selectedPipelineCount = pipelineSelectedIds.size;
+  const policySkippedCount = React.useMemo(() => {
+    if (!pipelineConfirm || pipelinePolicyLoading) return 0;
+    const now = Date.now();
+    return pipelineConfirm.items.filter(
+      (item) => !shouldProcessImportedBookmark(pipelineEnrichments.get(item.itemId), pipelineRefreshPolicy, now)
+    ).length;
+  }, [pipelineConfirm, pipelineEnrichments, pipelinePolicyLoading, pipelineRefreshPolicy]);
+
+  React.useEffect(() => {
+    if (!pipelineConfirm) return;
+    let cancelled = false;
+    setPipelinePolicyLoading(true);
+    void getEnrichmentsForItemIds(pipelineConfirm.items.map((item) => item.itemId))
+      .then((enrichments) => {
+        if (cancelled) return;
+        setPipelineEnrichments(enrichments);
+        setPipelineSelectedIds(
+          getDefaultImportPipelineSelection(pipelineConfirm.items, enrichments, pipelineRefreshPolicy)
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Could not inspect existing enrichment before import processing', error);
+        setPipelineEnrichments(new Map());
+        setPipelineSelectedIds(
+          new Set(
+            pipelineConfirm.items
+              .filter((item) => item.outcome === 'created')
+              .map((item) => item.itemId)
+          )
+        );
+        addToast({
+          type: 'error',
+          message: 'Could not inspect existing enrichment. Existing bookmarks were left unselected for safety.',
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setPipelinePolicyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pipelineConfirm]);
 
   const togglePipelineItem = (itemId: string, checked: boolean) => {
     setPipelineSelectedIds((prev) => {
@@ -212,6 +280,9 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
     setPipelineConfirm(null);
     setPipelineFilter('');
     setPipelineSelectedIds(new Set());
+    setPipelineRefreshPolicy('missing');
+    setPipelineEnrichments(new Map());
+    setPipelinePolicyLoading(false);
     setLastCommitMeta(null);
     setImportReport(null);
   };
@@ -551,11 +622,14 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
 
       if (result.affectedItems.length > 0) {
         setPipelineFilter('');
+        setPipelineRefreshPolicy('missing');
         setPipelineConfirm({
           importSummary,
           items: result.affectedItems,
         });
-        setPipelineSelectedIds(new Set(result.affectedItems.map((item) => item.itemId)));
+        setPipelineEnrichments(new Map());
+        setPipelineSelectedIds(new Set());
+        setPipelinePolicyLoading(true);
         addToast({
           type: 'info',
           message: `Import saved — choose whether to process ${result.affectedItems.length} link${result.affectedItems.length === 1 ? '' : 's'} now or finish.`,
@@ -594,7 +668,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           <button
             type="button"
             onClick={() => void runSelectedPipeline()}
-            disabled={selectedPipelineCount === 0}
+            disabled={selectedPipelineCount === 0 || pipelinePolicyLoading}
             style={{
               minHeight: 34,
               padding: '6px 12px',
@@ -604,12 +678,12 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
               color: 'var(--accent-text, #fff)',
               fontSize: 'var(--text-xs)',
               fontWeight: 650,
-              cursor: selectedPipelineCount === 0 ? 'not-allowed' : 'pointer',
-              opacity: selectedPipelineCount === 0 ? 0.6 : 1,
+              cursor: selectedPipelineCount === 0 || pipelinePolicyLoading ? 'not-allowed' : 'pointer',
+              opacity: selectedPipelineCount === 0 || pipelinePolicyLoading ? 0.6 : 1,
               flexShrink: 0,
             }}
           >
-            Process selected ({selectedPipelineCount})
+            {pipelinePolicyLoading ? 'Checking existing enrichment…' : `Process selected (${selectedPipelineCount})`}
           </button>
         </div>
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
@@ -617,6 +691,43 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           {pipelineConfirm.importSummary} Nothing is fetched and no AI provider is called until you confirm
           below. Processing may use your configured paid AI provider. Uncheck links to leave them as
           import-only, or finish now and process them later from Enrichment Hub.
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+            Process existing enrichment
+            <select
+              value={pipelineRefreshPolicy}
+              disabled={pipelinePolicyLoading}
+              onChange={(event) => {
+                const policy = event.target.value as ImportEnrichmentRefreshPolicy;
+                setPipelineRefreshPolicy(policy);
+                if (pipelineConfirm) {
+                  setPipelineSelectedIds(
+                    getDefaultImportPipelineSelection(pipelineConfirm.items, pipelineEnrichments, policy)
+                  );
+                }
+              }}
+              style={{
+                padding: '5px 8px',
+                border: '1px solid var(--border)',
+                borderRadius: 6,
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                fontSize: 'var(--text-xs)',
+              }}
+            >
+              <option value="missing">Only missing or incomplete (default)</option>
+              <option value="older-than-7-days">Also refresh older than 7 days</option>
+              <option value="older-than-30-days">Also refresh older than 30 days</option>
+              <option value="older-than-90-days">Also refresh older than 90 days</option>
+              <option value="all">Reprocess all selected bookmarks</option>
+            </select>
+          </label>
+          {!pipelinePolicyLoading && policySkippedCount > 0 ? (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+              {policySkippedCount} complete bookmark{policySkippedCount === 1 ? '' : 's'} skipped by this policy.
+            </span>
+          ) : null}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
@@ -686,6 +797,8 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
           ) : (
             filteredPipelineItems.map((item) => {
               const checked = pipelineSelectedIds.has(item.itemId);
+              const enrichment = pipelineEnrichments.get(item.itemId);
+              const complete = isCompleteAiEnrichment(enrichment);
               return (
                 <label
                   key={item.itemId}
@@ -721,6 +834,9 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
                       {item.outcome === 'created' ? 'new' : 'existing'}
                     </span>
                     <strong style={{ color: 'var(--text)' }}>{item.title || 'Untitled'}</strong>
+                    {complete ? (
+                      <span style={{ marginLeft: 6, color: 'var(--text-muted)' }}>AI enrichment exists</span>
+                    ) : null}
                     <div style={{ color: 'var(--text-muted)', wordBreak: 'break-all', marginTop: 2 }}>{item.url}</div>
                   </span>
                 </label>

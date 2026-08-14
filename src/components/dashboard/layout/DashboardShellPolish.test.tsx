@@ -8,6 +8,13 @@ import { LeftSidebar } from './LeftSidebar';
 import { RightPanel } from './RightPanel';
 import { HomeTitleTabs } from './MainContent';
 import { ScopeChipsBar } from '../ScopeChipsBar';
+import {
+  isFullMiddleDashboardView,
+  isFullPageDashboardView,
+  loadRestoredBrowseItemId,
+  resolveShellInspectorItemId,
+  shouldRevealInspectorWorkspace,
+} from './DashboardLayout';
 
 describe('dashboard shell polish contracts', () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -83,6 +90,69 @@ describe('dashboard shell polish contracts', () => {
     expect(markup).toContain('right-panel-collapsed');
     expect(markup).toContain('aria-label="Expand Inspector panel"');
     expect(markup).toContain('<span>Inspector</span>');
+  });
+
+  it('feeds the Library selection to the shell Inspector instead of a stale workspace tab', () => {
+    expect(resolveShellInspectorItemId({
+      activeView: 'bookmarks',
+      isSearchSurface: false,
+      selectedSearchItemId: null,
+      selectedBrowseItemId: 'library-item',
+      activeGlobalTab: { kind: 'item', id: 'old-tab', itemId: 'old-item' },
+    })).toBe('library-item');
+
+    expect(resolveShellInspectorItemId({
+      activeView: 'notes',
+      isSearchSurface: false,
+      selectedSearchItemId: null,
+      selectedBrowseItemId: 'note-item',
+      activeGlobalTab: null,
+    })).toBe('note-item');
+  });
+
+  it('does not navigate away from Enrichment Hub for its inspector action', () => {
+    expect(shouldRevealInspectorWorkspace('pipeline')).toBe(false);
+    expect(shouldRevealInspectorWorkspace('search')).toBe(true);
+    expect(shouldRevealInspectorWorkspace('bookmarks')).toBe(false);
+  });
+
+  it('renders Enrichment Hub beside the shared right Inspector', () => {
+    expect(isFullPageDashboardView('pipeline')).toBe(false);
+    expect(isFullMiddleDashboardView('pipeline')).toBe(true);
+    expect(resolveShellInspectorItemId({
+      activeView: 'pipeline',
+      isSearchSurface: false,
+      selectedSearchItemId: null,
+      selectedBrowseItemId: 'hub-item',
+      activeGlobalTab: { kind: 'item', id: 'old-tab', itemId: 'old-item' },
+    })).toBe('hub-item');
+  });
+
+  it('restores the Library selection before the child view reports its hydrated item', () => {
+    localStorage.setItem(
+      'workbench:library-page-state:v1:library:all:all',
+      JSON.stringify({ selectedItemId: 'restored-item' })
+    );
+    expect(loadRestoredBrowseItemId('bookmarks', 'all', 'all')).toBe('restored-item');
+    expect(loadRestoredBrowseItemId('pipeline', 'all', 'all')).toBeNull();
+    localStorage.clear();
+  });
+
+  it('shows a loading state instead of a false empty Inspector for a restored item', () => {
+    const markup = renderToStaticMarkup(
+      <RightPanel
+        activeItem={null}
+        activeItemLoading
+        scopeProjectId="all"
+        scopeCollectionId="all"
+        isCollapsed={false}
+        activeTab="inspector"
+        onCollapsedChange={vi.fn()}
+        onActiveTabChange={vi.fn()}
+      />
+    );
+    expect(markup).toContain('Loading selected item…');
+    expect(markup).not.toContain('Select an item or search result');
   });
 
   it('renders the current scope as a labelled, dismissible trail', () => {
