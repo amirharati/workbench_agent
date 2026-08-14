@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Globe2, Layers3, Link2, Maximize2, MoveRight, Pin, Plus, Save, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Layers3, Link2, MoveRight, Pin, Save, Search, Trash2, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemFavoriteButton } from './ItemFavoriteButton';
@@ -34,10 +34,10 @@ interface ProjectHomeWorkspaceProps {
   activeSessionTabId?: string | null;
   onAddItemToSession: (item: Item) => void;
   onRemoveSessionTab: (tabId: string) => void;
-  onFocusSession: (tabId?: string) => void;
   workspaces: Workspace[];
   savedWorkspaceSessions: SavedWorkspaceSession[];
   activeWorkspaceKey: string;
+  onActivateWorkspaceKey?: (workspaceKey: string) => void;
   onActivateWorkspace: (workspace: Workspace | null) => void;
   onActivateSavedWorkspace: (session: SavedWorkspaceSession) => void;
   onSaveWorkspace: (name: string) => string | void;
@@ -47,6 +47,7 @@ interface ProjectHomeWorkspaceProps {
   recentWorkspaceDestinationKeys?: readonly string[];
   isItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => boolean;
   onAddItemToWorkspaceDestination?: (item: Item, destination: WorkspaceDestination) => void;
+  onViewItemInWorkspaceDestination?: (item: Item, destination: WorkspaceDestination) => void;
   onAddItemToWorkspace: (item: Item, targetWorkspaceKey: string) => void;
   onTransferSessionEntry: (
     entry: GlobalTab,
@@ -55,8 +56,6 @@ interface ProjectHomeWorkspaceProps {
   ) => void;
   onSelectedItemChange?: (item: Item | null) => void;
   onSelectSessionEntry?: (tab: GlobalTab) => void;
-  includeGlobalWork?: boolean;
-  onToggleIncludeGlobalWork?: () => void;
   onUpdateItem?: (
     id: string,
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
@@ -78,12 +77,11 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   onSelectCollection,
   sessionTabs,
   activeSessionTabId,
-  onAddItemToSession,
   onRemoveSessionTab,
-  onFocusSession,
   workspaces,
   savedWorkspaceSessions,
   activeWorkspaceKey,
+  onActivateWorkspaceKey,
   onActivateWorkspace,
   onActivateSavedWorkspace,
   onSaveWorkspace,
@@ -93,12 +91,10 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   recentWorkspaceDestinationKeys,
   isItemInWorkspace,
   onAddItemToWorkspaceDestination,
-  onAddItemToWorkspace,
+  onViewItemInWorkspaceDestination,
   onTransferSessionEntry,
   onSelectedItemChange,
   onSelectSessionEntry,
-  includeGlobalWork = false,
-  onToggleIncludeGlobalWork,
   onUpdateItem,
   onCreateProject,
   onCreateCollection,
@@ -116,7 +112,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const [workspaceName, setWorkspaceName] = useState('');
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [workspaceDeleteConfirm, setWorkspaceDeleteConfirm] = useState<SavedWorkspaceSession | null>(null);
-  const [itemTargetWorkspaceKey, setItemTargetWorkspaceKey] = useState('');
   const [transferEntryId, setTransferEntryId] = useState<string | null>(null);
   const [transferTargetWorkspaceKey, setTransferTargetWorkspaceKey] = useState('');
   const [browseSource, setBrowseSource] = useState<'workspace' | 'all' | 'pinned' | 'collection'>(
@@ -157,9 +152,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const allItems = organizationItems ?? items;
   const selectedItem = allItems.find((item) => item.id === selectedItemId) ?? null;
   const selectedSessionTab = sessionTabs.find((tab) => tab.id === selectedSessionTabId) ?? null;
-  const selectedItemSessionTab = selectedItem
-    ? sessionTabs.find((tab) => tab.kind === 'item' && tab.itemId === selectedItem.id)
-    : undefined;
   const workspaceBrowserUrls = useMemo(() => {
     const urls = sessionTabs.flatMap((tab) => {
       if (tab.kind === 'url') return [tab.url];
@@ -214,14 +206,18 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   }, [allItems, onSelectedItemChange, selectedItem, selectedItemId, selectedSessionTabId, sessionTabs]);
 
   useEffect(() => {
-    if (!workspaceDestinations.some((destination) => destination.key === itemTargetWorkspaceKey)) {
-      setItemTargetWorkspaceKey(
-        workspaceDestinations.find((destination) => destination.key !== activeWorkspaceKey)?.key
-          ?? workspaceDestinations[0]?.key
-          ?? ''
-      );
-    }
-  }, [activeWorkspaceKey, itemTargetWorkspaceKey, workspaceDestinations]);
+    if (!activeSessionTabId) return;
+    const requestedEntry = sessionTabs.find((entry) => entry.id === activeSessionTabId);
+    if (!requestedEntry) return;
+    setBrowseSource('workspace');
+    setSelectedSessionTabId(requestedEntry.id);
+    setSelectedItemId(requestedEntry.kind === 'item' ? requestedEntry.itemId : null);
+    onSelectedItemChange?.(
+      requestedEntry.kind === 'item'
+        ? allItems.find((item) => item.id === requestedEntry.itemId) ?? null
+        : null
+    );
+  }, [activeSessionTabId, allItems, onSelectedItemChange, sessionTabs]);
 
   useEffect(() => {
     if (!transferDestinations.some((destination) => destination.key === transferTargetWorkspaceKey)) {
@@ -259,21 +255,11 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   };
 
   const switchWorkspace = (workspaceKey: string) => {
-    if (workspaceKey === getProjectSessionWorkspaceKey(project.id)) {
-      onActivateWorkspace(null);
+    if (onActivateWorkspaceKey) {
+      onActivateWorkspaceKey(workspaceKey);
       return;
     }
-    const savedSession = savedWorkspaceSessions.find(
-      (session) => getHomebaseWorkspaceSessionKey(session.id) === workspaceKey
-    );
-    if (savedSession) {
-      onActivateSavedWorkspace(savedSession);
-      return;
-    }
-    const browserWorkspace = workspaces.find(
-      (workspace) => getSavedWorkspaceSessionKey(workspace.id) === workspaceKey
-    );
-    if (browserWorkspace) onActivateWorkspace(browserWorkspace);
+    if (workspaceKey === getProjectSessionWorkspaceKey(project.id)) onActivateWorkspace(null);
   };
 
   const transferEntry = (entry: GlobalTab, mode: 'copy' | 'move') => {
@@ -357,7 +343,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
       ),
       actions: (
         <>
-          <button type="button" onClick={() => onFocusSession(tab.id)} title={`Focus ${label}`} aria-label={`Focus ${label}`} style={sessionIconButtonStyle}><Maximize2 size={11} /></button>
           {transferable && transferDestinations.length > 0 && <button type="button" onClick={() => { setTransferEntryId((current) => current === tab.id ? null : tab.id); setTransferTargetWorkspaceKey(transferDestinations[0]?.key ?? ''); }} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
           <button type="button" onClick={() => { if (selectedSessionTabId === tab.id) { setSelectedSessionTabId(null); setSelectedItemId(null); } onRemoveSessionTab(tab.id); }} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={sessionIconButtonStyle}><X size={12} /></button>
         </>
@@ -387,7 +372,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   });
   const browseEntries = browseSource === 'workspace' ? workspaceBrowseEntries : materialBrowseEntries;
   const browseTitle = browseSource === 'workspace'
-    ? activeSavedWorkspace?.name ?? activeWorkspace?.name ?? 'Live session'
+    ? activeSavedWorkspace?.name ?? activeWorkspace?.name ?? 'General'
     : browseSource === 'pinned'
       ? `Pinned to ${project.name}`
       : browseSource === 'collection'
@@ -398,11 +383,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     <div className="ui-project-workspace-actions" data-project-workspace-actions role="toolbar" aria-label="Workspace actions">
       {activeSavedWorkspace && <button className="ui-button ui-button--danger" type="button" onClick={() => setWorkspaceDeleteConfirm(activeSavedWorkspace)} title={`Delete ${activeSavedWorkspace.name}`} aria-label={`Delete ${activeSavedWorkspace.name}`}><Trash2 size={11} /></button>}
       <button className="ui-button ui-button--secondary" type="button" onClick={() => { setShowSaveWorkspace((visible) => !visible); setWorkspaceError(null); }} title="Save as workspace" aria-label="Save as workspace"><Save size={12} /></button>
-      {onToggleIncludeGlobalWork && (
-        <button className="ui-button ui-button--secondary" type="button" onClick={onToggleIncludeGlobalWork} aria-pressed={includeGlobalWork} title={includeGlobalWork ? 'Including global work' : 'Include global work'} aria-label={includeGlobalWork ? 'Including global work' : 'Include global work'} style={{ borderColor: includeGlobalWork ? 'var(--border-active)' : 'var(--border)', background: includeGlobalWork ? 'var(--accent-weak)' : 'transparent', color: includeGlobalWork ? 'var(--accent)' : 'var(--text-muted)' }}><Globe2 size={12} /></button>
-      )}
       <button className="ui-button ui-button--secondary" type="button" disabled={workspaceBrowserUrls.length === 0} onClick={openWorkspaceInBrowser} title={workspaceBrowserUrls.length === 0 ? 'This workspace has no browser links' : `Open ${workspaceBrowserUrls.length} link${workspaceBrowserUrls.length !== 1 ? 's' : ''}`} aria-label="Open workspace links"><ExternalLink size={12} /></button>
-      <button className="ui-button ui-button--primary" type="button" disabled={sessionTabs.length === 0} onClick={() => onFocusSession(selectedSessionTab?.id)} title="Focus workspace" aria-label="Focus workspace"><Maximize2 size={12} /></button>
     </div>
   ) : undefined;
 
@@ -431,16 +412,8 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         recentDestinationKeys={recentWorkspaceDestinationKeys}
         isAdded={(destination) => isItemInWorkspace(selectedItem, destination)}
         onAdd={(destination) => onAddItemToWorkspaceDestination(selectedItem, destination)}
+        onView={onViewItemInWorkspaceDestination ? (destination) => onViewItemInWorkspaceDestination(selectedItem, destination) : undefined}
       />
-    ) : selectedItem && workspaceDestinations.length > 1 ? (
-      <>
-        <select value={itemTargetWorkspaceKey} onChange={(event) => setItemTargetWorkspaceKey(event.target.value)} aria-label={`Workspace for ${selectedItem.title || 'item'}`} style={destinationSelectStyle}>
-          {workspaceDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}{destination.key === activeWorkspaceKey ? ' (current)' : ''}</option>)}
-        </select>
-        <button type="button" onClick={() => onAddItemToWorkspace(selectedItem, itemTargetWorkspaceKey)} disabled={!itemTargetWorkspaceKey} style={primaryButtonStyle}><Plus size={12} /> Add</button>
-      </>
-    ) : selectedItem && !selectedItemSessionTab ? (
-      <button type="button" onClick={() => onAddItemToSession(selectedItem)} style={primaryButtonStyle}><Plus size={12} /> Add to workspace</button>
     ) : null;
 
   const detailPanel = (
@@ -451,7 +424,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <span style={detailLabelStyle}>Item</span>
             <div className="ui-detail-panel__actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={clearDetailSelection} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
-              {selectedItemSessionTab && <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={secondaryButtonStyle}><Maximize2 size={12} /> Focus</button>}
               {selectedItemWorkspaceAction}
             </div>
           </div>
@@ -478,7 +450,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <span style={detailLabelStyle}>Workspace entry</span>
             <div className="ui-detail-panel__actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={clearDetailSelection} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
-              <button type="button" onClick={() => onFocusSession(selectedSessionTab.id)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
             </div>
           </div>
           {transferEntryId === selectedSessionTab.id && transferDestinations.length > 0 && (
@@ -498,7 +469,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             {selectedSessionTab.kind === 'url' ? (
               <ExtensionPageUrlLink url={selectedSessionTab.url} style={{ marginTop: 7, color: 'var(--accent)', fontSize: 'var(--text-sm)', overflowWrap: 'anywhere', textDecoration: 'none' }} title={`Open ${selectedSessionTab.url}`}>{selectedSessionTab.url}</ExtensionPageUrlLink>
             ) : (
-              <p style={{ margin: '9px 0 0', maxWidth: 420, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.55 }}>This workspace entry uses its full interactive view in Focus mode.</p>
+              <p style={{ margin: '9px 0 0', maxWidth: 420, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.55 }}>This workspace entry has no additional detail view.</p>
             )}
           </div>
         </>
@@ -506,7 +477,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         <div style={{ flex: 1, minHeight: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 28, textAlign: 'center', color: 'var(--text-faint)' }}>
           <Layers3 size={24} />
           <strong style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Select something to work with</strong>
-          <span style={{ maxWidth: 300, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>Links and notes are editable here. Searches and saved lists can open in Focus when you need their full view.</span>
+          <span style={{ maxWidth: 300, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>Links and notes are editable here. Select a workspace entry to inspect it without leaving this page.</span>
         </div>
       )}
     </section>
@@ -554,9 +525,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           <div style={compoundTabStyle(browseSource === 'workspace')}>
             <button type="button" role="tab" aria-selected={browseSource === 'workspace'} onClick={viewActiveWorkspace} style={compoundTabButtonStyle}><Layers3 size={12} /> Workspace</button>
             <select value={activeWorkspaceKey} onChange={(event) => { setBrowseSource('workspace'); setSelectedSessionTabId(null); setSelectedItemId(null); switchWorkspace(event.target.value); }} aria-label="Workspace view" style={{ ...tabSelectStyle, minWidth: 120 }}>
-              <option value={getProjectSessionWorkspaceKey(project.id)}>Live session</option>
-              {savedWorkspaceSessions.map((session) => <option key={session.id} value={getHomebaseWorkspaceSessionKey(session.id)}>{session.name}</option>)}
-              {workspaces.map((workspace) => <option key={workspace.id} value={getSavedWorkspaceSessionKey(workspace.id)}>{workspace.name} · browser</option>)}
+              {workspaceDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
             </select>
           </div>
         </div>
@@ -588,7 +557,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           <button type="button" onClick={() => onActivateWorkspace(null)} style={browseRowStyle(activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id))}>
             <span style={browseRowIconStyle}><Layers3 size={12} /></span>
             <span style={{ minWidth: 0, flex: 1 }}>
-              <span style={browseRowTitleStyle}>Live session</span>
+              <span style={browseRowTitleStyle}>General</span>
               <span style={browseRowDetailStyle}>Project scratch workspace</span>
             </span>
             {activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id) && <Check size={13} />}
@@ -627,7 +596,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         {showLegacyProjectBrowser && (<div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' }}>
           <div style={{ minHeight: 39, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '7px 11px', borderBottom: sessionTabs.length > 0 ? '1px solid var(--border)' : 'none' }}>
             <span style={{ minWidth: 0, color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {activeSavedWorkspace?.name ?? activeWorkspace?.name ?? 'Live session'}
+              {activeSavedWorkspace?.name ?? activeWorkspace?.name ?? 'General'}
             </span>
             <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{sessionTabs.length} item{sessionTabs.length !== 1 ? 's' : ''}</span>
           </div>
@@ -670,7 +639,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                         <span style={{ display: 'block', marginTop: 1, color: 'var(--text-faint)', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail}</span>
                       )}
                     </span>
-                    <button type="button" onClick={(event) => { event.stopPropagation(); onFocusSession(tab.id); }} title={`Focus ${label}`} aria-label={`Focus ${label}`} style={sessionIconButtonStyle}><Maximize2 size={11} /></button>
                     {transferable && transferDestinations.length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); setTransferEntryId((current) => current === tab.id ? null : tab.id); setTransferTargetWorkspaceKey(transferDestinations[0]?.key ?? ''); }} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
                     <button type="button" onClick={(event) => { event.stopPropagation(); if (selectedSessionTabId === tab.id) setSelectedSessionTabId(null); onRemoveSessionTab(tab.id); }} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={sessionIconButtonStyle}><X size={12} /></button>
                   </div>
@@ -815,10 +783,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <>
               <div style={panelHeaderStyle}>
                 <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Item</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {selectedItemSessionTab && <button type="button" onClick={() => onFocusSession(selectedItemSessionTab.id)} style={secondaryButtonStyle}><Maximize2 size={12} /> Focus</button>}
-                  {selectedItemWorkspaceAction}
-                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{selectedItemWorkspaceAction}</div>
               </div>
               <div className="scrollbar ui-scroll-footer-safe ui-detail-panel__body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px' }}>
                 <ItemWorkspace
@@ -841,9 +806,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <>
               <div style={panelHeaderStyle}>
                 <span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Workspace entry</span>
-                <button type="button" onClick={() => onFocusSession(selectedSessionTab.id)} style={primaryButtonStyle}>
-                  <Maximize2 size={12} /> Focus
-                </button>
               </div>
               <div style={{ flex: 1, minHeight: 0, padding: 18, overflowY: 'auto' }} className="scrollbar">
                 <span style={{ width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-md)', background: 'var(--accent-weak)', color: 'var(--accent)' }}>
@@ -870,7 +832,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                   </>
                 )}
                 {selectedSessionTab.kind !== 'url' && (
-                  <p style={{ margin: '9px 0 0', maxWidth: 420, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.55 }}>This workspace entry uses its full interactive view in Focus mode.</p>
+                  <p style={{ margin: '9px 0 0', maxWidth: 420, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.55 }}>This workspace entry has no additional detail view.</p>
                 )}
               </div>
             </>
@@ -878,7 +840,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <div style={{ flex: 1, minHeight: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 28, textAlign: 'center', color: 'var(--text-faint)' }}>
               <Layers3 size={24} />
               <strong style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>Select an item</strong>
-              <span style={{ maxWidth: 270, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>View, edit, favorite, and organize project material here. Focus opens the same work on a larger canvas.</span>
+              <span style={{ maxWidth: 270, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>View, edit, favorite, and organize project material here.</span>
             </div>
           )}
         </div>

@@ -6,7 +6,7 @@ import type {
   GlobalTabUrl,
   SavedWorkspaceSession,
 } from './GlobalTabSystem';
-import { getGlobalTabProjectId } from './GlobalTabSystem';
+import { GLOBAL_WORKSPACE_KEY, getGlobalTabProjectId } from './GlobalTabSystem';
 
 export function getProjectSessionTabs(
   tabs: readonly GlobalTab[],
@@ -28,27 +28,51 @@ export function getVisibleWorkspaceTabs(
 }
 
 export function getProjectSessionWorkspaceKey(projectId: string): string {
-  return `project-session:${projectId}`;
+  return projectId === 'all' ? GLOBAL_WORKSPACE_KEY : `workspace:project:${projectId}:general`;
 }
 
 export function getSavedWorkspaceSessionKey(workspaceId: string): string {
-  return `saved-workspace:${workspaceId}`;
+  return `browser-snapshot:${workspaceId}`;
 }
 
 export function getHomebaseWorkspaceSessionKey(sessionId: string): string {
-  return `homebase-workspace:${sessionId}`;
+  return `workspace:named:${sessionId}`;
 }
 
-export function getActiveProjectWorkspaceKey(state: GlobalTabState, projectId: string): string {
-  return state.activeWorkspaceKeyByProject?.[projectId] ?? getProjectSessionWorkspaceKey(projectId);
+/** Resolve the owner used to scope entries in a Homebase workspace. */
+export function getWorkspaceProjectId(
+  state: GlobalTabState,
+  workspaceKey: string
+): string | 'all' {
+  if (workspaceKey === GLOBAL_WORKSPACE_KEY) return 'all';
+  const projectPrefix = 'workspace:project:';
+  const generalSuffix = ':general';
+  if (workspaceKey.startsWith(projectPrefix) && workspaceKey.endsWith(generalSuffix)) {
+    return workspaceKey.slice(projectPrefix.length, -generalSuffix.length) || 'all';
+  }
+  const namedPrefix = 'workspace:named:';
+  if (workspaceKey.startsWith(namedPrefix)) {
+    const sessionId = workspaceKey.slice(namedPrefix.length);
+    return state.savedWorkspaceSessions?.find((session) => session.id === sessionId)?.projectId ?? 'all';
+  }
+  return 'all';
+}
+
+export function getActiveWorkspaceKey(state: GlobalTabState): string {
+  return state.activeWorkspaceKey?.trim() || GLOBAL_WORKSPACE_KEY;
+}
+
+export function getActiveProjectWorkspaceKey(state: GlobalTabState, _projectId: string): string {
+  return getActiveWorkspaceKey(state);
 }
 
 export function getProjectSessionResumeTabId(
   state: GlobalTabState,
   projectId: string | 'all'
 ): string | null {
-  const sessionTabs = getProjectSessionTabs(state.tabs, projectId);
-  const remembered = state.lastActiveTabByProject?.[projectId];
+  const workspaceKey = getProjectSessionWorkspaceKey(projectId);
+  const sessionTabs = getProjectWorkspaceTabs(state, projectId, workspaceKey);
+  const remembered = state.lastActiveEntryByWorkspace?.[workspaceKey];
   if (remembered && sessionTabs.some((tab) => tab.id === remembered)) return remembered;
   return sessionTabs[sessionTabs.length - 1]?.id ?? null;
 }
@@ -76,7 +100,7 @@ export interface LoadWorkspaceSessionResult {
 
 function activateProjectWorkspaceTarget({
   state,
-  projectId,
+  projectId: _projectId,
   targetKey,
   initialTabs,
 }: {
@@ -85,37 +109,54 @@ function activateProjectWorkspaceTarget({
   targetKey: string;
   initialTabs: readonly GlobalTab[];
 }): GlobalTabState {
-  const currentKey = getActiveProjectWorkspaceKey(state, projectId);
+  const currentKey = getActiveWorkspaceKey(state);
   if (currentKey === targetKey) return { ...state, activeTabId: null };
 
-  const currentTabs = getProjectSessionTabs(state.tabs, projectId);
-  const otherTabs = state.tabs.filter((tab) => getGlobalTabProjectId(tab) !== projectId);
+  const currentTabs = state.tabs;
   const snapshots = {
     ...(state.workspaceSessionSnapshots ?? {}),
     [currentKey]: currentTabs,
   };
   const targetTabs = snapshots[targetKey] ?? [...initialTabs];
 
-  const lastActiveTabByProject = { ...(state.lastActiveTabByProject ?? {}) };
-  if (targetTabs.length > 0) lastActiveTabByProject[projectId] = targetTabs[targetTabs.length - 1].id;
-  else delete lastActiveTabByProject[projectId];
+  const lastActiveEntryByWorkspace = { ...(state.lastActiveEntryByWorkspace ?? {}) };
+  const resumedEntryId = lastActiveEntryByWorkspace[targetKey];
+  const activeTabId = resumedEntryId && targetTabs.some((entry) => entry.id === resumedEntryId)
+    ? resumedEntryId
+    : null;
 
   return {
     ...state,
-    tabs: [...otherTabs, ...targetTabs],
-    activeTabId: null,
-    lastActiveTabByProject,
-    activeWorkspaceKeyByProject: {
-      ...(state.activeWorkspaceKeyByProject ?? {}),
-      [projectId]: targetKey,
-    },
-    workspaceSessionSnapshots: snapshots,
+    tabs: [...targetTabs],
+    activeTabId,
+    activeWorkspaceKey: targetKey,
+    lastActiveEntryByWorkspace,
+    workspaceSessionSnapshots: { ...snapshots, [targetKey]: [...targetTabs] },
     savedWorkspaceSessions: (state.savedWorkspaceSessions ?? []).map((session) =>
       getHomebaseWorkspaceSessionKey(session.id) === currentKey
         ? { ...session, updatedAt: Date.now() }
         : session
     ),
   };
+}
+
+export function activateWorkspace({
+  state,
+  workspaceKey,
+  projectId = 'all',
+  initialEntries = [],
+}: {
+  state: GlobalTabState;
+  workspaceKey: string;
+  projectId?: string | 'all';
+  initialEntries?: readonly GlobalTab[];
+}): GlobalTabState {
+  return activateProjectWorkspaceTarget({
+    state,
+    projectId,
+    targetKey: workspaceKey,
+    initialTabs: initialEntries,
+  });
 }
 
 export function saveCurrentProjectWorkspace({
@@ -131,9 +172,9 @@ export function saveCurrentProjectWorkspace({
   sessionId?: string;
   now?: number;
 }): GlobalTabState {
-  const currentKey = getActiveProjectWorkspaceKey(state, projectId);
+  const currentKey = getActiveWorkspaceKey(state);
   const targetKey = getHomebaseWorkspaceSessionKey(sessionId);
-  const currentTabs = getProjectSessionTabs(state.tabs, projectId);
+  const currentTabs = [...state.tabs];
   const session: SavedWorkspaceSession = {
     id: sessionId,
     name: name.trim(),
@@ -144,11 +185,8 @@ export function saveCurrentProjectWorkspace({
 
   return {
     ...state,
-    activeTabId: null,
-    activeWorkspaceKeyByProject: {
-      ...(state.activeWorkspaceKeyByProject ?? {}),
-      [projectId]: targetKey,
-    },
+    activeTabId: state.activeTabId,
+    activeWorkspaceKey: targetKey,
     workspaceSessionSnapshots: {
       ...(state.workspaceSessionSnapshots ?? {}),
       [currentKey]: currentTabs,
@@ -186,7 +224,7 @@ export function deleteSavedProjectWorkspace({
   const session = state.savedWorkspaceSessions?.find((candidate) => candidate.id === sessionId);
   if (!session) return state;
   const sessionKey = getHomebaseWorkspaceSessionKey(session.id);
-  const activeKey = getActiveProjectWorkspaceKey(state, session.projectId);
+  const activeKey = getActiveWorkspaceKey(state);
   const switched = activeKey === sessionKey
     ? activateProjectWorkspaceTarget({
         state,
@@ -225,28 +263,29 @@ function workspaceEntriesMatch(left: GlobalTab, right: GlobalTab): boolean {
 
 export function getProjectWorkspaceTabs(
   state: GlobalTabState,
-  projectId: string,
+  _projectId: string,
   workspaceKey: string
 ): GlobalTab[] {
-  return getActiveProjectWorkspaceKey(state, projectId) === workspaceKey
-    ? getProjectSessionTabs(state.tabs, projectId)
+  return getActiveWorkspaceKey(state) === workspaceKey
+    ? [...state.tabs]
     : [...(state.workspaceSessionSnapshots?.[workspaceKey] ?? [])];
 }
 
 function setProjectWorkspaceTabs(
   state: GlobalTabState,
-  projectId: string,
+  _projectId: string,
   workspaceKey: string,
   nextTabs: GlobalTab[]
 ): GlobalTabState {
-  const active = getActiveProjectWorkspaceKey(state, projectId) === workspaceKey;
+  const active = getActiveWorkspaceKey(state) === workspaceKey;
   const nextState = active
     ? {
         ...state,
-        tabs: [
-          ...state.tabs.filter((tab) => getGlobalTabProjectId(tab) !== projectId),
-          ...nextTabs,
-        ],
+        tabs: [...nextTabs],
+        workspaceSessionSnapshots: {
+          ...(state.workspaceSessionSnapshots ?? {}),
+          [workspaceKey]: [...nextTabs],
+        },
       }
     : {
         ...state,
@@ -281,7 +320,7 @@ export function addEntryToProjectWorkspace({
   if (targetTabs.some((candidate) => workspaceEntriesMatch(candidate, entry))) return state;
   const scopedEntry = {
     ...entry,
-    scopeProjectId: projectId,
+    scopeProjectId: projectId === 'all' ? undefined : projectId,
     scopeCollectionId: entry.scopeCollectionId,
     pinnedGlobally: undefined,
   } as GlobalTab;
@@ -301,7 +340,7 @@ export function getWorkspaceTargetTabs({
   browserWorkspace?: Workspace;
   items: readonly Item[];
 }): GlobalTab[] {
-  const active = getActiveProjectWorkspaceKey(state, projectId) === targetWorkspaceKey;
+  const active = getActiveWorkspaceKey(state) === targetWorkspaceKey;
   const hasSnapshot = Object.prototype.hasOwnProperty.call(
     state.workspaceSessionSnapshots ?? {},
     targetWorkspaceKey
@@ -356,7 +395,7 @@ export function addItemToWorkspaceTarget({
   browserWorkspace?: Workspace;
   items: readonly Item[];
 }): GlobalTabState {
-  const active = getActiveProjectWorkspaceKey(state, projectId) === targetWorkspaceKey;
+  const active = getActiveWorkspaceKey(state) === targetWorkspaceKey;
   const hasSnapshot = Object.prototype.hasOwnProperty.call(
     state.workspaceSessionSnapshots ?? {},
     targetWorkspaceKey
@@ -464,32 +503,28 @@ export function createProjectWorkspaceFromBrowserSnapshot({
   sessionId?: string;
   now?: number;
 }): GlobalTabState {
-  const currentKey = getActiveProjectWorkspaceKey(state, projectId);
+  const currentKey = getActiveWorkspaceKey(state);
   const targetKey = getHomebaseWorkspaceSessionKey(sessionId);
-  const currentTabs = getProjectSessionTabs(state.tabs, projectId);
-  const otherTabs = state.tabs.filter((tab) => getGlobalTabProjectId(tab) !== projectId);
+  const currentTabs = [...state.tabs];
   const convertedTabs = loadWorkspaceIntoProjectSession({
     workspace,
     existingTabs: [],
     items,
     projectId,
   }).tabs;
-  const lastActiveTabByProject = { ...(state.lastActiveTabByProject ?? {}) };
+  const lastActiveEntryByWorkspace = { ...(state.lastActiveEntryByWorkspace ?? {}) };
   if (convertedTabs.length > 0) {
-    lastActiveTabByProject[projectId] = convertedTabs[convertedTabs.length - 1].id;
+    lastActiveEntryByWorkspace[targetKey] = convertedTabs[convertedTabs.length - 1].id;
   } else {
-    delete lastActiveTabByProject[projectId];
+    delete lastActiveEntryByWorkspace[targetKey];
   }
 
   return {
     ...state,
-    tabs: [...otherTabs, ...convertedTabs],
+    tabs: [...convertedTabs],
     activeTabId: null,
-    lastActiveTabByProject,
-    activeWorkspaceKeyByProject: {
-      ...(state.activeWorkspaceKeyByProject ?? {}),
-      [projectId]: targetKey,
-    },
+    lastActiveEntryByWorkspace,
+    activeWorkspaceKey: targetKey,
     workspaceSessionSnapshots: {
       ...(state.workspaceSessionSnapshots ?? {}),
       [currentKey]: currentTabs,

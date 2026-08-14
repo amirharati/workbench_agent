@@ -9,13 +9,14 @@ import type { SearchDocument, SearchFilters, SearchIndex } from './types';
 
 const SIMILAR_WEIGHTS = {
   withEmbedding: { embedding: 0.55, category: 0.3, tags: 0.15 },
-  withoutEmbedding: { category: 0.65, tags: 0.35 },
+  withoutEmbedding: { category: 0.45, tags: 0.25, lexical: 0.3 },
 };
 
 export interface SimilarItemBreakdown {
   embedding: number;
   category: number;
   tags: number;
+  lexical: number;
   finalScore: number;
 }
 
@@ -27,7 +28,7 @@ export interface SimilarItemResult {
   primaryCategoryId?: string;
   primaryCategoryName?: string;
   breakdown: SimilarItemBreakdown;
-  sources: Array<'embedding' | 'category' | 'tags'>;
+  sources: Array<'embedding' | 'category' | 'tags' | 'lexical'>;
 }
 
 export interface FindSimilarOptions {
@@ -44,6 +45,14 @@ export interface FindSimilarResult {
   anchorHasEmbedding: boolean;
   results: SimilarItemResult[];
   totalCandidates: number;
+}
+
+/** Worker-provided vector ranking; vectors themselves never leave their owner. */
+export interface FindSimilarEmbeddingContext {
+  anchorHasEmbedding: boolean;
+  embeddingScores: Readonly<Record<string, number>>;
+  /** Pretokenized/inverted local fallback; consulted only without an anchor vector. */
+  fallbackScores?: Readonly<Record<string, number>>;
 }
 
 function scoreTagOverlap(anchorTags: string[], docTags: string[]): number {
@@ -67,7 +76,8 @@ function anchorCategoryIds(doc: SearchDocument): Set<string> {
 
 export function findSimilarItems(
   index: SearchIndex,
-  options: FindSimilarOptions
+  options: FindSimilarOptions,
+  embeddingContext?: FindSimilarEmbeddingContext
 ): FindSimilarResult {
   const limit = options.limit ?? 20;
   const candidateLimit = options.candidateLimit ?? 200;
@@ -88,19 +98,35 @@ export function findSimilarItems(
   }
 
   const anchorCats = anchorCategoryIds(anchor);
-  const hasEmbedding = Boolean(anchor.embedding?.length);
+  const hasEmbedding = embeddingContext
+    ? embeddingContext.anchorHasEmbedding
+    : Boolean(anchor.embedding?.length);
 
   const candidateMap = new Map<
     string,
-    { doc: SearchDocument; sources: Set<'embedding' | 'category' | 'tags'> }
+    { doc: SearchDocument; sources: Set<'embedding' | 'category' | 'tags' | 'lexical'> }
   >();
 
-  if (hasEmbedding && anchor.embedding) {
-    for (const hit of rankEmbeddingCandidates(anchor.embedding, scopedDocs, candidateLimit)) {
+  if (hasEmbedding) {
+    const scopedDocumentById = embeddingContext
+      ? new Map(scopedDocs.map((document) => [document.itemId, document]))
+      : undefined;
+    const embeddingHits = embeddingContext
+      ? Object.entries(embeddingContext.embeddingScores)
+          .flatMap(([itemId, score]) => {
+            const doc = scopedDocumentById?.get(itemId);
+            return doc ? [{ doc, score }] : [];
+          })
+          .sort((left, right) => right.score - left.score)
+          .slice(0, candidateLimit)
+      : anchor.embedding
+        ? rankEmbeddingCandidates(anchor.embedding, scopedDocs, candidateLimit)
+        : [];
+    for (const hit of embeddingHits) {
       if (excludeSelf && hit.doc.itemId === anchor.itemId) continue;
       const entry = candidateMap.get(hit.doc.itemId) ?? {
         doc: hit.doc,
-        sources: new Set<'embedding' | 'category' | 'tags'>(),
+        sources: new Set<'embedding' | 'category' | 'tags' | 'lexical'>(),
       };
       entry.sources.add('embedding');
       candidateMap.set(hit.doc.itemId, entry);
@@ -112,7 +138,7 @@ export function findSimilarItems(
       if (excludeSelf && hit.doc.itemId === anchor.itemId) continue;
       const entry = candidateMap.get(hit.doc.itemId) ?? {
         doc: hit.doc,
-        sources: new Set<'embedding' | 'category' | 'tags'>(),
+        sources: new Set<'embedding' | 'category' | 'tags' | 'lexical'>(),
       };
       entry.sources.add('category');
       candidateMap.set(hit.doc.itemId, entry);
@@ -125,29 +151,47 @@ export function findSimilarItems(
       if (scoreTagOverlap(anchor.tags, doc.tags) <= 0) continue;
       const entry = candidateMap.get(doc.itemId) ?? {
         doc,
-        sources: new Set<'embedding' | 'category' | 'tags'>(),
+        sources: new Set<'embedding' | 'category' | 'tags' | 'lexical'>(),
       };
       entry.sources.add('tags');
       candidateMap.set(doc.itemId, entry);
     }
   }
 
+  if (!hasEmbedding && embeddingContext?.fallbackScores) {
+    const scopedDocumentById = new Map(scopedDocs.map((document) => [document.itemId, document]));
+    for (const itemId of Object.keys(embeddingContext.fallbackScores)) {
+      if (excludeSelf && itemId === anchor.itemId) continue;
+      const doc = scopedDocumentById.get(itemId);
+      if (!doc) continue;
+      const entry = candidateMap.get(itemId) ?? {
+        doc,
+        sources: new Set<'embedding' | 'category' | 'tags' | 'lexical'>(),
+      };
+      entry.sources.add('lexical');
+      candidateMap.set(itemId, entry);
+    }
+  }
+
   const results: SimilarItemResult[] = [];
 
   for (const { doc, sources } of candidateMap.values()) {
-    const embedding =
-      hasEmbedding && anchor.embedding?.length
+    const embedding = embeddingContext
+      ? embeddingContext.embeddingScores[doc.itemId] ?? 0
+      : hasEmbedding && anchor.embedding?.length
         ? scoreEmbedding(anchor.embedding, doc)
         : 0;
     const category = scoreCategoryAffinity(doc, anchorCats, index.categoryById).score;
     const tags = scoreTagOverlap(anchor.tags, doc.tags);
+    const lexical = !hasEmbedding ? embeddingContext?.fallbackScores?.[doc.itemId] ?? 0 : 0;
 
     const finalScore = hasEmbedding
       ? SIMILAR_WEIGHTS.withEmbedding.embedding * embedding +
         SIMILAR_WEIGHTS.withEmbedding.category * category +
         SIMILAR_WEIGHTS.withEmbedding.tags * tags
       : SIMILAR_WEIGHTS.withoutEmbedding.category * category +
-        SIMILAR_WEIGHTS.withoutEmbedding.tags * tags;
+        SIMILAR_WEIGHTS.withoutEmbedding.tags * tags +
+        SIMILAR_WEIGHTS.withoutEmbedding.lexical * lexical;
 
     if (finalScore < 0.05) continue;
 
@@ -160,7 +204,7 @@ export function findSimilarItems(
       primaryCategoryName: doc.primaryCategoryId
         ? index.categoryById.get(doc.primaryCategoryId)?.name
         : undefined,
-      breakdown: { embedding, category, tags, finalScore },
+      breakdown: { embedding, category, tags, lexical, finalScore },
       sources: [...sources],
     });
   }

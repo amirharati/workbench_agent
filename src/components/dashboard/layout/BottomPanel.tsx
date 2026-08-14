@@ -630,7 +630,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
   const projectWorkspaceTargets = newWorkspaceProjectId
     ? [
-        { key: getProjectSessionWorkspaceKey(newWorkspaceProjectId), label: 'Live session' },
+        { key: getProjectSessionWorkspaceKey(newWorkspaceProjectId), label: 'General' },
         ...(homeState?.savedWorkspaceSessions ?? [])
           .filter((session) => session.projectId === newWorkspaceProjectId)
           .sort((left, right) => right.updatedAt - left.updatedAt)

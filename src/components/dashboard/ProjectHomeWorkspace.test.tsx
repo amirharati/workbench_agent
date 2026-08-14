@@ -60,7 +60,6 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         sessionTabs={[]}
         onAddItemToSession={vi.fn()}
         onRemoveSessionTab={vi.fn()}
-        onFocusSession={vi.fn()}
         workspaces={workspaces}
         savedWorkspaceSessions={[]}
         activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
@@ -68,7 +67,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         onActivateSavedWorkspace={vi.fn()}
         onSaveWorkspace={vi.fn()}
         onDeleteSavedWorkspace={vi.fn()}
-        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' }]}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
         onAddItemToWorkspace={vi.fn()}
         onTransferSessionEntry={vi.fn()}
         onUpdateItem={vi.fn()}
@@ -83,7 +82,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup).not.toContain('data-browse-surface="project-pins"');
     expect(markup).not.toContain('data-browse-surface="project-collections"');
     expect(markup).not.toContain('overflow-x:auto');
-    expect(markup).toContain('Workspace 5');
+    expect(markup).not.toContain('Workspace 5');
     expect(markup).toContain('Collection 5');
     expect(markup).toContain('Pinned <span');
     expect(markup).toContain(
@@ -98,7 +97,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup).not.toContain('data-project-page-footer-content="true"');
   });
 
-  it('keeps a compact Workspace tab when Live session is the only choice', () => {
+  it('keeps a compact Workspace control when General is the only choice', () => {
     const markup = renderToStaticMarkup(
       <ProjectHomeWorkspace
         project={project}
@@ -109,7 +108,6 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         sessionTabs={[]}
         onAddItemToSession={vi.fn()}
         onRemoveSessionTab={vi.fn()}
-        onFocusSession={vi.fn()}
         workspaces={[]}
         savedWorkspaceSessions={[]}
         activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
@@ -117,13 +115,13 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         onActivateSavedWorkspace={vi.fn()}
         onSaveWorkspace={vi.fn()}
         onDeleteSavedWorkspace={vi.fn()}
-        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' }]}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
         onAddItemToWorkspace={vi.fn()}
         onTransferSessionEntry={vi.fn()}
       />
     );
 
-    expect(markup).toContain('Live session');
+    expect(markup).toContain('General');
     expect(markup).toContain('aria-label="Workspace view"');
     expect(markup).not.toContain('Save as workspace');
     expect(markup).not.toContain('data-browse-surface="project-workspaces"');
@@ -149,7 +147,6 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         sessionTabs={[]}
         onAddItemToSession={vi.fn()}
         onRemoveSessionTab={vi.fn()}
-        onFocusSession={vi.fn()}
         workspaces={workspaces}
         savedWorkspaceSessions={[]}
         activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
@@ -157,7 +154,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         onActivateSavedWorkspace={vi.fn()}
         onSaveWorkspace={vi.fn()}
         onDeleteSavedWorkspace={vi.fn()}
-        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' }]}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
         onAddItemToWorkspace={vi.fn()}
         onTransferSessionEntry={vi.fn()}
       />
@@ -181,7 +178,6 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         sessionTabs={[{ kind: 'item', id: 'item-tab', itemId: items[0].id, scopeProjectId: project.id }]}
         onAddItemToSession={vi.fn()}
         onRemoveSessionTab={vi.fn()}
-        onFocusSession={vi.fn()}
         workspaces={[]}
         savedWorkspaceSessions={[{ id: 'saved-a', name: 'Writing plan', projectId: project.id, createdAt: 1, updatedAt: 1 }]}
         activeWorkspaceKey={getHomebaseWorkspaceSessionKey('saved-a')}
@@ -190,7 +186,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         onSaveWorkspace={vi.fn()}
         onDeleteSavedWorkspace={vi.fn()}
         workspaceDestinations={[
-          { key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' },
+          { key: getProjectSessionWorkspaceKey(project.id), label: 'General' },
           { key: getHomebaseWorkspaceSessionKey('saved-a'), label: 'Writing plan' },
         ]}
         onAddItemToWorkspace={vi.fn()}
@@ -225,7 +221,6 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         sessionTabs={[{ kind: 'item', id: 'item-tab', itemId: items[0].id, scopeProjectId: project.id }]}
         onAddItemToSession={vi.fn()}
         onRemoveSessionTab={vi.fn()}
-        onFocusSession={vi.fn()}
         workspaces={[]}
         savedWorkspaceSessions={[]}
         activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
@@ -233,7 +228,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         onActivateSavedWorkspace={vi.fn()}
         onSaveWorkspace={vi.fn()}
         onDeleteSavedWorkspace={vi.fn()}
-        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' }]}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
         onAddItemToWorkspace={vi.fn()}
         onTransferSessionEntry={vi.fn()}
       />
@@ -268,7 +263,6 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         sessionTabs={[{ kind: 'item', id: 'item-tab', itemId: items[1].id, scopeProjectId: project.id }]}
         onAddItemToSession={vi.fn()}
         onRemoveSessionTab={vi.fn()}
-        onFocusSession={vi.fn()}
         workspaces={[]}
         savedWorkspaceSessions={[]}
         activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
@@ -276,7 +270,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         onActivateSavedWorkspace={vi.fn()}
         onSaveWorkspace={vi.fn()}
         onDeleteSavedWorkspace={vi.fn()}
-        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' }]}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
         onAddItemToWorkspace={vi.fn()}
         onTransferSessionEntry={vi.fn()}
       />
@@ -302,7 +296,6 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         sessionTabs={[]}
         onAddItemToSession={vi.fn()}
         onRemoveSessionTab={vi.fn()}
-        onFocusSession={vi.fn()}
         workspaces={[]}
         savedWorkspaceSessions={[]}
         activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
@@ -310,10 +303,10 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         onActivateSavedWorkspace={vi.fn()}
         onSaveWorkspace={vi.fn()}
         onDeleteSavedWorkspace={vi.fn()}
-        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'Live session' }]}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
         availableWorkspaceDestinations={[
           { key: 'global', projectId: 'all', projectName: 'Global', workspaceName: 'Workspace', path: 'Global / Workspace', kind: 'global', isCurrent: false },
-          { key: getProjectSessionWorkspaceKey(project.id), projectId: project.id, projectName: project.name, workspaceName: 'Live session', path: `${project.name} / Live session`, kind: 'live', isCurrent: true },
+          { key: getProjectSessionWorkspaceKey(project.id), projectId: project.id, projectName: project.name, workspaceName: 'General', path: `${project.name} / General`, kind: 'live', isCurrent: true },
         ]}
         isItemInWorkspace={() => false}
         onAddItemToWorkspaceDestination={vi.fn()}

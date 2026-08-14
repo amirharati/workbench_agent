@@ -1,47 +1,100 @@
-# Project Sessions and Workspaces
+# Homebase Workspace Model
 
-Status: accepted first-version design for the Home UI redesign.
+Status: accepted V3 design decision. This document supersedes the earlier project-session, scoped-tab, and Focus-workspace model.
 
 ## Product model
 
-Homebase separates durable library organization from the tabs used during a working session:
+Homebase has one workspace system shared by every dashboard surface.
 
-- A **project** is a long-lived knowledge and activity scope.
-- A **collection** is a long-lived subdivision inside a project.
-- The **project page** is the place to browse, organize, search, pin, and preview project material.
-- An **active workspace** is the mutable working set currently shown on a project page.
-- A **saved workspace** is a named, reusable set of browser tabs associated with a project that can become active.
+- A **workspace** is a persistent set of working entries.
+- A **workspace entry** may reference a library item, note, frozen search, list, or direct URL.
+- Workspace entries are presented as an entry list, row, or compact workspace browser. Homebase does not present them as internal tabs.
+- A **project** and **collection** provide permanent library organization. Workspace membership never changes that organization.
+- A **browser snapshot** is a captured Chrome window/tab arrangement. It can seed a Homebase workspace, but it is not itself a Homebase workspace.
 
-Each project has one active workspace at a time. `Project session` is its default local workspace; any saved project workspace can be activated in its place. All Library keeps a separate global session. Active and inactive live workspace state is automatically persisted locally so switching workspaces or closing Homebase does not discard in-progress tab changes.
+There are three workspace levels:
 
-"Saved" describes user intent, not absolute permanence. Named workspaces are stored in the main database and may be updated or deleted. While a named workspace is active, its evolving Homebase working set is auto-saved locally. Switching away preserves that live version, and activating it later restores the live version instead of rebuilding it from the older database snapshot.
+1. Exactly one shared **Global workspace**.
+2. Exactly one automatic **General workspace** for every project, including Inbox.
+3. Zero or more user-created **named workspaces** within a project.
 
-## Navigation model
+Global and project General workspaces are system-owned: they cannot be deleted and do not require database rows to be manually created by the user. Named workspaces can be created, renamed, duplicated, or deleted.
 
-The project page is Browse mode. Selecting an item updates one inline preview without changing the active workspace. `Add to workspace` adds the item to the visible working list and stays on the project page. Selecting a working-list entry navigates its preview in place.
+Every workspace persists automatically. `Current workspace` and `saved workspace` are not workspace types. Exactly one workspace is **active** at a time, and exactly one entry within it may be active.
 
-Focus mode is an optional full-canvas presentation of the same active-workspace list. `Focus` opens one selected entry; `Focus workspace` opens the complete list as tabs. Its single navigation row contains an explicit return action and only the active project's workspace tabs by default. Returning to the project restores its workspace selection, collection, selected preview, filters, and scroll state. Clicking an already-selected project in the project switcher is not a hidden return action.
+## Activation and navigation
 
-Closing the last Focus tab returns to the project page. Switching projects opens the selected project's project page. There is no Resume action because the active workspace is already visible and navigable on that page.
+The active workspace is an application-level state, independent of page and project navigation.
 
-The existing reusable tab implementation remains available to Bookmarks and other non-Home sections. This redesign changes how Home and project pages present the tabs; it does not remove the underlying tab system.
+- Choosing **View workspace** explicitly makes it active and shows its entries in the normal workspace list/detail canvas.
+- Navigating to Home, Library, Search, Enrichment, a project, or a collection does not silently change the active workspace.
+- Entering a project may prioritize that project's General and named workspaces in destination controls, but it does not activate one automatically.
+- The active workspace name and a workspace switcher must remain discoverable wherever workspace entries are exposed.
+- Adding an entry never changes the active page, workspace, selection, or view.
+- **View workspace** is the explicit navigation action. When invoked from an item picker, it adds the item if needed, opens that workspace's normal canvas, and selects the item there.
+- Workspace Focus is not a product mode. A future distraction-free layout may temporarily hide surrounding chrome, but it must not change navigation or workspace state.
 
-## Workspace behavior
+This explicit activation rule replaces the former per-project hidden tab sets and `Include global work`/`Show all tabs` visibility rules.
 
-The project page presents:
+## Shared actions
 
-1. A compact workspace switcher containing `Project session` and the project's named saved workspaces.
-2. The **active workspace list**, with in-page selection, Focus, and Remove actions.
-3. A `Focus workspace` action that presents that same list as tabs.
+Every originating surface—Home, Library, Search, Inspector, item details, Enrichment, and future surfaces—uses the same workspace actions:
 
-Activating another workspace automatically snapshots the workspace being left, then replaces the visible working list with the target workspace's latest live snapshot. A workspace activated for the first time is initialized from its database-backed Tab Commander URLs with duplicates removed. Activation stays on the project page and never enters Focus mode.
+- **Add to workspace…**: always open the shared destination picker. The active workspace is preselected for convenience, but opening the picker never changes membership; the user must explicitly confirm **Add to workspace**. A confirmed add does not change the active workspace, page, or selection.
+- **View workspace**: an explicit secondary action inside the picker; add the entry if needed, activate the selected workspace, navigate to its normal list/detail canvas, and select the entry there.
+- **Move to workspace…**: add the entry to the destination and remove its source membership as one durable operation.
+- **Copy to workspace…**: keep the source membership and add the destination membership.
+- **Remove from workspace**: remove only that membership.
+- **Open website**: open the external URL in Chrome; it does not affect workspace membership.
 
-Saved workspace URLs that match library items become normal item entries. Other valid URLs remain usable as lightweight URL entries with an explicit browser-open action. This allows an existing Tab Commander workspace to become active even when not every browser tab has been saved to the library.
+There is no internal `Open in tab` action or internal tab strip. Chrome tabs remain an external browser concept and are labelled as browser tabs.
 
-## First-version boundaries
+## Membership and data safety
 
-- Active workspaces are represented by the existing locally persisted, project-scoped tab state; inactive live workspace versions are stored as local session snapshots.
-- Saved workspaces continue using the existing database model and Tab Commander creation/update flow.
-- Activating a workspace switches working sets after automatically preserving the one being left. Adding an individual item is non-navigating and affects only the active workspace.
-- Saved workspaces currently preserve browser URL tabs. Extending them to snapshot Homebase-only state such as note edits or promoted-search filters is a later design decision.
-- A project can have multiple saved workspaces, but only one active workspace at a time.
+- A workspace contains references, not copies of library records.
+- The same entry may belong to several workspaces.
+- The same entry cannot appear twice within one workspace.
+- Moving an entry commits the destination before removing the source.
+- Closing or removing a workspace entry never deletes the underlying library item.
+- Deleting a named workspace never deletes its referenced items, notes, searches, or URLs.
+- Adding, copying, moving, or removing workspace entries never changes project/collection placement.
+- Organizing a library item never silently adds, moves, or removes workspace membership.
+
+## Persistence model
+
+The workspace domain owns:
+
+- workspace identity, name, kind, and optional project owner;
+- ordered workspace entries;
+- the globally active workspace;
+- the active entry remembered for each workspace;
+- recent destination choices and presentation preferences.
+
+The Global workspace and every project's General workspace use deterministic identities. Named workspaces have generated identities. Browser snapshots keep their separate captured-window schema and require an explicit conversion/add action before their URLs become Homebase workspace entries.
+
+Workspace labels include their project scope everywhere ambiguity is possible: for example, `Research — General` and `Research — Reading plan`. The shared workspace is labelled `Global workspace`.
+
+Legacy `GlobalTab`, `project session`, `live session`, `saved workspace session`, project-scoped tab visibility, and automatic project workspace switching are implementation concepts to remove. Existing development state may be migrated once into the new workspace shape; because V3 is pre-release, no long-lived compatibility UI is required.
+
+## Delivery order
+
+1. Introduce the canonical workspace-entry state and migrate legacy local state.
+2. Replace project-scoped tab ownership with explicit workspace membership and one active workspace.
+3. Derive the Global and project General workspaces automatically; keep named workspaces under their project.
+4. Separate browser snapshots from Homebase workspace destinations.
+5. Replace `Open in tab` language and divergent handlers with the shared workspace actions.
+6. Only after the model is stable, review how the active workspace and its entries should appear on Home versus Library, Search, Enrichment, and other task pages.
+
+## Acceptance before UI redesign
+
+- Global workspace exists without a project.
+- Every project exposes exactly one automatic General workspace.
+- Named workspaces remain associated with exactly one project.
+- Project navigation never changes the active workspace.
+- The same link can be added from Inspector, Search, detail pages, and Library through the same destination semantics.
+- Copy, move, and remove affect only workspace membership and survive reload.
+- No active user-facing control says `Open in tab`.
+- Homebase workspace entries are not exposed as an ARIA or visual tab strip.
+- Homebase has no workspace Focus takeover layer.
+- An item action shows whether the item already belongs to one or more workspaces before opening the destination picker.
+- Browser snapshots are labelled and handled separately.

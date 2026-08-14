@@ -2,15 +2,15 @@ import { embedTexts } from '../ai/openrouterEmbeddings';
 import { loadAISettings } from '../ai/settings';
 import { DEFAULT_EMBEDDING_MODEL } from '../categorization/service';
 import { ensurePipelineHydrated, getDB } from '../db';
-import { dbRpc } from '../storage/dbClient';
+import { dbRpc, getRemoteStore, isDbWorkerProcess } from '../storage/dbClient';
 import { isActiveItem } from '../itemQuickAccess';
 import type { AiCategory, AiItemCategoryLink, AiItemSignal } from '../categorization/types';
-import { buildSearchEmbedText } from '../enrichment/searchEmbedText';
 import type { ItemEnrichment } from '../enrichment/types';
 import type { Collection, Item } from '../db';
 import { buildSearchIndex } from './buildIndex';
 import { withSearchCategoryCentroids } from './categoryCentroids';
 import { findSimilarItems, type FindSimilarOptions, type FindSimilarResult } from './findSimilar';
+import { WorkerSimilarityFallbackIndex } from './similarityFallbackIndex';
 import { hybridSearch } from './hybridSearch';
 import { extractSearchRelated } from './searchRelated';
 import { applySearchFilters } from './filters';
@@ -27,7 +27,20 @@ import type {
 } from './types';
 import type { HybridSearchResultWithRelated } from './searchRelated';
 
-export async function loadSearchIndexFromDb(): Promise<SearchIndex> {
+let searchIndexCache: {
+  revision: number;
+  pipelineHydrated: boolean;
+  index: SearchIndex;
+} | null = null;
+let similarFallbackCache: {
+  index: SearchIndex;
+  fallback: WorkerSimilarityFallbackIndex;
+} | null = null;
+
+export async function loadSearchIndexFromDb(options?: {
+  /** Inspector Similar may use the already-present cache instead of blocking first paint on hydration. */
+  allowPartialPipeline?: boolean;
+}): Promise<SearchIndex> {
   let digestInFlight = false;
   try {
     const { isAnyDigestInFlight } = await import('../pipeline/singleLinkDigest');
@@ -38,8 +51,20 @@ export async function loadSearchIndexFromDb(): Promise<SearchIndex> {
   // Search must remain usable during a digest. In that case, use the essential
   // item/collection index and visibly fall back to text instead of returning an
   // empty library or cloning the hot embedding heap.
-  if (!digestInFlight) await ensurePipelineHydrated();
+  if (!digestInFlight && !options?.allowPartialPipeline) await ensurePipelineHydrated();
   const db = await getDB();
+
+  const remoteStore = !isDbWorkerProcess() ? getRemoteStore() : null;
+  const revision = remoteStore?.getRevision() ?? -1;
+  const pipelineHydrated = remoteStore?.isPipelineHydrated() ?? true;
+  if (
+    remoteStore &&
+    !remoteStore.hasWritesInFlight() &&
+    searchIndexCache?.revision === revision &&
+    searchIndexCache.pipelineHydrated === pipelineHydrated
+  ) {
+    return searchIndexCache.index;
+  }
 
   const items = (await db.getAll('items')).filter(isActiveItem);
   let enrichments: ItemEnrichment[] = [];
@@ -62,9 +87,13 @@ export async function loadSearchIndexFromDb(): Promise<SearchIndex> {
   }
   collections = await db.getAll('collections');
 
-  return withSearchCategoryCentroids(
+  const index = withSearchCategoryCentroids(
     buildSearchIndex({ items, enrichments, signals, links, categories, collections })
   );
+  if (remoteStore && !remoteStore.hasWritesInFlight()) {
+    searchIndexCache = { revision, pipelineHydrated, index };
+  }
+  return index;
 }
 
 async function embedQueryText(text: string): Promise<number[] | undefined> {
@@ -162,35 +191,65 @@ export async function runAppHybridSearchWithRelated(
 export async function runAppFindSimilar(
   options: FindSimilarOptions
 ): Promise<FindSimilarResult> {
-  const index = await loadSearchIndexFromDb();
-  let result = findSimilarItems(index, options);
+  const startedAt = performance.now();
+  const index = await loadSearchIndexFromDb({ allowPartialPipeline: true });
+  const metadataReadyAt = performance.now();
+  const candidateLimit = options.candidateLimit ?? Math.max(48, (options.limit ?? 12) * 4);
+  const allowedItemIds = options.filters
+    ? applySearchFilters(index.documents, options.filters).map((document) => document.itemId)
+    : undefined;
+  const vector = await dbRpc<{
+    anchorHasEmbedding: boolean;
+    scores: Record<string, number>;
+    indexSize: number;
+    prepareMs: number;
+    queryMs: number;
+  }>('findSimilarVectorScores', [options.itemId, candidateLimit, allowedItemIds], {
+    // Inspector content is primary; Similar begins after it and must not jump
+    // ahead of an already-queued keyed context read.
+    priority: 'low',
+  });
+  const vectorReadyAt = performance.now();
 
-  if (result.results.length || result.anchorHasEmbedding) {
-    return result;
+  let fallbackScores: Record<string, number> | undefined;
+  if (!vector.anchorHasEmbedding) {
+    if (similarFallbackCache?.index !== index) {
+      const fallback = new WorkerSimilarityFallbackIndex();
+      fallback.load(index.documents);
+      similarFallbackCache = { index, fallback };
+    }
+    fallbackScores = Object.fromEntries(
+      similarFallbackCache.fallback
+        .query(options.itemId, {
+          limit: candidateLimit,
+          excludeSelf: options.excludeSelf,
+          allowedItemIds: allowedItemIds ? new Set(allowedItemIds) : undefined,
+        })
+        .map((hit) => [hit.itemId, hit.score])
+    );
   }
 
-  const anchor = index.documents.find((d) => d.itemId === options.itemId);
-  if (!anchor) return result;
-
-  const db = await getDB();
-  const item = await db.get('items', options.itemId);
-  let enrichment: ItemEnrichment | undefined;
-  if (db.objectStoreNames.contains('item_enrichment')) {
-    enrichment = await db.get('item_enrichment', options.itemId);
+  const result = findSimilarItems(index, { ...options, candidateLimit }, {
+    anchorHasEmbedding: vector.anchorHasEmbedding,
+    embeddingScores: vector.scores,
+    fallbackScores,
+  });
+  const completedAt = performance.now();
+  if (completedAt - startedAt >= 40) {
+    console.info('[Similar perf]', {
+      itemId: options.itemId,
+      documents: index.documents.length,
+      anchorHasEmbedding: vector.anchorHasEmbedding,
+      vectorIndexSize: vector.indexSize,
+      metadataMs: Math.round(metadataReadyAt - startedAt),
+      vectorMs: Math.round(vectorReadyAt - metadataReadyAt),
+      workerPrepareMs: vector.prepareMs,
+      workerQueryMs: vector.queryMs,
+      composeMs: Math.round(completedAt - vectorReadyAt),
+      totalMs: Math.round(completedAt - startedAt),
+    });
   }
-
-  const embedText = item ? buildSearchEmbedText(item, enrichment) : anchor.title;
-  const queryEmbedding = await embedQueryText(embedText);
-  if (!queryEmbedding?.length) return result;
-
-  const anchorWithEmbed: typeof anchor = { ...anchor, embedding: queryEmbedding };
-  const patchedDocs = index.documents.map((d) =>
-    d.itemId === options.itemId ? anchorWithEmbed : d
-  );
-  const patchedIndex: SearchIndex = { ...index, documents: patchedDocs };
-
-  result = findSimilarItems(patchedIndex, options);
-  return { ...result, anchorHasEmbedding: true };
+  return result;
 }
 
 export type { Item, FindSimilarOptions, FindSimilarResult };

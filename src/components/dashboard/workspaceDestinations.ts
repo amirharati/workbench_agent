@@ -4,8 +4,8 @@ import {
   getActiveProjectWorkspaceKey,
   getHomebaseWorkspaceSessionKey,
   getProjectSessionWorkspaceKey,
-  getSavedWorkspaceSessionKey,
 } from './workspaceSession';
+import { formatGeneralWorkspaceName, formatProjectWorkspaceName } from './workspaceLabels';
 
 export type WorkspaceDestinationKind = 'global' | 'live' | 'saved' | 'browser';
 
@@ -22,9 +22,9 @@ export interface WorkspaceDestination {
 
 export function buildWorkspaceDestinations({
   projects,
-  browserWorkspaces,
+  browserWorkspaces: _browserWorkspaces,
   state,
-  contextProjectId,
+  contextProjectId: _contextProjectId,
 }: {
   projects: readonly Project[];
   browserWorkspaces: readonly Workspace[];
@@ -35,10 +35,10 @@ export function buildWorkspaceDestinations({
     key: getProjectSessionWorkspaceKey('all'),
     projectId: 'all',
     projectName: 'Global',
-    workspaceName: 'Workspace',
-    path: 'Global / Workspace',
+    workspaceName: 'Global workspace',
+    path: 'Global workspace',
     kind: 'global',
-    isCurrent: contextProjectId === 'all',
+    isCurrent: getActiveProjectWorkspaceKey(state, 'all') === getProjectSessionWorkspaceKey('all'),
   }];
 
   for (const project of projects) {
@@ -48,10 +48,10 @@ export function buildWorkspaceDestinations({
       key: liveKey,
       projectId: project.id,
       projectName: project.name,
-      workspaceName: 'Live session',
-      path: `${project.name} / Live session`,
+      workspaceName: 'General',
+      path: formatGeneralWorkspaceName(project.name),
       kind: 'live',
-      isCurrent: contextProjectId === project.id && activeKey === liveKey,
+      isCurrent: activeKey === liveKey,
     });
 
     const savedSessions = (state.savedWorkspaceSessions ?? [])
@@ -64,26 +64,9 @@ export function buildWorkspaceDestinations({
         projectId: project.id,
         projectName: project.name,
         workspaceName: session.name,
-        path: `${project.name} / ${session.name}`,
+        path: formatProjectWorkspaceName(project.name, session.name),
         kind: 'saved',
-        isCurrent: contextProjectId === project.id && activeKey === key,
-      });
-    }
-
-    const snapshots = browserWorkspaces
-      .filter((workspace) => workspace.projectId === project.id)
-      .sort((left, right) => right.updated_at - left.updated_at);
-    for (const workspace of snapshots) {
-      const key = getSavedWorkspaceSessionKey(workspace.id);
-      destinations.push({
-        key,
-        projectId: project.id,
-        projectName: project.name,
-        workspaceName: `${workspace.name} · browser`,
-        path: `${project.name} / ${workspace.name} · browser`,
-        kind: 'browser',
-        sourceWorkspaceId: workspace.id,
-        isCurrent: contextProjectId === project.id && activeKey === key,
+        isCurrent: activeKey === key,
       });
     }
   }

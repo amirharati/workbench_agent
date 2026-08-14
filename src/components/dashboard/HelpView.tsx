@@ -192,7 +192,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           { icon: Home, term: 'Home · Overview', description: <>Resume recent material, open projects, browse Favorites &amp; pins, and see the active workspace.</> },
           { icon: Search, term: 'Home · Search', description: <>Search without leaving the current Home context. Search state is retained when you return to Overview.</> },
           { icon: BookMarked, term: 'Library', description: <>Browse the full catalog with All items, Links, Notes, Favorites &amp; pins, and Workspace views.</> },
-          { icon: PanelLeft, term: 'Inspector / Item', description: <>Selecting an item opens its editable details. Focus gives the same work a larger canvas; it is not a separate capability level.</> },
+          { icon: PanelLeft, term: 'Inspector / Item', description: <>Selecting an item opens its editable details. <strong>Add to workspace…</strong> files it into a working set without leaving the page; use <strong>View workspace</strong> in that picker only when you want to navigate there.</> },
         ]} />
         <ul>
           <li>Use the context row to switch between <strong>All Library</strong> and recently used projects.</li>
@@ -263,7 +263,7 @@ export const HELP_TOPICS: HelpTopic[] = [
             <>Open <strong>Home · Search</strong> or press <Kbd>{mod}</Kbd> + <Kbd>K</Kbd>.</>,
             <>Choose All Library, a project, or a collection as the search scope.</>,
             <>Select a result to inspect it. Use <strong>Add to workspace…</strong> for temporary working context or <strong>Organize…</strong> for permanent membership.</>,
-            <>Use <strong>Open in tab</strong> when you want a frozen search snapshot in Open work; later Home searches will not mutate it.</>,
+            <>Use <strong>Add to workspace…</strong> beside the search title when you want a frozen search entry; choose and confirm its destination in the modal.</>,
           ]} />
         <DefinitionGrid entries={[
           { icon: Search, term: 'All terms', description: <><code>ml in trading</code> requires both meaningful terms. Connector words such as “in” do not become requirements.</> },
@@ -280,23 +280,23 @@ export const HELP_TOPICS: HelpTopic[] = [
   {
     id: 'workspaces-tabs',
     group: 'Daily workflows',
-    title: 'Workspaces, Open work, and browser tabs',
-    summary: 'Separate Homebase working sets from live Chrome windows while moving between them deliberately.',
+    title: 'Workspaces and browser snapshots',
+    summary: 'Use one explicit workspace system while keeping captured Chrome windows separate.',
     icon: Layers3,
-    keywords: ['workspace', 'live session', 'saved workspace', 'open work', 'focus', 'tab commander', 'browser snapshot', 'copy', 'move'],
+    keywords: ['workspace', 'general workspace', 'named workspace', 'active workspace', 'focus', 'tab commander', 'browser snapshot', 'copy', 'move'],
     content: (
       <>
         <DefinitionGrid entries={[
-          { icon: Layers3, term: 'Live session', description: <>The project’s current mutable working set. Add links, notes, and saved searches as you work.</> },
-          { icon: BookMarked, term: 'Named workspace', description: <>A saved Homebase working set. Activating another workspace preserves the one you leave.</> },
-          { icon: MonitorUp, term: 'Browser snapshot', description: <>A saved Chrome window/tab capture. Restore it as browser windows or add its tabs to a project workspace.</> },
-          { icon: ExternalLink, term: 'Open work / Focus', description: <>Open work holds interactive item/search/list views. Focus expands one entry without changing its underlying membership.</> },
+          { icon: Layers3, term: 'Global workspace', description: <>The one shared workspace available from every project and page.</> },
+          { icon: BookMarked, term: 'Project workspaces', description: <>Every project has one automatic General workspace and may have additional named workspaces.</> },
+          { icon: MonitorUp, term: 'Browser snapshot', description: <>A captured Chrome window/tab arrangement. Restore it in Chrome or explicitly add its URLs to a Homebase workspace.</> },
+          { icon: ExternalLink, term: 'Active workspace', description: <>The one workspace whose entries are currently presented. Page and project navigation do not change it automatically.</> },
         ]} />
         <ul>
-          <li>Use <strong>Add to workspace…</strong> to target Global, a project Live session, a named workspace, or a browser-derived working copy.</li>
+          <li>Use <strong>Add to workspace…</strong> to choose Global, a project's General workspace, or a named workspace. The active workspace is preselected but never used without confirmation.</li>
           <li>An item may exist in several workspaces. Copy keeps the source entry; Move removes it from the source after adding it to the destination.</li>
           <li>Use <strong>Open links</strong> to open URL-capable workspace entries. Notes remain in Homebase.</li>
-          <li>Use <strong>Tab Commander</strong> to inspect live Chrome windows and capture selected windows or tabs. Live tabs are not automatically a saved workspace.</li>
+          <li>Use <strong>Tab Commander</strong> to inspect live Chrome windows and create browser snapshots. A snapshot is not automatically a Homebase workspace.</li>
         </ul>
       </>
     ),
@@ -396,7 +396,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         <h3>Keyboard</h3>
         <div className="ui-help__shortcuts">
           <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>K</Kbd></>}>Open library search from anywhere in the dashboard.</ShortcutRow>
-          <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>W</Kbd></>}>Close the active Open work tab when focus is not inside an editor.</ShortcutRow>
+          <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>W</Kbd></>}>Close the active workspace entry when focus is not inside an editor.</ShortcutRow>
           <ShortcutRow keys={<Kbd>Esc</Kbd>}>Close the command palette, menus, or dialogs.</ShortcutRow>
           <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>S</Kbd></>}>Save while editing a note.</ShortcutRow>
           <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>Enter</Kbd></>}>Submit the current prompt in Ask.</ShortcutRow>

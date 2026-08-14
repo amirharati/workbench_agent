@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Item } from '../../lib/db';
-import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
+import { useInspectorItemData } from '../../hooks/useInspectorItemData';
 import { resolveEnrichmentFailureLabel } from '../../lib/enrichment/failureLabels';
 import { resolvePipelineBadge } from '../../lib/pipeline';
 import { formatPipelineStageHint } from '../../lib/pipeline/itemPipelineContext';
 import { ItemPipelineBadge, EnrichmentContent } from './PipelineDisplayBlocks';
-import { ItemSimilarSection } from './SearchDiscoveryBlocks';
+import { ItemSimilarSectionView } from './SearchDiscoveryBlocks';
 import { ItemDigestQuickActions } from './ItemDigestQuickActions';
 import { CategoryChip, SuggestedCategoryRow } from '../shared/CategoryReviewRows';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
@@ -20,8 +20,8 @@ interface InspectorTabProps {
   recentQueries?: string[];
   onRerunSearch?: (query: string) => void;
   onOpenItemInTab?: (item: Item) => void;
-  /** Open a related/similar bookmark by id (workspace tab). */
-  onOpenItemIdInTab?: (itemId: string) => void;
+  workspaceAction?: React.ReactNode;
+  renderWorkspaceActionForItem?: (itemId: string, title: string) => React.ReactNode;
 }
 
 function SearchHistorySection({
@@ -108,15 +108,13 @@ function SearchInspectorChrome({
   recentQueries,
   currentQuery,
   onRerunSearch,
-  activeItem,
-  onOpenItemInTab,
+  workspaceAction,
   compact,
 }: {
   recentQueries: string[];
   currentQuery?: string;
   onRerunSearch?: (query: string) => void;
-  activeItem?: Item | null;
-  onOpenItemInTab?: (item: Item) => void;
+  workspaceAction?: React.ReactNode;
   compact?: boolean;
 }) {
   const trimmedQuery = currentQuery?.trim() ?? '';
@@ -175,25 +173,7 @@ function SearchInspectorChrome({
         compact={compact}
       />
 
-      {activeItem && onOpenItemInTab ? (
-        <button
-          type="button"
-          onClick={() => onOpenItemInTab(activeItem)}
-          style={{
-            padding: '6px 10px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border)',
-            background: 'var(--bg-glass)',
-            color: 'var(--text)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 600,
-            cursor: 'pointer',
-            alignSelf: 'flex-start',
-          }}
-        >
-          Add to workspace
-        </button>
-      ) : null}
+      {workspaceAction}
 
       <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.5 }}>
         Click a result to inspect here. Add it when it becomes part of your active work.
@@ -209,8 +189,8 @@ function ItemInspectorBody({
   recentQueries,
   currentQuery,
   onRerunSearch,
-  onOpenItemInTab,
-  onOpenItemIdInTab,
+  workspaceAction,
+  renderWorkspaceActionForItem,
 }: {
   item: Item;
   isSearchSurface: boolean;
@@ -218,10 +198,17 @@ function ItemInspectorBody({
   recentQueries: string[];
   currentQuery?: string;
   onRerunSearch?: (query: string) => void;
-  onOpenItemInTab?: (item: Item) => void;
-  onOpenItemIdInTab?: (itemId: string) => void;
+  workspaceAction?: React.ReactNode;
+  renderWorkspaceActionForItem?: (itemId: string, title: string) => React.ReactNode;
 }) {
-  const { context, loading, reload } = useItemPipelineContext(item.id);
+  const {
+    context,
+    similar,
+    contextLoading: loading,
+    similarLoading,
+    similarError,
+    reload,
+  } = useInspectorItemData(item.id);
   const [summaryOpen, setSummaryOpen] = useState(!enrichmentPrimaryInItemTab);
   const badge = context ? resolvePipelineBadge(context) : null;
   const failureLabel = context?.enrichment
@@ -252,8 +239,7 @@ function ItemInspectorBody({
           recentQueries={recentQueries}
           currentQuery={currentQuery}
           onRerunSearch={onRerunSearch}
-          activeItem={item}
-          onOpenItemInTab={onOpenItemInTab}
+          workspaceAction={workspaceAction}
           compact
         />
       )}
@@ -311,15 +297,7 @@ function ItemInspectorBody({
             }}
           />
         )}
-        {!isSearchSurface && onOpenItemInTab && (
-          <button
-            type="button"
-            onClick={() => onOpenItemInTab(item)}
-            style={{ marginTop: 8, padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-glass)', color: 'var(--text)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' }}
-          >
-            Add to workspace
-          </button>
-        )}
+        {!isSearchSurface ? workspaceAction : null}
       </div>
 
       {loading && (
@@ -427,10 +405,16 @@ function ItemInspectorBody({
             )}
           </section>
 
-          {item.url && (
-            <ItemSimilarSection itemId={item.id} onOpenInTab={onOpenItemIdInTab} />
-          )}
         </>
+      )}
+
+      {item.url && (
+        <ItemSimilarSectionView
+          similar={similar}
+          loading={similarLoading}
+          error={similarError}
+          renderWorkspaceAction={renderWorkspaceActionForItem}
+        />
       )}
 
       <div
@@ -459,8 +443,8 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
   currentQuery,
   recentQueries = [],
   onRerunSearch,
-  onOpenItemInTab,
-  onOpenItemIdInTab,
+  workspaceAction,
+  renderWorkspaceActionForItem,
 }) => {
   if (!activeItem && !isSearchSurface) {
     return (
@@ -494,7 +478,7 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
           recentQueries={recentQueries}
           currentQuery={currentQuery}
           onRerunSearch={onRerunSearch}
-          onOpenItemInTab={undefined}
+          workspaceAction={undefined}
         />
       </div>
     );
@@ -508,8 +492,8 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
       recentQueries={recentQueries}
       currentQuery={currentQuery}
       onRerunSearch={onRerunSearch}
-      onOpenItemInTab={onOpenItemInTab}
-      onOpenItemIdInTab={onOpenItemIdInTab}
+      workspaceAction={workspaceAction}
+      renderWorkspaceActionForItem={renderWorkspaceActionForItem}
     />
   );
 };

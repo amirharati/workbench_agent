@@ -40,10 +40,7 @@ interface ProductSearchViewProps {
   scopeLabel?: string;
   autofocus?: boolean;
   embedded?: boolean;
-  showOpenInTab?: boolean;
-  onOpenInTab?: () => void;
-  openInTabLabel?: string;
-  itemActionLabel?: string;
+  workspaceAction?: React.ReactNode;
   scopeOptions?: Array<{ value: string; label: string }>;
   scopeValue?: string;
   onScopeValueChange?: (value: string) => void;
@@ -51,6 +48,7 @@ interface ProductSearchViewProps {
   recentWorkspaceDestinationKeys?: readonly string[];
   isItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => boolean;
   onAddItemToWorkspace?: (item: Item, destination: WorkspaceDestination) => void;
+  onViewItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => void;
 }
 
 function getMatchReason(row: SearchResult): string {
@@ -93,10 +91,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   scopeLabel,
   autofocus = true,
   embedded = false,
-  showOpenInTab = false,
-  onOpenInTab,
-  openInTabLabel = 'Open in tab',
-  itemActionLabel = 'Open tab',
+  workspaceAction,
   scopeOptions,
   scopeValue,
   onScopeValueChange,
@@ -104,6 +99,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   recentWorkspaceDestinationKeys,
   isItemInWorkspace,
   onAddItemToWorkspace,
+  onViewItemInWorkspace,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
@@ -199,24 +195,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             >
               Search
             </h1>
-            {showOpenInTab && onOpenInTab && (
-              <button
-                type="button"
-                onClick={onOpenInTab}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  color: 'var(--text-muted)',
-                  fontSize: 'var(--text-xs)',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              >
-                {openInTabLabel}
-              </button>
-            )}
+            {workspaceAction}
           </div>
         )}
 
@@ -559,7 +538,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               : 'text fallback · exact rules'}
           {hasResults && (
             <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
-              Click to inspect · Click the URL to open the website · Double-click, Enter, or use {itemActionLabel.toLowerCase()}
+              Click to inspect · Click the URL to open the website · Double-click, Enter, or use Inspect
             </span>
           )}
         </div>
@@ -730,6 +709,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                         recentDestinationKeys={recentWorkspaceDestinationKeys}
                         isAdded={(destination) => isItemInWorkspace(item, destination)}
                         onAdd={(destination) => onAddItemToWorkspace(item, destination)}
+                        onView={onViewItemInWorkspace ? (destination) => onViewItemInWorkspace(item, destination) : undefined}
                       />
                     ) : (
                       <button
@@ -737,7 +717,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                         type="button"
                         onClick={() => onOpenItem(item)}
                       >
-                        {itemActionLabel}
+                        Inspect
                       </button>
                     )}
                   </div>

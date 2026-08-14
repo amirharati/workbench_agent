@@ -1,8 +1,8 @@
 import { ExternalLink, Sparkles } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import type { CSSProperties } from 'react';
-import { runAppFindSimilar, type FindSimilarResult } from '../../lib/search';
+import type { CSSProperties, ReactNode } from 'react';
+import type { FindSimilarResult } from '../../lib/search';
 import type { SearchRelatedFacets, SimilarItemResult, SearchResult } from '../../lib/search';
+import { useInspectorItemData } from '../../hooks/useInspectorItemData';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 
 const chipStyle: CSSProperties = {
@@ -26,7 +26,7 @@ function LinkRow({
   score,
   url,
   onSelect,
-  onOpenInTab,
+  workspaceAction,
   hideScore,
 }: {
   title: string;
@@ -35,7 +35,7 @@ function LinkRow({
   score?: number;
   url?: string;
   onSelect?: () => void;
-  onOpenInTab?: () => void;
+  workspaceAction?: ReactNode;
   hideScore?: boolean;
 }) {
   return (
@@ -81,26 +81,7 @@ function LinkRow({
           <ExternalLink size={14} />
         </ExtensionPageUrlLink>
       ) : null}
-      {onOpenInTab ? (
-        <button
-          type="button"
-          onClick={onOpenInTab}
-          style={{
-            flexShrink: 0,
-            marginTop: 2,
-            padding: '4px 8px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border)',
-            background: 'var(--bg-glass)',
-            color: 'var(--text)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          Open tab
-        </button>
-      ) : null}
+      {workspaceAction}
     </div>
   );
 }
@@ -247,14 +228,14 @@ export function SimilarItemsBlock({
   loading,
   error,
   onItemClick,
-  onOpenInTab,
+  renderWorkspaceAction,
   compact,
 }: {
   similar: FindSimilarResult | null;
   loading?: boolean;
   error?: string | null;
   onItemClick?: (itemId: string, title: string) => void;
-  onOpenInTab?: (itemId: string) => void;
+  renderWorkspaceAction?: (itemId: string, title: string) => ReactNode;
   compact?: boolean;
 }) {
   if (loading) {
@@ -322,7 +303,7 @@ export function SimilarItemsBlock({
               key={row.itemId}
               row={row}
               onItemClick={onItemClick}
-              onOpenInTab={onOpenInTab}
+              workspaceAction={renderWorkspaceAction?.(row.itemId, row.title || row.itemId)}
             />
           ))}
         </>
@@ -334,11 +315,11 @@ export function SimilarItemsBlock({
 function SimilarRow({
   row,
   onItemClick,
-  onOpenInTab,
+  workspaceAction,
 }: {
   row: SimilarItemResult;
   onItemClick?: (itemId: string, title: string) => void;
-  onOpenInTab?: (itemId: string) => void;
+  workspaceAction?: ReactNode;
 }) {
   return (
     <LinkRow
@@ -350,7 +331,7 @@ function SimilarRow({
       onSelect={
         onItemClick ? () => onItemClick(row.itemId, row.title || row.itemId) : undefined
       }
-      onOpenInTab={onOpenInTab ? () => onOpenInTab(row.itemId) : undefined}
+      workspaceAction={workspaceAction}
     />
   );
 }
@@ -431,45 +412,45 @@ export function InlineSimilarPanel({
 /** Loads similar bookmarks for one item (enrichment detail, etc.). */
 export function ItemSimilarSection({
   itemId,
-  onOpenInTab,
+  renderWorkspaceAction,
 }: {
   itemId: string;
-  onOpenInTab?: (itemId: string) => void;
+  renderWorkspaceAction?: (itemId: string, title: string) => ReactNode;
 }) {
-  const [similar, setSimilar] = useState<FindSimilarResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    similar,
+    similarLoading: loading,
+    similarError: error,
+  } = useInspectorItemData(itemId);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setSimilar(null);
+  return (
+    <ItemSimilarSectionView
+      similar={similar}
+      loading={loading}
+      error={error}
+      renderWorkspaceAction={renderWorkspaceAction}
+    />
+  );
+}
 
-    void (async () => {
-      try {
-        const res = await runAppFindSimilar({ itemId, limit: 12 });
-        if (!cancelled) setSimilar(res);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [itemId]);
+export function ItemSimilarSectionView({
+  similar,
+  loading,
+  error,
+  renderWorkspaceAction,
+}: {
+  similar: FindSimilarResult | null;
+  loading: boolean;
+  error: string | null;
+  renderWorkspaceAction?: (itemId: string, title: string) => ReactNode;
+}) {
 
   return (
     <SimilarItemsBlock
       similar={similar}
       loading={loading}
       error={error}
-      onOpenInTab={onOpenInTab}
+      renderWorkspaceAction={renderWorkspaceAction}
     />
   );
 }

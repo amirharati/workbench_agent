@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Project, Workspace } from '../../lib/db';
 import type { GlobalTabState } from './GlobalTabSystem';
-import {
-  getHomebaseWorkspaceSessionKey,
-  getSavedWorkspaceSessionKey,
-} from './workspaceSession';
+import { getHomebaseWorkspaceSessionKey } from './workspaceSession';
 import { buildWorkspaceDestinations, rememberWorkspaceDestination } from './workspaceDestinations';
 
 const projects: Project[] = [
@@ -24,17 +21,14 @@ const state: GlobalTabState = {
   activeTabId: null,
   bottomLayout: 'tabs',
   isSidebarCollapsed: false,
-  activeWorkspaceKeyByProject: {
-    'project-a': getHomebaseWorkspaceSessionKey('saved-a'),
-    'project-b': getSavedWorkspaceSessionKey(browserWorkspace.id),
-  },
+  activeWorkspaceKey: getHomebaseWorkspaceSessionKey('saved-a'),
   savedWorkspaceSessions: [
     { id: 'saved-a', name: 'Reading plan', projectId: 'project-a', createdAt: 1, updatedAt: 3 },
   ],
 };
 
 describe('workspace destinations', () => {
-  it('addresses global, live, named, and browser workspaces by full project path', () => {
+  it('addresses Global, project General, and named workspaces while excluding browser snapshots', () => {
     const destinations = buildWorkspaceDestinations({
       projects,
       browserWorkspaces: [browserWorkspace],
@@ -43,14 +37,13 @@ describe('workspace destinations', () => {
     });
 
     expect(destinations.map((destination) => destination.path)).toEqual([
-      'Global / Workspace',
-      'Research / Live session',
-      'Research / Reading plan',
-      'Writing / Live session',
-      'Writing / Reference tabs · browser',
+      'Global workspace',
+      'Research — General',
+      'Research — Reading plan',
+      'Writing — General',
     ]);
     expect(destinations.find((destination) => destination.isCurrent)?.key).toBe(
-      getSavedWorkspaceSessionKey(browserWorkspace.id)
+      getHomebaseWorkspaceSessionKey('saved-a')
     );
   });
 

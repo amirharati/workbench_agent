@@ -10,7 +10,7 @@ import {
   type GlobalTab,
 } from './GlobalTabSystem';
 
-const STORAGE_KEY = 'workbench-global-tabs';
+const STORAGE_KEY = 'workbench-workspace-state-v1';
 
 describe('loadGlobalTabState Home workspace state', () => {
   beforeEach(() => {
@@ -118,7 +118,7 @@ describe('loadGlobalTabState Home workspace state', () => {
     );
 
     const state = loadGlobalTabState();
-    expect(state.showAllTabs).toBe(true);
+    expect(state.showAllTabs).toBe(false);
     expect(state.tabs[0]).toMatchObject({
       scopeProjectId: 'project-a',
       scopeCollectionId: 'collection-a',
@@ -127,7 +127,7 @@ describe('loadGlobalTabState Home workspace state', () => {
     });
   });
 
-  it('restores per-project include-global workspace preferences', () => {
+  it('drops obsolete per-project visibility preferences during migration', () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -137,7 +137,7 @@ describe('loadGlobalTabState Home workspace state', () => {
       })
     );
 
-    expect(loadGlobalTabState().includeGlobalWorkByProject).toEqual({ 'project-a': true });
+    expect('includeGlobalWorkByProject' in loadGlobalTabState()).toBe(false);
   });
 
   it('restores named Homebase workspaces independently of browser workspaces', () => {
@@ -155,6 +155,29 @@ describe('loadGlobalTabState Home workspace state', () => {
     expect(loadGlobalTabState().savedWorkspaceSessions).toEqual([
       { id: 'session-a', name: 'Writing', projectId: 'project-a', createdAt: 10, updatedAt: 20 },
     ]);
+  });
+
+  it('does not copy an active named workspace into project General when reloading current state', () => {
+    const namedKey = 'workspace:named:session-a';
+    const generalKey = 'workspace:project:project-a:general';
+    const entry = { kind: 'item', id: 'item-1@project:project-a', itemId: 'item-1', scopeProjectId: 'project-a' };
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        tabs: [entry],
+        activeTabId: entry.id,
+        activeWorkspaceKey: namedKey,
+        workspaceSessionSnapshots: { [namedKey]: [entry], [generalKey]: [] },
+        savedWorkspaceSessions: [
+          { id: 'session-a', name: 'Writing', projectId: 'project-a', createdAt: 10, updatedAt: 20 },
+        ],
+      })
+    );
+
+    const state = loadGlobalTabState();
+    expect(state.activeWorkspaceKey).toBe(namedKey);
+    expect(state.tabs).toEqual([entry]);
+    expect(state.workspaceSessionSnapshots?.[generalKey]).toEqual([]);
   });
 
   it('keeps multiple promoted searches as independent working tabs', () => {
@@ -200,7 +223,7 @@ describe('loadGlobalTabState Home workspace state', () => {
     expect(markup).toContain('min-height:0;min-width:0');
   });
 
-  it('hides global work in projects by default while keeping pinned and matching-project tabs', () => {
+  it('keeps active workspace entries visible independently of project navigation', () => {
     const tabs: GlobalTab[] = [
       { kind: 'search', id: 'global', query: 'global' },
       { kind: 'search', id: 'project-a-one', query: 'a one', scopeProjectId: 'project-a', scopeCollectionId: 'collection-a' },
@@ -209,15 +232,11 @@ describe('loadGlobalTabState Home workspace state', () => {
       { kind: 'search', id: 'project-b-pinned', query: 'b pinned', scopeProjectId: 'project-b', pinnedGlobally: true },
     ];
 
-    expect(tabs.filter((tab) => isGlobalTabVisible(tab, 'project-a')).map((tab) => tab.id)).toEqual([
-      'project-a-one',
-      'project-a-two',
-      'project-b-pinned',
-    ]);
+    expect(tabs.filter((tab) => isGlobalTabVisible(tab, 'project-a')).map((tab) => tab.id)).toEqual(tabs.map((tab) => tab.id));
     expect(tabs.every((tab) => isGlobalTabVisible(tab, 'project-a', true))).toBe(true);
   });
 
-  it('renders Home navigation above a project-filtered Open work strip', () => {
+  it('renders Home navigation above the active workspace strip without project filtering', () => {
     const markup = renderToStaticMarkup(
       React.createElement(GlobalTabSystem, {
         items: [],
@@ -240,15 +259,15 @@ describe('loadGlobalTabState Home workspace state', () => {
       })
     );
 
-    expect(markup.indexOf('Workspace navigation')).toBeLessThan(markup.indexOf('Open work'));
+    expect(markup.indexOf('Workspace navigation')).toBeLessThan(markup.indexOf('Global workspace'));
     expect(markup).toContain('visible search');
-    expect(markup).not.toContain('hidden search');
-    expect(markup).toContain('Show 1 tabs from other projects');
-    expect(markup).toContain('All open · 2');
-    expect(markup).toContain('Show all 2 open tabs');
+    expect(markup).toContain('hidden search');
+    expect(markup).not.toContain('tabs from other projects');
+    expect(markup).toContain('All entries · 2');
+    expect(markup).toContain('Show all 2 workspace entries');
   });
 
-  it('exposes open work as keyboard-focusable tabs with explicit close actions', () => {
+  it('exposes workspace entries as keyboard-focusable controls with explicit remove actions', () => {
     const markup = renderToStaticMarkup(
       React.createElement(GlobalTabSystem, {
         items: [],
@@ -264,12 +283,12 @@ describe('loadGlobalTabState Home workspace state', () => {
       })
     );
 
-    expect(markup).toContain('role="tablist" aria-label="Open work"');
-    expect(markup).toContain('role="tab" tabindex="0" aria-selected="true"');
-    expect(markup).toContain('aria-label="Close Search: python"');
+    expect(markup).toContain('role="group" aria-label="Active workspace entries"');
+    expect(markup).toContain('role="button" tabindex="0" aria-pressed="true"');
+    expect(markup).toContain('aria-label="Remove Search: python from Global workspace"');
   });
 
-  it('includes only global plus current-project entries when strict project Focus opts in', () => {
+  it('does not hide active workspace entries in project Focus', () => {
     const markup = renderToStaticMarkup(
       React.createElement(GlobalTabSystem, {
         items: [],
@@ -294,6 +313,6 @@ describe('loadGlobalTabState Home workspace state', () => {
 
     expect(markup).toContain('global query');
     expect(markup).toContain('project query');
-    expect(markup).not.toContain('other project query');
+    expect(markup).toContain('other project query');
   });
 });

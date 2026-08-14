@@ -27,7 +27,8 @@ interface RightPanelProps {
   currentSearchQuery?: string;
   onRerunSearch?: (query: string) => void;
   onOpenItemInTab?: (item: Item) => void;
-  onOpenItemIdInTab?: (itemId: string) => void;
+  workspaceAction?: React.ReactNode;
+  renderWorkspaceActionForItem?: (itemId: string, title: string) => React.ReactNode;
   onTestAI?: (
     settings: AISettings,
     prompt: string
@@ -51,7 +52,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   currentSearchQuery,
   onRerunSearch,
   onOpenItemInTab,
-  onOpenItemIdInTab,
+  workspaceAction,
+  renderWorkspaceActionForItem,
   onTestAI,
 }) => {
   const toggle = () => onCollapsedChange(!isCollapsed);
@@ -115,7 +117,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 recentQueries={recentQueries}
                 onRerunSearch={onRerunSearch}
                 onOpenItemInTab={onOpenItemInTab}
-                onOpenItemIdInTab={onOpenItemIdInTab}
+                workspaceAction={workspaceAction}
+                renderWorkspaceActionForItem={renderWorkspaceActionForItem}
               />
             ) : (
               <AskTab

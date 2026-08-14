@@ -2,7 +2,6 @@ import React, { useMemo, useState, useRef } from 'react';
 import type { Collection, Project, Item } from '../../lib/db';
 import { Panel } from '../../styles/primitives';
 import { ItemsListPanel } from './ItemsListPanel';
-import { TabBar, TabBarTab } from './TabBar';
 import { TabContent } from './TabContent';
 import { Resizer } from './Resizer';
 import { SearchBar } from './SearchBar';
@@ -23,14 +22,6 @@ interface CollectionsViewProps {
   onNewCollection?: () => void;
 }
 
-type Tab = {
-  id: string;
-  title: string;
-  itemId?: string;
-  collectionId?: string;
-  type?: 'item' | 'collection' | 'system';
-};
-
 export const CollectionsView: React.FC<CollectionsViewProps> = ({
   collections,
   projects,
@@ -42,8 +33,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
 }) => {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [tabs, setTabs] = useState<Tab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [listWidth, setListWidth] = useState(280);
   const [itemsListWidth, setItemsListWidth] = useState(280);
   const [itemsViewMode, setItemsViewMode] = useState<'list' | 'grid'>('list');
@@ -107,37 +97,13 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
   };
 
   const handleItemClick = (item: Item) => {
-    // If item is already open, focus it
-    const existingTab = tabs.find((t) => t.itemId === item.id);
-    if (existingTab) {
-      setActiveTabId(existingTab.id);
-      return;
-    }
-
-    // Create new tab
-    const newTab: Tab = {
-      id: item.id,
-      title: item.title || 'Untitled',
-      itemId: item.id,
-      type: 'item',
-    };
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTabId(newTab.id);
-
-    // Also call external handler if provided
+    setSelectedItemId(item.id);
     if (onItemClick) onItemClick(item);
   };
-
-  const handleTabClose = (tabId: string) => {
-    setTabs((prev) => prev.filter((t) => t.id !== tabId));
-    if (activeTabId === tabId) {
-      const remaining = tabs.filter((t) => t.id !== tabId);
-      setActiveTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
-    }
-  };
-
-  const activeTab = tabs.find((t) => t.id === activeTabId) || null;
-  const activeItem = activeTab?.itemId ? items.find((i) => i.id === activeTab.itemId) || null : null;
+  const activeItem = selectedItemId ? items.find((item) => item.id === selectedItemId) ?? null : null;
+  const activeEntry = activeItem
+    ? { id: activeItem.id, title: activeItem.title || 'Untitled', itemId: activeItem.id, type: 'item' as const }
+    : null;
 
 
   return (
@@ -331,18 +297,11 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
             }}
           />
 
-          {/* Tabbed content area */}
+          {/* Selected collection item */}
           <Panel style={{ display: 'flex', flexDirection: 'column', minHeight: 0, padding: 0 }}>
-            <TabBar
-              tabs={tabs as TabBarTab[]}
-              activeTabId={activeTabId}
-              onTabSelect={setActiveTabId}
-              onTabClose={handleTabClose}
-              spaceId="collections"
-            />
             <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
               <TabContent
-                tab={activeTab}
+                tab={activeEntry}
                 item={activeItem || null}
                 items={items}
                 collections={collections}

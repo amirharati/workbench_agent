@@ -26,7 +26,7 @@ describe('HelpView', () => {
 
   it('filters topics across titles, summaries, groups, and explicit keywords', () => {
     expect(filterHelpTopics('dropbox').map((topic) => topic.id)).toEqual(['first-run']);
-    expect(filterHelpTopics('saved workspace').map((topic) => topic.id)).toContain('workspaces-tabs');
+    expect(filterHelpTopics('named workspace').map((topic) => topic.id)).toContain('workspaces-tabs');
     expect(filterHelpTopics('Safety recovery').map((topic) => topic.id)).toContain('backup-restore');
     expect(filterHelpTopics('no-such-help-topic')).toEqual([]);
     expect(filterHelpTopics('')).toBe(HELP_TOPICS);

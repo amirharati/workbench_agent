@@ -20,7 +20,6 @@ export const CollectionContextMenu: React.FC<CollectionContextMenuProps> = ({
   onDelete,
   onDetach,
   onRename,
-  onOpenInTab,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -66,8 +65,7 @@ export const CollectionContextMenu: React.FC<CollectionContextMenuProps> = ({
   }, [x, y]);
 
   const menuItems = [
-    onOpenInTab && { label: 'Open in tab', action: () => onOpenInTab(collection), icon: '📑' },
-    (onOpenInTab || onRename) && { label: '─', action: undefined, icon: '', separator: true },
+    onRename && { label: '─', action: undefined, icon: '', separator: true },
     onRename && { label: 'Rename', action: () => onRename(collection), icon: '✏️' },
     onDetach && { label: 'Remove from project', action: () => onDetach(collection), icon: '🔗' },
     (onRename || onDetach || onDelete) && { label: '─', action: undefined, icon: '', separator: true },

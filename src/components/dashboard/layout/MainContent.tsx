@@ -14,7 +14,7 @@ import { usePipelineBadgeMap } from '../../../hooks/usePipelineBadgeMap';
 import type { CategoryBrowseFilter, PipelineBrowseFilter, PipelineQueueKind } from '../../../lib/pipeline';
 import { ListPipelineBadge } from '../PipelineDisplayBlocks';
 import { ScopeChipsBar } from '../ScopeChipsBar';
-import { type GlobalTabState } from '../GlobalTabSystem';
+import { GLOBAL_TAB_STATE_DEFAULT, type GlobalTabList, type GlobalTabSearch, type GlobalTabState } from '../GlobalTabSystem';
 import { SHELL_LAYOUT_DEFAULTS, type ShellLayoutState } from '../../../lib/shell/shellLayoutState';
 import { sortItemsWithPinsFirst } from '../../../lib/itemQuickAccess';
 import { ItemOrganizationEditor } from '../ItemOrganizationEditor';
@@ -29,13 +29,21 @@ import { TrashView } from '../TrashView';
 import { ExtensionPageUrlLink } from '../BookmarkUrlLink';
 import { BookmarksLibraryView } from '../BookmarksLibraryView';
 import { HubActionConfirmModal } from '../HubActionConfirmModal';
+import { WorkspaceDestinationPicker } from '../WorkspaceDestinationPicker';
+import { buildWorkspaceDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from '../workspaceDestinations';
+import {
+  activateWorkspace,
+  addEntryToProjectWorkspace,
+  addItemToWorkspaceTarget,
+  getProjectWorkspaceTabs,
+  workspaceTargetContainsItem,
+} from '../workspaceSession';
 
 const SettingsView = React.lazy(() => import('../SettingsView').then((module) => ({ default: module.SettingsView })));
 const ImportStudioView = React.lazy(() => import('../ImportStudioView').then((module) => ({ default: module.ImportStudioView })));
 const PipelineHubView = React.lazy(() => import('../PipelineHubView').then((module) => ({ default: module.PipelineHubView })));
 const EnrichmentPanel = React.lazy(() => import('../EnrichmentPanel').then((module) => ({ default: module.EnrichmentPanel })));
 const TabCommanderView = React.lazy(() => import('../TabCommanderView').then((module) => ({ default: module.TabCommanderView })));
-const ProjectDashboard = React.lazy(() => import('../ProjectDashboard').then((module) => ({ default: module.ProjectDashboard })));
 const CollectionsView = React.lazy(() => import('../CollectionsView').then((module) => ({ default: module.CollectionsView })));
 const WorkspacesView = React.lazy(() => import('../WorkspacesView').then((module) => ({ default: module.WorkspacesView })));
 const NoteWorkspace = React.lazy(() => import('../NoteWorkspace').then((module) => ({ default: module.NoteWorkspace })));
@@ -210,15 +218,12 @@ export const MainContent: React.FC<MainContentProps> = ({
   listMode = false,
   onOpenItem,
   onOpenWorkspace,
-  onOpenListTab,
-  onAddToCommonListTab,
   globalTabState,
   onGlobalTabStateChange,
   renderListTab,
   statusBar,
   librarySearch,
   workingLibrarySearch,
-  onLibrarySearchInTab,
   onOpenItemFromSearch,
   onInspectItem,
   categoryBrowse,
@@ -252,8 +257,130 @@ export const MainContent: React.FC<MainContentProps> = ({
   const patchLayout = (patch: Partial<ShellLayoutState>) => {
     onShellLayoutPatch?.(patch);
   };
+  const workspaceState = globalTabState ?? GLOBAL_TAB_STATE_DEFAULT;
+  const workspaceDestinations = useMemo(
+    () => buildWorkspaceDestinations({
+      projects,
+      browserWorkspaces: workspaces,
+      state: workspaceState,
+      contextProjectId: scopeProjectId,
+    }),
+    [projects, scopeProjectId, workspaceState, workspaces]
+  );
 
-  /** Item currently open in the detail tab strip — drives list-pane highlight. */
+  const itemIsInWorkspace = (item: Item, destination: WorkspaceDestination) =>
+    workspaceTargetContainsItem({
+      state: workspaceState,
+      projectId: destination.projectId,
+      targetWorkspaceKey: destination.key,
+      itemId: item.id,
+      items,
+    });
+
+  const addItemToWorkspace = (item: Item, destination: WorkspaceDestination): GlobalTabState => {
+    const added = addItemToWorkspaceTarget({
+      state: workspaceState,
+      projectId: destination.projectId,
+      targetWorkspaceKey: destination.key,
+      item,
+      items,
+    });
+    return {
+      ...added,
+      recentWorkspaceDestinationKeys: rememberWorkspaceDestination(
+        added.recentWorkspaceDestinationKeys,
+        destination.key
+      ),
+    };
+  };
+
+  const addItemToChosenWorkspace = (item: Item, destination: WorkspaceDestination) => {
+    onGlobalTabStateChange?.(addItemToWorkspace(item, destination));
+  };
+
+  const viewItemInChosenWorkspace = (item: Item, destination: WorkspaceDestination) => {
+    const added = addItemToWorkspace(item, destination);
+    const activated = activateWorkspace({
+      state: added,
+      workspaceKey: destination.key,
+      projectId: destination.projectId,
+    });
+    const entry = activated.tabs.find((candidate) => candidate.kind === 'item' && candidate.itemId === item.id);
+    onGlobalTabStateChange?.({
+      ...activated,
+      homeSection: 'overview',
+      activeTabId: entry?.id ?? activated.activeTabId,
+      lastActiveEntryByWorkspace: entry
+        ? { ...(activated.lastActiveEntryByWorkspace ?? {}), [destination.key]: entry.id }
+        : activated.lastActiveEntryByWorkspace,
+    });
+    onSelectProjectScope?.(destination.projectId);
+    onOpenHomeWorkspace?.();
+  };
+
+  const searchInWorkspace = (destination: WorkspaceDestination) => {
+    if (!librarySearch) return undefined;
+    const query = librarySearch.state.query.trim().toLowerCase();
+    const filters = JSON.stringify(librarySearch.state.filters ?? {});
+    const mode = librarySearch.state.mode;
+    return getProjectWorkspaceTabs(workspaceState, destination.projectId, destination.key).find(
+      (entry): entry is GlobalTabSearch =>
+        entry.kind === 'search' &&
+        entry.query.trim().toLowerCase() === query &&
+        JSON.stringify(entry.filters ?? {}) === filters &&
+        (entry.mode === 'lexical-only' ? 'lexical-only' : 'hybrid') === mode
+    );
+  };
+
+  const addSearchToWorkspace = (destination: WorkspaceDestination): GlobalTabState => {
+    if (!librarySearch || !librarySearch.state.query.trim() || searchInWorkspace(destination)) return workspaceState;
+    const entry: GlobalTabSearch = {
+      kind: 'search',
+      id: `search-${crypto.randomUUID()}${destination.projectId === 'all' ? '' : `@project:${destination.projectId}`}`,
+      query: librarySearch.state.query.trim(),
+      filters: { ...librarySearch.state.filters },
+      mode: librarySearch.state.mode,
+      ...(destination.projectId !== 'all' ? { scopeProjectId: destination.projectId } : {}),
+    };
+    const added = addEntryToProjectWorkspace({
+      state: workspaceState,
+      projectId: destination.projectId,
+      targetWorkspaceKey: destination.key,
+      entry,
+    });
+    return {
+      ...added,
+      recentWorkspaceDestinationKeys: rememberWorkspaceDestination(
+        added.recentWorkspaceDestinationKeys,
+        destination.key
+      ),
+    };
+  };
+
+  const addSearchToChosenWorkspace = (destination: WorkspaceDestination) => {
+    onGlobalTabStateChange?.(addSearchToWorkspace(destination));
+  };
+
+  const viewSearchInChosenWorkspace = (destination: WorkspaceDestination) => {
+    const added = addSearchToWorkspace(destination);
+    const activated = activateWorkspace({ state: added, workspaceKey: destination.key, projectId: destination.projectId });
+    const query = librarySearch?.state.query.trim().toLowerCase() ?? '';
+    const entry = activated.tabs.find(
+      (candidate): candidate is GlobalTabSearch => candidate.kind === 'search' && candidate.query.trim().toLowerCase() === query
+    );
+    onGlobalTabStateChange?.({
+      ...activated,
+      homeSection: 'overview',
+      activeTabId: entry?.id ?? activated.activeTabId,
+      lastActiveEntryByWorkspace: entry
+        ? { ...(activated.lastActiveEntryByWorkspace ?? {}), [destination.key]: entry.id }
+        : activated.lastActiveEntryByWorkspace,
+    });
+    onSelectProjectScope?.(destination.projectId);
+    onOpenHomeWorkspace?.();
+  };
+
+  /** Item currently open in the workspace-entry detail — drives list-pane highlight. */
   const activeDetailItemId = useMemo(() => {
     if (!globalTabState?.activeTabId) return null;
     const tab = globalTabState.tabs.find((t) => t.id === globalTabState.activeTabId);
@@ -292,7 +419,6 @@ export const MainContent: React.FC<MainContentProps> = ({
     notesPlacementId?: string;
   } | null>(null);
   const [editSavedFlash, setEditSavedFlash] = useState(false);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedBookmarkProjectId, setSelectedBookmarkProjectId] = useState<string | 'all'>('all');
   const [bookmarkContextMenu, setBookmarkContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const [bookmarkViewMode, setBookmarkViewMode] = useState<'list' | 'grid'>('grid');
@@ -343,7 +469,6 @@ export const MainContent: React.FC<MainContentProps> = ({
       window.alert('Cannot delete the default project.');
       return;
     }
-    if (selectedProjectId === id) setSelectedProjectId(null);
     if (onRefresh) await onRefresh();
   };
 
@@ -812,8 +937,21 @@ export const MainContent: React.FC<MainContentProps> = ({
             organizationContextProjectId={scopeProjectId === 'all' ? undefined : scopeProjectId}
             organizationContextCollectionId={scopeCollectionId === 'all' ? undefined : scopeCollectionId}
             onClearRecentQueries={librarySearch.clearRecentQueries}
-            showOpenInTab
-            onOpenInTab={() => onLibrarySearchInTab?.(librarySearch.state.query)}
+            workspaceAction={librarySearch.state.query.trim() ? (
+              <WorkspaceDestinationPicker
+                subjectTitle={`Search: ${librarySearch.state.query.trim()}`}
+                destinations={workspaceDestinations}
+                recentDestinationKeys={workspaceState.recentWorkspaceDestinationKeys}
+                isAdded={(destination) => Boolean(searchInWorkspace(destination))}
+                onAdd={addSearchToChosenWorkspace}
+                onView={viewSearchInChosenWorkspace}
+              />
+            ) : undefined}
+            workspaceDestinations={workspaceDestinations}
+            recentWorkspaceDestinationKeys={workspaceState.recentWorkspaceDestinationKeys}
+            isItemInWorkspace={itemIsInWorkspace}
+            onAddItemToWorkspace={addItemToChosenWorkspace}
+            onViewItemInWorkspace={viewItemInChosenWorkspace}
           />
         );
       case 'trash':
@@ -916,12 +1054,6 @@ export const MainContent: React.FC<MainContentProps> = ({
         // Combined list with "All" first, then real projects
         const allProjectsWithVirtual = [virtualAllProject, ...projects];
 
-        const activeProject = selectedProjectId
-          ? (selectedProjectId === ALL_PROJECTS_ID 
-              ? virtualAllProject 
-              : projects.find((p) => p.id === selectedProjectId) || null)
-          : null;
-
         const collectionsForProject = (pid: string | null) => {
           if (!pid) return [];
           
@@ -993,7 +1125,10 @@ export const MainContent: React.FC<MainContentProps> = ({
                   borderStyle: 'dashed',
                 } : {}),
               }}
-              onClick={() => setSelectedProjectId(project.id)}
+              onClick={() => {
+                onSelectProjectScope?.(isVirtualAll ? 'all' : project.id);
+                onSelectView?.('home');
+              }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'var(--accent)';
                 e.currentTarget.style.background = isVirtualAll 
@@ -1065,8 +1200,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           );
         };
 
-        if (!activeProject) {
-          return (
+        return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 28 }}>
                 <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
@@ -1108,27 +1242,6 @@ export const MainContent: React.FC<MainContentProps> = ({
               </div>
             </div>
           );
-        }
-
-        // New Project Dashboard (Phase 1)
-        return (
-          <ProjectDashboard
-            project={activeProject}
-            collections={collections}
-            items={items}
-            projects={projects}
-            onBack={() => setSelectedProjectId(null)}
-            onUpdateItem={onUpdateBookmark}
-            onDeleteItem={
-              onDeleteBookmark
-                ? async (id, collectionId) => {
-                    await onDeleteBookmark(id, collectionId);
-                  }
-                : undefined
-            }
-            onRefresh={onRefresh}
-          />
-        );
       case 'bookmarks':
         if (showImportStudio) {
           return (
@@ -2195,18 +2308,58 @@ export const MainContent: React.FC<MainContentProps> = ({
       return 'All / All';
     };
     
-    const handleOpenAsTab = () => {
-      if (!onOpenListTab || listItems.length === 0) return;
-      const type = activeView === 'bookmarks' ? 'bookmark-list' : 'note-list';
-      const title = `${getListTabTitle()} — ${activeView === 'bookmarks' ? 'Bookmarks' : 'Notes'}`;
-      onOpenListTab(type, listItems.map(i => i.id), title);
+    const listTitle = `${getListTabTitle()} — ${activeView === 'bookmarks' ? 'Bookmarks' : 'Notes'}`;
+    const listItemIds = listItems.map((item) => item.id);
+    const listInWorkspace = (destination: WorkspaceDestination) =>
+      getProjectWorkspaceTabs(workspaceState, destination.projectId, destination.key).find(
+        (entry): entry is GlobalTabList =>
+          entry.kind === 'list' &&
+          entry.title === listTitle &&
+          JSON.stringify(entry.itemIds ?? []) === JSON.stringify(listItemIds)
+      );
+    const addListToWorkspace = (destination: WorkspaceDestination): GlobalTabState => {
+      if (listInWorkspace(destination)) return workspaceState;
+      const entry: GlobalTabList = {
+        kind: 'list',
+        id: `list-${crypto.randomUUID()}${destination.projectId === 'all' ? '' : `@project:${destination.projectId}`}`,
+        listType: activeView === 'bookmarks' ? 'bookmark-list' : 'note-list',
+        title: listTitle,
+        itemIds: listItemIds,
+        ...(destination.projectId !== 'all' ? { scopeProjectId: destination.projectId } : {}),
+      };
+      const added = addEntryToProjectWorkspace({
+        state: workspaceState,
+        projectId: destination.projectId,
+        targetWorkspaceKey: destination.key,
+        entry,
+      });
+      return {
+        ...added,
+        recentWorkspaceDestinationKeys: rememberWorkspaceDestination(
+          added.recentWorkspaceDestinationKeys,
+          destination.key
+        ),
+      };
     };
-
-    const handleAddToCommonTab = () => {
-      if (!onAddToCommonListTab || listItems.length === 0) return;
-      const type = activeView === 'bookmarks' ? 'bookmark-list' : 'note-list';
-      const sectionTitle = `${getListTabTitle()} — ${activeView === 'bookmarks' ? 'Bookmarks' : 'Notes'}`;
-      onAddToCommonListTab(type, listItems.map((i) => i.id), sectionTitle);
+    const addListToChosenWorkspace = (destination: WorkspaceDestination) => {
+      onGlobalTabStateChange?.(addListToWorkspace(destination));
+    };
+    const viewListInChosenWorkspace = (destination: WorkspaceDestination) => {
+      const added = addListToWorkspace(destination);
+      const activated = activateWorkspace({ state: added, workspaceKey: destination.key, projectId: destination.projectId });
+      const entry = activated.tabs.find(
+        (candidate) => candidate.kind === 'list' && candidate.title === listTitle
+      );
+      onGlobalTabStateChange?.({
+        ...activated,
+        homeSection: 'overview',
+        activeTabId: entry?.id ?? activated.activeTabId,
+        lastActiveEntryByWorkspace: entry
+          ? { ...(activated.lastActiveEntryByWorkspace ?? {}), [destination.key]: entry.id }
+          : activated.lastActiveEntryByWorkspace,
+      });
+      onSelectProjectScope?.(destination.projectId);
+      onOpenHomeWorkspace?.();
     };
     
     return (
@@ -2223,38 +2376,14 @@ export const MainContent: React.FC<MainContentProps> = ({
               </span>
             </div>
             {listItems.length > 0 && (
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  onClick={handleOpenAsTab}
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: 4,
-                    border: '1px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--text-muted)',
-                    fontSize: 'var(--text-xs)',
-                    cursor: 'pointer',
-                  }}
-                  title="Open this scope as its own tab"
-                >
-                  Open as tab
-                </button>
-                <button
-                  onClick={handleAddToCommonTab}
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: 4,
-                    border: '1px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--text-muted)',
-                    fontSize: 'var(--text-xs)',
-                    cursor: 'pointer',
-                  }}
-                  title="Add this scope into common tab"
-                >
-                  Add to common
-                </button>
-              </div>
+              <WorkspaceDestinationPicker
+                subjectTitle={listTitle}
+                destinations={workspaceDestinations}
+                recentDestinationKeys={workspaceState.recentWorkspaceDestinationKeys}
+                isAdded={(destination) => Boolean(listInWorkspace(destination))}
+                onAdd={addListToChosenWorkspace}
+                onView={viewListInChosenWorkspace}
+              />
             )}
           </div>
           <SearchBar 
@@ -2483,8 +2612,7 @@ export const MainContent: React.FC<MainContentProps> = ({
       overflow: 'hidden',
     }}>
       {/* Wrapper header is only shown for views that don't render their own header. */}
-      {!(activeView === 'projects' && selectedProjectId !== null) &&
-        !['bookmarks', 'notes', 'collections', 'tab-commander', 'settings', 'trash', 'ai-categories', 'import-studio', 'pipeline', 'help'].includes(
+      {!['bookmarks', 'notes', 'collections', 'tab-commander', 'settings', 'trash', 'ai-categories', 'import-studio', 'pipeline', 'help'].includes(
           activeView
         ) && (
           <div style={{ 

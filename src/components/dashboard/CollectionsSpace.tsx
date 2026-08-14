@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { Collection, Item } from '../../lib/db';
 import { CollectionContextMenu } from './CollectionContextMenu';
-import { Trash2, ExternalLink, Pencil } from 'lucide-react';
+import { Trash2, Pencil } from 'lucide-react';
 
 interface CollectionsSpaceProps {
   collections: Collection[];
@@ -19,7 +19,7 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
   items,
   onDeleteCollection,
   onRenameCollection,
-  onOpenCollectionInTab,
+  onOpenCollection,
   onMoveItemToCollection,
   projectId,
 }) => {
@@ -135,7 +135,6 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
           onClose={() => setContextMenu(null)}
           onDelete={onDeleteCollection}
           onRename={handleStartRename}
-          onOpenInTab={onOpenCollectionInTab}
         />
       )}
 
@@ -151,7 +150,7 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
         }}
       >
         {/* "ALL" card - shows all items */}
-        {onOpenCollectionInTab && (
+        {onOpenCollection && (
           <div
             onClick={() => {
               // Create a virtual "All" collection
@@ -165,7 +164,7 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
                 created_at: now,
                 updated_at: now,
               };
-              onOpenCollectionInTab(allCollection);
+              onOpenCollection(allCollection);
             }}
             style={{
               padding: '1rem',
@@ -196,46 +195,6 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
                   All
                 </div>
               </div>
-              {onOpenCollectionInTab && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const now = Date.now();
-                    const allCollection: Collection = {
-                      id: '__all__',
-                      name: 'All',
-                      primaryProjectId: projectId || '',
-                      projectIds: projectId ? [projectId] : [],
-                      isDefault: false,
-                      created_at: now,
-                      updated_at: now,
-                    };
-                    onOpenCollectionInTab(allCollection);
-                  }}
-                  style={{
-                    padding: '0.25rem',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--text-muted)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    borderRadius: 4,
-                    transition: 'all 0.15s ease',
-                  }}
-                  title="Open in tab"
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--bg-glass)';
-                    e.currentTarget.style.color = 'var(--text)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-muted)';
-                  }}
-                >
-                  <ExternalLink size={14} />
-                </button>
-              )}
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
               {items.length} {items.length === 1 ? 'item' : 'items'}
@@ -252,8 +211,8 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
             <div
               key={collection.id}
               onClick={() => {
-                if (!isEditing && onOpenCollectionInTab) {
-                  onOpenCollectionInTab(collection);
+                if (!isEditing && onOpenCollection) {
+                  onOpenCollection(collection);
                 }
               }}
               onContextMenu={(e) => handleContextMenu(e, collection)}
@@ -356,36 +315,6 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
                           }}
                         >
                           <Pencil size={14} />
-                        </button>
-                      )}
-                      {onOpenCollectionInTab && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenCollectionInTab(collection);
-                          }}
-                          style={{
-                            padding: '0.25rem',
-                            background: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: 'var(--text-muted)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            borderRadius: 4,
-                            transition: 'all 0.15s ease',
-                          }}
-                          title="Open in tab"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'var(--bg-glass)';
-                            e.currentTarget.style.color = 'var(--text)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'transparent';
-                            e.currentTarget.style.color = 'var(--text-muted)';
-                          }}
-                        >
-                          <ExternalLink size={14} />
                         </button>
                       )}
                       <button

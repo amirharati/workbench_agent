@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, Layers3, Link2, List, Maximize2, Search, Star, Trash2, Workflow } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, Layers3, Link2, List, Search, Star, Trash2, Workflow } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
@@ -32,12 +32,11 @@ interface AllLibraryWorkspaceOverviewProps {
   collections: Collection[];
   onSelectTab: (tab: GlobalTab) => void;
   onRemoveGlobalTab: (tabId: string) => void;
-  onFocusTab: (tab: GlobalTab) => void;
-  onFocusGlobal: () => void;
   workspaceDestinations?: WorkspaceDestination[];
   recentWorkspaceDestinationKeys?: readonly string[];
   isItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => boolean;
   onAddItemToWorkspace?: (item: Item, destination: WorkspaceDestination) => void;
+  onViewItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => void;
   onViewSearch: (tab: GlobalTab) => void;
   onUpdateItem?: (
     id: string,
@@ -120,12 +119,11 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   collections,
   onSelectTab,
   onRemoveGlobalTab,
-  onFocusTab,
-  onFocusGlobal,
   workspaceDestinations = [],
   recentWorkspaceDestinationKeys,
   isItemInWorkspace = () => false,
   onAddItemToWorkspace = () => {},
+  onViewItemInWorkspace,
   onViewSearch,
   onUpdateItem,
   onCreateProject,
@@ -367,10 +365,8 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
               emptyMessage={group.projectId === 'all' ? 'Select library material and add it to this cross-project working set.' : 'This project workspace is empty.'}
               onSelectEntry={onSelectTab}
               onRemoveEntry={onRemoveGlobalTab}
-              onFocus={() => group.projectId === 'all' ? onFocusGlobal() : group.tabs[0] && onFocusTab(group.tabs[0])}
               getEntryScopeLabel={getEntryScopeLabel}
               allowRemove={group.projectId === 'all' && selectedView !== 'all-active'}
-              showFocus={selectedView !== 'all-active'}
               maxListHeight={null}
             />
           ))}
@@ -406,15 +402,14 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
               >
                 <ArrowLeft size={12} /> Browse
               </button>
-              {activeSelectedTab ? (
-                <button type="button" onClick={() => onFocusTab(activeSelectedTab)} style={primaryButtonStyle}><Maximize2 size={12} /> Focus</button>
-              ) : previewItem ? (
+              {previewItem ? (
                 <WorkspaceDestinationPicker
                   item={previewItem}
                   destinations={workspaceDestinations}
                   recentDestinationKeys={recentWorkspaceDestinationKeys}
                   isAdded={(destination) => isItemInWorkspace(previewItem, destination)}
                   onAdd={(destination) => onAddItemToWorkspace(previewItem, destination)}
+                  onView={onViewItemInWorkspace ? (destination) => onViewItemInWorkspace(previewItem, destination) : undefined}
                 />
               ) : null}
             </div>
@@ -447,7 +442,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             </div>
           ) : activeSelectedTab ? (
             <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'grid', placeItems: 'center', padding: 24, color: 'var(--text-faint)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>
-              This entry uses its full interactive view in Focus.
+              This workspace entry has no additional detail view.
             </div>
           ) : (
             <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24, color: 'var(--text-faint)', textAlign: 'center' }}>
@@ -457,7 +452,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
               </strong>
               <span style={{ maxWidth: 300, fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
                 {activeView === 'workspace'
-                  ? 'Choose active work to inspect it here, or use Focus for its full interactive view.'
+                  ? 'Choose a workspace entry to inspect it here.'
                   : 'Selecting an item opens its editable details here. Adding it to a workspace is always a separate action.'}
               </span>
             </div>
@@ -470,7 +465,6 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
 
 const previewIconStyle: React.CSSProperties = { width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-md)', background: 'var(--accent-weak)', color: 'var(--accent)' };
 const secondaryButtonStyle = uiPatterns.secondaryButton;
-const primaryButtonStyle = uiPatterns.primaryButton;
 const viewTabStyle = uiPatterns.viewTab;
 const compoundTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'stretch', overflow: 'hidden', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)' });
 const compoundTabButtonStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px 0 10px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' };

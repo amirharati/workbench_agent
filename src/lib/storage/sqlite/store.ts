@@ -214,6 +214,19 @@ interface SignalRow {
   llm_review: string | null;
 }
 
+export interface SignalEmbeddingRecord {
+  itemId: string;
+  embeddingModel: string;
+  /** View over SQLite's BLOB bytes; worker callers should copy it into owned storage. */
+  embedding: Float32Array;
+}
+
+export interface SignalEmbeddingCapacityHint {
+  embeddingModel: string;
+  dimensions: number;
+  count: number;
+}
+
 interface TaxonomyRow {
   id: string;
   taxonomy_version: number;
@@ -268,7 +281,17 @@ const toJson = (value: unknown): string => JSON.stringify(value);
 
 const blobToArray = (blob: Uint8Array | null): number[] => {
   if (!blob) return [];
-  return Array.from(new Float32Array(blob.buffer));
+  return Array.from(blobToFloat32View(blob));
+};
+
+const blobToFloat32View = (blob: Uint8Array): Float32Array => {
+  const usableBytes = blob.byteLength - (blob.byteLength % Float32Array.BYTES_PER_ELEMENT);
+  if (usableBytes <= 0) return new Float32Array();
+  if (blob.byteOffset % Float32Array.BYTES_PER_ELEMENT === 0) {
+    return new Float32Array(blob.buffer, blob.byteOffset, usableBytes / Float32Array.BYTES_PER_ELEMENT);
+  }
+  const aligned = blob.slice(0, usableBytes);
+  return new Float32Array(aligned.buffer, aligned.byteOffset, aligned.byteLength / Float32Array.BYTES_PER_ELEMENT);
 };
 
 const arrayToBlob = (arr: number[] | undefined): Uint8Array | null => {
@@ -835,6 +858,16 @@ export class SqliteStore {
     return row ? rowToItem(row) : undefined;
   }
 
+  getItemsForIds(itemIds: string[]): Item[] {
+    if (!itemIds.length) return [];
+    const placeholders = itemIds.map(() => '?').join(',');
+    const rows = this.conn.selectAll<ItemRow>(
+      `SELECT * FROM items WHERE id IN (${placeholders})`,
+      itemIds
+    );
+    return rows.map(rowToItem);
+  }
+
   getActiveItemsByExactUrl(url: string): Item[] {
     const rows = this.conn.selectAll<ItemRow>(
       'SELECT * FROM items WHERE url = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 5',
@@ -952,6 +985,22 @@ export class SqliteStore {
     const placeholders = itemIds.map(() => '?').join(',');
     const rows = this.conn.selectAll<SignalRow>(
       `SELECT * FROM ai_item_signals WHERE item_id IN (${placeholders})`,
+      itemIds
+    );
+    return rows.map(rowToSignal);
+  }
+
+  /** Badge/Inspector metadata without materializing large embedding BLOBs. */
+  getSignalMetadataForItemIds(itemIds: string[]): AiItemSignal[] {
+    if (!itemIds.length) return [];
+    const placeholders = itemIds.map(() => '?').join(',');
+    const rows = this.conn.selectAll<SignalRow>(
+      `SELECT item_id, text_hash, classify_text_hash, embedding_model,
+              NULL AS embedding, derived_tags, tag_confidence, signal_status,
+              classify_state, discover_state, is_novelty, classify_retry_count,
+              last_classify_skip_reason, eligibility_reason, input_quality_tier,
+              last_processed_at, last_classified_at, llm_review
+       FROM ai_item_signals WHERE item_id IN (${placeholders})`,
       itemIds
     );
     return rows.map(rowToSignal);
@@ -1246,6 +1295,51 @@ export class SqliteStore {
   getAllSignals(): AiItemSignal[] {
     const rows = this.conn.selectAll<SignalRow>('SELECT * FROM ai_item_signals');
     return rows.map(rowToSignal);
+  }
+
+  getSignalEmbeddingCapacityHints(): SignalEmbeddingCapacityHint[] {
+    const rows = this.conn.selectAll<{
+      embeddingModel: string;
+      byteLength: number;
+      count: number;
+    }>(
+      `SELECT embedding_model AS embeddingModel, length(embedding) AS byteLength, COUNT(*) AS count
+       FROM ai_item_signals
+       WHERE embedding IS NOT NULL AND length(embedding) > 0
+       GROUP BY embedding_model, length(embedding)`
+    );
+    return rows.flatMap((row) => {
+      const dimensions = Math.floor(row.byteLength / Float32Array.BYTES_PER_ELEMENT);
+      return dimensions > 0
+        ? [{ embeddingModel: row.embeddingModel, dimensions, count: row.count }]
+        : [];
+    });
+  }
+
+  /** Stream bounded BLOB pages so cold warm-up never duplicates the entire vector heap. */
+  *iterateSignalEmbeddings(pageSize = 512): IterableIterator<SignalEmbeddingRecord> {
+    const limit = Math.min(2_000, Math.max(1, Math.floor(pageSize)));
+    let afterItemId = '';
+    while (true) {
+      const rows = this.conn.selectAll<Pick<SignalRow, 'item_id' | 'embedding_model' | 'embedding'>>(
+        `SELECT item_id, embedding_model, embedding
+         FROM ai_item_signals
+         WHERE embedding IS NOT NULL AND length(embedding) > 0 AND item_id > ?
+         ORDER BY item_id
+         LIMIT ?`,
+        [afterItemId, limit]
+      );
+      if (!rows.length) return;
+      for (const row of rows) {
+        afterItemId = row.item_id;
+        if (!row.embedding) continue;
+        const embedding = blobToFloat32View(row.embedding);
+        if (embedding.length) {
+          yield { itemId: row.item_id, embeddingModel: row.embedding_model, embedding };
+        }
+      }
+      if (rows.length < limit) return;
+    }
   }
 
   getSignalsPage(offset: number, limit: number): AiItemSignal[] {
@@ -1573,6 +1667,7 @@ export class IdbCompatStore {
   getAllItems() { return this.store.getAllItems(); }
   getDashboardStartupItems() { return this.store.getDashboardStartupItems(); }
   getItem(id: string) { return this.store.getItem(id); }
+  getItemsForIds(itemIds: string[]) { return this.store.getItemsForIds(itemIds); }
   getActiveItemsByExactUrl(url: string) { return this.store.getActiveItemsByExactUrl(url); }
   putItem(item: Item) { this.store.putItem(item); }
   deleteItem(id: string) { this.store.deleteItem(id); }
@@ -1607,6 +1702,10 @@ export class IdbCompatStore {
 
   getSignalsForItemIds(itemIds: string[]) {
     return this.store.getSignalsForItemIds(itemIds);
+  }
+
+  getSignalMetadataForItemIds(itemIds: string[]) {
+    return this.store.getSignalMetadataForItemIds(itemIds);
   }
 
   getPendingEmbeddingItemIds(limit: number) {
@@ -1658,6 +1757,8 @@ export class IdbCompatStore {
   deleteLinksByItem(itemId: string) { this.store.deleteLinksByItem(itemId); }
   
   getAllSignals() { return this.store.getAllSignals(); }
+  getSignalEmbeddingCapacityHints() { return this.store.getSignalEmbeddingCapacityHints(); }
+  iterateSignalEmbeddings(pageSize?: number) { return this.store.iterateSignalEmbeddings(pageSize); }
   getSignal(itemId: string) { return this.store.getSignal(itemId); }
   getSignalsByClassifyState(state: string) { return this.store.getSignalsByClassifyState(state); }
   putSignal(signal: AiItemSignal) { this.store.putSignal(signal); }

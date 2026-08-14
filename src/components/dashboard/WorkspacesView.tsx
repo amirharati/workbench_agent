@@ -18,6 +18,7 @@ import {
   getProjectSessionWorkspaceKey,
   getProjectWorkspaceTabs,
 } from './workspaceSession';
+import { formatGeneralWorkspaceName, formatProjectWorkspaceName } from './workspaceLabels';
 
 type WorkspaceFilter = 'all' | 'project' | 'browser';
 
@@ -70,22 +71,31 @@ function projectWorkspaceRows(
   projects: readonly Project[],
   state: GlobalTabState
 ): ProjectWorkspaceRow[] {
-  return projects.flatMap((project) => {
+  const globalKey = getProjectSessionWorkspaceKey('all');
+  const globalRow: ProjectWorkspaceRow = {
+    key: 'global:workspace',
+    kind: 'project',
+    name: 'Global workspace',
+    projectId: 'all',
+    tabs: getProjectWorkspaceTabs(state, 'all', globalKey),
+    active: getActiveProjectWorkspaceKey(state, 'all') === globalKey,
+    live: true,
+    updatedAt: 0,
+  };
+  return [globalRow, ...projects.flatMap((project) => {
     const liveKey = getProjectSessionWorkspaceKey(project.id);
     const activeKey = getActiveProjectWorkspaceKey(state, project.id);
     const liveTabs = getProjectWorkspaceTabs(state, project.id, liveKey);
-    const live = liveTabs.length > 0
-      ? [{
+    const live = [{
           key: `project:${project.id}:live`,
           kind: 'project' as const,
-          name: 'Live session',
+          name: formatGeneralWorkspaceName(project.name),
           projectId: project.id,
           tabs: liveTabs,
           active: activeKey === liveKey,
           live: true,
           updatedAt: project.updated_at,
-        }]
-      : [];
+        }];
     const saved = (state.savedWorkspaceSessions ?? [])
       .filter((session) => session.projectId === project.id)
       .map((session) => {
@@ -93,7 +103,7 @@ function projectWorkspaceRows(
         return {
           key: `project:${project.id}:saved:${session.id}`,
           kind: 'project' as const,
-          name: session.name,
+          name: formatProjectWorkspaceName(project.name, session.name),
           projectId: project.id,
           tabs: getProjectWorkspaceTabs(state, project.id, workspaceKey),
           active: activeKey === workspaceKey,
@@ -103,7 +113,7 @@ function projectWorkspaceRows(
         };
       });
     return [...live, ...saved];
-  });
+  })];
 }
 
 export function getWorkspaceTabUrl(
@@ -166,7 +176,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     .sort((left, right) => right.updatedAt - left.updatedAt);
   const workspaceTargets = targetProjectId
     ? [
-        { key: getProjectSessionWorkspaceKey(targetProjectId), label: 'Live session' },
+        { key: getProjectSessionWorkspaceKey(targetProjectId), label: 'General' },
         ...targetSessions.map((session) => ({ key: getHomebaseWorkspaceSessionKey(session.id), label: session.name })),
       ]
     : [];
@@ -234,10 +244,18 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   ];
 
   const activateProjectRow = (row: ProjectWorkspaceRow) => {
-    const next = row.live
+    const activated = row.live
       ? activateProjectWorkspace({ state: homeState, projectId: row.projectId, workspace: null, items })
       : activateSavedProjectWorkspace({ state: homeState, session: row.session! });
-    onHomeStateChange(next);
+    const rememberedEntryId = activated.lastActiveEntryByWorkspace?.[
+      row.projectId === 'all' ? getProjectSessionWorkspaceKey('all') : row.live
+        ? getProjectSessionWorkspaceKey(row.projectId)
+        : getHomebaseWorkspaceSessionKey(row.session!.id)
+    ];
+    const selectedEntryId = rememberedEntryId && activated.tabs.some((entry) => entry.id === rememberedEntryId)
+      ? rememberedEntryId
+      : activated.tabs[0]?.id ?? null;
+    onHomeStateChange({ ...activated, homeSection: 'overview', activeTabId: selectedEntryId });
     onSelectProjectScope?.(row.projectId);
     onOpenHome?.();
   };
@@ -269,7 +287,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
       targetWorkspaceKey,
     }));
     const target = workspaceTargets.find((candidate) => candidate.key === targetWorkspaceKey);
-    setNotice(`Added browser tabs to ${target?.label ?? 'project workspace'}.`);
+    setNotice(`Added snapshot URLs to ${target?.label ?? 'project workspace'}.`);
   };
 
   const renameProjectWorkspace = (row: ProjectWorkspaceRow) => {
@@ -364,7 +382,6 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           <div style={panelHeaderStyle}><strong style={{ fontSize: 'var(--text-sm)' }}>Saved work</strong></div>
           <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {rows.length === 0 ? <div style={emptyStyle}>No workspaces match this view.</div> : rows.map((row) => {
-              const project = projects.find((candidate) => candidate.id === row.projectId);
               const selectedRow = selectedKey === row.key;
               const count = row.kind === 'project' ? row.tabs.length : row.workspace.windows.reduce((sum, windowGroup) => sum + windowGroup.tabs.length, 0);
               return (
@@ -372,7 +389,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
                   <span style={{ width: 28, height: 28, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: row.kind === 'project' ? 'var(--accent-weak)' : 'var(--bg-hover)', color: row.kind === 'project' ? 'var(--accent)' : 'var(--text-faint)' }}>{row.kind === 'project' ? <Layers3 size={13} /> : <MonitorUp size={13} />}</span>
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--text-sm)' }}>{row.name}</strong>{row.kind === 'project' && row.active && <span style={activeBadgeStyle}>Active</span>}</span>
-                    <span style={{ display: 'block', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{row.kind === 'project' ? row.live ? 'Active now' : 'Project workspace' : 'Browser snapshot'} · {project?.name ?? 'Unassigned'} · {count} {row.kind === 'project' ? 'items' : 'tabs'}</span>
+                    <span style={{ display: 'block', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{row.kind === 'project' ? row.live ? 'Automatic workspace' : 'Named workspace' : 'Browser snapshot'} · {row.projectId === 'all' ? 'Shared' : 'Project workspace'} · {count} {row.kind === 'project' ? 'entries' : 'browser tabs'}</span>
                   </span>
                 </button>
               );
@@ -384,13 +401,13 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           {!selected ? <div style={emptyStyle}>Select a workspace to inspect it.</div> : selected.kind === 'project' ? (
             <>
               <div style={panelHeaderStyle}>
-                <div><strong style={{ display: 'block', fontSize: 'var(--text-sm)' }}>{selected.name}</strong><span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{projects.find((project) => project.id === selected.projectId)?.name} · {selected.live ? 'Active now' : 'Project workspace'}</span></div>
+                <div><strong style={{ display: 'block', fontSize: 'var(--text-sm)' }}>{selected.name}</strong><span style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{selected.projectId === 'all' ? 'Shared workspace' : 'Project workspace'} · {selected.live ? 'Automatic' : 'Named'}</span></div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={() => setSelectedKey(null)} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
                   {!selected.live && <button type="button" onClick={() => renameProjectWorkspace(selected)} style={iconButtonStyle} title="Rename workspace"><Pencil size={12} /></button>}
                   {!selected.live && <button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => removeProjectWorkspace(selected)} style={{ ...iconButtonStyle, color: 'var(--danger)' }} title="Delete workspace"><Trash2 size={12} /></button>}
                   <button type="button" disabled={projectTabUrls(selected.tabs).length === 0} onClick={() => openProjectWorkspaceLinks(selected)} style={secondaryButtonStyle}><ExternalLink size={12} /> Open links</button>
-                  <button type="button" onClick={() => activateProjectRow(selected)} style={primaryButtonStyle}><Play size={12} /> Activate in Home</button>
+                  <button type="button" onClick={() => activateProjectRow(selected)} style={primaryButtonStyle}><Play size={12} /> Open workspace</button>
                 </div>
               </div>
               <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
@@ -413,7 +430,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
                   <select value={targetProjectId} onChange={(event) => setTargetProjectId(event.target.value)} aria-label="Target project" style={selectStyle}><option value="">Choose project…</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
                   <button type="button" disabled={!targetProjectId} onClick={createProjectWorkspace} style={secondaryButtonStyle}><Plus size={12} /> Create project workspace</button>
                   <select value={targetWorkspaceKey} onChange={(event) => setTargetWorkspaceKey(event.target.value)} aria-label="Target project workspace" disabled={!targetProjectId} style={selectStyle}>{workspaceTargets.map((target) => <option key={target.key} value={target.key}>{target.label}</option>)}</select>
-                  <button type="button" disabled={!targetWorkspaceKey} onClick={addToProjectWorkspace} style={secondaryButtonStyle}><Plus size={12} /> Add tabs</button>
+                  <button type="button" disabled={!targetWorkspaceKey} onClick={addToProjectWorkspace} style={secondaryButtonStyle}><Plus size={12} /> Add URLs to workspace</button>
                 </div>
                 {notice && <div role="status" style={{ marginTop: 6, color: 'var(--accent)', fontSize: 'var(--text-xs)' }}>{notice}</div>}
               </div>

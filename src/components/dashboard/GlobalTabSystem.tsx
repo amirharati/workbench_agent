@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { ArrowLeft, ExternalLink, Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft, Pin, Star, Globe2, Eye, EyeOff, List } from 'lucide-react';
+import { ExternalLink, Search, FileText, X, Layout, Sidebar, PanelLeftClose, PanelLeft, Pin, Star, List } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import type { Item, Collection, Project, UpdateItemOptions } from '../../lib/db';
 import { getItem } from '../../lib/db';
@@ -24,21 +24,22 @@ import {
   isScopeNarrowed,
   itemMatchesScope,
 } from '../../lib/shell/itemScope';
+import { formatGeneralWorkspaceName, formatProjectWorkspaceName } from './workspaceLabels';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
 // ===== Persistent state shape =====
-interface GlobalTabScope {
-  /** Temporary workspace origin. Missing means the tab was opened from All Library. */
+interface WorkspaceEntryOrigin {
+  /** Context where the entry was first added. Membership is owned by its workspace key. */
   scopeProjectId?: string;
-  /** Informational origin only; collection changes do not hide project tabs. */
+  /** Informational origin only. */
   scopeCollectionId?: string;
-  /** Project tabs can be made visible in every Home scope without changing item membership. */
+  /** Legacy migration field; workspace entries are no longer hidden by project scope. */
   pinnedGlobally?: boolean;
 }
 
-export interface GlobalTabItem extends GlobalTabScope { kind: 'item'; id: string; itemId: string; }
-export interface GlobalTabSearch {
+export interface WorkspaceItemEntry extends WorkspaceEntryOrigin { kind: 'item'; id: string; itemId: string; }
+export interface WorkspaceSearchEntry {
   kind: 'search';
   id: string;
   query: string;
@@ -48,7 +49,7 @@ export interface GlobalTabSearch {
   scopeCollectionId?: string;
   pinnedGlobally?: boolean;
 }
-export interface GlobalTabUrl extends GlobalTabScope {
+export interface WorkspaceUrlEntry extends WorkspaceEntryOrigin {
   kind: 'url';
   id: string;
   url: string;
@@ -56,7 +57,16 @@ export interface GlobalTabUrl extends GlobalTabScope {
   favIconUrl?: string;
 }
 // Add list tabs to support legacy DashboardLayout tabs
-export interface GlobalTabList extends GlobalTabScope { kind: 'list'; id: string; listType: 'bookmark-list' | 'note-list' | 'common-list' | 'workspace' | 'favorites' | 'pinned' | 'quick-access' | 'trash' | 'recent'; title: string; itemIds?: string[]; workspaceId?: string; }
+export interface WorkspaceListEntry extends WorkspaceEntryOrigin { kind: 'list'; id: string; listType: 'bookmark-list' | 'note-list' | 'common-list' | 'workspace' | 'favorites' | 'pinned' | 'quick-access' | 'trash' | 'recent'; title: string; itemIds?: string[]; workspaceId?: string; }
+
+export type WorkspaceEntry = WorkspaceItemEntry | WorkspaceSearchEntry | WorkspaceUrlEntry | WorkspaceListEntry;
+
+/** Presentational compatibility aliases. New domain code should use WorkspaceEntry. */
+export type GlobalTabItem = WorkspaceItemEntry;
+export type GlobalTabSearch = WorkspaceSearchEntry;
+export type GlobalTabUrl = WorkspaceUrlEntry;
+export type GlobalTabList = WorkspaceListEntry;
+export type GlobalTab = WorkspaceEntry;
 
 const UTILITY_LIST_TYPES = new Set(['favorites', 'pinned', 'quick-access', 'trash', 'recent']);
 
@@ -121,8 +131,6 @@ export function pruneGlobalTabs(
   return { ...state, tabs, activeTabId, workspaceSessionSnapshots };
 }
 
-export type GlobalTab = GlobalTabItem | GlobalTabSearch | GlobalTabUrl | GlobalTabList;
-
 /** A named Homebase working set. Its generic entries live in workspaceSessionSnapshots. */
 export interface SavedWorkspaceSession {
   id: string;
@@ -137,12 +145,11 @@ export function getGlobalTabProjectId(tab: GlobalTab): string | 'all' {
 }
 
 export function isGlobalTabVisible(
-  tab: GlobalTab,
-  currentProjectId: string | 'all',
-  showAllTabs = false
+  _tab: GlobalTab,
+  _currentProjectId: string | 'all',
+  _showAllTabs = false
 ): boolean {
-  if (showAllTabs || tab.pinnedGlobally) return true;
-  return getGlobalTabProjectId(tab) === currentProjectId;
+  return true;
 }
 
 export interface GlobalTabState {
@@ -154,19 +161,22 @@ export interface GlobalTabState {
   showAllTabs?: boolean;
   topPct?: number;
   searchQuery?: string;
-  /** Last focused tab for each project session. `all` is the global session. */
-  lastActiveTabByProject?: Record<string, string>;
-  /** Project-local preference to temporarily include global workspace entries. */
-  includeGlobalWorkByProject?: Record<string, boolean>;
-  /** Workspace currently active in each project. Values are stable session keys. */
-  activeWorkspaceKeyByProject?: Record<string, string>;
-  /** Auto-saved live tab sets for inactive project/saved workspaces. */
+  /** Ordered entry sets for inactive workspaces and the persisted active set. */
   workspaceSessionSnapshots?: Record<string, GlobalTab[]>;
   /** User-created Homebase workspaces; unlike browser workspaces these can contain every GlobalTab kind. */
   savedWorkspaceSessions?: SavedWorkspaceSession[];
   /** Most recently targeted destinations for the shared Add to workspace picker. */
   recentWorkspaceDestinationKeys?: string[];
+  /** The one explicitly active workspace across the application. */
+  activeWorkspaceKey?: string;
+  /** Last selected entry remembered independently for each workspace. */
+  lastActiveEntryByWorkspace?: Record<string, string>;
 }
+
+/** Canonical state name. GlobalTabState remains a compatibility alias during the UI refactor. */
+export type WorkspaceState = GlobalTabState;
+
+export const GLOBAL_WORKSPACE_KEY = 'workspace:global';
 
 export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
   tabs: [],
@@ -177,15 +187,25 @@ export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
   showAllTabs: false,
   topPct: 40,
   searchQuery: '',
-  lastActiveTabByProject: {},
-  includeGlobalWorkByProject: {},
-  activeWorkspaceKeyByProject: {},
   workspaceSessionSnapshots: {},
   savedWorkspaceSessions: [],
   recentWorkspaceDestinationKeys: [],
+  activeWorkspaceKey: GLOBAL_WORKSPACE_KEY,
+  lastActiveEntryByWorkspace: {},
 };
 
-const LS_KEY = 'workbench-global-tabs';
+const LS_KEY = 'workbench-workspace-state-v1';
+const LEGACY_LS_KEY = 'workbench-global-tabs';
+
+type LegacyGlobalTabState = Partial<GlobalTabState> & {
+  lastActiveTabByProject?: Record<string, string>;
+  includeGlobalWorkByProject?: Record<string, boolean>;
+  activeWorkspaceKeyByProject?: Record<string, string>;
+};
+
+function legacyWorkspaceKeyForProject(projectId: string | 'all'): string {
+  return projectId === 'all' ? GLOBAL_WORKSPACE_KEY : `workspace:project:${projectId}:general`;
+}
 
 function normalizeGlobalTabs(tabs: unknown[]): GlobalTab[] {
   const valid = tabs.filter(
@@ -220,11 +240,13 @@ function normalizeGlobalTabs(tabs: unknown[]): GlobalTab[] {
 
 export function loadGlobalTabState(): GlobalTabState {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const currentRaw = localStorage.getItem(LS_KEY);
+    const raw = currentRaw ?? localStorage.getItem(LEGACY_LS_KEY);
     if (!raw) return GLOBAL_TAB_STATE_DEFAULT;
-    const parsed = JSON.parse(raw) as Partial<GlobalTabState>;
-    const tabs = normalizeGlobalTabs(Array.isArray(parsed.tabs) ? parsed.tabs : []);
-    const workspaceSessionSnapshots = Object.fromEntries(
+    const isLegacyState = currentRaw == null;
+    const parsed = JSON.parse(raw) as LegacyGlobalTabState;
+    const legacyTabs = normalizeGlobalTabs(Array.isArray(parsed.tabs) ? parsed.tabs : []);
+    const workspaceSessionSnapshots: Record<string, GlobalTab[]> = Object.fromEntries(
       Object.entries(parsed.workspaceSessionSnapshots ?? {})
         .filter(([, snapshotTabs]) => Array.isArray(snapshotTabs))
         .map(([key, snapshotTabs]) => [key, normalizeGlobalTabs(snapshotTabs as unknown[])])
@@ -241,36 +263,75 @@ export function loadGlobalTabState(): GlobalTabState {
             typeof session.updatedAt === 'number'
         )
       : [];
-    const activeTabId =
-      parsed.activeTabId && tabs.some((t) => t.id === parsed.activeTabId)
-        ? parsed.activeTabId
-        : null;
+    const legacyActiveByProject =
+      parsed.activeWorkspaceKeyByProject && typeof parsed.activeWorkspaceKeyByProject === 'object'
+        ? parsed.activeWorkspaceKeyByProject
+        : {};
+    let activeWorkspaceKey: string;
+
+    if (isLegacyState) {
+      const focusedLegacyEntry = legacyTabs.find((entry) => entry.id === parsed.activeTabId);
+      const focusedProjectId = focusedLegacyEntry?.scopeProjectId?.trim() || 'all';
+      const legacyProjectIds = new Set(
+        legacyTabs
+          .map((entry) => entry.scopeProjectId?.trim())
+          .filter((projectId): projectId is string => Boolean(projectId && projectId !== 'all'))
+      );
+      const inferredLegacyProjectId =
+        focusedProjectId !== 'all'
+          ? focusedProjectId
+          : legacyProjectIds.size === 1 && legacyTabs.every((entry) => entry.scopeProjectId)
+            ? [...legacyProjectIds][0]
+            : 'all';
+      activeWorkspaceKey =
+        legacyActiveByProject[inferredLegacyProjectId]
+        ?? legacyWorkspaceKeyForProject(inferredLegacyProjectId);
+    } else {
+      activeWorkspaceKey =
+        typeof parsed.activeWorkspaceKey === 'string' && parsed.activeWorkspaceKey.trim()
+          ? parsed.activeWorkspaceKey
+          : GLOBAL_WORKSPACE_KEY;
+    }
+
+    // One-time migration from the former single array containing simultaneous
+    // project slices. Each slice becomes membership in its explicit workspace.
+    if (isLegacyState) {
+      for (const entry of legacyTabs) {
+        const projectId = entry.scopeProjectId?.trim() || 'all';
+        const workspaceKey = legacyActiveByProject[projectId] ?? legacyWorkspaceKeyForProject(projectId);
+        const existing = workspaceSessionSnapshots[workspaceKey] ?? [];
+        if (!existing.some((candidate) => candidate.id === entry.id)) {
+          workspaceSessionSnapshots[workspaceKey] = [...existing, entry];
+        }
+      }
+    } else if (!Object.prototype.hasOwnProperty.call(workspaceSessionSnapshots, activeWorkspaceKey)) {
+      workspaceSessionSnapshots[activeWorkspaceKey] = legacyTabs;
+    }
+
+    const tabs = [...(workspaceSessionSnapshots[activeWorkspaceKey] ?? [])];
+    workspaceSessionSnapshots[activeWorkspaceKey] = tabs;
+    const activeTabId = parsed.activeTabId && tabs.some((entry) => entry.id === parsed.activeTabId)
+      ? parsed.activeTabId
+      : null;
     return {
       tabs,
       activeTabId,
       bottomLayout: parsed.bottomLayout === 'sidebar' ? 'sidebar' : 'tabs',
       isSidebarCollapsed: !!parsed.isSidebarCollapsed,
       homeSection: parsed.homeSection === 'search' ? 'search' : 'overview',
-      showAllTabs: !!parsed.showAllTabs,
+      showAllTabs: false,
       topPct: typeof parsed.topPct === 'number' ? parsed.topPct : 40,
       searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : '',
-      lastActiveTabByProject:
-        parsed.lastActiveTabByProject && typeof parsed.lastActiveTabByProject === 'object'
-          ? parsed.lastActiveTabByProject
-          : {},
-      includeGlobalWorkByProject:
-        parsed.includeGlobalWorkByProject && typeof parsed.includeGlobalWorkByProject === 'object'
-          ? parsed.includeGlobalWorkByProject
-          : {},
-      activeWorkspaceKeyByProject:
-        parsed.activeWorkspaceKeyByProject && typeof parsed.activeWorkspaceKeyByProject === 'object'
-          ? parsed.activeWorkspaceKeyByProject
-          : {},
       workspaceSessionSnapshots,
       savedWorkspaceSessions,
       recentWorkspaceDestinationKeys: Array.isArray(parsed.recentWorkspaceDestinationKeys)
         ? Array.from(new Set(parsed.recentWorkspaceDestinationKeys.filter((key): key is string => typeof key === 'string'))).slice(0, 5)
         : [],
+      activeWorkspaceKey,
+      lastActiveEntryByWorkspace:
+        parsed.lastActiveEntryByWorkspace && typeof parsed.lastActiveEntryByWorkspace === 'object'
+          ? parsed.lastActiveEntryByWorkspace
+          : {},
     };
   } catch {
     return GLOBAL_TAB_STATE_DEFAULT;
@@ -278,7 +339,18 @@ export function loadGlobalTabState(): GlobalTabState {
 }
 
 export function saveGlobalTabState(state: GlobalTabState): void {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
+  try {
+    const activeWorkspaceKey = state.activeWorkspaceKey ?? GLOBAL_WORKSPACE_KEY;
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      ...state,
+      activeWorkspaceKey,
+      workspaceSessionSnapshots: {
+        ...(state.workspaceSessionSnapshots ?? {}),
+        [activeWorkspaceKey]: state.tabs,
+      },
+    }));
+    localStorage.removeItem(LEGACY_LS_KEY);
+  } catch {}
 }
 
 function getTabLabel(tab: GlobalTab, items: Item[]): string {
@@ -374,11 +446,8 @@ interface GlobalTabSystemProps {
   onSwitchScopeForItem?: (item: Item) => void;
   /** Optional fixed, non-closeable Home workspace rendered when activeTabId is null. */
   homeContent?: React.ReactNode;
-  /** Home activity + scope navigation, kept above working tabs and their content. */
+  /** Home activity + scope navigation, kept above workspace entries and their content. */
   workspaceHeader?: React.ReactNode;
-  /** Home/project focus mode: replaces the generic Open work label with an explicit return action. */
-  focusContextLabel?: string;
-  onExitFocus?: () => void;
   /** Show only tabs belonging to the active project workspace unless All is requested. */
   strictProjectScope?: boolean;
   /** In strict project Focus, also reveal entries from the global workspace. */
@@ -404,21 +473,35 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   onSwitchScopeForItem,
   homeContent,
   workspaceHeader,
-  focusContextLabel,
-  onExitFocus,
   strictProjectScope = false,
   includeGlobalWork = false,
 }) => {
   const { tabs, activeTabId, bottomLayout, isSidebarCollapsed, showAllTabs = false } = tabState;
+  const activeWorkspaceKey = tabState.activeWorkspaceKey ?? GLOBAL_WORKSPACE_KEY;
+  const activeWorkspaceLabel = (() => {
+    if (activeWorkspaceKey === GLOBAL_WORKSPACE_KEY) return 'Global workspace';
+    if (activeWorkspaceKey.startsWith('workspace:project:') && activeWorkspaceKey.endsWith(':general')) {
+      const projectId = activeWorkspaceKey.slice('workspace:project:'.length, -':general'.length);
+      const projectName = projects.find((project) => project.id === projectId)?.name ?? 'Project';
+      return formatGeneralWorkspaceName(projectName);
+    }
+    if (activeWorkspaceKey.startsWith('workspace:named:')) {
+      const sessionId = activeWorkspaceKey.slice('workspace:named:'.length);
+      const session = tabState.savedWorkspaceSessions?.find((candidate) => candidate.id === sessionId);
+      const projectName = projects.find((project) => project.id === session?.projectId)?.name;
+      return session ? (projectName ? formatProjectWorkspaceName(projectName, session.name) : session.name) : 'Named workspace';
+    }
+    return 'Active workspace';
+  })();
   const set = (patch: Partial<GlobalTabState>) => {
     const next = { ...tabState, ...patch };
     if (typeof patch.activeTabId === 'string') {
       const focusedTab = next.tabs.find((tab) => tab.id === patch.activeTabId);
       if (focusedTab) {
-        const projectId = getGlobalTabProjectId(focusedTab);
-        next.lastActiveTabByProject = {
-          ...(tabState.lastActiveTabByProject ?? {}),
-          [projectId]: focusedTab.id,
+        const workspaceKey = next.activeWorkspaceKey ?? GLOBAL_WORKSPACE_KEY;
+        next.lastActiveEntryByWorkspace = {
+          ...(tabState.lastActiveEntryByWorkspace ?? {}),
+          [workspaceKey]: focusedTab.id,
         };
       }
     }
@@ -460,17 +543,14 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   }, [bottomLayout]);
 
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
-  const isTabVisible = (tab: GlobalTab, showAll = showAllTabs) =>
-    strictProjectScope && scopeProjectId !== 'all'
-      ? showAll ||
-        getGlobalTabProjectId(tab) === scopeProjectId ||
-        (includeGlobalWork && getGlobalTabProjectId(tab) === 'all')
-      : isGlobalTabVisible(tab, scopeProjectId, showAll);
+  // Workspace membership, not project scope, owns visibility. The active
+  // workspace is already materialized in `tabs`, so entries must never be
+  // silently hidden when page/project navigation changes.
+  const isTabVisible = (_tab: GlobalTab, _showAll = showAllTabs) => true;
   const scopedTabs = useMemo(
     () => tabs.filter((tab) => isTabVisible(tab, showAllTabs)),
     [tabs, scopeProjectId, showAllTabs, strictProjectScope, includeGlobalWork]
   );
-  const hiddenScopeTabCount = tabs.length - tabs.filter((tab) => isTabVisible(tab, false)).length;
   const prevActiveTabIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -548,7 +628,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
       ? items.find((i) => i.id === activeTab.itemId) ?? resolvedItem
       : null;
 
-  const closeTab = (id: string) => {
+  const removeEntry = (id: string) => {
     const next = tabs.filter(t => t.id !== id);
     const nextVisible = next.filter((tab) => isTabVisible(tab, showAllTabs));
     const nextActiveId = activeTabId === id ? (nextVisible[nextVisible.length - 1]?.id ?? null) : activeTabId;
@@ -593,7 +673,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   }, [activeTabId, bottomLayout]);
 
   React.useEffect(() => {
-    // Defer until after layout — tab strip may mount the same frame tabs are added.
+    // Defer until after layout because the workspace-entry row may mount in the same frame.
     let innerId = 0;
     const outerId = window.requestAnimationFrame(() => {
       innerId = window.requestAnimationFrame(() => {
@@ -719,18 +799,6 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     else await favoriteItem(activeItemObj.id);
   };
 
-  const toggleTabGlobalPin = (tab: GlobalTab) => {
-    if (getGlobalTabProjectId(tab) === 'all') return;
-    const pinnedGlobally = !tab.pinnedGlobally;
-    set({
-      tabs: tabs.map((candidate) =>
-        candidate.id === tab.id
-          ? { ...candidate, pinnedGlobally: pinnedGlobally || undefined }
-          : candidate
-      ),
-    });
-  };
-
   const tabOrigin = (tab: GlobalTab | null = activeTab) => {
     const projectId = tab
       ? tab.scopeProjectId
@@ -786,7 +854,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     const projectId = getGlobalTabProjectId(tab);
     const projectName =
       projectId === 'all' ? 'Global' : projects.find((project) => project.id === projectId)?.name ?? 'Project';
-    const showScopeLabel = showAllTabs || forceLabel;
+    const showScopeLabel = forceLabel;
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
         {showScopeLabel && (
@@ -807,32 +875,6 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
           >
             {projectName}
           </span>
-        )}
-        {projectId !== 'all' && (
-          <button
-            type="button"
-            aria-label={tab.pinnedGlobally ? `Unpin ${projectName} tab from all projects` : `Pin ${projectName} tab globally`}
-            title={tab.pinnedGlobally ? 'Visible everywhere — return to project only' : 'Make visible in every project'}
-            onClick={(event) => {
-              event.stopPropagation();
-              toggleTabGlobalPin(tab);
-            }}
-            style={{
-              width: 18,
-              height: 18,
-              padding: 0,
-              border: 'none',
-              borderRadius: 4,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: tab.pinnedGlobally ? 'var(--accent-weak)' : 'transparent',
-              color: tab.pinnedGlobally ? 'var(--accent)' : 'var(--text-faint)',
-              cursor: 'pointer',
-            }}
-          >
-            <Globe2 size={compact ? 10 : 11} />
-          </button>
         )}
       </span>
     );
@@ -873,27 +915,14 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
         <div className="ui-workspace-tabs__sidebar" data-collapsed={isSidebarCollapsed ? 'true' : 'false'} style={{ width: isSidebarCollapsed ? 48 : 220 }}>
           <div className="ui-workspace-tabs__sidebar-header" data-collapsed={isSidebarCollapsed ? 'true' : 'false'}>
             {!isSidebarCollapsed && (
-              onExitFocus ? (
-                <button
-                  type="button"
-                  data-focus-entry
-                  onClick={onExitFocus}
-                  title={`Return to ${focusContextLabel || 'Home'}`}
-                  style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0, border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 650, cursor: 'pointer' }}
-                >
-                  <ArrowLeft size={14} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{focusContextLabel || 'Home'}</span>
-                </button>
-              ) : (
-                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-muted)' }}>Open work</span>
-              )
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-muted)' }}>{activeWorkspaceLabel}</span>
             )}
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => set({ isSidebarCollapsed: !isSidebarCollapsed })} title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 4 }}>
                 {isSidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
               </button>
               {!isSidebarCollapsed && (
-                <button onClick={() => set({ bottomLayout: 'tabs' })} title="Switch to Top Tabs Layout" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 4 }}>
+                <button onClick={() => set({ bottomLayout: 'tabs' })} title="Show workspace entries in a top row" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 4 }}>
                   <Layout size={16} />
                 </button>
               )}
@@ -914,9 +943,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   data-active={isActive ? 'true' : 'false'}
                   data-collapsed={isSidebarCollapsed ? 'true' : 'false'}
                   data-tab-id={tab.id}
-                  role="tab"
+                  role="button"
                   tabIndex={0}
-                  aria-selected={isActive}
+                  aria-pressed={isActive}
                   onClick={() => set({ activeTabId: tab.id })}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
@@ -963,10 +992,10 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                       <button
                         type="button"
                         className="ui-workspace-tabs__close"
-                        onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
+                        onClick={e => { e.stopPropagation(); removeEntry(tab.id); }}
                         onKeyDown={(event) => event.stopPropagation()}
-                        aria-label={`Close ${accessibleLabel}`}
-                        title={`Close ${accessibleLabel}`}
+                        aria-label={`Remove ${accessibleLabel} from ${activeWorkspaceLabel}`}
+                        title={`Remove from ${activeWorkspaceLabel}`}
                       >
                         <X size={12} />
                       </button>
@@ -978,73 +1007,39 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
           </div>
           {!isSidebarCollapsed && (
             <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
-              {(hiddenScopeTabCount > 0 || showAllTabs) && (
-                <button
-                  type="button"
-                  onClick={() => set({ showAllTabs: !showAllTabs, activeTabId: showAllTabs && activeTab && !isTabVisible(activeTab, false) ? null : activeTabId })}
-                  style={{ height: 32, border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
-                >
-                  {showAllTabs ? 'Show current project' : `Show all · ${hiddenScopeTabCount} hidden`}
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => setIsTabMenuOpen(!isTabMenuOpen)}
                 style={{ height: 32, border: 'none', background: isTabMenuOpen ? 'var(--bg-active)' : 'transparent', color: isTabMenuOpen ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
               >
-                All open · {tabs.length}
+                All entries · {tabs.length}
               </button>
             </div>
           )}
           {isSidebarCollapsed && (
              <div style={{ padding: '8px 0', display: 'flex', justifyContent: 'center', borderTop: '1px solid var(--border)' }}>
-               <button onClick={() => set({ bottomLayout: 'tabs' })} title="Switch to Top Tabs Layout" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, borderRadius: 4 }}><Layout size={16} /></button>
+               <button onClick={() => set({ bottomLayout: 'tabs' })} title="Show workspace entries in a top row" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, borderRadius: 4 }}><Layout size={16} /></button>
              </div>
           )}
         </div>
       )}
 
-      {/* --- TOP TABS LAYOUT --- */}
+      {/* --- TOP WORKSPACE ENTRY ROW --- */}
       {bottomLayout === 'tabs' && (
         <div ref={tabStripContainerRef} className="ui-workspace-tabs__strip">
           <div className="ui-workspace-tabs__strip-label">
-            {onExitFocus ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => set({ bottomLayout: 'sidebar' })}
-                  title="Switch to sidebar tabs"
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-faint)', cursor: 'pointer', padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Sidebar size={13} />
-                </button>
-                <button
-                  type="button"
-                  data-focus-entry
-                  onClick={onExitFocus}
-                  title={`Return to ${focusContextLabel || 'Home'}`}
-                  style={{ minWidth: 0, maxWidth: 150, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 2px', border: 'none', background: 'transparent', color: 'var(--text)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' }}
-                >
-                  <ArrowLeft size={14} style={{ flexShrink: 0 }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{focusContextLabel || 'Home'}</span>
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => set({ bottomLayout: 'sidebar' })}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  title="Switch to Sidebar Layout"
-                >
-                  <Sidebar size={14} />
-                </button>
-                <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Open work</span>
-              </>
-            )}
+            <button
+              onClick={() => set({ bottomLayout: 'sidebar' })}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              title="Show workspace entries in a side list"
+            >
+              <Sidebar size={14} />
+            </button>
+            <span style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{activeWorkspaceLabel}</span>
           </div>
-          <div ref={tabStripRef} className="ui-workspace-tabs__tab-list hide-scrollbar" role="tablist" aria-label="Open work">
+          <div ref={tabStripRef} className="ui-workspace-tabs__tab-list hide-scrollbar" role="group" aria-label="Active workspace entries">
             {visibleTabs.map(tab => {
               const isActive = tab.id === activeTabId;
               const label = getTabLabel(tab, items);
@@ -1055,9 +1050,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   className="ui-workspace-tabs__tab"
                   data-active={isActive ? 'true' : 'false'}
                   data-tab-id={tab.id}
-                  role="tab"
+                  role="button"
                   tabIndex={0}
-                  aria-selected={isActive}
+                  aria-pressed={isActive}
                   onClick={() => set({ activeTabId: tab.id })}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
@@ -1098,10 +1093,10 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   <button
                     type="button"
                     className="ui-workspace-tabs__close"
-                    onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
+                    onClick={e => { e.stopPropagation(); removeEntry(tab.id); }}
                     onKeyDown={(event) => event.stopPropagation()}
-                    aria-label={`Close ${accessibleLabel}`}
-                    title={`Close ${accessibleLabel}`}
+                    aria-label={`Remove ${accessibleLabel} from ${activeWorkspaceLabel}`}
+                    title={`Remove from ${activeWorkspaceLabel}`}
                   >
                     <X size={11} />
                   </button>
@@ -1109,29 +1104,16 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
               );
             })}
           </div>
-          {(hiddenScopeTabCount > 0 || showAllTabs) && (
-            <div style={{ display: 'flex', alignItems: 'center', padding: '0 6px', borderLeft: '1px solid var(--border)', flexShrink: 0 }}>
-              <button
-                type="button"
-                onClick={() => set({ showAllTabs: !showAllTabs, activeTabId: showAllTabs && activeTab && !isTabVisible(activeTab, false) ? null : activeTabId })}
-                title={showAllTabs ? 'Hide tabs from other projects' : `Show ${hiddenScopeTabCount} tabs from other projects`}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: showAllTabs ? 'var(--bg-active)' : 'transparent', color: showAllTabs ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
-                {showAllTabs ? <EyeOff size={12} /> : <Eye size={12} />}
-                {showAllTabs ? 'Current' : `All · ${tabs.length}`}
-              </button>
-            </div>
-          )}
           <div style={{ display: 'flex', alignItems: 'center', padding: '0 6px', borderLeft: '1px solid var(--border)', flexShrink: 0 }}>
             <button
               type="button"
               onClick={() => setIsTabMenuOpen(!isTabMenuOpen)}
-              title={`Show all ${tabs.length} open tabs`}
+              title={`Show all ${tabs.length} workspace entries`}
               aria-expanded={isTabMenuOpen}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 7px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: isTabMenuOpen ? 'var(--bg-active)' : 'transparent', color: isTabMenuOpen ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', cursor: 'pointer', whiteSpace: 'nowrap' }}
             >
               <List size={12} />
-              All open · {tabs.length}
+              All entries · {tabs.length}
             </button>
           </div>
         </div>
@@ -1142,7 +1124,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
           <div onClick={() => setIsTabMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99, pointerEvents: draggedTabId ? 'none' : 'auto' }} />
           <div style={{ position: 'absolute', top: bottomLayout === 'tabs' ? 40 : 8, right: 8, background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: '6px 0', width: 320, maxWidth: 'calc(100% - 16px)', zIndex: 'var(--layer-dropdown)', maxHeight: '60%', overflowY: 'auto' }} className="scrollbar">
             <div style={{ padding: '6px 12px 8px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>
-              All open work · {tabs.length}
+              Active workspace · {tabs.length}
             </div>
             {tabs.map(tab => {
               const isActive = tab.id === activeTabId;
@@ -1164,7 +1146,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                 >
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{label}</span>
                   {renderTabScope(tab, true, true)}
-                  <X size={12} style={{ marginLeft: 2, color: 'var(--text-muted)', flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); closeTab(tab.id); if(tabs.length === 1) setIsTabMenuOpen(false); }} />
+                  <button type="button" className="ui-workspace-tabs__close" aria-label={`Remove ${label} from ${activeWorkspaceLabel}`} title={`Remove from ${activeWorkspaceLabel}`} onClick={(e) => { e.stopPropagation(); removeEntry(tab.id); if(tabs.length === 1) setIsTabMenuOpen(false); }}><X size={12} /></button>
                 </div>
               );
             })}
@@ -1172,7 +1154,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
         </>
       )}
 
-      {/* --- TAB CONTENT --- */}
+      {/* --- ACTIVE WORKSPACE ENTRY CONTENT --- */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
         {statusBar}
         <TabPaneFrame>

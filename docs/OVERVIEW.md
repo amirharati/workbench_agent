@@ -72,7 +72,7 @@ Chrome MV3 extension
 **Dual UI**
 
 - **Side panel**: bookmark-centric save flow (URL/title prefill from active tab; optional notes; project/collection pickers with inline create); “already saved” list with edit / remove copy / **add new copy** (placement-aware notes); duplicate prevention for same URL in the same collection; **Open Dashboard** and **Set Homebase as Home** (opens Chrome settings + copies extension dashboard URL). No backup UI in the panel (full dashboard only). Mutations sync with the dashboard via **`BroadcastChannel`** and focus/visibility refresh patterns.
-- **Dashboard**: IDE-style **three-region shell** — left navigation (**project dropdown**, collections for selected project, **Content** vs **Tools**); middle area is either **list pane + item tabs** (Bookmarks, Notes, Workspaces — tabs persist when scope changes; **drag-and-drop reorder** in the tab strip; aggregate **Open as tab** / **Common tab** with list or grid) or **full-page** tool views (**Tab Commander**, Settings); persistent **right assistant** panel. Detail in [`UI_IDE_REDESIGN.md`](UI_IDE_REDESIGN.md).
+- **Dashboard**: IDE-style **three-region shell** — left navigation (**project dropdown**, collections for selected project, **Content** vs **Tools**); a shared active Homebase workspace in the middle; and a persistent **right assistant** panel. Homebase has one Global workspace, one automatic General workspace per project, and project-owned named workspaces. Internal work is presented as workspace entries, not tabs. Browser-window snapshots and live Chrome tabs remain separate. See [`PROJECT_SESSIONS_AND_WORKSPACES.md`](PROJECT_SESSIONS_AND_WORKSPACES.md).
 
 **Stores (conceptual)** — see `src/lib/db.ts` for truth:
 
@@ -87,11 +87,9 @@ Chrome MV3 extension
 - Projects + collections: hierarchy, default project, virtual “all projects” view.
 - Top-level CRUD: create project, create collection, and create bookmark/note from dashboard modals (not only from project workspace).
 - Notes/Bookmarks separation: both use the same `items` store, but UI classification is now exclusive — bookmarks require URL, notes are URL-empty items.
-- Workspaces: save/restore session snapshots; optional `projectId` on workspace.
-- Workspace save flow: Tab Commander save dialog supports selecting a project (or Detached) for new workspace snapshots.
-- **Dashboard shell (IDE iteration 1)**: Left nav uses a **project scope dropdown** and collections for the selected project; Bookmarks, Notes, and Workspaces use a **split middle** (scoped list + tabbed detail for open items/workspaces; **drag-and-drop** tab reorder); Tab Commander is **full-page** with styling aligned to shared theme tokens; bookmark/note tabs support **in-place editing**; deletes use **placement-aware** confirmation (remove from collection vs delete everywhere) where applicable.
-- **Aggregate browsing**: “Open as tab” for filtered bookmark/note lists uses **scoped titles** (project/collection context), optional **list or grid** layout, and an optional **Common tab** that stacks multiple scopes as labeled sections.
-- **Workspaces**: Saving into an **existing** workspace **appends** new links with **URL deduplication** (`normalizeBookmarkUrl`), rather than replacing the snapshot.
+- Homebase workspaces: one shared Global workspace, one automatic General workspace for every project, project-owned named workspaces, and one explicit app-level active workspace. Project/page navigation does not silently switch it.
+- Browser snapshots: Tab Commander can capture Chrome windows and tabs with optional project metadata; snapshots are separate from Homebase workspaces and can explicitly seed one.
+- **Dashboard shell (workspace-model checkpoint)**: Left navigation remains project/collection scoped, while open work belongs to the active Homebase workspace. Entry rows/lists use explicit Add, Open, Move, Copy, and Remove workspace actions; no internal tab UI remains on the active path.
 - **Data model (v4)**: Items merge on **normalized URL**; **`placements`** hold per-collection metadata (notes/tags); removing from one collection vs deleting the item is explicit in UI—see [`DATA_MODEL_DEDUP.md`](DATA_MODEL_DEDUP.md).
 - Data safety: export/import, backup verification, debounced live backup to `latest.json`, manual named backups, envelope metadata (`revision` + `deviceId`), and startup conflict pause/resolution flow.
 - AI infra baseline: pluggable client layer (`src/lib/ai`) with OpenRouter-compatible chat adapter plus optional Chrome native/on-device provider path, persisted AI Settings (provider/model/base URL/API key), timeout + error handling, strict model-match toggle, and Settings test prompt with provider-returned model display.

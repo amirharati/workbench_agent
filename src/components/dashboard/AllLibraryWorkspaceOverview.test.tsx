@@ -38,8 +38,6 @@ function render(selectedView: string, selectedTab: GlobalTab | null = null, sele
       collections={[]}
       onSelectTab={vi.fn()}
       onRemoveGlobalTab={vi.fn()}
-      onFocusTab={vi.fn()}
-      onFocusGlobal={vi.fn()}
       onViewSearch={vi.fn()}
       onUpdateItem={vi.fn()}
     />
@@ -61,8 +59,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         collections={[]}
         onSelectTab={vi.fn()}
         onRemoveGlobalTab={vi.fn()}
-        onFocusTab={vi.fn()}
-        onFocusGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );
@@ -79,7 +75,7 @@ describe('AllLibraryWorkspaceOverview', () => {
 
     expect(markup).toContain('Saved search · All Library');
     expect(markup).toContain('View results');
-    expect(markup).toContain('Focus');
+    expect(markup).not.toContain('Open in workspace');
     expect(markup).not.toContain('overflow-x:auto');
     expect(markup).toContain('data-all-library-working-canvas="true"');
     expect(markup).toContain('ui-adaptive-browser');
@@ -124,8 +120,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         collections={[]}
         onSelectTab={vi.fn()}
         onRemoveGlobalTab={vi.fn()}
-        onFocusTab={vi.fn()}
-        onFocusGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );
@@ -173,8 +167,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         initialProjectQuery="alpha"
         onSelectTab={vi.fn()}
         onRemoveGlobalTab={vi.fn()}
-        onFocusTab={vi.fn()}
-        onFocusGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );
@@ -201,8 +193,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         collections={[]}
         onSelectTab={vi.fn()}
         onRemoveGlobalTab={vi.fn()}
-        onFocusTab={vi.fn()}
-        onFocusGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );
@@ -229,8 +219,6 @@ describe('AllLibraryWorkspaceOverview', () => {
         collections={[]}
         onSelectTab={vi.fn()}
         onRemoveGlobalTab={vi.fn()}
-        onFocusTab={vi.fn()}
-        onFocusGlobal={vi.fn()}
         onViewSearch={vi.fn()}
       />
     );

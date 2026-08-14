@@ -92,18 +92,18 @@ describe('BookmarksLibraryView', () => {
     );
 
     expect(markup).toContain('aria-current="true"');
-    expect(markup).toContain('aria-label="Workspace for Python"');
+    expect(markup).toContain('Add to workspace…');
     expect(markup).toContain('data-detail-open="true"');
     expect(markup).toContain('ui-adaptive-detail-back');
     expect(markup).not.toContain('Select an item to inspect and edit it.');
   });
 
-  it('offers global, live project, and named workspace destinations', () => {
+  it('offers Global, project General, and named workspace destinations', () => {
     const destinations = buildBookmarkWorkspaceDestinations([project], [{ id: 'saved-a', name: 'Writing', projectId: project.id, createdAt: 1, updatedAt: 2 }]);
     expect(destinations.map((destination) => destination.label)).toEqual([
       'All Library · Global workspace',
-      'Research · Live session',
-      'Research · Writing',
+      'Research — General',
+      'Research — Writing',
     ]);
   });
 
@@ -112,18 +112,41 @@ describe('BookmarksLibraryView', () => {
     const global = addBookmarkToWorkspace(GLOBAL_TAB_STATE_DEFAULT, item, destinations[0]);
     const projectState = addBookmarkToWorkspace(global, item, destinations[1]);
 
-    expect(projectState.tabs).toEqual(expect.arrayContaining([
+    expect(projectState.tabs).toEqual([
       expect.objectContaining({ kind: 'item', itemId: item.id, id: 'item-item-a' }),
+    ]);
+    expect(projectState.workspaceSessionSnapshots?.['workspace:project:project-a:general']).toEqual([
       expect.objectContaining({ kind: 'item', itemId: item.id, id: 'item-item-a@project:project-a', scopeProjectId: project.id }),
-    ]));
+    ]);
   });
 
-  it('activates the chosen named workspace when focusing an item', () => {
+  it('activates the chosen named workspace when viewing an item', () => {
     const session = { id: 'saved-a', name: 'Writing', projectId: project.id, createdAt: 1, updatedAt: 2 };
     const destination = buildBookmarkWorkspaceDestinations([project], [session])[2];
-    const focused = addBookmarkToWorkspace(GLOBAL_TAB_STATE_DEFAULT, item, destination, { focus: true, items: [item] });
+    const viewed = addBookmarkToWorkspace(GLOBAL_TAB_STATE_DEFAULT, item, destination, { view: true, items: [item] });
 
-    expect(focused.activeWorkspaceKeyByProject?.[project.id]).toBe('homebase-workspace:saved-a');
-    expect(focused.activeTabId).toBe('item-item-a@project:project-a');
+    expect(viewed.activeWorkspaceKey).toBe('workspace:named:saved-a');
+    expect(viewed.activeTabId).toBe('item-item-a@project:project-a');
+  });
+
+  it('keeps the current entry open when only adding to another workspace', () => {
+    const destinations = buildBookmarkWorkspaceDestinations([project], []);
+    const state = {
+      ...GLOBAL_TAB_STATE_DEFAULT,
+      tabs: [{ kind: 'search' as const, id: 'current-search', query: 'current' }],
+      activeTabId: 'current-search',
+    };
+    const added = addBookmarkToWorkspace(state, item, destinations[1]);
+
+    expect(added.activeWorkspaceKey).toBe('workspace:global');
+    expect(added.activeTabId).toBe('current-search');
+  });
+
+  it('opens an item in the Global workspace after adding it', () => {
+    const destination = buildBookmarkWorkspaceDestinations([project], [])[0];
+    const opened = addBookmarkToWorkspace(GLOBAL_TAB_STATE_DEFAULT, item, destination, { view: true, items: [item] });
+
+    expect(opened.activeWorkspaceKey).toBe('workspace:global');
+    expect(opened.activeTabId).toBe('item-item-a');
   });
 });

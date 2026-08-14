@@ -30,6 +30,8 @@ import {
   type DashboardStartupProjection,
 } from '../../dashboardStartupProjection';
 import { cosineSimilarity } from '../../categorization/math';
+import { WorkerSimilarityIndex } from '../../search/similarityIndex';
+import type { AiItemSignal } from '../../categorization/types';
 import {
   acknowledgePipelineCancellation,
   claimNextPipelineTask,
@@ -74,6 +76,11 @@ let pipelineBadgeEntriesCache: {
   coveredIds: Set<string>;
   entries: Map<string, unknown>;
 } | null = null;
+let similarityVectorIndex = new WorkerSimilarityIndex();
+let similarityWarmPromise: Promise<void> | null = null;
+let similarityWarmTimer: ReturnType<typeof setTimeout> | null = null;
+let similarityCacheGeneration = 0;
+let similarityDataGeneration = 0;
 
 /** In-memory priority queues — high drains before low; work is never cancelled. */
 const highRpcQueue: RpcRequest[] = [];
@@ -112,6 +119,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'getSignalsByItemIds',
   'getEnrichmentsByItemIds',
   'rankSearchEmbeddings',
+  'findSimilarVectorScores',
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
   'getPipelineBadgeEntries',
@@ -284,6 +292,216 @@ function liveItemCountSync(): number {
   }
 }
 
+function noteSimilarityDataMutation(): void {
+  similarityDataGeneration++;
+  // If a cold build is invalidated, retry only after writes have gone quiet.
+  // A ready index is updated in place by the mutation handlers below.
+  if (!similarityVectorIndex.ready && !similarityWarmPromise) {
+    scheduleSimilarityVectorWarm(750, true);
+  }
+}
+
+function applySignalToSimilarityIndex(signal: AiItemSignal): void {
+  noteSimilarityDataMutation();
+  if (similarityVectorIndex.ready) {
+    if (signal.embedding?.length) {
+      similarityVectorIndex.upsert({
+        itemId: signal.itemId,
+        embeddingModel: signal.embeddingModel,
+        embedding: signal.embedding,
+      });
+    } else {
+      similarityVectorIndex.remove(signal.itemId);
+    }
+  }
+}
+
+function deleteSignalFromSimilarityIndex(itemId: string): void {
+  noteSimilarityDataMutation();
+  similarityVectorIndex.remove(itemId);
+}
+
+async function refreshSimilarityVectorForItem(itemId: string): Promise<void> {
+  if (!itemId) return;
+  noteSimilarityDataMutation();
+  if (!similarityVectorIndex.ready) return;
+  const store = await getIdbCompatStore();
+  const item = store.getItem(itemId);
+  const signal = item?.deletedAt == null ? store.getSignal(itemId) : undefined;
+  if (signal?.embedding?.length) {
+    similarityVectorIndex.upsert({
+      itemId,
+      embeddingModel: signal.embeddingModel,
+      embedding: signal.embedding,
+    });
+  } else {
+    similarityVectorIndex.remove(itemId);
+  }
+}
+
+function yieldWorkerTurn(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function startSimilarityVectorWarm(): Promise<void> {
+  if (similarityVectorIndex.ready) return Promise.resolve();
+  if (!similarityWarmPromise) {
+    const generation = similarityCacheGeneration;
+    const dataGeneration = similarityDataGeneration;
+    const pending = (async () => {
+      const store = await getIdbCompatStore();
+      // A restore/import may replace the entire store while an idle warm is
+      // waiting for the connection. Never publish a cache from that old epoch.
+      if (generation !== similarityCacheGeneration) return;
+      if (similarityVectorIndex.ready) return;
+
+      const candidate = new WorkerSimilarityIndex();
+      candidate.load([], store.getSignalEmbeddingCapacityHints());
+      const rows = store.iterateSignalEmbeddings(256);
+      while (true) {
+        for (let offset = 0; offset < 64; offset++) {
+          const next = rows.next();
+          if (next.done) {
+            if (
+              generation === similarityCacheGeneration &&
+              dataGeneration === similarityDataGeneration
+            ) {
+              similarityVectorIndex = candidate;
+            }
+            return;
+          }
+          candidate.upsert(next.value);
+        }
+        if (
+          generation !== similarityCacheGeneration ||
+          dataGeneration !== similarityDataGeneration
+        ) {
+          return;
+        }
+        // This warm is deliberately cooperative: high-priority Inspector/save
+        // RPCs can run between chunks instead of waiting for the whole matrix.
+        await yieldWorkerTurn();
+      }
+    })();
+    similarityWarmPromise = pending;
+    void pending.then(
+      () => {
+        if (similarityWarmPromise === pending) {
+          similarityWarmPromise = null;
+          if (!similarityVectorIndex.ready && generation === similarityCacheGeneration) {
+            scheduleSimilarityVectorWarm(750);
+          }
+        }
+      },
+      () => {
+        if (similarityWarmPromise === pending) similarityWarmPromise = null;
+      }
+    );
+  }
+  return similarityWarmPromise ?? Promise.resolve();
+}
+
+/**
+ * Warm outside the serialized RPC pump, after the essential dashboard snapshot
+ * has already been returned. Each chunk yields to the worker event loop, so a
+ * save or Inspector RPC can run before warming continues.
+ */
+function scheduleSimilarityVectorWarm(delayMs = 0, restartTimer = false): void {
+  if (similarityVectorIndex.ready || similarityWarmPromise) return;
+  if (similarityWarmTimer) {
+    if (!restartTimer) return;
+    clearTimeout(similarityWarmTimer);
+  }
+  similarityWarmTimer = setTimeout(() => {
+    similarityWarmTimer = null;
+    void startSimilarityVectorWarm().catch((error) => {
+      console.warn('[DB worker] Similarity index warm-up failed:', error);
+    });
+  }, Math.max(0, delayMs));
+}
+
+async function ensureSimilarityVectorIndex(): Promise<void> {
+  if (similarityVectorIndex.ready) return;
+  await startSimilarityVectorWarm();
+  // A concurrent signal write can invalidate a cold build. Retry once against
+  // the now-current SQLite rows; steady-state writes update a ready index in place.
+  if (!similarityVectorIndex.ready) await startSimilarityVectorWarm();
+}
+
+function resetSimilarityCaches(): void {
+  similarityCacheGeneration++;
+  similarityDataGeneration++;
+  similarityVectorIndex.clear();
+  similarityWarmPromise = null;
+  if (similarityWarmTimer) {
+    clearTimeout(similarityWarmTimer);
+    similarityWarmTimer = null;
+  }
+  scheduleSimilarityVectorWarm(750);
+}
+
+async function updateSimilarityCachesAfterStoreMutation(
+  method: string,
+  args: unknown[]
+): Promise<void> {
+  if (method === 'clearAllTables') {
+    resetSimilarityCaches();
+    return;
+  }
+
+  if (method === 'put' || method === 'delete') {
+    const storeName = typeof args[0] === 'string' ? args[0] : '';
+    const value = args[1];
+    if (storeName === 'ai_item_signals') {
+      if (method === 'put' && value && typeof value === 'object') {
+        applySignalToSimilarityIndex(value as AiItemSignal);
+      } else if (method === 'delete' && typeof value === 'string') {
+        deleteSignalFromSimilarityIndex(value);
+      }
+      return;
+    }
+    if (storeName === 'items') {
+      const itemId = method === 'put'
+        ? String((value as { id?: string } | undefined)?.id ?? '')
+        : String(value ?? '');
+      await refreshSimilarityVectorForItem(itemId);
+    }
+    return;
+  }
+
+  if (method === 'putSignal') {
+    const signal = args[0] as AiItemSignal | undefined;
+    if (signal) applySignalToSimilarityIndex(signal);
+    return;
+  }
+  if (method === 'deleteSignal') {
+    deleteSignalFromSimilarityIndex(String(args[0] ?? ''));
+    return;
+  }
+  if (method === 'putItem') {
+    await refreshSimilarityVectorForItem(String((args[0] as { id?: string } | undefined)?.id ?? ''));
+  } else if (method === 'deleteItem') {
+    similarityVectorIndex.remove(String(args[0] ?? ''));
+  }
+}
+
+async function updateSimilarityCachesAfterBatch(ops: DbMutation[]): Promise<void> {
+  const relevant = ops.filter((op) =>
+    op.storeName === 'items' || op.storeName === 'ai_item_signals'
+  );
+  if (!relevant.length) return;
+  if (relevant.length > 128) {
+    resetSimilarityCaches();
+    return;
+  }
+  for (const op of relevant) {
+    await updateSimilarityCachesAfterStoreMutation(op.kind, [
+      op.storeName,
+      op.kind === 'put' ? op.value : op.key,
+    ]);
+  }
+}
+
 async function mirrorAfterImport(context: string): Promise<{ ok: boolean; error?: string }> {
   const mirror = await mirrorNow(true);
   if (!mirror.ok) {
@@ -316,6 +534,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       await revisionTracker.load();
       const revision = revisionTracker.getLocalRevisionSync();
       if (dashboardStartupProjectionCache?.revision === revision) {
+        scheduleSimilarityVectorWarm();
         return dashboardStartupProjectionCache;
       }
       const store = await getIdbCompatStore();
@@ -326,6 +545,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         workspaces: store.getAllWorkspaces(),
         items: store.getDashboardStartupItems(),
       });
+      scheduleSimilarityVectorWarm();
       return dashboardStartupProjectionCache;
     }
     case 'getPipelineBadgeEntries': {
@@ -341,8 +561,15 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       }
       const missingIds = ids.filter((id) => !pipelineBadgeEntriesCache!.coveredIds.has(id));
       if (missingIds.length) {
-        const { loadPipelineBadgeMap } = await import('../../pipeline/itemPipelineContext');
-        const loaded = await loadPipelineBadgeMap(missingIds);
+        const store = await getIdbCompatStore();
+        const { buildPipelineBadgeMap } = await import('../../pipeline/itemPipelineContext');
+        const loaded = buildPipelineBadgeMap({
+          items: store.getItemsForIds(missingIds),
+          enrichments: store.getEnrichmentForItemIds(missingIds),
+          signals: store.getSignalMetadataForItemIds(missingIds),
+          links: store.getLinksForItemIds(missingIds),
+          categories: store.getAllCategories(),
+        });
         for (const id of missingIds) pipelineBadgeEntriesCache.coveredIds.add(id);
         for (const [id, badge] of loaded) pipelineBadgeEntriesCache.entries.set(id, badge);
       }
@@ -458,6 +685,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         resetStoreSingletons();
         await importFolderBytesIntoOpfs(payload);
         await reloadWorkerStoreAfterImport();
+        resetSimilarityCaches();
         return { imported: true, mirrorOk: true, mirrorSkipped: true, mode: 'load' };
       }
       // Live has data — merge instead of blind replace.
@@ -467,6 +695,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const result = await mergeFolderBytesIntoLiveStore(payload, liveStore);
       if (result.merged) {
         revisionTracker.recordSqliteMutation();
+        resetSimilarityCaches();
       }
       // Heal folder when OPFS is ahead (Finder replace / failed prior mirror).
       if (result.merged || result.folderOutOfDate) {
@@ -492,6 +721,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       resetStoreSingletons();
       await importFolderBytesIntoOpfs(payload);
       await reloadWorkerStoreAfterImport();
+      resetSimilarityCaches();
       return { imported: true, mirrorOk: true, mirrorSkipped: true, mode: 'replace' };
     }
     case 'mergeWithFolderBytes': {
@@ -504,6 +734,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         resetStoreSingletons();
         await importFolderBytesIntoOpfs(payload);
         await reloadWorkerStoreAfterImport();
+        resetSimilarityCaches();
         return { merged: true, mode: 'load', imported: true, mirrorOk: true, mirrorSkipped: true };
       }
       const { getSqliteStore } = await import('../sqlite/store');
@@ -520,6 +751,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       }
       if (result.merged) {
         revisionTracker.recordSqliteMutation();
+        resetSimilarityCaches();
       }
       if (result.merged || result.folderOutOfDate) {
         void mirrorNow(true);
@@ -605,6 +837,31 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       return {
         scores: Object.fromEntries(scored.slice(0, limit)),
         withEmbeddings,
+      };
+    }
+    case 'findSimilarVectorScores': {
+      const itemId = typeof args[0] === 'string' ? args[0] : '';
+      if (!itemId) throw new Error('findSimilarVectorScores requires itemId');
+      const requestedLimit = Number(args[1]);
+      const limit = Number.isFinite(requestedLimit)
+        ? Math.min(1000, Math.max(1, Math.floor(requestedLimit)))
+        : 200;
+      const allowedItemIds = Array.isArray(args[2])
+        ? new Set((args[2] as unknown[]).filter((value): value is string => typeof value === 'string'))
+        : undefined;
+      const prepareStartedAt = performance.now();
+      await ensureSimilarityVectorIndex();
+      const queryStartedAt = performance.now();
+      const result = similarityVectorIndex.query(itemId, {
+        limit,
+        allowedItemIds,
+      });
+      return {
+        anchorHasEmbedding: result.anchorHasEmbedding,
+        scores: Object.fromEntries(result.hits.map((hit) => [hit.itemId, hit.score])),
+        indexSize: similarityVectorIndex.size,
+        prepareMs: Math.round(queryStartedAt - prepareStartedAt),
+        queryMs: Math.round(performance.now() - queryStartedAt),
       };
     }
     case 'getPendingEmbeddingItemIds': {
@@ -732,6 +989,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
           else store.delete(op.storeName, op.key);
         }
       });
+      await updateSimilarityCachesAfterBatch(ops);
       invalidateHubScopeEntryCache();
       if (shouldScheduleFolderMirrorForBatch(ops)) {
         scheduleFolderMirror();
@@ -753,6 +1011,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         throw new Error(`Unknown store method: ${storeMethod}`);
       }
       const result = fn.apply(store, storeArgs);
+      await updateSimilarityCachesAfterStoreMutation(storeMethod, storeArgs);
       invalidateHubScopeEntryCache();
       if (shouldScheduleFolderMirrorForMethod(storeMethod)) {
         scheduleFolderMirror();
@@ -772,6 +1031,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       }
       const result = fn.apply(store, storeArgs);
       if (isMutatingStoreMethod(storeMethod)) {
+        await updateSimilarityCachesAfterStoreMutation(storeMethod, storeArgs);
         invalidateHubScopeEntryCache();
         if (shouldScheduleFolderMirrorForMethod(storeMethod)) {
           scheduleFolderMirror();
@@ -788,6 +1048,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         return { item: null, revision: revisionTracker.getLocalRevisionSync() };
       }
       invalidateHubScopeEntryCache();
+      await refreshSimilarityVectorForItem(item.id);
       scheduleFolderMirror();
       return {
         item,
@@ -799,6 +1060,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'importDB': {
       const imported = await dbCore.importDB(args[0] as string, args[1] as boolean);
       if (imported) {
+        resetSimilarityCaches();
         await mirrorAfterImport('importDB');
       }
       return imported;

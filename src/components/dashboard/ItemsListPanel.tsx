@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { Item } from '../../lib/db';
 import { Panel } from '../../styles/primitives';
 import { ItemContextMenu } from './ItemContextMenu';
-import { FolderOpen, List, Grid } from 'lucide-react';
+import { List, Grid } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
@@ -46,8 +46,6 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   onOpenInNewTab,
   onDuplicate,
   availableSpaces = { primary: true },
-  currentCollectionId,
-  onOpenCollectionInTab,
   layout = 'vertical',
   viewMode = 'list',
   onViewModeChange,
@@ -139,33 +137,6 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
           >
             {title}
           </span>
-          {currentCollectionId && currentCollectionId !== 'all' && onOpenCollectionInTab && (
-            <button
-              onClick={() => onOpenCollectionInTab(currentCollectionId)}
-              style={{
-                padding: '2px',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--text-muted)',
-                display: 'flex',
-                alignItems: 'center',
-                borderRadius: 3,
-                flexShrink: 0,
-              }}
-              title="Open collection in tab"
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--bg-hover)';
-                e.currentTarget.style.color = 'var(--text)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-muted)';
-              }}
-            >
-              <FolderOpen size={12} />
-            </button>
-          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0 }}>{displayItems.length}</span>

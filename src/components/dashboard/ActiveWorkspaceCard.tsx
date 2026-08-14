@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ExternalLink, FileText, Layers3, Link2, Maximize2, Search, X } from 'lucide-react';
+import { ExternalLink, FileText, Layers3, Link2, Search, X } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import type { GlobalTab } from './GlobalTabSystem';
 import { buildItemQuickFilterText, buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
@@ -20,11 +20,9 @@ export interface ActiveWorkspaceCardProps {
   emptyMessage: string;
   onSelectEntry: (tab: GlobalTab) => void;
   onRemoveEntry: (tabId: string) => void;
-  onFocus: (tabId?: string) => void;
   trailingControl?: React.ReactNode;
   getEntryScopeLabel?: (tab: GlobalTab) => string | undefined;
   allowRemove?: boolean;
-  showFocus?: boolean;
   /** Bounds compact placements such as Search; null lets the parent own scrolling. */
   maxListHeight?: number | null;
 }
@@ -38,11 +36,9 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
   emptyMessage,
   onSelectEntry,
   onRemoveEntry,
-  onFocus,
   trailingControl,
   getEntryScopeLabel,
   allowRemove = true,
-  showFocus = true,
   maxListHeight = 224,
 }) => {
   const [filterQuery, setFilterQuery] = useState('');
@@ -84,14 +80,6 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {trailingControl}
-        {showFocus && <button
-          type="button"
-          disabled={tabs.length === 0}
-          onClick={() => onFocus()}
-          style={{ minHeight: 27, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', color: 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 600, opacity: tabs.length === 0 ? 0.45 : 1, cursor: tabs.length === 0 ? 'default' : 'pointer' }}
-        >
-          <Maximize2 size={11} /> Focus
-        </button>}
       </div>
     </div>
 

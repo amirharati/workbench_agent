@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ExternalLink, FileText, Focus, Library, Link2, Pin, Plus, Search, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, Library, Link2, Pin, Plus, Search, Trash2, Upload } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { CategoryBrowseFilter, PipelineBrowseFilter } from '../../lib/pipeline';
 import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
@@ -18,15 +18,20 @@ import { libraryPageUiKey, loadPageUiState, savePageUiState } from '../../lib/sh
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
+  activateWorkspace,
   addEntryToProjectWorkspace,
   getActiveProjectWorkspaceKey,
   getHomebaseWorkspaceSessionKey,
   getProjectSessionWorkspaceKey,
+  workspaceTargetContainsItem,
 } from './workspaceSession';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { buildItemQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
+import { formatGeneralWorkspaceName, formatProjectWorkspaceName } from './workspaceLabels';
+import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
+import { buildWorkspaceDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from './workspaceDestinations';
 
-const GLOBAL_WORKSPACE_KEY = 'global-session:all';
+const GLOBAL_WORKSPACE_KEY = getProjectSessionWorkspaceKey('all');
 
 export interface BookmarkWorkspaceDestination {
   key: string;
@@ -103,7 +108,7 @@ export function buildBookmarkWorkspaceDestinations(
     ...projects.flatMap((project) => [
       {
         key: getProjectSessionWorkspaceKey(project.id),
-        label: `${project.name} · Live session`,
+        label: formatGeneralWorkspaceName(project.name),
         projectId: project.id,
       },
       ...sessions
@@ -111,7 +116,7 @@ export function buildBookmarkWorkspaceDestinations(
         .sort((left, right) => right.updatedAt - left.updatedAt)
         .map((session) => ({
           key: getHomebaseWorkspaceSessionKey(session.id),
-          label: `${project.name} · ${session.name}`,
+          label: formatProjectWorkspaceName(project.name, session.name),
           projectId: project.id,
           session,
         })),
@@ -133,24 +138,21 @@ export function addBookmarkToWorkspace(
   state: GlobalTabState,
   item: Item,
   destination: BookmarkWorkspaceDestination,
-  options: { focus?: boolean; items?: readonly Item[] } = {}
+  options: { view?: boolean; items?: readonly Item[] } = {}
 ): GlobalTabState {
   const entry = destinationTab(item, destination);
   let next: GlobalTabState;
 
   if (destination.projectId === 'all') {
-    const exists = state.tabs.some(
-      (tab) => tab.kind === 'item' && tab.itemId === item.id && !tab.scopeProjectId
-    );
-    next = {
-      ...state,
-      tabs: exists ? state.tabs : [...state.tabs, entry],
-      activeTabId: options.focus ? entry.id : null,
-      lastActiveTabByProject: {
-        ...(state.lastActiveTabByProject ?? {}),
-        all: entry.id,
-      },
-    };
+    next = addEntryToProjectWorkspace({
+      state,
+      projectId: 'all',
+      targetWorkspaceKey: destination.key,
+      entry,
+    });
+    if (options.view && next.activeWorkspaceKey !== destination.key) {
+      next = activateWorkspace({ state: next, workspaceKey: destination.key });
+    }
   } else {
     next = addEntryToProjectWorkspace({
       state,
@@ -159,7 +161,7 @@ export function addBookmarkToWorkspace(
       entry,
     });
 
-    if (options.focus && getActiveProjectWorkspaceKey(next, destination.projectId) !== destination.key) {
+    if (options.view && getActiveProjectWorkspaceKey(next, destination.projectId) !== destination.key) {
       next = destination.session
         ? activateSavedProjectWorkspace({ state: next, session: destination.session })
         : activateProjectWorkspace({
@@ -170,14 +172,22 @@ export function addBookmarkToWorkspace(
           });
     }
 
-    next = {
-      ...next,
-      activeTabId: options.focus ? entry.id : null,
-      lastActiveTabByProject: {
-        ...(next.lastActiveTabByProject ?? {}),
-        [destination.projectId]: entry.id,
-      },
-    };
+  }
+
+  if (options.view) {
+    const activeEntry = next.tabs.find(
+      (candidate) => candidate.kind === 'item' && candidate.itemId === item.id
+    );
+    if (activeEntry) {
+      next = {
+        ...next,
+        activeTabId: activeEntry.id,
+        lastActiveEntryByWorkspace: {
+          ...(next.lastActiveEntryByWorkspace ?? {}),
+          [destination.key]: activeEntry.id,
+        },
+      };
+    }
   }
 
   return next;
@@ -238,6 +248,15 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
     () => buildBookmarkWorkspaceDestinations(projects, homeState.savedWorkspaceSessions ?? []),
     [homeState.savedWorkspaceSessions, projects]
   );
+  const workspaceDestinations = useMemo(
+    () => buildWorkspaceDestinations({
+      projects,
+      browserWorkspaces: [],
+      state: homeState,
+      contextProjectId: scopeProjectId,
+    }),
+    [homeState, projects, scopeProjectId]
+  );
   const scopedItems = useMemo(() => {
     let result = getHomeScopeItems(items, collections, scopeProjectId, scopeCollectionId)
       .filter((item) => item.deletedAt == null);
@@ -270,9 +289,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   const activeProject = scopeProjectId === 'all'
     ? null
     : projects.find((project) => project.id === scopeProjectId) ?? null;
-  const selectedDestination = destinations.find((destination) => destination.key === workspaceKey)
-    ?? destinations[0];
-  const browseEntries = scopedItems.map((item) => {
+  const browseEntries = useMemo(() => scopedItems.map((item) => {
     const isLink = Boolean(item.url?.trim());
     return {
       id: item.id,
@@ -290,7 +307,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
         </>
       ),
     };
-  });
+  }), [badgeMap, collections, onUpdateItem, projects, scopedItems]);
 
   useEffect(() => {
     const preferredKey = scopeProjectId === 'all'
@@ -334,13 +351,24 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
     else if (!selectedItemId) onSelectedItemChange?.(null);
   }, [onSelectedItemChange, selectedItem, selectedItemId]);
 
-  const addToWorkspace = (focus = false) => {
-    if (!selectedItem || !selectedDestination) return;
-    onHomeStateChange(addBookmarkToWorkspace(homeState, selectedItem, selectedDestination, { focus, items }));
-    setWorkspaceNotice(focus ? `Opening in ${selectedDestination.label}` : `Added to ${selectedDestination.label}`);
-    if (focus) {
-      if (selectedDestination.projectId === 'all') onResetScope?.();
-      else onSelectProjectScope?.(selectedDestination.projectId);
+  const updateWorkspaceMembership = (destination: WorkspaceDestination, view = false) => {
+    if (!selectedItem) return;
+    const bookmarkDestination = destinations.find((candidate) => candidate.key === destination.key);
+    if (!bookmarkDestination) return;
+    const next = addBookmarkToWorkspace(homeState, selectedItem, bookmarkDestination, { view, items });
+    onHomeStateChange({
+      ...next,
+      homeSection: view ? 'overview' : next.homeSection,
+      recentWorkspaceDestinationKeys: rememberWorkspaceDestination(
+        next.recentWorkspaceDestinationKeys,
+        destination.key
+      ),
+    });
+    setWorkspaceKey(destination.key);
+    setWorkspaceNotice(view ? `Viewing ${destination.path}` : `Added to ${destination.path}`);
+    if (view) {
+      if (destination.projectId === 'all') onResetScope?.();
+      else onSelectProjectScope?.(destination.projectId);
       onOpenHome?.();
     }
   };
@@ -430,11 +458,20 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
                 </div>
                 <div className="ui-detail-panel__actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={() => setSelectedItemId(null)} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
-                  <select value={workspaceKey} onChange={(event) => { setWorkspaceKey(event.target.value); setWorkspaceNotice(null); }} aria-label={`Workspace for ${selectedItem.title || 'item'}`} style={destinationSelectStyle}>
-                    {destinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
-                  </select>
-                  <button className="ui-button ui-button--secondary" type="button" onClick={() => addToWorkspace(false)} style={secondaryButtonStyle}><Plus size={12} /> Add</button>
-                  <button className="ui-button ui-button--primary" type="button" onClick={() => addToWorkspace(true)} style={primaryButtonStyle}><Focus size={12} /> Focus</button>
+                  <WorkspaceDestinationPicker
+                    item={selectedItem}
+                    destinations={workspaceDestinations}
+                    recentDestinationKeys={homeState.recentWorkspaceDestinationKeys}
+                    isAdded={(destination) => workspaceTargetContainsItem({
+                      state: homeState,
+                      projectId: destination.projectId,
+                      targetWorkspaceKey: destination.key,
+                      itemId: selectedItem.id,
+                      items,
+                    })}
+                    onAdd={(destination) => updateWorkspaceMembership(destination)}
+                    onView={(destination) => updateWorkspaceMembership(destination, true)}
+                  />
                   {onDeleteItem && <button className="ui-button ui-button--icon ui-button--danger" type="button" onClick={() => void removeSelectedItem()} title="Move to trash" aria-label={`Move ${selectedItem.title || 'item'} to trash`} style={{ ...iconButtonStyle, color: 'var(--danger)' }}><Trash2 size={13} /></button>}
                 </div>
               </div>
@@ -489,5 +526,4 @@ const panelHeaderStyle = uiPatterns.panelHeader;
 const secondaryButtonStyle = uiPatterns.secondaryButton;
 const primaryButtonStyle = uiPatterns.primaryButton;
 const iconButtonStyle = uiPatterns.iconButton;
-const destinationSelectStyle: React.CSSProperties = { ...uiPatterns.select, minWidth: 155 };
 const viewTabStyle = uiPatterns.viewTab;

@@ -157,7 +157,6 @@ describe('ProductSearchView empty state', () => {
           onRunSearch={vi.fn()}
           onOpenItem={vi.fn()}
           onUpdateItem={vi.fn()}
-          itemActionLabel="Add to workspace"
           organizationContextProjectId={otherProject.id}
           organizationContextCollectionId={otherCollection.id}
         />
@@ -165,7 +164,8 @@ describe('ProductSearchView empty state', () => {
     });
 
     expect(host.textContent).toContain('Organize…');
-    expect(host.textContent).toContain('Add to workspace');
+    expect(host.textContent).toContain('Inspect');
+    expect(host.textContent).not.toContain('Add to active workspace');
 
     const organize = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Organize'));
     await act(async () => organize?.click());
@@ -308,8 +308,8 @@ describe('ProductSearchView empty state', () => {
           onOpenItem={vi.fn()}
           onUpdateItem={vi.fn()}
           workspaceDestinations={[
-            { key: 'research-live', projectId: project.id, projectName: project.name, workspaceName: 'Live session', path: 'Research / Live session', kind: 'live', isCurrent: true },
-            { key: 'writing-live', projectId: otherProject.id, projectName: otherProject.name, workspaceName: 'Live session', path: 'Writing / Live session', kind: 'live', isCurrent: false },
+            { key: 'research-live', projectId: project.id, projectName: project.name, workspaceName: 'General', path: 'Research / General', kind: 'live', isCurrent: true },
+            { key: 'writing-live', projectId: otherProject.id, projectName: otherProject.name, workspaceName: 'General', path: 'Writing / General', kind: 'live', isCurrent: false },
           ]}
           isItemInWorkspace={() => false}
           onAddItemToWorkspace={onAddItemToWorkspace}
@@ -322,8 +322,8 @@ describe('ProductSearchView empty state', () => {
     await act(async () => host.querySelector<HTMLButtonElement>('.ui-workspace-picker-trigger')?.click());
 
     const dialog = document.querySelector('[role="dialog"]');
-    expect(dialog?.textContent).toContain('Research / Live session');
-    expect(dialog?.textContent).toContain('Writing / Live session');
+    expect(dialog?.textContent).toContain('Research / General');
+    expect(dialog?.textContent).toContain('Writing / General');
 
     await act(async () => root.unmount());
     document.body.innerHTML = '';

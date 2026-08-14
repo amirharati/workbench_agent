@@ -52,6 +52,16 @@ import { getItemPrimaryScope } from '../../../lib/shell/itemScope';
 import { Resizer } from '../Resizer';
 import { TabPaneFrame, TabScrollShell } from '../TabScrollShell';
 import { loadLibraryPageUi } from '../BookmarksLibraryView';
+import {
+  addEntryToProjectWorkspace,
+  addItemToWorkspaceTarget,
+  activateWorkspace,
+  getActiveWorkspaceKey,
+  getWorkspaceProjectId,
+  workspaceTargetContainsItem,
+} from '../workspaceSession';
+import { buildWorkspaceDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from '../workspaceDestinations';
+import { WorkspaceDestinationPicker } from '../WorkspaceDestinationPicker';
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -123,7 +133,7 @@ export function resolveShellInspectorItemId({
 }): string | null {
   if (isSearchSurface) return selectedSearchItemId;
   // Library and Notes own their visible selection independently of the Home
-  // workspace tabs. Their selection must therefore win over a stale tab.
+  // workspace entries. Their selection must therefore win over a stale entry.
   if (activeView === 'bookmarks' || activeView === 'notes' || activeView === 'pipeline') {
     return selectedBrowseItemId;
   }
@@ -339,6 +349,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     itemIds: string[];
   } | null>(null);
   const [globalTabState, setGlobalTabState] = useState<GlobalTabState>(() => loadGlobalTabState());
+  const workspaceDestinations = useMemo(
+    () => buildWorkspaceDestinations({
+      projects,
+      browserWorkspaces: workspaces,
+      state: globalTabState,
+      contextProjectId: scopeProjectId,
+    }),
+    [globalTabState, projects, scopeProjectId, workspaces]
+  );
   const prevSearchViewRef = useRef(false);
 
   useSearchNavigationScope(
@@ -358,7 +377,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     void ensurePendingClassifySignals();
   }, [libraryLoading]);
 
-  /** Close tabs whose item/workspace ids no longer exist (e.g. after DB clear). */
+  /** Remove workspace entries whose item/snapshot ids no longer exist (for example after a DB clear). */
   useEffect(() => {
     if (libraryLoading) return;
     // Skip while any items exist and only metadata timestamps change — prune is for deletes/clear.
@@ -827,50 +846,44 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     item: Item,
     origin?: { projectId?: string; collectionId?: string }
   ) => {
-    const projectId = origin
-      ? origin.projectId
-      : scopeProjectId === 'all'
-        ? undefined
-        : scopeProjectId;
-    const collectionId = origin
-      ? origin.collectionId
-      : projectId && scopeCollectionId !== 'all'
-        ? scopeCollectionId
-        : undefined;
-    const scopeKey = projectId ? `@project:${projectId}` : '';
     setGlobalTabState(prev => {
-      const existing = prev.tabs.find(
-        (tab) =>
-          tab.kind === 'item' &&
-          tab.itemId === item.id &&
-          (tab.scopeProjectId ?? undefined) === projectId
+      const workspaceKey = getActiveWorkspaceKey(prev);
+      const projectId = getWorkspaceProjectId(prev, workspaceKey);
+      const collectionId =
+        projectId !== 'all' && origin?.projectId === projectId
+          ? origin.collectionId
+          : undefined;
+      const entry: GlobalTab = {
+        kind: 'item',
+        id: `item-${item.id}${projectId === 'all' ? '' : `@project:${projectId}`}`,
+        itemId: item.id,
+        ...(collectionId ? { scopeCollectionId: collectionId } : {}),
+      };
+      const added = addEntryToProjectWorkspace({
+        state: prev,
+        projectId,
+        targetWorkspaceKey: workspaceKey,
+        entry,
+      });
+      const activeEntry = added.tabs.find(
+        (candidate) => candidate.kind === 'item' && candidate.itemId === item.id
       );
-      if (existing) {
-        const next = { ...prev, activeTabId: existing.id };
-        saveGlobalTabState(next);
-        return next;
-      }
-      const id = 'item-' + item.id + scopeKey;
       const next = {
-        ...prev,
-        tabs: [
-          ...prev.tabs,
-          {
-            kind: 'item' as const,
-            id,
-            itemId: item.id,
-            ...(projectId ? { scopeProjectId: projectId } : {}),
-            ...(projectId && collectionId ? { scopeCollectionId: collectionId } : {}),
-          },
-        ],
-        activeTabId: id,
+        ...added,
+        activeTabId: activeEntry?.id ?? added.activeTabId,
+        lastActiveEntryByWorkspace: activeEntry
+          ? {
+              ...(added.lastActiveEntryByWorkspace ?? {}),
+              [workspaceKey]: activeEntry.id,
+            }
+          : added.lastActiveEntryByWorkspace,
       };
       saveGlobalTabState(next);
       return next;
     });
   };
 
-  /** Dedicated Search hides workspace tabs and the right Inspector. */
+  /** Dedicated Search hides the workspace-entry row and the right Inspector. */
   const revealWorkspaceTabsIfNeeded = () => {
     if (!shouldRevealInspectorWorkspace(activeView)) return;
     setActiveView('home');
@@ -894,63 +907,96 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     item: Item,
     origin?: { projectId?: string; collectionId?: string }
   ) => {
-    const projectId = origin
-      ? origin.projectId
-      : scopeProjectId === 'all'
-        ? undefined
-        : scopeProjectId;
-    const collectionId = origin
-      ? origin.collectionId
-      : projectId && scopeCollectionId !== 'all'
-        ? scopeCollectionId
-        : undefined;
     setGlobalTabState((prev) => {
-      const existing = prev.tabs.find(
-        (tab) =>
-          tab.kind === 'item' &&
-          tab.itemId === item.id &&
-          (tab.scopeProjectId ?? undefined) === projectId
-      );
-      const tabId = existing?.id ?? `item-${item.id}${projectId ? `@project:${projectId}` : ''}`;
-      const tabs = existing
-        ? prev.tabs
-        : [
-            ...prev.tabs,
-            {
-              kind: 'item' as const,
-              id: tabId,
-              itemId: item.id,
-              ...(projectId ? { scopeProjectId: projectId } : {}),
-              ...(projectId && collectionId ? { scopeCollectionId: collectionId } : {}),
-            },
-          ];
-      const sessionKey = projectId ?? 'all';
-      const next = {
-        ...prev,
-        tabs,
-        activeTabId: null,
-        lastActiveTabByProject: {
-          ...(prev.lastActiveTabByProject ?? {}),
-          [sessionKey]: tabId,
+      const workspaceKey = getActiveWorkspaceKey(prev);
+      const projectId = getWorkspaceProjectId(prev, workspaceKey);
+      const collectionId =
+        projectId !== 'all' && origin?.projectId === projectId
+          ? origin.collectionId
+          : undefined;
+      const next = addEntryToProjectWorkspace({
+        state: prev,
+        projectId,
+        targetWorkspaceKey: workspaceKey,
+        entry: {
+          kind: 'item',
+          id: `item-${item.id}${projectId === 'all' ? '' : `@project:${projectId}`}`,
+          itemId: item.id,
+          ...(collectionId ? { scopeCollectionId: collectionId } : {}),
         },
-      };
+      });
       saveGlobalTabState(next);
       return next;
     });
   };
 
-  const handleOpenItemIdInTab = (itemId: string) => {
-    const fromList = items.find((i) => i.id === itemId);
-    if (fromList) {
-      handleOpenItemTab(fromList);
-      revealWorkspaceTabsIfNeeded();
-      return;
-    }
-    void getItem(itemId).then((item) => {
-      if (!item || item.deletedAt != null) return;
-      handleOpenItemTab(item);
-      revealWorkspaceTabsIfNeeded();
+  const itemIsInWorkspace = (item: Item, destination: WorkspaceDestination) =>
+    workspaceTargetContainsItem({
+      state: globalTabState,
+      projectId: destination.projectId,
+      targetWorkspaceKey: destination.key,
+      itemId: item.id,
+      items,
     });
+
+  const updateItemWorkspace = (item: Item, destination: WorkspaceDestination, view: boolean) => {
+    setGlobalTabState((previous) => {
+      const added = addItemToWorkspaceTarget({
+        state: previous,
+        projectId: destination.projectId,
+        targetWorkspaceKey: destination.key,
+        item,
+        items,
+      });
+      const activated = view
+        ? activateWorkspace({
+            state: added,
+            workspaceKey: destination.key,
+            projectId: destination.projectId,
+          })
+        : added;
+      const entry = view
+        ? activated.tabs.find((candidate) => candidate.kind === 'item' && candidate.itemId === item.id)
+        : undefined;
+      const next = {
+        ...activated,
+        activeTabId: view ? entry?.id ?? activated.activeTabId : activated.activeTabId,
+        lastActiveEntryByWorkspace: entry
+          ? { ...(activated.lastActiveEntryByWorkspace ?? {}), [destination.key]: entry.id }
+          : activated.lastActiveEntryByWorkspace,
+        recentWorkspaceDestinationKeys: rememberWorkspaceDestination(
+          activated.recentWorkspaceDestinationKeys,
+          destination.key
+        ),
+      };
+      saveGlobalTabState(next);
+      return next;
+    });
+    if (view) {
+      setScopeNavigationRevision((revision) => revision + 1);
+      setScopeProjectId(destination.projectId);
+      setScopeCollectionId('all');
+      patchNavigationState({
+        scopeProjectId: destination.projectId,
+        scopeCollectionId: 'all',
+      });
+      setActiveView('home');
+      patchNavigationState({ activeView: 'home' });
+    }
+  };
+
+  const renderSimilarWorkspaceAction = (itemId: string) => {
+    const similarItem = items.find((item) => item.id === itemId);
+    if (!similarItem) return null;
+    return (
+      <WorkspaceDestinationPicker
+        item={similarItem}
+        destinations={workspaceDestinations}
+        recentDestinationKeys={globalTabState.recentWorkspaceDestinationKeys}
+        isAdded={(destination) => itemIsInWorkspace(similarItem, destination)}
+        onAdd={(destination) => updateItemWorkspace(similarItem, destination, false)}
+      />
+    );
   };
 
   const handleOpenWorkspaceTab = (workspace: Workspace) => {
@@ -981,7 +1027,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     setGlobalTabState(prev => {
       const existingIdx = prev.tabs.findIndex(t => t.id === tabId);
       if (existingIdx === -1) {
-        const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: 'common-list' as const, title: 'Common tab', itemIds, ...(scopeProjectId !== 'all' ? { scopeProjectId } : {}), ...(scopeProjectId !== 'all' && scopeCollectionId !== 'all' ? { scopeCollectionId } : {}) }], activeTabId: tabId };
+        const next = { ...prev, tabs: [...prev.tabs, { kind: 'list' as const, id: tabId, listType: 'common-list' as const, title: 'Combined workspace list', itemIds, ...(scopeProjectId !== 'all' ? { scopeProjectId } : {}), ...(scopeProjectId !== 'all' && scopeCollectionId !== 'all' ? { scopeCollectionId } : {}) }], activeTabId: tabId };
         saveGlobalTabState(next);
         return next;
       }
@@ -1102,6 +1148,16 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const inspectorItem = inspectorResolvedItem?.id === inspectorItemId
     ? inspectorResolvedItem
     : null;
+  const inspectorWorkspaceAction = inspectorItem ? (
+    <WorkspaceDestinationPicker
+      item={inspectorItem}
+      destinations={workspaceDestinations}
+      recentDestinationKeys={globalTabState.recentWorkspaceDestinationKeys}
+      isAdded={(destination) => itemIsInWorkspace(inspectorItem, destination)}
+      onAdd={(destination) => updateItemWorkspace(inspectorItem, destination, false)}
+      onView={(destination) => updateItemWorkspace(inspectorItem, destination, true)}
+    />
+  ) : undefined;
 
   const searchContext = useMemo(() => {
     if (!isSearchSurface || !activeSearch.state.result?.results.length) return null;
@@ -1471,7 +1527,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
             currentSearchQuery={activeSearch.state.query}
             onRerunSearch={handleRerunSearch}
             onOpenItemInTab={activeView === 'home' || isSearchSurface ? handleAddItemToWorkspace : undefined}
-            onOpenItemIdInTab={handleOpenItemIdInTab}
+            workspaceAction={inspectorWorkspaceAction}
+            renderWorkspaceActionForItem={renderSimilarWorkspaceAction}
             onTestAI={onTestAI}
           />
         )}

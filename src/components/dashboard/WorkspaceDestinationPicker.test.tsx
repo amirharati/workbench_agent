@@ -18,9 +18,9 @@ const item: Item = {
   updated_at: 1,
 };
 const destinations: WorkspaceDestination[] = [
-  { key: 'global', projectId: 'all', projectName: 'Global', workspaceName: 'Workspace', path: 'Global / Workspace', kind: 'global', isCurrent: true },
-  { key: 'research-live', projectId: 'research', projectName: 'Research', workspaceName: 'Live session', path: 'Research / Live session', kind: 'live', isCurrent: false },
-  { key: 'writing-plan', projectId: 'writing', projectName: 'Writing', workspaceName: 'Draft plan', path: 'Writing / Draft plan', kind: 'saved', isCurrent: false },
+  { key: 'global', projectId: 'all', projectName: 'Global', workspaceName: 'Workspace', path: 'Global workspace', kind: 'global', isCurrent: true },
+  { key: 'research-live', projectId: 'research', projectName: 'Research', workspaceName: 'General', path: 'Research — General', kind: 'live', isCurrent: false },
+  { key: 'writing-plan', projectId: 'writing', projectName: 'Writing', workspaceName: 'Draft plan', path: 'Writing — Draft plan', kind: 'saved', isCurrent: false },
 ];
 
 describe('WorkspaceDestinationPicker', () => {
@@ -35,6 +35,7 @@ describe('WorkspaceDestinationPicker', () => {
     document.body.appendChild(host);
     const root = createRoot(host);
     const onAdd = vi.fn();
+    const onView = vi.fn();
 
     await act(async () => {
       root.render(
@@ -44,6 +45,7 @@ describe('WorkspaceDestinationPicker', () => {
           recentDestinationKeys={['writing-plan']}
           isAdded={(destination) => destination.key === 'global'}
           onAdd={onAdd}
+          onView={onView}
         />
       );
     });
@@ -51,13 +53,16 @@ describe('WorkspaceDestinationPicker', () => {
     expect(host.textContent).toContain('Add to workspace…');
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => host.querySelector<HTMLButtonElement>('.ui-workspace-picker-trigger')?.click());
+    expect(onAdd).not.toHaveBeenCalled();
 
     const dialog = document.querySelector('[role="dialog"]');
-    expect(dialog?.textContent).toContain('Current context');
-    expect(dialog?.textContent).toContain('Global / Workspace');
+    expect(dialog?.textContent).toContain('Active workspace');
+    expect(dialog?.textContent).toContain('Global workspace');
     expect(dialog?.textContent).toContain('Recent');
-    expect(dialog?.textContent).toContain('Writing / Draft plan');
-    expect(dialog?.querySelector('[aria-label="Already added to Global / Workspace"]')).not.toBeNull();
+    expect(dialog?.textContent).toContain('Writing — Draft plan');
+    expect(dialog?.textContent).toContain('Selected:');
+    expect(dialog?.textContent).toContain('Already added');
+    expect(dialog?.querySelector('[data-selected="true"]')?.textContent).toContain('Global workspace');
 
     const search = dialog?.querySelector<HTMLInputElement>('[aria-label="Search project or workspace"]');
     await act(async () => {
@@ -67,12 +72,25 @@ describe('WorkspaceDestinationPicker', () => {
       search.dispatchEvent(new Event('input', { bubbles: true }));
     });
     expect(dialog?.textContent).toContain('Search results');
-    expect(dialog?.textContent).toContain('Research / Live session');
-    expect(dialog?.textContent).not.toContain('Writing / Draft plan');
+    expect(dialog?.textContent).toContain('Research — General');
+    expect(dialog?.textContent).not.toContain('Writing — Draft plan');
 
-    await act(async () => dialog?.querySelector<HTMLButtonElement>('[aria-label="Add to Research / Live session"]')?.click());
+    const researchRow = [...(dialog?.querySelectorAll<HTMLButtonElement>('.ui-workspace-picker__row') ?? [])]
+      .find((button) => button.textContent?.includes('Research — General'));
+    await act(async () => researchRow?.click());
+    expect(dialog?.querySelector('[data-selected="true"]')?.textContent).toContain('Research — General');
+
+    const addButton = [...(dialog?.querySelectorAll<HTMLButtonElement>('.ui-dialog__footer button') ?? [])]
+      .find((button) => button.textContent?.includes('Add to workspace'));
+    await act(async () => addButton?.click());
     expect(onAdd).toHaveBeenCalledWith(destinations[1]);
-    expect(dialog?.textContent).toContain('Added to Research / Live session');
+    expect(dialog?.textContent).toContain('Added to Research — General');
+
+    const viewButton = [...(dialog?.querySelectorAll<HTMLButtonElement>('.ui-dialog__footer button') ?? [])]
+      .find((button) => button.textContent?.includes('View workspace'));
+    await act(async () => viewButton?.click());
+    expect(onView).toHaveBeenCalledWith(destinations[1]);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
 
     await act(async () => root.unmount());
   });

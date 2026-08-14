@@ -37,6 +37,59 @@ function readableNodeText(node: React.ReactNode): string {
   return '';
 }
 
+const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
+  entry,
+  selected,
+  onSelect,
+  selectedEntryRef,
+}: {
+  entry: ContentBrowseEntry;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  selectedEntryRef?: React.RefObject<HTMLDivElement>;
+}) {
+  return (
+    <div
+      ref={selectedEntryRef}
+      role="button"
+      tabIndex={0}
+      aria-current={selected ? 'true' : undefined}
+      data-content-entry
+      data-selected={selected ? 'true' : 'false'}
+      onClick={() => onSelect(entry.id)}
+      onContextMenu={entry.onContextMenu}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect(entry.id);
+        }
+      }}
+      className="ui-content-browser__entry"
+    >
+      <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
+      <span className="ui-content-browser__copy">
+        <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
+        {entry.subtitle && <span className="ui-content-browser__subtitle">{entry.subtitle}</span>}
+      </span>
+      {(entry.meta || entry.actions) && (
+        <span className="ui-content-browser__footer">
+          {entry.meta && <span className="ui-content-browser__meta">{entry.meta}</span>}
+          {entry.actions && (
+            <span
+              className="ui-content-browser__actions"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              {entry.actions}
+            </span>
+          )}
+        </span>
+      )}
+    </div>
+  );
+});
+
 export function useContentBrowseMode(storageKey: string): [ContentBrowseMode, (mode: ContentBrowseMode) => void] {
   const [mode, setMode] = useState<ContentBrowseMode>(() => {
     if (typeof window === 'undefined') return 'list';
@@ -65,6 +118,9 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   const [filterQuery, setFilterQuery] = useState('');
   const [renderLimit, setRenderLimit] = useState(60);
   const selectedEntryRef = React.useRef<HTMLDivElement>(null);
+  const onSelectRef = React.useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const selectEntry = React.useCallback((id: string) => onSelectRef.current(id), []);
   const searchableEntries = useMemo(
     () => entries.map((entry) => ({
       entry,
@@ -150,50 +206,15 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
     <div className="scrollbar ui-content-browser__body" data-content-view={mode}>
       {filteredEntries.length === 0 ? (
         <div className="ui-content-browser__empty">{entries.length === 0 ? emptyMessage : `No items match “${filterQuery.trim()}”.`}</div>
-      ) : renderedEntries.map((entry) => {
-        const selected = entry.id === selectedId;
-        return (
-          <div
-            ref={selected ? selectedEntryRef : undefined}
-            key={entry.id}
-            role="button"
-            tabIndex={0}
-            aria-current={selected ? 'true' : undefined}
-            data-content-entry
-            data-selected={selected ? 'true' : 'false'}
-            onClick={() => onSelect(entry.id)}
-            onContextMenu={entry.onContextMenu}
-            onKeyDown={(event) => {
-              if (event.target !== event.currentTarget) return;
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                onSelect(entry.id);
-              }
-            }}
-            className="ui-content-browser__entry"
-          >
-            <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
-            <span className="ui-content-browser__copy">
-              <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
-              {entry.subtitle && <span className="ui-content-browser__subtitle">{entry.subtitle}</span>}
-            </span>
-            {(entry.meta || entry.actions) && (
-              <span className="ui-content-browser__footer">
-                {entry.meta && <span className="ui-content-browser__meta">{entry.meta}</span>}
-                {entry.actions && (
-                  <span
-                    className="ui-content-browser__actions"
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => event.stopPropagation()}
-                  >
-                    {entry.actions}
-                  </span>
-                )}
-              </span>
-            )}
-          </div>
-        );
-      })}
+      ) : renderedEntries.map((entry) => (
+        <ContentBrowserEntryRow
+          key={entry.id}
+          entry={entry}
+          selected={entry.id === selectedId}
+          onSelect={selectEntry}
+          selectedEntryRef={entry.id === selectedId ? selectedEntryRef : undefined}
+        />
+      ))}
       {renderedEntries.length < filteredEntries.length ? (
         <div className="ui-content-browser__loading" role="status">
           Loading more… {renderedEntries.length} of {filteredEntries.length}

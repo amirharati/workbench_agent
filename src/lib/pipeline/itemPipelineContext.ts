@@ -201,37 +201,6 @@ async function loadPipelineQueueData() {
   );
 }
 
-async function loadPipelineStores(db: Awaited<ReturnType<typeof getDB>>) {
-  const enrichments = db.objectStoreNames.contains('item_enrichment')
-    ? await db.getAll('item_enrichment')
-    : [];
-  // Meta-only — badge/queue maps must not pin embedding vectors.
-  const signals = db.objectStoreNames.contains('ai_item_signals')
-    ? (await db.getAll('ai_item_signals')).map((s) =>
-        s.embedding?.length ? { ...s, embedding: [] } : s
-      )
-    : [];
-  const links = db.objectStoreNames.contains('ai_item_category_links')
-    ? await db.getAll('ai_item_category_links')
-    : [];
-  const categories = db.objectStoreNames.contains('ai_categories')
-    ? await db.getAll('ai_categories')
-    : [];
-  const categoryById = new Map(categories.map((c) => [c.id, c]));
-  const linksByItem = new Map<string, AiItemCategoryLink[]>();
-  for (const link of links) {
-    const list = linksByItem.get(link.itemId) ?? [];
-    list.push(link);
-    linksByItem.set(link.itemId, list);
-  }
-  return {
-    enrichByItem: new Map(enrichments.map((e) => [e.itemId, e])),
-    signalByItem: new Map(signals.map((s) => [s.itemId, s])),
-    linksByItem,
-    categoryById,
-  };
-}
-
 function buildContextForItem(
   item: Item,
   enrichByItem: Map<string, ItemEnrichment>,
@@ -449,7 +418,10 @@ export async function loadItemPipelineContext(itemId: string): Promise<ItemPipel
   return ctx;
 }
 
-export async function loadPipelineBadgeMap(itemIds: string[]): Promise<Map<string, PipelineBadge>> {
+export async function loadPipelineBadgeMap(
+  itemIds: string[],
+  options?: { priority?: 'high' | 'low' }
+): Promise<Map<string, PipelineBadge>> {
   const map = new Map<string, PipelineBadge>();
   if (!itemIds.length) return map;
 
@@ -457,23 +429,54 @@ export async function loadPipelineBadgeMap(itemIds: string[]): Promise<Map<strin
   // DB owner instead of hydrating every pipeline table into each dashboard.
   const { dbRpc, isDbWorkerProcess } = await import('../storage/dbClient');
   if (!isDbWorkerProcess()) {
-    const entries = await dbRpc<Array<[string, PipelineBadge]>>('getPipelineBadgeEntries', [itemIds]);
+    const entries = await dbRpc<Array<[string, PipelineBadge]>>(
+      'getPipelineBadgeEntries',
+      [itemIds],
+      { priority: options?.priority ?? 'low' }
+    );
     return new Map(entries);
   }
 
   const db = await getDB();
-  const stores = await loadPipelineStores(db);
-  const idSet = new Set(itemIds);
-  const items = await db.getAll('items');
+  const { loadScopedPipelineRows } = await import('./scopedPipelineRows');
+  const scoped = await loadScopedPipelineRows(itemIds);
+  const categories = db.objectStoreNames.contains('ai_categories')
+    ? await db.getAll('ai_categories')
+    : [];
+  return buildPipelineBadgeMap({
+    items: scoped.items,
+    enrichments: [...scoped.enrichByItem.values()],
+    signals: [...scoped.signalByItem.values()],
+    links: scoped.links,
+    categories,
+  });
+}
 
-  for (const item of items) {
-    if (!idSet.has(item.id)) continue;
+export function buildPipelineBadgeMap(input: {
+  items: Item[];
+  enrichments: ItemEnrichment[];
+  signals: AiItemSignal[];
+  links: AiItemCategoryLink[];
+  categories: AiCategory[];
+}): Map<string, PipelineBadge> {
+  const map = new Map<string, PipelineBadge>();
+  const enrichByItem = new Map(input.enrichments.map((row) => [row.itemId, row]));
+  const signalByItem = new Map(input.signals.map((row) => [row.itemId, row]));
+  const categoryById = new Map(input.categories.map((category) => [category.id, category]));
+  const linksByItem = new Map<string, AiItemCategoryLink[]>();
+  for (const link of input.links) {
+    const list = linksByItem.get(link.itemId) ?? [];
+    list.push(link);
+    linksByItem.set(link.itemId, list);
+  }
+
+  for (const item of input.items) {
     const ctx = buildContextForItem(
       item,
-      stores.enrichByItem,
-      stores.signalByItem,
-      stores.linksByItem,
-      stores.categoryById
+      enrichByItem,
+      signalByItem,
+      linksByItem,
+      categoryById
     );
     map.set(item.id, resolvePipelineBadge(ctx));
   }

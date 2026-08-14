@@ -1,6 +1,6 @@
 # Home Scope and Workspace Roadmap
 
-Status: checkpoints A-F implemented for development testing. The product is pre-release, so the canonical Inbox model is established through a clean reinstall rather than a legacy-data migration.
+Status: historical implementation roadmap. Its scoped-tab and per-project active-workspace rules are superseded by [`PROJECT_SESSIONS_AND_WORKSPACES.md`](PROJECT_SESSIONS_AND_WORKSPACES.md). The Inbox and permanent organization rules remain applicable.
 
 ## Product model
 
@@ -9,7 +9,7 @@ Homebase keeps four concepts distinct:
 - **All Library** is the aggregate view of every stored item in every project, collection, and Inbox. It is not a project and is not limited to open or recent projects.
 - **Inbox** is the system-owned destination for items captured without an intentional project. It replaces the user-facing concept of `Default project`.
 - **Project / collection** are durable organization. A collection narrows its parent project; it does not create a separate workspace.
-- **Workspace** is the temporary working set for the current scope. **Focus** is the full-tab presentation of that workspace, not another content scope.
+- **Workspace** is a persistent set selected independently from page/project navigation. See the canonical workspace model linked above.
 
 Open projects in the quick switcher are navigation shortcuts only. Closing a shortcut never changes stored content or All Library search coverage.
 

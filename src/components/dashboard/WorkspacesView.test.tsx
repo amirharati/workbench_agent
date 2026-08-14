@@ -52,8 +52,9 @@ describe('WorkspacesView', () => {
     expect(markup).toContain('Manage Homebase working sets and saved browser snapshots.');
     expect(markup).toContain('Project workspaces');
     expect(markup).toContain('Browser snapshots');
-    expect(markup).toContain('Live session');
-    expect(markup).toContain('Writing set');
+    expect(markup).toContain('Global workspace');
+    expect(markup).toContain('Research — General');
+    expect(markup).toContain('Research — Writing set');
     expect(markup).toContain('Chrome research');
     expect(markup).toContain('Live browser tabs stay in Tab Commander.');
     expect(markup).toContain('ui-adaptive-browser');
