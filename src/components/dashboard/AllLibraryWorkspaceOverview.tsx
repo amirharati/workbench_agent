@@ -212,6 +212,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
         ),
         subtitle: item.url || item.notes || 'Note',
         searchText: buildItemQuickFilterText(item, projects, collections),
+        dragSource: { kind: 'reference' as const, label: activeView === 'quick-access' ? 'Favorites and pins' : 'All Library' },
         meta: new Date(item.updated_at ?? item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
         onContextMenu: onItemContextMenu ? (event: React.MouseEvent) => onItemContextMenu(event, item) : undefined,
       }));
@@ -357,6 +358,8 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
           ) : visibleGroups.map((group) => (
             <ActiveWorkspaceCard
               key={group.key}
+              workspaceKey={group.key}
+              projectId={group.projectId}
               title={group.title}
               contextLabel={group.contextLabel}
               tabs={group.tabs}

@@ -3,6 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { formatDateTime } from '../../lib/utils';
 import { SearchBar } from './SearchBar';
+import { useItemDragDrop } from './ItemDragDropProvider';
 import { Resizer } from './Resizer';
 import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
@@ -50,6 +51,7 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
   onCreateCollection,
   scopeChips,
 }) => {
+  const { getDragProps } = useItemDragDrop();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -264,6 +266,8 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
                 return (
                   <button
                     key={item.id}
+                    {...getDragProps(item, { kind: 'reference', label: 'Notes' })}
+                    data-item-drag-source="true"
                     type="button"
                     aria-current={active ? 'true' : undefined}
                     onClick={() => selectNote(item)}

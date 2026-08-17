@@ -169,6 +169,12 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const activeSavedWorkspace = savedWorkspaceSessions.find(
     (session) => getHomebaseWorkspaceSessionKey(session.id) === activeWorkspaceKey
   );
+  const activeWorkspaceDestination = availableWorkspaceDestinations.find(
+    (destination) => destination.key === activeWorkspaceKey
+  );
+  const activeWorkspaceLabel = activeWorkspaceDestination?.path ??
+    activeSavedWorkspace?.name ?? activeWorkspace?.name ?? `${project.name} · General`;
+  const activeWorkspaceProjectId = activeWorkspaceDestination?.projectId ?? project.id;
   const hasWorkspaceChoices = savedWorkspaceSessions.length > 0 || workspaces.length > 0;
   const transferDestinations = workspaceDestinations.filter(
     (destination) => destination.key !== activeWorkspaceKey
@@ -341,6 +347,19 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         searchScope,
         item ? buildItemQuickFilterText(item, organizationProjects ?? [project], organizationCollections ?? collections) : null
       ),
+      dragSource: item ? {
+        kind: 'workspace' as const,
+        containerId: activeWorkspaceKey,
+        containerLabel: activeWorkspaceLabel,
+        projectId: activeWorkspaceProjectId,
+      } : undefined,
+      dragItem: item,
+      reorderTarget: item ? {
+        kind: 'workspace' as const,
+        containerId: activeWorkspaceKey,
+        containerLabel: activeWorkspaceLabel,
+        projectId: activeWorkspaceProjectId,
+      } : undefined,
       actions: (
         <>
           {transferable && transferDestinations.length > 0 && <button type="button" onClick={() => { setTransferEntryId((current) => current === tab.id ? null : tab.id); setTransferTargetWorkspaceKey(transferDestinations[0]?.key ?? ''); }} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
@@ -362,6 +381,14 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
       icon: item.url ? <Link2 size={12} /> : <FileText size={12} />,
       subtitle: item.url ? <BookmarkUrlLink item={item} style={{ color: 'inherit' }} /> : item.notes || 'Empty note',
       searchText: buildItemQuickFilterText(item, organizationProjects ?? [project], organizationCollections ?? collections),
+      dragSource: browseSource === 'collection' && selectedCollection
+        ? {
+            kind: 'collection' as const,
+            containerId: selectedCollection.id,
+            containerLabel: `${project.name} · ${selectedCollection.name}`,
+            projectId: project.id,
+          }
+        : { kind: 'reference' as const, label: browseSource === 'pinned' ? 'Pinned' : 'Project items' },
       actions: (
         <>
           <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} stopPropagation />
@@ -686,6 +713,21 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             onModeChange={setBrowseMode}
             emptyMessage={browseSource === 'workspace' ? 'This workspace is empty. Add project material to begin.' : browseSource === 'pinned' ? 'Nothing is pinned to this project yet.' : 'No items in this source.'}
             ariaLabel={browseSource === 'workspace' ? 'Workspace contents' : 'Project material'}
+            dropTarget={browseSource === 'workspace'
+              ? {
+                  kind: 'workspace',
+                  containerId: activeWorkspaceKey,
+                  containerLabel: browseTitle,
+                  projectId: activeWorkspaceProjectId,
+                }
+              : browseSource === 'collection' && selectedCollection
+                ? {
+                    kind: 'collection',
+                    containerId: selectedCollection.id,
+                    containerLabel: `${project.name} · ${selectedCollection.name}`,
+                    projectId: project.id,
+                  }
+                : undefined}
             headerActions={workspaceHeaderActions}
           />
           {detailPanel}

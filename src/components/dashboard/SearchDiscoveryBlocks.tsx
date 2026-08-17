@@ -4,6 +4,7 @@ import type { FindSimilarResult } from '../../lib/search';
 import type { SearchRelatedFacets, SimilarItemResult, SearchResult } from '../../lib/search';
 import { useInspectorItemData } from '../../hooks/useInspectorItemData';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 const chipStyle: CSSProperties = {
   display: 'inline-flex',
@@ -20,6 +21,7 @@ const chipStyle: CSSProperties = {
 };
 
 function LinkRow({
+  itemId,
   title,
   domain,
   category,
@@ -29,6 +31,7 @@ function LinkRow({
   workspaceAction,
   hideScore,
 }: {
+  itemId: string;
   title: string;
   domain: string;
   category?: string;
@@ -38,10 +41,13 @@ function LinkRow({
   workspaceAction?: ReactNode;
   hideScore?: boolean;
 }) {
+  const { getDragProps } = useItemDragDrop();
   return (
     <div
       className="ui-related-link-row"
       data-has-workspace-action={workspaceAction ? 'true' : 'false'}
+      data-item-drag-source="true"
+      {...getDragProps({ id: itemId, title, url }, { kind: 'reference', label: 'Related results' })}
     >
       <div className="ui-related-link-row__copy">
         <div className="ui-related-link-row__title-line">
@@ -197,6 +203,7 @@ export function SearchRelatedPanel({
           {related.relatedLinks.map((row) => (
             <LinkRow
               key={row.itemId}
+              itemId={row.itemId}
               title={row.title || row.itemId}
               domain={row.domain}
               category={row.primaryCategoryName}
@@ -300,6 +307,7 @@ function SimilarRow({
 }) {
   return (
     <LinkRow
+      itemId={row.itemId}
       title={row.title || row.itemId}
       domain={row.domain}
       category={row.primaryCategoryName}
@@ -370,6 +378,7 @@ export function InlineSimilarPanel({
           return (
             <LinkRow
               key={row.itemId}
+              itemId={row.itemId}
               title={row.title || row.itemId}
               domain={row.domain}
               category={'primaryCategoryName' in row ? row.primaryCategoryName : undefined}

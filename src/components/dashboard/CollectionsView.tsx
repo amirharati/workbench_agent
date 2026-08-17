@@ -286,6 +286,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
             activeItemId={activeItem?.id || null}
             onItemClick={handleItemClick}
             title={selectedCollectionId === 'all' ? 'All Items' : collections.find((c) => c.id === selectedCollectionId)?.name || 'Items'}
+            currentCollectionId={selectedCollectionId}
             viewMode={itemsViewMode}
             onViewModeChange={setItemsViewMode}
           />

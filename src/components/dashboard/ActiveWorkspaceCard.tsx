@@ -3,6 +3,7 @@ import { ExternalLink, FileText, Layers3, Link2, Search, X } from 'lucide-react'
 import type { Item } from '../../lib/db';
 import type { GlobalTab } from './GlobalTabSystem';
 import { buildItemQuickFilterText, buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 function workspaceEntryLabel(tab: GlobalTab, items: readonly Item[]): string {
   if (tab.kind === 'search') return tab.query.trim() || 'Search';
@@ -12,6 +13,8 @@ function workspaceEntryLabel(tab: GlobalTab, items: readonly Item[]): string {
 }
 
 export interface ActiveWorkspaceCardProps {
+  workspaceKey: string;
+  projectId: string | 'all';
   title: string;
   contextLabel: string;
   tabs: GlobalTab[];
@@ -28,6 +31,8 @@ export interface ActiveWorkspaceCardProps {
 }
 
 export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
+  workspaceKey,
+  projectId,
   title,
   contextLabel,
   tabs,
@@ -41,6 +46,7 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
   allowRemove = true,
   maxListHeight = 224,
 }) => {
+  const { getDragProps, getDropTargetProps, getReorderTargetProps } = useItemDragDrop();
   const [filterQuery, setFilterQuery] = useState('');
   const searchIndex = useMemo(
     () => tabs.map((tab) => {
@@ -57,6 +63,13 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
     : tabs;
 
   return <section
+    {...getDropTargetProps({
+      kind: 'workspace',
+      containerId: workspaceKey,
+      containerLabel: title,
+      projectId,
+    })}
+    className="ui-item-inline-drop-target"
     style={{
       padding: '10px 12px',
       border: '1px solid var(--border)',
@@ -112,9 +125,24 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
           const label = workspaceEntryLabel(tab, items);
           const selected = activeEntryId === tab.id;
           const scopeLabel = getEntryScopeLabel?.(tab);
+          const dragProps = item ? getDragProps(item, {
+            kind: 'workspace',
+            containerId: workspaceKey,
+            containerLabel: title,
+            projectId,
+          }) : {};
+          const reorderProps = item ? getReorderTargetProps(item.id, {
+            kind: 'workspace',
+            containerId: workspaceKey,
+            containerLabel: title,
+            projectId,
+          }) : {};
           return (
             <div
               key={tab.id}
+              {...dragProps}
+              {...reorderProps}
+              data-item-drag-source={item ? 'true' : undefined}
               style={{
                 width: '100%',
                 minWidth: 0,

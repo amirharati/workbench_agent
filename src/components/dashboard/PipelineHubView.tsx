@@ -52,6 +52,7 @@ import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
 import { getBookmarkOpenUrl } from '../../lib/itemQuickAccess';
 import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { HubBulkStagedActions } from './HubBulkStagedActions';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 type HubLane = 'enrichment' | 'categories';
 export type HubView = 'enrichment' | 'classification' | 'taxonomy';
@@ -509,6 +510,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   onClearCollectionScope,
   onResetScope,
 }) => {
+  const { getDragProps } = useItemDragDrop();
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
   const [activeHubView, setActiveHubView] = useState<HubView>(() =>
@@ -1831,6 +1833,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                 }
               >
                 <div
+                  {...getDragProps(item, { kind: 'reference', label: 'Enrichment Hub' })}
+                  data-item-drag-source="true"
                   onClick={() => onOpenItem?.(item)}
                   style={{
                     display: 'grid',

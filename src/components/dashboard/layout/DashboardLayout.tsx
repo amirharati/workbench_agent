@@ -58,10 +58,16 @@ import {
   activateWorkspace,
   getActiveWorkspaceKey,
   getWorkspaceProjectId,
+  removeItemFromWorkspaceTarget,
+  reorderItemInWorkspaceTarget,
+  transferItemBetweenWorkspaceTargets,
   workspaceTargetContainsItem,
 } from '../workspaceSession';
 import { buildWorkspaceDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from '../workspaceDestinations';
 import { WorkspaceDestinationPicker } from '../WorkspaceDestinationPicker';
+import { ItemDragDropProvider, type ItemTransferResult } from '../ItemDragDropProvider';
+import type { ItemDragPayload, ItemDropTarget, ItemTransferOperation } from '../itemDragDrop';
+import { buildCollectionTransferPatch } from '../../../lib/collectionTransfer';
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -985,6 +991,176 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     }
   };
 
+  const dragTargetContainsItem = useCallback((itemId: string, target: ItemDropTarget) => {
+    if (target.kind === 'collection') {
+      return items.find((item) => item.id === itemId)?.collectionIds?.includes(target.containerId) ?? false;
+    }
+    const projectId = target.projectId ?? getWorkspaceProjectId(globalTabState, target.containerId);
+    return workspaceTargetContainsItem({
+      state: globalTabState,
+      projectId,
+      targetWorkspaceKey: target.containerId,
+      itemId,
+      items,
+    });
+  }, [globalTabState, items]);
+
+  const mutateWorkspaceState = useCallback((
+    mutation: (state: GlobalTabState) => GlobalTabState,
+    recentDestinationKey?: string
+  ) => {
+    setGlobalTabState((previous) => {
+      const mutated = mutation(previous);
+      const next = recentDestinationKey
+        ? {
+            ...mutated,
+            recentWorkspaceDestinationKeys: rememberWorkspaceDestination(
+              mutated.recentWorkspaceDestinationKeys,
+              recentDestinationKey
+            ),
+          }
+        : mutated;
+      saveGlobalTabState(next);
+      return next;
+    });
+  }, []);
+
+  const handleDraggedItemTransfer = useCallback(async (
+    payload: ItemDragPayload,
+    target: ItemDropTarget,
+    operation: ItemTransferOperation
+  ): Promise<ItemTransferResult> => {
+    const item = items.find((candidate) => candidate.id === payload.itemId) ??
+      await getItem(payload.itemId);
+    if (!item) throw new Error('This item is no longer available.');
+    const transferItems = items.some((candidate) => candidate.id === item.id)
+      ? items
+      : [...items, item];
+
+    if (target.kind === 'workspace') {
+      const targetProjectId = target.projectId ?? getWorkspaceProjectId(globalTabState, target.containerId);
+      const wasInTarget = workspaceTargetContainsItem({
+        state: globalTabState,
+        projectId: targetProjectId,
+        targetWorkspaceKey: target.containerId,
+        itemId: item.id,
+        items: transferItems,
+      });
+      if (operation === 'copy' || payload.source.kind !== 'workspace') {
+        if (wasInTarget) return { message: `Already in ${target.containerLabel}` };
+        mutateWorkspaceState((state) => addItemToWorkspaceTarget({
+          state,
+          projectId: targetProjectId,
+          targetWorkspaceKey: target.containerId,
+          item,
+          items: transferItems,
+        }), target.containerId);
+        return {
+          message: `Added to ${target.containerLabel}`,
+          undo: () => mutateWorkspaceState((state) => removeItemFromWorkspaceTarget({
+            state,
+            projectId: targetProjectId,
+            targetWorkspaceKey: target.containerId,
+            itemId: item.id,
+          })),
+        };
+      }
+
+      const source = payload.source;
+      const sourceProjectId = source.projectId ??
+        getWorkspaceProjectId(globalTabState, source.containerId);
+      mutateWorkspaceState((state) => transferItemBetweenWorkspaceTargets({
+        state,
+        item,
+        items: transferItems,
+        sourceProjectId,
+        sourceWorkspaceKey: source.containerId,
+        targetProjectId,
+        targetWorkspaceKey: target.containerId,
+        mode: 'move',
+      }), target.containerId);
+      return {
+        message: `Moved to ${target.containerLabel}`,
+        undo: () => mutateWorkspaceState((state) => wasInTarget
+          ? addItemToWorkspaceTarget({
+              state,
+              projectId: sourceProjectId,
+              targetWorkspaceKey: source.containerId,
+              item,
+              items: transferItems,
+            })
+          : transferItemBetweenWorkspaceTargets({
+              state,
+              item,
+              items: transferItems,
+              sourceProjectId: targetProjectId,
+              sourceWorkspaceKey: target.containerId,
+              targetProjectId: sourceProjectId,
+              targetWorkspaceKey: source.containerId,
+              mode: 'move',
+            })),
+      };
+    }
+
+    if (!onUpdateBookmark) throw new Error('Collection updates are unavailable.');
+    const previousCollectionIds = [...(item.collectionIds ?? [])];
+    if (operation === 'copy' || payload.source.kind !== 'collection') {
+      const patch = buildCollectionTransferPatch({
+        item,
+        targetCollectionId: target.containerId,
+        operation: 'copy',
+      });
+      if (!patch.changed) {
+        return { message: `Already in ${target.containerLabel}` };
+      }
+      await onUpdateBookmark(item.id, {
+        collectionIds: patch.collectionIds,
+        placements: patch.placements,
+      });
+      return {
+        message: `Added to ${target.containerLabel}`,
+        undo: () => onUpdateBookmark(item.id, {
+          collectionIds: previousCollectionIds,
+          placements: item.placements,
+        }),
+      };
+    }
+
+    const source = payload.source;
+    const patch = buildCollectionTransferPatch({
+      item,
+      sourceCollectionId: source.containerId,
+      targetCollectionId: target.containerId,
+      operation: 'move',
+    });
+    await onUpdateBookmark(item.id, {
+      collectionIds: patch.collectionIds,
+      placements: patch.placements,
+    });
+    return {
+      message: `Moved to ${target.containerLabel}`,
+      undo: () => onUpdateBookmark(item.id, {
+        collectionIds: previousCollectionIds,
+        placements: item.placements,
+      }),
+    };
+  }, [globalTabState, items, mutateWorkspaceState, onUpdateBookmark]);
+
+  const handleWorkspaceItemReorder = useCallback((
+    itemId: string,
+    beforeItemId: string,
+    target: ItemDropTarget
+  ) => {
+    const projectId = target.projectId ?? getWorkspaceProjectId(globalTabState, target.containerId);
+    mutateWorkspaceState((state) => reorderItemInWorkspaceTarget({
+      state,
+      projectId,
+      workspaceKey: target.containerId,
+      itemId,
+      beforeItemId,
+    }));
+  }, [globalTabState, mutateWorkspaceState]);
+
   const renderSimilarWorkspaceAction = (itemId: string) => {
     const similarItem = items.find((item) => item.id === itemId);
     if (!similarItem) return null;
@@ -1220,6 +1396,14 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const isFullMiddleView = isFullMiddleDashboardView(activeView);
 
   return (
+    <ItemDragDropProvider
+      projects={projects}
+      collections={collections}
+      workspaceDestinations={workspaceDestinations}
+      isInTarget={dragTargetContainsItem}
+      onTransfer={handleDraggedItemTransfer}
+      onReorderWorkspaceItem={handleWorkspaceItemReorder}
+    >
     <div className="ui-dashboard-shell">
       {/* Left Sidebar */}
       <div
@@ -1564,5 +1748,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         />
       ) : null}
     </div>
+    </ItemDragDropProvider>
   );
 };

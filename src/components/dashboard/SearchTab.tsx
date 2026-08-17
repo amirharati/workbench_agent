@@ -4,6 +4,7 @@ import { getDomain, isValidBookmarkUrl } from '../../lib/utils';
 import { Input } from '../../styles/primitives';
 import { Search, X, ExternalLink } from 'lucide-react';
 import { TabScrollShell } from './TabScrollShell';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 interface SearchTabProps {
   items: Item[];
@@ -21,6 +22,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
   initialQuery,
   onQueryChange,
 }) => {
+  const { getDragProps } = useItemDragDrop();
   const [searchQuery, setSearchQuery] = useState(initialQuery ?? '');
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
 
@@ -209,6 +211,8 @@ export const SearchTab: React.FC<SearchTabProps> = ({
           filteredItems.map((item) => (
             <div
               key={item.id}
+              {...getDragProps(item, { kind: 'reference', label: 'Search results' })}
+              data-item-drag-source="true"
               onClick={() => onItemClick?.(item)}
               style={{
                 padding: '1rem',

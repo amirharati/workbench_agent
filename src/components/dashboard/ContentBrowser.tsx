@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Grid2X2, List, Search, X } from 'lucide-react';
+import { Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
+import { useItemDragDrop } from './ItemDragDropProvider';
+import type { ItemDragSource, ItemDropTarget } from './itemDragDrop';
 
 export type ContentBrowseMode = 'list' | 'gallery';
 
@@ -15,6 +17,10 @@ export interface ContentBrowseEntry {
   /** Hidden searchable data such as notes, tags, organization names, and metadata. */
   searchText?: string;
   onContextMenu?: (event: React.MouseEvent) => void;
+  /** Omit for non-item rows. Result lists use `reference`; containers identify the exact membership. */
+  dragSource?: ItemDragSource;
+  dragItem?: { id: string; title?: string; url?: string };
+  reorderTarget?: ItemDropTarget;
 }
 
 interface ContentBrowserProps {
@@ -29,6 +35,8 @@ interface ContentBrowserProps {
   headerActions?: React.ReactNode;
   /** Disable only when the surrounding page already provides an equivalent list filter. */
   quickFilter?: boolean;
+  /** Makes the visible browser itself a destination in addition to the global tray. */
+  dropTarget?: ItemDropTarget;
 }
 
 function readableNodeText(node: React.ReactNode): string {
@@ -48,6 +56,14 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
   onSelect: (id: string) => void;
   selectedEntryRef?: React.RefObject<HTMLDivElement>;
 }) {
+  const { getDragProps, getReorderTargetProps } = useItemDragDrop();
+  const dragItem = entry.dragItem ?? { id: entry.id, title: entry.title };
+  const dragProps = entry.dragSource
+    ? getDragProps(dragItem, entry.dragSource)
+    : {};
+  const reorderProps = entry.reorderTarget
+    ? getReorderTargetProps(dragItem.id, entry.reorderTarget)
+    : {};
   return (
     <div
       ref={selectedEntryRef}
@@ -56,6 +72,9 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       aria-current={selected ? 'true' : undefined}
       data-content-entry
       data-selected={selected ? 'true' : 'false'}
+      data-item-drag-source={entry.dragSource ? 'true' : undefined}
+      {...dragProps}
+      {...reorderProps}
       onClick={() => onSelect(entry.id)}
       onContextMenu={entry.onContextMenu}
       onKeyDown={(event) => {
@@ -67,6 +86,7 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       }}
       className="ui-content-browser__entry"
     >
+      {entry.dragSource ? <span className="ui-content-browser__drag-handle" aria-hidden="true"><GripVertical size={12} /></span> : null}
       <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
       <span className="ui-content-browser__copy">
         <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
@@ -114,7 +134,9 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   ariaLabel,
   headerActions,
   quickFilter = true,
+  dropTarget,
 }) => {
+  const { getDropTargetProps } = useItemDragDrop();
   const [filterQuery, setFilterQuery] = useState('');
   const [renderLimit, setRenderLimit] = useState(60);
   const selectedEntryRef = React.useRef<HTMLDivElement>(null);
@@ -167,7 +189,12 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   }, [filterQuery, renderedEntries.length, selectedId]);
 
   return (
-  <section className="ui-panel ui-content-browser" style={panelStyle} aria-label={ariaLabel ?? title}>
+  <section
+    className={`ui-panel ui-content-browser${dropTarget ? ' ui-item-inline-drop-target' : ''}`}
+    style={panelStyle}
+    aria-label={ariaLabel ?? title}
+    {...(dropTarget ? getDropTargetProps(dropTarget) : {})}
+  >
     <div className="ui-content-browser__header" style={headerStyle}>
       <div className="ui-content-browser__heading">
         <strong className="ui-content-browser__title">{title}</strong>

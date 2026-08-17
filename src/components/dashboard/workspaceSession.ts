@@ -429,6 +429,90 @@ export function addItemToWorkspaceTarget({
   });
 }
 
+export function removeItemFromWorkspaceTarget({
+  state,
+  projectId,
+  targetWorkspaceKey,
+  itemId,
+}: {
+  state: GlobalTabState;
+  projectId: string | 'all';
+  targetWorkspaceKey: string;
+  itemId: string;
+}): GlobalTabState {
+  const targetTabs = getProjectWorkspaceTabs(state, projectId, targetWorkspaceKey);
+  const nextTabs = targetTabs.filter(
+    (entry) => entry.kind !== 'item' || entry.itemId !== itemId
+  );
+  if (nextTabs.length === targetTabs.length) return state;
+  return setProjectWorkspaceTabs(state, projectId, targetWorkspaceKey, nextTabs);
+}
+
+export function transferItemBetweenWorkspaceTargets({
+  state,
+  item,
+  items,
+  sourceProjectId,
+  sourceWorkspaceKey,
+  targetProjectId,
+  targetWorkspaceKey,
+  mode,
+}: {
+  state: GlobalTabState;
+  item: Item;
+  items: readonly Item[];
+  sourceProjectId: string | 'all';
+  sourceWorkspaceKey: string;
+  targetProjectId: string | 'all';
+  targetWorkspaceKey: string;
+  mode: 'copy' | 'move';
+}): GlobalTabState {
+  if (sourceWorkspaceKey === targetWorkspaceKey) return state;
+  const added = addItemToWorkspaceTarget({
+    state,
+    projectId: targetProjectId,
+    targetWorkspaceKey,
+    item,
+    items,
+  });
+  if (mode === 'copy') return added;
+  return removeItemFromWorkspaceTarget({
+    state: added,
+    projectId: sourceProjectId,
+    targetWorkspaceKey: sourceWorkspaceKey,
+    itemId: item.id,
+  });
+}
+
+export function reorderItemInWorkspaceTarget({
+  state,
+  projectId,
+  workspaceKey,
+  itemId,
+  beforeItemId,
+}: {
+  state: GlobalTabState;
+  projectId: string | 'all';
+  workspaceKey: string;
+  itemId: string;
+  beforeItemId: string;
+}): GlobalTabState {
+  if (itemId === beforeItemId) return state;
+  const tabs = getProjectWorkspaceTabs(state, projectId, workspaceKey);
+  const sourceIndex = tabs.findIndex((entry) => entry.kind === 'item' && entry.itemId === itemId);
+  const initialTargetIndex = tabs.findIndex(
+    (entry) => entry.kind === 'item' && entry.itemId === beforeItemId
+  );
+  if (sourceIndex < 0 || initialTargetIndex < 0) return state;
+  const nextTabs = [...tabs];
+  const [entry] = nextTabs.splice(sourceIndex, 1);
+  const targetIndex = sourceIndex < initialTargetIndex
+    ? initialTargetIndex - 1
+    : initialTargetIndex;
+  nextTabs.splice(targetIndex, 0, entry);
+  return setProjectWorkspaceTabs(state, projectId, workspaceKey, nextTabs);
+}
+
 export function transferProjectWorkspaceEntry({
   state,
   projectId,

@@ -2629,6 +2629,29 @@ button.ui-scope-chip {
   outline-offset: -2px;
 }
 
+.ui-content-browser__drag-handle {
+  width: 12px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  color: var(--text-faint);
+  opacity: 0.58;
+}
+
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__drag-handle {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+}
+
+.ui-content-browser__entry:hover .ui-content-browser__drag-handle,
+.ui-content-browser__entry:focus-visible .ui-content-browser__drag-handle {
+  color: var(--accent);
+  opacity: 1;
+}
+
 .ui-content-browser__leading {
   width: auto;
   min-width: 29px;
@@ -4275,6 +4298,258 @@ button.ui-scope-chip {
 
   .ui-workspace-tabs__tab {
     min-width: 112px;
+  }
+}
+
+/* ===== Universal item drag and drop ===== */
+.ui-item-drop-tray {
+  position: fixed;
+  z-index: 10020;
+  right: 18px;
+  bottom: calc(var(--browser-footer-safe-clearance) + 18px);
+  width: min(420px, calc(100vw - 36px));
+  max-height: min(68vh, 680px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg-panel) 96%, transparent);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(16px);
+}
+
+.ui-item-drop-tray__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px 13px;
+  border-bottom: 1px solid var(--border);
+  background: var(--accent-weak);
+  color: var(--text);
+}
+
+.ui-item-drop-tray__header > span:last-child {
+  min-width: 0;
+}
+
+.ui-item-drop-tray__header strong,
+.ui-item-drop-tray__header small {
+  display: block;
+}
+
+.ui-item-drop-tray__header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.ui-item-drop-tray__header small {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.ui-item-drop-tray__drag-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-text, #fff);
+}
+
+.ui-item-drop-tray__groups {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.ui-item-drop-tray__groups section + section {
+  margin-top: 12px;
+}
+
+.ui-item-drop-tray__groups h3 {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+}
+
+.ui-item-drop-tray__targets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ui-item-drop-target {
+  min-width: 0;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.ui-item-drop-target > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-item-drop-target > small {
+  grid-column: 2;
+  margin-top: -5px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.ui-item-drop-target[data-drag-over='true'] {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.ui-item-drop-target[data-same-source='true'] {
+  opacity: 0.48;
+}
+
+.ui-item-inline-drop-target[data-drag-over='true'] {
+  border-color: var(--accent) !important;
+  background: var(--accent-weak) !important;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.ui-sidebar__nav-item[data-drag-over='true'] {
+  color: var(--accent) !important;
+  background: var(--accent-weak) !important;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.ui-item-transfer-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10030;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: color-mix(in srgb, #000 45%, transparent);
+}
+
+.ui-item-transfer-dialog {
+  position: relative;
+  width: min(520px, 100%);
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.ui-item-transfer-dialog h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-lg);
+}
+
+.ui-item-transfer-dialog > p {
+  margin: 7px 28px 16px 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.ui-item-transfer-dialog__close {
+  float: right;
+  margin: -8px -8px 6px 8px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.ui-item-transfer-dialog__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ui-item-transfer-dialog__actions button {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-item-transfer-dialog__actions button:hover:not(:disabled),
+.ui-item-transfer-dialog__actions button:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.ui-item-transfer-dialog__actions button > span {
+  min-width: 0;
+}
+
+.ui-item-transfer-dialog__actions strong,
+.ui-item-transfer-dialog__actions small {
+  display: block;
+}
+
+.ui-item-transfer-dialog__actions strong {
+  font-size: var(--text-sm);
+}
+
+.ui-item-transfer-dialog__actions small {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+
+[data-item-drag-source='true'] {
+  cursor: grab;
+}
+
+[data-item-drag-source='true']:active {
+  cursor: grabbing;
+}
+
+[data-reorder-over='true'] {
+  box-shadow: inset 0 3px 0 var(--accent) !important;
+}
+
+@media (max-width: 640px) {
+  .ui-item-drop-tray__targets,
+  .ui-item-transfer-dialog__actions {
+    grid-template-columns: 1fr;
   }
 }
 

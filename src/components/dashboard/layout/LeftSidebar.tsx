@@ -19,6 +19,7 @@ import type { DashboardView } from './DashboardLayout';
 import type { Collection, Item, Project } from '../../../lib/db';
 import { DialogShell } from '../DialogShell';
 import { ButtonDanger, ButtonGhost, ButtonPrimary, Input } from '../../../styles/primitives';
+import { useItemDragDrop } from '../ItemDragDropProvider';
 
 interface LeftSidebarProps {
   isCollapsed: boolean;
@@ -61,6 +62,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onCreateCollection,
   onDeleteCollection,
 }) => {
+  const { getDropTargetProps } = useItemDragDrop();
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const [dialog, setDialog] = useState<SidebarDialog | null>(null);
   const [dialogName, setDialogName] = useState('');
@@ -444,6 +446,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <button
                   type="button"
                   className="ui-sidebar__nav-item"
+                  {...(inboxCollection ? getDropTargetProps({
+                    kind: 'collection',
+                    containerId: inboxCollection.id,
+                    containerLabel: `${selectedProject?.name ?? 'Inbox'} · ${inboxCollection.name}`,
+                    projectId: scopeProjectId,
+                  }) : {})}
                   data-active="true"
                   aria-current="page"
                   onClick={() => onSelectCollectionScope('all', scopeProjectId)}
@@ -475,6 +483,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     <button
                       type="button"
                       className="ui-sidebar__nav-item"
+                      {...getDropTargetProps({
+                        kind: 'collection',
+                        containerId: collection.id,
+                        containerLabel: `${selectedProject?.name ?? 'Project'} · ${collection.name}`,
+                        projectId: scopeProjectId,
+                      })}
                       data-active={isSelected ? 'true' : 'false'}
                       aria-current={isSelected ? 'page' : undefined}
                       onClick={() => onSelectCollectionScope(collection.id, scopeProjectId)}

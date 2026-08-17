@@ -19,6 +19,8 @@ import {
   loadWorkspaceIntoProjectSession,
   saveCurrentProjectWorkspace,
   transferProjectWorkspaceEntry,
+  transferItemBetweenWorkspaceTargets,
+  reorderItemInWorkspaceTarget,
   workspaceTargetContainsItem,
 } from './workspaceSession';
 
@@ -231,6 +233,62 @@ describe('workspace sessions', () => {
       items: [],
     });
     expect(workspaceTargetContainsItem({ state: next, projectId: 'project-a', targetWorkspaceKey: targetKey, itemId: 'one', items: [] })).toBe(true);
+  });
+
+  it('copies and moves items between workspace types, including Global', () => {
+    const savedItem = item('one', 'https://example.com/one');
+    const projectKey = getProjectSessionWorkspaceKey('project-a');
+    const source = addItemToWorkspaceTarget({
+      state: GLOBAL_TAB_STATE_DEFAULT,
+      projectId: 'all',
+      targetWorkspaceKey: GLOBAL_WORKSPACE_KEY,
+      item: savedItem,
+      items: [savedItem],
+    });
+    const copied = transferItemBetweenWorkspaceTargets({
+      state: source,
+      item: savedItem,
+      items: [savedItem],
+      sourceProjectId: 'all',
+      sourceWorkspaceKey: GLOBAL_WORKSPACE_KEY,
+      targetProjectId: 'project-a',
+      targetWorkspaceKey: projectKey,
+      mode: 'copy',
+    });
+    expect(workspaceTargetContainsItem({ state: copied, projectId: 'all', targetWorkspaceKey: GLOBAL_WORKSPACE_KEY, itemId: savedItem.id, items: [savedItem] })).toBe(true);
+    expect(workspaceTargetContainsItem({ state: copied, projectId: 'project-a', targetWorkspaceKey: projectKey, itemId: savedItem.id, items: [savedItem] })).toBe(true);
+
+    const moved = transferItemBetweenWorkspaceTargets({
+      state: copied,
+      item: savedItem,
+      items: [savedItem],
+      sourceProjectId: 'all',
+      sourceWorkspaceKey: GLOBAL_WORKSPACE_KEY,
+      targetProjectId: 'project-a',
+      targetWorkspaceKey: projectKey,
+      mode: 'move',
+    });
+    expect(workspaceTargetContainsItem({ state: moved, projectId: 'all', targetWorkspaceKey: GLOBAL_WORKSPACE_KEY, itemId: savedItem.id, items: [savedItem] })).toBe(false);
+    expect(workspaceTargetContainsItem({ state: moved, projectId: 'project-a', targetWorkspaceKey: projectKey, itemId: savedItem.id, items: [savedItem] })).toBe(true);
+  });
+
+  it('reorders saved items inside one workspace without moving other entry types', () => {
+    const state: GlobalTabState = {
+      ...GLOBAL_TAB_STATE_DEFAULT,
+      tabs: [
+        { kind: 'item', id: 'one', itemId: 'one' },
+        { kind: 'search', id: 'search', query: 'topic', mode: 'hybrid' },
+        { kind: 'item', id: 'two', itemId: 'two' },
+      ],
+    };
+    const reordered = reorderItemInWorkspaceTarget({
+      state,
+      projectId: 'all',
+      workspaceKey: GLOBAL_WORKSPACE_KEY,
+      itemId: 'two',
+      beforeItemId: 'one',
+    });
+    expect(reordered.tabs.map((entry) => entry.id)).toEqual(['two', 'one', 'search']);
   });
 
   it('activates project General and named workspaces only through explicit calls', () => {

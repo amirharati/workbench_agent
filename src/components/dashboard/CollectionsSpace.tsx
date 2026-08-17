@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Collection, Item } from '../../lib/db';
 import { CollectionContextMenu } from './CollectionContextMenu';
 import { Trash2, Pencil } from 'lucide-react';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 interface CollectionsSpaceProps {
   collections: Collection[];
@@ -20,11 +21,10 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
   onDeleteCollection,
   onRenameCollection,
   onOpenCollection,
-  onMoveItemToCollection,
   projectId,
 }) => {
+  const { getDropTargetProps } = useItemDragDrop();
   const [contextMenu, setContextMenu] = useState<{ collection: Collection; x: number; y: number } | null>(null);
-  const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
   const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
 
@@ -44,31 +44,6 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
     e.preventDefault();
     e.stopPropagation();
     setContextMenu({ collection, x: e.clientX, y: e.clientY });
-  };
-
-  const handleDragOver = (e: React.DragEvent, collectionId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverCollectionId(collectionId);
-  };
-
-  const handleDrop = (e: React.DragEvent, targetCollectionId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const itemId = e.dataTransfer.getData('text/plain');
-    if (itemId && onMoveItemToCollection) {
-      // Find source collection - use the first one if item has multiple
-      const item = items.find((i) => i.id === itemId);
-      if (item) {
-        const sourceCollectionId = item.collectionIds?.[0]; // Use first collection as source
-        onMoveItemToCollection(itemId, targetCollectionId, sourceCollectionId);
-      }
-    }
-    setDragOverCollectionId(null);
-  };
-
-  const handleDragLeave = () => {
-    setDragOverCollectionId(null);
   };
 
   const handleStartRename = (collection: Collection) => {
@@ -117,14 +92,6 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
         borderRadius: 10,
         border: '1px solid var(--border)',
         boxShadow: 'var(--shadow-panel)',
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        // Handle drop on empty space - could move to unsorted
       }}
     >
       {contextMenu && (
@@ -204,38 +171,42 @@ export const CollectionsSpace: React.FC<CollectionsSpaceProps> = ({
         
         {projectCollections.map((collection) => {
           const itemCount = getItemCount(collection.id);
-          const isDragOver = dragOverCollectionId === collection.id;
           const isEditing = editingCollectionId === collection.id;
+          const dropTargetProps = getDropTargetProps({
+            kind: 'collection',
+            containerId: collection.id,
+            containerLabel: collection.name,
+            projectId: collection.primaryProjectId,
+          });
 
           return (
             <div
               key={collection.id}
+              {...dropTargetProps}
+              className="ui-item-inline-drop-target"
               onClick={() => {
                 if (!isEditing && onOpenCollection) {
                   onOpenCollection(collection);
                 }
               }}
               onContextMenu={(e) => handleContextMenu(e, collection)}
-              onDragOver={(e) => handleDragOver(e, collection.id)}
-              onDrop={(e) => handleDrop(e, collection.id)}
-              onDragLeave={handleDragLeave}
               style={{
                 padding: '1rem',
-                background: isDragOver ? 'var(--accent-weak)' : 'var(--bg-glass)',
-                border: `2px solid ${isDragOver ? 'var(--accent)' : 'var(--border)'}`,
+                background: 'var(--bg-glass)',
+                border: '2px solid var(--border)',
                 borderRadius: 12,
                 transition: 'all 0.15s ease',
                 position: 'relative',
                 cursor: isEditing ? 'default' : 'pointer',
               }}
               onMouseEnter={(e) => {
-                if (!isDragOver && !isEditing) {
+                if (!isEditing) {
                   e.currentTarget.style.background = 'var(--bg-hover)';
                   e.currentTarget.style.borderColor = 'var(--accent)';
                 }
               }}
               onMouseLeave={(e) => {
-                if (!isDragOver && !isEditing) {
+                if (!isEditing) {
                   e.currentTarget.style.background = 'var(--bg-glass)';
                   e.currentTarget.style.borderColor = 'var(--border)';
                 }

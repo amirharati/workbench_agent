@@ -7,6 +7,7 @@ import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 interface ItemsListPanelProps {
   items: Item[];
@@ -46,10 +47,12 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   onOpenInNewTab,
   onDuplicate,
   availableSpaces = { primary: true },
+  currentCollectionId = 'all',
   layout = 'vertical',
   viewMode = 'list',
   onViewModeChange,
 }) => {
+  const { getDragProps, getDropTargetProps } = useItemDragDrop();
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const displayItems = useMemo(() => sortItemsWithPinsFirst(items), [items]);
   const itemIds = useMemo(() => displayItems.map((i) => i.id), [displayItems]);
@@ -85,6 +88,11 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   return (
     <Panel 
       className="scrollbar" 
+      {...(currentCollectionId === 'all' ? {} : getDropTargetProps({
+        kind: 'collection',
+        containerId: currentCollectionId,
+        containerLabel: title,
+      }))}
       style={{ 
         padding: '4px', 
         overflowY: 'auto',
@@ -224,11 +232,10 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
             return (
               <div
                 key={item.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', item.id);
-                }}
+                {...getDragProps(item, currentCollectionId === 'all'
+                  ? { kind: 'reference', label: title }
+                  : { kind: 'collection', containerId: currentCollectionId, containerLabel: title })}
+                data-item-drag-source="true"
                 onClick={(e) => handleItemClick(e, item)}
                 onContextMenu={(e) => handleContextMenu(e, item)}
                 style={{
@@ -339,11 +346,10 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
             return (
               <div
                 key={item.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', item.id);
-                }}
+                {...getDragProps(item, currentCollectionId === 'all'
+                  ? { kind: 'reference', label: title }
+                  : { kind: 'collection', containerId: currentCollectionId, containerLabel: title })}
+                data-item-drag-source="true"
                 onClick={(e) => handleItemClick(e, item)}
                 onContextMenu={(e) => handleContextMenu(e, item)}
                 style={{

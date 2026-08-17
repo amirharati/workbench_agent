@@ -14,6 +14,7 @@ import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemOrganizationDialog } from './ItemOrganizationDialog';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import type { WorkspaceDestination } from './workspaceDestinations';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 interface ProductSearchViewProps {
   items: Item[];
@@ -101,6 +102,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onAddItemToWorkspace,
   onViewItemInWorkspace,
 }) => {
+  const { getDragProps } = useItemDragDrop();
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -568,6 +570,8 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
           return (
             <div
               key={row.itemId}
+              {...(item ? getDragProps(item, { kind: 'reference', label: 'Search results' }) : {})}
+              data-item-drag-source={item ? 'true' : undefined}
               role="button"
               tabIndex={0}
               onClick={() => onSelectedItemIdChange(row.itemId)}

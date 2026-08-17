@@ -95,6 +95,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
         title="Trash"
         icon={<Trash2 size={20} style={{ color: 'var(--danger)' }} />}
         items={items}
+        allowItemDrag={false}
         emptyIcon={<Trash2 size={48} style={{ margin: '0 auto 1rem', opacity: 0.5 }} />}
         emptyTitle="Trash is empty"
         emptyHint={

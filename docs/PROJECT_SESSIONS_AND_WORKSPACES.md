@@ -60,6 +60,28 @@ There is no internal `Open in tab` action or internal tab strip. Chrome tabs rem
 - Adding, copying, moving, or removing workspace entries never changes project/collection placement.
 - Organizing a library item never silently adds, moves, or removes workspace membership.
 
+## Universal item drag and drop
+
+URLs and notes use the same transferable `item` contract. Where an item is displayed determines
+the allowed operation; its content type does not.
+
+- Search, Similar, All Library, favorites, recent material, and Enrichment are reference/result
+  views. They do not own membership, so dragging from them can only add/copy into a destination.
+- Workspace-to-Workspace offers an explicit Copy/Move choice. Global workspace follows exactly
+  the same rule as every project General or named workspace.
+- Collection-to-Collection offers an explicit Copy/Move choice, whether the collections belong to
+  the same project or different projects. Projects group collections; item membership is always
+  stored on the destination collection rather than directly on a project.
+- Workspace-to-Collection and Collection-to-Workspace always copy because the container types
+  have different semantics.
+- Moving commits the destination before removing the exact recorded source membership. Collection
+  moves carry placement notes/tags and merge distinct destination data instead of overwriting it.
+- Reordering inside a Workspace changes only its ordered entry list. Collections do not invent a
+  separate item order where none exists in the data model.
+- All Library is never a destination. Visible Workspace/Collection containers and a global
+  destination tray accept drops; successful transfers show feedback and Undo. Existing click and
+  keyboard organization controls remain available.
+
 ## Persistence model
 
 The workspace domain owns:
@@ -84,6 +106,7 @@ Legacy `GlobalTab`, `project session`, `live session`, `saved workspace session`
 4. Separate browser snapshots from Homebase workspace destinations.
 5. Replace `Open in tab` language and divergent handlers with the shared workspace actions.
 6. Only after the model is stable, review how the active workspace and its entries should appear on Home versus Library, Search, Enrichment, and other task pages.
+7. Use one versioned item drag payload and one transfer coordinator across every item/result surface; remove page-local guesses about source collection membership.
 
 ## Acceptance before UI redesign
 

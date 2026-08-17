@@ -7,6 +7,7 @@ import { ItemContextMenu } from './ItemContextMenu';
 import { TabScrollShell } from './TabScrollShell';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildItemQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 interface QuickAccessItemListProps {
   title: string;
@@ -26,6 +27,7 @@ interface QuickAccessItemListProps {
   onItemEdit?: (item: Item) => void;
   onItemDelete?: (item: Item) => void;
   onOpenInNewTab?: (item: Item) => void;
+  allowItemDrag?: boolean;
 }
 
 export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
@@ -45,7 +47,9 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
   onItemEdit,
   onItemDelete,
   onOpenInNewTab,
+  allowItemDrag = true,
 }) => {
+  const { getDragProps } = useItemDragDrop();
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
   const itemSearchIndex = useMemo(
@@ -146,6 +150,8 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
               return (
                 <div
                   key={item.id}
+                  {...(allowItemDrag ? getDragProps(item, { kind: 'reference', label: title }) : {})}
+                  data-item-drag-source={allowItemDrag ? 'true' : undefined}
                   className="ui-quick-access-list__row"
                   role={interactive ? 'button' : undefined}
                   tabIndex={interactive ? 0 : undefined}

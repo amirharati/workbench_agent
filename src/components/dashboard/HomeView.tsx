@@ -941,6 +941,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ flexShrink: 0, margin: '12px 20px 0' }}>
           <ActiveWorkspaceCard
+            workspaceKey={activeWorkspaceKey}
+            projectId={activeProject?.id ?? 'all'}
             title={activeProject
               ? projectSavedWorkspaceSessions.find((session) => getHomebaseWorkspaceSessionKey(session.id) === activeWorkspaceKey)?.name
                 ?? projectWorkspaces.find((workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeWorkspaceKey)?.name

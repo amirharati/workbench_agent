@@ -43,6 +43,7 @@ import { PipelineItemInspectorPanel } from './PipelineItemInspectorPanel';
 import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
 import { getBookmarkOpenUrl } from '../../lib/itemQuickAccess';
 import { usePipelineProgress } from './PipelineProgressProvider';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 const PAGE_SIZE = 80;
 
@@ -212,6 +213,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   activeView,
   hideViewTabs = false,
 }) => {
+  const { getDragProps } = useItemDragDrop();
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
   const [subTab, setSubTab] = useState<'queue' | 'taxonomy'>(hubSaved.categoriesSubTab);
@@ -1005,6 +1007,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                 return (
                   <div key={row.item.id}>
                     <div
+                      {...getDragProps(row.item, { kind: 'reference', label: 'Classification queue' })}
+                      data-item-drag-source="true"
                       style={{
                         display: 'grid',
                         gridTemplateColumns: '32px 1fr 120px 1fr 140px 100px',

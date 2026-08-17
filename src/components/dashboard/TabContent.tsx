@@ -17,6 +17,7 @@ import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { pinItem, unpinItem, favoriteItem, unfavoriteItem } from '../../lib/itemQuickAccess';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 interface TabContentProps {
   tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; workspaceId?: string; type?: 'item' | 'collection' | 'system' | 'workspace' }) | null;
@@ -74,8 +75,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   onItemClick,
   defaultCollectionId,
 }) => {
-  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
-  const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
+  const { activePayload, getDragProps, getDropTargetProps } = useItemDragDrop();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isEditingItem, setIsEditingItem] = useState(false);
   // Track filter state per collection tab (collectionId -> 'collection' | 'all')
@@ -249,42 +249,6 @@ export const TabContent: React.FC<TabContentProps> = ({
     const displayedItems = selectedFilter === 'all' ? items : collectionItems;
     const otherCollections = isAllCollection ? collections : collections.filter((c) => c.id !== collectionId);
 
-    const handleDragStart = (e: React.DragEvent, itemId: string) => {
-      setDraggedItemId(itemId);
-      e.dataTransfer.effectAllowed = 'move';
-    };
-
-    const handleDragOver = (e: React.DragEvent, collectionId: string) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setDragOverCollectionId(collectionId);
-    };
-
-    const handleDrop = (e: React.DragEvent, targetCollectionId: string) => {
-      e.preventDefault();
-      if (draggedItemId && onMoveItemToCollection) {
-        // If we're in a collection tab (not "All"), use it as the source
-        // Otherwise, find the item and use its first collection as source
-        let sourceCollectionId: string | undefined;
-        if (!isAllCollection && collectionId) {
-          sourceCollectionId = collectionId;
-        } else {
-          // Find the item to get its source collection
-          const item = items.find((i) => i.id === draggedItemId);
-          if (item && item.collectionIds && item.collectionIds.length > 0) {
-            sourceCollectionId = item.collectionIds[0];
-          }
-        }
-        onMoveItemToCollection(draggedItemId, targetCollectionId, sourceCollectionId);
-      }
-      setDraggedItemId(null);
-      setDragOverCollectionId(null);
-    };
-
-    const handleDragLeave = () => {
-      setDragOverCollectionId(null);
-    };
-
     return (
       <div
         style={{
@@ -350,14 +314,18 @@ export const TabContent: React.FC<TabContentProps> = ({
               {otherCollections.map((c) => (
                 <div
                   key={c.id}
-                  onDragOver={(e) => handleDragOver(e, c.id)}
-                  onDrop={(e) => handleDrop(e, c.id)}
-                  onDragLeave={handleDragLeave}
+                  {...getDropTargetProps({
+                    kind: 'collection',
+                    containerId: c.id,
+                    containerLabel: c.name,
+                    projectId: c.primaryProjectId,
+                  })}
+                  className="ui-item-inline-drop-target"
                   style={{
                     padding: '0.5rem 0.75rem',
                     borderRadius: 8,
-                    border: `2px dashed ${dragOverCollectionId === c.id ? 'var(--accent)' : 'var(--border)'}`,
-                    background: dragOverCollectionId === c.id ? 'var(--accent-weak)' : 'transparent',
+                    border: '2px dashed var(--border)',
+                    background: 'transparent',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                   }}
@@ -379,8 +347,10 @@ export const TabContent: React.FC<TabContentProps> = ({
             displayedItems.map((i) => (
               <div
                 key={i.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, i.id)}
+                {...getDragProps(i, !isAllCollection && selectedFilter === 'collection'
+                  ? { kind: 'collection', containerId: collectionId, containerLabel: tab.title || 'Collection', projectId }
+                  : { kind: 'reference', label: 'All items' })}
+                data-item-drag-source="true"
                 onClick={() => {
                   if (onItemClick) {
                     onItemClick(i);
@@ -392,17 +362,17 @@ export const TabContent: React.FC<TabContentProps> = ({
                   borderRadius: 8,
                   border: '1px solid var(--border)',
                   cursor: 'pointer',
-                  opacity: draggedItemId === i.id ? 0.5 : 1,
+                  opacity: activePayload?.itemId === i.id ? 0.5 : 1,
                   transition: 'all 0.1s ease',
                 }}
                 onMouseEnter={(e) => {
-                  if (draggedItemId !== i.id) {
+                  if (activePayload?.itemId !== i.id) {
                     e.currentTarget.style.background = 'var(--bg-hover)';
                     e.currentTarget.style.borderColor = 'var(--accent)';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (draggedItemId !== i.id) {
+                  if (activePayload?.itemId !== i.id) {
                     e.currentTarget.style.background = 'var(--bg-glass)';
                     e.currentTarget.style.borderColor = 'var(--border)';
                   }
@@ -887,5 +857,4 @@ export const TabContent: React.FC<TabContentProps> = ({
     </div>
   );
 };
-
 

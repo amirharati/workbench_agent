@@ -1,0 +1,110 @@
+import type React from 'react';
+
+export const ITEM_DRAG_MIME = 'application/x-homebase-item+json';
+export const ITEM_DRAG_VERSION = 1 as const;
+
+export type ItemContainerKind = 'workspace' | 'collection';
+export type ItemTransferOperation = 'copy' | 'move';
+
+export type ItemDragSource =
+  | { kind: 'reference'; label?: string }
+  | {
+      kind: ItemContainerKind;
+      containerId: string;
+      containerLabel: string;
+      projectId?: string | 'all';
+    };
+
+export interface ItemDropTarget {
+  kind: ItemContainerKind;
+  containerId: string;
+  containerLabel: string;
+  projectId?: string | 'all';
+}
+
+export interface ItemDragPayload {
+  version: typeof ITEM_DRAG_VERSION;
+  entity: 'item';
+  itemId: string;
+  itemLabel: string;
+  source: ItemDragSource;
+}
+
+export type ItemDropDecision =
+  | { kind: 'copy' }
+  | { kind: 'choose' }
+  | { kind: 'same-container' };
+
+export function createItemDragPayload(
+  item: { id: string; title?: string; url?: string },
+  source: ItemDragSource
+): ItemDragPayload {
+  return {
+    version: ITEM_DRAG_VERSION,
+    entity: 'item',
+    itemId: item.id,
+    itemLabel: item.title?.trim() || item.url?.trim() || 'Untitled',
+    source,
+  };
+}
+
+export function decideItemDrop(
+  source: ItemDragSource,
+  target: ItemDropTarget
+): ItemDropDecision {
+  if (source.kind === 'reference') return { kind: 'copy' };
+  if (source.kind !== target.kind) return { kind: 'copy' };
+  if (source.containerId === target.containerId) return { kind: 'same-container' };
+  return { kind: 'choose' };
+}
+
+export function writeItemDragPayload(
+  dataTransfer: DataTransfer,
+  payload: ItemDragPayload
+): void {
+  dataTransfer.effectAllowed = payload.source.kind === 'reference' ? 'copy' : 'copyMove';
+  dataTransfer.setData(ITEM_DRAG_MIME, JSON.stringify(payload));
+}
+
+export function readItemDragPayload(dataTransfer: DataTransfer): ItemDragPayload | null {
+  const raw = dataTransfer.getData(ITEM_DRAG_MIME);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<ItemDragPayload>;
+    if (
+      value.version !== ITEM_DRAG_VERSION ||
+      value.entity !== 'item' ||
+      typeof value.itemId !== 'string' ||
+      typeof value.itemLabel !== 'string' ||
+      !value.source ||
+      typeof value.source !== 'object'
+    ) return null;
+    const source = value.source as ItemDragSource;
+    if (source.kind === 'reference') return value as ItemDragPayload;
+    if (
+      (source.kind === 'workspace' || source.kind === 'collection') &&
+      typeof source.containerId === 'string' &&
+      typeof source.containerLabel === 'string'
+    ) return value as ItemDragPayload;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function itemDragSourceProps(
+  payload: ItemDragPayload,
+  callbacks: {
+    onStart: (payload: ItemDragPayload) => void;
+    onEnd: () => void;
+  }
+): Pick<React.HTMLAttributes<HTMLElement>, 'onDragStart' | 'onDragEnd'> & { draggable: true } {
+  return {
+    draggable: true,
+    onDragStart: (event) => {
+      writeItemDragPayload(event.dataTransfer, payload);
+      callbacks.onStart(payload);
+    },
+    onDragEnd: callbacks.onEnd,
+  };
+}
