@@ -20,6 +20,7 @@ interface RightPanelProps {
   isSearchSurface?: boolean;
   enrichmentPrimaryInItemTab?: boolean;
   isCollapsed: boolean;
+  width?: number;
   activeTab: RightPanelTab;
   onCollapsedChange: (collapsed: boolean) => void;
   onActiveTabChange: (tab: RightPanelTab) => void;
@@ -45,6 +46,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   isSearchSurface,
   enrichmentPrimaryInItemTab,
   isCollapsed,
+  width = 380,
   activeTab,
   onCollapsedChange,
   onActiveTabChange,
@@ -62,6 +64,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
     <div
       className={`right-panel${isCollapsed ? ' right-panel-collapsed' : ''}`}
       data-expanded={isCollapsed ? 'false' : 'true'}
+      style={{ '--right-panel-user-width': `${width}px` } as React.CSSProperties}
     >
       {isCollapsed ? (
         <button

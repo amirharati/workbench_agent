@@ -50,7 +50,7 @@ describe('responsive dashboard layout contract', () => {
     expect(css).toMatch(/\.ui-scroll-footer-safe,\s*\.ui-home-overview \{[\s\S]*?padding-bottom: var\(--scroll-footer-safe-bottom\) !important;/);
     expect(css).toMatch(/\.ui-content-browser__body \{[\s\S]*?padding-bottom: var\(--scroll-footer-safe-bottom\);/);
     expect(css).toMatch(/\.ui-all-library-workspace \.ui-content-browser__body \{[\s\S]*?padding-bottom: var\(--space-md\);/);
-    expect(css).toMatch(/@media \(max-width: 1320px\)[\s\S]*?\.right-panel \{[\s\S]*?--right-panel-width: clamp\(220px, 20vw, 260px\);/);
+    expect(css).toContain('--right-panel-width: min(var(--right-panel-user-width, 380px), 58vw);');
     expect(css).not.toMatch(/@media \(max-width: 1320px\)[\s\S]*?\.right-panel \{[\s\S]*?position: absolute;/);
     expect(css).not.toContain('padding-bottom: 56px !important');
     expect(css).not.toContain('padding: 12px var(--space-md) 56px !important');
@@ -90,9 +90,10 @@ describe('responsive dashboard layout contract', () => {
     expect(css).toMatch(/@container detail-panel \(max-width: 620px\)[\s\S]*?\.ui-detail-panel__body \{[\s\S]*?padding: 14px !important;/);
   });
 
-  it('keeps the Inspector in layout flow and narrows it before the workspace becomes cramped', () => {
+  it('keeps the resizable Inspector in layout flow and caps it on narrow screens', () => {
     expect(css).toContain('@media (max-width: 1320px)');
-    expect(css).toMatch(/@media \(max-width: 1320px\)[\s\S]*?\.right-panel \{[\s\S]*?--right-panel-width: clamp\(220px, 20vw, 260px\);/);
+    expect(css).toContain('--right-panel-width: min(var(--right-panel-user-width, 380px), 58vw);');
+    expect(css).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.right-panel \{[\s\S]*?clamp\(220px, 34vw, 280px\)/);
     expect(css).not.toMatch(/@media \(max-width: 1320px\)[\s\S]*?\.right-panel \{[\s\S]*?position: absolute;/);
   });
 });

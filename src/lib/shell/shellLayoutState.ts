@@ -4,6 +4,7 @@ export interface ShellLayoutState {
   leftSidebarCollapsed: boolean;
   rightPanelCollapsed: boolean;
   rightPanelTab: RightPanelTab;
+  rightPanelWidth: number;
   listPaneWidth: number;
   bookmarkListWidth: number;
   bookmarkDetailWidth: number;
@@ -17,6 +18,7 @@ export const SHELL_LAYOUT_DEFAULTS: ShellLayoutState = {
   leftSidebarCollapsed: false,
   rightPanelCollapsed: false,
   rightPanelTab: 'inspector',
+  rightPanelWidth: 380,
   listPaneWidth: 260,
   bookmarkListWidth: 240,
   bookmarkDetailWidth: 380,
@@ -25,6 +27,7 @@ export const SHELL_LAYOUT_DEFAULTS: ShellLayoutState = {
 };
 
 const WIDTH_BOUNDS = {
+  rightPanelWidth: { min: 280, max: 720 },
   listPaneWidth: { min: 200, max: 400 },
   bookmarkListWidth: { min: 180, max: 480 },
   bookmarkDetailWidth: { min: 280, max: 560 },
@@ -43,6 +46,10 @@ function normalizeShellLayout(raw: Partial<ShellLayoutState> | null | undefined)
     leftSidebarCollapsed: !!raw?.leftSidebarCollapsed,
     rightPanelCollapsed: !!raw?.rightPanelCollapsed,
     rightPanelTab: raw?.rightPanelTab === 'ask' ? 'ask' : 'inspector',
+    rightPanelWidth: clampWidth(
+      'rightPanelWidth',
+      typeof raw?.rightPanelWidth === 'number' ? raw.rightPanelWidth : base.rightPanelWidth
+    ),
     listPaneWidth: clampWidth(
       'listPaneWidth',
       typeof raw?.listPaneWidth === 'number' ? raw.listPaneWidth : base.listPaneWidth

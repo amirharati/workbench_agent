@@ -1509,6 +1509,18 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         </main>
 
         {/* Right Panel */}
+        {!isFullPageView && !shellLayout.rightPanelCollapsed ? (
+          <Resizer
+            direction="vertical"
+            thickness={6}
+            ariaLabel="Resize Inspector panel"
+            onResize={(delta) => {
+              setShellLayout((prev) =>
+                patchShellLayout({ rightPanelWidth: prev.rightPanelWidth - delta }, prev)
+              );
+            }}
+          />
+        ) : null}
         {!isFullPageView && (
           <RightPanel
             activeItem={inspectorItem}
@@ -1520,6 +1532,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
             isSearchSurface={isSearchSurface}
             enrichmentPrimaryInItemTab={enrichmentPrimaryInItemTab}
             isCollapsed={shellLayout.rightPanelCollapsed}
+            width={shellLayout.rightPanelWidth}
             activeTab={shellLayout.rightPanelTab}
             onCollapsedChange={(collapsed) => patchShellLayoutState({ rightPanelCollapsed: collapsed })}
             onActiveTabChange={(tab) => patchShellLayoutState({ rightPanelTab: tab })}

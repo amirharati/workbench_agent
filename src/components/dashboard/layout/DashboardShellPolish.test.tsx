@@ -8,6 +8,7 @@ import { LeftSidebar } from './LeftSidebar';
 import { RightPanel } from './RightPanel';
 import { HomeTitleTabs } from './MainContent';
 import { ScopeChipsBar } from '../ScopeChipsBar';
+import { Resizer } from '../Resizer';
 import {
   isFullMiddleDashboardView,
   isFullPageDashboardView,
@@ -15,6 +16,7 @@ import {
   resolveShellInspectorItemId,
   shouldRevealInspectorWorkspace,
 } from './DashboardLayout';
+import { SHELL_LAYOUT_DEFAULTS } from '../../../lib/shell/shellLayoutState';
 
 describe('dashboard shell polish contracts', () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -62,6 +64,7 @@ describe('dashboard shell polish contracts', () => {
         scopeProjectId="all"
         scopeCollectionId="all"
         isCollapsed={false}
+        width={420}
         activeTab="inspector"
         onCollapsedChange={vi.fn()}
         onActiveTabChange={vi.fn()}
@@ -70,8 +73,44 @@ describe('dashboard shell polish contracts', () => {
 
     expect(markup).toContain('role="tablist"');
     expect(markup).toContain('aria-label="Inspector tools"');
+    expect(markup).toContain('--right-panel-user-width:420px');
     expect(markup).toContain('class="right-panel__tab" data-active="true" role="tab" aria-selected="true"');
     expect(markup).toContain('aria-label="Collapse Inspector panel"');
+  });
+
+  it('starts the Inspector wider and persists it as shell layout state', () => {
+    expect(SHELL_LAYOUT_DEFAULTS.rightPanelWidth).toBe(380);
+  });
+
+  it('exposes the Inspector divider to mouse and keyboard resizing', async () => {
+    const onResize = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <Resizer
+          direction="vertical"
+          ariaLabel="Resize Inspector panel"
+          onResize={onResize}
+        />
+      );
+    });
+
+    const divider = host.querySelector<HTMLElement>('[aria-label="Resize Inspector panel"]');
+    expect(divider?.getAttribute('role')).toBe('separator');
+    expect(divider?.tabIndex).toBe(0);
+
+    await act(async () => {
+      divider?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      divider?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true }));
+    });
+    expect(onResize).toHaveBeenNthCalledWith(1, -10);
+    expect(onResize).toHaveBeenNthCalledWith(2, 40);
+
+    await act(async () => root.unmount());
+    host.remove();
   });
 
   it('keeps a visible control for reopening a collapsed Inspector', () => {

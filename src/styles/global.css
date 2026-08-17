@@ -22,7 +22,7 @@
   --page-bottom-clearance: 24px;
   --page-safe-bottom: calc(var(--page-bottom-clearance) + env(safe-area-inset-bottom, 0px));
   --scroll-footer-safe-bottom: calc(var(--browser-footer-clearance) + env(safe-area-inset-bottom, 0px));
-  --right-panel-width: 280px;
+  --right-panel-width: 380px;
 
   /* ===== Typography ===== */
   --font-sans: 'Inter', 'SF Pro Text', 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -4118,6 +4118,7 @@ button.ui-scope-chip {
 
 /* ===== Right Panel (minimizable) ===== */
 .right-panel {
+  --right-panel-width: min(var(--right-panel-user-width, 380px), 58vw);
   position: relative;
   min-height: 0;
   flex-shrink: 0;
@@ -4125,7 +4126,6 @@ button.ui-scope-chip {
   overflow: hidden;
   border-left: 1px solid var(--border);
   background: var(--bg-panel);
-  transition: width var(--duration-normal) var(--ease-standard);
 }
 
 .right-panel[data-expanded='true'],
@@ -4255,9 +4255,6 @@ button.ui-scope-chip {
     width: 184px;
   }
 
-  .right-panel {
-    --right-panel-width: clamp(220px, 20vw, 260px);
-  }
 }
 
 @media (max-width: 760px) {
@@ -4265,8 +4262,11 @@ button.ui-scope-chip {
     width: 160px;
   }
 
-  .ui-dashboard-shell {
-    --right-panel-width: clamp(200px, 28vw, 220px);
+  .right-panel {
+    --right-panel-width: min(
+      var(--right-panel-user-width, 380px),
+      clamp(220px, 34vw, 280px)
+    );
   }
 
   .ui-workspace-tabs__strip-label > span {

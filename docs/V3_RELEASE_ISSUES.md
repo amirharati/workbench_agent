@@ -5,7 +5,7 @@
 **Opened:** 2026-08-08  
 **Testing branch:** `design/ui-redesign`  
 **Starting product commit:** `b1114b4` (`Improve scoped list filtering`)  
-**Current test checkpoint:** `4506de7` (`Show progress and results after pipeline resume`)
+**Current test checkpoint:** `dbafa70` (`Polish Similar links and sync Enrichment Inspector`)
 
 This is the single operating document for closing V3. Historical V3 plans explain how
 features were built; they do not determine the remaining release scope.
@@ -15,14 +15,18 @@ features were built; they do not determine the remaining release scope.
 This file remains authoritative even when an individual session is diverted to diagnose
 or fix a newly found issue:
 
-1. Test against the current checkpoint above and work through sections A–G opportunistically.
+1. Use Homebase normally against the current checkpoint. Treat usability findings and the
+   resulting workflow improvements as the primary dogfood loop; do not interrupt that loop to
+   mechanically execute sections A–G in order.
 2. Report findings as they occur; Codex adds or updates a `V3-###` ledger entry and identifies
    the affected release gate.
 3. A fix is not considered finished merely because it builds: its ledger entry remains
    `READY TO RETEST` until the original browser scenario passes.
 4. Checked test boxes, gate evidence, and the Run log record durable progress across sessions.
-5. Return to the remaining unchecked boxes after each issue detour. V3 is complete only when
-   G0–G6 pass or have explicit accepted exceptions and the Final signoff list is complete.
+5. Use sections A–G as coverage and signoff evidence. Before real personal data is trusted,
+   deliberately exercise the robustness and data-retention/integrity scenarios that ordinary
+   usability testing may not naturally trigger. V3 is complete only when G0–G6 pass or have
+   explicit accepted exceptions and the Final signoff list is complete.
 
 Current focus is ordinary daily-use testing across core workflows and UI/UX, while watching
 data integrity continuously. Destructive restore/reinstall recovery should be tested only after
@@ -283,8 +287,9 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-011 | 2026-08-12 | Pipeline / sleep recovery | A recovered bulk continues fetching but begins recording AI `not_configured` | P1 | REPRODUCED | Preserve/reload the saved AI configuration across sleep recovery before accepting more stages | Unfixed | Cancel current batch; focused recovery diagnosis pending |
 | V3-012 | 2026-08-12 | X enrichment / authenticated fetch | Public X expansion is rich, but protected/private posts are not reliably retried through the logged-in browser | P1 | READY TO RETEST | Syndication-first public X; authenticated tab fallback plus browser-bound linked-page expansion for thin posts | 2026-08-14 checkpoint | Public/private X acceptance corpus needed |
 | V3-013 | 2026-08-13 | Navigation / Inspector | Restored Library selection leaves the right Inspector empty; Enrichment Hub lacks the shared Inspector target | P2 | READY TO RETEST | Restore selection before hydration and render the shared right Inspector beside Hub | 2026-08-14 checkpoint | First-open Library and Hub Inspector retest pending; workspace-tab semantics separate |
-| V3-014 | 2026-08-14 | Workspaces / navigation | Project-scoped tabs, live sessions, named workspaces, browser snapshots, and Focus overlap; open work becomes hidden or replaces Home | P1 | READY TO RETEST | One Global workspace, one automatic General workspace per project, project-owned named workspaces, one explicit active workspace, a shared Add modal that only preselects the active destination and requires confirmation, explicit View/Remove actions, and no workspace Focus takeover | Uncommitted workspace-model checkpoint | Reload and verify the Add modal and active preselection, no membership change before confirmation, scoped names, non-navigating confirmed Add, explicit View workspace, normal list/detail selection, Remove, and external Chrome-tab behavior |
-| V3-015 | 2026-08-14 | Inspector / Similar bookmarks | Similar retrieval can remain on “Finding…” for seconds and differed between Home and Library | P2 | READY TO RETEST | Every surface submits an item ID to one shared keyed Inspector resource; context always resolves before the same Similar query, concurrent observers deduplicate, stale responses cannot publish, and Library badges run as bounded low-priority metadata-only batches. The disposable DB-worker vector index warms cooperatively and remains incrementally maintained | Uncommitted shared-Inspector/similarity checkpoint | Reload, select the same links from Home, Library, and Enrichment; compare first/repeated context and Similar latency, then rapidly switch items and verify no stale result appears |
+| V3-014 | 2026-08-14 | Workspaces / navigation | Project-scoped tabs, live sessions, named workspaces, browser snapshots, and Focus overlap; open work becomes hidden or replaces Home | P1 | READY TO RETEST | One Global workspace, one automatic General workspace per project, project-owned named workspaces, one explicit active workspace, a shared Add modal that only preselects the active destination and requires confirmation, explicit View/Remove actions, and no workspace Focus takeover | `2a54fbd` | Reload and verify the Add modal and active preselection, no membership change before confirmation, scoped names, non-navigating confirmed Add, explicit View workspace, normal list/detail selection, Remove, and external Chrome-tab behavior |
+| V3-015 | 2026-08-14 | Inspector / Similar bookmarks | Similar retrieval can remain on “Finding…” for seconds and differed between Home and Library | P2 | READY TO RETEST | Every surface submits an item ID to one shared keyed Inspector resource; context always resolves before the same Similar query, concurrent observers deduplicate, stale responses cannot publish, and Library badges run as bounded low-priority metadata-only batches. The disposable DB-worker vector index warms cooperatively and remains incrementally maintained | `2a54fbd` + `dbafa70` | Reload, select the same links from Home, Library, and Enrichment; compare first/repeated context and Similar latency, then rapidly switch items and verify no stale result appears |
+| V3-016 | 2026-08-17 | Inspector / layout | The Inspector is now a primary detail surface but its fixed narrow width makes search and item details cramped | P2 | READY TO RETEST | Wider 380px default plus a persisted draggable and keyboard-accessible workspace/Inspector divider; narrow screens retain a safe width cap | 2026-08-17 usability checkpoint | Reload, resize from several pages, confirm the chosen width survives reload, and review the narrow-screen cap |
 
 ### V3-001 — Replace stale Help with a comprehensive daily-use guide
 

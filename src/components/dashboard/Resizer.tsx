@@ -6,6 +6,7 @@ interface ResizerProps {
   thickness?: number;
   min?: number;
   max?: number;
+  ariaLabel?: string;
 }
 
 /**
@@ -18,6 +19,7 @@ export const Resizer: React.FC<ResizerProps> = ({
   direction,
   onResize,
   thickness = 4,
+  ariaLabel,
 }) => {
   const isVertical = direction === 'vertical';
 
@@ -49,6 +51,22 @@ export const Resizer: React.FC<ResizerProps> = ({
   return (
     <div
       onMouseDown={handleMouseDown}
+      onKeyDown={(event) => {
+        if (!ariaLabel) return;
+        const step = event.shiftKey ? 40 : 10;
+        if (isVertical && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+          event.preventDefault();
+          onResize(event.key === 'ArrowLeft' ? -step : step);
+        } else if (!isVertical && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+          event.preventDefault();
+          onResize(event.key === 'ArrowUp' ? -step : step);
+        }
+      }}
+      role={ariaLabel ? 'separator' : undefined}
+      aria-label={ariaLabel}
+      aria-orientation={ariaLabel ? (isVertical ? 'vertical' : 'horizontal') : undefined}
+      tabIndex={ariaLabel ? 0 : undefined}
+      title={ariaLabel}
       style={{
         width: isVertical ? thickness : '100%',
         height: isVertical ? '100%' : thickness,
@@ -92,4 +110,3 @@ export const Resizer: React.FC<ResizerProps> = ({
     </div>
   );
 };
-
