@@ -3,7 +3,7 @@ import { Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
-import type { ItemDragSource, ItemDropTarget } from './itemDragDrop';
+import type { ItemDragSource, ItemDropTarget, ProjectCollectionDropTarget } from './itemDragDrop';
 
 export type ContentBrowseMode = 'list' | 'gallery';
 
@@ -37,6 +37,8 @@ interface ContentBrowserProps {
   quickFilter?: boolean;
   /** Makes the visible browser itself a destination in addition to the global tray. */
   dropTarget?: ItemDropTarget;
+  /** Resolves a project aggregate drop to one of the project's real collections. */
+  projectCollectionDropTarget?: ProjectCollectionDropTarget;
 }
 
 function readableNodeText(node: React.ReactNode): string {
@@ -135,8 +137,9 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   headerActions,
   quickFilter = true,
   dropTarget,
+  projectCollectionDropTarget,
 }) => {
-  const { getDropTargetProps } = useItemDragDrop();
+  const { getDropTargetProps, getProjectCollectionDropTargetProps } = useItemDragDrop();
   const [filterQuery, setFilterQuery] = useState('');
   const [renderLimit, setRenderLimit] = useState(60);
   const selectedEntryRef = React.useRef<HTMLDivElement>(null);
@@ -190,10 +193,14 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
 
   return (
   <section
-    className={`ui-panel ui-content-browser${dropTarget ? ' ui-item-inline-drop-target' : ''}`}
+    className={`ui-panel ui-content-browser${dropTarget || projectCollectionDropTarget ? ' ui-item-inline-drop-target' : ''}`}
     style={panelStyle}
     aria-label={ariaLabel ?? title}
-    {...(dropTarget ? getDropTargetProps(dropTarget) : {})}
+    {...(dropTarget
+      ? getDropTargetProps(dropTarget)
+      : projectCollectionDropTarget
+        ? getProjectCollectionDropTargetProps(projectCollectionDropTarget)
+        : {})}
   >
     <div className="ui-content-browser__header" style={headerStyle}>
       <div className="ui-content-browser__heading">

@@ -22,6 +22,17 @@ export interface ItemDropTarget {
   projectId?: string | 'all';
 }
 
+/**
+ * A project is not itself a membership container. This descriptor lets a
+ * project-level aggregate view resolve a drop to one of its real collections.
+ */
+export interface ProjectCollectionDropTarget {
+  kind: 'project-collections';
+  projectId: string;
+  projectLabel: string;
+  collections: Array<ItemDropTarget & { kind: 'collection' }>;
+}
+
 export interface ItemDragPayload {
   version: typeof ITEM_DRAG_VERSION;
   entity: 'item';

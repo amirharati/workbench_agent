@@ -72,13 +72,17 @@ the allowed operation; its content type does not.
 - Collection-to-Collection offers an explicit Copy/Move choice, whether the collections belong to
   the same project or different projects. Projects group collections; item membership is always
   stored on the destination collection rather than directly on a project.
+- A project's **All items** view is a routing drop surface, not a membership container. If the
+  project has one collection the drop resolves there directly; if it has several, the user must
+  choose the exact collection before any membership changes.
 - Workspace-to-Collection and Collection-to-Workspace always copy because the container types
   have different semantics.
 - Moving commits the destination before removing the exact recorded source membership. Collection
   moves carry placement notes/tags and merge distinct destination data instead of overwriting it.
 - Reordering inside a Workspace changes only its ordered entry list. Collections do not invent a
   separate item order where none exists in the data model.
-- All Library is never a destination. Visible Workspace/Collection containers and a global
+- All Library is never a destination. Visible Workspace/Collection containers, the Project All
+  items routing surface, and a global
   destination tray accept drops; successful transfers show feedback and Undo. Existing click and
   keyboard organization controls remain available.
 

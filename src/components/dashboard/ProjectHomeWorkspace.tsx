@@ -728,6 +728,19 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                     projectId: project.id,
                   }
                 : undefined}
+            projectCollectionDropTarget={browseSource === 'all' && collections.length > 0
+              ? {
+                  kind: 'project-collections',
+                  projectId: project.id,
+                  projectLabel: project.name,
+                  collections: collections.map((collection) => ({
+                    kind: 'collection',
+                    containerId: collection.id,
+                    containerLabel: collection.name,
+                    projectId: project.id,
+                  })),
+                }
+              : undefined}
             headerActions={workspaceHeaderActions}
           />
           {detailPanel}

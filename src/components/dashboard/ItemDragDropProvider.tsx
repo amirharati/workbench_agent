@@ -13,6 +13,7 @@ import {
   type ItemDragSource,
   type ItemDropTarget,
   type ItemTransferOperation,
+  type ProjectCollectionDropTarget,
 } from './itemDragDrop';
 
 export interface ItemTransferResult {
@@ -27,6 +28,7 @@ interface ItemDragDropContextValue {
     source: ItemDragSource
   ) => ReturnType<typeof itemDragSourceProps>;
   getDropTargetProps: (target: ItemDropTarget) => ItemDropTargetProps;
+  getProjectCollectionDropTargetProps: (target: ProjectCollectionDropTarget) => ItemDropTargetProps;
   getReorderTargetProps: (
     beforeItemId: string,
     target: ItemDropTarget
@@ -48,6 +50,7 @@ export function useItemDragDrop(): ItemDragDropContextValue {
       activePayload: null,
       getDragProps: () => ({ draggable: true, onDragStart: () => {}, onDragEnd: () => {} }),
       getDropTargetProps: () => ({}),
+      getProjectCollectionDropTargetProps: () => ({}),
       getReorderTargetProps: () => ({}),
     };
   }
@@ -77,6 +80,11 @@ interface PendingChoice {
   target: ItemDropTarget;
 }
 
+interface PendingCollectionChoice {
+  payload: ItemDragPayload;
+  target: ProjectCollectionDropTarget;
+}
+
 function includesItemPayload(event: React.DragEvent): boolean {
   return Array.from(event.dataTransfer.types ?? []).includes(ITEM_DRAG_MIME);
 }
@@ -95,6 +103,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
   const [dragOverTargetId, setDragOverTargetId] = useState<string | null>(null);
   const [reorderOverItemId, setReorderOverItemId] = useState<string | null>(null);
   const [pendingChoice, setPendingChoice] = useState<PendingChoice | null>(null);
+  const [pendingCollectionChoice, setPendingCollectionChoice] = useState<PendingCollectionChoice | null>(null);
   const [busy, setBusy] = useState(false);
 
   const clearDrag = useCallback(() => {
@@ -135,12 +144,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     }
   }, [addToast, onTransfer]);
 
-  const handleDrop = useCallback((event: React.DragEvent, target: ItemDropTarget) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const payload = readItemDragPayload(event.dataTransfer) ?? activePayload;
-    clearDrag();
-    if (!payload) return;
+  const resolveDrop = useCallback((payload: ItemDragPayload, target: ItemDropTarget) => {
     const decision = decideItemDrop(payload.source, target);
     if (decision.kind === 'same-container') return;
     if (decision.kind === 'choose') {
@@ -148,7 +152,15 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       return;
     }
     void runTransfer(payload, target, 'copy');
-  }, [activePayload, clearDrag, runTransfer]);
+  }, [runTransfer]);
+
+  const handleDrop = useCallback((event: React.DragEvent, target: ItemDropTarget) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const payload = readItemDragPayload(event.dataTransfer) ?? activePayload;
+    clearDrag();
+    if (payload) resolveDrop(payload, target);
+  }, [activePayload, clearDrag, resolveDrop]);
 
   const getDropTargetProps = useCallback((target: ItemDropTarget): ItemDropTargetProps => {
     const targetKey = `${target.kind}:${target.containerId}`;
@@ -183,6 +195,42 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       'data-same-source': sameSource ? 'true' : 'false',
     };
   }, [activePayload, clearDrag, dragOverTargetId, handleDrop]);
+
+  const getProjectCollectionDropTargetProps = useCallback((
+    target: ProjectCollectionDropTarget
+  ): ItemDropTargetProps => {
+    const targetKey = `project-collections:${target.projectId}`;
+    return {
+      onDragEnter: (event) => {
+        if (target.collections.length === 0 || (!activePayload && !includesItemPayload(event))) return;
+        event.preventDefault();
+        setDragOverTargetId(targetKey);
+      },
+      onDragOver: (event) => {
+        if (target.collections.length === 0 || (!activePayload && !includesItemPayload(event))) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      },
+      onDragLeave: (event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setDragOverTargetId((current) => current === targetKey ? null : current);
+      },
+      onDrop: (event) => {
+        if (target.collections.length === 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const payload = readItemDragPayload(event.dataTransfer) ?? activePayload;
+        clearDrag();
+        if (!payload) return;
+        if (target.collections.length === 1) {
+          resolveDrop(payload, target.collections[0]);
+          return;
+        }
+        setPendingCollectionChoice({ payload, target });
+      },
+      'data-drag-over': dragOverTargetId === targetKey ? 'true' : 'false',
+    };
+  }, [activePayload, clearDrag, dragOverTargetId, resolveDrop]);
 
   const getReorderTargetProps = useCallback((
     beforeItemId: string,
@@ -238,17 +286,20 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     [collections, projectById]
   );
   const contextValue = useMemo(
-    () => ({ activePayload, getDragProps, getDropTargetProps, getReorderTargetProps }),
-    [activePayload, getDragProps, getDropTargetProps, getReorderTargetProps]
+    () => ({ activePayload, getDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps }),
+    [activePayload, getDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps]
   );
   useEffect(() => {
-    if (!pendingChoice) return;
+    if (!pendingChoice && !pendingCollectionChoice) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) setPendingChoice(null);
+      if (event.key === 'Escape' && !busy) {
+        setPendingChoice(null);
+        setPendingCollectionChoice(null);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [busy, pendingChoice]);
+  }, [busy, pendingChoice, pendingCollectionChoice]);
 
   return (
     <ItemDragDropContext.Provider value={contextValue}>
@@ -308,6 +359,41 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
             </section>
           </div>
         </aside>
+      ) : null}
+
+      {pendingCollectionChoice ? (
+        <div className="ui-item-transfer-dialog-backdrop" role="presentation" onMouseDown={() => setPendingCollectionChoice(null)}>
+          <section className="ui-item-transfer-dialog" role="dialog" aria-modal="true" aria-labelledby="item-collection-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="ui-item-transfer-dialog__close" type="button" onClick={() => setPendingCollectionChoice(null)} aria-label="Cancel collection choice"><X size={14} /></button>
+            <h2 id="item-collection-title">Choose a collection</h2>
+            <p>
+              Add “{pendingCollectionChoice.payload.itemLabel}” to a collection in <strong>{pendingCollectionChoice.target.projectLabel}</strong>.
+            </p>
+            <div className="ui-item-transfer-dialog__actions ui-item-transfer-dialog__actions--collections">
+              {pendingCollectionChoice.target.collections.map((collection, index) => {
+                const present = isInTarget(pendingCollectionChoice.payload.itemId, collection);
+                return (
+                  <button
+                    type="button"
+                    key={collection.containerId}
+                    autoFocus={index === 0}
+                    onClick={() => {
+                      const payload = pendingCollectionChoice.payload;
+                      setPendingCollectionChoice(null);
+                      resolveDrop(payload, collection);
+                    }}
+                  >
+                    <Folder size={14} />
+                    <span>
+                      <strong>{collection.containerLabel}</strong>
+                      <small>{present ? 'Already in this collection' : 'Add to this collection'}</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {pendingChoice ? (
