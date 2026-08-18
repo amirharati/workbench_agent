@@ -49,6 +49,25 @@ Every originating surface—Home, Library, Search, Inspector, item details, Enri
 
 There is no internal `Open in tab` action or internal tab strip. Chrome tabs remain an external browser concept and are labelled as browser tabs.
 
+## Activity, organization scope, and Peek
+
+Current activity, organization scope, active workspace, and temporary preview are independent UI
+states:
+
+- Opening Search, Enrichment, Library, Notes, or another activity does not clear the selected
+  project/collection scope or activate a different workspace.
+- The persistent sidebar exposes the current organization destinations. At All Library scope,
+  collections remain available under their projects instead of disappearing.
+- Changing the active workspace from the sidebar changes only that durable workspace choice.
+  **View workspace** remains a separate explicit navigation action.
+- **Preview** opens one app-wide in-dashboard Peek overlay. It does not add an internal tab, alter
+  workspace membership, navigate to Home, replace the underlying activity, or clear its query,
+  filters, scroll position, selection, or Inspector state.
+- Peek uses the stored fetched body when available and falls back to the item's note or enrichment
+  summary. Previous/Next follows the originating visible result order. Collection/tag edits and
+  workspace additions are explicit; only **View workspace** may close Peek and navigate.
+- Opening the original URL remains an explicit Chrome action and is never implied by Preview.
+
 ## Membership and data safety
 
 - A workspace contains references, not copies of library records.
@@ -123,5 +142,8 @@ Legacy `GlobalTab`, `project session`, `live session`, `saved workspace session`
 - No active user-facing control says `Open in tab`.
 - Homebase workspace entries are not exposed as an ARIA or visual tab strip.
 - Homebase has no workspace Focus takeover layer.
+- Search, Similar, Library, Project, Notes, and Enrichment items can open the same app-wide Peek
+  without changing the underlying activity or workspace.
+- Closing Peek restores the still-mounted underlying activity exactly where the user left it.
 - An item action shows whether the item already belongs to one or more workspaces before opening the destination picker.
 - Browser snapshots are labelled and handled separately.

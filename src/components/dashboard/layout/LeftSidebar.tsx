@@ -14,12 +14,14 @@ import {
   Home,
   HelpCircle,
   Workflow,
+  Eye,
 } from 'lucide-react';
 import type { DashboardView } from './DashboardLayout';
 import type { Collection, Item, Project } from '../../../lib/db';
 import { DialogShell } from '../DialogShell';
 import { ButtonDanger, ButtonGhost, ButtonPrimary, Input } from '../../../styles/primitives';
 import { useItemDragDrop } from '../ItemDragDropProvider';
+import type { WorkspaceDestination } from '../workspaceDestinations';
 
 interface LeftSidebarProps {
   isCollapsed: boolean;
@@ -37,6 +39,10 @@ interface LeftSidebarProps {
   onDeleteProject?: (projectId: string) => Promise<boolean | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   onDeleteCollection?: (collectionId: string) => Promise<boolean | void>;
+  workspaceDestinations?: WorkspaceDestination[];
+  activeWorkspaceKey?: string;
+  onActivateWorkspace?: (destination: WorkspaceDestination) => void;
+  onViewWorkspace?: (destination: WorkspaceDestination) => void;
 }
 
 type SidebarDialog =
@@ -61,6 +67,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onDeleteProject,
   onCreateCollection,
   onDeleteCollection,
+  workspaceDestinations = [],
+  activeWorkspaceKey = '',
+  onActivateWorkspace,
+  onViewWorkspace,
 }) => {
   const { getDropTargetProps } = useItemDragDrop();
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
@@ -143,6 +153,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const inboxCollection = scopeProjectIsInbox
     ? projectCollections.find((collection) => collection.isDefault) ?? projectCollections[0]
     : undefined;
+  const activeWorkspace = workspaceDestinations.find((destination) => destination.key === activeWorkspaceKey)
+    ?? workspaceDestinations[0];
 
   const handleAddProject = async (name: string) => {
     if (!onCreateProject) return;
@@ -417,12 +429,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </div>
         )}
 
-        {/* 2. COLLECTIONS - Only show when a project is selected */}
-        {!isCollapsed && scopeProjectId !== 'all' && (
+        {/* 2. COLLECTIONS - Persistent organization destinations across content views */}
+        {!isCollapsed && (
           <section className="ui-sidebar__section" aria-labelledby="sidebar-collections-heading">
             <div className="ui-sidebar__section-heading" id="sidebar-collections-heading">
               <span>Collections</span>
-              {onCreateCollection && !scopeProjectIsInbox && (
+              {onCreateCollection && scopeProjectId !== 'all' && !scopeProjectIsInbox && (
                 <button
                   type="button"
                   className="ui-sidebar__section-action"
@@ -442,7 +454,48 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               )}
             </div>
             <div className="ui-sidebar__link-list">
-              {scopeProjectIsInbox ? (
+              {scopeProjectId === 'all' ? (
+                projects.map((project) => {
+                  const groupedCollections = collections.filter(
+                    (collection) =>
+                      collection.primaryProjectId === project.id ||
+                      (Array.isArray(collection.projectIds) && collection.projectIds.includes(project.id))
+                  );
+                  if (groupedCollections.length === 0) return null;
+                  return (
+                    <div className="ui-sidebar__collection-group" key={project.id}>
+                      <button
+                        type="button"
+                        className="ui-sidebar__collection-group-label"
+                        onClick={() => onSelectProjectScope(project.id)}
+                        title={`Use ${project.name} as the current scope`}
+                      >
+                        {project.name}
+                      </button>
+                      {groupedCollections.map((collection) => {
+                        const counts = collectionItemCounts.get(collection.id) ?? { bookmarks: 0, notes: 0 };
+                        return (
+                          <button
+                            key={`${project.id}:${collection.id}`}
+                            type="button"
+                            className="ui-sidebar__nav-item ui-sidebar__nav-item--nested"
+                            {...getDropTargetProps({
+                              kind: 'collection',
+                              containerId: collection.id,
+                              containerLabel: `${project.name} · ${collection.name}`,
+                              projectId: project.id,
+                            })}
+                            onClick={() => onSelectCollectionScope(collection.id, project.id)}
+                          >
+                            <span className="ui-sidebar__nav-label">{project.isDefault ? 'Incoming' : collection.name}</span>
+                            <span className="ui-sidebar__count">{counts.bookmarks + counts.notes}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })
+              ) : scopeProjectIsInbox ? (
                 <button
                   type="button"
                   className="ui-sidebar__nav-item"
@@ -528,6 +581,40 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             </div>
           </section>
         )}
+
+        {!isCollapsed && activeWorkspace ? (
+          <section className="ui-sidebar__section" aria-labelledby="sidebar-active-workspace-heading">
+            <div className="ui-sidebar__section-heading" id="sidebar-active-workspace-heading">
+              <span>Active workspace</span>
+            </div>
+            <div className="ui-sidebar__workspace-control">
+              <select
+                className="ui-field ui-sidebar__workspace-select"
+                value={activeWorkspace.key}
+                onChange={(event) => {
+                  const destination = workspaceDestinations.find((candidate) => candidate.key === event.target.value);
+                  if (destination) onActivateWorkspace?.(destination);
+                }}
+                aria-label="Change active workspace"
+                title="Change the active workspace without leaving this view"
+              >
+                {workspaceDestinations.map((destination) => (
+                  <option key={destination.key} value={destination.key}>{destination.path}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="ui-button ui-button--secondary ui-button--compact"
+                onClick={() => onViewWorkspace?.(activeWorkspace)}
+                disabled={!onViewWorkspace}
+                title={`View ${activeWorkspace.path}`}
+                aria-label={`View ${activeWorkspace.path}`}
+              >
+                <Eye size={12} /> View
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         {/* Divider before nav sections */}
         {!isCollapsed && <div className="ui-sidebar__divider" />}

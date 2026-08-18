@@ -66,6 +66,7 @@ import {
 import { buildWorkspaceDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from '../workspaceDestinations';
 import { WorkspaceDestinationPicker } from '../WorkspaceDestinationPicker';
 import { ItemDragDropProvider, type ItemTransferResult } from '../ItemDragDropProvider';
+import { ItemPeekProvider } from '../ItemPeekProvider';
 import type { ItemDragPayload, ItemDropTarget, ItemTransferOperation } from '../itemDragDrop';
 import { buildCollectionTransferPatch } from '../../../lib/collectionTransfer';
 
@@ -146,10 +147,6 @@ export function resolveShellInspectorItemId({
   if (activeGlobalTab?.kind === 'item') return activeGlobalTab.itemId;
   if (activeView === 'home' && activeGlobalTab == null) return selectedBrowseItemId;
   return null;
-}
-
-export function shouldRevealInspectorWorkspace(activeView: DashboardView): boolean {
-  return activeView === 'search';
 }
 
 export function loadRestoredBrowseItemId(
@@ -641,11 +638,9 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       });
     }
     if (view === 'pipeline') {
-      setScopeProjectId('all');
-      setScopeCollectionId('all');
       setActiveView('pipeline');
       setSelectedBrowseItemId(null);
-      patchNavigationState({ activeView: 'pipeline', scopeProjectId: 'all', scopeCollectionId: 'all' });
+      patchNavigationState({ activeView: 'pipeline' });
       setPipelineBrowse(null);
       setCategoryBrowse(null);
       return;
@@ -662,6 +657,41 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const handleOpenHomeWorkspace = useCallback(() => {
     setActiveView('home');
     patchNavigationState({ activeView: 'home' });
+  }, []);
+
+  const handleActivateWorkspaceFromSidebar = useCallback((destination: WorkspaceDestination) => {
+    setGlobalTabState((previous) => {
+      const activated = activateWorkspace({
+        state: previous,
+        workspaceKey: destination.key,
+        projectId: destination.projectId,
+      });
+      const next = { ...activated, activeTabId: null };
+      saveGlobalTabState(next);
+      return next;
+    });
+  }, []);
+
+  const handleViewWorkspaceFromSidebar = useCallback((destination: WorkspaceDestination) => {
+    setGlobalTabState((previous) => {
+      const activated = activateWorkspace({
+        state: previous,
+        workspaceKey: destination.key,
+        projectId: destination.projectId,
+      });
+      const next = { ...activated, homeSection: 'overview' as const };
+      saveGlobalTabState(next);
+      return next;
+    });
+    setScopeNavigationRevision((revision) => revision + 1);
+    setScopeProjectId(destination.projectId);
+    setScopeCollectionId('all');
+    setActiveView('home');
+    patchNavigationState({
+      activeView: 'home',
+      scopeProjectId: destination.projectId,
+      scopeCollectionId: 'all',
+    });
   }, []);
 
   const handleOpenPipelineHub = useCallback(
@@ -889,18 +919,11 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     });
   };
 
-  /** Dedicated Search hides the workspace-entry row and the right Inspector. */
-  const revealWorkspaceTabsIfNeeded = () => {
-    if (!shouldRevealInspectorWorkspace(activeView)) return;
-    setActiveView('home');
-    patchNavigationState({ activeView: 'home' });
-  };
-
-  /** Open an item tab and focus the right Inspector where that panel exists. */
+  /** Select an item for the shared Inspector without changing activity or workspace membership. */
   const handleOpenItemInInspector = (item: Item, origin?: { projectId?: string; collectionId?: string }) => {
-    handleOpenItemTab(item, origin);
+    void origin;
+    setSelectedBrowseItemId(item.id);
     patchShellLayoutState({ rightPanelCollapsed: false, rightPanelTab: 'inspector' });
-    revealWorkspaceTabsIfNeeded();
   };
 
   /** Inspect a Hub item without creating or activating a Home workspace tab. */
@@ -1404,6 +1427,19 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       onTransfer={handleDraggedItemTransfer}
       onReorderWorkspaceItem={handleWorkspaceItemReorder}
     >
+    <ItemPeekProvider
+      items={items}
+      projects={projects}
+      collections={collections}
+      workspaceDestinations={workspaceDestinations}
+      activeWorkspaceKey={getActiveWorkspaceKey(globalTabState)}
+      isItemInWorkspace={itemIsInWorkspace}
+      onAddItemToWorkspace={(item, destination) => updateItemWorkspace(item, destination, false)}
+      onViewItemInWorkspace={(item, destination) => updateItemWorkspace(item, destination, true)}
+      onUpdateItem={handleUpdateBookmarkWithToast}
+      onCreateProject={onCreateProject}
+      onCreateCollection={onCreateCollection}
+    >
     <div className="ui-dashboard-shell">
       {/* Left Sidebar */}
       <div
@@ -1426,6 +1462,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
           onDeleteProject={handleDeleteProjectFromSidebar}
           onCreateCollection={onCreateCollection}
           onDeleteCollection={handleDeleteCollectionFromSidebar}
+          workspaceDestinations={workspaceDestinations}
+          activeWorkspaceKey={getActiveWorkspaceKey(globalTabState)}
+          onActivateWorkspace={handleActivateWorkspaceFromSidebar}
+          onViewWorkspace={handleViewWorkspaceFromSidebar}
         />
       </div>
 
@@ -1748,6 +1788,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         />
       ) : null}
     </div>
+    </ItemPeekProvider>
     </ItemDragDropProvider>
   );
 };

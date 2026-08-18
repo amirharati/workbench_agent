@@ -53,6 +53,7 @@ import { getBookmarkOpenUrl } from '../../lib/itemQuickAccess';
 import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { HubBulkStagedActions } from './HubBulkStagedActions';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { useItemPeek } from './ItemPeekProvider';
 
 type HubLane = 'enrichment' | 'categories';
 export type HubView = 'enrichment' | 'classification' | 'taxonomy';
@@ -511,6 +512,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   onResetScope,
 }) => {
   const { getDragProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
   const [activeHubView, setActiveHubView] = useState<HubView>(() =>
@@ -947,6 +949,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       displayOrderIds,
       recentUpdateIdSet,
     ]
+  );
+  const peekItemIds = useMemo(
+    () => tableRowsForList.map((row) => row.item.id),
+    [tableRowsForList]
   );
 
   tableRowsForListRef.current = tableRowsForList;
@@ -1836,6 +1842,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                   {...getDragProps(item, { kind: 'reference', label: 'Enrichment Hub' })}
                   data-item-drag-source="true"
                   onClick={() => onOpenItem?.(item)}
+                  onDoubleClick={(event) => {
+                    if ((event.target as HTMLElement).closest('button, input, a')) return;
+                    openPeek(item.id, { itemIds: peekItemIds, sourceLabel: 'Enrichment Hub' });
+                  }}
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '32px 1fr 140px 1fr 120px 100px',

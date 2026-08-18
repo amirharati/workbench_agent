@@ -14,7 +14,6 @@ import {
   isFullPageDashboardView,
   loadRestoredBrowseItemId,
   resolveShellInspectorItemId,
-  shouldRevealInspectorWorkspace,
 } from './DashboardLayout';
 import { SHELL_LAYOUT_DEFAULTS } from '../../../lib/shell/shellLayoutState';
 
@@ -147,12 +146,6 @@ describe('dashboard shell polish contracts', () => {
       selectedBrowseItemId: 'note-item',
       activeGlobalTab: null,
     })).toBe('note-item');
-  });
-
-  it('does not navigate away from Enrichment Hub for its inspector action', () => {
-    expect(shouldRevealInspectorWorkspace('pipeline')).toBe(false);
-    expect(shouldRevealInspectorWorkspace('search')).toBe(true);
-    expect(shouldRevealInspectorWorkspace('bookmarks')).toBe(false);
   });
 
   it('renders Enrichment Hub beside the shared right Inspector', () => {
@@ -305,6 +298,59 @@ describe('dashboard shell polish contracts', () => {
     await act(async () => scopeButtons?.[1]?.click());
     expect(onSelectCollectionScope).toHaveBeenNthCalledWith(1, 'all', 'project-a');
     expect(onSelectCollectionScope).toHaveBeenNthCalledWith(2, 'sources', 'project-a');
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it('keeps collections and a changeable active workspace available at All Projects', async () => {
+    const onSelectCollectionScope = vi.fn();
+    const onActivateWorkspace = vi.fn();
+    const onViewWorkspace = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const globalWorkspace = { key: 'workspace:global', projectId: 'all' as const, projectName: 'Global', workspaceName: 'Global workspace', path: 'Global workspace', kind: 'global' as const, isCurrent: true };
+    const researchWorkspace = { key: 'workspace:project:project-a:general', projectId: 'project-a', projectName: 'Research', workspaceName: 'General', path: 'Research — General', kind: 'live' as const, isCurrent: false };
+
+    await act(async () => {
+      root.render(
+        <LeftSidebar
+          isCollapsed={false}
+          onToggle={vi.fn()}
+          activeView="search"
+          onSelectView={vi.fn()}
+          projects={[{ id: 'project-a', name: 'Research', isDefault: false, created_at: 1, updated_at: 1 }]}
+          collections={[{ id: 'sources', name: 'Sources', isDefault: false, created_at: 1, updated_at: 1, primaryProjectId: 'project-a', projectIds: ['project-a'] }]}
+          items={[]}
+          scopeProjectId="all"
+          scopeCollectionId="all"
+          onSelectProjectScope={vi.fn()}
+          onSelectCollectionScope={onSelectCollectionScope}
+          workspaceDestinations={[globalWorkspace, researchWorkspace]}
+          activeWorkspaceKey={globalWorkspace.key}
+          onActivateWorkspace={onActivateWorkspace}
+          onViewWorkspace={onViewWorkspace}
+        />
+      );
+    });
+
+    expect(host.textContent).toContain('Sources');
+    const sources = [...host.querySelectorAll<HTMLButtonElement>('.ui-sidebar__nav-item')]
+      .find((button) => button.textContent?.includes('Sources'));
+    await act(async () => sources?.click());
+    expect(onSelectCollectionScope).toHaveBeenCalledWith('sources', 'project-a');
+
+    const workspaceSelect = host.querySelector<HTMLSelectElement>('[aria-label="Change active workspace"]')!;
+    await act(async () => {
+      workspaceSelect.value = researchWorkspace.key;
+      workspaceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(onActivateWorkspace).toHaveBeenCalledWith(researchWorkspace);
+
+    const view = host.querySelector<HTMLButtonElement>('[aria-label="View Global workspace"]');
+    await act(async () => view?.click());
+    expect(onViewWorkspace).toHaveBeenCalledWith(globalWorkspace);
 
     await act(async () => root.unmount());
     host.remove();

@@ -1,13 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import type { Item } from '../../lib/db';
 import { getDomain, isValidBookmarkUrl, formatDateTime } from '../../lib/utils';
-import { ExternalLink, Search, X } from 'lucide-react';
+import { ExternalLink, Eye, Search, X } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { ItemContextMenu } from './ItemContextMenu';
 import { TabScrollShell } from './TabScrollShell';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildItemQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { useItemPeek } from './ItemPeekProvider';
 
 interface QuickAccessItemListProps {
   title: string;
@@ -50,6 +51,7 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
   allowItemDrag = true,
 }) => {
   const { getDragProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
   const itemSearchIndex = useMemo(
@@ -159,7 +161,10 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
                   onClick={() => onItemClick?.(item)}
                   onKeyDown={(event) => {
                     if (!interactive || event.target !== event.currentTarget) return;
-                    if (event.key === 'Enter' || event.key === ' ') {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      onItemClick?.(item);
+                    } else if (event.key === ' ') {
                       event.preventDefault();
                       onItemClick?.(item);
                     }
@@ -216,15 +221,23 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
                         {dateLabel}: {formatDateTime(dateTs)}
                       </div>
                     </div>
-                    {renderRowActions ? (
-                      <div
-                        className="ui-quick-access-list__actions"
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => event.stopPropagation()}
+                    <div
+                      className="ui-quick-access-list__actions"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="ui-item-preview-button"
+                        onClick={() => openPeek(item.id, { itemIds: filteredItems.map((candidate) => candidate.id), sourceLabel: title })}
+                        aria-label={`Preview ${item.title || 'Untitled'}`}
+                        title="Preview without leaving this view"
                       >
-                        {renderRowActions(item)}
-                      </div>
-                    ) : null}
+                        <Eye size={13} aria-hidden="true" />
+                        Preview
+                      </button>
+                      {renderRowActions?.(item)}
+                    </div>
                   </div>
                 </div>
               );

@@ -44,6 +44,7 @@ import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
 import { getBookmarkOpenUrl } from '../../lib/itemQuickAccess';
 import { usePipelineProgress } from './PipelineProgressProvider';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { useItemPeek } from './ItemPeekProvider';
 
 const PAGE_SIZE = 80;
 
@@ -214,6 +215,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   hideViewTabs = false,
 }) => {
   const { getDragProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
   const [subTab, setSubTab] = useState<'queue' | 'taxonomy'>(hubSaved.categoriesSubTab);
@@ -1009,6 +1011,10 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                     <div
                       {...getDragProps(row.item, { kind: 'reference', label: 'Classification queue' })}
                       data-item-drag-source="true"
+                      onDoubleClick={(event) => {
+                        if ((event.target as HTMLElement).closest('button, input, a')) return;
+                        openPeek(row.item.id, { itemIds: visibleRows.map((candidate) => candidate.item.id), sourceLabel: 'Classification queue' });
+                      }}
                       style={{
                         display: 'grid',
                         gridTemplateColumns: '32px 1fr 120px 1fr 140px 100px',

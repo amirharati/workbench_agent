@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
+import { Eye, Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
 import type { ItemDragSource, ItemDropTarget, ProjectCollectionDropTarget } from './itemDragDrop';
+import { useItemPeek } from './ItemPeekProvider';
 
 export type ContentBrowseMode = 'list' | 'gallery';
 
@@ -52,13 +53,16 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
   selected,
   onSelect,
   selectedEntryRef,
+  previewItemIds,
 }: {
   entry: ContentBrowseEntry;
   selected: boolean;
   onSelect: (id: string) => void;
   selectedEntryRef?: React.RefObject<HTMLDivElement>;
+  previewItemIds: readonly string[];
 }) {
   const { getDragProps, getReorderTargetProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const dragItem = entry.dragItem ?? { id: entry.id, title: entry.title };
   const dragProps = entry.dragSource
     ? getDragProps(dragItem, entry.dragSource)
@@ -78,10 +82,30 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       {...dragProps}
       {...reorderProps}
       onClick={() => onSelect(entry.id)}
+      onDoubleClick={(event) => {
+        if (!entry.dragSource || (event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        openPeek(dragItem.id, {
+          itemIds: previewItemIds,
+          sourceLabel: entry.dragSource.kind === 'reference'
+            ? entry.dragSource.label
+            : entry.dragSource.containerLabel,
+        });
+      }}
       onContextMenu={entry.onContextMenu}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          onSelect(entry.id);
+          if (entry.dragSource) {
+            openPeek(dragItem.id, {
+              itemIds: previewItemIds,
+              sourceLabel: entry.dragSource.kind === 'reference'
+                ? entry.dragSource.label
+                : entry.dragSource.containerLabel,
+            });
+          }
+        } else if (event.key === ' ') {
           event.preventDefault();
           onSelect(entry.id);
         }
@@ -94,6 +118,25 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
         <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
         {entry.subtitle && <span className="ui-content-browser__subtitle">{entry.subtitle}</span>}
       </span>
+      {entry.dragSource ? (
+        <button
+          type="button"
+          className="ui-content-browser__peek"
+          onClick={(event) => {
+            event.stopPropagation();
+            openPeek(dragItem.id, {
+              itemIds: previewItemIds,
+              sourceLabel: entry.dragSource?.kind === 'reference'
+                ? entry.dragSource.label
+                : entry.dragSource?.containerLabel,
+            });
+          }}
+          title="Preview without leaving this view"
+          aria-label={`Preview ${entry.title || 'item'}`}
+        >
+          <Eye size={12} />
+        </button>
+      ) : null}
       {(entry.meta || entry.actions) && (
         <span className="ui-content-browser__footer">
           {entry.meta && <span className="ui-content-browser__meta">{entry.meta}</span>}
@@ -185,6 +228,10 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   }, [filteredEntries.length, renderLimit]);
 
   const renderedEntries = filteredEntries.slice(0, renderLimit);
+  const previewItemIds = useMemo(
+    () => filteredEntries.filter((entry) => entry.dragSource).map((entry) => (entry.dragItem ?? { id: entry.id }).id),
+    [filteredEntries]
+  );
 
   useEffect(() => {
     if (!selectedId || !selectedEntryRef.current) return;
@@ -247,6 +294,7 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
           selected={entry.id === selectedId}
           onSelect={selectEntry}
           selectedEntryRef={entry.id === selectedId ? selectedEntryRef : undefined}
+          previewItemIds={previewItemIds}
         />
       ))}
       {renderedEntries.length < filteredEntries.length ? (

@@ -2,12 +2,13 @@ import React, { useMemo, useState } from 'react';
 import type { Item } from '../../lib/db';
 import { Panel } from '../../styles/primitives';
 import { ItemContextMenu } from './ItemContextMenu';
-import { List, Grid } from 'lucide-react';
+import { List, Grid, Eye } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { useItemPeek } from './ItemPeekProvider';
 
 interface ItemsListPanelProps {
   items: Item[];
@@ -53,6 +54,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   onViewModeChange,
 }) => {
   const { getDragProps, getDropTargetProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const displayItems = useMemo(() => sortItemsWithPinsFirst(items), [items]);
   const itemIds = useMemo(() => displayItems.map((i) => i.id), [displayItems]);
@@ -278,6 +280,18 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                   >
                     {item.title || 'Untitled'}
                   </span>
+                  <button
+                    type="button"
+                    className="ui-item-preview-button ui-item-preview-button--icon"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openPeek(item.id, { itemIds, sourceLabel: title });
+                    }}
+                    aria-label={`Preview ${item.title || 'Untitled'}`}
+                    title="Preview without leaving this view"
+                  >
+                    <Eye size={13} aria-hidden="true" />
+                  </button>
                   <ItemQuickAccessMarkers item={item} />
                 </div>
                 
@@ -391,6 +405,18 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                   </span>
                   <ItemQuickAccessMarkers item={item} />
                   <ListPipelineBadge badge={badgeMap.get(item.id)} />
+                  <button
+                    type="button"
+                    className="ui-item-preview-button ui-item-preview-button--icon"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openPeek(item.id, { itemIds, sourceLabel: title });
+                    }}
+                    aria-label={`Preview ${item.title || 'Untitled'}`}
+                    title="Preview without leaving this view"
+                  >
+                    <Eye size={13} aria-hidden="true" />
+                  </button>
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   </span>

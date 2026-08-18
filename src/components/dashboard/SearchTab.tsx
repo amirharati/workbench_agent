@@ -2,9 +2,10 @@ import React, { useState, useMemo } from 'react';
 import type { Item, Collection } from '../../lib/db';
 import { getDomain, isValidBookmarkUrl } from '../../lib/utils';
 import { Input } from '../../styles/primitives';
-import { Search, X, ExternalLink } from 'lucide-react';
+import { Search, X, ExternalLink, Eye } from 'lucide-react';
 import { TabScrollShell } from './TabScrollShell';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { useItemPeek } from './ItemPeekProvider';
 
 interface SearchTabProps {
   items: Item[];
@@ -23,6 +24,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
   onQueryChange,
 }) => {
   const { getDragProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const [searchQuery, setSearchQuery] = useState(initialQuery ?? '');
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
 
@@ -286,6 +288,19 @@ export const SearchTab: React.FC<SearchTabProps> = ({
                     </div>
                   )}
                 </div>
+                <button
+                  type="button"
+                  className="ui-item-preview-button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openPeek(item.id, { itemIds: filteredItems.map((candidate) => candidate.id), sourceLabel: 'Search results' });
+                  }}
+                  aria-label={`Preview ${item.title || 'Untitled'}`}
+                  title="Preview without leaving this view"
+                >
+                  <Eye size={13} aria-hidden="true" />
+                  Preview
+                </button>
               </div>
             </div>
           ))

@@ -7,6 +7,7 @@ import { useItemDragDrop } from './ItemDragDropProvider';
 import { Resizer } from './Resizer';
 import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
+import { useItemPeek } from './ItemPeekProvider';
 
 const isNoteItem = (item: Item) => !item.url || item.url.trim().length === 0;
 
@@ -52,6 +53,7 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
   scopeChips,
 }) => {
   const { getDragProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -271,6 +273,7 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
                     type="button"
                     aria-current={active ? 'true' : undefined}
                     onClick={() => selectNote(item)}
+                    onDoubleClick={() => openPeek(item.id, { itemIds: notes.map((note) => note.id), sourceLabel: 'Notes' })}
                     style={{
                       width: '100%',
                       textAlign: 'left',

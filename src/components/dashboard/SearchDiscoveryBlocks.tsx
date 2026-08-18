@@ -1,10 +1,11 @@
-import { ExternalLink, Sparkles } from 'lucide-react';
+import { ExternalLink, Eye, Sparkles } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { FindSimilarResult } from '../../lib/search';
 import type { SearchRelatedFacets, SimilarItemResult, SearchResult } from '../../lib/search';
 import { useInspectorItemData } from '../../hooks/useInspectorItemData';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { useItemPeek } from './ItemPeekProvider';
 
 const chipStyle: CSSProperties = {
   display: 'inline-flex',
@@ -30,6 +31,7 @@ function LinkRow({
   onSelect,
   workspaceAction,
   hideScore,
+  previewItemIds,
 }: {
   itemId: string;
   title: string;
@@ -40,14 +42,20 @@ function LinkRow({
   onSelect?: () => void;
   workspaceAction?: ReactNode;
   hideScore?: boolean;
+  previewItemIds?: readonly string[];
 }) {
   const { getDragProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   return (
     <div
       className="ui-related-link-row"
       data-has-workspace-action={workspaceAction ? 'true' : 'false'}
       data-item-drag-source="true"
       {...getDragProps({ id: itemId, title, url }, { kind: 'reference', label: 'Related results' })}
+      onDoubleClick={(event) => {
+        if ((event.target as HTMLElement).closest('button, a, input')) return;
+        openPeek(itemId, { itemIds: previewItemIds, sourceLabel: 'Related results' });
+      }}
     >
       <div className="ui-related-link-row__copy">
         <div className="ui-related-link-row__title-line">
@@ -71,6 +79,15 @@ function LinkRow({
               <ExternalLink size={13} />
             </ExtensionPageUrlLink>
           ) : null}
+          <button
+            type="button"
+            className="ui-related-link-row__external"
+            onClick={() => openPeek(itemId, { itemIds: previewItemIds, sourceLabel: 'Related results' })}
+            title="Preview without leaving this view"
+            aria-label={`Preview ${title}`}
+          >
+            <Eye size={13} />
+          </button>
         </div>
         <div className="ui-related-link-row__meta">
           {domain}
@@ -215,6 +232,7 @@ export function SearchRelatedPanel({
                   ? () => onRelatedClick(row.itemId, row.title || row.itemId)
                   : undefined
               }
+              previewItemIds={related.relatedLinks.map((candidate) => candidate.itemId)}
             />
           ))}
         </div>
@@ -288,6 +306,7 @@ export function SimilarItemsBlock({
               row={row}
               onItemClick={onItemClick}
               workspaceAction={renderWorkspaceAction?.(row.itemId, row.title || row.itemId)}
+              previewItemIds={similar.results.map((candidate) => candidate.itemId)}
             />
           ))}
         </>
@@ -300,10 +319,12 @@ function SimilarRow({
   row,
   onItemClick,
   workspaceAction,
+  previewItemIds,
 }: {
   row: SimilarItemResult;
   onItemClick?: (itemId: string, title: string) => void;
   workspaceAction?: ReactNode;
+  previewItemIds?: readonly string[];
 }) {
   return (
     <LinkRow
@@ -317,6 +338,7 @@ function SimilarRow({
         onItemClick ? () => onItemClick(row.itemId, row.title || row.itemId) : undefined
       }
       workspaceAction={workspaceAction}
+      previewItemIds={previewItemIds}
     />
   );
 }
@@ -387,6 +409,7 @@ export function InlineSimilarPanel({
               onSelect={
                 onItemClick ? () => onItemClick(row.itemId, row.title || row.itemId) : undefined
               }
+              previewItemIds={results.map((candidate) => candidate.itemId)}
             />
           );
         })

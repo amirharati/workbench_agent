@@ -4,6 +4,7 @@ import type { Item } from '../../lib/db';
 import type { GlobalTab } from './GlobalTabSystem';
 import { buildItemQuickFilterText, buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { useItemPeek } from './ItemPeekProvider';
 
 function workspaceEntryLabel(tab: GlobalTab, items: readonly Item[]): string {
   if (tab.kind === 'search') return tab.query.trim() || 'Search';
@@ -47,6 +48,7 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
   maxListHeight = 224,
 }) => {
   const { getDragProps, getDropTargetProps, getReorderTargetProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const [filterQuery, setFilterQuery] = useState('');
   const searchIndex = useMemo(
     () => tabs.map((tab) => {
@@ -157,6 +159,9 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntry(tab)}
+                onDoubleClick={() => {
+                  if (item) openPeek(item.id, { itemIds: filteredTabs.flatMap((entry) => entry.kind === 'item' ? [entry.itemId] : []), sourceLabel: title });
+                }}
                 title={label}
                 style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', fontSize: 'var(--text-xs)', fontWeight: selected ? 650 : 550, cursor: 'pointer' }}
               >

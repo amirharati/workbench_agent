@@ -137,6 +137,65 @@ describe('ProductSearchView empty state', () => {
     expect(markup).toContain('Semantic matches outside the exact query rules');
   });
 
+  it('selects a related result for Inspector without opening workspace state', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onSelectedItemIdChange = vi.fn();
+    const onOpenItem = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <ProductSearchView
+          items={[item]}
+          collections={[collection]}
+          state={{
+            ...resultState,
+            result: {
+              ...resultState.result,
+              results: [],
+              related: { topics: [], tags: [], relatedLinks: resultState.result.results },
+            },
+          }}
+          onQueryChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+          onModeChange={vi.fn()}
+          onSelectedItemIdChange={onSelectedItemIdChange}
+          onRunSearch={vi.fn()}
+          onOpenItem={onOpenItem}
+        />
+      );
+    });
+
+    const relatedTitle = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === item.title);
+    await act(async () => relatedTitle?.click());
+    expect(onSelectedItemIdChange).toHaveBeenCalledWith(item.id);
+    expect(onOpenItem).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it('always exposes Preview on a result, before selection or full item hydration', () => {
+    const markup = renderToStaticMarkup(
+      <ProductSearchView
+        items={[]}
+        collections={[]}
+        state={{ ...resultState, selectedItemId: null }}
+        onQueryChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onModeChange={vi.fn()}
+        onSelectedItemIdChange={vi.fn()}
+        onRunSearch={vi.fn()}
+        onOpenItem={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('aria-label="Preview Python guide"');
+    expect(markup).toContain('Preview without leaving Search');
+  });
+
   it('keeps workspace and full-library organization actions together in scoped search', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -164,7 +223,7 @@ describe('ProductSearchView empty state', () => {
     });
 
     expect(host.textContent).toContain('Organize…');
-    expect(host.textContent).toContain('Inspect');
+    expect(host.textContent).toContain('Preview');
     expect(host.textContent).not.toContain('Add to active workspace');
 
     const organize = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Organize'));
@@ -319,6 +378,7 @@ describe('ProductSearchView empty state', () => {
 
     expect(host.textContent).toContain('Organize…');
     expect(host.textContent).toContain('Add to workspace…');
+    expect(host.textContent).toContain('Preview');
     await act(async () => host.querySelector<HTMLButtonElement>('.ui-workspace-picker-trigger')?.click());
 
     const dialog = document.querySelector('[role="dialog"]');

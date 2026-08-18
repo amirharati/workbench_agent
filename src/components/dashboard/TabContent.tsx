@@ -12,12 +12,13 @@ import { TrashTab } from './TrashTab';
 import { RecentTab } from './RecentTab';
 import { WorkspaceTab } from './WorkspaceTab';
 import { ItemContextMenu } from './ItemContextMenu';
-import { Pencil, Trash2, ExternalLink, Calendar, FileText, Pin, Star } from 'lucide-react';
+import { Pencil, Trash2, ExternalLink, Calendar, FileText, Pin, Star, Eye } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { pinItem, unpinItem, favoriteItem, unfavoriteItem } from '../../lib/itemQuickAccess';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { useItemPeek } from './ItemPeekProvider';
 
 interface TabContentProps {
   tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; workspaceId?: string; type?: 'item' | 'collection' | 'system' | 'workspace' }) | null;
@@ -76,6 +77,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   defaultCollectionId,
 }) => {
   const { activePayload, getDragProps, getDropTargetProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isEditingItem, setIsEditingItem] = useState(false);
   // Track filter state per collection tab (collectionId -> 'collection' | 'all')
@@ -378,7 +380,22 @@ export const TabContent: React.FC<TabContentProps> = ({
                   }
                 }}
               >
-                <div style={{ fontWeight: 500, color: 'var(--text)' }}>{i.title || 'Untitled'}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontWeight: 500, color: 'var(--text)', flex: 1, minWidth: 0 }}>{i.title || 'Untitled'}</div>
+                  <button
+                    type="button"
+                    className="ui-item-preview-button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openPeek(i.id, { itemIds: displayedItems.map((candidate) => candidate.id), sourceLabel: tab.title || 'Collection' });
+                    }}
+                    aria-label={`Preview ${i.title || 'Untitled'}`}
+                    title="Preview without leaving this view"
+                  >
+                    <Eye size={13} aria-hidden="true" />
+                    Preview
+                  </button>
+                </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '0.125rem' }}>
                   {iconForItem(i)} {iconForItem(i) === '🔗' ? 'Bookmark' : 'Note'}
                 </div>
@@ -857,4 +874,3 @@ export const TabContent: React.FC<TabContentProps> = ({
     </div>
   );
 };
-

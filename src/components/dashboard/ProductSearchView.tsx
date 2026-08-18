@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Loader2, Search, X } from 'lucide-react';
+import { ExternalLink, Eye, Loader2, Search, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { SearchResult } from '../../lib/search';
 import type { LibrarySearchState } from '../../hooks/useLibrarySearch';
@@ -15,6 +15,7 @@ import { ItemOrganizationDialog } from './ItemOrganizationDialog';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import type { WorkspaceDestination } from './workspaceDestinations';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { useItemPeek } from './ItemPeekProvider';
 
 interface ProductSearchViewProps {
   items: Item[];
@@ -82,7 +83,6 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onModeChange,
   onSelectedItemIdChange,
   onRunSearch,
-  onOpenItem,
   onUpdateItem,
   onCreateProject,
   onCreateCollection,
@@ -103,6 +103,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onViewItemInWorkspace,
 }) => {
   const { getDragProps } = useItemDragDrop();
+  const { openPeek } = useItemPeek();
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -540,7 +541,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               : 'text fallback · exact rules'}
           {hasResults && (
             <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
-              Click to inspect · Click the URL to open the website · Double-click, Enter, or use Inspect
+              Click to inspect · Click the URL to open the website · Double-click, Enter, or use Preview
             </span>
           )}
         </div>
@@ -575,7 +576,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               role="button"
               tabIndex={0}
               onClick={() => onSelectedItemIdChange(row.itemId)}
-              onDoubleClick={() => item && onOpenItem(item)}
+              onDoubleClick={() => openPeek(row.itemId, { itemIds: resultItemIds, sourceLabel: 'Search results' })}
               onContextMenu={(e) => {
                 if (!item) return;
                 e.preventDefault();
@@ -585,7 +586,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
                   e.preventDefault();
-                  item && onOpenItem(item);
+                  openPeek(row.itemId, { itemIds: resultItemIds, sourceLabel: 'Search results' });
                 }
               }}
               style={{
@@ -689,12 +690,22 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                     </div>
                   )}
                 </div>
-                {isSelected && item && (
-                  <div
-                    style={{ flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}
-                    onClick={(event) => event.stopPropagation()}
+                <div
+                  style={{ flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <button
+                    className="ui-button ui-button--secondary ui-button--compact"
+                    type="button"
+                    onClick={() => openPeek(row.itemId, { itemIds: resultItemIds, sourceLabel: 'Search results' })}
+                    aria-label={`Preview ${row.title || 'Untitled'}`}
+                    title="Preview without leaving Search"
                   >
-                    {onUpdateItem && projects.length > 0 && organizationCollections.length > 0 ? (
+                    <Eye size={12} /> Preview
+                  </button>
+                  {isSelected && item ? (
+                    <>
+                      {onUpdateItem && projects.length > 0 && organizationCollections.length > 0 ? (
                       <ItemOrganizationDialog
                         item={item}
                         projects={projects}
@@ -705,8 +716,8 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                         defaultProjectId={organizationContextProjectId}
                         defaultCollectionId={organizationContextCollectionId}
                       />
-                    ) : null}
-                    {workspaceDestinations.length > 0 && isItemInWorkspace && onAddItemToWorkspace ? (
+                      ) : null}
+                      {workspaceDestinations.length > 0 && isItemInWorkspace && onAddItemToWorkspace ? (
                       <WorkspaceDestinationPicker
                         item={item}
                         destinations={workspaceDestinations}
@@ -715,17 +726,10 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                         onAdd={(destination) => onAddItemToWorkspace(item, destination)}
                         onView={onViewItemInWorkspace ? (destination) => onViewItemInWorkspace(item, destination) : undefined}
                       />
-                    ) : (
-                      <button
-                        className="ui-button ui-button--secondary ui-button--compact"
-                        type="button"
-                        onClick={() => onOpenItem(item)}
-                      >
-                        Inspect
-                      </button>
-                    )}
-                  </div>
-                )}
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
               </div>
             </div>
           );
@@ -747,8 +751,6 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
           }}
           onRelatedClick={(itemId) => {
             onSelectedItemIdChange(itemId);
-            const item = itemsById.get(itemId);
-            if (item) onOpenItem(item);
           }}
         />
       )}
