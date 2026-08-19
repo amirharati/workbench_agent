@@ -4502,23 +4502,6 @@ button.ui-scope-chip {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.ui-sidebar__workspace-control {
-  display: grid;
-  gap: 6px;
-}
-
-.ui-sidebar__workspace-select {
-  width: 100%;
-  min-width: 0;
-  height: 30px;
-  padding-inline: 7px 24px;
-  font-size: var(--text-xs);
-}
-
-.ui-sidebar__workspace-control .ui-button {
-  justify-content: center;
-}
-
 .ui-sidebar__collection-group + .ui-sidebar__collection-group {
   margin-top: 6px;
 }

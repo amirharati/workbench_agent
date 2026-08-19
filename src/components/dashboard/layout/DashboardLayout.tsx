@@ -64,7 +64,7 @@ import {
   transferItemBetweenWorkspaceTargets,
   workspaceTargetContainsItem,
 } from '../workspaceSession';
-import { buildWorkspaceDestinations, filterWorkspaceSwitcherDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from '../workspaceDestinations';
+import { buildWorkspaceDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from '../workspaceDestinations';
 import { WorkspaceDestinationPicker } from '../WorkspaceDestinationPicker';
 import { ItemDragDropProvider, type ItemTransferResult } from '../ItemDragDropProvider';
 import { ItemPeekProvider } from '../ItemPeekProvider';
@@ -370,15 +370,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     }),
     [globalTabState, projects, scopeProjectId, workspaces]
   );
-  const workspaceSwitcherDestinations = useMemo(
-    () => filterWorkspaceSwitcherDestinations({
-      destinations: workspaceDestinations,
-      openProjectIds: recentProjectIds,
-      contextProjectId: scopeProjectId,
-      activeWorkspaceKey: getActiveWorkspaceKey(globalTabState),
-    }),
-    [globalTabState, recentProjectIds, scopeProjectId, workspaceDestinations]
-  );
   const prevSearchViewRef = useRef(false);
 
   useSearchNavigationScope(
@@ -675,43 +666,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const handleOpenHomeWorkspace = useCallback(() => {
     setActiveView('home');
     patchNavigationState({ activeView: 'home' });
-  }, []);
-
-  const handleActivateWorkspaceFromSidebar = useCallback((destination: WorkspaceDestination) => {
-    setGlobalTabState((previous) => {
-      const activated = activateWorkspace({
-        state: previous,
-        workspaceKey: destination.key,
-        projectId: destination.projectId,
-        preferenceProjectId: scopeProjectId,
-      });
-      const next = { ...activated, activeTabId: null };
-      saveGlobalTabState(next);
-      return next;
-    });
-  }, [scopeProjectId]);
-
-  const handleViewWorkspaceFromSidebar = useCallback((destination: WorkspaceDestination) => {
-    setGlobalTabState((previous) => {
-      const activated = activateWorkspace({
-        state: previous,
-        workspaceKey: destination.key,
-        projectId: destination.projectId,
-        preferenceProjectId: destination.projectId,
-      });
-      const next = { ...activated, homeSection: 'overview' as const };
-      saveGlobalTabState(next);
-      return next;
-    });
-    setScopeNavigationRevision((revision) => revision + 1);
-    setScopeProjectId(destination.projectId);
-    setScopeCollectionId('all');
-    setActiveView('home');
-    patchNavigationState({
-      activeView: 'home',
-      scopeProjectId: destination.projectId,
-      scopeCollectionId: 'all',
-    });
   }, []);
 
   const handleOpenPipelineHub = useCallback(
@@ -1509,10 +1463,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
           onDeleteProject={handleDeleteProjectFromSidebar}
           onCreateCollection={onCreateCollection}
           onDeleteCollection={handleDeleteCollectionFromSidebar}
-          workspaceDestinations={workspaceSwitcherDestinations}
-          activeWorkspaceKey={getActiveWorkspaceKey(globalTabState)}
-          onActivateWorkspace={handleActivateWorkspaceFromSidebar}
-          onViewWorkspace={handleViewWorkspaceFromSidebar}
         />
       </div>
 

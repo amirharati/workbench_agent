@@ -303,16 +303,11 @@ describe('dashboard shell polish contracts', () => {
     host.remove();
   });
 
-  it('keeps collections and a changeable active workspace available at All Projects', async () => {
+  it('keeps collections available at All Projects', async () => {
     const onSelectCollectionScope = vi.fn();
-    const onActivateWorkspace = vi.fn();
-    const onViewWorkspace = vi.fn();
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    const globalWorkspace = { key: 'workspace:global', projectId: 'all' as const, projectName: 'Global', workspaceName: 'Global workspace', path: 'Global workspace', kind: 'global' as const, isCurrent: true };
-    const researchWorkspace = { key: 'workspace:project:project-a:general', projectId: 'project-a', projectName: 'Research', workspaceName: 'General', path: 'Research — General', kind: 'live' as const, isCurrent: false };
-
     await act(async () => {
       root.render(
         <LeftSidebar
@@ -327,10 +322,6 @@ describe('dashboard shell polish contracts', () => {
           scopeCollectionId="all"
           onSelectProjectScope={vi.fn()}
           onSelectCollectionScope={onSelectCollectionScope}
-          workspaceDestinations={[globalWorkspace, researchWorkspace]}
-          activeWorkspaceKey={globalWorkspace.key}
-          onActivateWorkspace={onActivateWorkspace}
-          onViewWorkspace={onViewWorkspace}
         />
       );
     });
@@ -340,17 +331,6 @@ describe('dashboard shell polish contracts', () => {
       .find((button) => button.textContent?.includes('Sources'));
     await act(async () => sources?.click());
     expect(onSelectCollectionScope).toHaveBeenCalledWith('sources', 'project-a');
-
-    const workspaceSelect = host.querySelector<HTMLSelectElement>('[aria-label="Change active workspace"]')!;
-    await act(async () => {
-      workspaceSelect.value = researchWorkspace.key;
-      workspaceSelect.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    expect(onActivateWorkspace).toHaveBeenCalledWith(researchWorkspace);
-
-    const view = host.querySelector<HTMLButtonElement>('[aria-label="View Global workspace"]');
-    await act(async () => view?.click());
-    expect(onViewWorkspace).toHaveBeenCalledWith(globalWorkspace);
 
     await act(async () => root.unmount());
     host.remove();
