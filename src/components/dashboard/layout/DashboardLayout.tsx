@@ -1424,6 +1424,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       projects={projects}
       collections={collections}
       workspaceDestinations={workspaceDestinations}
+      openProjectIds={recentProjectIds}
       isInTarget={dragTargetContainsItem}
       onTransfer={handleDraggedItemTransfer}
       onReorderWorkspaceItem={handleWorkspaceItemReorder}

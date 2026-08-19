@@ -52,6 +52,29 @@ describe('ContentBrowser', () => {
     expect(markup).toContain('A useful article');
   });
 
+  it('gives draggable items a dedicated drag handle', () => {
+    const markup = renderToStaticMarkup(
+      <ContentBrowser
+        title="Library"
+        entries={[{
+          id: 'link-a',
+          title: 'A useful article',
+          icon: 'L',
+          dragSource: { kind: 'reference', label: 'Library' },
+        }]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        mode="list"
+        onModeChange={vi.fn()}
+        emptyMessage="Nothing here"
+      />
+    );
+
+    expect(markup).toContain('data-content-drag-handle="true"');
+    expect(markup).toContain('title="Drag to a workspace or collection"');
+    expect(markup).toContain('draggable="true"');
+  });
+
   it('uses a shared gallery footer for metadata and actions', () => {
     const markup = renderToStaticMarkup(
       <ContentBrowser

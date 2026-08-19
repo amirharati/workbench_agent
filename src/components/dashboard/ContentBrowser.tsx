@@ -112,7 +112,18 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       }}
       className="ui-content-browser__entry"
     >
-      {entry.dragSource ? <span className="ui-content-browser__drag-handle" aria-hidden="true"><GripVertical size={12} /></span> : null}
+      {entry.dragSource ? (
+        <span
+          {...dragProps}
+          className="ui-content-browser__drag-handle"
+          data-content-drag-handle="true"
+          title="Drag to a workspace or collection"
+          aria-label="Drag to a workspace or collection"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <GripVertical size={14} aria-hidden="true" />
+        </span>
+      ) : null}
       <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
       <span className="ui-content-browser__copy">
         <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>

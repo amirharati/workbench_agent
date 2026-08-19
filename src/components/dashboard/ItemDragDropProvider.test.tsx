@@ -133,6 +133,57 @@ describe('ItemDragDropProvider', () => {
     return { host, onTransfer };
   }
 
+  it('keeps the drag tray to open projects and reveals destinations on hover', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    roots.push({ root, host });
+    await act(async () => {
+      root.render(
+        <ToastProvider>
+          <ItemDragDropProvider
+            projects={[
+              { id: 'project-a', name: 'Open project', isDefault: false, created_at: 1, updated_at: 1 },
+              { id: 'project-b', name: 'Closed project', isDefault: false, created_at: 1, updated_at: 1 },
+            ]}
+            collections={[
+              { id: 'collection-a', name: 'Reading', isDefault: false, created_at: 1, updated_at: 1, primaryProjectId: 'project-a', projectIds: ['project-a'] },
+              { id: 'collection-b', name: 'Hidden collection', isDefault: false, created_at: 1, updated_at: 1, primaryProjectId: 'project-b', projectIds: ['project-b'] },
+            ]}
+            workspaceDestinations={[
+              { key: 'workspace:global', projectId: 'all', projectName: 'Global', workspaceName: 'Global workspace', path: 'Global workspace', kind: 'global', isCurrent: false },
+              { key: 'workspace:project-a:general', projectId: 'project-a', projectName: 'Open project', workspaceName: 'General', path: 'Open project — General', kind: 'live', isCurrent: true },
+              { key: 'workspace:project-b:general', projectId: 'project-b', projectName: 'Closed project', workspaceName: 'Hidden workspace', path: 'Closed project — Hidden workspace', kind: 'saved', isCurrent: false },
+            ]}
+            openProjectIds={['project-a']}
+            isInTarget={() => false}
+            onTransfer={vi.fn()}
+            onReorderWorkspaceItem={vi.fn()}
+          >
+            <TestSurface source={{ kind: 'reference', label: 'Search' }} target={{ kind: 'workspace', containerId: 'other', containerLabel: 'Other', projectId: 'project-a' }} />
+          </ItemDragDropProvider>
+        </ToastProvider>
+      );
+    });
+
+    const dataTransfer = mockDataTransfer();
+    await act(async () => {
+      dispatchDrag(host.querySelector('[data-testid="source"]')!, 'dragstart', dataTransfer);
+    });
+    const tray = host.querySelector<HTMLElement>('[aria-label="Destinations for One"]')!;
+    expect(tray.textContent).toContain('Global workspace');
+    expect(tray.textContent).toContain('Open project');
+    expect(tray.textContent).not.toContain('Closed project');
+    expect(tray.textContent).not.toContain('Hidden collection');
+
+    await act(async () => {
+      dispatchDrag(host.querySelector('[data-project-id="project-a"]')!, 'dragenter', dataTransfer);
+    });
+    expect(tray.textContent).toContain('General');
+    expect(tray.textContent).toContain('Reading');
+    expect(tray.textContent).not.toContain('Hidden workspace');
+  });
+
   it('copies immediately from a reference result', async () => {
     const { host, onTransfer } = await renderSurface({ kind: 'reference', label: 'Search' });
     const dataTransfer = mockDataTransfer();
