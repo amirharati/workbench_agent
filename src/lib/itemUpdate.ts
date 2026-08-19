@@ -21,7 +21,11 @@ export function buildUpdatedItem(
   const restUpdates = { ...updates } as Partial<Item>;
   if (hasNotesUpdate) delete restUpdates.notes;
 
-  const next: Item = { ...item, ...restUpdates, updated_at: now };
+  const next: Item = {
+    ...item,
+    ...restUpdates,
+    updated_at: options?.preserveUpdatedAt ? item.updated_at : now,
+  };
 
   if (!Array.isArray(next.collectionIds) || next.collectionIds.length === 0) {
     next.collectionIds = [defaultCollectionId];
@@ -70,7 +74,10 @@ export function buildUpdatedItem(
   }
 
   for (const key of ['pinnedAt', 'favoriteAt', 'deletedAt'] as const) {
-    if (Object.prototype.hasOwnProperty.call(updates, key) && updates[key] === undefined) {
+    if (
+      (Object.prototype.hasOwnProperty.call(updates, key) && updates[key] === undefined) ||
+      options?.clearItemMarkers?.includes(key)
+    ) {
       delete (next as unknown as Record<string, unknown>)[key];
     }
   }

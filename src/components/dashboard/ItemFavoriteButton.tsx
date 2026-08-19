@@ -10,7 +10,6 @@ interface ItemFavoriteButtonProps {
     options?: UpdateItemOptions
   ) => Promise<void>;
   showLabel?: boolean;
-  stopPropagation?: boolean;
   style?: React.CSSProperties;
 }
 
@@ -19,7 +18,6 @@ export const ItemFavoriteButton: React.FC<ItemFavoriteButtonProps> = ({
   item,
   onUpdateItem,
   showLabel = false,
-  stopPropagation = false,
   style,
 }) => {
   const [pending, setPending] = useState(false);
@@ -37,10 +35,16 @@ export const ItemFavoriteButton: React.FC<ItemFavoriteButtonProps> = ({
       title={label}
       disabled={pending}
       onClick={(event) => {
-        if (stopPropagation) event.stopPropagation();
+        event.stopPropagation();
         if (pending) return;
         setPending(true);
-        void onUpdateItem(item.id, { favoriteAt: favorite ? undefined : Date.now() })
+        void onUpdateItem(
+          item.id,
+          favorite ? {} : { favoriteAt: Date.now() },
+          favorite
+            ? { preserveUpdatedAt: true, clearItemMarkers: ['favoriteAt'] }
+            : { preserveUpdatedAt: true }
+        )
           .finally(() => setPending(false));
       }}
       style={{

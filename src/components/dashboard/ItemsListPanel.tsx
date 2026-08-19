@@ -4,7 +4,7 @@ import { Panel } from '../../styles/primitives';
 import { ItemContextMenu } from './ItemContextMenu';
 import { List, Grid, Eye } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
-import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
+import { sortItemsByRecency } from '../../lib/itemQuickAccess';
 import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
 import { useItemDragDrop } from './ItemDragDropProvider';
@@ -56,7 +56,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   const { getDragProps, getDropTargetProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
-  const displayItems = useMemo(() => sortItemsWithPinsFirst(items), [items]);
+  const displayItems = useMemo(() => sortItemsByRecency(items), [items]);
   const itemIds = useMemo(() => displayItems.map((i) => i.id), [displayItems]);
   const badgeMap = usePipelineBadgeMap(itemIds);
 

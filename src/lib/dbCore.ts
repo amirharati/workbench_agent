@@ -94,6 +94,10 @@ export interface Item {
 
 export type UpdateItemOptions = {
   notesPlacementCollectionId?: string;
+  /** Marker-only UI updates should not make unchanged content look recently edited. */
+  preserveUpdatedAt?: boolean;
+  /** Explicit tombstones survive Chrome's JSON-based extension messaging. */
+  clearItemMarkers?: Array<'pinnedAt' | 'favoriteAt' | 'deletedAt'>;
 };
 
 export interface Snapshot {

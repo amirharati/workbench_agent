@@ -278,7 +278,6 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
     }
     return [...result].sort(
       (left, right) =>
-        Number(right.favoriteAt != null) - Number(left.favoriteAt != null) ||
         (right.updated_at ?? right.created_at) - (left.updated_at ?? left.created_at)
     );
   }, [categoryBrowse, collections, items, pipelineBrowse, projects, query, scopeCollectionId, scopeProjectId, typeFilter]);
@@ -303,7 +302,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
       meta: new Date(item.updated_at ?? item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       actions: (
         <>
-          <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} stopPropagation />
+          <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} />
           {isLink && <button className="ui-button ui-button--icon" type="button" onClick={() => void openBookmarkInBrowser(item)} title={`Open ${item.title || 'link'}`} aria-label={`Open ${item.title || 'link'}`} style={iconButtonStyle}><ExternalLink size={12} /></button>}
         </>
       ),

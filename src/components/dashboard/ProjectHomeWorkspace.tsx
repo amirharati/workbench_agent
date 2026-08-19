@@ -9,7 +9,7 @@ import type { GlobalTab, SavedWorkspaceSession } from './GlobalTabSystem';
 import {
   getProjectPinTimestamp,
   isItemPinnedToProject,
-  sortItemsWithProjectPins,
+  sortProjectItemsByRecency,
   updateProjectPinMetadata,
 } from './projectPins';
 import { getHomebaseWorkspaceSessionKey, getProjectSessionWorkspaceKey, getSavedWorkspaceSessionKey } from './workspaceSession';
@@ -23,6 +23,7 @@ import {
   ProjectWorkspaceManagerDialog,
   type ProjectWorkspaceManagerEntry,
 } from './ProjectWorkspaceManagerDialog';
+import { SourceMenuTab } from './SourceMenuTab';
 
 interface ProjectHomeWorkspaceProps {
   project: Project;
@@ -139,7 +140,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     [items, selectedCollectionId]
   );
   const orderedItems = useMemo(
-    () => sortItemsWithProjectPins(filteredItems, project.id),
+    () => sortProjectItemsByRecency(filteredItems),
     [filteredItems, project.id]
   );
   const pinnedItems = useMemo(
@@ -154,7 +155,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     [items, project.id]
   );
   const allProjectItems = useMemo(
-    () => sortItemsWithProjectPins(items, project.id),
+    () => sortProjectItemsByRecency(items),
     [items, project.id]
   );
   const allItems = organizationItems ?? items;
@@ -298,9 +299,13 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     setPinningItemId(item.id);
     try {
       const pinned = isItemPinnedToProject(item, project.id);
-      await onUpdateItem(item.id, {
-        metadata: updateProjectPinMetadata(item.metadata, project.id, pinned ? undefined : Date.now()),
-      });
+      await onUpdateItem(
+        item.id,
+        {
+          metadata: updateProjectPinMetadata(item.metadata, project.id, pinned ? undefined : Date.now()),
+        },
+        { preserveUpdatedAt: true }
+      );
     } finally {
       setPinningItemId(null);
     }
@@ -379,7 +384,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         : { kind: 'reference' as const, label: browseSource === 'pinned' ? 'Pinned' : 'Project items' },
       actions: (
         <>
-          <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} stopPropagation />
+          <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} />
           <button type="button" aria-label={pinned ? `Unpin ${item.title} from ${project.name}` : `Pin ${item.title} to ${project.name}`} title={pinned ? `Unpin from ${project.name}` : `Pin to ${project.name}`} disabled={!onUpdateItem || pinningItemId === item.id} onClick={() => void toggleProjectPin(item)} style={{ ...sessionIconButtonStyle, color: pinned ? 'var(--accent)' : 'var(--text-faint)' }}><Pin size={12} fill={pinned ? 'currentColor' : 'none'} /></button>
         </>
       ),
@@ -529,20 +534,37 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           <button className="ui-view-tab" type="button" role="tab" aria-selected={browseSource === 'all'} onClick={() => { setBrowseSource('all'); setSelectedSessionTabId(null); if (selectedItemId && !allProjectItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); if (selectedCollectionId !== 'all') onSelectCollection('all'); }} style={viewTabStyle(browseSource === 'all')}><Folder size={12} /> {project.isDefault ? 'Incoming' : 'All items'}</button>
           <button className="ui-view-tab" type="button" role="tab" aria-selected={browseSource === 'pinned'} onClick={() => { setBrowseSource('pinned'); setSelectedSessionTabId(null); if (selectedItemId && !pinnedItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); }} style={viewTabStyle(browseSource === 'pinned')}><Pin size={12} /> Pinned <span style={{ color: 'var(--text-faint)' }}>{pinnedItems.length}</span></button>
           {!project.isDefault && collections.length > 0 && (
-            <div style={compoundTabStyle(browseSource === 'collection')}>
-              <button type="button" role="tab" aria-selected={browseSource === 'collection'} onClick={() => { const collectionId = selectedCollectionId !== 'all' ? selectedCollectionId : collections[0]?.id; if (!collectionId) return; setBrowseSource('collection'); setSelectedSessionTabId(null); setSelectedItemId(null); onSelectCollection(collectionId); }} style={compoundTabButtonStyle}><Folder size={12} /> Collection</button>
-              <select value={selectedCollectionId === 'all' ? '' : selectedCollectionId} onChange={(event) => { const collectionId = event.target.value; if (!collectionId) return; setBrowseSource('collection'); setSelectedSessionTabId(null); setSelectedItemId(null); onSelectCollection(collectionId); }} aria-label="Collection view" style={tabSelectStyle}>
-                <option value="">Choose…</option>
-                {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
-              </select>
-            </div>
+            <SourceMenuTab
+              label="Collection"
+              icon={<Folder size={12} />}
+              active={browseSource === 'collection'}
+              selectedValue={selectedCollectionId === 'all' ? collections[0]?.id ?? '' : selectedCollectionId}
+              options={collections.map((collection) => ({ value: collection.id, label: collection.name }))}
+              onSelect={(collectionId) => {
+                setBrowseSource('collection');
+                setSelectedSessionTabId(null);
+                setSelectedItemId(null);
+                onSelectCollection(collectionId);
+              }}
+            />
           )}
-          <div style={compoundTabStyle(browseSource === 'workspace')}>
-            <button type="button" role="tab" aria-selected={browseSource === 'workspace'} onClick={viewActiveWorkspace} style={compoundTabButtonStyle}><Layers3 size={12} /> Workspace</button>
-            <select value={activeWorkspaceKey} onChange={(event) => { setBrowseSource('workspace'); setSelectedSessionTabId(null); setSelectedItemId(null); switchWorkspace(event.target.value); }} aria-label="Workspace view" style={{ ...tabSelectStyle, minWidth: 120 }}>
-              {workspaceDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
-            </select>
-          </div>
+          <SourceMenuTab
+            label="Workspace"
+            icon={<Layers3 size={12} />}
+            active={browseSource === 'workspace'}
+            selectedValue={activeWorkspaceKey}
+            options={workspaceDestinations.map((destination) => ({ value: destination.key, label: destination.label }))}
+            onSelect={(workspaceKey) => {
+              if (workspaceKey === activeWorkspaceKey) {
+                viewActiveWorkspace();
+                return;
+              }
+              setBrowseSource('workspace');
+              setSelectedSessionTabId(null);
+              setSelectedItemId(null);
+              switchWorkspace(workspaceKey);
+            }}
+          />
         </div>
         </div>
         {showLegacyProjectBrowser && hasWorkspaceChoices && <div className="scrollbar" data-browse-surface="project-workspaces" style={{ ...browseListStyle, marginBottom: 9 }} aria-label="Project workspaces">
@@ -788,7 +810,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                       <span style={{ display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{item.notes || 'Note'}</span>
                     )}
                   </span>
-                  <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} stopPropagation />
+                  <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} />
                   <button type="button" aria-label={pinned ? `Unpin ${item.title} from ${project.name}` : `Pin ${item.title} to ${project.name}`} title={pinned ? `Unpin from ${project.name}` : `Pin to ${project.name}`} disabled={!onUpdateItem || pinningItemId === item.id} onClick={(event) => { event.stopPropagation(); void toggleProjectPin(item); }} style={{ width: 26, height: 26, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 5, background: pinned ? 'var(--accent-weak)' : 'transparent', color: pinned ? 'var(--accent)' : 'var(--text-faint)', cursor: onUpdateItem ? 'pointer' : 'default' }}>
                     <Pin size={12} fill={pinned ? 'currentColor' : 'none'} />
                   </button>
@@ -916,9 +938,6 @@ const panelStyle: React.CSSProperties = { ...uiPatterns.panel, height: '100%' };
 const detailLabelStyle: React.CSSProperties = { color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 };
 const sourceButtonStyle = (active: boolean): React.CSSProperties => ({ minHeight: 30, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'var(--bg-panel)', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' });
 const viewTabStyle = uiPatterns.viewTab;
-const compoundTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'center', overflow: 'hidden', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)' });
-const compoundTabButtonStyle: React.CSSProperties = { height: 29, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 7px 0 9px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 'var(--text-sm)', fontWeight: 650, cursor: 'pointer' };
-const tabSelectStyle: React.CSSProperties = { minWidth: 96, maxWidth: 155, height: 25, marginRight: 3, padding: '0 5px', border: 'none', borderLeft: '1px solid var(--border)', outline: 'none', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-sm)' };
 const panelHeaderStyle: React.CSSProperties = { ...uiPatterns.panelHeader, minHeight: 48, padding: '8px 12px' };
 const sectionHeadingStyle: React.CSSProperties = { margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 650 };
 const browseListStyle: React.CSSProperties = { maxHeight: 190, overflowY: 'auto', overflowX: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg-panel)', boxShadow: 'var(--shadow-sm)' };

@@ -75,14 +75,14 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
 
     expect(markup).toContain('data-project-view-tabs="true"');
     expect(markup).toContain('aria-label="Project view"');
-    expect(markup).toContain('aria-label="Collection view"');
-    expect(markup).toContain('aria-label="Workspace view"');
+    expect(markup).toContain('aria-label="Collection view: Collection 0"');
+    expect(markup).toContain('aria-label="Workspace view: General"');
     expect(markup).not.toContain('data-browse-surface="project-workspaces"');
     expect(markup).not.toContain('data-browse-surface="project-pins"');
     expect(markup).not.toContain('data-browse-surface="project-collections"');
     expect(markup).not.toContain('overflow-x:auto');
     expect(markup).not.toContain('Workspace 5');
-    expect(markup).toContain('Collection 5');
+    expect(markup).not.toContain('Collection 5');
     expect(markup).toContain('Pinned <span');
     expect(markup).toContain(
       'padding:var(--space-lg) var(--page-gutter) var(--page-safe-bottom)'
@@ -120,7 +120,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     );
 
     expect(markup).toContain('General');
-    expect(markup).toContain('aria-label="Workspace view"');
+    expect(markup).toContain('aria-label="Workspace view: General"');
     expect(markup).not.toContain('Save as workspace');
     expect(markup).not.toContain('data-browse-surface="project-workspaces"');
   });
@@ -192,7 +192,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
 
     expect(markup).toContain('Writing plan');
     expect(markup).toContain('1 item');
-    expect(markup).toContain('aria-label="Workspace view"');
+    expect(markup).toContain('aria-label="Workspace view: Writing plan"');
     expect(markup).toContain('All project items');
     expect(markup).not.toContain('Open links');
   });

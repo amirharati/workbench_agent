@@ -27,7 +27,7 @@ function render(selectedView: string, selectedTab: GlobalTab | null = null, sele
       selectedTab={selectedTab}
       selectedItem={selectedItem}
       initialView={selectedTab ? 'workspace' : selectedItem ? 'quick-access' : 'all'}
-      quickAccessItems={selectedItem ? [selectedItem] : []}
+      favoriteItems={selectedItem ? [selectedItem] : []}
       projectSummaries={[{
         project: { id: 'project-a', name: 'Project Alpha', created_at: 1, updated_at: 1, isDefault: false },
         itemCount: 4,
@@ -134,7 +134,8 @@ describe('AllLibraryWorkspaceOverview', () => {
     host.innerHTML = markup;
     const materialTabs = host.querySelector('[data-all-library-view-tabs]');
     expect(materialTabs?.textContent).toContain('All items');
-    expect(materialTabs?.textContent).toContain('Favorites & pins');
+    expect(materialTabs?.textContent).toContain('Favorites');
+    expect(materialTabs?.textContent).not.toContain('pins');
     expect(materialTabs?.textContent).toContain('Workspace');
     expect(materialTabs?.textContent).not.toContain('Projects');
     expect(markup).not.toContain('Saved search · All Library');

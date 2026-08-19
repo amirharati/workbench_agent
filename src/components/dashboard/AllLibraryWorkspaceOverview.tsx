@@ -12,6 +12,7 @@ import { uiPatterns } from '../../styles/uiPatterns';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import type { WorkspaceDestination } from './workspaceDestinations';
 import { buildItemQuickFilterText } from '../../lib/itemQuickFilter';
+import { SourceMenuTab } from './SourceMenuTab';
 
 export interface WorkspaceViewGroup {
   key: string;
@@ -48,7 +49,7 @@ interface AllLibraryWorkspaceOverviewProps {
   getEntryScopeLabel?: (tab: GlobalTab) => string | undefined;
   projectSummaries?: HomeProjectSummary[];
   recentProjectAccessIds?: string[];
-  quickAccessItems?: Item[];
+  favoriteItems?: Item[];
   totalItems?: number;
   onOpenProject?: (projectId: string) => void;
   onSelectItem?: (item: Item) => void;
@@ -131,7 +132,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   getEntryScopeLabel,
   projectSummaries = [],
   recentProjectAccessIds = [],
-  quickAccessItems = [],
+  favoriteItems = [],
   totalItems = items.length,
   onOpenProject,
   onSelectItem,
@@ -200,7 +201,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   );
   const visibleItems = activeView === 'all'
     ? sortedLibraryItems.filter((item) => itemFilter === 'all' || (itemFilter === 'links' ? Boolean(item.url) : !item.url))
-    : quickAccessItems;
+    : favoriteItems;
   const browseEntries = visibleItems.map((item) => ({
         id: item.id,
         title: item.title || 'Untitled',
@@ -212,7 +213,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
         ),
         subtitle: item.url || item.notes || 'Note',
         searchText: buildItemQuickFilterText(item, projects, collections),
-        dragSource: { kind: 'reference' as const, label: activeView === 'quick-access' ? 'Favorites and pins' : 'All Library' },
+        dragSource: { kind: 'reference' as const, label: activeView === 'quick-access' ? 'Favorites' : 'All Library' },
         meta: new Date(item.updated_at ?? item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
         onContextMenu: onItemContextMenu ? (event: React.MouseEvent) => onItemContextMenu(event, item) : undefined,
       }));
@@ -324,23 +325,29 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
 
       <div className="ui-tab-bar ui-all-library-tabs" data-all-library-view-tabs role="tablist" aria-label="All Library view" style={{ ...uiPatterns.tabBar, marginBottom: 0 }}>
         <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'all'} onClick={() => selectView('all')} style={viewTabStyle(activeView === 'all')}><List size={12} /> All items <span style={tabCountStyle}>{items.length}</span></button>
-        <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'quick-access'} onClick={() => selectView('quick-access')} style={viewTabStyle(activeView === 'quick-access')}><Star size={12} /> Favorites &amp; pins <span style={tabCountStyle}>{quickAccessItems.length}</span></button>
-        <div style={compoundTabStyle(activeView === 'workspace')}>
-          <button type="button" role="tab" aria-selected={activeView === 'workspace'} onClick={() => selectView('workspace')} style={compoundTabButtonStyle}><Layers3 size={12} /> Workspace</button>
-          <select
-            value={selectedView}
-            onChange={(event) => { setActiveView('workspace'); onActiveViewChange?.('workspace'); onSelectedViewChange(event.target.value); onClearSelection?.(); }}
-            aria-label="Workspace view"
-            style={tabSelectStyle}
-          >
-            <option value="global">Global workspace</option>
-            <option value="all-active">All active workspaces</option>
-            {groups.slice(1).map((group) => <option key={group.key} value={group.key}>{group.contextLabel} · {group.title}</option>)}
-          </select>
+        <button className="ui-view-tab" type="button" role="tab" aria-selected={activeView === 'quick-access'} onClick={() => selectView('quick-access')} style={viewTabStyle(activeView === 'quick-access')}><Star size={12} /> Favorites <span style={tabCountStyle}>{favoriteItems.length}</span></button>
+        <SourceMenuTab
+          label="Workspace"
+          icon={<Layers3 size={12} />}
+          active={activeView === 'workspace'}
+          selectedValue={selectedView}
+          options={[
+            { value: 'global', label: 'Global' },
+            { value: 'all-active', label: 'All open' },
+            ...groups.slice(1).map((group) => ({ value: group.key, label: `${group.contextLabel} · ${group.title}` })),
+          ]}
+          onSelect={(value) => {
+            setActiveView('workspace');
+            onActiveViewChange?.('workspace');
+            onSelectedViewChange(value);
+            onClearSelection?.();
+          }}
+        />
+        <div className="ui-source-ribbon__utilities">
+          <span className="ui-all-library-count" style={{ color: 'var(--text-faint)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{totalItems} item{totalItems !== 1 ? 's' : ''}</span>
+          {onOpenPipeline && <button className="ui-button ui-button--secondary ui-all-library-utility" type="button" onClick={onOpenPipeline} style={secondaryButtonStyle} title="Processing" aria-label="Processing"><Workflow size={11} /> <span>Processing</span></button>}
+          {onOpenTrash && <button className="ui-button ui-button--secondary ui-all-library-utility" type="button" onClick={onOpenTrash} style={secondaryButtonStyle} title="Trash" aria-label="Trash"><Trash2 size={11} /> <span>Trash</span></button>}
         </div>
-        <span className="ui-all-library-count" style={{ marginLeft: 'auto', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{totalItems} item{totalItems !== 1 ? 's' : ''}</span>
-        {onOpenPipeline && <button className="ui-button ui-button--secondary ui-all-library-utility" type="button" onClick={onOpenPipeline} style={secondaryButtonStyle} title="Processing" aria-label="Processing"><Workflow size={11} /> <span>Processing</span></button>}
-        {onOpenTrash && <button className="ui-button ui-button--secondary ui-all-library-utility" type="button" onClick={onOpenTrash} style={secondaryButtonStyle} title="Trash" aria-label="Trash"><Trash2 size={11} /> <span>Trash</span></button>}
       </div>
       </div>
 
@@ -374,13 +381,13 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             />
           ))}
         </div> : <ContentBrowser
-          title={activeView === 'all' ? itemFilter === 'links' ? 'Links' : itemFilter === 'notes' ? 'Notes' : 'All items' : 'Favorites & pins'}
+          title={activeView === 'all' ? itemFilter === 'links' ? 'Links' : itemFilter === 'notes' ? 'Notes' : 'All items' : 'Favorites'}
           entries={browseEntries}
           selectedId={previewItem?.id ?? null}
           onSelect={selectBrowseEntry}
           mode={browseMode}
           onModeChange={setBrowseMode}
-          emptyMessage={activeView === 'quick-access' ? 'Favorite or pin items to keep them close.' : 'Newly captured material will appear here.'}
+          emptyMessage={activeView === 'quick-access' ? 'Favorite items to keep them close.' : 'Newly captured material will appear here.'}
           ariaLabel="All Library material"
           headerActions={activeView === 'all' ? (
             <div className="ui-library-type-filter" role="group" aria-label="Filter All Library items">
@@ -469,7 +476,4 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
 const previewIconStyle: React.CSSProperties = { width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-md)', background: 'var(--accent-weak)', color: 'var(--accent)' };
 const secondaryButtonStyle = uiPatterns.secondaryButton;
 const viewTabStyle = uiPatterns.viewTab;
-const compoundTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'stretch', overflow: 'hidden', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)' });
-const compoundTabButtonStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px 0 10px', border: 'none', background: 'transparent', color: 'inherit', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' };
-const tabSelectStyle: React.CSSProperties = { minWidth: 128, maxWidth: 210, padding: '0 24px 0 7px', border: 'none', borderLeft: '1px solid var(--border)', background: 'transparent', color: 'inherit', fontSize: 'var(--text-xs)', outline: 'none', cursor: 'pointer' };
 const tabCountStyle: React.CSSProperties = { color: 'var(--text-faint)', fontSize: 10 };

@@ -33,14 +33,9 @@ export function updateProjectPinMetadata(
   return Object.keys(next).length === 0 ? undefined : next;
 }
 
-export function sortItemsWithProjectPins(items: Item[], projectId: string): Item[] {
-  return [...items].sort((a, b) => {
-    const aPin = getProjectPinTimestamp(a, projectId) ?? 0;
-    const bPin = getProjectPinTimestamp(b, projectId) ?? 0;
-    if (aPin !== bPin) {
-      if (aPin && bPin) return bPin - aPin;
-      return aPin ? -1 : 1;
-    }
-    return (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at);
-  });
+/** Normal project lists stay in recency order; pinning is a marker, not a reorder action. */
+export function sortProjectItemsByRecency(items: Item[]): Item[] {
+  return [...items].sort(
+    (a, b) => (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at)
+  );
 }

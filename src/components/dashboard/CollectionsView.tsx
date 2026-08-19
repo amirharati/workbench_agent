@@ -6,7 +6,7 @@ import { TabContent } from './TabContent';
 import { Resizer } from './Resizer';
 import { SearchBar } from './SearchBar';
 import { List, Grid, Plus } from 'lucide-react';
-import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
+import { sortItemsByRecency } from '../../lib/itemQuickAccess';
 
 interface CollectionsViewProps {
   collections: Collection[];
@@ -84,7 +84,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
       });
     }
 
-    return sortItemsWithPinsFirst(filtered);
+    return sortItemsByRecency(filtered);
   }, [items, selectedCollectionId, searchQuery]);
 
   // Get item count for a collection

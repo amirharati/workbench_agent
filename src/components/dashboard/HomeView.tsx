@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { Home as HomeIcon, Folder, GripVertical, X } from 'lucide-react';
 import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
-import { getQuickAccessItemsFromList } from '../../lib/itemQuickAccess';
 import type { GlobalTab, GlobalTabState, GlobalTabList, GlobalTabSearch, SavedWorkspaceSession } from './GlobalTabSystem';
 import { ItemContextMenu } from './ItemContextMenu';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
@@ -319,7 +318,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
     },
     [activeProject, recentProjectIds, projects]
   );
-  const quickAccessItems = useMemo(() => getQuickAccessItemsFromList(scopedItems), [scopedItems]);
+  const favoriteItems = useMemo(
+    () => scopedItems
+      .filter((item) => item.favoriteAt != null)
+      .sort((left, right) => (right.favoriteAt ?? 0) - (left.favoriteAt ?? 0)),
+    [scopedItems]
+  );
   const hasStartupContent = projects.length > 0 || collections.length > 0 || items.length > 0;
 
   type HomeUtilTabId =
@@ -969,7 +973,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             getEntryScopeLabel={getWorkspaceEntryScopeLabel}
             projectSummaries={projectSummaries}
             recentProjectAccessIds={recentProjectAccessIds}
-            quickAccessItems={quickAccessItems}
+            favoriteItems={favoriteItems}
             totalItems={items.length}
             onOpenProject={openProjectScope}
             onSelectItem={selectOverviewItem}

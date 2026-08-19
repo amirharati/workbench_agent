@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Item } from '../../lib/db';
-import { getProjectPinTimestamp, sortItemsWithProjectPins, updateProjectPinMetadata } from './projectPins';
+import { getProjectPinTimestamp, sortProjectItemsByRecency, updateProjectPinMetadata } from './projectPins';
 
 const item = (id: string, updated_at: number, metadata?: Item['metadata']): Item => ({
   id,
@@ -26,12 +26,12 @@ describe('project-specific pins', () => {
     });
   });
 
-  it('sorts only the selected project pins ahead of recency', () => {
+  it('keeps normal project list order independent of pin markers', () => {
     const items = [
       item('new', 30),
       item('p2-pin', 20, { projectPins: { p2: 50 } }),
       item('p1-pin', 10, { projectPins: { p1: 40 } }),
     ];
-    expect(sortItemsWithProjectPins(items, 'p1').map((entry) => entry.id)).toEqual(['p1-pin', 'new', 'p2-pin']);
+    expect(sortProjectItemsByRecency(items).map((entry) => entry.id)).toEqual(['new', 'p2-pin', 'p1-pin']);
   });
 });

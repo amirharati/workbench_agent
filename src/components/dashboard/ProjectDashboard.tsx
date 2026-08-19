@@ -12,7 +12,7 @@ import { Resizer } from './Resizer';
 import { Panel, ButtonGhost, Input } from '../../styles/primitives';
 import { Search, Sparkles, Plus, X, Sidebar, LayoutList } from 'lucide-react';
 import { DeleteConfirmDialog, type DeleteConfirmResult } from '../DeleteConfirmDialog';
-import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
+import { sortItemsByRecency } from '../../lib/itemQuickAccess';
 import { TabPaneFrame } from './TabScrollShell';
 import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from '../../lib/tabUrlCapture';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
@@ -261,7 +261,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         return hay.includes(q);
       });
     }
-    return sortItemsWithPinsFirst(list);
+    return sortItemsByRecency(list);
   }, [projectItems, selectedCollectionId, searchQuery]);
 
   const activePrimaryTab = useMemo(

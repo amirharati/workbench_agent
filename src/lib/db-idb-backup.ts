@@ -101,6 +101,10 @@ export interface Item {
 export type UpdateItemOptions = {
   /** When `updates.notes` is set, store it only on this placement; clears legacy `item.notes`. */
   notesPlacementCollectionId?: string;
+  /** Marker-only UI updates should not make unchanged content look recently edited. */
+  preserveUpdatedAt?: boolean;
+  /** Explicit tombstones survive Chrome's JSON-based extension messaging. */
+  clearItemMarkers?: Array<'pinnedAt' | 'favoriteAt' | 'deletedAt'>;
 };
 
 export interface Snapshot {
@@ -1475,7 +1479,11 @@ export const updateItem = async (
   const restUpdates = { ...updates } as Partial<Item>;
   if (hasNotesUpdate) delete restUpdates.notes;
 
-  let next: Item = { ...item, ...restUpdates, updated_at: now } as Item;
+  let next: Item = {
+    ...item,
+    ...restUpdates,
+    updated_at: options?.preserveUpdatedAt ? item.updated_at : now,
+  } as Item;
 
   if (!Array.isArray(next.collectionIds) || next.collectionIds.length === 0) {
     next.collectionIds = [defaultUnsortedCollectionId];
@@ -1519,7 +1527,10 @@ export const updateItem = async (
   }
 
   for (const key of ['pinnedAt', 'favoriteAt', 'deletedAt'] as const) {
-    if (Object.prototype.hasOwnProperty.call(updates, key) && updates[key] === undefined) {
+    if (
+      (Object.prototype.hasOwnProperty.call(updates, key) && updates[key] === undefined) ||
+      options?.clearItemMarkers?.includes(key)
+    ) {
       delete (next as unknown as Record<string, unknown>)[key];
     }
   }

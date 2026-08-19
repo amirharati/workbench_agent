@@ -75,20 +75,11 @@ export function formatRestoreSummary(stats: {
   ].join(', ');
 }
 
-/**
- * Collection/browse list order: pinned first (newest pin wins), then recency.
- * Apply after project/collection/search filters so scope stays upstream.
- */
-export function sortItemsWithPinsFirst(items: Item[]): Item[] {
-  return [...items].sort((a, b) => {
-    const aPin = a.pinnedAt ?? 0;
-    const bPin = b.pinnedAt ?? 0;
-    if (aPin !== bPin) {
-      if (aPin && bPin) return bPin - aPin;
-      return aPin ? -1 : 1;
-    }
-    return (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at);
-  });
+/** Stable normal-list order. Pin/favorite markers must never move a row under the pointer. */
+export function sortItemsByRecency(items: Item[]): Item[] {
+  return [...items].sort(
+    (a, b) => (b.updated_at ?? b.created_at) - (a.updated_at ?? a.created_at)
+  );
 }
 
 export async function getActiveItems(): Promise<Item[]> {
@@ -118,19 +109,19 @@ export async function getTrashedItems(): Promise<Item[]> {
 }
 
 export async function pinItem(id: string): Promise<void> {
-  await updateItem(id, { pinnedAt: Date.now() });
+  await updateItem(id, { pinnedAt: Date.now() }, { preserveUpdatedAt: true });
 }
 
 export async function unpinItem(id: string): Promise<void> {
-  await updateItem(id, { pinnedAt: undefined });
+  await updateItem(id, {}, { preserveUpdatedAt: true, clearItemMarkers: ['pinnedAt'] });
 }
 
 export async function favoriteItem(id: string): Promise<void> {
-  await updateItem(id, { favoriteAt: Date.now() });
+  await updateItem(id, { favoriteAt: Date.now() }, { preserveUpdatedAt: true });
 }
 
 export async function unfavoriteItem(id: string): Promise<void> {
-  await updateItem(id, { favoriteAt: undefined });
+  await updateItem(id, {}, { preserveUpdatedAt: true, clearItemMarkers: ['favoriteAt'] });
 }
 
 const defaultTrashRecord = (): TrashRecordInput => ({
@@ -220,7 +211,7 @@ export async function moveItemsToTrash(
 
 export async function restoreItemFromTrash(id: string): Promise<void> {
   const item = await getItem(id);
-  await updateItem(id, { deletedAt: undefined });
+  await updateItem(id, {}, { clearItemMarkers: ['deletedAt'] });
   if (item) {
     await clearTrashHistoryForItem(item);
   }

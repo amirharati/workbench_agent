@@ -5,7 +5,7 @@ import { formatDateTime } from '../../lib/utils';
 import { SearchBar } from './SearchBar';
 import { useItemDragDrop } from './ItemDragDropProvider';
 import { Resizer } from './Resizer';
-import { sortItemsWithPinsFirst } from '../../lib/itemQuickAccess';
+import { sortItemsByRecency } from '../../lib/itemQuickAccess';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 import { useItemPeek } from './ItemPeekProvider';
 
@@ -89,7 +89,7 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
       });
     }
 
-    return sortItemsWithPinsFirst(list);
+    return sortItemsByRecency(list);
   }, [items, collections, scopeProjectId, scopeCollectionId, searchQuery]);
 
   const selected = useMemo(

@@ -60,4 +60,32 @@ describe('buildUpdatedItem', () => {
       source: 'bookmark',
     });
   });
+
+  it('preserves content recency for marker-only updates when requested', () => {
+    const result = buildUpdatedItem(
+      item(),
+      { favoriteAt: 10 },
+      { preserveUpdatedAt: true },
+      'incoming',
+      10
+    );
+
+    expect(result.favoriteAt).toBe(10);
+    expect(result.updated_at).toBe(2);
+  });
+
+  it('clears markers after Chrome messaging strips undefined properties', () => {
+    const favorite = { ...item(), favoriteAt: 10 };
+    const serializedUpdates = JSON.parse(JSON.stringify({ favoriteAt: undefined }));
+    const result = buildUpdatedItem(
+      favorite,
+      serializedUpdates,
+      { preserveUpdatedAt: true, clearItemMarkers: ['favoriteAt'] },
+      'incoming',
+      20
+    );
+
+    expect(result.favoriteAt).toBeUndefined();
+    expect(result.updated_at).toBe(2);
+  });
 });

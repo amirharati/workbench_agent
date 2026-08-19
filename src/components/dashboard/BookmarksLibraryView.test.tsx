@@ -43,6 +43,25 @@ describe('BookmarksLibraryView', () => {
     expect(markup).toContain('Select an item to inspect and edit it.');
   });
 
+  it('does not promote a favorited item ahead of newer library rows', () => {
+    const markup = renderToStaticMarkup(
+      <BookmarksLibraryView
+        items={[
+          { ...item, id: 'older-favorite', title: 'Older favorite', updated_at: 10, favoriteAt: 50 },
+          { ...item, id: 'newer-item', title: 'Newer item', updated_at: 20 },
+        ]}
+        collections={[]}
+        projects={[project]}
+        scopeProjectId="all"
+        scopeCollectionId="all"
+        homeState={GLOBAL_TAB_STATE_DEFAULT}
+        onHomeStateChange={vi.fn()}
+      />
+    );
+
+    expect(markup.indexOf('Newer item')).toBeLessThan(markup.indexOf('Older favorite'));
+  });
+
   it('can open the combined library filtered to notes', () => {
     const markup = renderToStaticMarkup(
       <BookmarksLibraryView

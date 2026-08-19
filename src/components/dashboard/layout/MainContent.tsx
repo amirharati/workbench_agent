@@ -16,7 +16,7 @@ import { ListPipelineBadge } from '../PipelineDisplayBlocks';
 import { ScopeChipsBar } from '../ScopeChipsBar';
 import { GLOBAL_TAB_STATE_DEFAULT, type GlobalTabList, type GlobalTabSearch, type GlobalTabState } from '../GlobalTabSystem';
 import { SHELL_LAYOUT_DEFAULTS, type ShellLayoutState } from '../../../lib/shell/shellLayoutState';
-import { sortItemsWithPinsFirst } from '../../../lib/itemQuickAccess';
+import { sortItemsByRecency } from '../../../lib/itemQuickAccess';
 import { ItemOrganizationEditor } from '../ItemOrganizationEditor';
 import { SearchBar } from '../SearchBar';
 import { Resizer } from '../Resizer';
@@ -525,7 +525,7 @@ export const MainContent: React.FC<MainContentProps> = ({
       });
     }
     
-    return sortItemsWithPinsFirst(filtered);
+    return sortItemsByRecency(filtered);
   }, [activeView, bookmarkItems, collections, selectedBookmarkProjectId, searchQuery, scopeCollectionId, categoryBrowse, pipelineBrowse]);
 
   const bookmarkBadgeIds = useMemo(() => {
