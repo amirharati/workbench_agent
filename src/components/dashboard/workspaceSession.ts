@@ -62,6 +62,25 @@ export function getActiveWorkspaceKey(state: GlobalTabState): string {
   return state.activeWorkspaceKey?.trim() || GLOBAL_WORKSPACE_KEY;
 }
 
+function workspaceKeyExists(state: GlobalTabState, workspaceKey: string): boolean {
+  if (workspaceKey === GLOBAL_WORKSPACE_KEY) return true;
+  if (workspaceKey.startsWith('workspace:project:') && workspaceKey.endsWith(':general')) return true;
+  if (workspaceKey.startsWith('workspace:named:')) {
+    const sessionId = workspaceKey.slice('workspace:named:'.length);
+    return Boolean(state.savedWorkspaceSessions?.some((session) => session.id === sessionId));
+  }
+  return false;
+}
+
+export function getPreferredWorkspaceKey(
+  state: GlobalTabState,
+  projectId: string | 'all'
+): string {
+  const preferred = state.preferredWorkspaceKeyByProject?.[projectId];
+  if (preferred && workspaceKeyExists(state, preferred)) return preferred;
+  return getProjectSessionWorkspaceKey(projectId);
+}
+
 export function getActiveProjectWorkspaceKey(state: GlobalTabState, _projectId: string): string {
   return getActiveWorkspaceKey(state);
 }
@@ -145,57 +164,98 @@ export function activateWorkspace({
   workspaceKey,
   projectId = 'all',
   initialEntries = [],
+  preferenceProjectId,
 }: {
   state: GlobalTabState;
   workspaceKey: string;
   projectId?: string | 'all';
   initialEntries?: readonly GlobalTab[];
+  preferenceProjectId?: string | 'all';
 }): GlobalTabState {
-  return activateProjectWorkspaceTarget({
+  const activated = activateProjectWorkspaceTarget({
     state,
     projectId,
     targetKey: workspaceKey,
     initialTabs: initialEntries,
   });
+  if (preferenceProjectId == null) return activated;
+  return {
+    ...activated,
+    preferredWorkspaceKeyByProject: {
+      ...(activated.preferredWorkspaceKeyByProject ?? {}),
+      [preferenceProjectId]: workspaceKey,
+    },
+  };
 }
 
-export function saveCurrentProjectWorkspace({
+export function createProjectWorkspace({
   state,
   projectId,
   name,
+  copyCurrent = false,
   sessionId = crypto.randomUUID(),
   now = Date.now(),
 }: {
   state: GlobalTabState;
   projectId: string;
   name: string;
+  copyCurrent?: boolean;
   sessionId?: string;
   now?: number;
 }): GlobalTabState {
   const currentKey = getActiveWorkspaceKey(state);
   const targetKey = getHomebaseWorkspaceSessionKey(sessionId);
   const currentTabs = [...state.tabs];
-  const session: SavedWorkspaceSession = {
-    id: sessionId,
-    name: name.trim(),
-    projectId,
-    createdAt: now,
-    updatedAt: now,
-  };
+  const targetTabs = copyCurrent ? currentTabs : [];
+  const lastActiveEntryByWorkspace = { ...(state.lastActiveEntryByWorkspace ?? {}) };
+  delete lastActiveEntryByWorkspace[targetKey];
 
   return {
     ...state,
-    activeTabId: state.activeTabId,
+    tabs: [...targetTabs],
+    activeTabId: null,
     activeWorkspaceKey: targetKey,
+    preferredWorkspaceKeyByProject: {
+      ...(state.preferredWorkspaceKeyByProject ?? {}),
+      [projectId]: targetKey,
+    },
+    lastActiveEntryByWorkspace,
     workspaceSessionSnapshots: {
       ...(state.workspaceSessionSnapshots ?? {}),
       [currentKey]: currentTabs,
-      [targetKey]: currentTabs,
+      [targetKey]: [...targetTabs],
     },
     savedWorkspaceSessions: [
       ...(state.savedWorkspaceSessions ?? []).filter((candidate) => candidate.id !== sessionId),
-      session,
+      {
+        id: sessionId,
+        name: name.trim(),
+        projectId,
+        createdAt: now,
+        updatedAt: now,
+      },
     ],
+  };
+}
+
+export function renameSavedProjectWorkspace({
+  state,
+  sessionId,
+  name,
+  now = Date.now(),
+}: {
+  state: GlobalTabState;
+  sessionId: string;
+  name: string;
+  now?: number;
+}): GlobalTabState {
+  return {
+    ...state,
+    savedWorkspaceSessions: (state.savedWorkspaceSessions ?? []).map((session) =>
+      session.id === sessionId
+        ? { ...session, name: name.trim(), updatedAt: now }
+        : session
+    ),
   };
 }
 
@@ -206,11 +266,12 @@ export function activateSavedProjectWorkspace({
   state: GlobalTabState;
   session: SavedWorkspaceSession;
 }): GlobalTabState {
-  return activateProjectWorkspaceTarget({
+  return activateWorkspace({
     state,
     projectId: session.projectId,
-    targetKey: getHomebaseWorkspaceSessionKey(session.id),
-    initialTabs: [],
+    workspaceKey: getHomebaseWorkspaceSessionKey(session.id),
+    initialEntries: [],
+    preferenceProjectId: session.projectId,
   });
 }
 
@@ -235,10 +296,17 @@ export function deleteSavedProjectWorkspace({
     : state;
   const snapshots = { ...(switched.workspaceSessionSnapshots ?? {}) };
   delete snapshots[sessionKey];
+  const preferredWorkspaceKeyByProject = Object.fromEntries(
+    Object.entries(switched.preferredWorkspaceKeyByProject ?? {}).map(([contextProjectId, workspaceKey]) => [
+      contextProjectId,
+      workspaceKey === sessionKey ? getProjectSessionWorkspaceKey(contextProjectId) : workspaceKey,
+    ])
+  );
 
   return {
     ...switched,
     workspaceSessionSnapshots: snapshots,
+    preferredWorkspaceKeyByProject,
     savedWorkspaceSessions: (switched.savedWorkspaceSessions ?? []).filter(
       (candidate) => candidate.id !== sessionId
     ),
@@ -301,6 +369,77 @@ function setProjectWorkspaceTabs(
       getHomebaseWorkspaceSessionKey(session.id) === workspaceKey
         ? { ...session, updatedAt: Date.now() }
         : session
+    ),
+  };
+}
+
+/**
+ * Move every entry from one named workspace into another workspace in the same
+ * project, deduplicating before the source workspace is removed. Library items
+ * are references here, so this never deletes or modifies underlying records.
+ */
+export function mergeSavedProjectWorkspace({
+  state,
+  sourceSessionId,
+  targetWorkspaceKey,
+}: {
+  state: GlobalTabState;
+  sourceSessionId: string;
+  targetWorkspaceKey: string;
+}): GlobalTabState {
+  const source = state.savedWorkspaceSessions?.find(
+    (session) => session.id === sourceSessionId
+  );
+  if (!source) return state;
+
+  const sourceKey = getHomebaseWorkspaceSessionKey(source.id);
+  if (
+    sourceKey === targetWorkspaceKey ||
+    getWorkspaceProjectId(state, targetWorkspaceKey) !== source.projectId
+  ) return state;
+
+  const sourceTabs = getProjectWorkspaceTabs(state, source.projectId, sourceKey);
+  const targetTabs = getProjectWorkspaceTabs(state, source.projectId, targetWorkspaceKey);
+  const mergedTabs = [...targetTabs];
+  for (const entry of sourceTabs) {
+    if (!mergedTabs.some((candidate) => workspaceEntriesMatch(candidate, entry))) {
+      mergedTabs.push(entry);
+    }
+  }
+
+  let next = setProjectWorkspaceTabs(
+    state,
+    source.projectId,
+    targetWorkspaceKey,
+    mergedTabs
+  );
+  if (getActiveWorkspaceKey(next) === sourceKey) {
+    next = activateProjectWorkspaceTarget({
+      state: next,
+      projectId: source.projectId,
+      targetKey: targetWorkspaceKey,
+      initialTabs: mergedTabs,
+    });
+  }
+
+  const snapshots = { ...(next.workspaceSessionSnapshots ?? {}) };
+  delete snapshots[sourceKey];
+  const lastActiveEntryByWorkspace = { ...(next.lastActiveEntryByWorkspace ?? {}) };
+  delete lastActiveEntryByWorkspace[sourceKey];
+  const preferredWorkspaceKeyByProject = Object.fromEntries(
+    Object.entries(next.preferredWorkspaceKeyByProject ?? {}).map(([contextProjectId, workspaceKey]) => [
+      contextProjectId,
+      workspaceKey === sourceKey ? targetWorkspaceKey : workspaceKey,
+    ])
+  );
+
+  return {
+    ...next,
+    workspaceSessionSnapshots: snapshots,
+    lastActiveEntryByWorkspace,
+    preferredWorkspaceKeyByProject,
+    savedWorkspaceSessions: (next.savedWorkspaceSessions ?? []).filter(
+      (session) => session.id !== sourceSessionId
     ),
   };
 }
@@ -609,6 +748,10 @@ export function createProjectWorkspaceFromBrowserSnapshot({
     activeTabId: null,
     lastActiveEntryByWorkspace,
     activeWorkspaceKey: targetKey,
+    preferredWorkspaceKeyByProject: {
+      ...(state.preferredWorkspaceKeyByProject ?? {}),
+      [projectId]: targetKey,
+    },
     workspaceSessionSnapshots: {
       ...(state.workspaceSessionSnapshots ?? {}),
       [currentKey]: currentTabs,
@@ -740,5 +883,11 @@ export function activateProjectWorkspace({
       )
     : [];
 
-  return activateProjectWorkspaceTarget({ state, projectId, targetKey, initialTabs });
+  return activateWorkspace({
+    state,
+    projectId,
+    workspaceKey: targetKey,
+    initialEntries: initialTabs,
+    preferenceProjectId: projectId,
+  });
 }

@@ -57,13 +57,14 @@ import {
   addItemToWorkspaceTarget,
   activateWorkspace,
   getActiveWorkspaceKey,
+  getPreferredWorkspaceKey,
   getWorkspaceProjectId,
   removeItemFromWorkspaceTarget,
   reorderItemInWorkspaceTarget,
   transferItemBetweenWorkspaceTargets,
   workspaceTargetContainsItem,
 } from '../workspaceSession';
-import { buildWorkspaceDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from '../workspaceDestinations';
+import { buildWorkspaceDestinations, filterWorkspaceSwitcherDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from '../workspaceDestinations';
 import { WorkspaceDestinationPicker } from '../WorkspaceDestinationPicker';
 import { ItemDragDropProvider, type ItemTransferResult } from '../ItemDragDropProvider';
 import { ItemPeekProvider } from '../ItemPeekProvider';
@@ -351,7 +352,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     kind: PipelineQueueKind;
     itemIds: string[];
   } | null>(null);
-  const [globalTabState, setGlobalTabState] = useState<GlobalTabState>(() => loadGlobalTabState());
+  const [globalTabState, setGlobalTabState] = useState<GlobalTabState>(() => {
+    const loaded = loadGlobalTabState();
+    const workspaceKey = getPreferredWorkspaceKey(loaded, initialNav.scopeProjectId);
+    return activateWorkspace({
+      state: loaded,
+      workspaceKey,
+      projectId: getWorkspaceProjectId(loaded, workspaceKey),
+    });
+  });
   const workspaceDestinations = useMemo(
     () => buildWorkspaceDestinations({
       projects,
@@ -360,6 +369,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       contextProjectId: scopeProjectId,
     }),
     [globalTabState, projects, scopeProjectId, workspaces]
+  );
+  const workspaceSwitcherDestinations = useMemo(
+    () => filterWorkspaceSwitcherDestinations({
+      destinations: workspaceDestinations,
+      openProjectIds: recentProjectIds,
+      contextProjectId: scopeProjectId,
+      activeWorkspaceKey: getActiveWorkspaceKey(globalTabState),
+    }),
+    [globalTabState, recentProjectIds, scopeProjectId, workspaceDestinations]
   );
   const prevSearchViewRef = useRef(false);
 
@@ -665,12 +683,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         state: previous,
         workspaceKey: destination.key,
         projectId: destination.projectId,
+        preferenceProjectId: scopeProjectId,
       });
       const next = { ...activated, activeTabId: null };
       saveGlobalTabState(next);
       return next;
     });
-  }, []);
+  }, [scopeProjectId]);
 
   const handleViewWorkspaceFromSidebar = useCallback((destination: WorkspaceDestination) => {
     setGlobalTabState((previous) => {
@@ -678,6 +697,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         state: previous,
         workspaceKey: destination.key,
         projectId: destination.projectId,
+        preferenceProjectId: destination.projectId,
       });
       const next = { ...activated, homeSection: 'overview' as const };
       saveGlobalTabState(next);
@@ -810,7 +830,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       setScopeProjectId('all');
       setScopeCollectionId('all');
       setGlobalTabState((previous) => {
-        const next = { ...previous, activeTabId: null };
+        const workspaceKey = getPreferredWorkspaceKey(previous, 'all');
+        const activated = activateWorkspace({
+          state: previous,
+          workspaceKey,
+          projectId: getWorkspaceProjectId(previous, workspaceKey),
+        });
+        const next = { ...activated, activeTabId: null };
         saveGlobalTabState(next);
         return next;
       });
@@ -833,6 +859,16 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     setScopeProjectId(projectId);
     setScopeCollectionId('all');
     if (projectId !== 'all') rememberProjectScope(projectId);
+    setGlobalTabState((previous) => {
+      const workspaceKey = getPreferredWorkspaceKey(previous, projectId);
+      const next = activateWorkspace({
+        state: previous,
+        workspaceKey,
+        projectId: getWorkspaceProjectId(previous, workspaceKey),
+      });
+      saveGlobalTabState(next);
+      return next;
+    });
     patchNavigationState({ scopeProjectId: projectId, scopeCollectionId: 'all' });
   };
 
@@ -842,6 +878,16 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     const nextProjectId = projectId ?? scopeProjectId;
     if (projectId) setScopeProjectId(projectId);
     if (nextProjectId !== 'all') rememberProjectScope(nextProjectId);
+    setGlobalTabState((previous) => {
+      const workspaceKey = getPreferredWorkspaceKey(previous, nextProjectId);
+      const next = activateWorkspace({
+        state: previous,
+        workspaceKey,
+        projectId: getWorkspaceProjectId(previous, workspaceKey),
+      });
+      saveGlobalTabState(next);
+      return next;
+    });
     if (nextProjectId !== 'all' && collectionId !== 'all') {
       rememberCollectionScope(nextProjectId, collectionId);
     }
@@ -982,6 +1028,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
             state: added,
             workspaceKey: destination.key,
             projectId: destination.projectId,
+            preferenceProjectId: destination.projectId,
           })
         : added;
       const entry = view
@@ -1462,7 +1509,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
           onDeleteProject={handleDeleteProjectFromSidebar}
           onCreateCollection={onCreateCollection}
           onDeleteCollection={handleDeleteCollectionFromSidebar}
-          workspaceDestinations={workspaceDestinations}
+          workspaceDestinations={workspaceSwitcherDestinations}
           activeWorkspaceKey={getActiveWorkspaceKey(globalTabState)}
           onActivateWorkspace={handleActivateWorkspaceFromSidebar}
           onViewWorkspace={handleViewWorkspaceFromSidebar}

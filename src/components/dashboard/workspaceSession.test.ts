@@ -9,15 +9,18 @@ import {
   addEntryToProjectWorkspace,
   addItemToWorkspaceTarget,
   createProjectWorkspaceFromBrowserSnapshot,
+  createProjectWorkspace,
   deleteSavedProjectWorkspace,
   getActiveWorkspaceKey,
   getHomebaseWorkspaceSessionKey,
   getProjectSessionResumeTabId,
   getProjectSessionWorkspaceKey,
   getProjectWorkspaceTabs,
+  getPreferredWorkspaceKey,
   getWorkspaceProjectId,
   loadWorkspaceIntoProjectSession,
-  saveCurrentProjectWorkspace,
+  mergeSavedProjectWorkspace,
+  renameSavedProjectWorkspace,
   transferProjectWorkspaceEntry,
   transferItemBetweenWorkspaceTargets,
   reorderItemInWorkspaceTarget,
@@ -84,6 +87,37 @@ describe('workspace sessions', () => {
     expect(getActiveWorkspaceKey(activated)).toBe(projectKey);
     expect(activated.tabs).toEqual([projectEntry]);
     expect(activated.workspaceSessionSnapshots?.[GLOBAL_WORKSPACE_KEY]).toEqual([globalEntry]);
+  });
+
+  it('defaults each project context to its General workspace and remembers explicit choices independently', () => {
+    const projectAKey = getProjectSessionWorkspaceKey('project-a');
+    const projectBKey = getProjectSessionWorkspaceKey('project-b');
+    const namedAKey = getHomebaseWorkspaceSessionKey('named-a');
+    const state: GlobalTabState = {
+      ...GLOBAL_TAB_STATE_DEFAULT,
+      savedWorkspaceSessions: [{ id: 'named-a', name: 'Reading', projectId: 'project-a', createdAt: 1, updatedAt: 1 }],
+    };
+
+    expect(getPreferredWorkspaceKey(state, 'project-a')).toBe(projectAKey);
+    expect(getPreferredWorkspaceKey(state, 'project-b')).toBe(projectBKey);
+    expect(getPreferredWorkspaceKey(state, 'all')).toBe(GLOBAL_WORKSPACE_KEY);
+
+    const choseNamedA = activateWorkspace({
+      state,
+      workspaceKey: namedAKey,
+      projectId: 'project-a',
+      preferenceProjectId: 'project-a',
+    });
+    const choseGlobalInB = activateWorkspace({
+      state: choseNamedA,
+      workspaceKey: GLOBAL_WORKSPACE_KEY,
+      projectId: 'all',
+      preferenceProjectId: 'project-b',
+    });
+
+    expect(getPreferredWorkspaceKey(choseGlobalInB, 'project-a')).toBe(namedAKey);
+    expect(getPreferredWorkspaceKey(choseGlobalInB, 'project-b')).toBe(GLOBAL_WORKSPACE_KEY);
+    expect(getPreferredWorkspaceKey(choseGlobalInB, 'all')).toBe(GLOBAL_WORKSPACE_KEY);
   });
 
   it('remembers the selected entry per workspace', () => {
@@ -153,17 +187,64 @@ describe('workspace sessions', () => {
     expect(moved.workspaceSessionSnapshots?.[namedKey]).toEqual([entry]);
   });
 
-  it('creates a named workspace from the active entries and makes it active', () => {
+  it('creates an empty named workspace by default and only copies entries when requested', () => {
     const entry = { kind: 'search' as const, id: 'search', query: 'research', scopeProjectId: 'project-a' };
     const state: GlobalTabState = {
       ...GLOBAL_TAB_STATE_DEFAULT,
       activeWorkspaceKey: getProjectSessionWorkspaceKey('project-a'),
       tabs: [entry],
     };
-    const named = saveCurrentProjectWorkspace({ state, projectId: 'project-a', name: 'Deep research', sessionId: 'named-a', now: 42 });
-    expect(named.activeWorkspaceKey).toBe(getHomebaseWorkspaceSessionKey('named-a'));
-    expect(named.savedWorkspaceSessions).toContainEqual({ id: 'named-a', name: 'Deep research', projectId: 'project-a', createdAt: 42, updatedAt: 42 });
-    expect(named.tabs).toEqual([entry]);
+    const empty = createProjectWorkspace({ state, projectId: 'project-a', name: 'Empty', sessionId: 'empty', now: 42 });
+    expect(empty.activeWorkspaceKey).toBe(getHomebaseWorkspaceSessionKey('empty'));
+    expect(empty.tabs).toEqual([]);
+    expect(empty.workspaceSessionSnapshots?.[getProjectSessionWorkspaceKey('project-a')]).toEqual([entry]);
+
+    const copied = createProjectWorkspace({ state, projectId: 'project-a', name: 'Copied', copyCurrent: true, sessionId: 'copied', now: 43 });
+    expect(copied.tabs).toEqual([entry]);
+  });
+
+  it('renames a named workspace without changing its identity or entries', () => {
+    const namedKey = getHomebaseWorkspaceSessionKey('named-a');
+    const entry = { kind: 'item' as const, id: 'one', itemId: 'one', scopeProjectId: 'project-a' };
+    const state: GlobalTabState = {
+      ...GLOBAL_TAB_STATE_DEFAULT,
+      savedWorkspaceSessions: [{ id: 'named-a', name: 'Old', projectId: 'project-a', createdAt: 1, updatedAt: 1 }],
+      workspaceSessionSnapshots: { [namedKey]: [entry] },
+    };
+    const renamed = renameSavedProjectWorkspace({ state, sessionId: 'named-a', name: 'New', now: 5 });
+    expect(renamed.savedWorkspaceSessions).toContainEqual({ id: 'named-a', name: 'New', projectId: 'project-a', createdAt: 1, updatedAt: 5 });
+    expect(renamed.workspaceSessionSnapshots?.[namedKey]).toEqual([entry]);
+  });
+
+  it('merges a named workspace into another project workspace without duplicate entries', () => {
+    const generalKey = getProjectSessionWorkspaceKey('project-a');
+    const sourceKey = getHomebaseWorkspaceSessionKey('source');
+    const shared = { kind: 'item' as const, id: 'shared-source-id', itemId: 'shared', scopeProjectId: 'project-a' };
+    const sourceOnly = { kind: 'item' as const, id: 'source-only', itemId: 'source-only', scopeProjectId: 'project-a' };
+    const targetShared = { ...shared, id: 'shared-target-id' };
+    const state: GlobalTabState = {
+      ...GLOBAL_TAB_STATE_DEFAULT,
+      activeWorkspaceKey: sourceKey,
+      tabs: [shared, sourceOnly],
+      workspaceSessionSnapshots: { [generalKey]: [targetShared] },
+      savedWorkspaceSessions: [{ id: 'source', name: 'Source', projectId: 'project-a', createdAt: 1, updatedAt: 1 }],
+    };
+    const merged = mergeSavedProjectWorkspace({ state, sourceSessionId: 'source', targetWorkspaceKey: generalKey });
+    expect(merged.activeWorkspaceKey).toBe(generalKey);
+    expect(merged.tabs).toEqual([targetShared, sourceOnly]);
+    expect(merged.savedWorkspaceSessions).toEqual([]);
+    expect(merged.workspaceSessionSnapshots?.[sourceKey]).toBeUndefined();
+  });
+
+  it('refuses to merge a named workspace across projects', () => {
+    const sourceKey = getHomebaseWorkspaceSessionKey('source');
+    const state: GlobalTabState = {
+      ...GLOBAL_TAB_STATE_DEFAULT,
+      activeWorkspaceKey: sourceKey,
+      tabs: [{ kind: 'item', id: 'one', itemId: 'one', scopeProjectId: 'project-a' }],
+      savedWorkspaceSessions: [{ id: 'source', name: 'Source', projectId: 'project-a', createdAt: 1, updatedAt: 1 }],
+    };
+    expect(mergeSavedProjectWorkspace({ state, sourceSessionId: 'source', targetWorkspaceKey: getProjectSessionWorkspaceKey('project-b') })).toBe(state);
   });
 
   it('deleting the active named workspace returns to that project General workspace', () => {

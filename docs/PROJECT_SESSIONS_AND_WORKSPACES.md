@@ -20,6 +20,15 @@ There are three workspace levels:
 
 Global and project General workspaces are system-owned: they cannot be deleted and do not require database rows to be manually created by the user. Named workspaces can be created, renamed, duplicated, or deleted.
 
+## Creation and management UX
+
+- Project workspace controls use **New workspace**, never **Save workspace**. Workspaces persist automatically, so “Save” incorrectly suggests an unsaved document state.
+- **New workspace** creates an empty named workspace by default. **Copy entries from the active workspace** is an explicit optional choice, not an implicit clone.
+- The project page and the dedicated Workspaces page expose the same manager for creating, activating, renaming, merging, and deleting named workspaces.
+- **Merge workspace** moves every entry into another workspace in the same project, skips duplicates, commits the destination first, and then removes the source named workspace. It never deletes or modifies underlying library items.
+- General is always a valid merge destination but can never be renamed, merged away, or deleted.
+- Wherever an active workspace entry list appears, including Search, its workspace control is a real switcher. Passive switchers show Global plus workspaces belonging to currently open project scopes. Each project context defaults to its own General workspace, while an explicit user workspace choice is remembered independently for that project; All Library defaults to Global. If a project closes while one of its workspaces remains active, only that exact active workspace remains visible—not the closed project's other workspaces—so the control stays truthful without reopening the whole context. Switching changes the active workspace in place and does not navigate away from the current activity. Deliberate Add/Move destination pickers still expose the complete filing hierarchy.
+
 Every workspace persists automatically. `Current workspace` and `saved workspace` are not workspace types. Exactly one workspace is **active** at a time, and exactly one entry within it may be active.
 
 ## Activation and navigation

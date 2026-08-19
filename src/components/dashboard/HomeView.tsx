@@ -26,6 +26,7 @@ import {
   activateWorkspace as activateWorkspaceByKey,
   addEntryToProjectWorkspace,
   addItemToWorkspaceTarget,
+  createProjectWorkspace,
   deleteSavedProjectWorkspace,
   getActiveProjectWorkspaceKey,
   getHomebaseWorkspaceSessionKey,
@@ -33,15 +34,18 @@ import {
   getProjectWorkspaceTabs,
   getSavedWorkspaceSessionKey,
   getWorkspaceProjectId,
-  saveCurrentProjectWorkspace,
+  mergeSavedProjectWorkspace,
+  renameSavedProjectWorkspace,
   transferProjectWorkspaceEntry,
   workspaceTargetContainsItem,
 } from './workspaceSession';
 import {
   buildWorkspaceDestinations,
+  filterWorkspaceSwitcherDestinations,
   rememberWorkspaceDestination,
   type WorkspaceDestination,
 } from './workspaceDestinations';
+import { uiPatterns } from '../../styles/uiPatterns';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -262,13 +266,41 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }),
     [homeState, projects, scopeProjectId, workspaces]
   );
+  const activeWorkspaceDestination = workspaceDestinations.find(
+    (destination) => destination.key === activeWorkspaceKey
+  );
+  const workspaceSwitcherDestinations = useMemo(
+    () => filterWorkspaceSwitcherDestinations({
+      destinations: workspaceDestinations,
+      openProjectIds: recentProjectIds,
+      contextProjectId: scopeProjectId,
+      activeWorkspaceKey,
+    }),
+    [activeWorkspaceKey, recentProjectIds, scopeProjectId, workspaceDestinations]
+  );
   const projectWorkspaceDestinations = useMemo(
     () => activeProject
-      ? workspaceDestinations
-          .filter((destination) => (destination.projectId === 'all' || destination.projectId === activeProject.id) && destination.kind !== 'browser')
+      ? workspaceSwitcherDestinations
           .map((destination) => ({ key: destination.key, label: destination.path }))
       : [],
-    [activeProject, workspaceDestinations]
+    [activeProject, workspaceSwitcherDestinations]
+  );
+  const projectWorkspaceManagerEntries = useMemo(() => activeProject
+    ? [
+        {
+          key: getProjectSessionWorkspaceKey(activeProject.id),
+          name: 'General',
+          count: getProjectWorkspaceTabs(homeState, activeProject.id, getProjectSessionWorkspaceKey(activeProject.id)).length,
+        },
+        ...projectSavedWorkspaceSessions.map((session) => ({
+          key: getHomebaseWorkspaceSessionKey(session.id),
+          name: session.name,
+          count: getProjectWorkspaceTabs(homeState, activeProject.id, getHomebaseWorkspaceSessionKey(session.id)).length,
+          sessionId: session.id,
+        })),
+      ]
+    : [],
+    [activeProject, homeState, projectSavedWorkspaceSessions]
   );
   const projectSummaries = useMemo(
     () =>
@@ -576,24 +608,45 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const activateWorkspaceKey = (workspaceKey: string) => {
-    onHomeStateChange(activateWorkspaceByKey({ state: homeState, workspaceKey }));
+    onHomeStateChange(activateWorkspaceByKey({
+      state: homeState,
+      workspaceKey,
+      preferenceProjectId: scopeProjectId,
+    }));
   };
 
-  const saveCurrentWorkspace = (name: string): string | void => {
+  const validateWorkspaceName = (name: string, excludeSessionId?: string): string | void => {
     if (!activeProject) return 'Open a project first.';
     const normalizedName = name.trim().toLowerCase();
     if (!normalizedName) return 'Workspace name is required.';
     if (
-      projectSavedWorkspaceSessions.some((session) => session.name.trim().toLowerCase() === normalizedName) ||
+      projectSavedWorkspaceSessions.some((session) => session.id !== excludeSessionId && session.name.trim().toLowerCase() === normalizedName) ||
       projectWorkspaces.some((workspace) => workspace.name.trim().toLowerCase() === normalizedName)
     ) {
       return 'A workspace with this name already exists in this project.';
     }
-    onHomeStateChange(saveCurrentProjectWorkspace({
+  };
+
+  const createWorkspace = (name: string, copyCurrent: boolean): string | void => {
+    const error = validateWorkspaceName(name);
+    if (error) return error;
+    if (!activeProject) return 'Open a project first.';
+    onHomeStateChange(createProjectWorkspace({
       state: homeState,
       projectId: activeProject.id,
       name: name.trim(),
+      copyCurrent,
     }));
+  };
+
+  const renameSavedWorkspace = (sessionId: string, name: string): string | void => {
+    const error = validateWorkspaceName(name, sessionId);
+    if (error) return error;
+    onHomeStateChange(renameSavedProjectWorkspace({ state: homeState, sessionId, name }));
+  };
+
+  const mergeSavedWorkspace = (sourceSessionId: string, targetWorkspaceKey: string) => {
+    onHomeStateChange(mergeSavedProjectWorkspace({ state: homeState, sourceSessionId, targetWorkspaceKey }));
   };
 
   const activateSavedWorkspace = (session: SavedWorkspaceSession) => {
@@ -849,7 +902,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onActivateWorkspaceKey={activateWorkspaceKey}
           onActivateWorkspace={activateWorkspace}
           onActivateSavedWorkspace={activateSavedWorkspace}
-          onSaveWorkspace={saveCurrentWorkspace}
+          workspaceManagerEntries={projectWorkspaceManagerEntries}
+          onCreateWorkspace={createWorkspace}
+          onRenameSavedWorkspace={renameSavedWorkspace}
+          onMergeSavedWorkspace={mergeSavedWorkspace}
           onDeleteSavedWorkspace={deleteSavedWorkspace}
           workspaceDestinations={projectWorkspaceDestinations}
           availableWorkspaceDestinations={workspaceDestinations}
@@ -942,13 +998,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <div style={{ flexShrink: 0, margin: '12px 20px 0' }}>
           <ActiveWorkspaceCard
             workspaceKey={activeWorkspaceKey}
-            projectId={activeProject?.id ?? 'all'}
-            title={activeProject
-              ? projectSavedWorkspaceSessions.find((session) => getHomebaseWorkspaceSessionKey(session.id) === activeWorkspaceKey)?.name
-                ?? projectWorkspaces.find((workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeWorkspaceKey)?.name
-                ?? 'General'
-              : 'Global workspace'}
-            contextLabel={activeProject?.name ?? 'All Library'}
+            projectId={activeWorkspaceDestination?.projectId ?? 'all'}
+            title={activeWorkspaceDestination?.workspaceName ?? 'Global workspace'}
+            contextLabel={activeWorkspaceDestination?.projectName ?? 'All Library'}
             tabs={currentSessionTabs}
             items={items}
             activeEntryId={homeState.lastActiveEntryByWorkspace?.[activeWorkspaceKey] ?? null}
@@ -956,6 +1008,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
             onSelectEntry={selectCurrentWorkspaceEntry}
             onRemoveEntry={removeCurrentSessionTab}
             getEntryScopeLabel={getWorkspaceEntryScopeLabel}
+            trailingControl={(
+              <select
+                value={activeWorkspaceKey}
+                onChange={(event) => activateWorkspaceKey(event.target.value)}
+                aria-label="Active workspace"
+                title="Switch active workspace"
+                style={{ ...uiPatterns.select, minWidth: 170, maxWidth: 260 }}
+              >
+                {workspaceSwitcherDestinations.map((destination) => (
+                  <option key={destination.key} value={destination.key}>{destination.path}</option>
+                ))}
+              </select>
+            )}
           />
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>

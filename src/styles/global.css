@@ -1643,13 +1643,32 @@ button.ui-scope-chip {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .ui-project-workspace-actions > * {
   flex-shrink: 0;
-  width: var(--control-height-sm);
   min-height: var(--control-height-sm);
+}
+
+.ui-project-workspace-actions > .ui-button {
+  width: auto;
+  padding-inline: 8px;
+}
+
+.ui-project-workspace-actions > .ui-button--icon {
+  width: var(--control-height-sm);
   padding: 0;
+}
+
+.ui-active-workspace-card__controls {
+  min-width: 0;
+}
+
+.ui-active-workspace-card__controls .ui-field,
+.ui-active-workspace-card__controls select {
+  max-width: min(260px, 100%);
 }
 
 [data-project-view-tabs] {
@@ -3471,6 +3490,41 @@ button.ui-scope-chip {
   .ui-item-workspace__actions {
     width: 100%;
     justify-content: flex-start !important;
+  }
+
+  .ui-active-workspace-card__header,
+  .ui-project-workspace-manager__toolbar {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .ui-active-workspace-card__controls,
+  .ui-active-workspace-card__controls select,
+  .ui-project-workspace-manager__toolbar > .ui-button {
+    width: 100%;
+    max-width: none !important;
+  }
+
+  .ui-project-workspace-manager__row {
+    grid-template-columns: 30px minmax(0, 1fr) !important;
+  }
+
+  .ui-project-workspace-manager__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start !important;
+    padding-left: 40px;
+  }
+
+  .ui-project-workspace-manager__confirm {
+    align-items: stretch !important;
+    flex-direction: column;
+    padding-left: 14px !important;
+  }
+
+  .ui-project-workspace-manager__confirm select,
+  .ui-project-workspace-manager__confirm .ui-button {
+    width: 100%;
+    max-width: none !important;
   }
 }
 

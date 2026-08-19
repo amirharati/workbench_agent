@@ -77,5 +77,9 @@ describe('HomeView search scope', () => {
     expect(markup).toContain('Global result');
     expect(markup).toContain('Add to workspace');
     expect(markup).toContain('Organize…');
+    expect(markup).toContain('aria-label="Active workspace"');
+    expect(markup).toContain('Global workspace');
+    expect(markup).toContain('Research — General');
+    expect(markup).not.toContain('Writing — General');
   });
 });

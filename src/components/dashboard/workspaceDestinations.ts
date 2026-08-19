@@ -74,6 +74,32 @@ export function buildWorkspaceDestinations({
   return destinations;
 }
 
+/**
+ * Keep passive workspace switchers contextual and short. Explicit filing
+ * pickers still use the complete destination list.
+ */
+export function filterWorkspaceSwitcherDestinations({
+  destinations,
+  openProjectIds,
+  contextProjectId,
+  activeWorkspaceKey,
+}: {
+  destinations: readonly WorkspaceDestination[];
+  openProjectIds: readonly string[];
+  contextProjectId: string | 'all';
+  activeWorkspaceKey?: string;
+}): WorkspaceDestination[] {
+  const visibleProjectIds = new Set(openProjectIds);
+  if (contextProjectId !== 'all') visibleProjectIds.add(contextProjectId);
+
+  return destinations.filter(
+    (destination) =>
+      destination.projectId === 'all' ||
+      visibleProjectIds.has(destination.projectId) ||
+      destination.key === activeWorkspaceKey
+  );
+}
+
 export function rememberWorkspaceDestination(
   recentKeys: readonly string[] | undefined,
   destinationKey: string,

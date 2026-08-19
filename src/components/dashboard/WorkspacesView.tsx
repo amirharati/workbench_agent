@@ -10,15 +10,23 @@ import { uiPatterns } from '../../styles/uiPatterns';
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
+  activateWorkspace as activateWorkspaceByKey,
   addBrowserSnapshotToProjectWorkspace,
+  createProjectWorkspace as createNamedProjectWorkspace,
   createProjectWorkspaceFromBrowserSnapshot,
   deleteSavedProjectWorkspace,
   getActiveProjectWorkspaceKey,
   getHomebaseWorkspaceSessionKey,
   getProjectSessionWorkspaceKey,
   getProjectWorkspaceTabs,
+  mergeSavedProjectWorkspace,
+  renameSavedProjectWorkspace,
 } from './workspaceSession';
 import { formatGeneralWorkspaceName, formatProjectWorkspaceName } from './workspaceLabels';
+import {
+  ProjectWorkspaceManagerDialog,
+  type ProjectWorkspaceManagerEntry,
+} from './ProjectWorkspaceManagerDialog';
 
 type WorkspaceFilter = 'all' | 'project' | 'browser';
 
@@ -146,6 +154,10 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [workspacePrompt, setWorkspacePrompt] = useState<WorkspacePrompt | null>(null);
   const [workspaceDelete, setWorkspaceDelete] = useState<WorkspaceDelete | null>(null);
+  const [managerProjectId, setManagerProjectId] = useState(
+    scopeProjectId !== 'all' ? scopeProjectId : projects[0]?.id ?? ''
+  );
+  const [workspaceManagerMode, setWorkspaceManagerMode] = useState<'list' | 'create' | null>(null);
   const didInitializeSelectionRef = useRef(false);
 
   const rows = useMemo<ManagedWorkspaceRow[]>(() => {
@@ -180,6 +192,25 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
         ...targetSessions.map((session) => ({ key: getHomebaseWorkspaceSessionKey(session.id), label: session.name })),
       ]
     : [];
+  const managerProject = projects.find((project) => project.id === managerProjectId);
+  const managerSessions = (homeState.savedWorkspaceSessions ?? [])
+    .filter((session) => session.projectId === managerProjectId)
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+  const managerEntries: ProjectWorkspaceManagerEntry[] = managerProject
+    ? [
+        {
+          key: getProjectSessionWorkspaceKey(managerProject.id),
+          name: 'General',
+          count: getProjectWorkspaceTabs(homeState, managerProject.id, getProjectSessionWorkspaceKey(managerProject.id)).length,
+        },
+        ...managerSessions.map((session) => ({
+          key: getHomebaseWorkspaceSessionKey(session.id),
+          name: session.name,
+          count: getProjectWorkspaceTabs(homeState, managerProject.id, getHomebaseWorkspaceSessionKey(session.id)).length,
+          sessionId: session.id,
+        })),
+      ]
+    : [];
 
   useEffect(() => {
     if (selectedKey && rows.some((row) => row.key === selectedKey)) return;
@@ -195,6 +226,11 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     if (targetProjectId && projects.some((project) => project.id === targetProjectId)) return;
     setTargetProjectId(projects[0]?.id ?? '');
   }, [projects, targetProjectId]);
+
+  useEffect(() => {
+    if (managerProjectId && projects.some((project) => project.id === managerProjectId)) return;
+    setManagerProjectId(scopeProjectId !== 'all' ? scopeProjectId : projects[0]?.id ?? '');
+  }, [managerProjectId, projects, scopeProjectId]);
 
   useEffect(() => {
     if (workspaceTargets.some((target) => target.key === targetWorkspaceKey)) return;
@@ -295,6 +331,32 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     setWorkspacePrompt({ kind: 'rename-project', row });
   };
 
+  const validateManagerName = (name: string, excludeSessionId?: string): string | void => {
+    const normalized = name.trim().toLowerCase();
+    if (!normalized) return 'Workspace name is required.';
+    if (managerSessions.some((session) => session.id !== excludeSessionId && session.name.trim().toLowerCase() === normalized)) {
+      return 'A workspace with this name already exists in this project.';
+    }
+  };
+
+  const createManagedWorkspace = (name: string, copyCurrent: boolean): string | void => {
+    if (!managerProject) return 'Choose a project first.';
+    const error = validateManagerName(name);
+    if (error) return error;
+    onHomeStateChange(createNamedProjectWorkspace({
+      state: homeState,
+      projectId: managerProject.id,
+      name,
+      copyCurrent,
+    }));
+  };
+
+  const renameManagedWorkspace = (sessionId: string, name: string): string | void => {
+    const error = validateManagerName(name, sessionId);
+    if (error) return error;
+    onHomeStateChange(renameSavedProjectWorkspace({ state: homeState, sessionId, name }));
+  };
+
   const removeProjectWorkspace = (row: ProjectWorkspaceRow) => {
     if (!row.session) return;
     setWorkspaceDelete({ kind: 'project', row });
@@ -322,12 +384,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     } else if (workspacePrompt.kind === 'rename-project') {
       const sessionId = workspacePrompt.row.session?.id;
       if (!sessionId) return;
-      onHomeStateChange({
-        ...homeState,
-        savedWorkspaceSessions: (homeState.savedWorkspaceSessions ?? []).map((session) =>
-          session.id === sessionId ? { ...session, name, updatedAt: Date.now() } : session
-        ),
-      });
+      onHomeStateChange(renameSavedProjectWorkspace({ state: homeState, sessionId, name }));
     } else {
       await updateWorkspace(workspacePrompt.workspace.id, { name });
       await onWorkspacesChanged?.();
@@ -361,7 +418,18 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           <h1 style={uiPatterns.pageTitle}>Workspaces</h1>
           <p style={uiPatterns.pageDescription}>Manage Homebase working sets and saved browser snapshots. Live browser tabs stay in Tab Commander.</p>
         </div>
-        {onOpenTabCommander && <button className="ui-button ui-button--primary" type="button" onClick={onOpenTabCommander} style={primaryButtonStyle}><MonitorUp size={13} /> Capture browser tabs</button>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {projects.length > 0 ? (
+            <>
+              <select value={managerProjectId} onChange={(event) => setManagerProjectId(event.target.value)} aria-label="Project for workspace management" style={selectStyle}>
+                {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+              </select>
+              <button className="ui-button ui-button--primary" type="button" onClick={() => setWorkspaceManagerMode('create')}><Plus size={13} /> New workspace</button>
+              <button className="ui-button ui-button--secondary" type="button" onClick={() => setWorkspaceManagerMode('list')}><Layers3 size={13} /> Manage</button>
+            </>
+          ) : null}
+          {onOpenTabCommander && <button className="ui-button ui-button--secondary" type="button" onClick={onOpenTabCommander} style={secondaryButtonStyle}><MonitorUp size={13} /> Capture browser tabs</button>}
+        </div>
       </header>
 
       <div className="ui-toolbar" style={uiPatterns.toolbar}>
@@ -461,6 +529,21 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           confirmVariant="danger"
           onConfirm={() => void confirmWorkspaceDelete()}
           onCancel={() => setWorkspaceDelete(null)}
+        />
+      ) : null}
+      {workspaceManagerMode && managerProject ? (
+        <ProjectWorkspaceManagerDialog
+          projectName={managerProject.name}
+          activeWorkspaceKey={getActiveProjectWorkspaceKey(homeState, managerProject.id)}
+          entries={managerEntries}
+          canCopyActiveWorkspace={managerEntries.some((entry) => entry.key === getActiveProjectWorkspaceKey(homeState, managerProject.id))}
+          initialMode={workspaceManagerMode}
+          onClose={() => setWorkspaceManagerMode(null)}
+          onActivate={(workspaceKey) => onHomeStateChange(activateWorkspaceByKey({ state: homeState, workspaceKey, projectId: managerProject.id, preferenceProjectId: managerProject.id }))}
+          onCreate={createManagedWorkspace}
+          onRename={renameManagedWorkspace}
+          onMerge={(sourceSessionId, targetWorkspaceKey) => onHomeStateChange(mergeSavedProjectWorkspace({ state: homeState, sourceSessionId, targetWorkspaceKey }))}
+          onDelete={(sessionId) => onHomeStateChange(deleteSavedProjectWorkspace({ state: homeState, sessionId }))}
         />
       ) : null}
     </div>

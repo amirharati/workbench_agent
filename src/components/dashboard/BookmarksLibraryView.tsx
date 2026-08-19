@@ -151,7 +151,7 @@ export function addBookmarkToWorkspace(
       entry,
     });
     if (options.view && next.activeWorkspaceKey !== destination.key) {
-      next = activateWorkspace({ state: next, workspaceKey: destination.key });
+      next = activateWorkspace({ state: next, workspaceKey: destination.key, preferenceProjectId: 'all' });
     }
   } else {
     next = addEntryToProjectWorkspace({

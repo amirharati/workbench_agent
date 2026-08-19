@@ -304,6 +304,7 @@ export const MainContent: React.FC<MainContentProps> = ({
       state: added,
       workspaceKey: destination.key,
       projectId: destination.projectId,
+      preferenceProjectId: destination.projectId,
     });
     const entry = activated.tabs.find((candidate) => candidate.kind === 'item' && candidate.itemId === item.id);
     onGlobalTabStateChange?.({
@@ -363,7 +364,7 @@ export const MainContent: React.FC<MainContentProps> = ({
 
   const viewSearchInChosenWorkspace = (destination: WorkspaceDestination) => {
     const added = addSearchToWorkspace(destination);
-    const activated = activateWorkspace({ state: added, workspaceKey: destination.key, projectId: destination.projectId });
+    const activated = activateWorkspace({ state: added, workspaceKey: destination.key, projectId: destination.projectId, preferenceProjectId: destination.projectId });
     const query = librarySearch?.state.query.trim().toLowerCase() ?? '';
     const entry = activated.tabs.find(
       (candidate): candidate is GlobalTabSearch => candidate.kind === 'search' && candidate.query.trim().toLowerCase() === query
@@ -2346,7 +2347,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     };
     const viewListInChosenWorkspace = (destination: WorkspaceDestination) => {
       const added = addListToWorkspace(destination);
-      const activated = activateWorkspace({ state: added, workspaceKey: destination.key, projectId: destination.projectId });
+      const activated = activateWorkspace({ state: added, workspaceKey: destination.key, projectId: destination.projectId, preferenceProjectId: destination.projectId });
       const entry = activated.tabs.find(
         (candidate) => candidate.kind === 'list' && candidate.title === listTitle
       );

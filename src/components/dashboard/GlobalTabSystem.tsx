@@ -171,6 +171,8 @@ export interface GlobalTabState {
   activeWorkspaceKey?: string;
   /** Last selected entry remembered independently for each workspace. */
   lastActiveEntryByWorkspace?: Record<string, string>;
+  /** Explicit workspace choice remembered independently for each project context. */
+  preferredWorkspaceKeyByProject?: Record<string, string>;
 }
 
 /** Canonical state name. GlobalTabState remains a compatibility alias during the UI refactor. */
@@ -192,6 +194,7 @@ export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
   recentWorkspaceDestinationKeys: [],
   activeWorkspaceKey: GLOBAL_WORKSPACE_KEY,
   lastActiveEntryByWorkspace: {},
+  preferredWorkspaceKeyByProject: {},
 };
 
 const LS_KEY = 'workbench-workspace-state-v1';
@@ -331,6 +334,14 @@ export function loadGlobalTabState(): GlobalTabState {
       lastActiveEntryByWorkspace:
         parsed.lastActiveEntryByWorkspace && typeof parsed.lastActiveEntryByWorkspace === 'object'
           ? parsed.lastActiveEntryByWorkspace
+          : {},
+      preferredWorkspaceKeyByProject:
+        parsed.preferredWorkspaceKeyByProject && typeof parsed.preferredWorkspaceKeyByProject === 'object'
+          ? Object.fromEntries(
+              Object.entries(parsed.preferredWorkspaceKeyByProject).filter(
+                (entry): entry is [string, string] => typeof entry[1] === 'string'
+              )
+            )
           : {},
     };
   } catch {

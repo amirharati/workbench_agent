@@ -87,4 +87,37 @@ describe('WorkspacesView', () => {
     await act(async () => root.unmount());
     host.remove();
   });
+
+  it('offers clear project-level New and Manage workspace flows', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <WorkspacesView
+          projects={[project]}
+          items={[item]}
+          workspaces={[]}
+          homeState={homeState}
+          onHomeStateChange={vi.fn()}
+        />
+      );
+    });
+
+    const newWorkspace = [...host.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'New workspace');
+    expect(newWorkspace).toBeDefined();
+    await act(async () => newWorkspace?.click());
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('Research workspaces');
+    expect(dialog?.textContent).toContain('New workspace');
+    expect(dialog?.textContent).toContain('Copy entries from the active workspace');
+    expect(dialog?.textContent).toContain('General');
+    expect(dialog?.textContent).toContain('Writing set');
+    expect(dialog?.textContent).not.toContain('Save as workspace');
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
 });

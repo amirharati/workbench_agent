@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Project, Workspace } from '../../lib/db';
 import type { GlobalTabState } from './GlobalTabSystem';
 import { getHomebaseWorkspaceSessionKey } from './workspaceSession';
-import { buildWorkspaceDestinations, rememberWorkspaceDestination } from './workspaceDestinations';
+import { buildWorkspaceDestinations, filterWorkspaceSwitcherDestinations, rememberWorkspaceDestination } from './workspaceDestinations';
 
 const projects: Project[] = [
   { id: 'project-a', name: 'Research', isDefault: false, created_at: 1, updated_at: 1 },
@@ -50,5 +50,35 @@ describe('workspace destinations', () => {
   it('keeps recent destinations unique and newest first', () => {
     expect(rememberWorkspaceDestination(['b', 'a', 'c'], 'a')).toEqual(['a', 'b', 'c']);
     expect(rememberWorkspaceDestination(['b', 'c'], 'a', 2)).toEqual(['a', 'b']);
+  });
+
+  it('limits passive switchers to Global, open projects, and only the exact active workspace', () => {
+    const destinations = buildWorkspaceDestinations({
+      projects,
+      browserWorkspaces: [],
+      state,
+      contextProjectId: 'all',
+    });
+
+    expect(filterWorkspaceSwitcherDestinations({
+      destinations,
+      openProjectIds: ['project-b'],
+      contextProjectId: 'all',
+      activeWorkspaceKey: getHomebaseWorkspaceSessionKey('saved-a'),
+    }).map((destination) => destination.path)).toEqual([
+      'Global workspace',
+      'Research — Reading plan',
+      'Writing — General',
+    ]);
+
+    expect(filterWorkspaceSwitcherDestinations({
+      destinations,
+      openProjectIds: ['project-b'],
+      contextProjectId: 'all',
+      activeWorkspaceKey: 'workspace:global',
+    }).map((destination) => destination.path)).toEqual([
+      'Global workspace',
+      'Writing — General',
+    ]);
   });
 });

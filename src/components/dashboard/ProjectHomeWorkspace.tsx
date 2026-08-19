@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Layers3, Link2, MoveRight, Pin, Save, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Layers3, Link2, MoveRight, Pin, Plus, Search, Settings2, Trash2, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemFavoriteButton } from './ItemFavoriteButton';
@@ -19,6 +19,10 @@ import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import type { WorkspaceDestination } from './workspaceDestinations';
 import { buildItemQuickFilterText, buildQuickFilterText } from '../../lib/itemQuickFilter';
+import {
+  ProjectWorkspaceManagerDialog,
+  type ProjectWorkspaceManagerEntry,
+} from './ProjectWorkspaceManagerDialog';
 
 interface ProjectHomeWorkspaceProps {
   project: Project;
@@ -40,7 +44,10 @@ interface ProjectHomeWorkspaceProps {
   onActivateWorkspaceKey?: (workspaceKey: string) => void;
   onActivateWorkspace: (workspace: Workspace | null) => void;
   onActivateSavedWorkspace: (session: SavedWorkspaceSession) => void;
-  onSaveWorkspace: (name: string) => string | void;
+  workspaceManagerEntries?: ProjectWorkspaceManagerEntry[];
+  onCreateWorkspace?: (name: string, copyCurrent: boolean) => string | void;
+  onRenameSavedWorkspace?: (sessionId: string, name: string) => string | void;
+  onMergeSavedWorkspace?: (sourceSessionId: string, targetWorkspaceKey: string) => void;
   onDeleteSavedWorkspace: (sessionId: string) => void;
   workspaceDestinations: Array<{ key: string; label: string }>;
   availableWorkspaceDestinations?: WorkspaceDestination[];
@@ -84,7 +91,10 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   onActivateWorkspaceKey,
   onActivateWorkspace,
   onActivateSavedWorkspace,
-  onSaveWorkspace,
+  workspaceManagerEntries = [],
+  onCreateWorkspace = () => undefined,
+  onRenameSavedWorkspace = () => undefined,
+  onMergeSavedWorkspace = () => undefined,
   onDeleteSavedWorkspace,
   workspaceDestinations,
   availableWorkspaceDestinations = [],
@@ -108,9 +118,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(initialPageUi.selectedItemId);
   const [selectedSessionTabId, setSelectedSessionTabId] = useState<string | null>(initialPageUi.selectedSessionTabId);
   const [pinningItemId, setPinningItemId] = useState<string | null>(null);
-  const [showSaveWorkspace, setShowSaveWorkspace] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState('');
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceManagerMode, setWorkspaceManagerMode] = useState<'list' | 'create' | null>(null);
   const [workspaceDeleteConfirm, setWorkspaceDeleteConfirm] = useState<SavedWorkspaceSession | null>(null);
   const [transferEntryId, setTransferEntryId] = useState<string | null>(null);
   const [transferTargetWorkspaceKey, setTransferTargetWorkspaceKey] = useState('');
@@ -230,26 +238,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
       setTransferTargetWorkspaceKey(transferDestinations[0]?.key ?? '');
     }
   }, [transferDestinations, transferTargetWorkspaceKey]);
-
-  useEffect(() => {
-    if (browseSource !== 'workspace') setShowSaveWorkspace(false);
-  }, [browseSource]);
-
-  const saveWorkspace = () => {
-    const name = workspaceName.trim();
-    if (!name) {
-      setWorkspaceError('Workspace name is required.');
-      return;
-    }
-    const error = onSaveWorkspace(name);
-    if (error) {
-      setWorkspaceError(error);
-      return;
-    }
-    setShowSaveWorkspace(false);
-    setWorkspaceName('');
-    setWorkspaceError(null);
-  };
 
   const openWorkspaceInBrowser = () => {
     if (workspaceBrowserUrls.length === 0) return;
@@ -408,8 +396,8 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const browseSelectedId = browseSource === 'workspace' ? selectedSessionTabId : selectedItemId;
   const workspaceHeaderActions = browseSource === 'workspace' ? (
     <div className="ui-project-workspace-actions" data-project-workspace-actions role="toolbar" aria-label="Workspace actions">
-      {activeSavedWorkspace && <button className="ui-button ui-button--danger" type="button" onClick={() => setWorkspaceDeleteConfirm(activeSavedWorkspace)} title={`Delete ${activeSavedWorkspace.name}`} aria-label={`Delete ${activeSavedWorkspace.name}`}><Trash2 size={11} /></button>}
-      <button className="ui-button ui-button--secondary" type="button" onClick={() => { setShowSaveWorkspace((visible) => !visible); setWorkspaceError(null); }} title="Save as workspace" aria-label="Save as workspace"><Save size={12} /></button>
+      <button className="ui-button ui-button--primary" type="button" onClick={() => setWorkspaceManagerMode('create')}><Plus size={12} /> New workspace</button>
+      <button className="ui-button ui-button--secondary" type="button" onClick={() => setWorkspaceManagerMode('list')}><Settings2 size={12} /> Manage</button>
       <button className="ui-button ui-button--secondary" type="button" disabled={workspaceBrowserUrls.length === 0} onClick={openWorkspaceInBrowser} title={workspaceBrowserUrls.length === 0 ? 'This workspace has no browser links' : `Open ${workspaceBrowserUrls.length} link${workspaceBrowserUrls.length !== 1 ? 's' : ''}`} aria-label="Open workspace links"><ExternalLink size={12} /></button>
     </div>
   ) : undefined;
@@ -557,29 +545,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           </div>
         </div>
         </div>
-        {showSaveWorkspace && (
-          <div className="ui-inline-form" style={{ marginBottom: 9 }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <input
-                className="ui-field"
-                autoFocus
-                value={workspaceName}
-                onChange={(event) => { setWorkspaceName(event.target.value); setWorkspaceError(null); }}
-                onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); saveWorkspace(); } }}
-                placeholder="Workspace name"
-                aria-label="Workspace name"
-                style={{ width: '100%', height: 31, padding: '0 9px', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--input-bg)', color: 'var(--text)', fontSize: 'var(--text-sm)' }}
-              />
-              {workspaceError && <div className="ui-status" data-tone="error" role="alert" style={{ marginTop: 6 }}>{workspaceError}</div>}
-            </div>
-            <button className="ui-button ui-button--primary" type="button" onClick={saveWorkspace} disabled={!workspaceName.trim()} style={{ ...primaryButtonStyle, opacity: workspaceName.trim() ? 1 : 0.5 }}>
-              Save
-            </button>
-            <button className="ui-button ui-button--icon" type="button" onClick={() => { setShowSaveWorkspace(false); setWorkspaceName(''); setWorkspaceError(null); }} aria-label="Cancel saving workspace" style={sessionIconButtonStyle}>
-              <X size={13} />
-            </button>
-          </div>
-        )}
         {showLegacyProjectBrowser && hasWorkspaceChoices && <div className="scrollbar" data-browse-surface="project-workspaces" style={{ ...browseListStyle, marginBottom: 9 }} aria-label="Project workspaces">
           <button type="button" onClick={() => onActivateWorkspace(null)} style={browseRowStyle(activeWorkspaceKey === getProjectSessionWorkspaceKey(project.id))}>
             <span style={browseRowIconStyle}><Layers3 size={12} /></span>
@@ -915,6 +880,21 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           }}
         />
       ) : null}
+      {workspaceManagerMode ? (
+        <ProjectWorkspaceManagerDialog
+          projectName={project.name}
+          activeWorkspaceKey={activeWorkspaceKey}
+          entries={workspaceManagerEntries}
+          canCopyActiveWorkspace={workspaceManagerEntries.some((entry) => entry.key === activeWorkspaceKey)}
+          initialMode={workspaceManagerMode}
+          onClose={() => setWorkspaceManagerMode(null)}
+          onActivate={switchWorkspace}
+          onCreate={onCreateWorkspace}
+          onRename={onRenameSavedWorkspace}
+          onMerge={onMergeSavedWorkspace}
+          onDelete={onDeleteSavedWorkspace}
+        />
+      ) : null}
     </div>
   );
 };
@@ -947,6 +927,5 @@ const browseRowIconStyle: React.CSSProperties = { width: 25, height: 25, flexShr
 const browseRowTitleStyle: React.CSSProperties = { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 600 };
 const browseRowDetailStyle: React.CSSProperties = { display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' };
 const secondaryButtonStyle = uiPatterns.secondaryButton;
-const primaryButtonStyle = uiPatterns.primaryButton;
 const sessionIconButtonStyle: React.CSSProperties = { ...uiPatterns.iconButton, width: 25, height: 25, border: 'none' };
 const destinationSelectStyle: React.CSSProperties = { ...uiPatterns.select, maxWidth: 190 };

@@ -81,7 +81,7 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
     }}
     aria-label={`${contextLabel} active workspace`}
   >
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+    <div className="ui-active-workspace-card__header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
         <span style={{ width: 25, height: 25, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: 'var(--accent-weak)', color: 'var(--accent)' }}>
           <Layers3 size={12} />
@@ -93,7 +93,7 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
           </span>
         </span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div className="ui-active-workspace-card__controls" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {trailingControl}
       </div>
     </div>
