@@ -5,6 +5,7 @@ import type { GlobalTab } from './GlobalTabSystem';
 import { buildItemQuickFilterText, buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
 import { useItemPeek } from './ItemPeekProvider';
+import { ItemResultRow } from './ItemResultRow';
 
 function workspaceEntryLabel(tab: GlobalTab, items: readonly Item[]): string {
   if (tab.kind === 'search') return tab.query.trim() || 'Search';
@@ -25,6 +26,7 @@ export interface ActiveWorkspaceCardProps {
   onSelectEntry: (tab: GlobalTab) => void;
   onRemoveEntry: (tabId: string) => void;
   trailingControl?: React.ReactNode;
+  renderItemActions?: (item: Item) => React.ReactNode;
   getEntryScopeLabel?: (tab: GlobalTab) => string | undefined;
   allowRemove?: boolean;
   /** Bounds compact placements such as Search; null lets the parent own scrolling. */
@@ -43,11 +45,12 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
   onSelectEntry,
   onRemoveEntry,
   trailingControl,
+  renderItemActions,
   getEntryScopeLabel,
   allowRemove = true,
   maxListHeight = 224,
 }) => {
-  const { getDragProps, getDropTargetProps, getReorderTargetProps } = useItemDragDrop();
+  const { getDropTargetProps, getReorderTargetProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const [filterQuery, setFilterQuery] = useState('');
   const searchIndex = useMemo(
@@ -127,12 +130,12 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
           const label = workspaceEntryLabel(tab, items);
           const selected = activeEntryId === tab.id;
           const scopeLabel = getEntryScopeLabel?.(tab);
-          const dragProps = item ? getDragProps(item, {
+          const dragSource = item ? {
             kind: 'workspace',
             containerId: workspaceKey,
             containerLabel: title,
             projectId,
-          }) : {};
+          } as const : undefined;
           const reorderProps = item ? getReorderTargetProps(item.id, {
             kind: 'workspace',
             containerId: workspaceKey,
@@ -140,11 +143,17 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
             projectId,
           }) : {};
           return (
-            <div
+            <ItemResultRow
               key={tab.id}
-              {...dragProps}
+              item={item ?? { id: tab.id, title: label, url: tab.kind === 'url' ? tab.url : undefined }}
+              dragSource={dragSource}
+              selected={selected}
+              onSelectItem={() => onSelectEntry(tab)}
               {...reorderProps}
-              data-item-drag-source={item ? 'true' : undefined}
+              onDoubleClick={(event) => {
+                if (!item || (event.target as HTMLElement).closest('button, a, input')) return;
+                openPeek(item.id, { itemIds: filteredTabs.flatMap((entry) => entry.kind === 'item' ? [entry.itemId] : []), sourceLabel: title });
+              }}
               style={{
                 width: '100%',
                 minWidth: 0,
@@ -156,12 +165,7 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
                 color: selected ? 'var(--accent)' : 'var(--text-muted)',
               }}
             >
-              <button
-                type="button"
-                onClick={() => onSelectEntry(tab)}
-                onDoubleClick={() => {
-                  if (item) openPeek(item.id, { itemIds: filteredTabs.flatMap((entry) => entry.kind === 'item' ? [entry.itemId] : []), sourceLabel: title });
-                }}
+              <div
                 title={label}
                 style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', fontSize: 'var(--text-xs)', fontWeight: selected ? 650 : 550, cursor: 'pointer' }}
               >
@@ -172,7 +176,17 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
                   <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
                   {scopeLabel && <span style={{ display: 'block', marginTop: 1, color: 'var(--text-faint)', fontSize: 10, fontWeight: 500 }}>{scopeLabel}</span>}
                 </span>
-              </button>
+              </div>
+              {item && renderItemActions ? (
+                <span
+                  className="ui-active-workspace-card__item-actions"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3, padding: '0 4px' }}
+                >
+                  {renderItemActions(item)}
+                </span>
+              ) : null}
               {allowRemove && <button
                 type="button"
                 onClick={() => onRemoveEntry(tab.id)}
@@ -182,7 +196,7 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
               >
                 <X size={10} />
               </button>}
-            </div>
+            </ItemResultRow>
           );
         })}
       </div>

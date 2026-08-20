@@ -20,6 +20,7 @@ describe('SourceMenuTab', () => {
 
   it('shows the selected source and switches from one unified menu', async () => {
     const onSelect = vi.fn();
+    const onActivate = vi.fn();
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -36,6 +37,7 @@ describe('SourceMenuTab', () => {
             { value: 'research', label: 'Research' },
           ]}
           onSelect={onSelect}
+          onActivate={onActivate}
         />
       );
     });
@@ -44,6 +46,11 @@ describe('SourceMenuTab', () => {
     expect(trigger.textContent).toContain('Workspace');
     expect(trigger.textContent).toContain('Global');
     await act(async () => trigger.click());
+    expect(onActivate).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull();
+
+    const chooser = host.querySelector<HTMLButtonElement>('[aria-label="Choose Workspace"]')!;
+    await act(async () => chooser.click());
     const research = [...document.body.querySelectorAll<HTMLButtonElement>('[role="option"]')]
       .find((button) => button.textContent?.includes('Research'))!;
     await act(async () => research.click());

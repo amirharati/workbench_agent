@@ -167,9 +167,8 @@ describe('ProductSearchView empty state', () => {
       );
     });
 
-    const relatedTitle = [...host.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === item.title);
-    await act(async () => relatedTitle?.click());
+    const relatedRow = host.querySelector<HTMLElement>('.ui-related-link-row[data-item-result-row="true"]');
+    await act(async () => relatedRow?.click());
     expect(onSelectedItemIdChange).toHaveBeenCalledWith(item.id);
     expect(onOpenItem).not.toHaveBeenCalled();
 

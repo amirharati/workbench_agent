@@ -9,6 +9,7 @@ import { usePipelineBadgeMap } from '../../hooks/usePipelineBadgeMap';
 import { ListPipelineBadge } from './PipelineDisplayBlocks';
 import { useItemDragDrop } from './ItemDragDropProvider';
 import { useItemPeek } from './ItemPeekProvider';
+import { ItemResultRow } from './ItemResultRow';
 
 interface ItemsListPanelProps {
   items: Item[];
@@ -53,7 +54,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
   viewMode = 'list',
   onViewModeChange,
 }) => {
-  const { getDragProps, getDropTargetProps } = useItemDragDrop();
+  const { getDropTargetProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const displayItems = useMemo(() => sortItemsByRecency(items), [items]);
@@ -66,7 +67,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
     setContextMenu({ item, x: e.clientX, y: e.clientY });
   };
 
-  const handleItemClick = (e: React.MouseEvent, item: Item) => {
+  const handleItemClick = (e: React.MouseEvent | React.KeyboardEvent, item: Item) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const spaces: Array<'primary' | 'secondary' | 'rightPrimary' | 'rightSecondary'> = [];
@@ -232,13 +233,14 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
           {displayItems.map((item) => {
             const isActive = activeItemId === item.id;
             return (
-              <div
+              <ItemResultRow
                 key={item.id}
-                {...getDragProps(item, currentCollectionId === 'all'
+                item={item}
+                dragSource={currentCollectionId === 'all'
                   ? { kind: 'reference', label: title }
-                  : { kind: 'collection', containerId: currentCollectionId, containerLabel: title })}
-                data-item-drag-source="true"
-                onClick={(e) => handleItemClick(e, item)}
+                  : { kind: 'collection', containerId: currentCollectionId, containerLabel: title }}
+                selected={isActive}
+                onSelectItem={(event) => handleItemClick(event, item)}
                 onContextMenu={(e) => handleContextMenu(e, item)}
                 style={{
                   width: '100%',
@@ -343,7 +345,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                 >
                   {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                 </div>
-              </div>
+              </ItemResultRow>
             );
           })}
         </div>
@@ -358,13 +360,14 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
           {displayItems.map((item) => {
             const isActive = activeItemId === item.id;
             return (
-              <div
+              <ItemResultRow
                 key={item.id}
-                {...getDragProps(item, currentCollectionId === 'all'
+                item={item}
+                dragSource={currentCollectionId === 'all'
                   ? { kind: 'reference', label: title }
-                  : { kind: 'collection', containerId: currentCollectionId, containerLabel: title })}
-                data-item-drag-source="true"
-                onClick={(e) => handleItemClick(e, item)}
+                  : { kind: 'collection', containerId: currentCollectionId, containerLabel: title }}
+                selected={isActive}
+                onSelectItem={(event) => handleItemClick(event, item)}
                 onContextMenu={(e) => handleContextMenu(e, item)}
                 style={{
                   padding: '4px 8px',
@@ -421,7 +424,7 @@ export const ItemsListPanel: React.FC<ItemsListPanelProps> = ({
                     {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   </span>
                 </div>
-              </div>
+              </ItemResultRow>
             );
           })}
         </div>

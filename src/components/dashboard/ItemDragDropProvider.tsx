@@ -23,16 +23,20 @@ export interface ItemTransferResult {
 
 interface ItemDragDropContextValue {
   activePayload: ItemDragPayload | null;
-  getDragProps: (
-    item: { id: string; title?: string; url?: string },
-    source: ItemDragSource
-  ) => ReturnType<typeof itemDragSourceProps>;
+  getDragProps: ItemDragSourceContextValue['getDragProps'];
   getDropTargetProps: (target: ItemDropTarget) => ItemDropTargetProps;
   getProjectCollectionDropTargetProps: (target: ProjectCollectionDropTarget) => ItemDropTargetProps;
   getReorderTargetProps: (
     beforeItemId: string,
     target: ItemDropTarget
   ) => ItemDropTargetProps;
+}
+
+interface ItemDragSourceContextValue {
+  getDragProps: (
+    item: { id: string; title?: string; url?: string },
+    source: ItemDragSource
+  ) => ReturnType<typeof itemDragSourceProps>;
 }
 
 type ItemDropTargetProps = React.HTMLAttributes<HTMLElement> & {
@@ -42,13 +46,24 @@ type ItemDropTargetProps = React.HTMLAttributes<HTMLElement> & {
 };
 
 const ItemDragDropContext = createContext<ItemDragDropContextValue | null>(null);
+const ItemDragSourceContext = createContext<ItemDragSourceContextValue | null>(null);
+
+const emptyDragProps: ItemDragSourceContextValue['getDragProps'] = () => ({
+  draggable: true,
+  onDragStart: () => {},
+  onDragEnd: () => {},
+});
+
+export function useItemDragSource(): ItemDragSourceContextValue {
+  return useContext(ItemDragSourceContext) ?? { getDragProps: emptyDragProps };
+}
 
 export function useItemDragDrop(): ItemDragDropContextValue {
   const context = useContext(ItemDragDropContext);
   if (!context) {
     return {
       activePayload: null,
-      getDragProps: () => ({ draggable: true, onDragStart: () => {}, onDragEnd: () => {} }),
+      getDragProps: emptyDragProps,
       getDropTargetProps: () => ({}),
       getProjectCollectionDropTargetProps: () => ({}),
       getReorderTargetProps: () => ({}),
@@ -62,6 +77,8 @@ interface ItemDragDropProviderProps {
   projects: readonly Project[];
   collections: readonly Collection[];
   workspaceDestinations: readonly WorkspaceDestination[];
+  /** The project currently being worked in; it is the primary drag destination context. */
+  currentProjectId?: string | 'all';
   /** Projects currently open in the Home project switcher. Closed projects are not drag destinations. */
   openProjectIds?: readonly string[];
   isInTarget: (itemId: string, target: ItemDropTarget) => boolean;
@@ -87,6 +104,24 @@ interface PendingCollectionChoice {
   target: ProjectCollectionDropTarget;
 }
 
+interface DragSourceRegion {
+  left: number;
+  right: number;
+  viewportWidth: number;
+}
+
+export function chooseItemDropTraySide(
+  source: DragSourceRegion,
+  trayWidth = 480,
+  viewportGutter = 18
+): 'left' | 'right' {
+  const width = Math.min(trayWidth, Math.max(0, source.viewportWidth - (viewportGutter * 2)));
+  const overlap = (start: number, end: number) => Math.max(0, Math.min(source.right, end) - Math.max(source.left, start));
+  const leftOverlap = overlap(viewportGutter, viewportGutter + width);
+  const rightOverlap = overlap(source.viewportWidth - viewportGutter - width, source.viewportWidth - viewportGutter);
+  return leftOverlap < rightOverlap ? 'left' : 'right';
+}
+
 function itemDropTargetKey(target: ItemDropTarget): string {
   return `${target.kind}:${target.containerId}`;
 }
@@ -100,6 +135,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
   projects,
   collections,
   workspaceDestinations,
+  currentProjectId = 'all',
   openProjectIds = [],
   isInTarget,
   onTransfer,
@@ -114,6 +150,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
   const [busy, setBusy] = useState(false);
   const [recentTargets, setRecentTargets] = useState<ItemDropTarget[]>([]);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [dropTraySide, setDropTraySide] = useState<'left' | 'right'>('right');
 
   const clearDrag = useCallback(() => {
     setActivePayload(null);
@@ -121,10 +158,18 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     setReorderOverItemId(null);
   }, []);
 
-  const getDragProps = useCallback<ItemDragDropContextValue['getDragProps']>((item, source) => {
+  const getDragProps = useCallback<ItemDragSourceContextValue['getDragProps']>((item, source) => {
     const payload = createItemDragPayload(item, source);
     return itemDragSourceProps(payload, {
-      onStart: setActivePayload,
+      onStart: (nextPayload, sourceElement) => {
+        const rect = sourceElement.getBoundingClientRect();
+        setDropTraySide(chooseItemDropTraySide({
+          left: rect.left,
+          right: rect.right,
+          viewportWidth: window.innerWidth,
+        }));
+        setActivePayload(nextPayload);
+      },
       onEnd: clearDrag,
     });
   }, [clearDrag]);
@@ -289,10 +334,13 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     [projects]
   );
   const openProjects = useMemo(
-    () => openProjectIds
+    () => [...new Set([
+      ...(currentProjectId !== 'all' ? [currentProjectId] : []),
+      ...openProjectIds,
+    ])]
       .map((projectId) => projectById.get(projectId))
       .filter((project): project is Project => project != null),
-    [openProjectIds, projectById]
+    [currentProjectId, openProjectIds, projectById]
   );
   const projectTargets = useMemo(() => openProjects.map((project) => {
     const workspaces = workspaceDestinations
@@ -343,6 +391,12 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       .filter((target): target is ItemDropTarget => target != null && target !== globalTarget);
     return globalTarget ? [globalTarget, ...recent] : recent;
   }, [recentTargets, visibleTargets]);
+  const currentProjectTarget = currentProjectId === 'all'
+    ? undefined
+    : projectTargets.find(({ project }) => project.id === currentProjectId);
+  const recentProjectTargets = currentProjectTarget
+    ? projectTargets.filter(({ project }) => project.id !== currentProjectTarget.project.id)
+    : projectTargets;
   useEffect(() => {
     if (!activePayload) setExpandedProjectId(null);
   }, [activePayload]);
@@ -362,10 +416,66 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       </div>
     );
   };
+  const renderProjectTarget = (
+    { project, workspaces, collections: projectCollections }: typeof projectTargets[number],
+    current = false
+  ) => {
+    const expanded = current || expandedProjectId === project.id;
+    return (
+      <div
+        key={project.id}
+        className="ui-item-drop-project"
+        data-current={current ? 'true' : 'false'}
+        data-expanded={expanded ? 'true' : 'false'}
+        data-project-id={project.id}
+        onDragEnter={(event) => {
+          if (!activePayload && !includesItemPayload(event)) return;
+          event.preventDefault();
+          setExpandedProjectId(project.id);
+        }}
+        onDragOver={(event) => {
+          if (!activePayload && !includesItemPayload(event)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        <div className="ui-item-drop-project__header">
+          <Folder size={13} />
+          <strong>{project.name}</strong>
+          <small>{workspaces.length} workspace{workspaces.length === 1 ? '' : 's'} · {projectCollections.length} collection{projectCollections.length === 1 ? '' : 's'}</small>
+        </div>
+        {expanded ? (
+          <div className="ui-item-drop-project__destinations scrollbar">
+            {workspaces.length > 0 ? (
+              <section>
+                <h4><Layers3 size={11} /> Workspaces</h4>
+                <div className="ui-item-drop-tray__targets">
+                  {workspaces.map((target) => renderTarget(target, true))}
+                </div>
+              </section>
+            ) : null}
+            {projectCollections.length > 0 ? (
+              <section>
+                <h4><Folder size={11} /> Collections</h4>
+                <div className="ui-item-drop-tray__targets">
+                  {projectCollections.map((target) => renderTarget(target, true))}
+                </div>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
   const contextValue = useMemo(
     () => ({ activePayload, getDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps }),
     [activePayload, getDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps]
   );
+  const sourceContextValue = useMemo(() => ({ getDragProps }), [getDragProps]);
   useEffect(() => {
     if (!pendingChoice && !pendingCollectionChoice) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -379,10 +489,15 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
   }, [busy, pendingChoice, pendingCollectionChoice]);
 
   return (
+    <ItemDragSourceContext.Provider value={sourceContextValue}>
     <ItemDragDropContext.Provider value={contextValue}>
       {children}
       {activePayload ? (
-        <aside className="ui-item-drop-tray" aria-label={`Destinations for ${activePayload.itemLabel}`}>
+        <aside
+          className="ui-item-drop-tray"
+          data-side={dropTraySide}
+          aria-label={`Destinations for ${activePayload.itemLabel}`}
+        >
           <div className="ui-item-drop-tray__header">
             <span className="ui-item-drop-tray__drag-icon"><GripVertical size={14} /></span>
             <span>
@@ -391,6 +506,14 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
             </span>
           </div>
           <div className="ui-item-drop-tray__groups scrollbar">
+            {currentProjectTarget ? (
+              <section>
+                <h3><Folder size={12} /> Current project</h3>
+                <div className="ui-item-drop-tray__projects">
+                  {renderProjectTarget(currentProjectTarget, true)}
+                </div>
+              </section>
+            ) : null}
             {quickTargets.length > 0 ? (
               <section>
                 <h3><Layers3 size={12} /> Quick destinations</h3>
@@ -400,60 +523,10 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
               </section>
             ) : null}
             <section>
-              <h3><Folder size={12} /> Open projects</h3>
+              <h3><Folder size={12} /> {currentProjectTarget ? 'Recent open projects' : 'Open projects'}</h3>
               <div className="ui-item-drop-tray__projects">
-                {projectTargets.map(({ project, workspaces, collections: projectCollections }) => {
-                  const expanded = expandedProjectId === project.id;
-                  return (
-                    <div
-                      key={project.id}
-                      className="ui-item-drop-project"
-                      data-expanded={expanded ? 'true' : 'false'}
-                      data-project-id={project.id}
-                      onDragEnter={(event) => {
-                        if (!activePayload && !includesItemPayload(event)) return;
-                        event.preventDefault();
-                        setExpandedProjectId(project.id);
-                      }}
-                      onDragOver={(event) => {
-                        if (!activePayload && !includesItemPayload(event)) return;
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = 'copy';
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                    >
-                      <div className="ui-item-drop-project__header">
-                        <Folder size={13} />
-                        <strong>{project.name}</strong>
-                        <small>{workspaces.length} workspace{workspaces.length === 1 ? '' : 's'} · {projectCollections.length} collection{projectCollections.length === 1 ? '' : 's'}</small>
-                      </div>
-                      {expanded ? (
-                        <div className="ui-item-drop-project__destinations scrollbar">
-                          {workspaces.length > 0 ? (
-                            <section>
-                              <h4><Layers3 size={11} /> Workspaces</h4>
-                              <div className="ui-item-drop-tray__targets">
-                                {workspaces.map((target) => renderTarget(target, true))}
-                              </div>
-                            </section>
-                          ) : null}
-                          {projectCollections.length > 0 ? (
-                            <section>
-                              <h4><Folder size={11} /> Collections</h4>
-                              <div className="ui-item-drop-tray__targets">
-                                {projectCollections.map((target) => renderTarget(target, true))}
-                              </div>
-                            </section>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-                {projectTargets.length === 0 ? (
+                {recentProjectTargets.map((projectTarget) => renderProjectTarget(projectTarget))}
+                {recentProjectTargets.length === 0 ? (
                   <div className="ui-item-drop-tray__empty">Open a project from Home to file into its collections or workspaces.</div>
                 ) : null}
               </div>
@@ -519,5 +592,6 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
         </div>
       ) : null}
     </ItemDragDropContext.Provider>
+    </ItemDragSourceContext.Provider>
   );
 };

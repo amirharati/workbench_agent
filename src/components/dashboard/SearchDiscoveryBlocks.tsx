@@ -1,10 +1,11 @@
 import { ExternalLink, Eye, Sparkles } from 'lucide-react';
+import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { FindSimilarResult } from '../../lib/search';
 import type { SearchRelatedFacets, SimilarItemResult, SearchResult } from '../../lib/search';
 import { useInspectorItemData } from '../../hooks/useInspectorItemData';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
-import { useItemDragDrop } from './ItemDragDropProvider';
+import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
 
 const chipStyle: CSSProperties = {
@@ -29,6 +30,7 @@ function LinkRow({
   score,
   url,
   onSelect,
+  selected,
   workspaceAction,
   hideScore,
   previewItemIds,
@@ -40,18 +42,20 @@ function LinkRow({
   score?: number;
   url?: string;
   onSelect?: () => void;
+  selected?: boolean;
   workspaceAction?: ReactNode;
   hideScore?: boolean;
   previewItemIds?: readonly string[];
 }) {
-  const { getDragProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   return (
-    <div
+    <ItemResultRow
+      item={{ id: itemId, title, url }}
+      dragSource={{ kind: 'reference', label: 'Related results' }}
+      selected={selected}
+      onSelectItem={onSelect}
       className="ui-related-link-row"
       data-has-workspace-action={workspaceAction ? 'true' : 'false'}
-      data-item-drag-source="true"
-      {...getDragProps({ id: itemId, title, url }, { kind: 'reference', label: 'Related results' })}
       onDoubleClick={(event) => {
         if ((event.target as HTMLElement).closest('button, a, input')) return;
         openPeek(itemId, { itemIds: previewItemIds, sourceLabel: 'Related results' });
@@ -59,17 +63,7 @@ function LinkRow({
     >
       <div className="ui-related-link-row__copy">
         <div className="ui-related-link-row__title-line">
-          {onSelect ? (
-            <button
-              type="button"
-              onClick={onSelect}
-              className="ui-related-link-row__title ui-related-link-row__title--button"
-            >
-              {title}
-            </button>
-          ) : (
-            <div className="ui-related-link-row__title">{title}</div>
-          )}
+          <div className="ui-related-link-row__title">{title}</div>
           {url ? (
             <ExtensionPageUrlLink
               url={url}
@@ -98,7 +92,7 @@ function LinkRow({
       {workspaceAction ? (
         <div className="ui-related-link-row__workspace">{workspaceAction}</div>
       ) : null}
-    </div>
+    </ItemResultRow>
   );
 }
 
@@ -256,6 +250,7 @@ export function SimilarItemsBlock({
   renderWorkspaceAction?: (itemId: string, title: string) => ReactNode;
   compact?: boolean;
 }) {
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   if (loading) {
     return (
       <p style={{ fontSize: 'var(--dev-fs-sm)', color: 'var(--text-muted)', marginBottom: 12 }}>
@@ -305,6 +300,8 @@ export function SimilarItemsBlock({
               key={row.itemId}
               row={row}
               onItemClick={onItemClick}
+              selected={selectedItemId === row.itemId}
+              onSelect={() => setSelectedItemId(row.itemId)}
               workspaceAction={renderWorkspaceAction?.(row.itemId, row.title || row.itemId)}
               previewItemIds={similar.results.map((candidate) => candidate.itemId)}
             />
@@ -318,11 +315,15 @@ export function SimilarItemsBlock({
 function SimilarRow({
   row,
   onItemClick,
+  selected,
+  onSelect,
   workspaceAction,
   previewItemIds,
 }: {
   row: SimilarItemResult;
   onItemClick?: (itemId: string, title: string) => void;
+  selected?: boolean;
+  onSelect?: () => void;
   workspaceAction?: ReactNode;
   previewItemIds?: readonly string[];
 }) {
@@ -334,9 +335,11 @@ function SimilarRow({
       category={row.primaryCategoryName}
       score={row.breakdown.finalScore}
       url={row.url}
-      onSelect={
-        onItemClick ? () => onItemClick(row.itemId, row.title || row.itemId) : undefined
-      }
+      selected={selected}
+      onSelect={() => {
+        onSelect?.();
+        onItemClick?.(row.itemId, row.title || row.itemId);
+      }}
       workspaceAction={workspaceAction}
       previewItemIds={previewItemIds}
     />

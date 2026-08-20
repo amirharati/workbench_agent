@@ -14,6 +14,8 @@ interface SourceMenuTabProps {
   selectedValue: string;
   options: readonly SourceMenuOption[];
   onSelect: (value: string) => void;
+  /** Opens the selected source. The chevron alone opens the chooser. */
+  onActivate?: () => void;
 }
 
 export const SourceMenuTab: React.FC<SourceMenuTabProps> = ({
@@ -23,6 +25,7 @@ export const SourceMenuTab: React.FC<SourceMenuTabProps> = ({
   selectedValue,
   options,
   onSelect,
+  onActivate,
 }) => {
   const [open, setOpen] = React.useState(false);
   const [menuPosition, setMenuPosition] = React.useState<{ top: number; left: number; width: number } | null>(null);
@@ -104,20 +107,29 @@ export const SourceMenuTab: React.FC<SourceMenuTabProps> = ({
     : null;
 
   return (
-    <div ref={rootRef} className="ui-source-menu-tab" data-active={active ? 'true' : 'false'}>
+    <div ref={rootRef} className="ui-source-menu-tab" data-active={active ? 'true' : 'false'} data-menu-open={open ? 'true' : 'false'}>
       <button
+        className="ui-source-menu-tab__selection"
         type="button"
         role="tab"
         aria-selected={active}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
         aria-label={`${label} view: ${selectedOption?.label ?? 'Choose'}`}
-        onClick={toggleMenu}
+        onClick={onActivate ?? (() => onSelect(selectedValue))}
       >
         {icon}
         <span className="ui-source-menu-tab__kind">{label}</span>
         <strong>{selectedOption?.label ?? 'Choose'}</strong>
+      </button>
+      <button
+        className="ui-source-menu-tab__trigger"
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={`Choose ${label}`}
+        title={`Choose ${label}`}
+        onClick={toggleMenu}
+      >
         <ChevronDown size={12} aria-hidden="true" />
       </button>
       {menu}

@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Collection, Item, Project, Workspace } from '../../lib/db';
 import { projectPageUiKey } from '../../lib/shell/pageUiState';
-import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
+import { getWorkspaceBrowserUrls, ProjectHomeWorkspace } from './ProjectHomeWorkspace';
 import { getHomebaseWorkspaceSessionKey, getProjectSessionWorkspaceKey } from './workspaceSession';
 
 const project: Project = {
@@ -47,7 +49,27 @@ const workspaces: Workspace[] = Array.from({ length: 6 }, (_, index) => ({
 }));
 
 describe('ProjectHomeWorkspace browse surfaces', () => {
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
   afterEach(() => localStorage.clear());
+
+  it('opens every URL-capable entry from the active workspace against the full library', () => {
+    const outsideProjectItem: Item = {
+      ...items[0],
+      id: 'item-outside-project',
+      url: 'https://example.com/outside-project',
+    };
+
+    expect(getWorkspaceBrowserUrls([
+      { kind: 'item', id: 'workspace-item', itemId: outsideProjectItem.id, scopeProjectId: 'project-other' },
+      { kind: 'url', id: 'workspace-url', url: 'https://example.com/direct' },
+      { kind: 'url', id: 'workspace-url-duplicate', url: 'https://example.com/direct' },
+      { kind: 'search', id: 'workspace-search', query: 'Does not open in Chrome' },
+    ], [outsideProjectItem])).toEqual([
+      'https://example.com/outside-project',
+      'https://example.com/direct',
+    ]);
+  });
 
   it('uses compact context controls and one persistent list/gallery working canvas', () => {
     const markup = renderToStaticMarkup(
@@ -116,6 +138,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
         onAddItemToWorkspace={vi.fn()}
         onTransferSessionEntry={vi.fn()}
+        onUpdateItem={vi.fn()}
       />
     );
 
@@ -123,6 +146,57 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup).toContain('aria-label="Workspace view: General"');
     expect(markup).not.toContain('Save as workspace');
     expect(markup).not.toContain('data-browse-surface="project-workspaces"');
+  });
+
+  it('does not clear the selected collection when browsing all project items', async () => {
+    const selectedCollection = collections[1];
+    localStorage.setItem(
+      projectPageUiKey(project.id, selectedCollection.id),
+      JSON.stringify({ selectedItemId: null, selectedSessionTabId: null, browseSource: 'collection' })
+    );
+    const onSelectCollection = vi.fn();
+    const onActivateWorkspaceKey = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    try {
+      await act(async () => {
+        root.render(
+          <ProjectHomeWorkspace
+            project={project}
+            items={items}
+            collections={collections}
+            selectedCollectionId={selectedCollection.id}
+            onSelectCollection={onSelectCollection}
+            sessionTabs={[]}
+            onAddItemToSession={vi.fn()}
+            onRemoveSessionTab={vi.fn()}
+            workspaces={[]}
+            savedWorkspaceSessions={[]}
+            activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
+            onActivateWorkspaceKey={onActivateWorkspaceKey}
+            onActivateWorkspace={vi.fn()}
+            onActivateSavedWorkspace={vi.fn()}
+            onDeleteSavedWorkspace={vi.fn()}
+            workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
+            onAddItemToWorkspace={vi.fn()}
+            onTransferSessionEntry={vi.fn()}
+          />
+        );
+      });
+
+      const allItemsTab = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+        .find((button) => button.textContent?.includes('All items'));
+      await act(async () => allItemsTab?.click());
+
+      expect(onSelectCollection).not.toHaveBeenCalled();
+      expect(onActivateWorkspaceKey).not.toHaveBeenCalled();
+      expect(host.querySelector(`[aria-label="Collection view: ${selectedCollection.name}"]`)).not.toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
   });
 
   it('restores the selected project item after reload', () => {
@@ -226,6 +300,7 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
         workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
         onAddItemToWorkspace={vi.fn()}
         onTransferSessionEntry={vi.fn()}
+        onUpdateItem={vi.fn()}
       />
     );
 
@@ -235,6 +310,72 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup.indexOf('data-project-workspace-actions="true"')).toBeGreaterThan(
       markup.indexOf('data-project-view-tabs="true"')
     );
+    expect(markup).toContain(`aria-label="Add to favorites: ${items[0].title}"`);
+    expect(markup).toContain(`aria-label="Unpin ${items[0].title} from ${project.name}"`);
+    expect(markup).toContain('aria-label="Gallery view"');
+    expect(markup).toContain('Open all links');
+    expect(markup).toContain('Project Alpha · General');
+  });
+
+  it('opens the copy or move dialog directly from a workspace row', async () => {
+    localStorage.setItem(
+      projectPageUiKey(project.id, 'all'),
+      JSON.stringify({ selectedItemId: null, selectedSessionTabId: null, browseSource: 'workspace' })
+    );
+    const tab = { kind: 'item' as const, id: 'item-tab', itemId: items[0].id, scopeProjectId: project.id };
+    const targetWorkspaceKey = getHomebaseWorkspaceSessionKey('saved-a');
+    const onTransferSessionEntry = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    try {
+      await act(async () => {
+        root.render(
+          <ProjectHomeWorkspace
+            project={project}
+            items={items.slice(0, 1)}
+            collections={collections.slice(0, 1)}
+            selectedCollectionId="all"
+            onSelectCollection={vi.fn()}
+            sessionTabs={[tab]}
+            onAddItemToSession={vi.fn()}
+            onRemoveSessionTab={vi.fn()}
+            workspaces={[]}
+            savedWorkspaceSessions={[{ id: 'saved-a', name: 'Writing plan', projectId: project.id, createdAt: 1, updatedAt: 1 }]}
+            activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
+            onActivateWorkspace={vi.fn()}
+            onActivateSavedWorkspace={vi.fn()}
+            onDeleteSavedWorkspace={vi.fn()}
+            workspaceDestinations={[
+              { key: getProjectSessionWorkspaceKey(project.id), label: 'General' },
+              { key: targetWorkspaceKey, label: 'Writing plan' },
+            ]}
+            onAddItemToWorkspace={vi.fn()}
+            onTransferSessionEntry={onTransferSessionEntry}
+          />
+        );
+      });
+
+      const transferButton = host.querySelector<HTMLButtonElement>(`[aria-label="Copy or move ${items[0].title}"]`);
+      expect(transferButton).not.toBeNull();
+      await act(async () => transferButton?.click());
+
+      const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]');
+      expect(dialog?.textContent).toContain('Copy or move workspace item');
+      expect(dialog?.textContent).toContain('Writing plan');
+      expect(host.querySelector('[aria-current="true"]')).toBeNull();
+
+      const copyButton = [...(dialog?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+        .find((button) => button.textContent?.trim() === 'Copy');
+      await act(async () => copyButton?.click());
+
+      expect(onTransferSessionEntry).toHaveBeenCalledWith(tab, targetWorkspaceKey, 'copy');
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
   });
 
   it('lets explicit scope navigation override a remembered workspace view', () => {

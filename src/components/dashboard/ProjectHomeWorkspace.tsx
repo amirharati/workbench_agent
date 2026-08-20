@@ -24,6 +24,7 @@ import {
   type ProjectWorkspaceManagerEntry,
 } from './ProjectWorkspaceManagerDialog';
 import { SourceMenuTab } from './SourceMenuTab';
+import { DialogShell } from './DialogShell';
 
 interface ProjectHomeWorkspaceProps {
   project: Project;
@@ -71,6 +72,22 @@ interface ProjectHomeWorkspaceProps {
   ) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
+}
+
+/** URL-capable entries only; notes, saved searches, and lists remain in Homebase. */
+export function getWorkspaceBrowserUrls(
+  sessionTabs: readonly GlobalTab[],
+  allItems: readonly Item[]
+): string[] {
+  const itemsById = new Map(allItems.map((item) => [item.id, item]));
+  const urls = sessionTabs.flatMap((tab) => {
+    if (tab.kind === 'url') return [tab.url];
+    if (tab.kind === 'item') return [itemsById.get(tab.itemId)?.url];
+    return [];
+  });
+  return [...new Set(urls.filter((url): url is string =>
+    typeof url === 'string' && /^(https?:\/\/|file:\/\/)/i.test(url)
+  ))];
 }
 
 export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
@@ -161,17 +178,26 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const allItems = organizationItems ?? items;
   const selectedItem = allItems.find((item) => item.id === selectedItemId) ?? null;
   const selectedSessionTab = sessionTabs.find((tab) => tab.id === selectedSessionTabId) ?? null;
-  const workspaceBrowserUrls = useMemo(() => {
-    const urls = sessionTabs.flatMap((tab) => {
-      if (tab.kind === 'url') return [tab.url];
-      if (tab.kind === 'item') {
-        const url = items.find((item) => item.id === tab.itemId)?.url;
-        return url ? [url] : [];
-      }
-      return [];
-    });
-    return [...new Set(urls.filter((url) => /^(https?:\/\/|file:\/\/)/i.test(url)))];
-  }, [items, sessionTabs]);
+  const transferEntryTab = transferEntryId
+    ? sessionTabs.find((tab) => tab.id === transferEntryId) ?? null
+    : null;
+  const transferEntryItem = transferEntryTab?.kind === 'item'
+    ? allItems.find((item) => item.id === transferEntryTab.itemId)
+    : null;
+  const transferEntryLabel = transferEntryTab
+    ? transferEntryItem?.title
+      || (transferEntryTab.kind === 'url'
+        ? transferEntryTab.title || transferEntryTab.url
+        : transferEntryTab.kind === 'search'
+          ? transferEntryTab.query || 'Search'
+          : transferEntryTab.kind === 'list'
+            ? transferEntryTab.title
+            : 'Untitled')
+    : '';
+  const workspaceBrowserUrls = useMemo(
+    () => getWorkspaceBrowserUrls(sessionTabs, allItems),
+    [allItems, sessionTabs]
+  );
   const activeWorkspace = workspaces.find(
     (workspace) => getSavedWorkspaceSessionKey(workspace.id) === activeWorkspaceKey
   );
@@ -261,7 +287,12 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     if (!transferTargetWorkspaceKey) return;
     onTransferSessionEntry(entry, transferTargetWorkspaceKey, mode);
     setTransferEntryId(null);
-    if (mode === 'move') setSelectedSessionTabId(null);
+    if (mode === 'move' && selectedSessionTabId === entry.id) setSelectedSessionTabId(null);
+  };
+
+  const openTransferEntry = (entryId: string) => {
+    setTransferEntryId(entryId);
+    setTransferTargetWorkspaceKey(transferDestinations[0]?.key ?? '');
   };
 
   const selectSessionTab = (tab: GlobalTab) => {
@@ -355,7 +386,20 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
       } : undefined,
       actions: (
         <>
-          {transferable && transferDestinations.length > 0 && <button type="button" onClick={() => { setTransferEntryId((current) => current === tab.id ? null : tab.id); setTransferTargetWorkspaceKey(transferDestinations[0]?.key ?? ''); }} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
+          {item ? <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} /> : null}
+          {item ? (
+            <button
+              type="button"
+              aria-label={isItemPinnedToProject(item, project.id) ? `Unpin ${item.title} from ${project.name}` : `Pin ${item.title} to ${project.name}`}
+              title={isItemPinnedToProject(item, project.id) ? `Unpin from ${project.name}` : `Pin to ${project.name}`}
+              disabled={!onUpdateItem || pinningItemId === item.id}
+              onClick={() => void toggleProjectPin(item)}
+              style={{ ...sessionIconButtonStyle, color: isItemPinnedToProject(item, project.id) ? 'var(--accent)' : 'var(--text-faint)' }}
+            >
+              <Pin size={12} fill={isItemPinnedToProject(item, project.id) ? 'currentColor' : 'none'} />
+            </button>
+          ) : null}
+          {transferable && transferDestinations.length > 0 && <button type="button" onClick={() => openTransferEntry(tab.id)} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
           <button type="button" onClick={() => { if (selectedSessionTabId === tab.id) { setSelectedSessionTabId(null); setSelectedItemId(null); } onRemoveSessionTab(tab.id); }} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={sessionIconButtonStyle}><X size={12} /></button>
         </>
       ),
@@ -392,7 +436,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   });
   const browseEntries = browseSource === 'workspace' ? workspaceBrowseEntries : materialBrowseEntries;
   const browseTitle = browseSource === 'workspace'
-    ? activeSavedWorkspace?.name ?? activeWorkspace?.name ?? 'General'
+    ? activeWorkspaceLabel
     : browseSource === 'pinned'
       ? `Pinned to ${project.name}`
       : browseSource === 'collection'
@@ -403,7 +447,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     <div className="ui-project-workspace-actions" data-project-workspace-actions role="toolbar" aria-label="Workspace actions">
       <button className="ui-button ui-button--primary" type="button" onClick={() => setWorkspaceManagerMode('create')}><Plus size={12} /> New workspace</button>
       <button className="ui-button ui-button--secondary" type="button" onClick={() => setWorkspaceManagerMode('list')}><Settings2 size={12} /> Manage</button>
-      <button className="ui-button ui-button--secondary" type="button" disabled={workspaceBrowserUrls.length === 0} onClick={openWorkspaceInBrowser} title={workspaceBrowserUrls.length === 0 ? 'This workspace has no browser links' : `Open ${workspaceBrowserUrls.length} link${workspaceBrowserUrls.length !== 1 ? 's' : ''}`} aria-label="Open workspace links"><ExternalLink size={12} /></button>
+      <button className="ui-button ui-button--secondary" type="button" disabled={workspaceBrowserUrls.length === 0} onClick={openWorkspaceInBrowser} title={workspaceBrowserUrls.length === 0 ? `${activeWorkspaceLabel} has no browser links` : `Open all ${workspaceBrowserUrls.length} link${workspaceBrowserUrls.length !== 1 ? 's' : ''} from ${activeWorkspaceLabel} in a new Chrome window`} aria-label="Open all workspace links in Chrome"><ExternalLink size={12} /> Open all links</button>
     </div>
   ) : undefined;
 
@@ -472,15 +516,6 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
               <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={clearDetailSelection} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
             </div>
           </div>
-          {transferEntryId === selectedSessionTab.id && transferDestinations.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 8, borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
-              <select value={transferTargetWorkspaceKey} onChange={(event) => setTransferTargetWorkspaceKey(event.target.value)} aria-label="Workspace destination" style={destinationSelectStyle}>
-                {transferDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
-              </select>
-              <button type="button" onClick={() => transferEntry(selectedSessionTab, 'copy')} disabled={!transferTargetWorkspaceKey} style={secondaryButtonStyle}><Copy size={11} /> Copy</button>
-              <button type="button" onClick={() => transferEntry(selectedSessionTab, 'move')} disabled={!transferTargetWorkspaceKey} style={secondaryButtonStyle}><MoveRight size={11} /> Move</button>
-            </div>
-          )}
           <div className="scrollbar ui-scroll-footer-safe" style={{ flex: 1, minHeight: 0, padding: 18, overflowY: 'auto' }}>
             <span style={{ width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-md)', background: 'var(--accent-weak)', color: 'var(--accent)' }}>
               {selectedSessionTab.kind === 'search' ? <Search size={15} /> : selectedSessionTab.kind === 'url' ? <ExternalLink size={15} /> : <Layers3 size={15} />}
@@ -531,7 +566,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
       <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, flex: 1, margin: '0 auto', display: 'flex', flexDirection: 'column' }} aria-label="Project workspace">
         <div className="ui-project-view-bar">
         <div className="ui-tab-bar" data-project-view-tabs style={{ ...uiPatterns.tabBar, marginBottom: 8 }} role="tablist" aria-label="Project view">
-          <button className="ui-view-tab" type="button" role="tab" aria-selected={browseSource === 'all'} onClick={() => { setBrowseSource('all'); setSelectedSessionTabId(null); if (selectedItemId && !allProjectItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); if (selectedCollectionId !== 'all') onSelectCollection('all'); }} style={viewTabStyle(browseSource === 'all')}><Folder size={12} /> {project.isDefault ? 'Incoming' : 'All items'}</button>
+          <button className="ui-view-tab" type="button" role="tab" aria-selected={browseSource === 'all'} onClick={() => { setBrowseSource('all'); setSelectedSessionTabId(null); if (selectedItemId && !allProjectItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); }} style={viewTabStyle(browseSource === 'all')}><Folder size={12} /> {project.isDefault ? 'Incoming' : 'All items'}</button>
           <button className="ui-view-tab" type="button" role="tab" aria-selected={browseSource === 'pinned'} onClick={() => { setBrowseSource('pinned'); setSelectedSessionTabId(null); if (selectedItemId && !pinnedItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); }} style={viewTabStyle(browseSource === 'pinned')}><Pin size={12} /> Pinned <span style={{ color: 'var(--text-faint)' }}>{pinnedItems.length}</span></button>
           {!project.isDefault && collections.length > 0 && (
             <SourceMenuTab
@@ -540,6 +575,14 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
               active={browseSource === 'collection'}
               selectedValue={selectedCollectionId === 'all' ? collections[0]?.id ?? '' : selectedCollectionId}
               options={collections.map((collection) => ({ value: collection.id, label: collection.name }))}
+              onActivate={() => {
+                const collectionId = selectedCollectionId === 'all' ? collections[0]?.id : selectedCollectionId;
+                if (!collectionId) return;
+                setBrowseSource('collection');
+                setSelectedSessionTabId(null);
+                setSelectedItemId(null);
+                onSelectCollection(collectionId);
+              }}
               onSelect={(collectionId) => {
                 setBrowseSource('collection');
                 setSelectedSessionTabId(null);
@@ -554,6 +597,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             active={browseSource === 'workspace'}
             selectedValue={activeWorkspaceKey}
             options={workspaceDestinations.map((destination) => ({ value: destination.key, label: destination.label }))}
+            onActivate={viewActiveWorkspace}
             onSelect={(workspaceKey) => {
               if (workspaceKey === activeWorkspaceKey) {
                 viewActiveWorkspace();
@@ -653,18 +697,9 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                         <span style={{ display: 'block', marginTop: 1, color: 'var(--text-faint)', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail}</span>
                       )}
                     </span>
-                    {transferable && transferDestinations.length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); setTransferEntryId((current) => current === tab.id ? null : tab.id); setTransferTargetWorkspaceKey(transferDestinations[0]?.key ?? ''); }} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
+                    {transferable && transferDestinations.length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); openTransferEntry(tab.id); }} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
                     <button type="button" onClick={(event) => { event.stopPropagation(); if (selectedSessionTabId === tab.id) setSelectedSessionTabId(null); onRemoveSessionTab(tab.id); }} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={sessionIconButtonStyle}><X size={12} /></button>
                   </div>
-                  {transferable && transferEntryId === tab.id && transferDestinations.length > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px 7px 42px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
-                      <select value={transferTargetWorkspaceKey} onChange={(event) => setTransferTargetWorkspaceKey(event.target.value)} onClick={(event) => event.stopPropagation()} aria-label={`Destination for ${label}`} style={destinationSelectStyle}>
-                        {transferDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
-                      </select>
-                      <button type="button" onClick={(event) => { event.stopPropagation(); transferEntry(tab, 'copy'); }} disabled={!transferTargetWorkspaceKey} style={secondaryButtonStyle}><Copy size={11} /> Copy</button>
-                      <button type="button" onClick={(event) => { event.stopPropagation(); transferEntry(tab, 'move'); }} disabled={!transferTargetWorkspaceKey} style={secondaryButtonStyle}><MoveRight size={11} /> Move</button>
-                    </div>
-                  )}
                   </React.Fragment>
                 );
               })}
@@ -673,7 +708,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         </div>)}
         {showLegacyProjectBrowser && (<div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }} role="group" aria-label="Project content source">
           <button type="button" aria-pressed={browseSource === 'workspace'} onClick={() => { setBrowseSource('workspace'); setSelectedItemId(selectedSessionTab?.kind === 'item' ? selectedSessionTab.itemId : null); }} style={sourceButtonStyle(browseSource === 'workspace')}><Layers3 size={12} /> Workspace</button>
-          <button type="button" aria-pressed={browseSource === 'all'} onClick={() => { setBrowseSource('all'); setSelectedSessionTabId(null); if (selectedItemId && !allProjectItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); if (selectedCollectionId !== 'all') onSelectCollection('all'); }} style={sourceButtonStyle(browseSource === 'all')}><Folder size={12} /> {project.isDefault ? 'Incoming' : 'All items'}</button>
+          <button type="button" aria-pressed={browseSource === 'all'} onClick={() => { setBrowseSource('all'); setSelectedSessionTabId(null); if (selectedItemId && !allProjectItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); }} style={sourceButtonStyle(browseSource === 'all')}><Folder size={12} /> {project.isDefault ? 'Incoming' : 'All items'}</button>
           <button type="button" aria-pressed={browseSource === 'pinned'} onClick={() => { setBrowseSource('pinned'); setSelectedSessionTabId(null); if (selectedItemId && !pinnedItems.some((item) => item.id === selectedItemId)) setSelectedItemId(null); }} style={sourceButtonStyle(browseSource === 'pinned')}><Pin size={12} /> Pinned <span style={{ color: 'var(--text-faint)' }}>{pinnedItems.length}</span></button>
           {!project.isDefault && collections.length > 0 && (
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
@@ -916,6 +951,37 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           onMerge={onMergeSavedWorkspace}
           onDelete={onDeleteSavedWorkspace}
         />
+      ) : null}
+      {transferEntryTab && transferDestinations.length > 0 ? (
+        <DialogShell
+          title="Copy or move workspace item"
+          description={<>Choose where to send <strong>{transferEntryLabel}</strong>. Nothing changes until you choose Copy or Move.</>}
+          onClose={() => setTransferEntryId(null)}
+          maxWidth={460}
+          footer={(
+            <>
+              <button className="ui-button ui-button--secondary" type="button" onClick={() => setTransferEntryId(null)}>Cancel</button>
+              <button className="ui-button ui-button--secondary" type="button" onClick={() => transferEntry(transferEntryTab, 'copy')} disabled={!transferTargetWorkspaceKey}><Copy size={12} /> Copy</button>
+              <button className="ui-button ui-button--primary" type="button" onClick={() => transferEntry(transferEntryTab, 'move')} disabled={!transferTargetWorkspaceKey}><MoveRight size={12} /> Move</button>
+            </>
+          )}
+        >
+          <label style={{ display: 'grid', gap: 7, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', fontWeight: 600 }}>
+            Destination workspace
+            <select
+              className="ui-field"
+              data-dialog-initial-focus
+              value={transferTargetWorkspaceKey}
+              onChange={(event) => setTransferTargetWorkspaceKey(event.target.value)}
+              aria-label="Destination workspace"
+            >
+              {transferDestinations.map((destination) => <option key={destination.key} value={destination.key}>{destination.label}</option>)}
+            </select>
+          </label>
+          <p style={{ margin: '12px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
+            Copy keeps the item in this workspace. Move removes it here after adding it to the destination.
+          </p>
+        </DialogShell>
       ) : null}
     </div>
   );

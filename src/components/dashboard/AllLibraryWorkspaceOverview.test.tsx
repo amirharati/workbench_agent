@@ -100,6 +100,45 @@ describe('AllLibraryWorkspaceOverview', () => {
     expect(markup).toContain('Add to workspace…');
   });
 
+  it('offers marker actions for saved items in global and project workspace rows', () => {
+    const workspaceItem = {
+      id: 'workspace-item',
+      url: 'https://example.com/workspace',
+      title: 'Workspace item',
+      collectionIds: [],
+      tags: [],
+      source: 'manual' as const,
+      created_at: 1,
+      updated_at: 1,
+    };
+    const itemTab: GlobalTab = { kind: 'item', id: 'workspace-item-tab', itemId: workspaceItem.id };
+    const projectItemTab: GlobalTab = { ...itemTab, id: 'project-item-tab', scopeProjectId: 'project-a' };
+    const markup = renderToStaticMarkup(
+      <AllLibraryWorkspaceOverview
+        groups={[
+          { key: 'global', title: 'Global workspace', contextLabel: 'All Library', projectId: 'all', tabs: [itemTab] },
+          { key: 'project:project-a', title: 'Research session', contextLabel: 'Project Alpha', projectId: 'project-a', tabs: [projectItemTab] },
+        ]}
+        selectedView="all-active"
+        onSelectedViewChange={vi.fn()}
+        selectedTab={null}
+        selectedItem={null}
+        initialView="workspace"
+        items={[workspaceItem]}
+        projects={[{ id: 'project-a', name: 'Project Alpha', created_at: 1, updated_at: 1, isDefault: false }]}
+        collections={[]}
+        onSelectTab={vi.fn()}
+        onRemoveGlobalTab={vi.fn()}
+        onViewSearch={vi.fn()}
+        onUpdateItem={vi.fn()}
+      />
+    );
+
+    expect(markup.match(/Add to favorites: Workspace item/g)).toHaveLength(2);
+    expect(markup).toContain('Pin Workspace item to Project Alpha');
+    expect(markup).not.toContain('Pin Workspace item to All Library');
+  });
+
   it('separates project navigation from selectable library material', () => {
     const markup = renderToStaticMarkup(
       <AllLibraryWorkspaceOverview

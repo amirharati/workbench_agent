@@ -19,6 +19,7 @@ import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 import { useItemDragDrop } from './ItemDragDropProvider';
 import { useItemPeek } from './ItemPeekProvider';
+import { ItemResultRow } from './ItemResultRow';
 
 interface TabContentProps {
   tab: (TabBarTab & { itemId?: string; content?: string; collectionId?: string; workspaceId?: string; type?: 'item' | 'collection' | 'system' | 'workspace' }) | null;
@@ -76,7 +77,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   onItemClick,
   defaultCollectionId,
 }) => {
-  const { activePayload, getDragProps, getDropTargetProps } = useItemDragDrop();
+  const { activePayload, getDropTargetProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isEditingItem, setIsEditingItem] = useState(false);
@@ -347,13 +348,13 @@ export const TabContent: React.FC<TabContentProps> = ({
             </div>
           ) : (
             displayedItems.map((i) => (
-              <div
+              <ItemResultRow
                 key={i.id}
-                {...getDragProps(i, !isAllCollection && selectedFilter === 'collection'
+                item={i}
+                dragSource={!isAllCollection && selectedFilter === 'collection'
                   ? { kind: 'collection', containerId: collectionId, containerLabel: tab.title || 'Collection', projectId }
-                  : { kind: 'reference', label: 'All items' })}
-                data-item-drag-source="true"
-                onClick={() => {
+                  : { kind: 'reference', label: 'All items' }}
+                onSelectItem={() => {
                   if (onItemClick) {
                     onItemClick(i);
                   }
@@ -409,7 +410,7 @@ export const TabContent: React.FC<TabContentProps> = ({
                     {i.notes}
                   </div>
                 )}
-              </div>
+              </ItemResultRow>
             ))
           )}
         </div>

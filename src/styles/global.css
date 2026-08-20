@@ -1610,32 +1610,52 @@ button.ui-scope-chip {
 .ui-source-menu-tab {
   min-width: 0;
   flex: 0 1 auto;
-}
-
-.ui-source-menu-tab > button {
   max-width: 250px;
   min-height: 31px;
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px 0 10px;
+  align-items: stretch;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
+}
+
+.ui-source-menu-tab > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 29px;
+  border: 0;
+  background: transparent;
+  color: inherit;
   font: inherit;
   font-size: var(--text-xs);
   cursor: pointer;
 }
 
-.ui-source-menu-tab[data-active='true'] > button {
+.ui-source-menu-tab__selection {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0 4px 0 10px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.ui-source-menu-tab__trigger {
+  width: 27px;
+  flex: 0 0 27px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.ui-source-menu-tab[data-active='true'] {
   border-color: var(--border-active);
   background: var(--accent-weak);
   color: var(--accent);
 }
 
-.ui-source-menu-tab > button:hover,
-.ui-source-menu-tab > button[aria-expanded='true'] {
+.ui-source-menu-tab:hover,
+.ui-source-menu-tab[data-menu-open='true'] {
   border-color: var(--border-strong);
   background: var(--bg-hover);
 }
@@ -1649,7 +1669,7 @@ button.ui-scope-chip {
   content: ':';
 }
 
-.ui-source-menu-tab > button strong {
+.ui-source-menu-tab__selection strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2704,6 +2724,14 @@ button.ui-scope-chip {
     box-shadow var(--duration-fast) var(--ease-standard);
 }
 
+/* Every saved-link/note result uses this interaction surface. Presentation may
+   vary by density, but selection, dragging, focus, and action exclusion do not. */
+.ui-item-result-row {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: element;
+}
+
 .ui-content-browser__body[data-content-view='list'] .ui-content-browser__entry {
   min-height: var(--content-list-row-height);
   align-items: center;
@@ -2757,48 +2785,11 @@ button.ui-scope-chip {
   outline-offset: -2px;
 }
 
-.ui-content-browser__drag-handle {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-subtle);
-  color: var(--text-faint);
-  cursor: grab;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-user-drag: element;
-  opacity: 0.82;
-}
-
-.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__drag-handle {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-}
-
 .ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__peek {
   position: absolute;
-  top: 5px;
-  right: 25px;
+  top: 8px;
+  right: 8px;
   z-index: 1;
-}
-
-.ui-content-browser__entry:hover .ui-content-browser__drag-handle,
-.ui-content-browser__entry:focus-visible .ui-content-browser__drag-handle {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-  background: var(--accent-weak);
-  opacity: 1;
-}
-
-.ui-content-browser__drag-handle:active {
-  cursor: grabbing;
 }
 
 .ui-content-browser__leading {
@@ -3041,6 +3032,11 @@ button.ui-scope-chip {
   gap: 7px;
 }
 
+.ui-related-link-row[data-selected='true'] {
+  background: var(--accent-weak);
+  box-shadow: inset 3px 0 var(--accent);
+}
+
 .ui-related-link-row__copy,
 .ui-related-link-row__title-line {
   min-width: 0;
@@ -3061,22 +3057,6 @@ button.ui-scope-chip {
   font-weight: 600;
   line-height: 1.38;
   overflow-wrap: anywhere;
-}
-
-.ui-related-link-row__title--button {
-  all: unset;
-  min-width: 0;
-  flex: 1 1 auto;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: var(--dev-fs-sm);
-  font-weight: 600;
-  line-height: 1.38;
-  overflow-wrap: anywhere;
-}
-
-.ui-related-link-row__title--button:hover {
-  text-decoration: underline;
 }
 
 .ui-related-link-row__external {
@@ -4491,8 +4471,8 @@ button.ui-scope-chip {
   z-index: 10020;
   right: 18px;
   bottom: calc(var(--browser-footer-safe-clearance) + 18px);
-  width: min(420px, calc(100vw - 36px));
-  max-height: min(68vh, 680px);
+  width: min(480px, calc(100vw - 36px));
+  max-height: min(74vh, 740px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4501,6 +4481,11 @@ button.ui-scope-chip {
   background: color-mix(in srgb, var(--bg-panel) 96%, transparent);
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(16px);
+}
+
+.ui-item-drop-tray[data-side='left'] {
+  right: auto;
+  left: 18px;
 }
 
 .ui-item-drop-tray__header {
@@ -4591,6 +4576,11 @@ button.ui-scope-chip {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
+.ui-item-drop-project[data-current='true'] {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent-weak) 44%, var(--bg));
+}
+
 .ui-item-drop-project__header {
   min-height: 39px;
   display: grid;
@@ -4620,6 +4610,10 @@ button.ui-scope-chip {
   overflow-y: auto;
   padding: 0 8px 8px;
   border-top: 1px solid var(--border);
+}
+
+.ui-item-drop-project[data-current='true'] .ui-item-drop-project__destinations {
+  max-height: min(36vh, 340px);
 }
 
 .ui-item-drop-project__destinations section {

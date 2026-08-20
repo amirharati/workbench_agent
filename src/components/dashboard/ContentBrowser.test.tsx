@@ -52,7 +52,7 @@ describe('ContentBrowser', () => {
     expect(markup).toContain('A useful article');
   });
 
-  it('gives draggable items a dedicated drag handle', () => {
+  it('uses the complete row as the shared drag surface', () => {
     const markup = renderToStaticMarkup(
       <ContentBrowser
         title="Library"
@@ -70,9 +70,45 @@ describe('ContentBrowser', () => {
       />
     );
 
-    expect(markup).toContain('data-content-drag-handle="true"');
-    expect(markup).toContain('title="Drag to a workspace or collection"');
+    expect(markup).toContain('data-item-result-row="true"');
+    expect(markup).toContain('data-item-drag-source="true"');
+    expect(markup).not.toContain('data-content-drag-handle');
     expect(markup).toContain('draggable="true"');
+  });
+
+  it('selects a draggable entry on click without changing its drag source', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onSelect = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <ContentBrowser
+          title="Library"
+          entries={[{
+            id: 'link-a',
+            title: 'A useful article',
+            icon: 'L',
+            dragSource: { kind: 'reference', label: 'Library' },
+          }]}
+          selectedId={null}
+          onSelect={onSelect}
+          mode="list"
+          onModeChange={vi.fn()}
+          emptyMessage="Nothing here"
+        />
+      );
+    });
+
+    const entry = host.querySelector<HTMLElement>('[data-content-entry]');
+    expect(entry).not.toBeNull();
+    await act(async () => {
+      entry?.click();
+    });
+
+    expect(onSelect).toHaveBeenCalledWith('link-a');
+    await act(async () => root.unmount());
   });
 
   it('uses a shared gallery footer for metadata and actions', () => {

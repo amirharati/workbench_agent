@@ -7,7 +7,7 @@ import { ItemContextMenu } from './ItemContextMenu';
 import { TabScrollShell } from './TabScrollShell';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildItemQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
-import { useItemDragDrop } from './ItemDragDropProvider';
+import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
 
 interface QuickAccessItemListProps {
@@ -50,7 +50,6 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
   onOpenInNewTab,
   allowItemDrag = true,
 }) => {
-  const { getDragProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
@@ -150,25 +149,13 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
               const dateTs = dateField ? dateField(item) : (item.updated_at ?? item.created_at);
               const interactive = Boolean(onItemClick);
               return (
-                <div
+                <ItemResultRow
                   key={item.id}
-                  {...(allowItemDrag ? getDragProps(item, { kind: 'reference', label: title }) : {})}
-                  data-item-drag-source={allowItemDrag ? 'true' : undefined}
+                  item={item}
+                  dragSource={allowItemDrag ? { kind: 'reference', label: title } : undefined}
+                  onSelectItem={onItemClick ? () => onItemClick(item) : undefined}
                   className="ui-quick-access-list__row"
-                  role={interactive ? 'button' : undefined}
-                  tabIndex={interactive ? 0 : undefined}
                   data-interactive={interactive ? 'true' : 'false'}
-                  onClick={() => onItemClick?.(item)}
-                  onKeyDown={(event) => {
-                    if (!interactive || event.target !== event.currentTarget) return;
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      onItemClick?.(item);
-                    } else if (event.key === ' ') {
-                      event.preventDefault();
-                      onItemClick?.(item);
-                    }
-                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -239,7 +226,7 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
                       {renderRowActions?.(item)}
                     </div>
                   </div>
-                </div>
+                </ItemResultRow>
               );
             })}
           </div>

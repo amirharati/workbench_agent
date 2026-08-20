@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, Layers3, Link2, List, Search, Star, Trash2, Workflow } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, Layers3, Link2, List, Pin, Search, Star, Trash2, Workflow } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
@@ -13,6 +13,8 @@ import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import type { WorkspaceDestination } from './workspaceDestinations';
 import { buildItemQuickFilterText } from '../../lib/itemQuickFilter';
 import { SourceMenuTab } from './SourceMenuTab';
+import { ItemFavoriteButton } from './ItemFavoriteButton';
+import { isItemPinnedToProject, updateProjectPinMetadata } from './projectPins';
 
 export interface WorkspaceViewGroup {
   key: string;
@@ -152,6 +154,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   const [projectBrowserOpen, setProjectBrowserOpen] = React.useState(() => initialProjectQuery.trim().length > 0);
   const [itemFilter, setItemFilter] = React.useState<AllLibraryItemFilter>(() => normalizeAllLibraryItemFilter(initialItemFilter));
   const [browseMode, setBrowseMode] = useContentBrowseMode('workbench:home-all-library-content-view');
+  const [pinningProjectItemKey, setPinningProjectItemKey] = React.useState<string | null>(null);
   const projectSwitcherRef = React.useRef<HTMLElement>(null);
   React.useEffect(() => {
     if (!projectBrowserOpen || typeof document === 'undefined') return;
@@ -230,6 +233,23 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
     setItemFilter(filter);
     onItemFilterChange?.(filter);
     onClearSelection?.();
+  };
+  const toggleProjectPin = async (item: Item, projectId: string) => {
+    if (!onUpdateItem || pinningProjectItemKey) return;
+    const actionKey = `${projectId}:${item.id}`;
+    setPinningProjectItemKey(actionKey);
+    try {
+      const pinned = isItemPinnedToProject(item, projectId);
+      await onUpdateItem(
+        item.id,
+        {
+          metadata: updateProjectPinMetadata(item.metadata, projectId, pinned ? undefined : Date.now()),
+        },
+        { preserveUpdatedAt: true }
+      );
+    } finally {
+      setPinningProjectItemKey(null);
+    }
   };
 
   return (
@@ -336,6 +356,12 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             { value: 'all-active', label: 'All open' },
             ...groups.slice(1).map((group) => ({ value: group.key, label: `${group.contextLabel} · ${group.title}` })),
           ]}
+          onActivate={() => {
+            setActiveView('workspace');
+            onActiveViewChange?.('workspace');
+            onSelectedViewChange(selectedView);
+            onClearSelection?.();
+          }}
           onSelect={(value) => {
             setActiveView('workspace');
             onActiveViewChange?.('workspace');
@@ -376,6 +402,30 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
               onSelectEntry={onSelectTab}
               onRemoveEntry={onRemoveGlobalTab}
               getEntryScopeLabel={getEntryScopeLabel}
+              renderItemActions={(item) => {
+                const projectId = group.projectId;
+                const project = projectId === 'all'
+                  ? null
+                  : projects.find((candidate) => candidate.id === projectId) ?? null;
+                const pinned = project ? isItemPinnedToProject(item, project.id) : false;
+                return (
+                  <>
+                    <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} />
+                    {project ? (
+                      <button
+                        type="button"
+                        aria-label={pinned ? `Unpin ${item.title} from ${project.name}` : `Pin ${item.title} to ${project.name}`}
+                        title={pinned ? `Unpin from ${project.name}` : `Pin to ${project.name}`}
+                        disabled={!onUpdateItem || pinningProjectItemKey === `${project.id}:${item.id}`}
+                        onClick={() => void toggleProjectPin(item, project.id)}
+                        style={{ ...workspaceMarkerButtonStyle, color: pinned ? 'var(--accent)' : 'var(--text-faint)' }}
+                      >
+                        <Pin size={12} fill={pinned ? 'currentColor' : 'none'} />
+                      </button>
+                    ) : null}
+                  </>
+                );
+              }}
               allowRemove={group.projectId === 'all' && selectedView !== 'all-active'}
               maxListHeight={null}
             />
@@ -477,3 +527,4 @@ const previewIconStyle: React.CSSProperties = { width: 34, height: 34, display: 
 const secondaryButtonStyle = uiPatterns.secondaryButton;
 const viewTabStyle = uiPatterns.viewTab;
 const tabCountStyle: React.CSSProperties = { color: 'var(--text-faint)', fontSize: 10 };
+const workspaceMarkerButtonStyle: React.CSSProperties = { width: 26, height: 26, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'transparent', cursor: 'pointer' };

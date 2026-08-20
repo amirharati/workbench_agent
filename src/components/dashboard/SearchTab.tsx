@@ -4,7 +4,7 @@ import { getDomain, isValidBookmarkUrl } from '../../lib/utils';
 import { Input } from '../../styles/primitives';
 import { Search, X, ExternalLink, Eye } from 'lucide-react';
 import { TabScrollShell } from './TabScrollShell';
-import { useItemDragDrop } from './ItemDragDropProvider';
+import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
 
 interface SearchTabProps {
@@ -23,7 +23,6 @@ export const SearchTab: React.FC<SearchTabProps> = ({
   initialQuery,
   onQueryChange,
 }) => {
-  const { getDragProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const [searchQuery, setSearchQuery] = useState(initialQuery ?? '');
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | 'all'>('all');
@@ -211,11 +210,11 @@ export const SearchTab: React.FC<SearchTabProps> = ({
           </div>
         ) : (
           filteredItems.map((item) => (
-            <div
+            <ItemResultRow
               key={item.id}
-              {...getDragProps(item, { kind: 'reference', label: 'Search results' })}
-              data-item-drag-source="true"
-              onClick={() => onItemClick?.(item)}
+              item={item}
+              dragSource={{ kind: 'reference', label: 'Search results' }}
+              onSelectItem={onItemClick ? () => onItemClick(item) : undefined}
               style={{
                 padding: '1rem',
                 background: 'var(--bg-glass)',
@@ -302,7 +301,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
                   Preview
                 </button>
               </div>
-            </div>
+            </ItemResultRow>
           ))
         )}
       </div>

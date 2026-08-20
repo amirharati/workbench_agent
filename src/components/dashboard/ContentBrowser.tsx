@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Eye, Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
+import { Eye, Grid2X2, List, Search, X } from 'lucide-react';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
 import type { ItemDragSource, ItemDropTarget, ProjectCollectionDropTarget } from './itemDragDrop';
 import { useItemPeek } from './ItemPeekProvider';
+import { ItemResultRow } from './ItemResultRow';
 
 export type ContentBrowseMode = 'list' | 'gallery';
 
@@ -61,27 +62,22 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
   selectedEntryRef?: React.RefObject<HTMLDivElement>;
   previewItemIds: readonly string[];
 }) {
-  const { getDragProps, getReorderTargetProps } = useItemDragDrop();
+  const { getReorderTargetProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const dragItem = entry.dragItem ?? { id: entry.id, title: entry.title };
-  const dragProps = entry.dragSource
-    ? getDragProps(dragItem, entry.dragSource)
-    : {};
   const reorderProps = entry.reorderTarget
     ? getReorderTargetProps(dragItem.id, entry.reorderTarget)
     : {};
   return (
-    <div
+    <ItemResultRow
       ref={selectedEntryRef}
-      role="button"
-      tabIndex={0}
+      item={dragItem}
+      dragSource={entry.dragSource}
+      selected={selected}
+      onSelectItem={() => onSelect(entry.id)}
       aria-current={selected ? 'true' : undefined}
       data-content-entry
-      data-selected={selected ? 'true' : 'false'}
-      data-item-drag-source={entry.dragSource ? 'true' : undefined}
-      {...dragProps}
       {...reorderProps}
-      onClick={() => onSelect(entry.id)}
       onDoubleClick={(event) => {
         if (!entry.dragSource || (event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
         openPeek(dragItem.id, {
@@ -92,38 +88,8 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
         });
       }}
       onContextMenu={entry.onContextMenu}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return;
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          onSelect(entry.id);
-          if (entry.dragSource) {
-            openPeek(dragItem.id, {
-              itemIds: previewItemIds,
-              sourceLabel: entry.dragSource.kind === 'reference'
-                ? entry.dragSource.label
-                : entry.dragSource.containerLabel,
-            });
-          }
-        } else if (event.key === ' ') {
-          event.preventDefault();
-          onSelect(entry.id);
-        }
-      }}
       className="ui-content-browser__entry"
     >
-      {entry.dragSource ? (
-        <span
-          {...dragProps}
-          className="ui-content-browser__drag-handle"
-          data-content-drag-handle="true"
-          title="Drag to a workspace or collection"
-          aria-label="Drag to a workspace or collection"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <GripVertical size={14} aria-hidden="true" />
-        </span>
-      ) : null}
       <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
       <span className="ui-content-browser__copy">
         <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
@@ -162,7 +128,7 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
           )}
         </span>
       )}
-    </div>
+    </ItemResultRow>
   );
 });
 

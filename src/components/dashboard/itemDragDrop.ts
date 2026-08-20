@@ -106,7 +106,7 @@ export function readItemDragPayload(dataTransfer: DataTransfer): ItemDragPayload
 export function itemDragSourceProps(
   payload: ItemDragPayload,
   callbacks: {
-    onStart: (payload: ItemDragPayload) => void;
+    onStart: (payload: ItemDragPayload, sourceElement: HTMLElement) => void;
     onEnd: () => void;
   }
 ): Pick<React.HTMLAttributes<HTMLElement>, 'onDragStart' | 'onDragEnd'> & { draggable: true } {
@@ -114,7 +114,7 @@ export function itemDragSourceProps(
     draggable: true,
     onDragStart: (event) => {
       writeItemDragPayload(event.dataTransfer, payload);
-      callbacks.onStart(payload);
+      callbacks.onStart(payload, event.currentTarget);
     },
     onDragEnd: callbacks.onEnd,
   };

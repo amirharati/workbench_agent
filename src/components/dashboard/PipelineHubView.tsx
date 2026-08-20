@@ -52,8 +52,8 @@ import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
 import { getBookmarkOpenUrl } from '../../lib/itemQuickAccess';
 import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { HubBulkStagedActions } from './HubBulkStagedActions';
-import { useItemDragDrop } from './ItemDragDropProvider';
 import { useItemPeek } from './ItemPeekProvider';
+import { ItemResultRow } from './ItemResultRow';
 
 type HubLane = 'enrichment' | 'categories';
 export type HubView = 'enrichment' | 'classification' | 'taxonomy';
@@ -511,7 +511,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   onClearCollectionScope,
   onResetScope,
 }) => {
-  const { getDragProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const hubSaved = loadNavigationState().pipelineHub;
   const pipeline = usePipelineProgress();
@@ -1838,10 +1837,11 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                     : undefined
                 }
               >
-                <div
-                  {...getDragProps(item, { kind: 'reference', label: 'Enrichment Hub' })}
-                  data-item-drag-source="true"
-                  onClick={() => onOpenItem?.(item)}
+                <ItemResultRow
+                  item={item}
+                  dragSource={{ kind: 'reference', label: 'Enrichment Hub' }}
+                  selected={isCurrentInspect}
+                  onSelectItem={onOpenItem ? () => onOpenItem(item) : undefined}
                   onDoubleClick={(event) => {
                     if ((event.target as HTMLElement).closest('button, input, a')) return;
                     openPeek(item.id, { itemIds: peekItemIds, sourceLabel: 'Enrichment Hub' });
@@ -2008,7 +2008,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                       </button>
                     ) : null}
                   </div>
-                </div>
+                </ItemResultRow>
                 {showStatusHelp && statusHelp ? (
                   <StatusHelpPanel
                     help={statusHelp}

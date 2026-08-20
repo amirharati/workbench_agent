@@ -1358,7 +1358,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       onView={(destination) => updateItemWorkspace(inspectorItem, destination, true)}
     />
   ) : undefined;
-
   const searchContext = useMemo(() => {
     if (!isSearchSurface || !activeSearch.state.result?.results.length) return null;
     return {
@@ -1424,6 +1423,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       projects={projects}
       collections={collections}
       workspaceDestinations={workspaceDestinations}
+      currentProjectId={scopeProjectId}
       openProjectIds={recentProjectIds}
       isInTarget={dragTargetContainsItem}
       onTransfer={handleDraggedItemTransfer}

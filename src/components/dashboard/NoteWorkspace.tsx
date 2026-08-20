@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { formatDateTime } from '../../lib/utils';
 import { SearchBar } from './SearchBar';
-import { useItemDragDrop } from './ItemDragDropProvider';
+import { ItemResultRow } from './ItemResultRow';
 import { Resizer } from './Resizer';
 import { sortItemsByRecency } from '../../lib/itemQuickAccess';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
@@ -52,7 +52,6 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
   onCreateCollection,
   scopeChips,
 }) => {
-  const { getDragProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -266,13 +265,13 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
               notes.map((item) => {
                 const active = item.id === selectedId;
                 return (
-                  <button
+                  <ItemResultRow
                     key={item.id}
-                    {...getDragProps(item, { kind: 'reference', label: 'Notes' })}
-                    data-item-drag-source="true"
-                    type="button"
+                    item={item}
+                    dragSource={{ kind: 'reference', label: 'Notes' }}
+                    selected={active}
+                    onSelectItem={() => selectNote(item)}
                     aria-current={active ? 'true' : undefined}
-                    onClick={() => selectNote(item)}
                     onDoubleClick={() => openPeek(item.id, { itemIds: notes.map((note) => note.id), sourceLabel: 'Notes' })}
                     style={{
                       width: '100%',
@@ -329,7 +328,7 @@ export const NoteWorkspace: React.FC<NoteWorkspaceProps> = ({
                     >
                       {previewSnippet(item.notes)}
                     </span>
-                  </button>
+                  </ItemResultRow>
                 );
               })
             )}

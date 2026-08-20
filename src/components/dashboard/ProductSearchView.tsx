@@ -14,7 +14,7 @@ import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemOrganizationDialog } from './ItemOrganizationDialog';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import type { WorkspaceDestination } from './workspaceDestinations';
-import { useItemDragDrop } from './ItemDragDropProvider';
+import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
 
 interface ProductSearchViewProps {
@@ -102,7 +102,6 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onAddItemToWorkspace,
   onViewItemInWorkspace,
 }) => {
-  const { getDragProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
@@ -569,25 +568,18 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
           const snippet = getSnippet(item);
 
           return (
-            <div
+            <ItemResultRow
               key={row.itemId}
-              {...(item ? getDragProps(item, { kind: 'reference', label: 'Search results' }) : {})}
-              data-item-drag-source={item ? 'true' : undefined}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectedItemIdChange(row.itemId)}
+              item={item ?? { id: row.itemId, title: row.title, url: row.url }}
+              dragSource={item ? { kind: 'reference', label: 'Search results' } : undefined}
+              selected={isSelected}
+              onSelectItem={() => onSelectedItemIdChange(row.itemId)}
               onDoubleClick={() => openPeek(row.itemId, { itemIds: resultItemIds, sourceLabel: 'Search results' })}
               onContextMenu={(e) => {
                 if (!item) return;
                 e.preventDefault();
                 e.stopPropagation();
                 setContextMenu({ item, x: e.clientX, y: e.clientY });
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
-                  e.preventDefault();
-                  openPeek(row.itemId, { itemIds: resultItemIds, sourceLabel: 'Search results' });
-                }
               }}
               style={{
                 padding: '12px 14px',
@@ -731,7 +723,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                   ) : null}
                 </div>
               </div>
-            </div>
+            </ItemResultRow>
           );
         })}
       </div>

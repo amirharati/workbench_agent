@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Item } from '../../lib/db';
 import { ToastProvider } from '../ToastContainer';
-import { ItemDragDropProvider, useItemDragDrop } from './ItemDragDropProvider';
+import { ItemDragDropProvider, chooseItemDropTraySide, useItemDragDrop } from './ItemDragDropProvider';
 import type { ItemDragSource, ItemDropTarget, ProjectCollectionDropTarget } from './itemDragDrop';
 
 const savedItem: Item = {
@@ -66,6 +66,11 @@ describe('ItemDragDropProvider', () => {
       await act(async () => root.unmount());
       host.remove();
     }
+  });
+
+  it('places the destination tray away from the drag source', () => {
+    expect(chooseItemDropTraySide({ left: 900, right: 1180, viewportWidth: 1200 })).toBe('left');
+    expect(chooseItemDropTraySide({ left: 20, right: 320, viewportWidth: 1200 })).toBe('right');
   });
 
   async function renderSurface(source: ItemDragSource, onTransfer = vi.fn()) {
@@ -182,6 +187,56 @@ describe('ItemDragDropProvider', () => {
     expect(tray.textContent).toContain('General');
     expect(tray.textContent).toContain('Reading');
     expect(tray.textContent).not.toContain('Hidden workspace');
+  });
+
+  it('keeps the current project expanded ahead of recent open projects', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    roots.push({ root, host });
+    await act(async () => {
+      root.render(
+        <ToastProvider>
+          <ItemDragDropProvider
+            projects={[
+              { id: 'project-a', name: 'Recent project', isDefault: false, created_at: 1, updated_at: 1 },
+              { id: 'project-b', name: 'Current project', isDefault: false, created_at: 1, updated_at: 1 },
+            ]}
+            collections={[
+              { id: 'collection-a', name: 'Recent collection', isDefault: false, created_at: 1, updated_at: 1, primaryProjectId: 'project-a', projectIds: ['project-a'] },
+              { id: 'collection-b', name: 'Current collection', isDefault: false, created_at: 1, updated_at: 1, primaryProjectId: 'project-b', projectIds: ['project-b'] },
+            ]}
+            workspaceDestinations={[
+              { key: 'workspace:global', projectId: 'all', projectName: 'Global', workspaceName: 'Global workspace', path: 'Global workspace', kind: 'global', isCurrent: false },
+              { key: 'workspace:project-a:general', projectId: 'project-a', projectName: 'Recent project', workspaceName: 'General', path: 'Recent project — General', kind: 'live', isCurrent: false },
+              { key: 'workspace:project-b:general', projectId: 'project-b', projectName: 'Current project', workspaceName: 'General', path: 'Current project — General', kind: 'live', isCurrent: true },
+            ]}
+            currentProjectId="project-b"
+            openProjectIds={['project-a', 'project-b']}
+            isInTarget={() => false}
+            onTransfer={vi.fn()}
+            onReorderWorkspaceItem={vi.fn()}
+          >
+            <TestSurface source={{ kind: 'reference', label: 'Search' }} target={{ kind: 'workspace', containerId: 'other', containerLabel: 'Other', projectId: 'project-b' }} />
+          </ItemDragDropProvider>
+        </ToastProvider>
+      );
+    });
+
+    const dataTransfer = mockDataTransfer();
+    await act(async () => {
+      dispatchDrag(host.querySelector('[data-testid="source"]')!, 'dragstart', dataTransfer);
+    });
+
+    const tray = host.querySelector<HTMLElement>('[aria-label="Destinations for One"]')!;
+    const headings = [...tray.querySelectorAll('h3')].map((heading) => heading.textContent?.trim());
+    expect(headings).toContain('Current project');
+    expect(headings).toContain('Recent open projects');
+    expect(headings.indexOf('Current project')).toBeLessThan(headings.indexOf('Quick destinations'));
+    expect(tray.querySelector('[data-project-id="project-b"]')?.getAttribute('data-current')).toBe('true');
+    expect(tray.querySelector('[data-project-id="project-b"]')?.textContent).toContain('Current collection');
+    expect(tray.querySelector('[data-project-id="project-a"]')?.getAttribute('data-current')).toBe('false');
+    expect(tray.querySelector('[data-project-id="project-a"]')?.textContent).not.toContain('Recent collection');
   });
 
   it('copies immediately from a reference result', async () => {
