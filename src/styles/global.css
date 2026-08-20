@@ -2599,6 +2599,47 @@ button.ui-scope-chip {
 }
 
 /* ===== Shared content browser ===== */
+.ui-search-companion {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-search-companion__switcher {
+  align-self: flex-start;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+}
+
+.ui-search-companion__switcher button {
+  min-height: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ui-search-companion__switcher button[aria-pressed='true'] {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.ui-search-companion > .ui-content-browser {
+  height: min(290px, 34vh);
+}
+
 .ui-content-browser {
   --content-list-row-height: 58px;
   --content-list-row-padding: 8px 9px 8px 11px;

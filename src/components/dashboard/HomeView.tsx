@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Home as HomeIcon, Folder, GripVertical, X } from 'lucide-react';
+import { ExternalLink, FileText, Folder, Home as HomeIcon, Layers3, Link2, Search, GripVertical, X } from 'lucide-react';
 import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, GlobalTabList, GlobalTabSearch, SavedWorkspaceSession } from './GlobalTabSystem';
 import { ItemContextMenu } from './ItemContextMenu';
@@ -8,7 +8,8 @@ import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { ProductSearchView } from './ProductSearchView';
 import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary, reorderProjectSwitcher } from './homeScope';
 import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
-import { ActiveWorkspaceCard } from './ActiveWorkspaceCard';
+import { ContentBrowser, useContentBrowseMode, type ContentBrowseEntry } from './ContentBrowser';
+import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import {
   AllLibraryWorkspaceOverview,
@@ -105,6 +106,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
     allLibraryActiveView: 'all' as AllLibraryView,
     allLibraryItemFilter: 'all' as AllLibraryItemFilter,
     projectLauncherQuery: '',
+    searchCompanionView: 'workspace' as 'workspace' | 'collection',
+    searchCompanionCollectionId: null as string | null,
   }));
   const [selectedOverviewItemId, setSelectedOverviewItemId] = React.useState<string | null>(
     initialPageUi.selectedOverviewItemId
@@ -120,6 +123,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
     normalizeAllLibraryItemFilter(initialPageUi.allLibraryItemFilter)
   );
   const [projectLauncherQuery, setProjectLauncherQuery] = React.useState(initialPageUi.projectLauncherQuery);
+  const [searchCompanionView, setSearchCompanionView] = React.useState<'workspace' | 'collection'>(() =>
+    initialPageUi.searchCompanionView === 'collection' ? 'collection' : 'workspace'
+  );
+  const [searchCompanionCollectionId, setSearchCompanionCollectionId] = React.useState<string | null>(
+    initialPageUi.searchCompanionCollectionId
+  );
+  const [searchCollectionBrowseMode, setSearchCollectionBrowseMode] = useContentBrowseMode(
+    'workbench:search-companion-collection-view:v1'
+  );
+  const [searchWorkspaceBrowseMode, setSearchWorkspaceBrowseMode] = useContentBrowseMode(
+    'workbench:search-companion-workspace-view:v1'
+  );
   React.useEffect(() => {
     savePageUiState(pageUiKey, {
       selectedOverviewItemId,
@@ -128,8 +143,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
       allLibraryActiveView,
       allLibraryItemFilter,
       projectLauncherQuery,
+      searchCompanionView,
+      searchCompanionCollectionId,
     });
-  }, [allLibraryActiveView, allLibraryItemFilter, allLibraryWorkspaceView, pageUiKey, projectLauncherQuery, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
+  }, [allLibraryActiveView, allLibraryItemFilter, allLibraryWorkspaceView, pageUiKey, projectLauncherQuery, searchCompanionCollectionId, searchCompanionView, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
 
   const activeProject = useMemo(
     () => (scopeProjectId === 'all' ? undefined : projects.find((project) => project.id === scopeProjectId)),
@@ -549,6 +566,46 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
     return collections;
   }, [collections, filteredSearchCollection, filteredSearchProject]);
+  const selectedSearchCompanionCollection = useMemo(() => {
+    const selected = searchCollections.find((collection) => collection.id === searchCompanionCollectionId);
+    if (selected) return selected;
+    if (activeCollection) {
+      const scoped = searchCollections.find((collection) => collection.id === activeCollection.id);
+      if (scoped) return scoped;
+    }
+    return searchCollections.find((collection) => collection.isDefault) ?? searchCollections[0];
+  }, [activeCollection, searchCollections, searchCompanionCollectionId]);
+  React.useEffect(() => {
+    const resolvedId = selectedSearchCompanionCollection?.id ?? null;
+    if (resolvedId !== searchCompanionCollectionId) setSearchCompanionCollectionId(resolvedId);
+  }, [searchCompanionCollectionId, selectedSearchCompanionCollection]);
+  const searchCompanionCollectionItems = useMemo(
+    () => selectedSearchCompanionCollection
+      ? items
+          .filter((item) => item.collectionIds.includes(selectedSearchCompanionCollection.id))
+          .sort((a, b) => b.updated_at - a.updated_at)
+      : [],
+    [items, selectedSearchCompanionCollection]
+  );
+  const searchCompanionCollectionEntries = useMemo<ContentBrowseEntry[]>(() => {
+    if (!selectedSearchCompanionCollection) return [];
+    const source = {
+      kind: 'collection' as const,
+      containerId: selectedSearchCompanionCollection.id,
+      containerLabel: selectedSearchCompanionCollection.name,
+      projectId: selectedSearchCompanionCollection.primaryProjectId,
+    };
+    return searchCompanionCollectionItems.map((item) => ({
+      id: item.id,
+      title: item.title || 'Untitled',
+      icon: item.url ? <Link2 size={12} /> : <FileText size={12} />,
+      subtitle: item.url || item.notes || 'Empty note',
+      searchText: `${item.tags.join(' ')} ${item.notes ?? ''}`,
+      actions: <ItemQuickAccessMarkers item={item} size={12} />,
+      dragSource: source,
+      dragItem: item,
+    }));
+  }, [searchCompanionCollectionItems, selectedSearchCompanionCollection]);
   const searchScopeOptions = [
     ...(filteredSearchCollection ? [{ value: `collection:${filteredSearchCollection.id}`, label: filteredSearchCollection.name }] : []),
     ...(activeCollection && activeCollection.id !== filteredSearchCollection?.id ? [{ value: `collection:${activeCollection.id}`, label: activeCollection.name }] : []),
@@ -588,6 +645,64 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
     return 'All Library';
   };
+  const searchCompanionWorkspaceEntries = useMemo<ContentBrowseEntry[]>(() => {
+    const target = {
+      kind: 'workspace' as const,
+      containerId: activeWorkspaceKey,
+      containerLabel: activeWorkspaceDestination?.workspaceName ?? 'Global workspace',
+      projectId: activeWorkspaceDestination?.projectId ?? 'all',
+    };
+    return currentSessionTabs.map((tab) => {
+      const item = tab.kind === 'item'
+        ? items.find((candidate) => candidate.id === tab.itemId)
+        : undefined;
+      const title = item?.title?.trim()
+        || (tab.kind === 'url'
+          ? tab.title?.trim() || tab.url
+          : tab.kind === 'search'
+            ? tab.query.trim() || 'Search'
+            : tab.kind === 'list'
+              ? tab.title || 'List'
+              : 'Untitled');
+      const subtitle = tab.kind === 'url'
+        ? tab.url
+        : tab.kind === 'search'
+          ? `Search · ${getWorkspaceEntryScopeLabel(tab)}`
+          : tab.kind === 'list'
+            ? 'Saved list'
+            : item?.url || item?.notes || getWorkspaceEntryScopeLabel(tab);
+      return {
+        id: tab.id,
+        title,
+        icon: tab.kind === 'search'
+          ? <Search size={12} />
+          : tab.kind === 'url'
+            ? <ExternalLink size={12} />
+            : item?.url
+              ? <Link2 size={12} />
+              : <FileText size={12} />,
+        subtitle,
+        searchText: item ? `${item.tags.join(' ')} ${item.notes ?? ''}` : subtitle,
+        actions: (
+          <>
+            {item ? <ItemQuickAccessMarkers item={item} size={12} /> : null}
+            <button
+              type="button"
+              className="ui-button ui-button--ghost ui-button--compact"
+              onClick={() => removeCurrentSessionTab(tab.id)}
+              title={`Remove ${title} from workspace`}
+              aria-label={`Remove ${title} from workspace`}
+            >
+              <X size={11} />
+            </button>
+          </>
+        ),
+        dragSource: item ? target : undefined,
+        dragItem: item,
+        reorderTarget: item ? target : undefined,
+      };
+    });
+  }, [activeWorkspaceDestination, activeWorkspaceKey, currentSessionTabs, items]);
 
   const removeCurrentSessionTab = (tabId: string) => {
     const workspaceKey = homeState.activeWorkspaceKey ?? getProjectSessionWorkspaceKey('all');
@@ -999,33 +1114,94 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </div>
       ) : librarySearch ? (
         <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ flexShrink: 0, margin: '12px 20px 0' }}>
-          <ActiveWorkspaceCard
-            workspaceKey={activeWorkspaceKey}
-            projectId={activeWorkspaceDestination?.projectId ?? 'all'}
-            title={activeWorkspaceDestination?.workspaceName ?? 'Global workspace'}
-            contextLabel={activeWorkspaceDestination?.projectName ?? 'All Library'}
-            tabs={currentSessionTabs}
-            items={items}
-            activeEntryId={homeState.lastActiveEntryByWorkspace?.[activeWorkspaceKey] ?? null}
-            emptyMessage={activeProject ? 'Add this search to begin the active workspace.' : 'Add this search or selected library material to begin the global workspace.'}
-            onSelectEntry={selectCurrentWorkspaceEntry}
-            onRemoveEntry={removeCurrentSessionTab}
-            getEntryScopeLabel={getWorkspaceEntryScopeLabel}
-            trailingControl={(
-              <select
-                value={activeWorkspaceKey}
-                onChange={(event) => activateWorkspaceKey(event.target.value)}
-                aria-label="Active workspace"
-                title="Switch active workspace"
-                style={{ ...uiPatterns.select, minWidth: 170, maxWidth: 260 }}
-              >
-                {workspaceSwitcherDestinations.map((destination) => (
-                  <option key={destination.key} value={destination.key}>{destination.path}</option>
-                ))}
-              </select>
-            )}
-          />
+        <div className="ui-search-companion" style={{ flexShrink: 0, margin: '12px 20px 0' }}>
+          <div className="ui-search-companion__switcher" role="group" aria-label="Search companion view">
+            <button
+              type="button"
+              aria-pressed={searchCompanionView === 'workspace'}
+              onClick={() => setSearchCompanionView('workspace')}
+            >
+              <Layers3 size={12} /> Workspace
+            </button>
+            <button
+              type="button"
+              aria-pressed={searchCompanionView === 'collection'}
+              onClick={() => setSearchCompanionView('collection')}
+            >
+              <Folder size={12} /> Collection
+            </button>
+          </div>
+          {searchCompanionView === 'workspace' ? (
+            <ContentBrowser
+              title={activeWorkspaceDestination?.workspaceName ?? 'Global workspace'}
+              entries={searchCompanionWorkspaceEntries}
+              selectedId={homeState.lastActiveEntryByWorkspace?.[activeWorkspaceKey] ?? null}
+              onSelect={(entryId) => {
+                const entry = currentSessionTabs.find((candidate) => candidate.id === entryId);
+                if (entry) selectCurrentWorkspaceEntry(entry);
+              }}
+              mode={searchWorkspaceBrowseMode}
+              onModeChange={setSearchWorkspaceBrowseMode}
+              emptyMessage={activeProject ? 'Add this search to begin the active workspace.' : 'Add this search or selected library material to begin the global workspace.'}
+              ariaLabel={`Workspace ${activeWorkspaceDestination?.workspaceName ?? 'Global workspace'}`}
+              headerActions={(
+                <select
+                  value={activeWorkspaceKey}
+                  onChange={(event) => activateWorkspaceKey(event.target.value)}
+                  aria-label="Active workspace"
+                  title="Switch active workspace"
+                  style={{ ...uiPatterns.select, minWidth: 170, maxWidth: 260 }}
+                >
+                  {workspaceSwitcherDestinations.map((destination) => (
+                    <option key={destination.key} value={destination.key}>{destination.path}</option>
+                  ))}
+                </select>
+              )}
+              dropTarget={{
+                kind: 'workspace',
+                containerId: activeWorkspaceKey,
+                containerLabel: activeWorkspaceDestination?.workspaceName ?? 'Global workspace',
+                projectId: activeWorkspaceDestination?.projectId ?? 'all',
+              }}
+            />
+          ) : selectedSearchCompanionCollection ? (
+            <ContentBrowser
+              title={selectedSearchCompanionCollection.name}
+              entries={searchCompanionCollectionEntries}
+              selectedId={librarySearch.state.selectedItemId}
+              onSelect={(itemId) => librarySearch.setSelectedItemId(itemId)}
+              mode={searchCollectionBrowseMode}
+              onModeChange={setSearchCollectionBrowseMode}
+              emptyMessage="No items in this collection."
+              ariaLabel={`Collection ${selectedSearchCompanionCollection.name}`}
+              headerActions={(
+                <select
+                  value={selectedSearchCompanionCollection.id}
+                  onChange={(event) => setSearchCompanionCollectionId(event.target.value)}
+                  aria-label="Search companion collection"
+                  title="Switch collection"
+                  style={{ ...uiPatterns.select, minWidth: 170, maxWidth: 300 }}
+                >
+                  {searchCollections.map((collection) => {
+                    const projectName = projects.find((project) => project.id === collection.primaryProjectId)?.name;
+                    return (
+                      <option key={collection.id} value={collection.id}>
+                        {scopeProjectId === 'all' && projectName ? `${projectName} — ${collection.name}` : collection.name}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+              dropTarget={{
+                kind: 'collection',
+                containerId: selectedSearchCompanionCollection.id,
+                containerLabel: selectedSearchCompanionCollection.name,
+                projectId: selectedSearchCompanionCollection.primaryProjectId,
+              }}
+            />
+          ) : (
+            <div className="ui-status">No collection is available in this scope.</div>
+          )}
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
         <ProductSearchView
