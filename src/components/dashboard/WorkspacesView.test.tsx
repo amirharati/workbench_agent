@@ -6,6 +6,7 @@ import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Item, Project, Workspace } from '../../lib/db';
 import type { GlobalTabState } from './GlobalTabSystem';
+import { getProjectSessionWorkspaceKey, getProjectWorkspaceTabs } from './workspaceSession';
 import { getWorkspaceTabUrl, WorkspacesView } from './WorkspacesView';
 
 const project: Project = { id: 'project-a', name: 'Research', isDefault: false, created_at: 1, updated_at: 1 };
@@ -125,6 +126,19 @@ describe('WorkspacesView', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
+    const onHomeStateChange = vi.fn();
+    const projectWorkspaceKey = getProjectSessionWorkspaceKey(project.id);
+    const state: GlobalTabState = {
+      ...homeState,
+      activeWorkspaceKey: projectWorkspaceKey,
+      preferredWorkspaceKeyByProject: { 'project-a': projectWorkspaceKey },
+      workspaceSessionSnapshots: {
+        ...homeState.workspaceSessionSnapshots,
+        [projectWorkspaceKey]: [
+          { kind: 'item', id: 'live-item', itemId: item.id, scopeProjectId: project.id },
+        ],
+      },
+    };
 
     await act(async () => {
       root.render(
@@ -132,19 +146,9 @@ describe('WorkspacesView', () => {
           projects={[project]}
           items={[item]}
           workspaces={[]}
-          homeState={{
-            ...homeState,
-            activeWorkspaceKey: 'workspace:project:project-a:general',
-            preferredWorkspaceKeyByProject: { 'project-a': 'workspace:project:project-a:general' },
-            workspaceSessionSnapshots: {
-              ...homeState.workspaceSessionSnapshots,
-              'workspace:project:project-a:general': [
-                { kind: 'item', id: 'live-item', itemId: item.id, scopeProjectId: project.id },
-              ],
-            },
-          }}
+          homeState={state}
           scopeProjectId={project.id}
-          onHomeStateChange={vi.fn()}
+          onHomeStateChange={onHomeStateChange}
         />
       );
     });
@@ -165,6 +169,12 @@ describe('WorkspacesView', () => {
     expect(browser?.querySelector('[data-content-view="gallery"]')).not.toBeNull();
     await act(async () => browser?.querySelector<HTMLButtonElement>('[aria-label="List view"]')?.click());
     expect(browser?.querySelector('[data-content-view="list"]')).not.toBeNull();
+
+    const remove = browser?.querySelector<HTMLButtonElement>('[aria-label="Remove Docs from workspace"]');
+    expect(remove).not.toBeNull();
+    await act(async () => remove?.click());
+    const nextState = onHomeStateChange.mock.lastCall?.[0] as GlobalTabState;
+    expect(getProjectWorkspaceTabs(nextState, project.id, projectWorkspaceKey)).toEqual([]);
 
     await act(async () => root.unmount());
     host.remove();

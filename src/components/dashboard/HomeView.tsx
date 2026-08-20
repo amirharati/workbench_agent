@@ -36,6 +36,7 @@ import {
   getSavedWorkspaceSessionKey,
   getWorkspaceProjectId,
   mergeSavedProjectWorkspace,
+  removeEntryFromProjectWorkspace,
   renameSavedProjectWorkspace,
   transferProjectWorkspaceEntry,
   workspaceTargetContainsItem,
@@ -735,14 +736,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const removeCurrentSessionTab = (tabId: string) => {
     const workspaceKey = homeState.activeWorkspaceKey ?? getProjectSessionWorkspaceKey('all');
-    const lastActiveEntryByWorkspace = { ...(homeState.lastActiveEntryByWorkspace ?? {}) };
-    if (lastActiveEntryByWorkspace[workspaceKey] === tabId) delete lastActiveEntryByWorkspace[workspaceKey];
-    onHomeStateChange({
-      ...homeState,
-      tabs: homeState.tabs.filter((tab) => tab.id !== tabId),
-      activeTabId: homeState.activeTabId === tabId ? null : homeState.activeTabId,
-      lastActiveEntryByWorkspace,
-    });
+    onHomeStateChange(removeEntryFromProjectWorkspace({
+      state: homeState,
+      projectId: getWorkspaceProjectId(homeState, workspaceKey) ?? 'all',
+      workspaceKey,
+      entryId: tabId,
+    }));
   };
 
   const activateWorkspace = (workspace: Workspace | null) => {

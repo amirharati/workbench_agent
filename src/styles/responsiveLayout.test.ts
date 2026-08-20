@@ -20,11 +20,13 @@ describe('responsive dashboard layout contract', () => {
   });
 
   it('lets gallery copy and controls use distinct full-width card rows', () => {
-    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__entry \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);[\s\S]*?grid-template-rows: auto auto minmax\(0, 1fr\) auto;/);
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__entry \{[\s\S]*?grid-template-columns: auto minmax\(0, 1fr\);[\s\S]*?grid-template-rows: auto auto minmax\(0, 1fr\) auto;/);
     expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__leading \{[\s\S]*?grid-row: 1;/);
-    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__entry-title \{[\s\S]*?grid-row: 2;/);
-    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__subtitle \{[\s\S]*?grid-row: 3;/);
-    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__footer \{[\s\S]*?grid-row: 4;/);
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__controls \{[\s\S]*?grid-column: 2;[\s\S]*?grid-row: 1;[\s\S]*?justify-content: flex-start;[\s\S]*?overflow-x: auto;/);
+    expect(css).not.toMatch(/data-content-view='gallery'\] \.ui-content-browser__controls \{[^}]*(?:border|background|box-shadow):/);
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__entry-title \{[\s\S]*?grid-column: 1 \/ -1;[\s\S]*?grid-row: 2;/);
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__subtitle \{[\s\S]*?grid-column: 1 \/ -1;[\s\S]*?grid-row: 3;/);
+    expect(css).toMatch(/data-content-view='gallery'\] \.ui-content-browser__footer \{[\s\S]*?grid-column: 1 \/ -1;[\s\S]*?grid-row: 4;/);
     expect(css).not.toContain(".ui-content-browser__entry:has(.ui-content-browser__actions)");
   });
 

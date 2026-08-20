@@ -111,7 +111,7 @@ describe('ContentBrowser', () => {
     await act(async () => root.unmount());
   });
 
-  it('uses a shared gallery footer for metadata and actions', () => {
+  it('keeps gallery actions in one control row separate from metadata and long copy', () => {
     const markup = renderToStaticMarkup(
       <ContentBrowser
         title="Library"
@@ -119,7 +119,7 @@ describe('ContentBrowser', () => {
           id: 'link-a',
           title: 'A useful article with a longer title',
           icon: 'L',
-          subtitle: 'A longer summary should use the full width below the icon and title.',
+          subtitle: 'https://example.com/a/very/long/path/that/must/not/paint/under/the/card/actions',
           meta: 'Jul 22',
           actions: <button type="button">Open</button>,
         }]}
@@ -131,8 +131,10 @@ describe('ContentBrowser', () => {
       />
     );
 
-    expect(markup).toContain('ui-content-browser__footer');
-    expect(markup).toMatch(/ui-content-browser__footer[\s\S]*?Jul 22[\s\S]*?Open/);
+    const host = document.createElement('div');
+    host.innerHTML = markup;
+    expect(host.querySelector('.ui-content-browser__footer')?.textContent).toBe('Jul 22');
+    expect(host.querySelector('.ui-content-browser__controls')?.textContent).toBe('Open');
   });
 
   it('mounts a bounded first batch for large libraries', () => {

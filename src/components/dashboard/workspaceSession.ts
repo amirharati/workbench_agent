@@ -373,6 +373,36 @@ function setProjectWorkspaceTabs(
   };
 }
 
+/** Remove one workspace entry without deleting the underlying library item. */
+export function removeEntryFromProjectWorkspace({
+  state,
+  projectId,
+  workspaceKey,
+  entryId,
+}: {
+  state: GlobalTabState;
+  projectId: string | 'all';
+  workspaceKey: string;
+  entryId: string;
+}): GlobalTabState {
+  const currentTabs = getProjectWorkspaceTabs(state, projectId, workspaceKey);
+  const nextTabs = currentTabs.filter((entry) => entry.id !== entryId);
+  if (nextTabs.length === currentTabs.length) return state;
+
+  const next = setProjectWorkspaceTabs(state, projectId, workspaceKey, nextTabs);
+  const lastActiveEntryByWorkspace = { ...(next.lastActiveEntryByWorkspace ?? {}) };
+  if (lastActiveEntryByWorkspace[workspaceKey] === entryId) {
+    delete lastActiveEntryByWorkspace[workspaceKey];
+  }
+  return {
+    ...next,
+    activeTabId: getActiveWorkspaceKey(next) === workspaceKey && next.activeTabId === entryId
+      ? null
+      : next.activeTabId,
+    lastActiveEntryByWorkspace,
+  };
+}
+
 /**
  * Move every entry from one named workspace into another workspace in the same
  * project, deduplicating before the source workspace is removed. Library items

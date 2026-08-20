@@ -95,37 +95,42 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
         <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
         {entry.subtitle && <span className="ui-content-browser__subtitle">{entry.subtitle}</span>}
       </span>
-      {entry.dragSource ? (
-        <button
-          type="button"
-          className="ui-content-browser__peek"
-          onClick={(event) => {
-            event.stopPropagation();
-            openPeek(dragItem.id, {
-              itemIds: previewItemIds,
-              sourceLabel: entry.dragSource?.kind === 'reference'
-                ? entry.dragSource.label
-                : entry.dragSource?.containerLabel,
-            });
-          }}
-          title="Preview without leaving this view"
-          aria-label={`Preview ${entry.title || 'item'}`}
-        >
-          <Eye size={12} />
-        </button>
-      ) : null}
-      {(entry.meta || entry.actions) && (
+      {entry.meta && (
         <span className="ui-content-browser__footer">
-          {entry.meta && <span className="ui-content-browser__meta">{entry.meta}</span>}
-          {entry.actions && (
+          <span className="ui-content-browser__meta">{entry.meta}</span>
+        </span>
+      )}
+      {(entry.dragSource || entry.actions) && (
+        <span
+          className="ui-content-browser__controls"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          {entry.dragSource ? (
+            <button
+              type="button"
+              className="ui-content-browser__peek"
+              onClick={() => {
+                openPeek(dragItem.id, {
+                  itemIds: previewItemIds,
+                  sourceLabel: entry.dragSource?.kind === 'reference'
+                    ? entry.dragSource.label
+                    : entry.dragSource?.containerLabel,
+                });
+              }}
+              title="Preview without leaving this view"
+              aria-label={`Preview ${entry.title || 'item'}`}
+            >
+              <Eye size={12} />
+            </button>
+          ) : null}
+          {entry.actions ? (
             <span
               className="ui-content-browser__actions"
-              onClick={(event) => event.stopPropagation()}
-              onKeyDown={(event) => event.stopPropagation()}
             >
               {entry.actions}
             </span>
-          )}
+          ) : null}
         </span>
       )}
     </ItemResultRow>

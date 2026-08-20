@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ExternalLink, FileText, Layers3, Link2, MonitorUp, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, Layers3, Link2, MonitorUp, Pencil, Play, Plus, Search, Trash2, X } from 'lucide-react';
 import type { Item, Project, Workspace } from '../../lib/db';
 import { deleteWorkspace, updateWorkspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, SavedWorkspaceSession } from './GlobalTabSystem';
@@ -21,6 +21,7 @@ import {
   getProjectSessionWorkspaceKey,
   getProjectWorkspaceTabs,
   mergeSavedProjectWorkspace,
+  removeEntryFromProjectWorkspace,
   renameSavedProjectWorkspace,
 } from './workspaceSession';
 import { formatGeneralWorkspaceName, formatProjectWorkspaceName } from './workspaceLabels';
@@ -288,6 +289,18 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
         projectId: selected.projectId,
       }
     : null;
+  const removeSelectedWorkspaceEntry = (entryId: string) => {
+    if (!selected || selected.kind !== 'project' || !selectedProjectWorkspaceKey) return;
+    onHomeStateChange(removeEntryFromProjectWorkspace({
+      state: homeState,
+      projectId: selected.projectId,
+      workspaceKey: selectedProjectWorkspaceKey,
+      entryId,
+    }));
+    setWorkspaceEntrySelection((previous) =>
+      previous[selected.key] === entryId ? { ...previous, [selected.key]: null } : previous
+    );
+  };
   const selectedWorkspaceEntries: ContentBrowseEntry[] = selected?.kind === 'project'
     ? selected.tabs.map((tab) => {
         const item = tab.kind === 'item' ? itemById.get(tab.itemId) : undefined;
@@ -302,6 +315,17 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
             ? item?.url ? 'Saved link' : 'Saved note'
             : tab.kind === 'url' ? 'Direct URL' : tab.kind === 'search' ? 'Search' : 'Saved list',
           searchText: item ? `${item.tags.join(' ')} ${item.notes ?? ''}` : tabDetail(tab),
+          actions: (
+            <button
+              type="button"
+              className="ui-button ui-button--ghost ui-button--compact"
+              onClick={() => removeSelectedWorkspaceEntry(tab.id)}
+              title={`Remove ${tabLabel(tab)} from workspace`}
+              aria-label={`Remove ${tabLabel(tab)} from workspace`}
+            >
+              <X size={11} />
+            </button>
+          ),
           dragSource: item && selectedProjectWorkspaceTarget ? selectedProjectWorkspaceTarget : undefined,
           dragItem: item,
           reorderTarget: item && selectedProjectWorkspaceTarget ? selectedProjectWorkspaceTarget : undefined,

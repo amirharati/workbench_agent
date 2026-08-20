@@ -2961,7 +2961,7 @@ button.ui-scope-chip {
 
 .ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__entry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   row-gap: 6px;
   min-height: var(--content-gallery-row-height);
@@ -3003,13 +3003,6 @@ button.ui-scope-chip {
   outline-offset: -2px;
 }
 
-.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__peek {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 1;
-}
-
 .ui-content-browser__leading {
   width: auto;
   min-width: 29px;
@@ -3025,6 +3018,7 @@ button.ui-scope-chip {
   border-radius: var(--radius-sm);
   background: var(--bg-subtle);
   color: var(--text-muted);
+  overflow: hidden;
 }
 
 .ui-content-browser__item-kind {
@@ -3067,7 +3061,7 @@ button.ui-scope-chip {
 }
 
 .ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__entry-title {
-  grid-column: 1;
+  grid-column: 1 / -1;
   grid-row: 2;
   display: -webkit-box;
   line-height: var(--leading-normal);
@@ -3087,9 +3081,10 @@ button.ui-scope-chip {
 }
 
 .ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__subtitle {
-  grid-column: 1;
+  grid-column: 1 / -1;
   grid-row: 3;
   display: -webkit-box;
+  min-height: 0;
   margin-top: 0;
   color: var(--text-muted);
   overflow-wrap: anywhere;
@@ -3109,12 +3104,13 @@ button.ui-scope-chip {
   align-items: center;
   justify-content: flex-end;
   gap: 7px;
+  overflow: hidden;
 }
 
 .ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__footer {
-  grid-column: 1;
+  grid-column: 1 / -1;
   grid-row: 4;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-self: end;
   min-height: var(--control-height-sm);
 }
@@ -3124,6 +3120,7 @@ button.ui-scope-chip {
   grid-row: 1;
   justify-self: start;
   margin-top: 0;
+  max-width: 100%;
 }
 
 .ui-content-browser__meta {
@@ -3132,6 +3129,31 @@ button.ui-scope-chip {
   font-size: 10px;
   line-height: var(--leading-tight);
   font-variant-numeric: tabular-nums;
+}
+
+.ui-content-browser__controls {
+  min-width: 0;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__controls {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  justify-self: start;
+  justify-content: flex-start;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__controls::-webkit-scrollbar {
+  display: none;
 }
 
 .ui-content-browser__actions {
@@ -3144,11 +3166,7 @@ button.ui-scope-chip {
 }
 
 .ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__actions {
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--bg-raised) 92%, transparent);
-  box-shadow: var(--shadow-sm);
+  flex-wrap: nowrap;
 }
 
 .ui-content-browser__entry:hover .ui-content-browser__actions,

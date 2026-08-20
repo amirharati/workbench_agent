@@ -20,6 +20,7 @@ import {
   getWorkspaceProjectId,
   loadWorkspaceIntoProjectSession,
   mergeSavedProjectWorkspace,
+  removeEntryFromProjectWorkspace,
   renameSavedProjectWorkspace,
   transferProjectWorkspaceEntry,
   transferItemBetweenWorkspaceTargets,
@@ -185,6 +186,45 @@ describe('workspace sessions', () => {
     const moved = transferProjectWorkspaceEntry({ state: copied, projectId: 'project-a', sourceWorkspaceKey: generalKey, targetWorkspaceKey: namedKey, entry, mode: 'move' });
     expect(moved.tabs).toEqual([]);
     expect(moved.workspaceSessionSnapshots?.[namedKey]).toEqual([entry]);
+  });
+
+  it('removes only the requested workspace entry and clears its selection state', () => {
+    const generalKey = getProjectSessionWorkspaceKey('project-a');
+    const namedKey = getHomebaseWorkspaceSessionKey('named-a');
+    const activeEntry = { kind: 'item' as const, id: 'active-entry', itemId: 'one', scopeProjectId: 'project-a' };
+    const savedEntry = { kind: 'item' as const, id: 'saved-entry', itemId: 'two', scopeProjectId: 'project-a' };
+    const state: GlobalTabState = {
+      ...GLOBAL_TAB_STATE_DEFAULT,
+      activeWorkspaceKey: generalKey,
+      activeTabId: activeEntry.id,
+      tabs: [activeEntry],
+      workspaceSessionSnapshots: { [namedKey]: [savedEntry] },
+      lastActiveEntryByWorkspace: {
+        [generalKey]: activeEntry.id,
+        [namedKey]: savedEntry.id,
+      },
+    };
+
+    const withoutSaved = removeEntryFromProjectWorkspace({
+      state,
+      projectId: 'project-a',
+      workspaceKey: namedKey,
+      entryId: savedEntry.id,
+    });
+    expect(withoutSaved.tabs).toEqual([activeEntry]);
+    expect(withoutSaved.workspaceSessionSnapshots?.[namedKey]).toEqual([]);
+    expect(withoutSaved.activeTabId).toBe(activeEntry.id);
+    expect(withoutSaved.lastActiveEntryByWorkspace).toEqual({ [generalKey]: activeEntry.id });
+
+    const withoutActive = removeEntryFromProjectWorkspace({
+      state: withoutSaved,
+      projectId: 'project-a',
+      workspaceKey: generalKey,
+      entryId: activeEntry.id,
+    });
+    expect(withoutActive.tabs).toEqual([]);
+    expect(withoutActive.activeTabId).toBeNull();
+    expect(withoutActive.lastActiveEntryByWorkspace).toEqual({});
   });
 
   it('creates an empty named workspace by default and only copies entries when requested', () => {
