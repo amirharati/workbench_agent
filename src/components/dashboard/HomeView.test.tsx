@@ -133,6 +133,12 @@ describe('HomeView search scope', () => {
     await act(async () => workspaceGalleryButton?.click());
     expect(host.querySelector('.ui-search-companion .ui-content-browser__body[data-content-view="gallery"]')).not.toBeNull();
 
+    const companion = host.querySelector<HTMLElement>('.ui-search-companion');
+    const divider = host.querySelector<HTMLElement>('[role="separator"][aria-label="Resize Workspace or Collection and Search results"]');
+    expect(companion?.style.height).toBe('330px');
+    await act(async () => divider?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })));
+    expect(companion?.style.height).toBe('340px');
+
     const collectionButton = [...host.querySelectorAll<HTMLButtonElement>('.ui-search-companion__switcher button')]
       .find((button) => button.textContent?.includes('Collection'));
     await act(async () => collectionButton?.click());

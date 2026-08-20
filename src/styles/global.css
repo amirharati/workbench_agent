@@ -2603,6 +2603,7 @@ button.ui-scope-chip {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow: hidden;
 }
 
 .ui-search-companion__switcher {
@@ -2637,7 +2638,13 @@ button.ui-scope-chip {
 }
 
 .ui-search-companion > .ui-content-browser {
-  height: min(290px, 34vh);
+  flex: 1;
+  min-height: 0;
+}
+
+.ui-search-companion__resizer {
+  flex-shrink: 0;
+  margin: 2px 20px 0;
 }
 
 .ui-content-browser {

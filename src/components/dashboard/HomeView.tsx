@@ -10,6 +10,7 @@ import { getHomeScopeItems, getProjectCollections, getProjectHomeSummary, reorde
 import { ProjectHomeWorkspace } from './ProjectHomeWorkspace';
 import { ContentBrowser, useContentBrowseMode, type ContentBrowseEntry } from './ContentBrowser';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
+import { Resizer } from './Resizer';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import {
   AllLibraryWorkspaceOverview,
@@ -48,6 +49,15 @@ import {
 import { uiPatterns } from '../../styles/uiPatterns';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
+
+const SEARCH_COMPANION_DEFAULT_HEIGHT = 330;
+const SEARCH_COMPANION_MIN_HEIGHT = 170;
+const SEARCH_RESULTS_MIN_HEIGHT = 220;
+
+function normalizeSearchCompanionHeight(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return SEARCH_COMPANION_DEFAULT_HEIGHT;
+  return Math.max(SEARCH_COMPANION_MIN_HEIGHT, Math.min(720, Math.round(value)));
+}
 
 // ===== Props =====
 interface HomeViewProps {
@@ -108,6 +118,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     projectLauncherQuery: '',
     searchCompanionView: 'workspace' as 'workspace' | 'collection',
     searchCompanionCollectionId: null as string | null,
+    searchCompanionHeight: SEARCH_COMPANION_DEFAULT_HEIGHT,
   }));
   const [selectedOverviewItemId, setSelectedOverviewItemId] = React.useState<string | null>(
     initialPageUi.selectedOverviewItemId
@@ -129,6 +140,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [searchCompanionCollectionId, setSearchCompanionCollectionId] = React.useState<string | null>(
     initialPageUi.searchCompanionCollectionId
   );
+  const [searchCompanionHeight, setSearchCompanionHeight] = React.useState(() =>
+    normalizeSearchCompanionHeight(initialPageUi.searchCompanionHeight)
+  );
+  const searchLayoutRef = React.useRef<HTMLDivElement>(null);
+  const searchCompanionRef = React.useRef<HTMLDivElement>(null);
   const [searchCollectionBrowseMode, setSearchCollectionBrowseMode] = useContentBrowseMode(
     'workbench:search-companion-collection-view:v1'
   );
@@ -145,8 +161,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
       projectLauncherQuery,
       searchCompanionView,
       searchCompanionCollectionId,
+      searchCompanionHeight,
     });
-  }, [allLibraryActiveView, allLibraryItemFilter, allLibraryWorkspaceView, pageUiKey, projectLauncherQuery, searchCompanionCollectionId, searchCompanionView, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
+  }, [allLibraryActiveView, allLibraryItemFilter, allLibraryWorkspaceView, pageUiKey, projectLauncherQuery, searchCompanionCollectionId, searchCompanionHeight, searchCompanionView, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
+
+  const resizeSearchCompanion = React.useCallback((delta: number) => {
+    setSearchCompanionHeight((previous) => {
+      const renderedHeight = searchCompanionRef.current?.getBoundingClientRect().height;
+      const current = renderedHeight && renderedHeight > 0 ? renderedHeight : previous;
+      const layoutHeight = searchLayoutRef.current?.getBoundingClientRect().height;
+      const maximum = layoutHeight && layoutHeight > 0
+        ? Math.max(SEARCH_COMPANION_MIN_HEIGHT, layoutHeight - SEARCH_RESULTS_MIN_HEIGHT)
+        : 720;
+      return Math.round(Math.max(SEARCH_COMPANION_MIN_HEIGHT, Math.min(maximum, current + delta)));
+    });
+  }, []);
 
   const activeProject = useMemo(
     () => (scopeProjectId === 'all' ? undefined : projects.find((project) => project.id === scopeProjectId)),
@@ -1113,8 +1142,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
         ) : null}
       </div>
       ) : librarySearch ? (
-        <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div className="ui-search-companion" style={{ flexShrink: 0, margin: '12px 20px 0' }}>
+        <div ref={searchLayoutRef} style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div
+          ref={searchCompanionRef}
+          className="ui-search-companion"
+          style={{
+            flexShrink: 0,
+            margin: '12px 20px 0',
+            height: searchCompanionHeight,
+            minHeight: SEARCH_COMPANION_MIN_HEIGHT,
+            maxHeight: `calc(100% - ${SEARCH_RESULTS_MIN_HEIGHT}px)`,
+          }}
+        >
           <div className="ui-search-companion__switcher" role="group" aria-label="Search companion view">
             <button
               type="button"
@@ -1202,6 +1241,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           ) : (
             <div className="ui-status">No collection is available in this scope.</div>
           )}
+        </div>
+        <div className="ui-search-companion__resizer">
+          <Resizer
+            direction="horizontal"
+            thickness={8}
+            ariaLabel="Resize Workspace or Collection and Search results"
+            onResize={resizeSearchCompanion}
+          />
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
         <ProductSearchView
