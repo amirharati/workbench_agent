@@ -212,7 +212,7 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
 
   useEffect(() => {
     if (!selectedId || !selectedEntryRef.current) return;
-    selectedEntryRef.current.scrollIntoView({ block: 'nearest' });
+    selectedEntryRef.current.scrollIntoView?.({ block: 'nearest' });
   }, [filterQuery, renderedEntries.length, selectedId]);
 
   return (

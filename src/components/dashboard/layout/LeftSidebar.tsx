@@ -6,7 +6,9 @@ import {
   ChevronLeft, 
   ChevronRight,
   ChevronDown,
+  Check,
   Folder,
+  Search,
   Terminal,
   Upload,
   Plus,
@@ -29,6 +31,7 @@ interface LeftSidebarProps {
   projects: Project[];
   collections: Collection[];
   items: Item[];
+  recentCollectionIdsByProject?: Record<string, string[]>;
   scopeProjectId: string | 'all';
   scopeCollectionId: string | 'all';
   onSelectProjectScope: (projectId: string | 'all') => void;
@@ -53,6 +56,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   projects,
   collections,
   items,
+  recentCollectionIdsByProject = {},
   scopeProjectId,
   scopeCollectionId,
   onSelectProjectScope,
@@ -62,24 +66,28 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onCreateCollection,
   onDeleteCollection,
 }) => {
-  const { getDropTargetProps } = useItemDragDrop();
+  const { activePayload, getDropTargetProps } = useItemDragDrop();
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const [collectionDropdownOpen, setCollectionDropdownOpen] = useState(false);
+  const [collectionQuery, setCollectionQuery] = useState('');
   const [dialog, setDialog] = useState<SidebarDialog | null>(null);
   const [dialogName, setDialogName] = useState('');
   const [dialogError, setDialogError] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const scopeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (scopeRef.current && !scopeRef.current.contains(e.target as Node)) {
         setProjectDropdownOpen(false);
+        setCollectionDropdownOpen(false);
+        setCollectionQuery('');
       }
     };
-    if (projectDropdownOpen) {
+    if (projectDropdownOpen || collectionDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [projectDropdownOpen]);
+  }, [collectionDropdownOpen, projectDropdownOpen]);
 
   type NavItem = {
     icon: React.ComponentType<any>;
@@ -143,6 +151,137 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const inboxCollection = scopeProjectIsInbox
     ? projectCollections.find((collection) => collection.isDefault) ?? projectCollections[0]
     : undefined;
+  const selectedCollection = scopeCollectionId === 'all'
+    ? undefined
+    : collections.find((collection) => collection.id === scopeCollectionId);
+  const normalizedCollectionQuery = collectionQuery.trim().toLowerCase();
+  const visibleCollectionGroups = useMemo(() => {
+    const projectsInScope = scopeProjectId === 'all'
+      ? projects
+      : projects.filter((project) => project.id === scopeProjectId);
+    return projectsInScope
+      .map((project) => ({
+        project,
+        collections: collections
+          .filter((collection) =>
+            (collection.primaryProjectId === project.id || collection.projectIds?.includes(project.id)) &&
+            (!normalizedCollectionQuery || `${collection.name} ${project.name}`.toLowerCase().includes(normalizedCollectionQuery))
+          )
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      .filter((group) => group.collections.length > 0);
+  }, [collections, normalizedCollectionQuery, projects, scopeProjectId]);
+  const recentCollectionOptions = useMemo(() => {
+    if (normalizedCollectionQuery) return [];
+    const projectsInScope = scopeProjectId === 'all'
+      ? projects
+      : projects.filter((project) => project.id === scopeProjectId);
+    return projectsInScope.flatMap((project) =>
+      (recentCollectionIdsByProject[project.id] ?? []).flatMap((collectionId) => {
+        const collection = collections.find((candidate) =>
+          candidate.id === collectionId &&
+          (candidate.primaryProjectId === project.id || candidate.projectIds?.includes(project.id))
+        );
+        return collection ? [{ project, collection }] : [];
+      })
+    ).slice(0, 5);
+  }, [collections, normalizedCollectionQuery, projects, recentCollectionIdsByProject, scopeProjectId]);
+  const recentCollectionKeys = new Set(
+    recentCollectionOptions.map(({ project, collection }) => `${project.id}:${collection.id}`)
+  );
+  const remainingCollectionGroups = normalizedCollectionQuery
+    ? visibleCollectionGroups
+    : visibleCollectionGroups
+        .map((group) => ({
+          ...group,
+          collections: group.collections.filter(
+            (collection) => !recentCollectionKeys.has(`${group.project.id}:${collection.id}`)
+          ),
+        }))
+        .filter((group) => group.collections.length > 0);
+  const selectedCollectionCount = selectedCollection
+    ? collectionItemCounts.get(selectedCollection.id)
+    : inboxCollection
+      ? collectionItemCounts.get(inboxCollection.id)
+      : undefined;
+  const selectedScopeItemCount = selectedCollectionCount
+    ? selectedCollectionCount.bookmarks + selectedCollectionCount.notes
+    : scopeProjectId === 'all'
+      ? items.length
+      : items.filter((item) => (item.collectionIds ?? []).some((collectionId) =>
+          projectCollections.some((collection) => collection.id === collectionId)
+        )).length;
+  const collectionScopeLabel = scopeProjectIsInbox
+    ? 'Incoming'
+    : selectedCollection?.name
+      ?? (scopeProjectId === 'all' ? 'All library' : 'All project items');
+
+  const closeCollectionMenu = () => {
+    setCollectionDropdownOpen(false);
+    setCollectionQuery('');
+  };
+
+  const selectCollection = (collection: Collection, projectId: string) => {
+    onSelectCollectionScope(collection.id, projectId);
+    closeCollectionMenu();
+  };
+
+  const selectAllCollections = () => {
+    onSelectCollectionScope('all', scopeProjectId === 'all' ? undefined : scopeProjectId);
+    closeCollectionMenu();
+  };
+
+  const renderCollectionOption = (project: Project, collection: Collection) => {
+    const counts = collectionItemCounts.get(collection.id) ?? { bookmarks: 0, notes: 0 };
+    const isSelected = scopeCollectionId === collection.id &&
+      (scopeProjectId === 'all' || scopeProjectId === project.id);
+    return (
+      <div className="ui-sidebar__collection-option-row" key={`${project.id}:${collection.id}`}>
+        <button
+          type="button"
+          className="ui-sidebar__collection-option"
+          {...getDropTargetProps({
+            kind: 'collection',
+            containerId: collection.id,
+            containerLabel: `${project.name} · ${collection.name}`,
+            projectId: project.id,
+          })}
+          data-active={isSelected ? 'true' : 'false'}
+          role="option"
+          aria-selected={isSelected}
+          onClick={() => selectCollection(collection, project.id)}
+        >
+          <span className="ui-sidebar__collection-option-copy">
+            <strong>{project.isDefault ? 'Incoming' : collection.name}</strong>
+            {scopeProjectId === 'all' ? <small>{project.name}</small> : null}
+          </span>
+          <span className="ui-sidebar__count">{counts.bookmarks + counts.notes}</span>
+          {isSelected ? <Check size={13} /> : null}
+        </button>
+        {onDeleteCollection && !collection.isDefault ? (
+          <button
+            type="button"
+            className="ui-sidebar__row-action ui-sidebar__row-action--danger"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              closeCollectionMenu();
+              setDialogError('');
+              setDialog({
+                type: 'delete-collection',
+                collectionId: collection.id,
+                collectionName: collection.name,
+              });
+            }}
+            title={`Delete ${collection.name}`}
+            aria-label={`Delete ${collection.name}`}
+          >
+            <Trash2 size={12} />
+          </button>
+        ) : null}
+      </div>
+    );
+  };
 
   const handleAddProject = async (name: string) => {
     if (!onCreateProject) return;
@@ -300,12 +439,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <nav className="ui-sidebar__nav scrollbar ui-scroll-footer-safe" aria-label="Primary navigation">
         {/* 1. PROJECT SELECTOR - Simple dropdown */}
         {!isCollapsed && (
-          <div ref={dropdownRef} className="ui-sidebar__scope">
+          <div ref={scopeRef} className="ui-sidebar__scope">
             <div className="ui-sidebar__scope-controls">
               <button
                 type="button"
                 className="ui-sidebar__project-trigger"
-                onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
+                onClick={() => {
+                  setProjectDropdownOpen(!projectDropdownOpen);
+                  closeCollectionMenu();
+                }}
                 aria-haspopup="listbox"
                 aria-expanded={projectDropdownOpen}
               >
@@ -371,6 +513,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   onClick={() => {
                     onSelectProjectScope('all');
                     setProjectDropdownOpen(false);
+                    setCollectionQuery('');
                   }}
                 >
                   All Projects
@@ -386,6 +529,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       onClick={() => {
                         onSelectProjectScope(project.id);
                         setProjectDropdownOpen(false);
+                        setCollectionQuery('');
                       }}
                     >
                       {project.name}
@@ -414,22 +558,49 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 ))}
               </div>
             )}
-          </div>
-        )}
 
-        {/* 2. COLLECTIONS - Persistent organization destinations across content views */}
-        {!isCollapsed && (
-          <section className="ui-sidebar__section" aria-labelledby="sidebar-collections-heading">
-            <div className="ui-sidebar__section-heading" id="sidebar-collections-heading">
-              <span>Collections</span>
-              {onCreateCollection && scopeProjectId !== 'all' && !scopeProjectIsInbox && (
+            <div
+              className="ui-sidebar__scope-controls"
+              onDragEnter={(event) => {
+                if (!activePayload || scopeProjectIsInbox) return;
+                event.preventDefault();
+                setProjectDropdownOpen(false);
+                setCollectionDropdownOpen(true);
+              }}
+            >
+              <button
+                type="button"
+                className="ui-sidebar__collection-trigger"
+                onClick={() => {
+                  if (scopeProjectIsInbox) {
+                    onSelectCollectionScope('all', scopeProjectId);
+                    return;
+                  }
+                  setProjectDropdownOpen(false);
+                  setCollectionDropdownOpen((open) => !open);
+                  if (collectionDropdownOpen) setCollectionQuery('');
+                }}
+                aria-haspopup={scopeProjectIsInbox ? undefined : 'listbox'}
+                aria-expanded={scopeProjectIsInbox ? undefined : collectionDropdownOpen}
+                title={scopeProjectIsInbox ? 'Incoming' : 'Choose collection'}
+              >
+                <span className="ui-sidebar__project-label">
+                  <BookMarked size={14} />
+                  <span className="ui-sidebar__truncate">{collectionScopeLabel}</span>
+                </span>
+                <span className="ui-sidebar__collection-trigger-meta">
+                  <span className="ui-sidebar__count">{selectedScopeItemCount}</span>
+                  {!scopeProjectIsInbox ? <ChevronDown className="ui-sidebar__project-chevron" size={14} /> : null}
+                </span>
+              </button>
+              {onCreateCollection && scopeProjectId !== 'all' && !scopeProjectIsInbox ? (
                 <button
                   type="button"
-                  className="ui-sidebar__section-action"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (scopeProjectId === 'all') return;
+                  className="ui-sidebar__scope-action"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeCollectionMenu();
                     setDialogName('');
                     setDialogError('');
                     setDialog({ type: 'create-collection', projectId: scopeProjectId });
@@ -437,137 +608,63 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   title="Add collection"
                   aria-label="Add collection"
                 >
-                  <Plus size={12} />
+                  <Plus size={14} />
                 </button>
-              )}
+              ) : null}
             </div>
-            <div className="ui-sidebar__link-list">
-              {scopeProjectId === 'all' ? (
-                projects.map((project) => {
-                  const groupedCollections = collections.filter(
-                    (collection) =>
-                      collection.primaryProjectId === project.id ||
-                      (Array.isArray(collection.projectIds) && collection.projectIds.includes(project.id))
-                  );
-                  if (groupedCollections.length === 0) return null;
-                  return (
-                    <div className="ui-sidebar__collection-group" key={project.id}>
-                      <button
-                        type="button"
-                        className="ui-sidebar__collection-group-label"
-                        onClick={() => onSelectProjectScope(project.id)}
-                        title={`Use ${project.name} as the current scope`}
-                      >
-                        {project.name}
-                      </button>
-                      {groupedCollections.map((collection) => {
-                        const counts = collectionItemCounts.get(collection.id) ?? { bookmarks: 0, notes: 0 };
-                        return (
-                          <button
-                            key={`${project.id}:${collection.id}`}
-                            type="button"
-                            className="ui-sidebar__nav-item ui-sidebar__nav-item--nested"
-                            {...getDropTargetProps({
-                              kind: 'collection',
-                              containerId: collection.id,
-                              containerLabel: `${project.name} · ${collection.name}`,
-                              projectId: project.id,
-                            })}
-                            onClick={() => onSelectCollectionScope(collection.id, project.id)}
-                          >
-                            <span className="ui-sidebar__nav-label">{project.isDefault ? 'Incoming' : collection.name}</span>
-                            <span className="ui-sidebar__count">{counts.bookmarks + counts.notes}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })
-              ) : scopeProjectIsInbox ? (
-                <button
-                  type="button"
-                  className="ui-sidebar__nav-item"
-                  {...(inboxCollection ? getDropTargetProps({
-                    kind: 'collection',
-                    containerId: inboxCollection.id,
-                    containerLabel: `${selectedProject?.name ?? 'Inbox'} · ${inboxCollection.name}`,
-                    projectId: scopeProjectId,
-                  }) : {})}
-                  data-active="true"
-                  aria-current="page"
-                  onClick={() => onSelectCollectionScope('all', scopeProjectId)}
-                >
-                  <span className="ui-sidebar__nav-label">Incoming</span>
-                  {inboxCollection ? (
-                    <span className="ui-sidebar__count">
-                      {(collectionItemCounts.get(inboxCollection.id)?.bookmarks ?? 0) +
-                        (collectionItemCounts.get(inboxCollection.id)?.notes ?? 0)}
-                    </span>
-                  ) : null}
-                </button>
-              ) : (
-                <>
+
+            {collectionDropdownOpen && !scopeProjectIsInbox ? (
+              <div className="ui-sidebar__collection-menu" aria-label="Choose collection">
+                <label className="ui-sidebar__collection-search">
+                  <Search size={13} aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={collectionQuery}
+                    onChange={(event) => setCollectionQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') closeCollectionMenu();
+                    }}
+                    placeholder="Find a collection…"
+                    aria-label="Find a collection"
+                  />
+                </label>
+                <div className="ui-sidebar__collection-options scrollbar" role="listbox" aria-label="Collections">
                   <button
                     type="button"
-                    className="ui-sidebar__nav-item"
+                    className="ui-sidebar__collection-option"
                     data-active={scopeCollectionId === 'all' ? 'true' : 'false'}
-                    aria-current={scopeCollectionId === 'all' ? 'page' : undefined}
-                    onClick={() => onSelectCollectionScope('all', scopeProjectId)}
+                    role="option"
+                    aria-selected={scopeCollectionId === 'all'}
+                    onClick={selectAllCollections}
                   >
-                    All
+                    <span className="ui-sidebar__collection-option-copy">
+                      <strong>{scopeProjectId === 'all' ? 'All library' : 'All project items'}</strong>
+                      <small>{scopeProjectId === 'all' ? 'Every project and collection' : selectedProject?.name}</small>
+                    </span>
+                    {scopeCollectionId === 'all' ? <Check size={13} /> : null}
                   </button>
-                  {projectCollections.map((collection) => {
-                const counts = collectionItemCounts.get(collection.id) ?? { bookmarks: 0, notes: 0 };
-                const isSelected = scopeCollectionId === collection.id;
-                return (
-                  <div key={collection.id} className="ui-sidebar__nav-row">
-                    <button
-                      type="button"
-                      className="ui-sidebar__nav-item"
-                      {...getDropTargetProps({
-                        kind: 'collection',
-                        containerId: collection.id,
-                        containerLabel: `${selectedProject?.name ?? 'Project'} · ${collection.name}`,
-                        projectId: scopeProjectId,
-                      })}
-                      data-active={isSelected ? 'true' : 'false'}
-                      aria-current={isSelected ? 'page' : undefined}
-                      onClick={() => onSelectCollectionScope(collection.id, scopeProjectId)}
-                  >
-                    <span className="ui-sidebar__nav-label">
-                      {collection.name}
-                    </span>
-                    <span className="ui-sidebar__count">
-                      {counts.bookmarks + counts.notes}
-                    </span>
-                    </button>
-                    {onDeleteCollection && !collection.isDefault && (
-                      <button
-                        type="button"
-                        className="ui-sidebar__row-action ui-sidebar__row-action--danger"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setDialogError('');
-                          setDialog({
-                            type: 'delete-collection',
-                            collectionId: collection.id,
-                            collectionName: collection.name,
-                          });
-                        }}
-                        title="Delete collection"
-                        aria-label={`Delete ${collection.name}`}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    )}
-                  </div>
-                );
-                  })}
-                </>
-              )}
-            </div>
-          </section>
+                  {recentCollectionOptions.length > 0 ? (
+                    <div className="ui-sidebar__collection-group">
+                      <div className="ui-sidebar__collection-group-heading">Recent</div>
+                      {recentCollectionOptions.map(({ project, collection }) =>
+                        renderCollectionOption(project, collection)
+                      )}
+                    </div>
+                  ) : null}
+                  {remainingCollectionGroups.length === 0 && recentCollectionOptions.length === 0 ? (
+                    <div className="ui-sidebar__collection-empty">No collections match “{collectionQuery.trim()}”.</div>
+                  ) : remainingCollectionGroups.map(({ project, collections: groupCollections }) => (
+                    <div className="ui-sidebar__collection-group" key={project.id}>
+                      {scopeProjectId === 'all' ? (
+                        <div className="ui-sidebar__collection-group-heading">{project.name}</div>
+                      ) : null}
+                      {groupCollections.map((collection) => renderCollectionOption(project, collection))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
         )}
 
         {/* Divider before nav sections */}

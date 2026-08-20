@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ExternalLink, FolderKanban, Layers3, MonitorUp, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, Layers3, Link2, MonitorUp, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
 import type { Item, Project, Workspace } from '../../lib/db';
 import { deleteWorkspace, updateWorkspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, SavedWorkspaceSession } from './GlobalTabSystem';
@@ -7,6 +7,7 @@ import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { TextPromptDialog } from './TextPromptDialog';
 import { uiPatterns } from '../../styles/uiPatterns';
+import { ContentBrowser, useContentBrowseMode, type ContentBrowseEntry } from './ContentBrowser';
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
@@ -158,6 +159,10 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     scopeProjectId !== 'all' ? scopeProjectId : projects[0]?.id ?? ''
   );
   const [workspaceManagerMode, setWorkspaceManagerMode] = useState<'list' | 'create' | null>(null);
+  const [workspaceEntrySelection, setWorkspaceEntrySelection] = useState<Record<string, string | null>>({});
+  const [workspaceEntryBrowseMode, setWorkspaceEntryBrowseMode] = useContentBrowseMode(
+    'workbench:workspaces-page-entry-view:v1'
+  );
   const didInitializeSelectionRef = useRef(false);
 
   const rows = useMemo<ManagedWorkspaceRow[]>(() => {
@@ -266,6 +271,70 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
         {url}
       </ExtensionPageUrlLink>
     );
+  };
+
+  const selectedProjectWorkspaceKey = selected?.kind === 'project'
+    ? selected.projectId === 'all'
+      ? getProjectSessionWorkspaceKey('all')
+      : selected.live
+        ? getProjectSessionWorkspaceKey(selected.projectId)
+        : getHomebaseWorkspaceSessionKey(selected.session!.id)
+    : null;
+  const selectedProjectWorkspaceTarget = selected?.kind === 'project' && selectedProjectWorkspaceKey
+    ? {
+        kind: 'workspace' as const,
+        containerId: selectedProjectWorkspaceKey,
+        containerLabel: selected.name,
+        projectId: selected.projectId,
+      }
+    : null;
+  const selectedWorkspaceEntries: ContentBrowseEntry[] = selected?.kind === 'project'
+    ? selected.tabs.map((tab) => {
+        const item = tab.kind === 'item' ? itemById.get(tab.itemId) : undefined;
+        return {
+          id: tab.id,
+          title: tabLabel(tab),
+          icon: item
+            ? item.url ? <Link2 size={12} /> : <FileText size={12} />
+            : tab.kind === 'search' ? <Search size={12} /> : <ExternalLink size={12} />,
+          subtitle: tabDetailContent(tab),
+          meta: tab.kind === 'item'
+            ? item?.url ? 'Saved link' : 'Saved note'
+            : tab.kind === 'url' ? 'Direct URL' : tab.kind === 'search' ? 'Search' : 'Saved list',
+          searchText: item ? `${item.tags.join(' ')} ${item.notes ?? ''}` : tabDetail(tab),
+          dragSource: item && selectedProjectWorkspaceTarget ? selectedProjectWorkspaceTarget : undefined,
+          dragItem: item,
+          reorderTarget: item && selectedProjectWorkspaceTarget ? selectedProjectWorkspaceTarget : undefined,
+        };
+      })
+    : selected?.kind === 'browser'
+      ? selected.workspace.windows.flatMap((windowGroup, windowIndex) =>
+          windowGroup.tabs.map((tab, tabIndex) => ({
+            id: `${windowGroup.id}:${tabIndex}`,
+            title: tab.title || 'Untitled',
+            icon: <ExternalLink size={12} />,
+            subtitle: (
+              <ExtensionPageUrlLink
+                url={tab.url}
+                className="ui-url-link"
+                style={entryDetailStyle}
+                title={`Open ${tab.url}`}
+              >
+                {tab.url}
+              </ExtensionPageUrlLink>
+            ),
+            meta: windowGroup.name || `Window ${windowIndex + 1}`,
+            searchText: `${windowGroup.name ?? ''} ${tab.url}`,
+          }))
+        )
+      : [];
+  const selectedWorkspaceEntryId = selected
+    ? workspaceEntrySelection[selected.key] ?? null
+    : null;
+
+  const selectWorkspaceEntry = (entryId: string) => {
+    if (!selected) return;
+    setWorkspaceEntrySelection((previous) => ({ ...previous, [selected.key]: entryId }));
   };
 
   const projectTabUrls = (tabs: readonly GlobalTab[]) => [
@@ -478,8 +547,18 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
                   <button type="button" onClick={() => activateProjectRow(selected)} style={primaryButtonStyle}><Play size={12} /> Open workspace</button>
                 </div>
               </div>
-              <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                {selected.tabs.length === 0 ? <div style={emptyStyle}>This workspace is empty.</div> : selected.tabs.map((tab) => <div key={tab.id} style={entryRowStyle}><span style={{ width: 27, height: 27, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)', background: 'var(--bg-hover)', color: 'var(--text-faint)' }}>{tab.kind === 'item' && !getWorkspaceTabUrl(tab, itemById) ? <FolderKanban size={12} /> : <ExternalLink size={12} />}</span><span style={{ minWidth: 0, flex: 1 }}><strong style={entryTitleStyle}>{tabLabel(tab)}</strong>{tabDetailContent(tab)}</span></div>)}
+              <div className="ui-workspaces-detail-browser">
+                <ContentBrowser
+                  title="Workspace entries"
+                  entries={selectedWorkspaceEntries}
+                  selectedId={selectedWorkspaceEntryId}
+                  onSelect={selectWorkspaceEntry}
+                  mode={workspaceEntryBrowseMode}
+                  onModeChange={setWorkspaceEntryBrowseMode}
+                  emptyMessage="This workspace is empty."
+                  ariaLabel={`${selected.name} entries`}
+                  dropTarget={selectedProjectWorkspaceTarget ?? undefined}
+                />
               </div>
             </>
           ) : (
@@ -502,8 +581,17 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
                 </div>
                 {notice && <div role="status" style={{ marginTop: 6, color: 'var(--accent)', fontSize: 'var(--text-xs)' }}>{notice}</div>}
               </div>
-              <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 10 }}>
-                {selected.workspace.windows.map((windowGroup, index) => <div key={windowGroup.id} style={{ marginBottom: 12 }}><div style={{ marginBottom: 5, color: 'var(--text-faint)', fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase' }}>{windowGroup.name || `Window ${index + 1}`} · {windowGroup.tabs.length} tabs</div>{windowGroup.tabs.map((tab, tabIndex) => <div key={`${windowGroup.id}:${tabIndex}`} style={entryRowStyle}><ExternalLink size={12} color="var(--text-faint)" /><span style={{ minWidth: 0, flex: 1 }}><strong style={entryTitleStyle}>{tab.title || 'Untitled'}</strong><ExtensionPageUrlLink url={tab.url} className="ui-url-link" style={entryDetailStyle} title={`Open ${tab.url}`}>{tab.url}</ExtensionPageUrlLink></span></div>)}</div>)}
+              <div className="ui-workspaces-detail-browser">
+                <ContentBrowser
+                  title="Snapshot tabs"
+                  entries={selectedWorkspaceEntries}
+                  selectedId={selectedWorkspaceEntryId}
+                  onSelect={selectWorkspaceEntry}
+                  mode={workspaceEntryBrowseMode}
+                  onModeChange={setWorkspaceEntryBrowseMode}
+                  emptyMessage="This browser snapshot is empty."
+                  ariaLabel={`${selected.name} browser tabs`}
+                />
               </div>
             </>
           )}
@@ -557,7 +645,5 @@ const secondaryButtonStyle = uiPatterns.secondaryButton;
 const primaryButtonStyle = uiPatterns.primaryButton;
 const iconButtonStyle = uiPatterns.iconButton;
 const selectStyle: React.CSSProperties = { ...uiPatterns.select, minWidth: 145, maxWidth: 220 };
-const entryRowStyle: React.CSSProperties = { minHeight: 43, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid var(--border)' };
-const entryTitleStyle: React.CSSProperties = { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', fontSize: 'var(--text-sm)' };
 const entryDetailStyle: React.CSSProperties = { display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' };
 const activeBadgeStyle: React.CSSProperties = { padding: '1px 5px', borderRadius: 999, background: 'var(--accent)', color: '#fff', fontSize: 9, fontWeight: 700, textTransform: 'uppercase' };

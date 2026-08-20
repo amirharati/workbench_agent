@@ -107,6 +107,23 @@ export interface ItemTab {
   }[];
 }
 
+export function resolveRememberedProjectCollection(
+  projectId: string | 'all',
+  projects: readonly Project[],
+  collections: readonly Collection[],
+  recentCollectionIdsByProject: Readonly<Record<string, readonly string[]>>
+): string | 'all' {
+  if (projectId === 'all') return 'all';
+  const project = projects.find((candidate) => candidate.id === projectId);
+  if (!project || project.isDefault) return 'all';
+  return (recentCollectionIdsByProject[project.id] ?? []).find((collectionId) =>
+    collections.some((collection) =>
+      collection.id === collectionId &&
+      (collection.primaryProjectId === project.id || collection.projectIds?.includes(project.id))
+    )
+  ) ?? 'all';
+}
+
 const FULL_PAGE_VIEWS = new Set<DashboardView>([
   'settings',
   'trash',
@@ -334,7 +351,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       ? initialNav.recentProjectAccessIds
       : rememberProjectAccess(initialNav.recentProjectAccessIds, initialNav.scopeProjectId)
   );
-  const [, setRecentCollectionIdsByProject] = useState<Record<string, string[]>>(() => {
+  const [recentCollectionIdsByProject, setRecentCollectionIdsByProject] = useState<Record<string, string[]>>(() => {
     if (initialNav.scopeProjectId === 'all' || initialNav.scopeCollectionId === 'all') {
       return initialNav.recentCollectionIdsByProject;
     }
@@ -809,9 +826,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   };
 
   const handleSelectProjectScope = (projectId: string | 'all') => {
+    const restoredCollectionId = resolveRememberedProjectCollection(
+      projectId,
+      projects,
+      collections,
+      recentCollectionIdsByProject
+    );
     setScopeNavigationRevision((revision) => revision + 1);
     setScopeProjectId(projectId);
-    setScopeCollectionId('all');
+    setScopeCollectionId(restoredCollectionId);
     if (projectId !== 'all') rememberProjectScope(projectId);
     setGlobalTabState((previous) => {
       const workspaceKey = getPreferredWorkspaceKey(previous, projectId);
@@ -823,7 +846,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
       saveGlobalTabState(next);
       return next;
     });
-    patchNavigationState({ scopeProjectId: projectId, scopeCollectionId: 'all' });
+    patchNavigationState({ scopeProjectId: projectId, scopeCollectionId: restoredCollectionId });
   };
 
   const handleSelectCollectionScope = (collectionId: string, projectId?: string) => {
@@ -1456,6 +1479,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
           projects={projects}
           collections={collections}
           items={items}
+          recentCollectionIdsByProject={recentCollectionIdsByProject}
           scopeProjectId={scopeProjectId}
           scopeCollectionId={scopeCollectionId}
           onSelectProjectScope={handleSelectProjectScope}

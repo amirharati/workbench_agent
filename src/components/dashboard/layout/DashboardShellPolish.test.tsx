@@ -13,6 +13,7 @@ import {
   isFullMiddleDashboardView,
   isFullPageDashboardView,
   loadRestoredBrowseItemId,
+  resolveRememberedProjectCollection,
   resolveShellInspectorItemId,
 } from './DashboardLayout';
 import { SHELL_LAYOUT_DEFAULTS } from '../../../lib/shell/shellLayoutState';
@@ -247,12 +248,12 @@ describe('dashboard shell polish contracts', () => {
       );
     });
 
-    const collectionSection = host.querySelector('#sidebar-collections-heading')?.closest('section');
-    const scopeButtons = collectionSection?.querySelectorAll<HTMLButtonElement>('.ui-sidebar__nav-item');
-    expect(scopeButtons).toHaveLength(1);
-    expect(scopeButtons?.[0]?.textContent).toContain('Incoming');
-    expect(scopeButtons?.[0]?.textContent).not.toContain('All');
-    await act(async () => scopeButtons?.[0]?.click());
+    const collectionTrigger = host.querySelector<HTMLButtonElement>('.ui-sidebar__collection-trigger');
+    expect(collectionTrigger?.textContent).toContain('Incoming');
+    expect(collectionTrigger?.textContent).not.toContain('All');
+    expect(collectionTrigger?.hasAttribute('aria-haspopup')).toBe(false);
+    expect(host.querySelector('[aria-label="Choose collection"]')).toBeNull();
+    await act(async () => collectionTrigger?.click());
     expect(onSelectCollectionScope).toHaveBeenCalledWith('all', 'inbox');
 
     await act(async () => root.unmount());
@@ -283,6 +284,7 @@ describe('dashboard shell polish contracts', () => {
             projectIds: ['project-a'],
           }]}
           items={[]}
+          recentCollectionIdsByProject={{ 'project-a': ['sources'] }}
           scopeProjectId="project-a"
           scopeCollectionId="all"
           onSelectProjectScope={vi.fn()}
@@ -291,11 +293,19 @@ describe('dashboard shell polish contracts', () => {
       );
     });
 
-    const collectionSection = host.querySelector('#sidebar-collections-heading')?.closest('section');
-    const scopeButtons = collectionSection?.querySelectorAll<HTMLButtonElement>('.ui-sidebar__nav-item');
-    expect([...scopeButtons ?? []].map((button) => button.textContent?.trim())).toEqual(['All', 'Sources0']);
-    await act(async () => scopeButtons?.[0]?.click());
-    await act(async () => scopeButtons?.[1]?.click());
+    const collectionTrigger = host.querySelector<HTMLButtonElement>('.ui-sidebar__collection-trigger');
+    expect(collectionTrigger?.textContent).toContain('All project items');
+    expect(host.textContent).not.toContain('Sources');
+
+    await act(async () => collectionTrigger?.click());
+    expect(host.textContent).toContain('Recent');
+    let scopeButtons = host.querySelectorAll<HTMLButtonElement>('.ui-sidebar__collection-option');
+    expect([...scopeButtons].map((button) => button.textContent?.trim())).toEqual(['All project itemsResearch', 'Sources0']);
+    await act(async () => scopeButtons[0]?.click());
+
+    await act(async () => collectionTrigger?.click());
+    scopeButtons = host.querySelectorAll<HTMLButtonElement>('.ui-sidebar__collection-option');
+    await act(async () => scopeButtons[1]?.click());
     expect(onSelectCollectionScope).toHaveBeenNthCalledWith(1, 'all', 'project-a');
     expect(onSelectCollectionScope).toHaveBeenNthCalledWith(2, 'sources', 'project-a');
 
@@ -326,13 +336,82 @@ describe('dashboard shell polish contracts', () => {
       );
     });
 
-    expect(host.textContent).toContain('Sources');
-    const sources = [...host.querySelectorAll<HTMLButtonElement>('.ui-sidebar__nav-item')]
+    expect(host.textContent).not.toContain('Sources');
+    await act(async () => host.querySelector<HTMLButtonElement>('.ui-sidebar__collection-trigger')?.click());
+    const sources = [...host.querySelectorAll<HTMLButtonElement>('.ui-sidebar__collection-option')]
       .find((button) => button.textContent?.includes('Sources'));
     await act(async () => sources?.click());
     expect(onSelectCollectionScope).toHaveBeenCalledWith('sources', 'project-a');
 
     await act(async () => root.unmount());
     host.remove();
+  });
+
+  it('keeps a large collection set out of the navigation flow and filters it in the picker', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const project = { id: 'project-a', name: 'Research', isDefault: false, created_at: 1, updated_at: 1 };
+    const collections = Array.from({ length: 40 }, (_, index) => ({
+      id: `collection-${index}`,
+      name: `Collection ${String(index).padStart(2, '0')}`,
+      isDefault: false,
+      created_at: 1,
+      updated_at: 1,
+      primaryProjectId: project.id,
+      projectIds: [project.id],
+    }));
+
+    await act(async () => {
+      root.render(
+        <LeftSidebar
+          isCollapsed={false}
+          onToggle={vi.fn()}
+          activeView="home"
+          onSelectView={vi.fn()}
+          projects={[project]}
+          collections={collections}
+          items={[]}
+          scopeProjectId={project.id}
+          scopeCollectionId="all"
+          onSelectProjectScope={vi.fn()}
+          onSelectCollectionScope={vi.fn()}
+        />
+      );
+    });
+
+    expect(host.querySelectorAll('.ui-sidebar__collection-option')).toHaveLength(0);
+    expect(host.querySelector('.ui-sidebar__nav')?.textContent).not.toContain('Collection 39');
+    await act(async () => host.querySelector<HTMLButtonElement>('.ui-sidebar__collection-trigger')?.click());
+    expect(host.querySelectorAll('.ui-sidebar__collection-option')).toHaveLength(41);
+
+    const search = host.querySelector<HTMLInputElement>('[aria-label="Find a collection"]');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      setter?.call(search, '39');
+      search?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect([...host.querySelectorAll<HTMLButtonElement>('.ui-sidebar__collection-option')]
+      .map((button) => button.textContent)).toEqual(['All project itemsResearch', 'Collection 390']);
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it('restores the latest valid collection when returning to a project', () => {
+    const project = { id: 'project-a', name: 'Research', isDefault: false, created_at: 1, updated_at: 1 };
+    const collection = {
+      id: 'sources', name: 'Sources', isDefault: false, created_at: 1, updated_at: 1,
+      primaryProjectId: project.id, projectIds: [project.id],
+    };
+    expect(resolveRememberedProjectCollection(
+      project.id,
+      [project],
+      [collection],
+      { [project.id]: ['missing', collection.id] }
+    )).toBe(collection.id);
+    expect(resolveRememberedProjectCollection('all', [project], [collection], {
+      [project.id]: [collection.id],
+    })).toBe('all');
   });
 });

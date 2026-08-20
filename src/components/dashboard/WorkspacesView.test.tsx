@@ -120,4 +120,53 @@ describe('WorkspacesView', () => {
     await act(async () => root.unmount());
     host.remove();
   });
+
+  it('uses the shared selectable List and Gallery browser for workspace items and drag/drop', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <WorkspacesView
+          projects={[project]}
+          items={[item]}
+          workspaces={[]}
+          homeState={{
+            ...homeState,
+            activeWorkspaceKey: 'workspace:project:project-a:general',
+            preferredWorkspaceKeyByProject: { 'project-a': 'workspace:project:project-a:general' },
+            workspaceSessionSnapshots: {
+              ...homeState.workspaceSessionSnapshots,
+              'workspace:project:project-a:general': [
+                { kind: 'item', id: 'live-item', itemId: item.id, scopeProjectId: project.id },
+              ],
+            },
+          }}
+          scopeProjectId={project.id}
+          onHomeStateChange={vi.fn()}
+        />
+      );
+    });
+
+    const browser = host.querySelector<HTMLElement>('[aria-label="Research — General entries"]');
+    expect(browser).not.toBeNull();
+    expect(browser?.classList.contains('ui-item-inline-drop-target')).toBe(true);
+    const entry = browser?.querySelector<HTMLElement>('[data-content-entry]');
+    expect(entry?.textContent).toContain('Docs');
+    expect(entry?.getAttribute('data-item-drag-source')).toBe('true');
+    expect(entry?.getAttribute('draggable')).toBe('true');
+
+    await act(async () => entry?.click());
+    expect(entry?.getAttribute('data-selected')).toBe('true');
+    expect(browser?.querySelector('[aria-label="Preview Docs"]')).not.toBeNull();
+
+    await act(async () => browser?.querySelector<HTMLButtonElement>('[aria-label="Gallery view"]')?.click());
+    expect(browser?.querySelector('[data-content-view="gallery"]')).not.toBeNull();
+    await act(async () => browser?.querySelector<HTMLButtonElement>('[aria-label="List view"]')?.click());
+    expect(browser?.querySelector('[data-content-view="list"]')).not.toBeNull();
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
 });
