@@ -9,8 +9,8 @@ import {
   markContentDatabaseExported,
   putContentDocument,
 } from './contentDatabase';
+import { DB_OWNER_PROTOCOL_VERSION } from '../dbOwnerProtocol';
 
-const CONTENT_WORKER_PROTOCOL_VERSION = 16;
 // Fixed maximum delay from the first dirty write. Do not debounce by resetting
 // this timer: a continuous large import must still publish bounded checkpoints.
 const SNAPSHOT_MAX_DELAY_MS = 60_000;
@@ -86,7 +86,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return CONTENT_WORKER_PROTOCOL_VERSION;
+      return DB_OWNER_PROTOCOL_VERSION;
     case 'put': {
       const result = await putContentDocument(args[0] as Parameters<typeof putContentDocument>[0]);
       scheduleContentSnapshot();

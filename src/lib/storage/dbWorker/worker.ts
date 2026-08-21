@@ -48,6 +48,7 @@ import {
   submitPipelineJob,
   yieldPipelineJob,
 } from './pipelineJobStore';
+import { DB_OWNER_PROTOCOL_VERSION } from '../dbOwnerProtocol';
 
 markDbWorkerProcess();
 setStorageBackend('opfs');
@@ -122,6 +123,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'findSimilarVectorScores',
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
+  'getSidePanelStartupProjection',
   'getContainerTrash',
   'getPipelineBadgeEntries',
   // Durable pipeline mutations publish coordinator-specific snapshots. They
@@ -517,7 +519,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'ping':
       return 'pong';
     case 'getProtocolVersion':
-      return 15;
+      return DB_OWNER_PROTOCOL_VERSION;
     case 'getStatus': {
       await revisionTracker.refreshFromStorage();
       const mirror = getMirrorStatus();
@@ -549,6 +551,15 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       });
       scheduleSimilarityVectorWarm();
       return dashboardStartupProjectionCache;
+    }
+    case 'getSidePanelStartupProjection': {
+      // The side panel only needs organization choices at startup. Do not send
+      // every item or warm the similarity index merely because the panel opens.
+      const store = await getIdbCompatStore();
+      return {
+        projects: store.getAllProjects(),
+        collections: store.getAllCollections(),
+      };
     }
     case 'getPipelineBadgeEntries': {
       const ids = [...new Set(Array.isArray(args[0]) ? (args[0] as string[]).filter(Boolean) : [])];

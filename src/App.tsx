@@ -32,14 +32,11 @@ import {
   type LibraryRefreshScope,
 } from './lib/libraryRefresh';
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
-import { SidePanelConnected } from './components/SidePanelConnected';
-import { PipelineProgressProvider } from './components/dashboard/PipelineProgressProvider';
 import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from './lib/tabUrlCapture';
 import { isAnyDigestInFlight } from './lib/pipeline/singleLinkDigest';
 import { BackupOnboardingModal } from './components/BackupOnboardingModal';
 import {
   setBackupFolderOnboarding,
-  requestBackupOnboardingOpen,
 } from './lib/backupOnboarding';
 import {
   pickAndPersistBackupFolder,
@@ -80,7 +77,6 @@ import {
 } from './lib/dashboardStartupProjection';
 import { loadWorkbenchSqliteFromFolder } from './lib/linkBackupFolder';
 import { scheduleStartupIdleWork, waitForStartupIdle } from './lib/startupScheduling';
-import { isSidePanelSurface } from './lib/appSurface';
 
 export interface WindowGroup {
   windowId: number;
@@ -104,7 +100,6 @@ function App() {
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryHydrateProgress, setLibraryHydrateProgress] =
     useState<LibraryHydrateProgress | null>(null);
-  const [isSidePanel] = useState(() => isSidePanelSurface());
   const [currentWindows, setCurrentWindows] = useState<WindowGroup[]>([]);
   const [folderGateResolved, setFolderGateResolved] = useState(false);
   /** Persisted handle exists — first-time pick is done (permission may still be revoked). */
@@ -782,7 +777,7 @@ function App() {
   }, []);
 
   const showStatus = (_msg: string, _holdMs = 2500) => {
-    /* Side panel status: SidePanelConnected. Dashboard: DashboardLayout toasts. */
+    /* DashboardLayout owns user-facing toasts. */
   };
 
   const toStatusMessage = (error: unknown, fallback: string) => {
@@ -1325,27 +1320,6 @@ function App() {
     }
   };
 
-  const handleOpenFullPage = async () => {
-    // Push side-panel writes to latest.json before opening a separate document.
-    if (backupCoordinator.hasAnySink()) {
-      await mirrorNow(true);
-    }
-    const dashboardTab = await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
-    // Keep side panel available on normal tabs, but close/disable it on the
-    // full dashboard tab so the page has full focus.
-    if (dashboardTab.id !== undefined) {
-      await chrome.sidePanel.setOptions({
-        tabId: dashboardTab.id,
-        enabled: false,
-      });
-    }
-  };
-
-  const handleOpenFullPageForBackupSetup = async () => {
-    await requestBackupOnboardingOpen();
-    await handleOpenFullPage();
-  };
-
   const handleSetAsBrowserHome = async () => {
     const dashboardUrl = chrome.runtime.getURL('index.html');
     try {
@@ -1391,100 +1365,6 @@ function App() {
     await loadCurrentWindows();
   };
 
-  // Side Panel View
-  if (isSidePanel) {
-    if (!folderGateResolved) {
-      return (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', colorScheme: 'light dark', background: 'Canvas', color: 'CanvasText' }}>
-          Loading…
-        </div>
-      );
-    }
-
-    // No handle — never open the library without a link.
-    // Handle present but Chrome paused write access → still open OPFS library;
-    // quiet re-grant on first gesture (do not force a blocking reconnect screen).
-    if (!folderConfigured) {
-      return (
-        <div
-          style={{
-            fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
-            minHeight: '100vh',
-            padding: '0.75rem',
-            background: 'Canvas',
-            color: 'CanvasText',
-          }}
-        >
-          <div
-            style={{
-              padding: '0.75rem',
-              background: 'ButtonFace',
-              border: '1px solid rgba(0,0,0,0.15)',
-              borderRadius: '8px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.5rem',
-            }}
-          >
-            <div style={{ fontSize: 'var(--text-sm)', lineHeight: 1.4 }}>
-              {folderLinkLost
-                ? 'Your backup folder link was lost. Re-select the folder that contains '
-                : 'Choose a data folder in full-page setup before using Homebase. Your live database is '}
-              <code style={{ fontSize: '0.9em' }}>workbench.sqlite</code>
-              {folderLinkLost ? '.' : ' in that folder.'}
-            </div>
-            <button
-              type="button"
-              onClick={handleOpenFullPageForBackupSetup}
-              style={{
-                padding: '0.4rem 0.6rem',
-                borderRadius: '6px',
-                border: 'none',
-                background: 'Highlight',
-                color: 'HighlightText',
-                cursor: 'pointer',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 600,
-                alignSelf: 'flex-start',
-              }}
-            >
-              Open full page setup
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div
-        className="side-panel-surface"
-        style={{
-          fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
-          minHeight: '100vh',
-          position: 'relative',
-          background: 'var(--bg)',
-          color: 'var(--text)',
-        }}
-        onPointerDownCapture={() => {
-          if (backupFolderReady) return;
-          void handleReconnectBackupFolder({ quiet: true });
-        }}
-      >
-        <PipelineProgressProvider onRefresh={refreshLibrary}>
-          <SidePanelConnected
-            projects={projects}
-            collections={collections}
-            items={items}
-            onCreateProject={handleCreateProject}
-            onCreateCollection={handleCreateCollection}
-            onOpenFullPage={handleOpenFullPage}
-          />
-        </PipelineProgressProvider>
-      </div>
-    );
-  }
-
-  // Full Page View
   if (!folderGateResolved && !startupProjectionReady) {
     return (
       <div

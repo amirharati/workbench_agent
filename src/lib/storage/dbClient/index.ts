@@ -68,6 +68,8 @@ function isRecoverableDbOwnerError(error: unknown): boolean {
   const msg = String(error).toLowerCase();
   return (
     msg.includes('no response from db owner') ||
+    msg.includes('db owner is still starting') ||
+    msg.includes('new db owner is still starting') ||
     msg.includes('db worker bootstrap timed out') ||
     msg.includes('db worker bootstrap failed') ||
     msg.includes('could not establish connection') ||

@@ -16,6 +16,8 @@ let offscreenProtocolVerified = false;
 const browserFetchService = globalThis.HomebaseBrowserFetchService.createBrowserFetchService(chrome);
 const pipelineJobHosts = new Map();
 let pipelineJobHostsLoaded = false;
+const OFFSCREEN_PROTOCOL_PROBE_DELAYS_MS = [0, 150, 350, 700, 1_200];
+const OFFSCREEN_PROTOCOL_PROBE_TIMEOUT_MS = 1_500;
 
 async function loadPipelineJobHosts() {
   if (pipelineJobHostsLoaded) return;
@@ -87,30 +89,106 @@ async function notifyDbOwnerLost() {
   }
 }
 
-async function hasCurrentDbOwnerProtocol() {
-  try {
-    const response = await chrome.runtime.sendMessage({
-      target: 'db-owner-control',
-      type: 'get-protocol-version',
-    });
-    return response?.version === DB_OWNER_PROTOCOL_VERSION;
-  } catch {
-    return false;
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getOffscreenContexts() {
+  if (chrome.runtime.getContexts) {
+    try {
+      return await chrome.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT'],
+        documentUrls: [chrome.runtime.getURL(OFFSCREEN_URL)],
+      });
+    } catch {
+      // Fall through to the older API.
+    }
   }
+  return (await chrome.offscreen.hasDocument()) ? [{ documentUrl: OFFSCREEN_URL }] : [];
+}
+
+async function probeDbOwnerProtocol() {
+  let timeoutId;
+  try {
+    const response = await Promise.race([
+      chrome.runtime.sendMessage({
+        target: 'db-owner-control',
+        type: 'get-protocol-version',
+      }),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('DB owner protocol probe timed out')),
+          OFFSCREEN_PROTOCOL_PROBE_TIMEOUT_MS
+        );
+      }),
+    ]);
+    if (response?.version === DB_OWNER_PROTOCOL_VERSION) {
+      return { status: 'current', response };
+    }
+    if (
+      typeof response?.version === 'number' &&
+      typeof response?.coreVersion === 'number' &&
+      typeof response?.contentVersion === 'number'
+    ) {
+      return { status: 'mismatch', response };
+    }
+    return { status: 'unavailable', response };
+  } catch (error) {
+    return { status: 'unavailable', error };
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
+async function waitForCurrentDbOwnerProtocol() {
+  let mismatchSignature = null;
+  let mismatchConfirmations = 0;
+  for (const waitMs of OFFSCREEN_PROTOCOL_PROBE_DELAYS_MS) {
+    if (waitMs > 0) await delay(waitMs);
+    const probe = await probeDbOwnerProtocol();
+    if (probe.status === 'current') return { status: 'current', probe };
+    if (probe.status === 'mismatch') {
+      const signature = `${probe.response.coreVersion}:${probe.response.contentVersion}`;
+      if (signature === mismatchSignature) mismatchConfirmations += 1;
+      else {
+        mismatchSignature = signature;
+        mismatchConfirmations = 1;
+      }
+      // Never tear down an owner based on one response during extension reload.
+      if (mismatchConfirmations >= 2) return { status: 'mismatch', probe };
+    }
+  }
+  return { status: 'unavailable' };
+}
+
+async function waitForOffscreenClose() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if ((await getOffscreenContexts()).length === 0) return;
+    await delay(50);
+  }
+  throw new Error('Offscreen owner did not finish closing');
 }
 
 async function ensureOffscreenDocument() {
   if (offscreenCreating) return offscreenCreating;
   offscreenCreating = (async () => {
-    const exists = await chrome.offscreen.hasDocument();
-    if (exists) {
-      if (offscreenProtocolVerified || await hasCurrentDbOwnerProtocol()) {
+    const existingContexts = await getOffscreenContexts();
+    if (existingContexts.length > 0) {
+      if (offscreenProtocolVerified) return;
+      const protocol = await waitForCurrentDbOwnerProtocol();
+      if (protocol.status === 'current') {
         offscreenProtocolVerified = true;
         return;
       }
+      if (protocol.status !== 'mismatch') {
+        // A retained owner may still be loading or being invalidated by Chrome.
+        // Let the caller retry; destroying it here races the browser's reload path.
+        throw new Error('DB owner is still starting; retry');
+      }
       // Chrome may preserve an offscreen document across a rebuilt/reloaded
-      // dashboard. Replace it before a new caller reaches an older RPC table.
+      // extension. Replace only after two explicit incompatible-version replies.
       await chrome.offscreen.closeDocument();
+      await waitForOffscreenClose();
       offscreenProtocolVerified = false;
     }
     await notifyDbOwnerLost();
@@ -119,6 +197,14 @@ async function ensureOffscreenDocument() {
       reasons: ['WORKERS'],
       justification: 'Shared core SQLite, folder content-store, and pipeline workers',
     });
+    const createdProtocol = await waitForCurrentDbOwnerProtocol();
+    if (createdProtocol.status !== 'current') {
+      throw new Error(
+        createdProtocol.status === 'mismatch'
+          ? 'New DB owner started with an incompatible protocol'
+          : 'New DB owner is still starting; retry'
+      );
+    }
     offscreenProtocolVerified = true;
   })();
   try {
@@ -128,8 +214,8 @@ async function ensureOffscreenDocument() {
   }
 }
 
-// Side panel starts disabled globally; enable per-tab when the user clicks the
-// action. Multiple tabs may keep the panel enabled — do not close others.
+// Track the tabs where the user explicitly opened Homebase. Chrome owns the
+// panel's enabled/open state; this set only binds browser-session fetches.
 const enabledSidePanelTabIds = new Set();
 /** Last tab where the user opened the panel (fallback for host-tab queries). */
 let lastSidePanelHostTabId = null;
@@ -200,16 +286,10 @@ async function readSidePanelHostTabId() {
   return enabledSidePanelTabIds.values().next().value ?? null;
 }
 
-chrome.sidePanel
-  .setOptions({ enabled: false, path: 'index.html?surface=side-panel' })
-  .catch((error) => console.error(error));
-
 chrome.action.onClicked.addListener((tab) => {
   if (typeof tab.id !== 'number') return;
-  // Enable + open on this tab only — leave other tabs' panels alone.
-  chrome.sidePanel
-    .setOptions({ tabId: tab.id, enabled: true, path: 'index.html?surface=side-panel' })
-    .catch((error) => console.error(error));
+  // The manifest already enables the panel and supplies its path. Opening it
+  // directly avoids racing setOptions() against open() in Chrome's native UI.
   chrome.sidePanel
     .open({ tabId: tab.id })
     .catch((error) => console.error(error));

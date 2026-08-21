@@ -22,13 +22,9 @@ import { syncClock } from '../lib/time/clock';
 import { markDbOwnerReady, setLocalDbRpcTransport } from '../lib/storage/dbClient';
 import { setLocalContentRpcTransport } from '../lib/storage/content/contentClient';
 import { installOffscreenPipelineHost } from '../lib/pipeline/offscreenPipelineHost';
+import { DB_OWNER_PROTOCOL_VERSION } from '../lib/storage/dbOwnerProtocol';
 
 void syncClock();
-
-// Keep this in sync with public/service-worker.js and the worker response.
-// v16 adds durable project/collection Trash records.  Bump so an offscreen
-// owner from the pre-container-Trash build cannot keep serving the dashboard.
-const DB_OWNER_PROTOCOL_VERSION = 16;
 
 const worker = new DbWorker({ name: 'workbench-db' });
 const contentWorker = new ContentWorker({ name: 'workbench-content-db' });
@@ -414,8 +410,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           contentVersion === DB_OWNER_PROTOCOL_VERSION
             ? DB_OWNER_PROTOCOL_VERSION
             : 0,
+        coreVersion,
+        contentVersion,
       }))
-      .catch(() => sendResponse({ version: 0 }));
+      .catch((error) => sendResponse({
+        version: 0,
+        error: error instanceof Error ? error.message : String(error),
+      }));
     return true;
   }
   if (message?.target === 'content-owner') {

@@ -1,6 +1,5 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.tsx'
 import './index.css'
 import './styles/global.css'
 import { applyAppTheme, readAppTheme } from './lib/theme.ts'
@@ -17,8 +16,14 @@ if (isSidePanelSurface()) {
   applyAppTheme(readAppTheme())
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+const surfaceModule = isSidePanelSurface()
+  ? import('./SidePanelApp.tsx')
+  : import('./App.tsx')
+
+void surfaceModule.then(({ default: SurfaceApp }) => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <SurfaceApp />
+    </React.StrictMode>,
+  )
+})
