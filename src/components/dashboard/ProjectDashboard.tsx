@@ -38,7 +38,7 @@ interface ProjectDashboardProps {
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
     options?: UpdateItemOptions
   ) => Promise<void>;
-  onDeleteItem?: (id: string, collectionId?: string) => Promise<void>;
+  onDeleteItem?: (id: string, collectionIds?: string | string[]) => Promise<void>;
   onRefresh?: () => Promise<void>;
 }
 
@@ -844,13 +844,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     const pending = deleteDialogItem;
     setDeleteDialogItem(null);
     if (result.action === 'cancel' || !pending) return;
-    const { item, collectionId } = pending;
+    const { item } = pending;
     try {
-      if (result.action === 'remove-from-collection' && collectionId) {
-        if (onDeleteItem) await onDeleteItem(item.id, collectionId);
-      } else if (result.action === 'delete-everywhere') {
-        if (onDeleteItem) await onDeleteItem(item.id);
-      }
+      if (result.collectionIds?.length && onDeleteItem) await onDeleteItem(item.id, result.collectionIds);
       if (onRefresh) await onRefresh();
     } catch (error) {
       console.error('Failed to delete item:', error);
@@ -2182,6 +2178,8 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
               ? collections.find((c) => c.id === deleteDialogItem.collectionId)?.name
               : undefined
           }
+          collections={collections}
+          projects={projects}
           onResult={runDeleteFromDialog}
         />
       )}

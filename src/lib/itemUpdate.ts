@@ -39,6 +39,7 @@ export function buildUpdatedItem(
     );
     next.collectionIds = synced.collectionIds;
     next.placements = synced.placements;
+    next.removedPlacements = synced.removedPlacements;
   }
 
   if (hasNotesUpdate) {

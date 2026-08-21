@@ -44,7 +44,7 @@ describe('syncItemPlacementsWithCollectionIds', () => {
     expect(placements.c2.notes).toBeUndefined();
   });
 
-  it('drops placements for removed collections', () => {
+  it('soft-removes placements for removed collections and keeps their placement data', () => {
     const item = baseItem({
       collectionIds: ['c1', 'c2'],
       placements: {
@@ -52,10 +52,39 @@ describe('syncItemPlacementsWithCollectionIds', () => {
         c2: { collectionId: 'c2', notes: 'gone', addedAt: 1, source: 'manual' },
       },
     });
-    const { collectionIds, placements } = syncItemPlacementsWithCollectionIds(item, ['c1'], 50);
+    const { collectionIds, placements, removedPlacements } = syncItemPlacementsWithCollectionIds(item, ['c1'], 50);
     expect(collectionIds).toEqual(['c1']);
     expect(placements.c1.notes).toBe('keep');
     expect(placements.c2).toBeUndefined();
+    expect(removedPlacements?.c2).toMatchObject({
+      collectionId: 'c2',
+      notes: 'gone',
+      removedAt: 50,
+    });
+  });
+
+  it('restores a soft-removed placement with its original metadata', () => {
+    const removed = baseItem({
+      collectionIds: ['c1'],
+      placements: {
+        c1: { collectionId: 'c1', notes: 'active', addedAt: 1, source: 'manual' },
+      },
+      removedPlacements: {
+        c2: {
+          collectionId: 'c2', notes: 'restore me', tags: ['original'], addedAt: 2, source: 'import', removedAt: 50,
+        },
+      },
+    });
+    const { collectionIds, placements, removedPlacements } = syncItemPlacementsWithCollectionIds(
+      removed,
+      ['c1', 'c2'],
+      99
+    );
+    expect(collectionIds).toEqual(['c1', 'c2']);
+    expect(placements.c2).toMatchObject({
+      collectionId: 'c2', notes: 'restore me', tags: ['original'], addedAt: 2, source: 'import',
+    });
+    expect(removedPlacements).toBeUndefined();
   });
 
   it('dedupes collection ids', () => {

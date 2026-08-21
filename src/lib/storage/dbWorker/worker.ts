@@ -1055,6 +1055,50 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         revision: revisionTracker.recordSqliteMutation(),
       };
     }
+    case 'removeItemPlacementsAtomic': {
+      const result = await dbCore.removeItemPlacementsAtomic(
+        ...(args as Parameters<typeof dbCore.removeItemPlacementsAtomic>)
+      );
+      if (result.mode === 'noop') {
+        return { ...result, revision: revisionTracker.getLocalRevisionSync() };
+      }
+      invalidateHubScopeEntryCache();
+      if (result.item) await refreshSimilarityVectorForItem(result.item.id);
+      scheduleFolderMirror();
+      return {
+        ...result,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
+    }
+    case 'restoreItemPlacementsAtomic': {
+      const result = await dbCore.restoreItemPlacementsAtomic(
+        ...(args as Parameters<typeof dbCore.restoreItemPlacementsAtomic>)
+      );
+      if (!result.restoredCollectionIds.length) {
+        return { ...result, revision: revisionTracker.getLocalRevisionSync() };
+      }
+      invalidateHubScopeEntryCache();
+      if (result.item) await refreshSimilarityVectorForItem(result.item.id);
+      scheduleFolderMirror();
+      return {
+        ...result,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
+    }
+    case 'deleteCollectionAtomic': {
+      const result = await dbCore.deleteCollectionAtomic(
+        ...(args as Parameters<typeof dbCore.deleteCollectionAtomic>)
+      );
+      if (!result.deleted) {
+        return { ...result, revision: revisionTracker.getLocalRevisionSync() };
+      }
+      invalidateHubScopeEntryCache();
+      scheduleFolderMirror();
+      return {
+        ...result,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
+    }
     case 'exportSqliteBytes':
       return dbCore.exportSqliteBytes();
     case 'importDB': {

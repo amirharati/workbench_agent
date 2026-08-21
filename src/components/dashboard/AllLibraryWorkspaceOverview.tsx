@@ -56,6 +56,7 @@ interface AllLibraryWorkspaceOverviewProps {
   onOpenProject?: (projectId: string) => void;
   onSelectItem?: (item: Item) => void;
   onItemContextMenu?: (event: React.MouseEvent, item: Item) => void;
+  onRequestDeleteItem?: (item: Item) => void;
   onClearSelection?: () => void;
   onOpenTrash?: () => void;
   onOpenPipeline?: () => void;
@@ -139,6 +140,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
   onOpenProject,
   onSelectItem,
   onItemContextMenu,
+  onRequestDeleteItem,
   onClearSelection,
   onOpenTrash,
   onOpenPipeline,
@@ -219,6 +221,11 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
         dragSource: { kind: 'reference' as const, label: activeView === 'quick-access' ? 'Favorites' : 'All Library' },
         meta: new Date(item.updated_at ?? item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
         onContextMenu: onItemContextMenu ? (event: React.MouseEvent) => onItemContextMenu(event, item) : undefined,
+        actions: onRequestDeleteItem ? (
+          <button className="ui-button ui-button--icon ui-button--danger" type="button" title="Remove from Library" aria-label={`Remove ${item.title || 'item'} from Library`} onClick={() => onRequestDeleteItem(item)}>
+            <Trash2 size={12} />
+          </button>
+        ) : undefined,
       }));
   const selectView = (view: AllLibraryView) => {
     setActiveView(view);
@@ -423,6 +430,17 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
                         <Pin size={12} fill={pinned ? 'currentColor' : 'none'} />
                       </button>
                     ) : null}
+                    {onRequestDeleteItem ? (
+                      <button
+                        className="ui-button ui-button--icon ui-button--danger"
+                        type="button"
+                        title="Remove from Library"
+                        aria-label={`Remove ${item.title || 'item'} from Library`}
+                        onClick={() => onRequestDeleteItem(item)}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    ) : null}
                   </>
                 );
               }}
@@ -471,6 +489,11 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
                   onAdd={(destination) => onAddItemToWorkspace(previewItem, destination)}
                   onView={onViewItemInWorkspace ? (destination) => onViewItemInWorkspace(previewItem, destination) : undefined}
                 />
+              ) : null}
+              {previewItem && onRequestDeleteItem ? (
+                <button className="ui-button ui-button--danger" type="button" onClick={() => onRequestDeleteItem(previewItem)}>
+                  <Trash2 size={12} /> Move to Trash
+                </button>
               ) : null}
             </div>
           </div>

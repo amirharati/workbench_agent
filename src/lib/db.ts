@@ -98,6 +98,11 @@ export interface ItemPlacement {
   source: string;
 }
 
+/** A removed collection membership kept until the user restores it or purges the item. */
+export interface RemovedItemPlacement extends ItemPlacement {
+  removedAt: number;
+}
+
 export interface Item {
   id: string;
   url: string;
@@ -108,6 +113,8 @@ export interface Item {
   tags: string[];
   notes?: string;
   placements?: Record<string, ItemPlacement>;
+  /** Soft-removed collection memberships. They are not active `collectionIds`. */
+  removedPlacements?: Record<string, RemovedItemPlacement>;
   created_at: number;
   updated_at: number;
   source: 'tab' | 'twitter' | 'manual' | 'bookmark' | string;
@@ -123,6 +130,24 @@ export type UpdateItemOptions = {
   preserveUpdatedAt?: boolean;
   /** Explicit tombstones survive Chrome's JSON-based extension messaging. */
   clearItemMarkers?: Array<'pinnedAt' | 'favoriteAt' | 'deletedAt'>;
+};
+
+export type ItemRemovalResult = {
+  item: Item | null;
+  mode: 'detached' | 'trashed' | 'noop';
+  removedCollectionIds: string[];
+  remainingCollectionIds: string[];
+};
+
+export type ItemPlacementRestoreResult = {
+  item: Item | null;
+  restoredCollectionIds: string[];
+};
+
+export type DeleteCollectionResult = {
+  deleted: boolean;
+  relocatedCollectionId?: string;
+  changedItemIds: string[];
 };
 
 export interface Snapshot {
@@ -792,53 +817,58 @@ export const getItemPlacementCount = async (id: string): Promise<number> => {
   const store = await getDB();
   const item = store.getItem(id);
   if (!item) return 0;
-  return item.placements ? Object.keys(item.placements).length : item.collectionIds.length;
+  return [...new Set(item.collectionIds ?? [])].length;
+};
+
+/** Remove selected active placements, or soft-trash when every placement is selected. */
+export const removeItemFromCollections = async (
+  itemId: string,
+  collectionIds: string[]
+): Promise<ItemRemovalResult> => {
+  if (isDbWorkerProcess()) {
+    const core = await import('./dbCore');
+    return core.removeItemPlacementsAtomic(itemId, collectionIds);
+  }
+  const { dbRpc } = await import('./storage/dbClient');
+  const ack = await dbRpc<ItemRemovalResult & { revision: number }>(
+    'removeItemPlacementsAtomic',
+    [itemId, collectionIds]
+  );
+  if (ack.item) getRemoteStore().acceptItemMutation(ack.item, ack.revision);
+  if (ack.mode !== 'noop') notifyDbChanged('item.update', itemId);
+  return ack;
 };
 
 export const removeItemFromCollection = async (
   itemId: string, 
   collectionId: string
 ): Promise<{ removed: boolean; itemDeleted: boolean; itemTrashed: boolean; remainingPlacements: number }> => {
-  const store = await getDB();
-  const item = store.getItem(itemId);
-  
-  if (!item) {
-    return { removed: false, itemDeleted: false, itemTrashed: false, remainingPlacements: 0 };
-  }
-  
-  const placements = { ...(item.placements || {}) };
-  delete placements[collectionId];
-  
-  const newCollectionIds = Object.keys(placements);
-  
-  if (newCollectionIds.length === 0) {
-    const now = nowTs();
-    store.putItem({
-      ...item,
-      deletedAt: now,
-      updated_at: now,
-    });
-    // Record trash history
-    const { recordTrashHistory } = await import('./trashHistory');
-    await recordTrashHistory(item, {
-      reason: 'Removed from last collection',
-      reasonCode: 'remove_last_collection',
-    }, { notify: false });
-    await commitAndVerifyItem(itemId);
-    notifyDbChanged('item.update', itemId);
-    return { removed: true, itemDeleted: false, itemTrashed: true, remainingPlacements: 0 };
-  }
-  
-  store.putItem({
-    ...item,
-    collectionIds: newCollectionIds,
-    placements,
-    updated_at: nowTs()
-  });
+  const result = await removeItemFromCollections(itemId, [collectionId]);
+  return {
+    removed: result.mode !== 'noop',
+    itemDeleted: false,
+    itemTrashed: result.mode === 'trashed',
+    remainingPlacements: result.remainingCollectionIds.length,
+  };
+};
 
-  await commitAndVerifyItem(itemId);
-  notifyDbChanged('item.update', itemId);
-  return { removed: true, itemDeleted: false, itemTrashed: false, remainingPlacements: newCollectionIds.length };
+/** Restore memberships that were removed from the Library but not permanently purged. */
+export const restoreItemPlacements = async (
+  itemId: string,
+  collectionIds: string[]
+): Promise<ItemPlacementRestoreResult> => {
+  if (isDbWorkerProcess()) {
+    const core = await import('./dbCore');
+    return core.restoreItemPlacementsAtomic(itemId, collectionIds);
+  }
+  const { dbRpc } = await import('./storage/dbClient');
+  const ack = await dbRpc<ItemPlacementRestoreResult & { revision: number }>(
+    'restoreItemPlacementsAtomic',
+    [itemId, collectionIds]
+  );
+  if (ack.item) getRemoteStore().acceptItemMutation(ack.item, ack.revision);
+  if (ack.restoredCollectionIds.length) notifyDbChanged('item.update', itemId);
+  return ack;
 };
 
 export const deleteItem = async (id: string): Promise<{ deleted: boolean; placementCount: number }> => {
@@ -980,22 +1010,25 @@ export const addCollection = async (name: string, color?: string, projectId?: st
   return id;
 };
 
-export const deleteCollection = async (id: string) => {
-  const store = await getDB();
-  const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(store);
-  
-  const items = store.getAllItems().filter(item => item.collectionIds.includes(id));
-  for (const item of items) {
-    const next = (item.collectionIds || []).filter((cid) => cid !== id);
-    store.putItem({
-      ...item,
-      collectionIds: next.length > 0 ? next : [defaultUnsortedCollectionId],
-      updated_at: nowTs(),
-    });
+/** Worker-owned atomic collection deletion. See dbCore for relocation semantics. */
+export const deleteCollection = async (id: string): Promise<DeleteCollectionResult> => {
+  if (isDbWorkerProcess()) {
+    const core = await import('./dbCore');
+    return core.deleteCollectionAtomic(id);
   }
-  store.deleteCollection(id);
-  await commitPendingDbWrites();
-  notifyDbChanged('collection.delete', id);
+  const { dbRpc } = await import('./storage/dbClient');
+  const result = await dbRpc<DeleteCollectionResult & { revision: number }>(
+    'deleteCollectionAtomic',
+    [id]
+  );
+  if (result.deleted) {
+    // The canonical mutation may have changed many rows, so refresh the two
+    // small essential tables rather than sending an unbounded item payload.
+    await getRemoteStore().refreshTablesFromWorker(['collections', 'items']);
+    getRemoteStore().setRevision(result.revision);
+    notifyDbChanged('collection.delete', id);
+  }
+  return result;
 };
 
 export const updateCollection = async (id: string, updates: Partial<Omit<Collection, 'id' | 'created_at'>>) => {
@@ -1021,6 +1054,7 @@ export const updateItemCollection = async (itemId: string, collectionId: string 
       ...item,
       collectionIds: synced.collectionIds,
       placements: synced.placements,
+      removedPlacements: synced.removedPlacements,
       updated_at: now,
     });
     await commitAndVerifyItem(itemId);

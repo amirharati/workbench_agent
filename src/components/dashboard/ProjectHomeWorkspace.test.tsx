@@ -118,6 +118,48 @@ describe('ProjectHomeWorkspace browse surfaces', () => {
     expect(markup).not.toContain('data-project-page-footer-content="true"');
   });
 
+  it('offers project recovery for project-scoped removed placements', () => {
+    const removedElsewhere: Item = {
+      ...items[0],
+      id: 'removed-elsewhere',
+      collectionIds: ['other-project-collection'],
+      removedPlacements: {
+        [collections[0].id]: {
+          collectionId: collections[0].id,
+          addedAt: 1,
+          removedAt: 2,
+          source: 'manual',
+        },
+      },
+    };
+    const markup = renderToStaticMarkup(
+      <ProjectHomeWorkspace
+        project={project}
+        items={items}
+        organizationItems={[...items, removedElsewhere]}
+        collections={collections}
+        selectedCollectionId="all"
+        onSelectCollection={vi.fn()}
+        sessionTabs={[]}
+        onAddItemToSession={vi.fn()}
+        onRemoveSessionTab={vi.fn()}
+        workspaces={[]}
+        savedWorkspaceSessions={[]}
+        activeWorkspaceKey={getProjectSessionWorkspaceKey(project.id)}
+        onActivateWorkspace={vi.fn()}
+        onActivateSavedWorkspace={vi.fn()}
+        onDeleteSavedWorkspace={vi.fn()}
+        workspaceDestinations={[{ key: getProjectSessionWorkspaceKey(project.id), label: 'General' }]}
+        onAddItemToWorkspace={vi.fn()}
+        onTransferSessionEntry={vi.fn()}
+        onUpdateItem={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('Recovery');
+    expect(markup).toContain('recoverable item');
+  });
+
   it('keeps a compact Workspace control when General is the only choice', () => {
     const markup = renderToStaticMarkup(
       <ProjectHomeWorkspace

@@ -61,6 +61,7 @@ interface ItemRow {
   tags: string;
   notes: string | null;
   placements: string | null;
+  removed_placements: string | null;
   created_at: number;
   updated_at: number;
   source: string;
@@ -362,6 +363,7 @@ function rowToItem(row: ItemRow): Item {
   if (row.favicon) item.favicon = row.favicon;
   if (row.notes) item.notes = row.notes;
   if (row.placements) item.placements = parseJson<Record<string, ItemPlacement>>(row.placements, {});
+  if (row.removed_placements) item.removedPlacements = parseJson<Item['removedPlacements']>(row.removed_placements, {});
   if (row.metadata) item.metadata = parseJson<Record<string, unknown>>(row.metadata, {});
   if (row.pinned_at) item.pinnedAt = row.pinned_at;
   if (row.favorite_at) item.favoriteAt = row.favorite_at;
@@ -380,6 +382,7 @@ function itemToRow(i: Item): ItemRow {
     tags: toJson(i.tags || []),
     notes: i.notes ?? null,
     placements: i.placements ? toJson(i.placements) : null,
+    removed_placements: i.removedPlacements ? toJson(i.removedPlacements) : null,
     created_at: i.created_at,
     updated_at: i.updated_at,
     source: i.source,
@@ -886,11 +889,11 @@ export class SqliteStore {
     const r = itemToRow(item);
     this.conn.exec(
       `INSERT OR REPLACE INTO items 
-       (id, url, url_raw, title, favicon, collection_ids, tags, notes, placements, 
-        created_at, updated_at, source, metadata, pinned_at, favorite_at, deleted_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, url, url_raw, title, favicon, collection_ids, tags, notes, placements, removed_placements,
+        created_at, updated_at, source, metadata, pinned_at, favorite_at, deleted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [r.id, r.url, r.url_raw, r.title, r.favicon, r.collection_ids, r.tags, r.notes, r.placements,
-       r.created_at, r.updated_at, r.source, r.metadata, r.pinned_at, r.favorite_at, r.deleted_at]
+       r.removed_placements, r.created_at, r.updated_at, r.source, r.metadata, r.pinned_at, r.favorite_at, r.deleted_at]
     );
   }
 

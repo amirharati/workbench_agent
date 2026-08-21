@@ -105,4 +105,38 @@ describe('ItemOrganizationEditor', () => {
     expect(onBusyChange).toHaveBeenLastCalledWith(false);
     act(() => root.unmount());
   });
+
+  it('shows a removed location and restores its original membership', async () => {
+    const onUpdate = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(
+        <ItemOrganizationEditor
+          item={{
+            ...item,
+            removedPlacements: {
+              'collection-2': {
+                collectionId: 'collection-2',
+                addedAt: 2,
+                removedAt: 3,
+                source: 'manual',
+              },
+            },
+          }}
+          projects={[project]}
+          collections={collections}
+          onUpdate={onUpdate}
+        />
+      );
+    });
+
+    expect(host.textContent).toContain('Removed locations');
+    const restore = [...host.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Restore');
+    expect(restore).toBeTruthy();
+    await act(async () => { restore!.click(); });
+    expect(onUpdate).toHaveBeenCalledWith({ collectionIds: ['collection-1', 'collection-2'] });
+    act(() => root.unmount());
+  });
 });

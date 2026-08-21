@@ -3,6 +3,7 @@ import { ExternalLink, FileText, Folder, Home as HomeIcon, Layers3, Link2, Searc
 import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, GlobalTabList, GlobalTabSearch, SavedWorkspaceSession } from './GlobalTabSystem';
 import { ItemContextMenu } from './ItemContextMenu';
+import { DeleteConfirmDialog } from '../DeleteConfirmDialog';
 import { useLibrarySearch } from '../../hooks/useLibrarySearch';
 import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { ProductSearchView } from './ProductSearchView';
@@ -69,7 +70,7 @@ interface HomeViewProps {
   homeState: GlobalTabState;
   onHomeStateChange: (next: GlobalTabState) => void;
   onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>, options?: UpdateItemOptions) => Promise<void>;
-  onDeleteBookmark?: (id: string, collectionId?: string) => Promise<void>;
+  onDeleteBookmark?: (id: string, collectionIds?: string | string[]) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   onSearchQueryChange: (query: string) => void;
@@ -108,6 +109,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
     x: number;
     y: number;
   } | null>(null);
+  const [libraryRemovalTarget, setLibraryRemovalTarget] = React.useState<Item | null>(null);
+  const requestLibraryRemoval = React.useCallback((item: Item) => {
+    if (onDeleteBookmark && !item.deletedAt) setLibraryRemovalTarget(item);
+  }, [onDeleteBookmark]);
   const [draggedProjectId, setDraggedProjectId] = React.useState<string | null>(null);
   const pageUiKey = homePageUiKey(scopeProjectId, scopeCollectionId);
   const [initialPageUi] = React.useState(() => loadPageUiState(pageUiKey, {
@@ -1041,6 +1046,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onAddItemToSession={addItemToCurrentSession}
           onRemoveSessionTab={removeCurrentSessionTab}
           onUpdateItem={onUpdateItem}
+          onRequestDeleteItem={requestLibraryRemoval}
           onCreateProject={onCreateProject}
           onCreateCollection={onCreateCollection}
           workspaces={projectWorkspaces}
@@ -1121,6 +1127,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             onOpenProject={openProjectScope}
             onSelectItem={selectOverviewItem}
             onItemContextMenu={showHomeItemContextMenu}
+            onRequestDeleteItem={requestLibraryRemoval}
             onClearSelection={clearAllLibrarySelection}
             onOpenTrash={() => openUtilityTab('util-trash')}
             onOpenPipeline={onOpenPipelineHub}
@@ -1307,13 +1314,29 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onDelete={
             onDeleteBookmark
               ? (it) => {
-                  void onDeleteBookmark(it.id);
+                  requestLibraryRemoval(it);
                   setHomeItemContextMenu(null);
                 }
               : undefined
           }
           onOpenInNewTab={(it) => {
             if (it.url) chrome.tabs.create({ url: it.url });
+          }}
+        />
+      )}
+      {libraryRemovalTarget && onDeleteBookmark && (
+        <DeleteConfirmDialog
+          item={libraryRemovalTarget}
+          collections={collections}
+          projects={projects}
+          onResult={(result) => {
+            const target = libraryRemovalTarget;
+            setLibraryRemovalTarget(null);
+            if (result.action === 'cancel' || !result.collectionIds?.length) return;
+            void onDeleteBookmark(target.id, result.collectionIds).catch((error) => {
+              console.error('Could not remove Library item:', error);
+              window.alert(`Could not remove item: ${error instanceof Error ? error.message : String(error)}`);
+            });
           }}
         />
       )}

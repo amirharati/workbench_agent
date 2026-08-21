@@ -184,6 +184,16 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
     });
   }, [membershipIds, effectiveCollections, effectiveProjects, addProjectId]);
 
+  const removedMemberships = useMemo(() => {
+    return Object.values(item.removedPlacements || {}).map((placement) => {
+      const collection = effectiveCollections.find((candidate) => candidate.id === placement.collectionId);
+      const project = collection
+        ? effectiveProjects.find((candidate) => candidate.id === collection.primaryProjectId)
+        : undefined;
+      return { placement, collection, project };
+    });
+  }, [item.removedPlacements, effectiveCollections, effectiveProjects]);
+
   const collectionsForAddProject = useMemo(
     () =>
       effectiveCollections.filter(
@@ -272,6 +282,11 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
       return;
     }
     void applyPatch({ collectionIds: [...membershipIds, addCollectionId] });
+  };
+
+  const restoreMembership = (cid: string) => {
+    if (membershipIds.includes(cid)) return;
+    void applyPatch({ collectionIds: [...membershipIds, cid] });
   };
 
   const normalizeTag = (raw: string) => raw.trim().replace(/^#/, '');
@@ -471,6 +486,36 @@ export const ItemOrganizationEditor: React.FC<ItemOrganizationEditorProps> = ({
           )}
         </div>
       </div>
+
+      {removedMemberships.length > 0 && (
+        <div style={{ width: '100%', minWidth: 0 }}>
+          <div style={labelStyle}>Removed locations</div>
+          <div style={chipRowStyle}>
+            {removedMemberships.map(({ placement, collection, project }) => (
+              <span
+                key={placement.collectionId}
+                title={`Removed ${new Date(placement.removedAt).toLocaleString()}`}
+                style={{ ...chipBase, background: 'var(--bg-glass)', border: '1px dashed var(--border)' }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                  {project?.name || 'Unassigned'} / {collection?.name || 'Deleted collection'}
+                </span>
+                {hasWritePath && collection && (
+                  <button
+                    className="ui-organization-editor__chip-remove"
+                    type="button"
+                    disabled={!canMutate || busy}
+                    onClick={() => restoreMembership(placement.collectionId)}
+                    style={{ border: 'none', background: 'transparent', padding: 0, marginLeft: 2, color: 'var(--accent)', cursor: !canMutate || busy ? 'default' : 'pointer', fontSize: 'var(--text-xs)' }}
+                  >
+                    Restore
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {hasWritePath && (
         <div

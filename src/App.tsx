@@ -11,7 +11,7 @@ import {
   getAllCollections, 
   getAllWorkspaces,
   updateItem,
-  removeItemFromCollection,
+  removeItemFromCollections,
   Collection,
   Workspace,
   Item,
@@ -25,7 +25,7 @@ import {
   subscribeLibraryHydrateProgress,
   type LibraryHydrateProgress,
 } from './lib/db';
-import { getActiveItems, isActiveItem, moveItemToTrash, formatRestoreSummary } from './lib/itemQuickAccess';
+import { getActiveItems, isActiveItem, formatRestoreSummary } from './lib/itemQuickAccess';
 import { INBOX_COLLECTION_LIMIT_MESSAGE } from './lib/systemDataModel';
 import {
   shouldUseLightLibraryRefresh,
@@ -851,18 +851,30 @@ function App() {
     }
   }, []);
 
-  const handleDeleteBookmark = async (id: string, collectionId?: string) => {
+  const handleDeleteBookmark = async (id: string, collectionIds?: string | string[]) => {
     try {
-      if (collectionId) {
-        const result = await removeItemFromCollection(id, collectionId);
-        if (result.itemTrashed) {
+      const selectedIds = Array.isArray(collectionIds)
+        ? collectionIds
+        : collectionIds
+          ? [collectionIds]
+          : undefined;
+      if (selectedIds?.length) {
+        const result = await removeItemFromCollections(id, selectedIds);
+        if (result.mode === 'trashed') {
           showStatus('Moved to trash');
-        } else if (result.removed) {
-          showStatus(`Removed from collection (still in ${result.remainingPlacements} other${result.remainingPlacements > 1 ? 's' : ''})`);
+        } else if (result.mode === 'detached') {
+          const remaining = result.remainingCollectionIds.length;
+          showStatus(`Removed from collection (still in ${remaining} other${remaining > 1 ? 's' : ''})`);
         }
       } else {
-        await moveItemToTrash(id, { reason: 'Moved to trash', reasonCode: 'app_delete' });
-        showStatus('Moved to trash');
+        // Legacy callers without a scoped placement still mean remove the
+        // whole item. Resolve active locations first so one canonical atomic
+        // mutation owns both partial removal and Trash.
+        const item = await getItem(id);
+        if (item?.collectionIds?.length) {
+          const result = await removeItemFromCollections(id, item.collectionIds);
+          if (result.mode === 'trashed') showStatus('Moved to trash');
+        }
       }
       // Fast UI update even if full loadData is gated on folder permission.
       await refreshLibraryItems([id]);

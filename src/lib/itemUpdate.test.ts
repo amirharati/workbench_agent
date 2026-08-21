@@ -59,6 +59,11 @@ describe('buildUpdatedItem', () => {
       addedAt: 10,
       source: 'bookmark',
     });
+    expect(result.removedPlacements?.['collection-b']).toMatchObject({
+      collectionId: 'collection-b',
+      addedAt: 2,
+      removedAt: 10,
+    });
   });
 
   it('preserves content recency for marker-only updates when requested', () => {

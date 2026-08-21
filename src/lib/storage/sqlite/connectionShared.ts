@@ -47,6 +47,13 @@ function runSchemaMigrations(database: Database, from: number, to: number): void
     // their item scope until Resume or Cancel.
     database.exec(PIPELINE_JOB_SCHEMA_SQL);
   }
+  if (from < 7 && to >= 7) {
+    try {
+      database.exec('ALTER TABLE items ADD COLUMN removed_placements TEXT;');
+    } catch {
+      /* column may already exist (for example after an interrupted upgrade) */
+    }
+  }
 }
 
 export type Sqlite3Static = Awaited<ReturnType<typeof sqlite3InitModule>>;

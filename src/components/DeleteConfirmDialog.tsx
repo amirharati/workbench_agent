@@ -1,133 +1,98 @@
-import React from 'react';
-import type { Item } from '../lib/db';
+import React, { useEffect, useMemo, useState } from 'react';
+import type { Collection, Item, Project } from '../lib/db';
+import { DialogShell } from './dashboard/DialogShell';
 
 export interface DeleteConfirmResult {
   action: 'cancel' | 'remove-from-collection' | 'delete-everywhere';
+  /** Active collection placements selected in the dialog. */
+  collectionIds?: string[];
 }
 
 interface DeleteConfirmDialogProps {
   item: Item;
-  collectionId?: string;  // Current collection context
+  /** Current scoped collection, preselected when this came from a collection view. */
+  collectionId?: string;
   collectionName?: string;
+  collections?: Collection[];
+  projects?: Project[];
   onResult: (result: DeleteConfirmResult) => void;
 }
 
+/** One removal decision for every Library surface. */
 export const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
   item,
   collectionId,
-  collectionName,
+  collections = [],
+  projects = [],
   onResult,
 }) => {
-  const placementCount = item.placements 
-    ? Object.keys(item.placements).length 
-    : item.collectionIds?.length || 1;
-  
-  const isInMultipleCollections = placementCount > 1;
-  const canRemoveFromCollection = collectionId && isInMultipleCollections;
+  const activeIds = useMemo(() => [...new Set((item.collectionIds || []).filter(Boolean))], [item.collectionIds]);
+  const initialIds = useMemo(
+    () => (collectionId && activeIds.includes(collectionId) ? [collectionId] : activeIds),
+    [collectionId, activeIds]
+  );
+  const [selectedIds, setSelectedIds] = useState<string[]>(initialIds);
+  useEffect(() => setSelectedIds(initialIds), [item.id, collectionId, initialIds]);
+
+  const collectionById = useMemo(() => new Map(collections.map((c) => [c.id, c])), [collections]);
+  const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
+  const groups = useMemo(() => {
+    const grouped = new Map<string, { projectName: string; entries: Array<{ id: string; name: string }> }>();
+    for (const id of activeIds) {
+      const collection = collectionById.get(id);
+      const projectId = collection?.primaryProjectId || '__unassigned__';
+      const projectName = projectById.get(projectId)?.name || (collection ? 'Unassigned project' : 'Unavailable collection');
+      const group = grouped.get(projectId) || { projectName, entries: [] };
+      group.entries.push({ id, name: collection?.name || id });
+      grouped.set(projectId, group);
+    }
+    return [...grouped.entries()].map(([id, group]) => ({ id, ...group }));
+  }, [activeIds, collectionById, projectById]);
+
+  const selected = new Set(selectedIds);
+  const allSelected = activeIds.length > 0 && activeIds.every((id) => selected.has(id));
+  const toggle = (id: string) => setSelectedIds((current) =>
+    current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
+  );
+  const submit = () => {
+    if (!selectedIds.length) return;
+    onResult({ action: allSelected ? 'delete-everywhere' : 'remove-from-collection', collectionIds: selectedIds });
+  };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 'var(--layer-modal)',
-      }}
-      onClick={() => onResult({ action: 'cancel' })}
+    <DialogShell
+      title={`Remove “${item.title || 'Untitled'}” from Library?`}
+      description="Choose which saved locations to remove. Your item and its enrichment remain restorable until Trash is emptied."
+      onClose={() => onResult({ action: 'cancel' })}
+      maxWidth={540}
+      raised
+      footer={
+        <>
+          <button className="ui-button ui-button--secondary" type="button" onClick={() => onResult({ action: 'cancel' })}>Cancel</button>
+          <button className="ui-button ui-button--danger" type="button" disabled={!selectedIds.length} onClick={submit}>
+            {allSelected ? 'Move to Trash' : `Remove from ${selectedIds.length} location${selectedIds.length === 1 ? '' : 's'}`}
+          </button>
+        </>
+      }
     >
-      <div
-        style={{
-          background: 'var(--bg-panel)',
-          borderRadius: 8,
-          padding: 20,
-          maxWidth: 400,
-          width: '90%',
-          boxShadow: '0 16px 40px rgba(0,0,0,0.2)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 style={{ margin: '0 0 12px', fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text)' }}>
-          Move "{item.title || 'Untitled'}" to trash?
-        </h3>
-        
-        {isInMultipleCollections && (
-          <div style={{ 
-            fontSize: 'var(--text-sm)', 
-            color: 'var(--text-muted)', 
-            marginBottom: 16,
-            padding: '8px 12px',
-            background: 'var(--bg-glass)',
-            borderRadius: 6,
-            border: '1px solid var(--border)'
-          }}>
-            This bookmark exists in <strong>{placementCount} collections</strong>.
-          </div>
-        )}
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {canRemoveFromCollection && (
-            <button
-              onClick={() => onResult({ action: 'remove-from-collection' })}
-              style={{
-                padding: '10px 16px',
-                borderRadius: 6,
-                border: '1px solid var(--border)',
-                background: 'var(--bg)',
-                color: 'var(--text)',
-                fontSize: 'var(--text-sm)',
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-            >
-              <div style={{ fontWeight: 500 }}>Remove from {collectionName || 'this collection'}</div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
-                Keep in other collections
-              </div>
-            </button>
-          )}
-          
-          <button
-            onClick={() => onResult({ action: 'delete-everywhere' })}
-            style={{
-              padding: '10px 16px',
-              borderRadius: 6,
-              border: '1px solid var(--danger)',
-              background: canRemoveFromCollection ? 'transparent' : 'var(--danger)',
-              color: canRemoveFromCollection ? 'var(--danger)' : 'var(--accent-text)',
-              fontSize: 'var(--text-sm)',
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            <div style={{ fontWeight: 500 }}>
-              {isInMultipleCollections ? 'Move to trash (all collections)' : 'Move to trash'}
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+        {groups.map((group) => (
+          <div key={group.id} style={{ borderBottom: '1px solid var(--border)' }}>
+            <div style={{ padding: '7px 10px', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', background: 'var(--bg-glass)' }}>
+              {group.projectName}
             </div>
-            {isInMultipleCollections && (
-              <div style={{ fontSize: 'var(--text-xs)', opacity: 0.8, marginTop: 2 }}>
-                Soft-delete from all {placementCount} collections
-              </div>
-            )}
-          </button>
-          
-          <button
-            onClick={() => onResult({ action: 'cancel' })}
-            style={{
-              padding: '10px 16px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: 'var(--text-muted)',
-              fontSize: 'var(--text-sm)',
-              cursor: 'pointer',
-            }}
-          >
-            Cancel
-          </button>
-        </div>
+            {group.entries.map((entry) => (
+              <label key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', cursor: 'pointer', color: 'var(--text)', fontSize: 'var(--text-sm)' }}>
+                <input type="checkbox" checked={selected.has(entry.id)} onChange={() => toggle(entry.id)} />
+                <span>{entry.name}</span>
+              </label>
+            ))}
+          </div>
+        ))}
       </div>
-    </div>
+      <p style={{ margin: '14px 0 0', fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.45 }}>
+        Workspace entries are references only; removing one does not affect whether this Library item is kept.
+      </p>
+    </DialogShell>
   );
 };

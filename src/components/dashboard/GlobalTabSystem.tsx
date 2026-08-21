@@ -444,7 +444,7 @@ interface GlobalTabSystemProps {
   tabState: GlobalTabState;
   onTabStateChange: (next: GlobalTabState) => void;
   onUpdateItem?: (id: string, updates: Partial<Omit<Item, 'id' | 'created_at'>>, options?: UpdateItemOptions) => Promise<void>;
-  onDeleteBookmark?: (id: string, collectionId?: string) => Promise<void>;
+  onDeleteBookmark?: (id: string, collectionIds?: string | string[]) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   // For rendering lists
@@ -789,9 +789,9 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
     const target = trashConfirmItem;
     setTrashConfirmItem(null);
     if (!target || !onDeleteBookmark || result.action === 'cancel') return;
-    if (result.action !== 'delete-everywhere') return;
+    if (!result.collectionIds?.length) return;
     try {
-      await onDeleteBookmark(target.id);
+      await onDeleteBookmark(target.id, result.collectionIds);
     } catch (e) {
       console.error('Move to trash failed:', e);
       window.alert(`Could not move to trash: ${e instanceof Error ? e.message : String(e)}`);
@@ -1379,7 +1379,12 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
         />
       )}
       {trashConfirmItem && (
-        <DeleteConfirmDialog item={trashConfirmItem} onResult={runTrashConfirm} />
+        <DeleteConfirmDialog
+          item={trashConfirmItem}
+          collections={collections}
+          projects={projects}
+          onResult={runTrashConfirm}
+        />
       )}
       </div>
     </div>

@@ -39,7 +39,7 @@ describe('durable pipeline job store', () => {
       INSERT INTO app_meta (id, schema_version, created_at) VALUES ('default', 4, 1);
       PRAGMA user_version = 4;
     `);
-    initSchema(db, 6);
+    initSchema(db, 7);
     const names = db.exec({
       sql: `SELECT name FROM sqlite_master
             WHERE type = 'table' AND name IN ('pipeline_jobs', 'pipeline_tasks')
@@ -48,7 +48,28 @@ describe('durable pipeline job store', () => {
       rowMode: 'array',
     }) as unknown[][];
     expect(names).toEqual([['pipeline_jobs'], ['pipeline_tasks']]);
-    expect(db.exec({ sql: 'PRAGMA user_version;', returnValue: 'resultRows' })[0]?.[0]).toBe(6);
+    expect(db.exec({ sql: 'PRAGMA user_version;', returnValue: 'resultRows' })[0]?.[0]).toBe(7);
+  });
+
+  it('adds durable removed placements when upgrading a v6 database', () => {
+    db.exec('DROP TABLE pipeline_tasks; DROP TABLE pipeline_jobs;');
+    db.exec(`
+      CREATE TABLE app_meta (
+        id TEXT PRIMARY KEY,
+        schema_version INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        device_id TEXT
+      );
+      INSERT INTO app_meta (id, schema_version, created_at) VALUES ('default', 6, 1);
+      CREATE TABLE items (
+        id TEXT PRIMARY KEY,
+        collection_ids TEXT NOT NULL DEFAULT '[]'
+      );
+      PRAGMA user_version = 6;
+    `);
+    initSchema(db, 7);
+    const columns = db.exec({ sql: 'PRAGMA table_info(items);', returnValue: 'resultRows', rowMode: 'array' }) as unknown[][];
+    expect(columns.some((column) => column[1] === 'removed_placements')).toBe(true);
   });
 
   it('commits staged tasks before acknowledging and deduplicates active work', () => {

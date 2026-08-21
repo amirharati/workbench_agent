@@ -25,6 +25,8 @@ import {
 } from './import/xImportHygiene';
 import { nowMs } from './time/clock';
 import { buildUpdatedItem } from './itemUpdate';
+import { syncItemPlacementsWithCollectionIds } from './itemPlacements';
+import { recordTrashHistoryEntries } from './trashHistory';
 import {
   assertCanCreateCollectionInProject,
   INBOX_PROJECT_NAME,
@@ -73,6 +75,10 @@ export interface ItemPlacement {
   source: string;
 }
 
+export interface RemovedItemPlacement extends ItemPlacement {
+  removedAt: number;
+}
+
 export interface Item {
   id: string;
   url: string;
@@ -83,6 +89,7 @@ export interface Item {
   tags: string[];
   notes?: string;
   placements?: Record<string, ItemPlacement>;
+  removedPlacements?: Record<string, RemovedItemPlacement>;
   created_at: number;
   updated_at: number;
   source: 'tab' | 'twitter' | 'manual' | 'bookmark' | string;
@@ -91,6 +98,24 @@ export interface Item {
   favoriteAt?: number;
   deletedAt?: number;
 }
+
+export type ItemRemovalResult = {
+  item: Item | null;
+  mode: 'detached' | 'trashed' | 'noop';
+  removedCollectionIds: string[];
+  remainingCollectionIds: string[];
+};
+
+export type ItemPlacementRestoreResult = {
+  item: Item | null;
+  restoredCollectionIds: string[];
+};
+
+export type DeleteCollectionResult = {
+  deleted: boolean;
+  relocatedCollectionId?: string;
+  changedItemIds: string[];
+};
 
 export type UpdateItemOptions = {
   notesPlacementCollectionId?: string;
@@ -493,51 +518,111 @@ export const getItemPlacementCount = async (id: string): Promise<number> => {
   const store = await getDB();
   const item = store.getItem(id);
   if (!item) return 0;
-  return item.placements ? Object.keys(item.placements).length : item.collectionIds.length;
+  return [...new Set(item.collectionIds ?? [])].length;
+};
+
+/** Remove selected active placements, or soft-trash when every placement is selected. */
+export const removeItemPlacementsAtomic = async (
+  itemId: string,
+  requestedCollectionIds: string[]
+): Promise<ItemRemovalResult> => {
+  const store = await getDB();
+  const item = store.getItem(itemId);
+  if (!item || item.deletedAt != null) {
+    return {
+      item: item ?? null,
+      mode: 'noop',
+      removedCollectionIds: [],
+      remainingCollectionIds: item?.collectionIds ?? [],
+    };
+  }
+
+  const activeCollectionIds = [...new Set((item.collectionIds ?? []).filter(Boolean))];
+  const requested = new Set(requestedCollectionIds.filter(Boolean));
+  const removedCollectionIds = activeCollectionIds.filter((id) => requested.has(id));
+  if (!removedCollectionIds.length) {
+    return { item, mode: 'noop', removedCollectionIds: [], remainingCollectionIds: activeCollectionIds };
+  }
+
+  const now = nowTs();
+  if (removedCollectionIds.length === activeCollectionIds.length) {
+    const next = { ...item, deletedAt: now, updated_at: now };
+    store.withTransaction(() => {
+      store.putItem(next);
+      recordTrashHistoryEntries(store, [item], {
+        defaultRecord: { reason: 'Removed from library', reasonCode: 'manual' },
+      });
+    });
+    return { item: next, mode: 'trashed', removedCollectionIds, remainingCollectionIds: [] };
+  }
+
+  // Normalize legacy rows before moving only the selected memberships into
+  // `removedPlacements`, where they remain available for a future Restore.
+  const normalized = syncItemPlacementsWithCollectionIds(item, activeCollectionIds, now);
+  const remainingCollectionIds = activeCollectionIds.filter((id) => !requested.has(id));
+  const nextMemberships = syncItemPlacementsWithCollectionIds(
+    {
+      ...item,
+      collectionIds: normalized.collectionIds,
+      placements: normalized.placements,
+      removedPlacements: normalized.removedPlacements,
+    },
+    remainingCollectionIds,
+    now
+  );
+  const next: Item = {
+    ...item,
+    collectionIds: nextMemberships.collectionIds,
+    placements: nextMemberships.placements,
+    removedPlacements: nextMemberships.removedPlacements,
+    updated_at: now,
+  };
+  store.putItem(next);
+  return { item: next, mode: 'detached', removedCollectionIds, remainingCollectionIds };
+};
+
+/** Restore explicitly soft-removed collection memberships without changing item content. */
+export const restoreItemPlacementsAtomic = async (
+  itemId: string,
+  requestedCollectionIds: string[]
+): Promise<ItemPlacementRestoreResult> => {
+  const store = await getDB();
+  const item = store.getItem(itemId);
+  if (!item) return { item: null, restoredCollectionIds: [] };
+
+  const removed = item.removedPlacements || {};
+  const requested = [...new Set(requestedCollectionIds.filter((id) => !!removed[id]))];
+  if (!requested.length) return { item, restoredCollectionIds: [] };
+
+  const now = nowTs();
+  const synced = syncItemPlacementsWithCollectionIds(
+    item,
+    [...new Set([...(item.collectionIds || []), ...requested])],
+    now
+  );
+  const next: Item = {
+    ...item,
+    collectionIds: synced.collectionIds,
+    placements: synced.placements,
+    removedPlacements: synced.removedPlacements,
+    updated_at: now,
+  };
+  store.putItem(next);
+  return { item: next, restoredCollectionIds: requested };
 };
 
 export const removeItemFromCollection = async (
-  itemId: string, 
+  itemId: string,
   collectionId: string
 ): Promise<{ removed: boolean; itemDeleted: boolean; itemTrashed: boolean; remainingPlacements: number }> => {
-  const store = await getDB();
-  const item = store.getItem(itemId);
-  
-  if (!item) {
-    return { removed: false, itemDeleted: false, itemTrashed: false, remainingPlacements: 0 };
-  }
-  
-  const placements = { ...(item.placements || {}) };
-  delete placements[collectionId];
-  
-  const newCollectionIds = Object.keys(placements);
-  
-  if (newCollectionIds.length === 0) {
-    const now = nowTs();
-    store.putItem({
-      ...item,
-      deletedAt: now,
-      updated_at: now,
-    });
-    // Record trash history
-    const { recordTrashHistory } = await import('./trashHistory');
-    await recordTrashHistory(item, {
-      reason: 'Removed from last collection',
-      reasonCode: 'remove_last_collection',
-    });
-    notifyDataChanged('item.update');
-    return { removed: true, itemDeleted: false, itemTrashed: true, remainingPlacements: 0 };
-  }
-  
-  store.putItem({
-    ...item,
-    collectionIds: newCollectionIds,
-    placements,
-    updated_at: nowTs()
-  });
-  
-  notifyDataChanged('item.update');
-  return { removed: true, itemDeleted: false, itemTrashed: false, remainingPlacements: newCollectionIds.length };
+  const result = await removeItemPlacementsAtomic(itemId, [collectionId]);
+  if (result.mode !== 'noop') notifyDataChanged('item.update');
+  return {
+    removed: result.mode !== 'noop',
+    itemDeleted: false,
+    itemTrashed: result.mode === 'trashed',
+    remainingPlacements: result.remainingCollectionIds.length,
+  };
 };
 
 export const deleteItem = async (id: string): Promise<{ deleted: boolean; placementCount: number }> => {
@@ -661,21 +746,54 @@ export const addCollection = async (name: string, color?: string, projectId?: st
   return id;
 };
 
-export const deleteCollection = async (id: string) => {
+/**
+ * Delete a collection as one container mutation. Items are never deleted: an
+ * item whose last active placement was here is relocated to its project's
+ * Unfiled collection. Historical tombstones for this deleted container cannot
+ * be restored and are discarded at the same time.
+ */
+export const deleteCollectionAtomic = async (id: string): Promise<DeleteCollectionResult> => {
   const store = await getDB();
-  const { defaultUnsortedCollectionId } = await ensureDefaultProjectAndCollection(store);
-  
-  const items = store.getAllItems().filter(item => item.collectionIds.includes(id));
-  for (const item of items) {
-    const next = (item.collectionIds || []).filter((cid) => cid !== id);
-    store.putItem({
-      ...item,
-      collectionIds: next.length > 0 ? next : [defaultUnsortedCollectionId],
-      updated_at: nowTs(),
-    });
-  }
-  store.deleteCollection(id);
-  notifyDataChanged('collection.delete');
+  const collection = store.getCollection(id);
+  if (!collection) return { deleted: false, changedItemIds: [] };
+  if (collection.isDefault) throw new Error('System collections cannot be removed');
+
+  const relocationCollectionId = await ensureDefaultCollectionForProject(
+    store,
+    collection.primaryProjectId || DEFAULT_PROJECT_ID
+  );
+  const affected = store
+    .getAllItems()
+    .filter((item) => item.collectionIds.includes(id) || !!item.removedPlacements?.[id]);
+  const changedItemIds: string[] = [];
+  const now = nowTs();
+
+  store.withTransaction(() => {
+    for (const item of affected) {
+      const active = (item.collectionIds || []).filter((collectionId) => collectionId !== id);
+      const nextActive = active.length ? active : [relocationCollectionId];
+      const synced = syncItemPlacementsWithCollectionIds(item, nextActive, now);
+      const removedPlacements = { ...(synced.removedPlacements || {}) };
+      delete removedPlacements[id];
+      store.putItem({
+        ...item,
+        collectionIds: synced.collectionIds,
+        placements: synced.placements,
+        ...(Object.keys(removedPlacements).length ? { removedPlacements } : { removedPlacements: undefined }),
+        updated_at: now,
+      });
+      changedItemIds.push(item.id);
+    }
+    store.deleteCollection(id);
+  });
+
+  return { deleted: true, relocatedCollectionId: relocationCollectionId, changedItemIds };
+};
+
+export const deleteCollection = async (id: string) => {
+  const result = await deleteCollectionAtomic(id);
+  if (result.deleted) notifyDataChanged('collection.delete');
+  return result;
 };
 
 export const updateCollection = async (id: string, updates: Partial<Omit<Collection, 'id' | 'created_at'>>) => {
@@ -694,7 +812,15 @@ export const updateItemCollection = async (itemId: string, collectionId: string 
   if (item) {
     const next = typeof collectionId === 'string' ? [collectionId] : [defaultUnsortedCollectionId];
     assertNoBookmarkDuplicateInCollections(store, item.url || '', next, item.id);
-    store.putItem({ ...item, collectionIds: next, updated_at: nowTs() });
+    const now = nowTs();
+    const synced = syncItemPlacementsWithCollectionIds(item, next, now);
+    store.putItem({
+      ...item,
+      collectionIds: synced.collectionIds,
+      placements: synced.placements,
+      removedPlacements: synced.removedPlacements,
+      updated_at: now,
+    });
     notifyDataChanged('item.update');
   }
 };

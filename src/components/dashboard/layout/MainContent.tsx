@@ -104,7 +104,7 @@ interface MainContentProps {
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
     options?: UpdateItemOptions
   ) => Promise<void>;
-  onDeleteBookmark?: (id: string, collectionId?: string) => Promise<void>;
+  onDeleteBookmark?: (id: string, collectionIds?: string | string[]) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   onCreateItem?: (data: {
@@ -2560,6 +2560,8 @@ export const MainContent: React.FC<MainContentProps> = ({
             item={bookmarkDeleteTarget}
             collectionId={getDeleteDialogCollectionContext(bookmarkDeleteTarget).id}
             collectionName={getDeleteDialogCollectionContext(bookmarkDeleteTarget).name}
+            collections={collections}
+            projects={projects}
             onResult={async (result) => {
               const target = bookmarkDeleteTarget;
               if (!target || !onDeleteBookmark) {
@@ -2567,16 +2569,11 @@ export const MainContent: React.FC<MainContentProps> = ({
                 setBookmarkDeleteExplicitCollectionId(undefined);
                 return;
               }
-              const ctx = getDeleteDialogCollectionContext(target);
               setBookmarkDeleteTarget(null);
               setBookmarkDeleteExplicitCollectionId(undefined);
               if (result.action === 'cancel') return;
               try {
-                if (result.action === 'remove-from-collection' && ctx.id) {
-                  await onDeleteBookmark(target.id, ctx.id);
-                } else if (result.action === 'delete-everywhere') {
-                  await onDeleteBookmark(target.id);
-                }
+                if (result.collectionIds?.length) await onDeleteBookmark(target.id, result.collectionIds);
                 if (onRefresh) await onRefresh();
               } catch (e) {
                 console.error('Move to trash failed:', e);
@@ -2706,10 +2703,12 @@ export const MainContent: React.FC<MainContentProps> = ({
       />
 
       {bookmarkDeleteTarget && onDeleteBookmark && (
-        <DeleteConfirmDialog
-          item={bookmarkDeleteTarget}
-          collectionId={getDeleteDialogCollectionContext(bookmarkDeleteTarget).id}
-          collectionName={getDeleteDialogCollectionContext(bookmarkDeleteTarget).name}
+          <DeleteConfirmDialog
+            item={bookmarkDeleteTarget}
+            collectionId={getDeleteDialogCollectionContext(bookmarkDeleteTarget).id}
+            collectionName={getDeleteDialogCollectionContext(bookmarkDeleteTarget).name}
+            collections={collections}
+            projects={projects}
           onResult={async (result) => {
             const target = bookmarkDeleteTarget;
             if (!target || !onDeleteBookmark) {
@@ -2717,16 +2716,11 @@ export const MainContent: React.FC<MainContentProps> = ({
               setBookmarkDeleteExplicitCollectionId(undefined);
               return;
             }
-            const ctx = getDeleteDialogCollectionContext(target);
             setBookmarkDeleteTarget(null);
             setBookmarkDeleteExplicitCollectionId(undefined);
             if (result.action === 'cancel') return;
             try {
-              if (result.action === 'remove-from-collection' && ctx.id) {
-                await onDeleteBookmark(target.id, ctx.id);
-              } else if (result.action === 'delete-everywhere') {
-                await onDeleteBookmark(target.id);
-              }
+                if (result.collectionIds?.length) await onDeleteBookmark(target.id, result.collectionIds);
               setViewingItem((v) => (v?.id === target.id ? null : v));
               if (onRefresh) await onRefresh();
             } catch (e) {

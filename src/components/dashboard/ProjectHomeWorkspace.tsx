@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Layers3, Link2, MoveRight, Pin, Plus, Search, Settings2, Trash2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Layers3, Link2, MoveRight, Pin, Plus, RotateCcw, Search, Settings2, Trash2, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemFavoriteButton } from './ItemFavoriteButton';
@@ -25,6 +25,8 @@ import {
 } from './ProjectWorkspaceManagerDialog';
 import { SourceMenuTab } from './SourceMenuTab';
 import { DialogShell } from './DialogShell';
+import { getTrashedItems } from '../../lib/itemQuickAccess';
+import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 
 interface ProjectHomeWorkspaceProps {
   project: Project;
@@ -70,6 +72,8 @@ interface ProjectHomeWorkspaceProps {
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
     options?: UpdateItemOptions
   ) => Promise<void>;
+  /** Opens the shared Library-removal decision; distinct from removing a workspace entry. */
+  onRequestDeleteItem?: (item: Item) => void;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
 }
@@ -124,6 +128,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   onSelectedItemChange,
   onSelectSessionEntry,
   onUpdateItem,
+  onRequestDeleteItem,
   onCreateProject,
   onCreateCollection,
 }) => {
@@ -140,6 +145,10 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
   const [workspaceDeleteConfirm, setWorkspaceDeleteConfirm] = useState<SavedWorkspaceSession | null>(null);
   const [transferEntryId, setTransferEntryId] = useState<string | null>(null);
   const [transferTargetWorkspaceKey, setTransferTargetWorkspaceKey] = useState('');
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [trashedProjectItems, setTrashedProjectItems] = useState<Item[]>([]);
+  const [restoringItemId, setRestoringItemId] = useState<string | null>(null);
+  const [trashRestoreChoice, setTrashRestoreChoice] = useState<Item | null>(null);
   const [browseSource, setBrowseSource] = useState<'workspace' | 'all' | 'pinned' | 'collection'>(
     scopeNavigationRevision > 0
       ? selectedCollectionId === 'all' ? 'all' : 'collection'
@@ -176,6 +185,16 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     [items, project.id]
   );
   const allItems = organizationItems ?? items;
+  const projectCollectionIds = useMemo(
+    () => new Set(collections.map((collection) => collection.id)),
+    [collections]
+  );
+  const removedProjectItems = useMemo(() => {
+    return allItems.filter((item) =>
+      Object.keys(item.removedPlacements || {}).some((collectionId) => projectCollectionIds.has(collectionId))
+    );
+  }, [allItems, projectCollectionIds]);
+  const recoveryCount = removedProjectItems.length + trashedProjectItems.length;
   const selectedItem = allItems.find((item) => item.id === selectedItemId) ?? null;
   const selectedSessionTab = sessionTabs.find((tab) => tab.id === selectedSessionTabId) ?? null;
   const transferEntryTab = transferEntryId
@@ -218,6 +237,24 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     selectedCollectionId === 'all'
       ? null
       : collections.find((collection) => collection.id === selectedCollectionId) ?? null;
+
+  const reloadProjectTrash = useCallback(async () => {
+    try {
+      const trashed = await getTrashedItems();
+      setTrashedProjectItems(
+        trashed.filter((item) => (item.collectionIds || []).some((collectionId) => projectCollectionIds.has(collectionId)))
+      );
+    } catch {
+      // Home can render before the folder-backed database is configured. Recovery
+      // is simply empty until the canonical store becomes available.
+      setTrashedProjectItems([]);
+    }
+  }, [projectCollectionIds]);
+
+  useEffect(() => {
+    void reloadProjectTrash();
+    return subscribeToDataChanges(() => { void reloadProjectTrash(); });
+  }, [reloadProjectTrash]);
 
   useEffect(() => {
     savePageUiState(pageUiKey, { selectedItemId, selectedSessionTabId, browseSource });
@@ -400,6 +437,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </button>
           ) : null}
           {transferable && transferDestinations.length > 0 && <button type="button" onClick={() => openTransferEntry(tab.id)} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
+          {item && onRequestDeleteItem ? <button type="button" onClick={() => onRequestDeleteItem(item)} title="Remove from Library" aria-label={`Remove ${label} from Library`} style={{ ...sessionIconButtonStyle, color: 'var(--danger)' }}><Trash2 size={11} /></button> : null}
           <button type="button" onClick={() => { if (selectedSessionTabId === tab.id) { setSelectedSessionTabId(null); setSelectedItemId(null); } onRemoveSessionTab(tab.id); }} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={sessionIconButtonStyle}><X size={12} /></button>
         </>
       ),
@@ -410,6 +448,47 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     : browseSource === 'collection'
       ? orderedItems
       : allProjectItems;
+  const restoreProjectPlacements = async (item: Item) => {
+    if (!onUpdateItem || restoringItemId === item.id) return;
+    const restoreIds = Object.keys(item.removedPlacements || {}).filter((id) => projectCollectionIds.has(id));
+    if (!restoreIds.length) return;
+    setRestoringItemId(item.id);
+    try {
+      await onUpdateItem(item.id, { collectionIds: [...new Set([...(item.collectionIds || []), ...restoreIds])] });
+      setSelectedItemId(item.id);
+    } finally {
+      setRestoringItemId(null);
+    }
+  };
+  const restoreTrashedToProject = async (item: Item) => {
+    if (!onUpdateItem || restoringItemId === item.id) return;
+    const projectIds = item.collectionIds.filter((id) => projectCollectionIds.has(id));
+    if (!projectIds.length) return;
+    setRestoringItemId(item.id);
+    try {
+      await onUpdateItem(item.id, { collectionIds: projectIds }, { clearItemMarkers: ['deletedAt'] });
+      setTrashRestoreChoice(null);
+      setRecoveryOpen(false);
+    } finally {
+      setRestoringItemId(null);
+    }
+  };
+  const restoreTrashedEverywhere = async (item: Item) => {
+    if (!onUpdateItem || restoringItemId === item.id) return;
+    setRestoringItemId(item.id);
+    try {
+      await onUpdateItem(item.id, {}, { clearItemMarkers: ['deletedAt'] });
+      setTrashRestoreChoice(null);
+      setRecoveryOpen(false);
+    } finally {
+      setRestoringItemId(null);
+    }
+  };
+  const requestTrashRestore = (item: Item) => {
+    const hasOtherProjectLocations = item.collectionIds.some((id) => !projectCollectionIds.has(id));
+    if (hasOtherProjectLocations) setTrashRestoreChoice(item);
+    else void restoreTrashedToProject(item);
+  };
   const materialBrowseEntries: ContentBrowseEntry[] = materialBrowseItems.map((item) => {
     const pinned = isItemPinnedToProject(item, project.id);
     return {
@@ -430,6 +509,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         <>
           <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} />
           <button type="button" aria-label={pinned ? `Unpin ${item.title} from ${project.name}` : `Pin ${item.title} to ${project.name}`} title={pinned ? `Unpin from ${project.name}` : `Pin to ${project.name}`} disabled={!onUpdateItem || pinningItemId === item.id} onClick={() => void toggleProjectPin(item)} style={{ ...sessionIconButtonStyle, color: pinned ? 'var(--accent)' : 'var(--text-faint)' }}><Pin size={12} fill={pinned ? 'currentColor' : 'none'} /></button>
+          {onRequestDeleteItem ? <button type="button" aria-label={`Remove ${item.title || 'item'} from Library`} title="Remove from Library" onClick={() => onRequestDeleteItem(item)} style={{ ...sessionIconButtonStyle, color: 'var(--danger)' }}><Trash2 size={11} /></button> : null}
         </>
       ),
     };
@@ -488,6 +568,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             <span style={detailLabelStyle}>Item</span>
             <div className="ui-detail-panel__actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button className="ui-button ui-button--secondary ui-adaptive-detail-back" type="button" onClick={clearDetailSelection} style={secondaryButtonStyle}><ArrowLeft size={12} /> Browse</button>
+              {onRequestDeleteItem ? <button className="ui-button ui-button--danger" type="button" onClick={() => onRequestDeleteItem(selectedItem)}><Trash2 size={12} /> Move to Trash</button> : null}
               {selectedItemWorkspaceAction}
             </div>
           </div>
@@ -561,6 +642,15 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             </div>
           </div>
         </div>
+        <button
+          className="ui-button ui-button--secondary"
+          type="button"
+          onClick={() => setRecoveryOpen(true)}
+          title={`Review ${recoveryCount} item${recoveryCount === 1 ? '' : 's'} that can be restored in ${project.name}`}
+        >
+          <RotateCcw size={12} /> Recovery
+          {recoveryCount > 0 ? <span aria-label={`${recoveryCount} recoverable item${recoveryCount === 1 ? '' : 's'}`}>{recoveryCount}</span> : null}
+        </button>
       </header>
 
       <section style={{ width: '100%', maxWidth: 1120, minHeight: 0, flex: 1, margin: '0 auto', display: 'flex', flexDirection: 'column' }} aria-label="Project workspace">
@@ -952,6 +1042,85 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           onDelete={onDeleteSavedWorkspace}
         />
       ) : null}
+      {recoveryOpen ? (
+        <DialogShell
+          title={`${project.name} recovery`}
+          description="Restore items removed from this project, including items that were moved to the global Trash from here."
+          onClose={() => { if (!restoringItemId) setRecoveryOpen(false); }}
+          closeDisabled={restoringItemId !== null}
+          maxWidth={620}
+          footer={<button className="ui-button ui-button--secondary" type="button" disabled={restoringItemId !== null} onClick={() => setRecoveryOpen(false)}>Done</button>}
+        >
+          <div style={{ display: 'grid', gap: 18 }}>
+            <section style={recoverySectionStyle}>
+              <div>
+                <h3 style={recoveryHeadingStyle}>Removed from {project.name}</h3>
+                <p style={recoveryDescriptionStyle}>These items remain in your Library or another project, but were removed from this project only.</p>
+              </div>
+              {removedProjectItems.length === 0 ? (
+                <p style={recoveryEmptyStyle}>No project-only removals.</p>
+              ) : (
+                <div style={recoveryListStyle}>
+                  {removedProjectItems.map((item) => (
+                    <div key={item.id} style={recoveryRowStyle}>
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <strong style={recoveryItemTitleStyle}>{item.title || item.url || 'Untitled item'}</strong>
+                        {item.url ? <span style={recoveryItemDetailStyle}>{item.url}</span> : null}
+                      </span>
+                      <button className="ui-button ui-button--secondary" type="button" disabled={restoringItemId !== null} onClick={() => void restoreProjectPlacements(item)}>
+                        <RotateCcw size={12} /> Restore to project
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            <section style={recoverySectionStyle}>
+              <div>
+                <h3 style={recoveryHeadingStyle}>In Trash from {project.name}</h3>
+                <p style={recoveryDescriptionStyle}>These items were globally removed, but had a saved location in this project.</p>
+              </div>
+              {trashedProjectItems.length === 0 ? (
+                <p style={recoveryEmptyStyle}>No globally trashed items from this project.</p>
+              ) : (
+                <div style={recoveryListStyle}>
+                  {trashedProjectItems.map((item) => (
+                    <div key={item.id} style={recoveryRowStyle}>
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <strong style={recoveryItemTitleStyle}>{item.title || item.url || 'Untitled item'}</strong>
+                        {item.url ? <span style={recoveryItemDetailStyle}>{item.url}</span> : null}
+                      </span>
+                      <button className="ui-button ui-button--secondary" type="button" disabled={restoringItemId !== null} onClick={() => requestTrashRestore(item)}>
+                        <RotateCcw size={12} /> Restore…
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </DialogShell>
+      ) : null}
+      {trashRestoreChoice ? (
+        <DialogShell
+          title="Restore this item?"
+          description={<>This item was also saved outside <strong>{project.name}</strong>. Choose the scope to restore.</>}
+          onClose={() => { if (!restoringItemId) setTrashRestoreChoice(null); }}
+          closeDisabled={restoringItemId !== null}
+          maxWidth={520}
+          footer={(
+            <>
+              <button className="ui-button ui-button--secondary" type="button" disabled={restoringItemId !== null} onClick={() => setTrashRestoreChoice(null)}>Cancel</button>
+              <button className="ui-button ui-button--secondary" type="button" disabled={restoringItemId !== null} onClick={() => void restoreTrashedToProject(trashRestoreChoice)}><RotateCcw size={12} /> Restore to {project.name}</button>
+              <button className="ui-button ui-button--primary" type="button" disabled={restoringItemId !== null} onClick={() => void restoreTrashedEverywhere(trashRestoreChoice)}><RotateCcw size={12} /> Restore all locations</button>
+            </>
+          )}
+        >
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.55 }}>
+            Restoring to {project.name} keeps the item removed from its other former projects. Restoring all locations returns every original project and collection placement.
+          </p>
+        </DialogShell>
+      ) : null}
       {transferEntryTab && transferDestinations.length > 0 ? (
         <DialogShell
           title="Copy or move workspace item"
@@ -1014,3 +1183,11 @@ const browseRowDetailStyle: React.CSSProperties = { display: 'block', marginTop:
 const secondaryButtonStyle = uiPatterns.secondaryButton;
 const sessionIconButtonStyle: React.CSSProperties = { ...uiPatterns.iconButton, width: 25, height: 25, border: 'none' };
 const destinationSelectStyle: React.CSSProperties = { ...uiPatterns.select, maxWidth: 190 };
+const recoverySectionStyle: React.CSSProperties = { display: 'grid', gap: 9 };
+const recoveryHeadingStyle: React.CSSProperties = { margin: 0, color: 'var(--text)', fontSize: 'var(--text-sm)', fontWeight: 700 };
+const recoveryDescriptionStyle: React.CSSProperties = { margin: '3px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)', lineHeight: 1.45 };
+const recoveryEmptyStyle: React.CSSProperties = { margin: 0, padding: '10px 12px', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' };
+const recoveryListStyle: React.CSSProperties = { overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' };
+const recoveryRowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderBottom: '1px solid var(--border)' };
+const recoveryItemTitleStyle: React.CSSProperties = { display: 'block', color: 'var(--text)', fontSize: 'var(--text-sm)', lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+const recoveryItemDetailStyle: React.CSSProperties = { display: 'block', marginTop: 2, color: 'var(--text-faint)', fontSize: 'var(--text-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };

@@ -193,7 +193,7 @@ interface DashboardLayoutProps {
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
     options?: UpdateItemOptions
   ) => Promise<void>;
-  onDeleteBookmark?: (id: string, collectionId?: string) => Promise<void>;
+  onDeleteBookmark?: (id: string, collectionIds?: string | string[]) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
   onDeleteProject?: (projectId: string) => Promise<boolean | void>;
@@ -628,9 +628,9 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     }
   }, [onUpdateBookmark, addToast]);
 
-  const handleDeleteBookmarkWithToast = useCallback(async (id: string, collectionId?: string) => {
+  const handleDeleteBookmarkWithToast = useCallback(async (id: string, collectionIds?: string | string[]) => {
     if (!onDeleteBookmark) return;
-    await onDeleteBookmark(id, collectionId);
+    await onDeleteBookmark(id, collectionIds);
     addToast({ type: 'info', message: 'Bookmark removed' });
   }, [onDeleteBookmark, addToast]);
 
