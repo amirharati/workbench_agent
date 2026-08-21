@@ -54,6 +54,7 @@ import { LibraryLoadingPlaceholder } from './LibraryLoadingPlaceholder';
 import { HubBulkStagedActions } from './HubBulkStagedActions';
 import { useItemPeek } from './ItemPeekProvider';
 import { ItemResultRow } from './ItemResultRow';
+import { LinkVisual } from './LinkVisual';
 
 type HubLane = 'enrichment' | 'categories';
 export type HubView = 'enrichment' | 'classification' | 'taxonomy';
@@ -1873,6 +1874,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 7,
                         fontWeight: 500,
                         color: 'var(--text)',
                         overflow: 'hidden',
@@ -1880,7 +1884,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {item.title || item.url || 'Untitled'}
+                      <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title || item.url || 'Untitled'}</span>
                       {isRecentUpdate ? (
                         <span
                           style={{

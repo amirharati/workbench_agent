@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, ExternalLink, Save } from 'lucide-react';
 import { Item, Collection } from '../lib/db';
 import { ExtensionPageUrlLink } from './dashboard/BookmarkUrlLink';
+import { LinkVisual } from './dashboard/LinkVisual';
 
 interface BookmarkDetailPanelProps {
   item: Item;
@@ -54,7 +55,7 @@ export const BookmarkDetailPanel: React.FC<BookmarkDetailPanelProps> = ({
     >
       {/* Header */}
       <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-        {item.favicon && <img src={item.favicon} alt="" style={{ width: '24px', height: '24px', marginTop: '2px' }} />}
+        <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600, lineHeight: 1.3 }}>
             {item.title}

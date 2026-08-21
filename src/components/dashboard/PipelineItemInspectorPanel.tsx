@@ -38,6 +38,7 @@ import { usePipelineProgress } from './PipelineProgressProvider';
 import { EnrichmentContent } from './PipelineDisplayBlocks';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
+import { LinkVisual } from './LinkVisual';
 
 interface PipelineItemInspectorPanelProps {
   item: Item;
@@ -617,8 +618,9 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
               </button>
             </div>
           ) : null}
-          <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
-            {item.title || 'Untitled'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
+            <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
+            <span>{item.title || 'Untitled'}</span>
           </div>
           <BookmarkUrlLink
             item={item}
@@ -694,17 +696,9 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
                 lineHeight: 1.45,
               }}
             >
-              {item.favicon || item.title ? (
+              {item.url || item.title ? (
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                  {item.favicon ? (
-                    <img
-                      src={item.favicon}
-                      alt=""
-                      width={18}
-                      height={18}
-                      style={{ borderRadius: 3, marginTop: 2, flexShrink: 0 }}
-                    />
-                  ) : null}
+                  <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
                   <div style={{ minWidth: 0, fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                     {item.title || 'Untitled'}
                   </div>

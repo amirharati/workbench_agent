@@ -237,12 +237,12 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
                 <>
                   <header className="ui-item-peek__item-header">
                     <span className="ui-item-peek__kind">{item.url ? <ExternalLink size={13} /> : <FileText size={13} />}{item.url ? 'Saved link' : 'Note'}</span>
-                    <h3>{item.title || 'Untitled'}</h3>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      {item.url ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} /> : null}
+                      {item.title || 'Untitled'}
+                    </h3>
                     {item.url ? <button type="button" className="ui-item-peek__url" onClick={() => void openBookmarkInBrowser(item)} title="Open original in Chrome">{item.url}</button> : null}
                   </header>
-                  {item.url ? <div style={{ height: 190, margin: '0 0 16px', overflow: 'hidden', borderRadius: 'var(--radius-md)', background: 'var(--bg-subtle)' }}>
-                    <LinkVisual variant="thumbnail" url={item.url} title={item.title} favicon={item.favicon} previewImage={typeof item.metadata?.previewImage === 'string' ? item.metadata.previewImage : undefined} />
-                  </div> : null}
                   <article className="ui-item-peek__document">
                     {rawLoading || (contextLoading && !previewText) ? (
                       <div className="ui-item-peek__empty">Loading stored preview…</div>

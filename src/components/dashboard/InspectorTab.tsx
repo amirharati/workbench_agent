@@ -10,6 +10,7 @@ import { ItemSimilarSectionView } from './SearchDiscoveryBlocks';
 import { ItemDigestQuickActions } from './ItemDigestQuickActions';
 import { CategoryChip, SuggestedCategoryRow } from '../shared/CategoryReviewRows';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
+import { LinkVisual } from './LinkVisual';
 
 interface InspectorTabProps {
   activeItem: Item | null;
@@ -246,6 +247,7 @@ function ItemInspectorBody({
 
       <div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
+          {item.url ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} /> : null}
           <div
             style={{
               flex: 1,
