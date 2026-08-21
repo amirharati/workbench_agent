@@ -18,7 +18,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import type { DashboardView } from './DashboardLayout';
-import type { Collection, Item, Project } from '../../../lib/db';
+import type { Collection, ContainerDeletionMode, DeleteCollectionOptions, DeleteCollectionResult, DeleteProjectOptions, DeleteProjectResult, Item, Project } from '../../../lib/db';
 import { DialogShell } from '../DialogShell';
 import { ButtonDanger, ButtonGhost, ButtonPrimary, Input } from '../../../styles/primitives';
 import { useItemDragDrop } from '../ItemDragDropProvider';
@@ -37,9 +37,9 @@ interface LeftSidebarProps {
   onSelectProjectScope: (projectId: string | 'all') => void;
   onSelectCollectionScope: (collectionId: string, projectId?: string) => void;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
-  onDeleteProject?: (projectId: string) => Promise<boolean | void>;
+  onDeleteProject?: (projectId: string, options?: DeleteProjectOptions) => Promise<DeleteProjectResult | false | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
-  onDeleteCollection?: (collectionId: string) => Promise<boolean | void>;
+  onDeleteCollection?: (collectionId: string, options?: DeleteCollectionOptions) => Promise<DeleteCollectionResult | false | void>;
 }
 
 type SidebarDialog =
@@ -73,6 +73,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const [dialog, setDialog] = useState<SidebarDialog | null>(null);
   const [dialogName, setDialogName] = useState('');
   const [dialogError, setDialogError] = useState('');
+  const [deleteMode, setDeleteMode] = useState<ContainerDeletionMode>('move');
+  const [deleteDestinationId, setDeleteDestinationId] = useState('');
   const scopeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -298,8 +300,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       setDialogError('Inbox cannot be removed.');
       return;
     }
-    const deleted = await onDeleteProject(projectId);
-    if (deleted !== false && scopeProjectId === projectId) {
+    const deleted = await onDeleteProject(projectId, {
+      mode: deleteMode,
+      destinationProjectId: selectedDeleteDestination || undefined,
+    });
+    if (typeof deleted === 'object' && deleted.deleted && scopeProjectId === projectId) {
       onSelectProjectScope('all');
     }
   };
@@ -323,8 +328,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       setDialogError('System collections cannot be removed.');
       return;
     }
-    const deleted = await onDeleteCollection(collectionId);
-    if (deleted !== false && scopeCollectionId === collectionId) {
+    const deleted = await onDeleteCollection(collectionId, {
+      mode: deleteMode,
+      destinationCollectionId: selectedDeleteDestination || undefined,
+    });
+    if (typeof deleted === 'object' && deleted.deleted && scopeCollectionId === collectionId) {
       onSelectCollectionScope('all', scopeProjectId === 'all' ? undefined : scopeProjectId);
     }
   };
@@ -391,6 +399,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     setDialog(null);
     setDialogName('');
     setDialogError('');
+    setDeleteMode('move');
+    setDeleteDestinationId('');
   };
 
   const dialogTitle = dialog?.type === 'create-project'
@@ -414,6 +424,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           .map((collection) => collection.name)
       : [];
   const normalizedDialogName = dialogName.trim().toLowerCase();
+  const deleteProjectDestinations = projects.filter((project) => project.id !== (dialog?.type === 'delete-project' ? dialog.projectId : ''));
+  const deleteCollectionDestinations = collections.filter((collection) => collection.id !== (dialog?.type === 'delete-collection' ? dialog.collectionId : ''));
+  const selectedDeleteDestination = deleteDestinationId || (
+    dialog?.type === 'delete-project'
+      ? deleteProjectDestinations.find((project) => project.isDefault)?.id || deleteProjectDestinations[0]?.id || ''
+      : dialog?.type === 'delete-collection'
+        ? deleteCollectionDestinations.find((collection) => collection.isDefault && collection.primaryProjectId === collections.find((candidate) => candidate.id === dialog.collectionId)?.primaryProjectId)?.id
+          || deleteCollectionDestinations[0]?.id || ''
+        : ''
+  );
 
   return (
     <div className="ui-sidebar" data-collapsed={isCollapsed ? 'true' : 'false'}>
@@ -783,7 +803,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               ? 'Projects keep collections, saved workspaces, and working context together.'
               : dialog.type === 'create-collection'
                 ? 'Collections organize material inside the selected project.'
-                : 'This action cannot be undone.'
+                : 'Choose whether to move this container’s links, or only trash links that would otherwise have no saved location. You can Undo this deletion for a short time.'
           }
           onClose={closeDialog}
           maxWidth={400}
@@ -791,7 +811,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <>
               <ButtonGhost type="button" onClick={closeDialog}>Cancel</ButtonGhost>
               {isDeleteDialog ? (
-                <ButtonDanger type="button" onClick={() => void submitDialog()}>Delete</ButtonDanger>
+                <ButtonDanger type="button" onClick={() => void submitDialog()} disabled={!selectedDeleteDestination}>Delete</ButtonDanger>
               ) : (
                 <ButtonPrimary
                   type="button"
@@ -838,10 +858,36 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </div>
             </div>
           ) : (
-            <div className="ui-status" data-tone="warning">
-              {dialog.type === 'delete-project'
-                ? `Delete project “${dialog.projectName}”? Its collections will move to Inbox and library items will remain saved.`
-                : `Delete collection “${dialog.collectionName}”? Items will remain saved and move to Incoming if this was their only collection.`}
+            <div className="ui-form__group" style={{ gap: 12 }}>
+              <div className="ui-status" data-tone="warning">
+                {dialog.type === 'delete-project'
+                  ? `Delete project “${dialog.projectName}”. Saved workspaces and browser snapshots are rehomed with the project.`
+                  : `Delete collection “${dialog.collectionName}”. Workspace entries are references and are not removed.`}
+              </div>
+              <label className="ui-form__label" htmlFor="container-delete-destination">
+                {dialog.type === 'delete-project' ? 'Move project structure to' : 'Move last-location links to'}
+              </label>
+              <select
+                id="container-delete-destination"
+                className="ui-input"
+                value={selectedDeleteDestination}
+                onChange={(event) => setDeleteDestinationId(event.target.value)}
+              >
+                {dialog.type === 'delete-project'
+                  ? deleteProjectDestinations.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)
+                  : deleteCollectionDestinations.map((collection) => {
+                    const owner = projects.find((project) => project.id === collection.primaryProjectId);
+                    return <option key={collection.id} value={collection.id}>{owner ? `${owner.name} · ` : ''}{collection.name}</option>;
+                  })}
+              </select>
+              <label className="ui-choice-card" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                <input type="radio" name="container-delete-mode" checked={deleteMode === 'move'} onChange={() => setDeleteMode('move')} />
+                <span><strong>Move links and keep them saved</strong><br /><small>Every link remains active and is moved to the destination if this was its only location.</small></span>
+              </label>
+              <label className="ui-choice-card" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                <input type="radio" name="container-delete-mode" checked={deleteMode === 'trash-unplaced'} onChange={() => setDeleteMode('trash-unplaced')} />
+                <span><strong>Remove this location; trash only unplaced links</strong><br /><small>Links saved elsewhere stay there. Links with no other active location go to Trash and remain recoverable.</small></span>
+              </label>
             </div>
           )}
           {dialogError ? <div className="ui-status" data-tone="error">{dialogError}</div> : null}

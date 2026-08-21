@@ -74,6 +74,17 @@ CREATE INDEX IF NOT EXISTS idx_items_updated ON items(updated_at);
 CREATE INDEX IF NOT EXISTS idx_items_pinned ON items(pinned_at);
 CREATE INDEX IF NOT EXISTS idx_items_favorite ON items(favorite_at);
 
+-- Durable project/collection Trash entries.  The payload is an exact
+-- pre-delete snapshot used to restore the container and its memberships.
+CREATE TABLE IF NOT EXISTS container_trash (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  name TEXT NOT NULL,
+  deleted_at INTEGER NOT NULL,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_container_trash_deleted ON container_trash(deleted_at);
+
 CREATE TABLE IF NOT EXISTS notes (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,

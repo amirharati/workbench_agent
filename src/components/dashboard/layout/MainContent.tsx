@@ -466,7 +466,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     if (!id) return;
     setProjectDeleteConfirmId(null);
     const ok = await deleteProject(id);
-    if (!ok) {
+    if (!ok.deleted) {
       window.alert('Cannot delete the default project.');
       return;
     }

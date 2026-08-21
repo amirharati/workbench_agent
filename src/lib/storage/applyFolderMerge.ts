@@ -18,7 +18,7 @@ import {
 } from './mergeSqliteStores';
 import { fingerprintFromStore, fingerprintsEqual } from './importFingerprint';
 import type { DeletedItemEntry } from '../deletedItems';
-import type { Item, Note, Project, Collection, Workspace } from '../db';
+import type { Item, Note, Project, Collection, Workspace, ContainerTrashEntry } from '../db';
 import type { ItemEnrichment } from '../enrichment/types';
 import type { AiCategory, AiItemCategoryLink, AiItemSignal } from '../categorization/types';
 
@@ -35,6 +35,7 @@ function snapshotFromStore(store: SqliteStore): MergeableLibrarySnapshot {
       purgedAt: d.purgedAt,
       reason: d.reason,
     })),
+    containerTrash: store.getAllContainerTrash().map((entry) => ({ ...entry, updated_at: entry.deletedAt })),
     enrichment: store.getAllEnrichment() as ItemEnrichment[],
     categories: store.getAllCategories() as AiCategory[],
     links: store.getAllLinks() as AiItemCategoryLink[],
@@ -50,6 +51,7 @@ function applyMergedToStore(store: SqliteStore, merged: MergedLibrarySnapshot): 
     const mergedColIds = new Set(merged.collections.map((m) => m.id));
     const mergedProjIds = new Set(merged.projects.map((m) => m.id));
     const deletedIds = new Set(merged.deletedItems.map((d) => d.id));
+    const mergedContainerTrashIds = new Set(merged.containerTrash.map((entry) => entry.id));
 
     for (const item of store.getAllItems()) {
       if (!mergedItemIds.has(item.id)) store.deleteItem(item.id);
@@ -67,6 +69,9 @@ function applyMergedToStore(store: SqliteStore, merged: MergedLibrarySnapshot): 
       if (proj.id === 'project_default' || proj.isDefault) continue;
       if (!mergedProjIds.has(proj.id)) store.deleteProject(proj.id);
     }
+    for (const entry of store.getAllContainerTrash()) {
+      if (!mergedContainerTrashIds.has(entry.id)) store.deleteContainerTrash(entry.id);
+    }
 
     for (const row of merged.deletedItems) {
       store.putDeletedItem({
@@ -74,6 +79,10 @@ function applyMergedToStore(store: SqliteStore, merged: MergedLibrarySnapshot): 
         purgedAt: row.purgedAt,
         reason: row.reason,
       });
+    }
+    for (const entry of merged.containerTrash) {
+      const { updated_at: _updatedAt, ...row } = entry as ContainerTrashEntry & { updated_at?: number };
+      store.putContainerTrash(row);
     }
     for (const row of merged.projects) store.putProject(row as Project);
     for (const row of merged.collections) store.putCollection(row as Collection);

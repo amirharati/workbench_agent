@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
-import { Workspace, Collection, Item, Project, UpdateItemOptions, ensureProjectUnsortedCollection, getItem } from '../../../lib/db';
+import { Workspace, Collection, Item, Project, UpdateItemOptions, ensureProjectUnsortedCollection, getItem, type DeleteCollectionOptions, type DeleteCollectionResult, type DeleteProjectOptions, type DeleteProjectResult, undoContainerDeletion } from '../../../lib/db';
 import type { BackupStatusSnapshot, RestoreBackupResult } from '../../../lib/backupCoordinator';
 import type { DbWorkerStatus } from '../../../lib/storage/dbClient';
 import type { AISettings } from '../../../lib/ai/types';
@@ -12,6 +12,8 @@ import {
   loadGlobalTabState,
   pruneGlobalTabs,
   saveGlobalTabState,
+  saveContainerTrashWorkspaceState,
+  takeContainerTrashWorkspaceState,
   GlobalTabSystem,
   type GlobalTab,
   type GlobalTabSearch,
@@ -61,6 +63,7 @@ import {
   getWorkspaceProjectId,
   removeItemFromWorkspaceTarget,
   reorderItemInWorkspaceTarget,
+  rehomeProjectWorkspaceState,
   transferItemBetweenWorkspaceTargets,
   workspaceTargetContainsItem,
 } from '../workspaceSession';
@@ -196,8 +199,8 @@ interface DashboardLayoutProps {
   onDeleteBookmark?: (id: string, collectionIds?: string | string[]) => Promise<void>;
   onCreateProject?: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection?: (data: { name: string; projectId: string }) => Promise<string | void>;
-  onDeleteProject?: (projectId: string) => Promise<boolean | void>;
-  onDeleteCollection?: (collectionId: string) => Promise<boolean | void>;
+  onDeleteProject?: (projectId: string, options?: DeleteProjectOptions) => Promise<DeleteProjectResult | false | void>;
+  onDeleteCollection?: (collectionId: string, options?: DeleteCollectionOptions) => Promise<DeleteCollectionResult | false | void>;
   onCreateItem?: (data: {
     title: string;
     url?: string;
@@ -400,6 +403,17 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     setGlobalTabState(next);
     saveGlobalTabState(next);
   };
+
+  useEffect(() => {
+    const restoreWorkspaceState = (event: Event) => {
+      const state = (event as CustomEvent<GlobalTabState | null>).detail;
+      if (!state) return;
+      setGlobalTabState(state);
+      saveGlobalTabState(state);
+    };
+    window.addEventListener('workbench-container-trash-restored', restoreWorkspaceState);
+    return () => window.removeEventListener('workbench-container-trash-restored', restoreWorkspaceState);
+  }, []);
 
   useEffect(() => {
     if (libraryLoading) return;
@@ -885,28 +899,70 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     });
   };
 
-  const handleDeleteProjectFromSidebar = async (projectId: string) => {
+  const offerContainerUndo = (undoId: string | undefined, label: string, restoreLocalState?: () => void) => {
+    if (!undoId) return;
+    addToast({
+      message: `${label}.`,
+      type: 'info',
+      durationMs: 20_000,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          void undoContainerDeletion(undoId).then((restored) => {
+            if (restored) {
+              restoreLocalState?.();
+              addToast({ message: 'Deletion undone.', type: 'success' });
+              void onRefresh?.();
+            } else {
+              addToast({ message: 'This deleted container is no longer in Trash.', type: 'error' });
+            }
+          });
+        },
+      },
+    });
+  };
+
+  const handleDeleteProjectFromSidebar = async (projectId: string, options?: DeleteProjectOptions) => {
     if (!onDeleteProject) return false;
-    const deleted = await onDeleteProject(projectId);
-    if (deleted !== false && scopeProjectId === projectId) {
+    const workspaceStateBeforeDelete = globalTabState;
+    const deleted = await onDeleteProject(projectId, options);
+    if (typeof deleted === 'object' && deleted.deleted && scopeProjectId === projectId) {
       setScopeProjectId('all');
       setScopeCollectionId('all');
     }
-    if (deleted !== false) {
+    if (typeof deleted === 'object' && deleted.deleted) {
       setRecentProjectAccessIds((previous) => {
         const next = previous.filter((id) => id !== projectId);
         patchNavigationState({ recentProjectAccessIds: next });
         return next;
       });
+      setGlobalTabState((previous) => {
+        const next = rehomeProjectWorkspaceState({
+          state: previous,
+          sourceProjectId: projectId,
+          destinationProjectId: deleted.destinationProjectId || 'project_default',
+        });
+        saveGlobalTabState(next);
+        return next;
+      });
+      if (deleted.undoId) saveContainerTrashWorkspaceState(deleted.undoId, workspaceStateBeforeDelete);
+      offerContainerUndo(deleted.undoId, 'Project deleted', () => {
+        const restoredState = takeContainerTrashWorkspaceState(deleted.undoId!) || workspaceStateBeforeDelete;
+        setGlobalTabState(restoredState);
+        saveGlobalTabState(restoredState);
+      });
     }
     return deleted;
   };
 
-  const handleDeleteCollectionFromSidebar = async (collectionId: string) => {
+  const handleDeleteCollectionFromSidebar = async (collectionId: string, options?: DeleteCollectionOptions) => {
     if (!onDeleteCollection) return false;
-    const deleted = await onDeleteCollection(collectionId);
-    if (deleted !== false && scopeCollectionId === collectionId) {
+    const deleted = await onDeleteCollection(collectionId, options);
+    if (typeof deleted === 'object' && deleted.deleted && scopeCollectionId === collectionId) {
       setScopeCollectionId('all');
+    }
+    if (typeof deleted === 'object' && deleted.deleted) {
+      offerContainerUndo(deleted.undoId, 'Collection deleted');
     }
     return deleted;
   };

@@ -122,6 +122,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'findSimilarVectorScores',
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
+  'getContainerTrash',
   'getPipelineBadgeEntries',
   // Durable pipeline mutations publish coordinator-specific snapshots. They
   // must not trigger the dashboard's general library hydration path.
@@ -252,6 +253,7 @@ async function hydrateSnapshot(): Promise<Record<string, unknown>> {
     taxonomy: store.getTaxonomyState(),
     trash: store.getAllTrashHistory(),
     deletedItems: store.getAllDeletedItems(),
+    containerTrash: store.getAllContainerTrash(),
   };
 }
 
@@ -1098,6 +1100,33 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         ...result,
         revision: revisionTracker.recordSqliteMutation(),
       };
+    }
+    case 'deleteProjectAtomic': {
+      const result = await dbCore.deleteProjectAtomic(
+        ...(args as Parameters<typeof dbCore.deleteProjectAtomic>)
+      );
+      if (!result.deleted) {
+        return { ...result, revision: revisionTracker.getLocalRevisionSync() };
+      }
+      invalidateHubScopeEntryCache();
+      scheduleFolderMirror();
+      return {
+        ...result,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
+    }
+    case 'undoContainerDeletion': {
+      const restored = await dbCore.undoContainerDeletion(...(args as Parameters<typeof dbCore.undoContainerDeletion>));
+      if (!restored) return { restored: false, revision: revisionTracker.getLocalRevisionSync() };
+      invalidateHubScopeEntryCache();
+      scheduleFolderMirror();
+      return { restored: true, revision: revisionTracker.recordSqliteMutation() };
+    }
+    case 'purgeContainerTrash': {
+      const purged = await dbCore.purgeContainerTrash(...(args as Parameters<typeof dbCore.purgeContainerTrash>));
+      if (!purged) return { purged: 0, revision: revisionTracker.getLocalRevisionSync() };
+      scheduleFolderMirror();
+      return { purged, revision: revisionTracker.recordSqliteMutation() };
     }
     case 'exportSqliteBytes':
       return dbCore.exportSqliteBytes();

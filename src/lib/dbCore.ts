@@ -115,7 +115,48 @@ export type DeleteCollectionResult = {
   deleted: boolean;
   relocatedCollectionId?: string;
   changedItemIds: string[];
+  trashedItemIds: string[];
+  undoId?: string;
 };
+
+/** Container deletion never destroys library records.  "move" keeps every
+ * membership; "trash-unplaced" only trashes an item when this was its final
+ * active location. */
+export type ContainerDeletionMode = 'move' | 'trash-unplaced';
+
+export type DeleteCollectionOptions = {
+  mode?: ContainerDeletionMode;
+  destinationCollectionId?: string;
+};
+
+export type DeleteProjectResult = {
+  deleted: boolean;
+  destinationProjectId?: string;
+  changedCollectionIds: string[];
+  changedItemIds: string[];
+  trashedItemIds: string[];
+  undoId?: string;
+};
+
+export type DeleteProjectOptions = {
+  mode?: ContainerDeletionMode;
+  destinationProjectId?: string;
+};
+
+export type ContainerTrashEntry = {
+  id: string;
+  kind: 'project' | 'collection';
+  name: string;
+  deletedAt: number;
+  payload: {
+    project?: Project;
+    collections: Collection[];
+    items: Item[];
+    workspaces: Workspace[];
+  };
+};
+
+const cloneForUndo = <T>(value: T): T => structuredClone(value);
 
 export type UpdateItemOptions = {
   notesPlacementCollectionId?: string;
@@ -685,35 +726,125 @@ export const updateProject = async (id: string, updates: Partial<Omit<Project, '
   return true;
 };
 
-export const deleteProject = async (id: string) => {
+export const deleteProjectAtomic = async (
+  id: string,
+  options: DeleteProjectOptions = {}
+): Promise<DeleteProjectResult> => {
   const store = await getDB();
-  if (id === DEFAULT_PROJECT_ID) return false;
-  
-  const { defaultProjectId } = await ensureDefaultProjectAndCollection(store);
-  const collections = store.getAllCollections();
-  
-  for (const col of collections) {
-    if (col.primaryProjectId === id) {
-      const newProjectIds = ensureIncludes(col.projectIds.filter((p) => p !== id), defaultProjectId);
-      store.putCollection({
-        ...col,
-        primaryProjectId: defaultProjectId,
-        projectIds: newProjectIds,
-        updated_at: nowTs(),
-      });
-    } else if (col.projectIds.includes(id)) {
-      const newProjectIds = col.projectIds.filter((p) => p !== id);
-      store.putCollection({
-        ...col,
-        projectIds: newProjectIds,
-        updated_at: nowTs(),
-      });
-    }
+  const project = store.getProject(id);
+  if (!project || project.isDefault || id === DEFAULT_PROJECT_ID) {
+    return { deleted: false, changedCollectionIds: [], changedItemIds: [], trashedItemIds: [] };
   }
 
-  store.deleteProject(id);
-  notifyDataChanged('project.delete');
-  return true;
+  const { defaultProjectId } = await ensureDefaultProjectAndCollection(store);
+  const destinationProjectId = options.destinationProjectId || defaultProjectId;
+  const destination = store.getProject(destinationProjectId);
+  if (!destination || destinationProjectId === id) {
+    throw new Error('Choose another project as the destination');
+  }
+  const mode = options.mode || 'move';
+  const allCollections = store.getAllCollections();
+  const allItems = store.getAllItems();
+  const allWorkspaces = store.getAllWorkspaces();
+  const sourceOwned = allCollections.filter((collection) => collection.primaryProjectId === id);
+  // A shared collection still belongs to other projects.  Deleting the source
+  // project must not unexpectedly remove that shared container from them.
+  const removableCollectionIds = new Set(
+    sourceOwned
+      .filter((collection) => (collection.projectIds || []).every((projectId) => projectId === id))
+      .map((collection) => collection.id)
+  );
+  const affectedItems = allItems.filter((item) =>
+    (item.collectionIds || []).some((collectionId) => removableCollectionIds.has(collectionId)) ||
+    Object.keys(item.removedPlacements || {}).some((collectionId) => removableCollectionIds.has(collectionId))
+  );
+  const changedCollections = allCollections.filter((collection) =>
+    collection.primaryProjectId === id || collection.projectIds.includes(id)
+  );
+  const changedWorkspaces = allWorkspaces.filter((workspace) => workspace.projectId === id);
+  const now = nowTs();
+  const destinationUnfiledId = await ensureDefaultCollectionForProject(store, destinationProjectId);
+  const undoId = crypto.randomUUID();
+  const trashEntry: ContainerTrashEntry = {
+    id: undoId,
+    kind: 'project',
+    name: project.name,
+    deletedAt: now,
+    payload: {
+      project: cloneForUndo(project),
+      collections: cloneForUndo(changedCollections),
+      items: cloneForUndo(affectedItems),
+      workspaces: cloneForUndo(changedWorkspaces),
+    },
+  };
+  const changedCollectionIds: string[] = [];
+  const changedItemIds: string[] = [];
+  const trashedItemIds: string[] = [];
+
+  store.withTransaction(() => {
+    for (const collection of changedCollections) {
+      if (mode === 'trash-unplaced' && removableCollectionIds.has(collection.id)) {
+        store.deleteCollection(collection.id);
+        changedCollectionIds.push(collection.id);
+        continue;
+      }
+      const remainingProjectIds = (collection.projectIds || []).filter((projectId) => projectId !== id);
+      const nextPrimaryProjectId = collection.primaryProjectId === id
+        ? (remainingProjectIds[0] || destinationProjectId)
+        : collection.primaryProjectId;
+      const nextProjectIds = ensureIncludes(remainingProjectIds, nextPrimaryProjectId);
+      store.putCollection({
+        ...collection,
+        primaryProjectId: nextPrimaryProjectId,
+        projectIds: nextProjectIds,
+        updated_at: now,
+      });
+      changedCollectionIds.push(collection.id);
+    }
+
+    if (mode === 'trash-unplaced') {
+      const trashedItems: Item[] = [];
+      for (const item of affectedItems) {
+        const active = (item.collectionIds || []).filter((collectionId) => !removableCollectionIds.has(collectionId));
+        const wasUnplaced = active.length === 0;
+        const nextActive = wasUnplaced ? [destinationUnfiledId] : active;
+        const synced = syncItemPlacementsWithCollectionIds(item, nextActive, now);
+        const removedPlacements = { ...(synced.removedPlacements || {}) };
+        for (const removedId of removableCollectionIds) delete removedPlacements[removedId];
+        const next: Item = {
+          ...item,
+          collectionIds: synced.collectionIds,
+          placements: synced.placements,
+          ...(Object.keys(removedPlacements).length ? { removedPlacements } : { removedPlacements: undefined }),
+          ...(wasUnplaced ? { deletedAt: now } : {}),
+          updated_at: now,
+        };
+        store.putItem(next);
+        changedItemIds.push(item.id);
+        if (wasUnplaced) {
+          trashedItemIds.push(item.id);
+          trashedItems.push(item);
+        }
+      }
+      recordTrashHistoryEntries(store, trashedItems, {
+        defaultRecord: { reason: `Removed with project “${project.name}”`, reasonCode: 'manual' },
+      });
+    }
+
+    for (const workspace of changedWorkspaces) {
+      store.putWorkspace({ ...workspace, projectId: destinationProjectId, updated_at: now });
+    }
+    store.deleteProject(id);
+    store.putContainerTrash(trashEntry);
+  });
+
+  return { deleted: true, destinationProjectId, changedCollectionIds, changedItemIds, trashedItemIds, undoId };
+};
+
+export const deleteProject = async (id: string) => {
+  const result = await deleteProjectAtomic(id);
+  if (result.deleted) notifyDataChanged('project.delete');
+  return result.deleted;
 };
 
 // ============================================================================
@@ -752,26 +883,47 @@ export const addCollection = async (name: string, color?: string, projectId?: st
  * Unfiled collection. Historical tombstones for this deleted container cannot
  * be restored and are discarded at the same time.
  */
-export const deleteCollectionAtomic = async (id: string): Promise<DeleteCollectionResult> => {
+export const deleteCollectionAtomic = async (
+  id: string,
+  options: DeleteCollectionOptions = {}
+): Promise<DeleteCollectionResult> => {
   const store = await getDB();
   const collection = store.getCollection(id);
-  if (!collection) return { deleted: false, changedItemIds: [] };
+  if (!collection) return { deleted: false, changedItemIds: [], trashedItemIds: [] };
   if (collection.isDefault) throw new Error('System collections cannot be removed');
 
-  const relocationCollectionId = await ensureDefaultCollectionForProject(
-    store,
-    collection.primaryProjectId || DEFAULT_PROJECT_ID
+  const relocationCollectionId = options.destinationCollectionId || await ensureDefaultCollectionForProject(
+    store, collection.primaryProjectId || DEFAULT_PROJECT_ID
   );
+  if (relocationCollectionId === id || !store.getCollection(relocationCollectionId)) {
+    throw new Error('Choose another collection as the destination');
+  }
+  const mode = options.mode || 'move';
   const affected = store
     .getAllItems()
     .filter((item) => item.collectionIds.includes(id) || !!item.removedPlacements?.[id]);
   const changedItemIds: string[] = [];
+  const trashedItemIds: string[] = [];
   const now = nowTs();
+  const undoId = crypto.randomUUID();
+  const trashEntry: ContainerTrashEntry = {
+    id: undoId,
+    kind: 'collection',
+    name: collection.name,
+    deletedAt: now,
+    payload: {
+      collections: [cloneForUndo(collection)],
+      items: cloneForUndo(affected),
+      workspaces: [],
+    },
+  };
 
   store.withTransaction(() => {
+    const trashedItems: Item[] = [];
     for (const item of affected) {
       const active = (item.collectionIds || []).filter((collectionId) => collectionId !== id);
-      const nextActive = active.length ? active : [relocationCollectionId];
+      const wasUnplaced = active.length === 0;
+      const nextActive = wasUnplaced ? [relocationCollectionId] : active;
       const synced = syncItemPlacementsWithCollectionIds(item, nextActive, now);
       const removedPlacements = { ...(synced.removedPlacements || {}) };
       delete removedPlacements[id];
@@ -780,20 +932,76 @@ export const deleteCollectionAtomic = async (id: string): Promise<DeleteCollecti
         collectionIds: synced.collectionIds,
         placements: synced.placements,
         ...(Object.keys(removedPlacements).length ? { removedPlacements } : { removedPlacements: undefined }),
+        ...(mode === 'trash-unplaced' && wasUnplaced ? { deletedAt: now } : {}),
         updated_at: now,
       });
       changedItemIds.push(item.id);
+      if (mode === 'trash-unplaced' && wasUnplaced) {
+        trashedItemIds.push(item.id);
+        trashedItems.push(item);
+      }
+    }
+    if (trashedItems.length) {
+      recordTrashHistoryEntries(store, trashedItems, {
+        defaultRecord: { reason: `Removed with collection “${collection.name}”`, reasonCode: 'manual' },
+      });
     }
     store.deleteCollection(id);
+    store.putContainerTrash(trashEntry);
   });
 
-  return { deleted: true, relocatedCollectionId: relocationCollectionId, changedItemIds };
+  return { deleted: true, relocatedCollectionId: relocationCollectionId, changedItemIds, trashedItemIds, undoId };
 };
 
 export const deleteCollection = async (id: string) => {
   const result = await deleteCollectionAtomic(id);
   if (result.deleted) notifyDataChanged('collection.delete');
   return result;
+};
+
+/** Restore a durable project/collection Trash entry as one unit. */
+export const undoContainerDeletion = async (undoId: string): Promise<boolean> => {
+  const store = await getDB();
+  const trashEntry = store.getContainerTrash(undoId);
+  if (!trashEntry) return false;
+  const undo = trashEntry.payload;
+  store.withTransaction(() => {
+    if (undo.project) store.putProject(undo.project);
+    for (const collection of undo.collections) store.putCollection(collection);
+    for (const workspace of undo.workspaces) store.putWorkspace(workspace);
+    for (const item of undo.items) store.putItem(item);
+    // A just-created history entry is no longer true after Undo.  Existing
+    // historical records are kept; this only clears rows for live items.
+    for (const item of undo.items) {
+      if (item.deletedAt == null && item.url) {
+        const normalizedUrl = normalizeBookmarkUrl(item.url);
+        if (normalizedUrl) store.deleteTrashEntry(normalizedUrl);
+      }
+    }
+    store.deleteContainerTrash(undoId);
+  });
+  notifyDataChanged('collection.update');
+  return true;
+};
+
+export const getContainerTrash = async (): Promise<ContainerTrashEntry[]> => {
+  const store = await getDB();
+  return store.getAllContainerTrash();
+};
+
+/** Emptying Trash removes the recovery snapshot only; project/collection
+ * deletion never independently deletes canonical items beyond the explicit
+ * last-placement Trash rule. */
+export const purgeContainerTrash = async (id?: string): Promise<number> => {
+  const store = await getDB();
+  if (id) {
+    if (!store.getContainerTrash(id)) return 0;
+    store.deleteContainerTrash(id);
+    return 1;
+  }
+  const count = store.getAllContainerTrash().length;
+  if (count) store.clearContainerTrash();
+  return count;
 };
 
 export const updateCollection = async (id: string, updates: Partial<Omit<Collection, 'id' | 'created_at'>>) => {

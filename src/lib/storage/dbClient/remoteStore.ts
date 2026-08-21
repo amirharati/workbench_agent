@@ -1045,6 +1045,11 @@ export class RemoteIdbCompatStore {
       s.deletedItems = s.deletedItems.filter((d) => d.id !== id);
     });
   }
+  getAllContainerTrash() { return []; }
+  getContainerTrash(_id: string) { return undefined; }
+  putContainerTrash(_entry: unknown) { throw new Error('Container trash writes are worker-only'); }
+  deleteContainerTrash(_id: string) { throw new Error('Container trash writes are worker-only'); }
+  clearContainerTrash() { throw new Error('Container trash writes are worker-only'); }
 
   clearAllTables() {
     void this.enqueue('clearAllTables', []).then(() =>

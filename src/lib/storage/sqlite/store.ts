@@ -16,6 +16,7 @@ import type {
   Snapshot,
   Workspace,
   WorkspaceWindow,
+  ContainerTrashEntry,
 } from '../../db';
 import type { EnrichmentReference, ItemEnrichment } from '../../enrichment/types';
 import type {
@@ -69,6 +70,14 @@ interface ItemRow {
   pinned_at: number | null;
   favorite_at: number | null;
   deleted_at: number | null;
+}
+
+interface ContainerTrashRow {
+  id: string;
+  kind: string;
+  name: string;
+  deleted_at: number;
+  payload: string;
 }
 
 type DashboardStartupItemRow = Pick<
@@ -745,6 +754,26 @@ function deletedItemToRow(d: DeletedItemEntry): DeletedItemRow {
     id: d.id,
     purged_at: d.purgedAt,
     reason: d.reason ?? null,
+  };
+}
+
+function rowToContainerTrash(row: ContainerTrashRow): ContainerTrashEntry {
+  return {
+    id: row.id,
+    kind: row.kind === 'project' ? 'project' : 'collection',
+    name: row.name,
+    deletedAt: row.deleted_at,
+    payload: parseJson<ContainerTrashEntry['payload']>(row.payload, { collections: [], items: [], workspaces: [] }),
+  };
+}
+
+function containerTrashToRow(entry: ContainerTrashEntry): ContainerTrashRow {
+  return {
+    id: entry.id,
+    kind: entry.kind,
+    name: entry.name,
+    deleted_at: entry.deletedAt,
+    payload: toJson(entry.payload),
   };
 }
 
@@ -1430,6 +1459,33 @@ export class SqliteStore {
     this.conn.exec('DELETE FROM trash_history WHERE normalized_url = ?', [normalizedUrl]);
   }
 
+  // --- Project/collection Trash (durable container recovery) ---
+  getAllContainerTrash(): ContainerTrashEntry[] {
+    const rows = this.conn.selectAll<ContainerTrashRow>('SELECT * FROM container_trash ORDER BY deleted_at DESC');
+    return rows.map(rowToContainerTrash);
+  }
+
+  getContainerTrash(id: string): ContainerTrashEntry | undefined {
+    const row = this.conn.selectOne<ContainerTrashRow>('SELECT * FROM container_trash WHERE id = ?', [id]);
+    return row ? rowToContainerTrash(row) : undefined;
+  }
+
+  putContainerTrash(entry: ContainerTrashEntry): void {
+    const row = containerTrashToRow(entry);
+    this.conn.exec(
+      'INSERT OR REPLACE INTO container_trash (id, kind, name, deleted_at, payload) VALUES (?, ?, ?, ?, ?)',
+      [row.id, row.kind, row.name, row.deleted_at, row.payload]
+    );
+  }
+
+  deleteContainerTrash(id: string): void {
+    this.conn.exec('DELETE FROM container_trash WHERE id = ?', [id]);
+  }
+
+  clearContainerTrash(): void {
+    this.conn.exec('DELETE FROM container_trash');
+  }
+
   // --- Deleted items (permanent-delete tombstones) ---
   getAllDeletedItems(): DeletedItemEntry[] {
     const rows = this.conn.selectAll<DeletedItemRow>(
@@ -1458,6 +1514,7 @@ export class SqliteStore {
   // --- Bulk operations for import ---
   /** Caller should wrap in `withTransaction` when atomicity is required. */
   clearAllTables(): void {
+    this.conn.exec('DELETE FROM container_trash');
     this.conn.exec('DELETE FROM deleted_items');
     this.conn.exec('DELETE FROM trash_history');
     this.conn.exec('DELETE FROM ai_taxonomy_state');
@@ -1519,6 +1576,7 @@ export class IdbCompatStore {
       }
       case 'trash_history': return this.store.getAllTrashHistory();
       case 'deleted_items': return this.store.getAllDeletedItems();
+      case 'container_trash': return this.store.getAllContainerTrash();
       case 'pipeline_debug': return this.store.getAllPipelineDebug();
       default: return [];
     }
@@ -1779,6 +1837,11 @@ export class IdbCompatStore {
   getDeletedItem(id: string) { return this.store.getDeletedItem(id); }
   putDeletedItem(entry: DeletedItemEntry) { this.store.putDeletedItem(entry); }
   deleteDeletedItem(id: string) { this.store.deleteDeletedItem(id); }
+  getAllContainerTrash() { return this.store.getAllContainerTrash(); }
+  getContainerTrash(id: string) { return this.store.getContainerTrash(id); }
+  putContainerTrash(entry: Parameters<SqliteStore['putContainerTrash']>[0]) { this.store.putContainerTrash(entry); }
+  deleteContainerTrash(id: string) { this.store.deleteContainerTrash(id); }
+  clearContainerTrash() { this.store.clearContainerTrash(); }
   
   clearAllTables() { this.store.clearAllTables(); }
   withTransaction<T>(fn: () => T): T { return this.store.withTransaction(fn); }

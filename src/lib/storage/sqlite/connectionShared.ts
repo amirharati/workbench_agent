@@ -54,6 +54,18 @@ function runSchemaMigrations(database: Database, from: number, to: number): void
       /* column may already exist (for example after an interrupted upgrade) */
     }
   }
+  if (from < 8 && to >= 8) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS container_trash (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        deleted_at INTEGER NOT NULL,
+        payload TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_container_trash_deleted ON container_trash(deleted_at);
+    `);
+  }
 }
 
 export type Sqlite3Static = Awaited<ReturnType<typeof sqlite3InitModule>>;

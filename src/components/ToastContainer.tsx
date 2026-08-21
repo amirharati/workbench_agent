@@ -6,6 +6,7 @@ interface AddToastOptions {
   type: ToastType;
   message: string;
   action?: { label: string; onClick: () => void };
+  durationMs?: number;
 }
 
 interface ToastContextValue {

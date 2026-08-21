@@ -199,6 +199,27 @@ export const GLOBAL_TAB_STATE_DEFAULT: GlobalTabState = {
 
 const LS_KEY = 'workbench-workspace-state-v1';
 const LEGACY_LS_KEY = 'workbench-global-tabs';
+const CONTAINER_TRASH_WORKSPACE_KEY_PREFIX = 'workbench-container-trash-workspace:';
+
+export function saveContainerTrashWorkspaceState(id: string, state: GlobalTabState): void {
+  try {
+    localStorage.setItem(`${CONTAINER_TRASH_WORKSPACE_KEY_PREFIX}${id}`, JSON.stringify(state));
+  } catch {
+    // Container restore remains safe in SQLite even when browser local storage is unavailable.
+  }
+}
+
+export function takeContainerTrashWorkspaceState(id: string): GlobalTabState | null {
+  try {
+    const key = `${CONTAINER_TRASH_WORKSPACE_KEY_PREFIX}${id}`;
+    const raw = localStorage.getItem(key);
+    localStorage.removeItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as GlobalTabState;
+  } catch {
+    return null;
+  }
+}
 
 type LegacyGlobalTabState = Partial<GlobalTabState> & {
   lastActiveTabByProject?: Record<string, string>;

@@ -39,6 +39,57 @@ export function getHomebaseWorkspaceSessionKey(sessionId: string): string {
   return `workspace:named:${sessionId}`;
 }
 
+/** Rehome Home's local working sets when their project container moves.  This
+ * state lives in Chrome storage rather than SQLite, so it must travel with the
+ * durable project deletion instead of becoming an unreachable local orphan. */
+export function rehomeProjectWorkspaceState({
+  state,
+  sourceProjectId,
+  destinationProjectId,
+}: {
+  state: GlobalTabState;
+  sourceProjectId: string;
+  destinationProjectId: string;
+}): GlobalTabState {
+  if (sourceProjectId === destinationProjectId) return state;
+  const sourceKey = getProjectSessionWorkspaceKey(sourceProjectId);
+  const destinationKey = getProjectSessionWorkspaceKey(destinationProjectId);
+  const retarget = (tab: GlobalTab): GlobalTab =>
+    tab.scopeProjectId === sourceProjectId ? { ...tab, scopeProjectId: destinationProjectId } as GlobalTab : tab;
+  const snapshots = Object.fromEntries(
+    Object.entries(state.workspaceSessionSnapshots ?? {}).map(([key, tabs]) => [key, tabs.map(retarget)])
+  );
+  const sourceTabs = getActiveWorkspaceKey(state) === sourceKey ? state.tabs : (snapshots[sourceKey] ?? []);
+  const destinationTabs = getActiveWorkspaceKey(state) === destinationKey ? state.tabs : (snapshots[destinationKey] ?? []);
+  const merged = [...destinationTabs, ...sourceTabs.map(retarget)].filter(
+    (tab, index, all) => all.findIndex((candidate) => candidate.id === tab.id) === index
+  );
+  delete snapshots[sourceKey];
+  snapshots[destinationKey] = merged;
+  const preferred = { ...(state.preferredWorkspaceKeyByProject ?? {}) };
+  if (preferred[sourceProjectId]) {
+    if (!preferred[destinationProjectId]) preferred[destinationProjectId] = preferred[sourceProjectId];
+    delete preferred[sourceProjectId];
+  }
+  const lastActive = { ...(state.lastActiveEntryByWorkspace ?? {}) };
+  delete lastActive[sourceKey];
+  const activeWasSource = getActiveWorkspaceKey(state) === sourceKey;
+  return {
+    ...state,
+    tabs: activeWasSource ? merged : state.tabs.map(retarget),
+    activeTabId: activeWasSource ? null : state.activeTabId,
+    activeWorkspaceKey: activeWasSource ? destinationKey : state.activeWorkspaceKey,
+    workspaceSessionSnapshots: snapshots,
+    preferredWorkspaceKeyByProject: preferred,
+    lastActiveEntryByWorkspace: lastActive,
+    savedWorkspaceSessions: (state.savedWorkspaceSessions ?? []).map((session) =>
+      session.projectId === sourceProjectId
+        ? { ...session, projectId: destinationProjectId, updatedAt: Date.now() }
+        : session
+    ),
+  };
+}
+
 /** Resolve the owner used to scope entries in a Homebase workspace. */
 export function getWorkspaceProjectId(
   state: GlobalTabState,

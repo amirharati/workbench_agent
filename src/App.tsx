@@ -930,38 +930,46 @@ function App() {
     return id;
   };
 
-  const handleDeleteProject = async (projectId: string) => {
+  const handleDeleteProject = async (projectId: string, options?: import('./lib/db').DeleteProjectOptions) => {
     try {
       const target = projects.find((p) => p.id === projectId);
       if (target?.isDefault) {
         showStatus('Inbox cannot be removed');
         return false;
       }
-      const deleted = await deleteProject(projectId);
-      if (deleted === false) {
+      const deleted = await deleteProject(projectId, options);
+      if (!deleted.deleted) {
         showStatus('Could not delete project');
         return false;
       }
       await loadData();
-      showStatus('Project deleted');
-      return true;
+      showStatus(deleted.trashedItemIds.length
+        ? `Project deleted; ${deleted.trashedItemIds.length} unplaced item${deleted.trashedItemIds.length === 1 ? '' : 's'} moved to Trash`
+        : 'Project deleted');
+      return deleted;
     } catch (error) {
       showStatus(toStatusMessage(error, 'Could not delete project'));
       return false;
     }
   };
 
-  const handleDeleteCollection = async (collectionId: string) => {
+  const handleDeleteCollection = async (collectionId: string, options?: import('./lib/db').DeleteCollectionOptions) => {
     try {
       const target = collections.find((c) => c.id === collectionId);
       if (target?.isDefault) {
         showStatus('System collections cannot be removed');
         return false;
       }
-      await deleteCollection(collectionId);
+      const result = await deleteCollection(collectionId, options);
+      if (!result.deleted) {
+        showStatus('Could not delete collection');
+        return false;
+      }
       await loadData();
-      showStatus('Collection deleted');
-      return true;
+      showStatus(result.trashedItemIds.length
+        ? `Collection deleted; ${result.trashedItemIds.length} unplaced item${result.trashedItemIds.length === 1 ? '' : 's'} moved to Trash`
+        : 'Collection deleted');
+      return result;
     } catch (error) {
       showStatus(toStatusMessage(error, 'Could not delete collection'));
       return false;

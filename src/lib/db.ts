@@ -148,6 +148,45 @@ export type DeleteCollectionResult = {
   deleted: boolean;
   relocatedCollectionId?: string;
   changedItemIds: string[];
+  trashedItemIds: string[];
+  undoId?: string;
+};
+
+export type ContainerDeletionMode = 'move' | 'trash-unplaced';
+
+export type DeleteCollectionOptions = {
+  mode?: ContainerDeletionMode;
+  destinationCollectionId?: string;
+};
+
+export type DeleteProjectResult = {
+  deleted: boolean;
+  destinationProjectId?: string;
+  changedCollectionIds: string[];
+  changedItemIds: string[];
+  trashedItemIds: string[];
+  undoId?: string;
+};
+
+export type DeleteProjectOptions = {
+  mode?: ContainerDeletionMode;
+  destinationProjectId?: string;
+};
+
+export type ContainerTrashPayload = {
+  project?: Project;
+  collections: Collection[];
+  items: Item[];
+  workspaces: Workspace[];
+};
+
+/** A durable deleted Project or Collection, restorable as one unit from Trash. */
+export type ContainerTrashEntry = {
+  id: string;
+  kind: 'project' | 'collection';
+  name: string;
+  deletedAt: number;
+  payload: ContainerTrashPayload;
 };
 
 export interface Snapshot {
@@ -198,7 +237,6 @@ export interface Workspace {
 // Helpers (unchanged from IDB version)
 // ============================================================================
 
-const ensureIncludes = (arr: string[], value: string) => (arr.includes(value) ? arr : [...arr, value]);
 const nowTs = () => nowMs();
 
 const isHttpUrl = (url: string) => /^https?:\/\//i.test(url.trim());
@@ -947,36 +985,27 @@ export const updateProject = async (id: string, updates: Partial<Omit<Project, '
   return true;
 };
 
-export const deleteProject = async (id: string) => {
-  const store = await getDB();
-  if (id === DEFAULT_PROJECT_ID) return false;
-  
-  const { defaultProjectId } = await ensureDefaultProjectAndCollection(store);
-  const collections = store.getAllCollections();
-  
-  for (const col of collections) {
-    if (col.primaryProjectId === id) {
-      const newProjectIds = ensureIncludes(col.projectIds.filter((p) => p !== id), defaultProjectId);
-      store.putCollection({
-        ...col,
-        primaryProjectId: defaultProjectId,
-        projectIds: newProjectIds,
-        updated_at: nowTs(),
-      });
-    } else if (col.projectIds.includes(id)) {
-      const newProjectIds = col.projectIds.filter((p) => p !== id);
-      store.putCollection({
-        ...col,
-        projectIds: newProjectIds,
-        updated_at: nowTs(),
-      });
-    }
+/** Worker-owned project deletion.  A project is a container: links are moved
+ * or only last-placement links are trashed; they are never silently deleted. */
+export const deleteProject = async (
+  id: string,
+  options: DeleteProjectOptions = {}
+): Promise<DeleteProjectResult> => {
+  if (isDbWorkerProcess()) {
+    const core = await import('./dbCore');
+    return core.deleteProjectAtomic(id, options);
   }
-
-  store.deleteProject(id);
-  await commitPendingDbWrites();
-  notifyDbChanged('project.delete', id);
-  return true;
+  const { dbRpc } = await import('./storage/dbClient');
+  const result = await dbRpc<DeleteProjectResult & { revision: number }>(
+    'deleteProjectAtomic',
+    [id, options]
+  );
+  if (result.deleted) {
+    await getRemoteStore().refreshTablesFromWorker(['projects', 'collections', 'items', 'workspaces']);
+    getRemoteStore().setRevision(result.revision);
+    notifyDbChanged('project.delete', id);
+  }
+  return result;
 };
 
 // ============================================================================
@@ -1011,15 +1040,18 @@ export const addCollection = async (name: string, color?: string, projectId?: st
 };
 
 /** Worker-owned atomic collection deletion. See dbCore for relocation semantics. */
-export const deleteCollection = async (id: string): Promise<DeleteCollectionResult> => {
+export const deleteCollection = async (
+  id: string,
+  options: DeleteCollectionOptions = {}
+): Promise<DeleteCollectionResult> => {
   if (isDbWorkerProcess()) {
     const core = await import('./dbCore');
-    return core.deleteCollectionAtomic(id);
+    return core.deleteCollectionAtomic(id, options);
   }
   const { dbRpc } = await import('./storage/dbClient');
   const result = await dbRpc<DeleteCollectionResult & { revision: number }>(
     'deleteCollectionAtomic',
-    [id]
+    [id, options]
   );
   if (result.deleted) {
     // The canonical mutation may have changed many rows, so refresh the two
@@ -1029,6 +1061,46 @@ export const deleteCollection = async (id: string): Promise<DeleteCollectionResu
     notifyDbChanged('collection.delete', id);
   }
   return result;
+};
+
+/** Immediate undo for a project/collection deletion.  The worker owns the
+ * short-lived snapshot so every dashboard observes the same restored rows. */
+export const undoContainerDeletion = async (undoId: string): Promise<boolean> => {
+  if (isDbWorkerProcess()) {
+    const core = await import('./dbCore');
+    return core.undoContainerDeletion(undoId);
+  }
+  const { dbRpc } = await import('./storage/dbClient');
+  const result = await dbRpc<{ restored: boolean; revision: number }>('undoContainerDeletion', [undoId]);
+  if (result.restored) {
+    await getRemoteStore().refreshTablesFromWorker(['projects', 'collections', 'items', 'workspaces']);
+    getRemoteStore().setRevision(result.revision);
+    notifyDbChanged('collection.update', undoId);
+  }
+  return result.restored;
+};
+
+export const getContainerTrash = async (): Promise<ContainerTrashEntry[]> => {
+  if (isDbWorkerProcess()) {
+    const core = await import('./dbCore');
+    return core.getContainerTrash();
+  }
+  const { dbRpc } = await import('./storage/dbClient');
+  return dbRpc<ContainerTrashEntry[]>('getContainerTrash', []);
+};
+
+export const purgeContainerTrash = async (id?: string): Promise<number> => {
+  if (isDbWorkerProcess()) {
+    const core = await import('./dbCore');
+    return core.purgeContainerTrash(id);
+  }
+  const { dbRpc } = await import('./storage/dbClient');
+  const result = await dbRpc<{ purged: number; revision: number }>('purgeContainerTrash', [id]);
+  if (result.purged) {
+    getRemoteStore().setRevision(result.revision);
+    notifyDbChanged('collection.delete', id);
+  }
+  return result.purged;
 };
 
 export const updateCollection = async (id: string, updates: Partial<Omit<Collection, 'id' | 'created_at'>>) => {

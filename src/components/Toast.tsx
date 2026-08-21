@@ -8,6 +8,7 @@ export interface ToastData {
   type: ToastType;
   message: string;
   action?: { label: string; onClick: () => void };
+  durationMs?: number;
 }
 
 interface ToastProps {
@@ -37,7 +38,7 @@ export const Toast: React.FC<ToastProps> = ({ toast, onDismiss }) => {
   };
 
   useEffect(() => {
-    const delay = AUTO_DISMISS_MS[toast.type];
+  const delay = toast.durationMs ?? AUTO_DISMISS_MS[toast.type];
     if (!delay) return;
     const t = setTimeout(dismiss, delay);
     return () => clearTimeout(t);

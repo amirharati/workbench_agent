@@ -133,6 +133,7 @@ export type MergeableLibrarySnapshot = {
   notes: EntityWithIdAndUpdatedAt[];
   workspaces: EntityWithIdAndUpdatedAt[];
   deletedItems: DeletedItemRow[];
+  containerTrash?: EntityWithIdAndUpdatedAt[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   enrichment?: any[];
   categories?: EntityWithIdAndUpdatedAt[];
@@ -149,6 +150,7 @@ export type MergedLibrarySnapshot = {
   notes: EntityWithIdAndUpdatedAt[];
   workspaces: EntityWithIdAndUpdatedAt[];
   deletedItems: DeletedItemRow[];
+  containerTrash: EntityWithIdAndUpdatedAt[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   enrichment: any[];
   categories: EntityWithIdAndUpdatedAt[];
@@ -170,6 +172,7 @@ export function mergeLibrarySnapshots(
   live: MergeableLibrarySnapshot
 ): MergedLibrarySnapshot {
   const deletedItems = mergeDeletedItems(folder.deletedItems ?? [], live.deletedItems ?? []);
+  const containerTrash = mergeByUpdatedAt(folder.containerTrash ?? [], live.containerTrash ?? []).merged;
   const deletedIds = new Set(deletedItems.map((d) => d.id));
 
   const projects = dropDeletedEntities(
@@ -229,6 +232,7 @@ export function mergeLibrarySnapshots(
     notes,
     workspaces,
     deletedItems,
+    containerTrash,
     enrichment,
     categories,
     links: Array.from(linkMap.values()),

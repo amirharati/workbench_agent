@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import type { Item } from '../../lib/db';
+import type { ContainerTrashEntry, Item } from '../../lib/db';
 import { Trash2 } from 'lucide-react';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import {
@@ -11,12 +11,14 @@ import {
 import { QuickAccessItemList } from './QuickAccessItemList';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { DialogShell } from './DialogShell';
+import { getContainerTrash, purgeContainerTrash, undoContainerDeletion } from '../../lib/db';
+import { saveGlobalTabState, takeContainerTrashWorkspaceState } from './GlobalTabSystem';
 
 const PERMANENT_DELETE_BODY =
   'The bookmark and its enrichment data will be removed. The URL stays on the import block list so Import Studio can skip it later.';
 
 const EMPTY_TRASH_BODY =
-  'Permanently delete every item in trash? URLs stay on the import block list; bookmark rows and enrichment are removed.';
+  'Permanently delete every recovery entry in Trash? Bookmark URLs stay on the import block list; deleted project and collection recovery snapshots are removed.';
 
 interface TrashTabProps {
   onItemClick?: (item: Item) => void;
@@ -26,22 +28,26 @@ interface TrashTabProps {
 
 type PendingConfirm =
   | { kind: 'permanent'; item: Item }
-  | { kind: 'empty'; count: number };
+  | { kind: 'container'; entry: ContainerTrashEntry }
+  | { kind: 'empty'; count: number; containerCount: number };
 
 export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab' }) => {
   const [items, setItems] = useState<Item[]>([]);
+  const [containers, setContainers] = useState<ContainerTrashEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingConfirm | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    setItems(await getTrashedItems());
+    const [trashedItems, trashedContainers] = await Promise.all([getTrashedItems(), getContainerTrash()]);
+    setItems(trashedItems);
+    setContainers(trashedContainers);
   }, []);
 
   useEffect(() => {
-    void reload();
+    void reload().catch((err) => setError(err instanceof Error ? err.message : String(err)));
     return subscribeToDataChanges(() => {
-      void reload();
+      void reload().catch((err) => setError(err instanceof Error ? err.message : String(err)));
     });
   }, [reload]);
 
@@ -62,9 +68,28 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
   };
 
   const handleEmptyTrash = () => {
-    if (items.length === 0) return;
+    if (items.length === 0 && containers.length === 0) return;
     setError(null);
-    setPending({ kind: 'empty', count: items.length });
+    setPending({ kind: 'empty', count: items.length, containerCount: containers.length });
+  };
+
+  const handleRestoreContainer = async (entry: ContainerTrashEntry) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const restored = await undoContainerDeletion(entry.id);
+      if (!restored) throw new Error('This deleted container is no longer available.');
+      const workspaceState = takeContainerTrashWorkspaceState(entry.id);
+      if (workspaceState) {
+        saveGlobalTabState(workspaceState);
+        window.dispatchEvent(new CustomEvent('workbench-container-trash-restored', { detail: workspaceState }));
+      }
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const runPending = async () => {
@@ -74,8 +99,11 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
     try {
       if (pending.kind === 'permanent') {
         await permanentlyDeleteItem(pending.item.id);
+      } else if (pending.kind === 'container') {
+        await purgeContainerTrash(pending.entry.id);
       } else {
         await emptyTrash();
+        await purgeContainerTrash();
       }
       setPending(null);
       await reload();
@@ -87,10 +115,27 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
   };
 
   const pageHint =
-    'Restore brings the bookmark back to your library. Permanent delete removes the bookmark and enrichment but keeps the URL on the import block list until you restore or clear history.';
+    'Restore brings bookmarks back to your library. Deleted projects and collections can also be restored here as a complete container. Empty Trash permanently removes their recovery snapshots.';
 
   return (
     <>
+      {containers.length > 0 ? (
+        <section className="ui-panel" style={{ margin: variant === 'page' ? '16px 16px 0' : '8px 0', padding: 12 }}>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: 8 }}>Deleted projects & collections</div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {containers.map((entry) => (
+              <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.name}</strong>
+                  <small style={{ color: 'var(--text-muted)' }}>{entry.kind === 'project' ? 'Project' : 'Collection'} · {new Date(entry.deletedAt).toLocaleString()}</small>
+                </div>
+                <button className="ui-button ui-button--secondary" type="button" disabled={busy} onClick={() => void handleRestoreContainer(entry)}>Restore {entry.kind}</button>
+                <button className="ui-button ui-button--danger" type="button" disabled={busy} onClick={() => setPending({ kind: 'container', entry })}>Delete permanently</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <QuickAccessItemList
         title="Trash"
         icon={<Trash2 size={20} style={{ color: 'var(--danger)' }} />}
@@ -108,7 +153,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
         dateField={(i) => i.deletedAt ?? i.updated_at}
         dateLabel="Deleted"
         headerExtra={
-          items.length > 0 ? (
+          items.length > 0 || containers.length > 0 ? (
             <button
               className="ui-button ui-button--danger"
               type="button"
@@ -162,7 +207,9 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
         <DialogShell
           title={pending.kind === 'permanent'
             ? `Permanently delete “${pending.item.title || pending.item.url || 'Untitled'}”?`
-            : `Empty trash (${pending.count} item${pending.count === 1 ? '' : 's'})?`}
+            : pending.kind === 'container'
+              ? `Permanently delete ${pending.entry.kind} “${pending.entry.name}”?`
+              : `Empty trash (${pending.count} item${pending.count === 1 ? '' : 's'} and ${pending.containerCount} container${pending.containerCount === 1 ? '' : 's'})?`}
           description="This action cannot be undone."
           onClose={() => { if (!busy) setPending(null); }}
           maxWidth={430}
@@ -175,7 +222,7 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
           }
         >
           <div className="ui-status" data-tone="error">
-            {pending.kind === 'permanent' ? PERMANENT_DELETE_BODY : EMPTY_TRASH_BODY}
+            {pending.kind === 'permanent' ? PERMANENT_DELETE_BODY : pending.kind === 'container' ? 'The saved project or collection recovery snapshot will be removed. Links are not separately deleted by this action.' : EMPTY_TRASH_BODY}
           </div>
         </DialogShell>
       ) : null}

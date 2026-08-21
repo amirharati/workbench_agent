@@ -26,7 +26,9 @@ import { installOffscreenPipelineHost } from '../lib/pipeline/offscreenPipelineH
 void syncClock();
 
 // Keep this in sync with public/service-worker.js and the worker response.
-const DB_OWNER_PROTOCOL_VERSION = 15;
+// v16 adds durable project/collection Trash records.  Bump so an offscreen
+// owner from the pre-container-Trash build cannot keep serving the dashboard.
+const DB_OWNER_PROTOCOL_VERSION = 16;
 
 const worker = new DbWorker({ name: 'workbench-db' });
 const contentWorker = new ContentWorker({ name: 'workbench-content-db' });
