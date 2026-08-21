@@ -22,6 +22,8 @@ export interface ContentBrowseEntry {
   /** Omit for non-item rows. Result lists use `reference`; containers identify the exact membership. */
   dragSource?: ItemDragSource;
   dragItem?: { id: string; title?: string; url?: string };
+  /** Raw browser/snapshot URL; it becomes a library item only when dropped. */
+  dragUrl?: string;
   reorderTarget?: ItemDropTarget;
 }
 
@@ -62,11 +64,13 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
   selectedEntryRef?: React.RefObject<HTMLDivElement>;
   previewItemIds: readonly string[];
 }) {
-  const { getDragProps, getReorderTargetProps } = useItemDragDrop();
+  const { getDragProps, getUrlDragProps, getReorderTargetProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const dragItem = entry.dragItem ?? { id: entry.id, title: entry.title };
   const dragProps = entry.dragSource
-    ? getDragProps(dragItem, entry.dragSource)
+    ? entry.dragUrl
+      ? getUrlDragProps({ url: entry.dragUrl, title: entry.title }, entry.dragSource)
+      : getDragProps(dragItem, entry.dragSource)
     : null;
   const reorderProps = entry.reorderTarget
     ? getReorderTargetProps(dragItem.id, entry.reorderTarget)
@@ -76,13 +80,14 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       ref={selectedEntryRef}
       item={dragItem}
       dragSource={entry.dragSource}
+      dragUrl={entry.dragUrl}
       selected={selected}
       onSelectItem={() => onSelect(entry.id)}
       aria-current={selected ? 'true' : undefined}
       data-content-entry
       {...reorderProps}
       onDoubleClick={(event) => {
-        if (!entry.dragSource || (event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        if (!entry.dragSource || entry.dragUrl || (event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
         openPeek(dragItem.id, {
           itemIds: previewItemIds,
           sourceLabel: entry.dragSource.kind === 'reference'
@@ -129,7 +134,7 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
               <GripVertical size={14} aria-hidden="true" />
             </span>
           ) : null}
-          {entry.dragSource ? (
+          {entry.dragSource && !entry.dragUrl ? (
             <button
               type="button"
               className="ui-content-browser__peek"
@@ -234,7 +239,7 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
 
   const renderedEntries = filteredEntries.slice(0, renderLimit);
   const previewItemIds = useMemo(
-    () => filteredEntries.filter((entry) => entry.dragSource).map((entry) => (entry.dragItem ?? { id: entry.id }).id),
+    () => filteredEntries.filter((entry) => entry.dragSource && !entry.dragUrl).map((entry) => (entry.dragItem ?? { id: entry.id }).id),
     [filteredEntries]
   );
 

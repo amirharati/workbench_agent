@@ -1,11 +1,12 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { uiPatterns } from '../../../styles/uiPatterns';
-import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, LayoutGrid, List, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, GripVertical, LayoutGrid, List, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import type { WindowGroup } from '../../../App';
 import { addWorkspace, normalizeBookmarkUrl, updateWorkspace } from '../../../lib/db';
 import type { Collection, Project, Workspace, WorkspaceWindow } from '../../../lib/db';
 import type { GlobalTabState } from '../GlobalTabSystem';
+import { useItemDragSource } from '../ItemDragDropProvider';
 import {
   addItemsToProjectWorkspace,
   createProjectWorkspace,
@@ -81,6 +82,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onCloseWindow,
   onRefresh,
 }) => {
+  const { getUrlDragProps } = useItemDragSource();
   const isPage = displayMode === 'page';
   const allTabs = useMemo(() => windows.flatMap((w) => w.tabs), [windows]);
   const [query, setQuery] = useState('');
@@ -356,13 +358,20 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
   const handleTabDragStart = (e: React.DragEvent, tabId: number | undefined, fromWindowId: number) => {
     if (typeof tabId !== 'number') return;
+    const draggedTab = allTabs.find((tab) => tab.id === tabId);
+    if (draggedTab?.url && /^https?:\/\//i.test(draggedTab.url)) {
+      getUrlDragProps(
+        { url: draggedTab.url, title: draggedTab.title || undefined },
+        { kind: 'reference', label: 'Live browser tab' }
+      ).onDragStart?.(e as React.DragEvent<HTMLElement>);
+    }
     try {
       const tabIds = selectedTabIdSet.has(tabId) ? selectedTabIds : [tabId];
       const payload = JSON.stringify({ tabIds, fromWindowId });
       e.dataTransfer.setData(DRAG_MIME, payload);
       // Some browsers/tools only accept text/plain
       e.dataTransfer.setData('text/plain', payload);
-      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.effectAllowed = 'copyMove';
 
       // Better UX for multi-select: show a drag preview with multiple items/count.
       // Note: drag images must be DOM elements; we create a temporary offscreen node.
@@ -453,6 +462,14 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     } catch {
       // ignore
     }
+  };
+
+  const handleTabDragEnd = (event: React.DragEvent, tab: chrome.tabs.Tab) => {
+    if (!tab.url || !/^https?:\/\//i.test(tab.url)) return;
+    getUrlDragProps(
+      { url: tab.url, title: tab.title || undefined },
+      { kind: 'reference', label: 'Live browser tab' }
+    ).onDragEnd?.(event as React.DragEvent<HTMLElement>);
   };
 
   const getDraggedTabIds = (e: React.DragEvent): number[] => {
@@ -1809,6 +1826,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                       }}
                       draggable
                       onDragStart={(e) => handleTabDragStart(e, tab.id, windowId)}
+                      onDragEnd={(e) => handleTabDragEnd(e, tab)}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1854,6 +1872,23 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                           }}
                         />
                       )}
+                      {tab.url && /^https?:\/\//i.test(tab.url) ? (
+                        <span
+                          draggable
+                          onClick={(event) => event.stopPropagation()}
+                          onDragStart={(event) => {
+                            event.stopPropagation();
+                            handleTabDragStart(event, tab.id, windowId);
+                          }}
+                          onDragEnd={(event) => {
+                            event.stopPropagation();
+                            handleTabDragEnd(event, tab);
+                          }}
+                          title="Drag to a workspace or collection"
+                          aria-label={`Drag ${tab.title || 'tab'} to a workspace or collection`}
+                          style={{ display: 'inline-flex', color: 'var(--text-faint)', cursor: 'grab', flexShrink: 0 }}
+                        ><GripVertical size={14} /></span>
+                      ) : null}
                       {tab.favIconUrl ? (
                         <img src={tab.favIconUrl} alt="" style={{ width: 14, height: 14, borderRadius: 2, flexShrink: 0 }} />
                       ) : (
@@ -2042,6 +2077,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                         }}
                         draggable
                         onDragStart={(e) => handleTabDragStart(e, tab.id, windowId)}
+                        onDragEnd={(e) => handleTabDragEnd(e, tab)}
                         style={{
                           background: isActive ? 'var(--accent-weak)' : 'var(--bg-panel)',
                           border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
@@ -2080,6 +2116,23 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                                 }}
                               />
                             )}
+                            {tab.url && /^https?:\/\//i.test(tab.url) ? (
+                              <span
+                                draggable
+                                onClick={(event) => event.stopPropagation()}
+                                onDragStart={(event) => {
+                                  event.stopPropagation();
+                                  handleTabDragStart(event, tab.id, windowId);
+                                }}
+                                onDragEnd={(event) => {
+                                  event.stopPropagation();
+                                  handleTabDragEnd(event, tab);
+                                }}
+                                title="Drag to a workspace or collection"
+                                aria-label={`Drag ${tab.title || 'tab'} to a workspace or collection`}
+                                style={{ display: 'inline-flex', color: 'var(--text-faint)', cursor: 'grab', flexShrink: 0 }}
+                              ><GripVertical size={14} /></span>
+                            ) : null}
                             {tab.favIconUrl ? (
                               <img src={tab.favIconUrl} alt="" style={{ width: 16, height: 16, borderRadius: 3, flexShrink: 0 }} />
                             ) : (

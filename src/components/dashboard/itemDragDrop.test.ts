@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ITEM_DRAG_MIME,
   createItemDragPayload,
+  createUrlDragPayload,
   decideItemDrop,
   readItemDragPayload,
   writeItemDragPayload,
@@ -45,6 +46,18 @@ describe('item drag/drop contract', () => {
     expect(dataTransfer.effectAllowed).toBe('copyMove');
     expect(dataTransfer.getData('text/plain')).toBe('');
     expect(dataTransfer.getData(ITEM_DRAG_MIME)).toContain('item-1');
+    expect(readItemDragPayload(dataTransfer)).toEqual(payload);
+  });
+
+  it('round-trips an unsaved browser URL as a copy-only source', () => {
+    const dataTransfer = transfer();
+    const payload = createUrlDragPayload(
+      { url: 'https://example.com/browser-tab', title: 'Browser tab' },
+      { kind: 'reference', label: 'Browser snapshot' }
+    );
+    writeItemDragPayload(dataTransfer, payload);
+
+    expect(dataTransfer.effectAllowed).toBe('copy');
     expect(readItemDragPayload(dataTransfer)).toEqual(payload);
   });
 });

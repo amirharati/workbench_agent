@@ -413,8 +413,9 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
         containerId: activeWorkspaceKey,
         containerLabel: activeWorkspaceLabel,
         projectId: activeWorkspaceProjectId,
-      } : undefined,
+      } : tab.kind === 'url' ? { kind: 'reference' as const, label: 'Browser snapshot' } : undefined,
       dragItem: item,
+      dragUrl: tab.kind === 'url' ? tab.url : undefined,
       reorderTarget: item ? {
         kind: 'workspace' as const,
         containerId: activeWorkspaceKey,
@@ -438,7 +439,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           ) : null}
           {transferable && transferDestinations.length > 0 && <button type="button" onClick={() => openTransferEntry(tab.id)} title={`Copy or move ${label}`} aria-label={`Copy or move ${label}`} style={sessionIconButtonStyle}><ArrowRightLeft size={11} /></button>}
           {item && onRequestDeleteItem ? <button type="button" onClick={() => onRequestDeleteItem(item)} title="Remove from Library" aria-label={`Remove ${label} from Library`} style={{ ...sessionIconButtonStyle, color: 'var(--danger)' }}><Trash2 size={11} /></button> : null}
-          <button type="button" onClick={() => { if (selectedSessionTabId === tab.id) { setSelectedSessionTabId(null); setSelectedItemId(null); } onRemoveSessionTab(tab.id); }} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={sessionIconButtonStyle}><X size={12} /></button>
+          {!activeWorkspace ? <button type="button" onClick={() => { if (selectedSessionTabId === tab.id) { setSelectedSessionTabId(null); setSelectedItemId(null); } onRemoveSessionTab(tab.id); }} title={`Remove ${label} from workspace`} aria-label={`Remove ${label} from workspace`} style={sessionIconButtonStyle}><X size={12} /></button> : null}
         </>
       ),
     };
@@ -825,7 +826,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             onModeChange={setBrowseMode}
             emptyMessage={browseSource === 'workspace' ? 'This workspace is empty. Add project material to begin.' : browseSource === 'pinned' ? 'Nothing is pinned to this project yet.' : 'No items in this source.'}
             ariaLabel={browseSource === 'workspace' ? 'Workspace contents' : 'Project material'}
-            dropTarget={browseSource === 'workspace'
+            dropTarget={browseSource === 'workspace' && !activeWorkspace
               ? {
                   kind: 'workspace',
                   containerId: activeWorkspaceKey,

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { LeftSidebar } from './LeftSidebar';
 import { MainContent } from './MainContent';
 import { WindowGroup } from '../../../App';
-import { Workspace, Collection, Item, Project, UpdateItemOptions, getItem } from '../../../lib/db';
+import { Workspace, Collection, Item, Project, UpdateItemOptions, ensureProjectUnsortedCollection, getItem } from '../../../lib/db';
 import type { BackupStatusSnapshot, RestoreBackupResult } from '../../../lib/backupCoordinator';
 import type { DbWorkerStatus } from '../../../lib/storage/dbClient';
 import type { AISettings } from '../../../lib/ai/types';
@@ -1088,6 +1088,49 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     target: ItemDropTarget,
     operation: ItemTransferOperation
   ): Promise<ItemTransferResult> => {
+    if (payload.entity === 'url') {
+      if (!payload.url || !onAddBookmark) throw new Error('Saving browser links is unavailable.');
+      const targetProjectId = target.projectId ??
+        (target.kind === 'workspace' ? getWorkspaceProjectId(globalTabState, target.containerId) : 'all');
+      const collectionId = target.kind === 'collection'
+        ? target.containerId
+        : targetProjectId && targetProjectId !== 'all'
+          ? await ensureProjectUnsortedCollection(targetProjectId)
+          : undefined;
+      const itemId = await onAddBookmark(payload.url, payload.itemLabel, collectionId);
+      if (!itemId) throw new Error(`Could not save ${payload.url}.`);
+      const item = await getItem(itemId);
+      if (!item) throw new Error('The saved link could not be loaded.');
+
+      if (target.kind === 'collection') {
+        return { message: `Saved to ${target.containerLabel}` };
+      }
+
+      const wasInTarget = workspaceTargetContainsItem({
+        state: globalTabState,
+        projectId: targetProjectId,
+        targetWorkspaceKey: target.containerId,
+        itemId: item.id,
+        items: [...items, item],
+      });
+      if (wasInTarget) return { message: `Saved to library; already in ${target.containerLabel}` };
+      mutateWorkspaceState((state) => addItemToWorkspaceTarget({
+        state,
+        projectId: targetProjectId,
+        targetWorkspaceKey: target.containerId,
+        item,
+        items: [...items, item],
+      }), target.containerId);
+      return {
+        message: `Saved to library and added to ${target.containerLabel}`,
+        undo: () => mutateWorkspaceState((state) => removeItemFromWorkspaceTarget({
+          state,
+          projectId: targetProjectId,
+          targetWorkspaceKey: target.containerId,
+          itemId: item.id,
+        })),
+      };
+    }
     const item = items.find((candidate) => candidate.id === payload.itemId) ??
       await getItem(payload.itemId);
     if (!item) throw new Error('This item is no longer available.');
@@ -1202,7 +1245,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         placements: item.placements,
       }),
     };
-  }, [globalTabState, items, mutateWorkspaceState, onUpdateBookmark]);
+  }, [globalTabState, items, mutateWorkspaceState, onAddBookmark, onUpdateBookmark]);
 
   const handleWorkspaceItemReorder = useCallback((
     itemId: string,

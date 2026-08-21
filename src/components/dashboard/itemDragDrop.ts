@@ -35,9 +35,11 @@ export interface ProjectCollectionDropTarget {
 
 export interface ItemDragPayload {
   version: typeof ITEM_DRAG_VERSION;
-  entity: 'item';
+  entity: 'item' | 'url';
   itemId: string;
   itemLabel: string;
+  /** Present only for an unsaved browser or snapshot URL. */
+  url?: string;
   source: ItemDragSource;
 }
 
@@ -55,6 +57,23 @@ export function createItemDragPayload(
     entity: 'item',
     itemId: item.id,
     itemLabel: item.title?.trim() || item.url?.trim() || 'Untitled',
+    source,
+  };
+}
+
+export function createUrlDragPayload(
+  link: { url: string; title?: string },
+  source: ItemDragSource
+): ItemDragPayload {
+  const url = link.url.trim();
+  return {
+    version: ITEM_DRAG_VERSION,
+    entity: 'url',
+    // A URL is materialized into a real Item on drop; this id is only used
+    // while it is in flight through the shared drag system.
+    itemId: `url:${url}`,
+    itemLabel: link.title?.trim() || url,
+    url,
     source,
   };
 }
@@ -84,12 +103,13 @@ export function readItemDragPayload(dataTransfer: DataTransfer): ItemDragPayload
     const value = JSON.parse(raw) as Partial<ItemDragPayload>;
     if (
       value.version !== ITEM_DRAG_VERSION ||
-      value.entity !== 'item' ||
+      (value.entity !== 'item' && value.entity !== 'url') ||
       typeof value.itemId !== 'string' ||
       typeof value.itemLabel !== 'string' ||
       !value.source ||
       typeof value.source !== 'object'
     ) return null;
+    if (value.entity === 'url' && (typeof value.url !== 'string' || !/^https?:\/\//i.test(value.url))) return null;
     const source = value.source as ItemDragSource;
     if (source.kind === 'reference') return value as ItemDragPayload;
     if (

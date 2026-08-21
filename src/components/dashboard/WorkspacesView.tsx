@@ -364,6 +364,8 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
             ),
             meta: windowGroup.name || `Window ${windowIndex + 1}`,
             searchText: `${windowGroup.name ?? ''} ${tab.url}`,
+            dragSource: { kind: 'reference' as const, label: 'Browser snapshot' },
+            dragUrl: /^https?:\/\//i.test(tab.url) ? tab.url : undefined,
           }))
         )
       : [];

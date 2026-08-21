@@ -7,6 +7,8 @@ const INTERACTIVE_CHILD_SELECTOR = 'button, a, input, select, textarea, [content
 export interface ItemResultRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onSelect'> {
   item: { id: string; title?: string; url?: string };
   dragSource?: ItemDragSource;
+  /** A browser/snapshot URL that has not yet become a library item. */
+  dragUrl?: string;
   selected?: boolean;
   onSelectItem?: (event: React.MouseEvent<HTMLDivElement> | React.KeyboardEvent<HTMLDivElement>) => void;
 }
@@ -18,6 +20,7 @@ export interface ItemResultRowProps extends Omit<React.HTMLAttributes<HTMLDivEle
 export const ItemResultRow = React.forwardRef<HTMLDivElement, ItemResultRowProps>(function ItemResultRow({
   item,
   dragSource,
+  dragUrl,
   selected = false,
   onSelectItem,
   onClick,
@@ -28,8 +31,12 @@ export const ItemResultRow = React.forwardRef<HTMLDivElement, ItemResultRowProps
   children,
   ...domProps
 }, ref) {
-  const { getDragProps } = useItemDragSource();
-  const dragProps = dragSource ? getDragProps(item, dragSource) : null;
+  const { getDragProps, getUrlDragProps } = useItemDragSource();
+  const dragProps = dragSource
+    ? dragUrl
+      ? getUrlDragProps({ url: dragUrl, title: item.title }, dragSource)
+      : getDragProps(item, dragSource)
+    : null;
 
   return (
     <div

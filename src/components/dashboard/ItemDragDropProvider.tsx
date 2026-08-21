@@ -6,6 +6,7 @@ import type { WorkspaceDestination } from './workspaceDestinations';
 import {
   ITEM_DRAG_MIME,
   createItemDragPayload,
+  createUrlDragPayload,
   decideItemDrop,
   itemDragSourceProps,
   readItemDragPayload,
@@ -24,6 +25,7 @@ export interface ItemTransferResult {
 interface ItemDragDropContextValue {
   activePayload: ItemDragPayload | null;
   getDragProps: ItemDragSourceContextValue['getDragProps'];
+  getUrlDragProps: ItemDragSourceContextValue['getUrlDragProps'];
   getDropTargetProps: (target: ItemDropTarget) => ItemDropTargetProps;
   getProjectCollectionDropTargetProps: (target: ProjectCollectionDropTarget) => ItemDropTargetProps;
   getReorderTargetProps: (
@@ -35,6 +37,10 @@ interface ItemDragDropContextValue {
 interface ItemDragSourceContextValue {
   getDragProps: (
     item: { id: string; title?: string; url?: string },
+    source: ItemDragSource
+  ) => ReturnType<typeof itemDragSourceProps>;
+  getUrlDragProps: (
+    link: { url: string; title?: string },
     source: ItemDragSource
   ) => ReturnType<typeof itemDragSourceProps>;
 }
@@ -53,9 +59,17 @@ const emptyDragProps: ItemDragSourceContextValue['getDragProps'] = () => ({
   onDragStart: () => {},
   onDragEnd: () => {},
 });
+const emptyUrlDragProps: ItemDragSourceContextValue['getUrlDragProps'] = () => ({
+  draggable: true,
+  onDragStart: () => {},
+  onDragEnd: () => {},
+});
 
 export function useItemDragSource(): ItemDragSourceContextValue {
-  return useContext(ItemDragSourceContext) ?? { getDragProps: emptyDragProps };
+  return useContext(ItemDragSourceContext) ?? {
+    getDragProps: emptyDragProps,
+    getUrlDragProps: emptyUrlDragProps,
+  };
 }
 
 export function useItemDragDrop(): ItemDragDropContextValue {
@@ -64,6 +78,7 @@ export function useItemDragDrop(): ItemDragDropContextValue {
     return {
       activePayload: null,
       getDragProps: emptyDragProps,
+      getUrlDragProps: emptyUrlDragProps,
       getDropTargetProps: () => ({}),
       getProjectCollectionDropTargetProps: () => ({}),
       getReorderTargetProps: () => ({}),
@@ -160,6 +175,22 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
 
   const getDragProps = useCallback<ItemDragSourceContextValue['getDragProps']>((item, source) => {
     const payload = createItemDragPayload(item, source);
+    return itemDragSourceProps(payload, {
+      onStart: (nextPayload, sourceElement) => {
+        const rect = sourceElement.getBoundingClientRect();
+        setDropTraySide(chooseItemDropTraySide({
+          left: rect.left,
+          right: rect.right,
+          viewportWidth: window.innerWidth,
+        }));
+        setActivePayload(nextPayload);
+      },
+      onEnd: clearDrag,
+    });
+  }, [clearDrag]);
+
+  const getUrlDragProps = useCallback<ItemDragSourceContextValue['getUrlDragProps']>((link, source) => {
+    const payload = createUrlDragPayload(link, source);
     return itemDragSourceProps(payload, {
       onStart: (nextPayload, sourceElement) => {
         const rect = sourceElement.getBoundingClientRect();
@@ -298,6 +329,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       const payload = activePayload ?? readItemDragPayload(event.dataTransfer);
       if (
         !payload ||
+        payload.entity !== 'item' ||
         payload.itemId === beforeItemId ||
         payload.source.kind !== 'workspace' ||
         target.kind !== 'workspace' ||
@@ -316,6 +348,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       const payload = readItemDragPayload(event.dataTransfer) ?? activePayload;
       if (
         !payload ||
+        payload.entity !== 'item' ||
         payload.itemId === beforeItemId ||
         payload.source.kind !== 'workspace' ||
         target.kind !== 'workspace' ||
@@ -406,7 +439,9 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     return (labelParts[labelParts.length - 1] ?? target.containerLabel).replace(/^.* — /, '');
   };
   const renderTarget = (target: ItemDropTarget, compact = false) => {
-    const present = activePayload ? isInTarget(activePayload.itemId, target) : false;
+    const present = activePayload?.entity === 'item'
+      ? isInTarget(activePayload.itemId, target)
+      : false;
     const Icon = target.kind === 'workspace' ? Layers3 : Folder;
     return (
       <div key={itemDropTargetKey(target)} className="ui-item-drop-target" {...getDropTargetProps(target)} data-present={present ? 'true' : 'false'}>
@@ -472,10 +507,10 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     );
   };
   const contextValue = useMemo(
-    () => ({ activePayload, getDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps }),
-    [activePayload, getDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps]
+    () => ({ activePayload, getDragProps, getUrlDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps }),
+    [activePayload, getDragProps, getUrlDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps]
   );
-  const sourceContextValue = useMemo(() => ({ getDragProps }), [getDragProps]);
+  const sourceContextValue = useMemo(() => ({ getDragProps, getUrlDragProps }), [getDragProps, getUrlDragProps]);
   useEffect(() => {
     if (!pendingChoice && !pendingCollectionChoice) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -545,7 +580,8 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
             </p>
             <div className="ui-item-transfer-dialog__actions ui-item-transfer-dialog__actions--collections">
               {pendingCollectionChoice.target.collections.map((collection, index) => {
-                const present = isInTarget(pendingCollectionChoice.payload.itemId, collection);
+                const present = pendingCollectionChoice.payload.entity === 'item' &&
+                  isInTarget(pendingCollectionChoice.payload.itemId, collection);
                 return (
                   <button
                     type="button"

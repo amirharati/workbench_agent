@@ -331,10 +331,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
   );
   const projectWorkspaceDestinations = useMemo(
     () => activeProject
-      ? workspaceSwitcherDestinations
-          .map((destination) => ({ key: destination.key, label: destination.path }))
+      ? [
+          ...workspaceSwitcherDestinations
+            .map((destination) => ({ key: destination.key, label: destination.path })),
+          ...projectWorkspaces
+            .filter((workspace) => workspace.projectId === activeProject.id)
+            .map((workspace) => ({
+              key: getSavedWorkspaceSessionKey(workspace.id),
+              label: `Snapshot · ${workspace.name}`,
+            })),
+        ]
       : [],
-    [activeProject, workspaceSwitcherDestinations]
+    [activeProject, projectWorkspaces, workspaceSwitcherDestinations]
   );
   const projectWorkspaceManagerEntries = useMemo(() => activeProject
     ? [
@@ -760,6 +768,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const activateWorkspaceKey = (workspaceKey: string) => {
+    const browserSnapshot = workspaces.find(
+      (workspace) => getSavedWorkspaceSessionKey(workspace.id) === workspaceKey
+    );
+    if (browserSnapshot) {
+      activateWorkspace(browserSnapshot);
+      return;
+    }
     onHomeStateChange(activateWorkspaceByKey({
       state: homeState,
       workspaceKey,
