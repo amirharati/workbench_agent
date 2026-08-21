@@ -1,6 +1,6 @@
 import React from 'react';
 import type { WindowGroup } from '../../App';
-import type { Item, Project, Workspace } from '../../lib/db';
+import type { Collection, Item, Project, Workspace } from '../../lib/db';
 import type { GlobalTabState } from './GlobalTabSystem';
 import { BottomPanel } from './layout/BottomPanel';
 import { uiPatterns } from '../../styles/uiPatterns';
@@ -9,9 +9,12 @@ interface TabCommanderViewProps {
   windows: WindowGroup[];
   workspaces: Workspace[];
   projects: Project[];
-  items: Item[];
+  /** Retained for callers during the workspace-capture transition. */
+  items?: Item[];
+  collections?: Collection[];
   homeState: GlobalTabState;
   onHomeStateChange: (next: GlobalTabState) => void;
+  onAddBookmark?: (url: string, title?: string, collectionId?: string, options?: { silent?: boolean; successMessage?: string }) => Promise<string | undefined>;
   onWorkspacesChanged?: () => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
@@ -26,9 +29,10 @@ export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
   windows,
   workspaces,
   projects,
-  items,
+  collections = [],
   homeState,
   onHomeStateChange,
+  onAddBookmark,
   onWorkspacesChanged,
   onCloseTab,
   onCloseWindow,
@@ -59,9 +63,10 @@ export const TabCommanderView: React.FC<TabCommanderViewProps> = ({
           windows={windows}
           workspaces={workspaces}
           projects={projects}
-          items={items}
+          collections={collections}
           homeState={homeState}
           onHomeStateChange={onHomeStateChange}
+          onAddBookmark={onAddBookmark}
           onWorkspacesChanged={onWorkspacesChanged}
           onCloseTab={onCloseTab}
           onCloseWindow={onCloseWindow}

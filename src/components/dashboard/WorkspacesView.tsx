@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ExternalLink, FileText, Layers3, Link2, MonitorUp, Pencil, Play, Plus, Search, Trash2, X } from 'lucide-react';
-import type { Item, Project, Workspace } from '../../lib/db';
-import { deleteWorkspace, updateWorkspace } from '../../lib/db';
+import type { Collection, Item, Project, Workspace } from '../../lib/db';
+import { deleteWorkspace, normalizeBookmarkUrl, updateWorkspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, SavedWorkspaceSession } from './GlobalTabSystem';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
@@ -12,9 +12,8 @@ import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
   activateWorkspace as activateWorkspaceByKey,
-  addBrowserSnapshotToProjectWorkspace,
+  addItemsToProjectWorkspace,
   createProjectWorkspace as createNamedProjectWorkspace,
-  createProjectWorkspaceFromBrowserSnapshot,
   deleteSavedProjectWorkspace,
   getActiveProjectWorkspaceKey,
   getHomebaseWorkspaceSessionKey,
@@ -67,6 +66,7 @@ type WorkspaceDelete =
 interface WorkspacesViewProps {
   projects: Project[];
   items: Item[];
+  collections?: Collection[];
   workspaces: Workspace[];
   homeState: GlobalTabState;
   scopeProjectId?: string | 'all';
@@ -75,6 +75,7 @@ interface WorkspacesViewProps {
   onOpenTabCommander?: () => void;
   onSelectProjectScope?: (projectId: string | 'all') => void;
   onWorkspacesChanged?: () => Promise<void>;
+  onAddBookmark?: (url: string, title?: string, collectionId?: string, options?: { silent?: boolean; successMessage?: string }) => Promise<string | undefined>;
 }
 
 function projectWorkspaceRows(
@@ -139,6 +140,7 @@ export function getWorkspaceTabUrl(
 export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   projects,
   items,
+  collections = [],
   workspaces,
   homeState,
   scopeProjectId = 'all',
@@ -147,12 +149,17 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   onOpenTabCommander,
   onSelectProjectScope,
   onWorkspacesChanged,
+  onAddBookmark,
 }) => {
   const [filter, setFilter] = useState<WorkspaceFilter>('all');
   const [query, setQuery] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [targetProjectId, setTargetProjectId] = useState(projects[0]?.id ?? '');
+  const [targetProjectId, setTargetProjectId] = useState(
+    scopeProjectId !== 'all' ? scopeProjectId : projects[0]?.id ?? ''
+  );
+  const [targetCollectionId, setTargetCollectionId] = useState('');
   const [targetWorkspaceKey, setTargetWorkspaceKey] = useState('');
+  const [snapshotSaveProgress, setSnapshotSaveProgress] = useState<{ saved: number; total: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [workspacePrompt, setWorkspacePrompt] = useState<WorkspacePrompt | null>(null);
   const [workspaceDelete, setWorkspaceDelete] = useState<WorkspaceDelete | null>(null);
@@ -198,6 +205,9 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
         ...targetSessions.map((session) => ({ key: getHomebaseWorkspaceSessionKey(session.id), label: session.name })),
       ]
     : [];
+  const targetCollections = useMemo(() => collections
+    .filter((collection) => collection.primaryProjectId === targetProjectId || collection.projectIds?.includes(targetProjectId))
+    .sort((left, right) => Number(right.isDefault) - Number(left.isDefault) || left.name.localeCompare(right.name)), [collections, targetProjectId]);
   const managerProject = projects.find((project) => project.id === managerProjectId);
   const managerSessions = (homeState.savedWorkspaceSessions ?? [])
     .filter((session) => session.projectId === managerProjectId)
@@ -232,6 +242,11 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     if (targetProjectId && projects.some((project) => project.id === targetProjectId)) return;
     setTargetProjectId(projects[0]?.id ?? '');
   }, [projects, targetProjectId]);
+
+  useEffect(() => {
+    if (targetCollections.some((collection) => collection.id === targetCollectionId)) return;
+    setTargetCollectionId(targetCollections[0]?.id ?? '');
+  }, [targetCollectionId, targetCollections]);
 
   useEffect(() => {
     if (managerProjectId && projects.some((project) => project.id === managerProjectId)) return;
@@ -406,17 +421,43 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     setWorkspacePrompt({ kind: 'create-project', workspace: selectedBrowser, projectId: targetProjectId });
   };
 
-  const addToProjectWorkspace = () => {
-    if (!selectedBrowser || !targetProjectId || !targetWorkspaceKey) return;
-    onHomeStateChange(addBrowserSnapshotToProjectWorkspace({
+  const saveSnapshotItems = async (workspace: Workspace, collectionId: string) => {
+    if (!onAddBookmark) throw new Error('Saving links is unavailable.');
+    const linksByUrl = new Map<string, { url: string; title?: string }>();
+    for (const tab of workspace.windows.flatMap((window) => window.tabs)) {
+      const url = tab.url?.trim();
+      if (!url || !/^https?:\/\//i.test(url)) continue;
+      linksByUrl.set(normalizeBookmarkUrl(url), { url, title: tab.title });
+    }
+    const links = [...linksByUrl.values()];
+    if (links.length === 0) throw new Error('This snapshot has no saveable http(s) links.');
+
+    setSnapshotSaveProgress({ saved: 0, total: links.length });
+    try {
+      const itemIds: string[] = [];
+      for (const [index, link] of links.entries()) {
+        const itemId = await onAddBookmark(link.url, link.title, collectionId, { silent: true });
+        if (!itemId) throw new Error(`Could not save ${link.url}.`);
+        itemIds.push(itemId);
+        setSnapshotSaveProgress({ saved: index + 1, total: links.length });
+      }
+      return itemIds;
+    } finally {
+      setSnapshotSaveProgress(null);
+    }
+  };
+
+  const addToProjectWorkspace = async () => {
+    if (!selectedBrowser || !targetProjectId || !targetCollectionId || !targetWorkspaceKey) return;
+    const itemIds = await saveSnapshotItems(selectedBrowser, targetCollectionId);
+    onHomeStateChange(addItemsToProjectWorkspace({
       state: homeState,
-      workspace: selectedBrowser,
-      items,
       projectId: targetProjectId,
       targetWorkspaceKey,
+      itemIds,
     }));
     const target = workspaceTargets.find((candidate) => candidate.key === targetWorkspaceKey);
-    setNotice(`Added snapshot URLs to ${target?.label ?? 'project workspace'}.`);
+    setNotice(`Saved ${itemIds.length} link${itemIds.length === 1 ? '' : 's'} to the library and added them to ${target?.label ?? 'the workspace'}.`);
   };
 
   const renameProjectWorkspace = (row: ProjectWorkspaceRow) => {
@@ -466,14 +507,22 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   const submitWorkspacePrompt = async (name: string) => {
     if (!workspacePrompt) return;
     if (workspacePrompt.kind === 'create-project') {
-      onHomeStateChange(createProjectWorkspaceFromBrowserSnapshot({
+      if (!targetCollectionId) throw new Error('Choose a target collection first.');
+      const itemIds = await saveSnapshotItems(workspacePrompt.workspace, targetCollectionId);
+      const sessionId = crypto.randomUUID();
+      const next = createNamedProjectWorkspace({
         state: homeState,
-        workspace: workspacePrompt.workspace,
-        items,
         projectId: workspacePrompt.projectId,
         name,
+        sessionId,
+      });
+      onHomeStateChange(addItemsToProjectWorkspace({
+        state: next,
+        projectId: workspacePrompt.projectId,
+        targetWorkspaceKey: getHomebaseWorkspaceSessionKey(sessionId),
+        itemIds,
       }));
-      setNotice(`Created project workspace “${name}”.`);
+      setNotice(`Saved ${itemIds.length} link${itemIds.length === 1 ? '' : 's'} and created workspace “${name}”.`);
     } else if (workspacePrompt.kind === 'rename-project') {
       const sessionId = workspacePrompt.row.session?.id;
       if (!sessionId) return;
@@ -599,10 +648,12 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                   <select value={targetProjectId} onChange={(event) => setTargetProjectId(event.target.value)} aria-label="Target project" style={selectStyle}><option value="">Choose project…</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
-                  <button type="button" disabled={!targetProjectId} onClick={createProjectWorkspace} style={secondaryButtonStyle}><Plus size={12} /> Create project workspace</button>
+                  <select value={targetCollectionId} onChange={(event) => setTargetCollectionId(event.target.value)} aria-label="Library collection" disabled={!targetProjectId || targetCollections.length === 0} style={selectStyle}><option value="">Choose collection…</option>{targetCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select>
+                  <button type="button" disabled={!targetProjectId || !targetCollectionId || snapshotSaveProgress !== null} onClick={createProjectWorkspace} style={secondaryButtonStyle}><Plus size={12} /> Save as project workspace</button>
                   <select value={targetWorkspaceKey} onChange={(event) => setTargetWorkspaceKey(event.target.value)} aria-label="Target project workspace" disabled={!targetProjectId} style={selectStyle}>{workspaceTargets.map((target) => <option key={target.key} value={target.key}>{target.label}</option>)}</select>
-                  <button type="button" disabled={!targetWorkspaceKey} onClick={addToProjectWorkspace} style={secondaryButtonStyle}><Plus size={12} /> Add URLs to workspace</button>
+                  <button type="button" disabled={!targetWorkspaceKey || !targetCollectionId || snapshotSaveProgress !== null} onClick={() => void addToProjectWorkspace()} style={secondaryButtonStyle}><Plus size={12} /> Save links and add</button>
                 </div>
+                {snapshotSaveProgress ? <div role="status" style={{ marginTop: 6, color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>Saving {snapshotSaveProgress.saved}/{snapshotSaveProgress.total} links…</div> : null}
                 {notice && <div role="status" style={{ marginTop: 6, color: 'var(--accent)', fontSize: 'var(--text-xs)' }}>{notice}</div>}
               </div>
               <div className="ui-workspaces-detail-browser">
@@ -624,7 +675,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
       {workspacePrompt ? (
         <TextPromptDialog
           title={workspacePrompt.kind === 'create-project' ? 'Create project workspace' : workspacePrompt.kind === 'rename-project' ? 'Rename workspace' : 'Rename browser snapshot'}
-          description={workspacePrompt.kind === 'create-project' ? 'Turn this saved browser snapshot into a reusable project working set.' : 'Use a short name that makes this saved context easy to recognize.'}
+          description={workspacePrompt.kind === 'create-project' ? 'Save the snapshot links to the selected library collection, then create a reusable project working set from those items.' : 'Use a short name that makes this saved context easy to recognize.'}
           label={workspacePrompt.kind === 'rename-browser' ? 'Snapshot name' : 'Workspace name'}
           initialValue={workspacePrompt.kind === 'create-project' ? workspacePrompt.workspace.name : workspacePrompt.kind === 'rename-project' ? workspacePrompt.row.name : workspacePrompt.workspace.name}
           confirmLabel={workspacePrompt.kind === 'create-project' ? 'Create workspace' : 'Save name'}

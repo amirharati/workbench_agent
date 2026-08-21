@@ -98,7 +98,7 @@ interface MainContentProps {
   onWorkspacesChanged?: () => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
-  onAddBookmark?: (url: string, title?: string, collectionId?: string) => Promise<void>;
+  onAddBookmark?: (url: string, title?: string, collectionId?: string, options?: { silent?: boolean; successMessage?: string }) => Promise<string | undefined>;
   onUpdateBookmark?: (
     id: string,
     updates: Partial<Omit<Item, 'id' | 'created_at'>>,
@@ -988,7 +988,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             windows={windows}
             workspaces={workspaces}
             projects={projects}
-            items={items}
+            collections={collections}
             homeState={globalTabState ?? {
               tabs: [],
               activeTabId: null,
@@ -996,6 +996,7 @@ export const MainContent: React.FC<MainContentProps> = ({
               isSidebarCollapsed: false,
             }}
             onHomeStateChange={onGlobalTabStateChange ?? (() => {})}
+            onAddBookmark={onAddBookmark}
             onWorkspacesChanged={onWorkspacesChanged}
             onCloseTab={onCloseTab}
             onCloseWindow={onCloseWindow}
@@ -2174,6 +2175,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           <WorkspacesView
             projects={projects}
             items={items}
+            collections={collections}
             workspaces={workspaces}
             homeState={globalTabState ?? {
               tabs: [],
@@ -2187,6 +2189,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onOpenTabCommander={() => onSelectView?.('tab-commander')}
             onSelectProjectScope={onSelectProjectScope}
             onWorkspacesChanged={onWorkspacesChanged}
+            onAddBookmark={onAddBookmark}
           />
         );
       case 'collections':

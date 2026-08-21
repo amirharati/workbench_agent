@@ -496,6 +496,38 @@ export function addEntryToProjectWorkspace({
   return setProjectWorkspaceTabs(state, projectId, targetWorkspaceKey, [...targetTabs, scopedEntry]);
 }
 
+/**
+ * Add canonical library items to a project workspace. Browser snapshots are
+ * capture records, but a Home workspace must only reference real library
+ * items so every entry has the normal Inspector, enrichment, and drag/drop
+ * behavior.
+ */
+export function addItemsToProjectWorkspace({
+  state,
+  projectId,
+  targetWorkspaceKey,
+  itemIds,
+}: {
+  state: GlobalTabState;
+  projectId: string;
+  targetWorkspaceKey: string;
+  itemIds: readonly string[];
+}): GlobalTabState {
+  return [...new Set(itemIds.filter(Boolean))].reduce(
+    (nextState, itemId) => addEntryToProjectWorkspace({
+      state: nextState,
+      projectId,
+      targetWorkspaceKey,
+      entry: {
+        kind: 'item',
+        id: `item-${itemId}${projectId === 'all' ? '' : `@project:${projectId}`}`,
+        itemId,
+      },
+    }),
+    state
+  );
+}
+
 export function getWorkspaceTargetTabs({
   state,
   projectId,

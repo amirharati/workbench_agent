@@ -5365,6 +5365,28 @@ button.ui-scope-chip {
   cursor: grabbing;
 }
 
+.ui-content-browser__drag-grip {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  cursor: grab;
+  user-select: none;
+}
+
+.ui-content-browser__drag-grip:hover {
+  color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.ui-content-browser__drag-grip:active {
+  cursor: grabbing;
+}
+
 [data-reorder-over='true'] {
   box-shadow: inset 0 3px 0 var(--accent) !important;
 }

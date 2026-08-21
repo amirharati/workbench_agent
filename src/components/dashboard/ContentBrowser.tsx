@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Eye, Grid2X2, List, Search, X } from 'lucide-react';
+import { Eye, Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
@@ -62,9 +62,12 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
   selectedEntryRef?: React.RefObject<HTMLDivElement>;
   previewItemIds: readonly string[];
 }) {
-  const { getReorderTargetProps } = useItemDragDrop();
+  const { getDragProps, getReorderTargetProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const dragItem = entry.dragItem ?? { id: entry.id, title: entry.title };
+  const dragProps = entry.dragSource
+    ? getDragProps(dragItem, entry.dragSource)
+    : null;
   const reorderProps = entry.reorderTarget
     ? getReorderTargetProps(dragItem.id, entry.reorderTarget)
     : {};
@@ -106,6 +109,26 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
+          {entry.dragSource ? (
+            <span
+              className="ui-content-browser__drag-grip"
+              draggable={dragProps?.draggable}
+              onDragStart={(event) => {
+                if (!dragProps) return;
+                event.stopPropagation();
+                dragProps.onDragStart?.(event);
+              }}
+              onDragEnd={(event) => {
+                if (!dragProps) return;
+                event.stopPropagation();
+                dragProps.onDragEnd?.(event);
+              }}
+              title="Drag to a workspace or collection"
+              aria-label={`Drag ${entry.title || 'item'} to a workspace or collection`}
+            >
+              <GripVertical size={14} aria-hidden="true" />
+            </span>
+          ) : null}
           {entry.dragSource ? (
             <button
               type="button"

@@ -578,15 +578,26 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     return collections.find(c => c.id === collectionId)?.name ?? 'library';
   }, [collections]);
 
-  const handleAddBookmarkWithToast = useCallback(async (url: string, title?: string, collectionId?: string) => {
+  const handleAddBookmarkWithToast = useCallback(async (
+    url: string,
+    title?: string,
+    collectionId?: string,
+    options?: { silent?: boolean; successMessage?: string }
+  ): Promise<string | undefined> => {
     if (!onAddBookmark) return;
     if (!url || !/^https?:\/\//i.test(url)) {
       addStatusMessage({ type: 'warning', message: 'Please enter a valid http(s) URL' });
       return;
     }
     try {
-      await onAddBookmark(url, title, collectionId);
-      addToast({ type: 'success', message: `Bookmark saved to ${collectionLabel(collectionId)}` });
+      const itemId = await onAddBookmark(url, title, collectionId);
+      if (!options?.silent || options?.successMessage) {
+        addToast({
+          type: 'success',
+          message: options?.successMessage ?? `Bookmark saved to ${collectionLabel(collectionId)}`,
+        });
+      }
+      return itemId;
     } catch (error) {
       addToast({
         type: 'error',

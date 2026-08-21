@@ -74,6 +74,8 @@ describe('ContentBrowser', () => {
     expect(markup).toContain('data-item-drag-source="true"');
     expect(markup).not.toContain('data-content-drag-handle');
     expect(markup).toContain('draggable="true"');
+    expect(markup).toContain('ui-content-browser__drag-grip');
+    expect(markup).toContain('Drag to a workspace or collection');
   });
 
   it('selects a draggable entry on click without changing its drag source', async () => {

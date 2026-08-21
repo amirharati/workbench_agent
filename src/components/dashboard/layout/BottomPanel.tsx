@@ -4,11 +4,11 @@ import { uiPatterns } from '../../../styles/uiPatterns';
 import { ChevronDown, ChevronUp, Copy, ExternalLink, Globe, GripHorizontal, LayoutGrid, List, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import type { WindowGroup } from '../../../App';
 import { addWorkspace, normalizeBookmarkUrl, updateWorkspace } from '../../../lib/db';
-import type { Project, Workspace, WorkspaceWindow } from '../../../lib/db';
+import type { Collection, Project, Workspace, WorkspaceWindow } from '../../../lib/db';
 import type { GlobalTabState } from '../GlobalTabSystem';
 import {
-  addBrowserSnapshotToProjectWorkspace,
-  createProjectWorkspaceFromBrowserSnapshot,
+  addItemsToProjectWorkspace,
+  createProjectWorkspace,
   getHomebaseWorkspaceSessionKey,
   getProjectSessionWorkspaceKey,
 } from '../workspaceSession';
@@ -21,9 +21,10 @@ interface BottomPanelProps {
   workspaces: Workspace[];
   /** Used when creating a workspace from Tab Commander (project vs detached) */
   projects?: Project[];
-  items?: import('../../../lib/db').Item[];
+  collections?: Collection[];
   homeState?: GlobalTabState;
   onHomeStateChange?: (next: GlobalTabState) => void;
+  onAddBookmark?: (url: string, title?: string, collectionId?: string, options?: { silent?: boolean; successMessage?: string }) => Promise<string | undefined>;
   onWorkspacesChanged?: () => Promise<void>;
   onCloseTab?: (tabId: number) => Promise<void>;
   onCloseWindow?: (windowId: number) => Promise<void>;
@@ -71,9 +72,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   windows,
   workspaces,
   projects = [],
-  items = [],
+  collections = [],
   homeState,
   onHomeStateChange,
+  onAddBookmark,
   onWorkspacesChanged,
   onCloseTab,
   onCloseWindow,
@@ -91,8 +93,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [newWorkspaceProjectId, setNewWorkspaceProjectId] = useState('');
+  const [newWorkspaceCollectionId, setNewWorkspaceCollectionId] = useState('');
   const [newWorkspaceTargetKey, setNewWorkspaceTargetKey] = useState('');
   const [captureMode, setCaptureMode] = useState<'browser' | 'project-create' | 'project-add'>('browser');
+  const [snapshotSaveProgress, setSnapshotSaveProgress] = useState<{ saved: number; total: number } | null>(null);
   const [windowCollapsed, setWindowCollapsed] = useState<Record<number, boolean>>({});
   const [tabLimit, setTabLimit] = useState<number>(120);
   const TAB_PAGE_SIZE = 120;
@@ -582,12 +586,47 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     setNewWorkspaceName(suggested);
     const initialProjectId = mode === 'browser' ? '' : projects[0]?.id ?? '';
     setNewWorkspaceProjectId(initialProjectId);
+    const initialCollectionId = collections.find((collection) =>
+      collection.primaryProjectId === initialProjectId || collection.projectIds?.includes(initialProjectId)
+    )?.id ?? '';
+    setNewWorkspaceCollectionId(initialCollectionId);
     setNewWorkspaceTargetKey(initialProjectId ? getProjectSessionWorkspaceKey(initialProjectId) : '');
     setNewWorkspaceOpen(true);
   };
 
   const closeNewWorkspaceModal = () => {
     setNewWorkspaceOpen(false);
+  };
+
+  const saveCapturedTabsAsItems = async (workspace: Workspace, collectionId: string) => {
+    if (!onAddBookmark) throw new Error('Saving links is unavailable.');
+    const linksByUrl = new Map<string, { url: string; title?: string }>();
+    for (const tab of workspace.windows.flatMap((window) => window.tabs)) {
+      const url = tab.url?.trim();
+      if (!url || !/^https?:\/\//i.test(url)) continue;
+      linksByUrl.set(normalizeBookmarkUrl(url), { url, title: tab.title });
+    }
+    const links = [...linksByUrl.values()];
+    if (links.length === 0) throw new Error('The selected tabs contain no saveable http(s) links.');
+
+    setSnapshotSaveProgress({ saved: 0, total: links.length });
+    try {
+      const itemIds: string[] = [];
+      for (const [index, link] of links.entries()) {
+        const itemId = await onAddBookmark(link.url, link.title, collectionId, {
+          silent: true,
+          successMessage: index === links.length - 1
+            ? `Saved ${links.length} link${links.length === 1 ? '' : 's'} to the library.`
+            : undefined,
+        });
+        if (!itemId) throw new Error(`Could not save ${link.url}.`);
+        itemIds.push(itemId);
+        setSnapshotSaveProgress({ saved: index + 1, total: links.length });
+      }
+      return itemIds;
+    } finally {
+      setSnapshotSaveProgress(null);
+    }
   };
 
   const submitNewWorkspace = async () => {
@@ -606,22 +645,29 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
     if (captureMode === 'browser') {
       await addWorkspace(name, windowsToSave, projectId);
     } else if (captureMode === 'project-create') {
-      if (!projectId || !homeState || !onHomeStateChange) return;
-      onHomeStateChange(createProjectWorkspaceFromBrowserSnapshot({
+      if (!projectId || !newWorkspaceCollectionId || !homeState || !onHomeStateChange) return;
+      const itemIds = await saveCapturedTabsAsItems(capturedWorkspace, newWorkspaceCollectionId);
+      const sessionId = crypto.randomUUID();
+      const next = createProjectWorkspace({
         state: homeState,
-        workspace: capturedWorkspace,
-        items,
         projectId,
         name,
+        sessionId,
+      });
+      onHomeStateChange(addItemsToProjectWorkspace({
+        state: next,
+        projectId,
+        targetWorkspaceKey: getHomebaseWorkspaceSessionKey(sessionId),
+        itemIds,
       }));
     } else {
-      if (!projectId || !newWorkspaceTargetKey || !homeState || !onHomeStateChange) return;
-      onHomeStateChange(addBrowserSnapshotToProjectWorkspace({
+      if (!projectId || !newWorkspaceCollectionId || !newWorkspaceTargetKey || !homeState || !onHomeStateChange) return;
+      const itemIds = await saveCapturedTabsAsItems(capturedWorkspace, newWorkspaceCollectionId);
+      onHomeStateChange(addItemsToProjectWorkspace({
         state: homeState,
-        workspace: capturedWorkspace,
-        items,
         projectId,
         targetWorkspaceKey: newWorkspaceTargetKey,
+        itemIds,
       }));
     }
     closeNewWorkspaceModal();
@@ -637,12 +683,21 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           .map((session) => ({ key: getHomebaseWorkspaceSessionKey(session.id), label: session.name })),
       ]
     : [];
+  const projectCollections = useMemo(() => collections
+    .filter((collection) => collection.primaryProjectId === newWorkspaceProjectId || collection.projectIds?.includes(newWorkspaceProjectId))
+    .sort((left, right) => Number(right.isDefault) - Number(left.isDefault) || left.name.localeCompare(right.name)), [collections, newWorkspaceProjectId]);
 
   useEffect(() => {
     if (captureMode !== 'project-add') return;
     if (projectWorkspaceTargets.some((target) => target.key === newWorkspaceTargetKey)) return;
     setNewWorkspaceTargetKey(projectWorkspaceTargets[0]?.key ?? '');
   }, [captureMode, newWorkspaceTargetKey, projectWorkspaceTargets]);
+
+  useEffect(() => {
+    if (captureMode === 'browser') return;
+    if (projectCollections.some((collection) => collection.id === newWorkspaceCollectionId)) return;
+    setNewWorkspaceCollectionId(projectCollections[0]?.id ?? '');
+  }, [captureMode, newWorkspaceCollectionId, projectCollections]);
 
   useEffect(() => {
     if (!newWorkspaceOpen) return;
@@ -983,8 +1038,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               {captureMode === 'browser'
                 ? 'Preserves the selected browser tabs and window grouping for later restoration.'
                 : captureMode === 'project-create'
-                  ? 'Converts matching URLs to Library items and keeps unmatched URLs as temporary workspace entries.'
-                  : 'Adds the selected tabs to the chosen Homebase workspace without changing the live browser windows.'}
+                  ? 'Saves selected tabs as Library items, then creates a project workspace that references those items.'
+                  : 'Saves selected tabs as Library items, then adds them to the chosen Homebase workspace without changing the live browser windows.'}
             </div>
             {captureMode !== 'project-add' && <div>
               <label
@@ -1047,6 +1102,35 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 ))}
               </select>
             </div>
+            {captureMode !== 'browser' && (
+              <div>
+                <label
+                  style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--text-muted)', marginBottom: 6 }}
+                  htmlFor="workbench-new-ws-collection"
+                >
+                  Library collection
+                </label>
+                <select
+                  id="workbench-new-ws-collection"
+                  value={newWorkspaceCollectionId}
+                  onChange={(e) => setNewWorkspaceCollectionId(e.target.value)}
+                  disabled={!newWorkspaceProjectId || projectCollections.length === 0 || snapshotSaveProgress !== null}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '8px 10px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--text)',
+                    background: 'var(--bg-input)',
+                  }}
+                >
+                  <option value="">Choose collection…</option>
+                  {projectCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
+                </select>
+              </div>
+            )}
             {captureMode === 'project-add' && (
               <div>
                 <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--text-muted)', marginBottom: 6 }} htmlFor="workbench-target-project-workspace">Project workspace</label>
@@ -1055,6 +1139,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                 </select>
               </div>
             )}
+            {snapshotSaveProgress ? <div role="status" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>Saving {snapshotSaveProgress.saved}/{snapshotSaveProgress.total} links…</div> : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
               <button
                 type="button"
@@ -1074,20 +1159,22 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
               </button>
               <button
                 type="button"
-                disabled={captureMode === 'project-add' ? !newWorkspaceTargetKey : !newWorkspaceName.trim() || (captureMode === 'project-create' && !newWorkspaceProjectId)}
+                disabled={snapshotSaveProgress !== null || (captureMode === 'project-add'
+                  ? !newWorkspaceTargetKey || !newWorkspaceCollectionId
+                  : !newWorkspaceName.trim() || (captureMode === 'project-create' && (!newWorkspaceProjectId || !newWorkspaceCollectionId)))}
                 onClick={() => void submitNewWorkspace()}
                 style={{
                   padding: '8px 14px',
                   borderRadius: 6,
                   border: 'none',
-                  background: (captureMode === 'project-add' ? newWorkspaceTargetKey : newWorkspaceName.trim() && (captureMode !== 'project-create' || newWorkspaceProjectId)) ? 'var(--accent)' : 'var(--border)',
-                  color: (captureMode === 'project-add' ? newWorkspaceTargetKey : newWorkspaceName.trim() && (captureMode !== 'project-create' || newWorkspaceProjectId)) ? 'white' : 'var(--text-faint)',
+                  background: (captureMode === 'project-add' ? newWorkspaceTargetKey && newWorkspaceCollectionId : newWorkspaceName.trim() && (captureMode !== 'project-create' || newWorkspaceProjectId && newWorkspaceCollectionId)) ? 'var(--accent)' : 'var(--border)',
+                  color: (captureMode === 'project-add' ? newWorkspaceTargetKey && newWorkspaceCollectionId : newWorkspaceName.trim() && (captureMode !== 'project-create' || newWorkspaceProjectId && newWorkspaceCollectionId)) ? 'white' : 'var(--text-faint)',
                   fontSize: 'var(--text-sm)',
                   fontWeight: 500,
-                  cursor: (captureMode === 'project-add' ? newWorkspaceTargetKey : newWorkspaceName.trim() && (captureMode !== 'project-create' || newWorkspaceProjectId)) ? 'pointer' : 'not-allowed',
+                  cursor: snapshotSaveProgress === null && (captureMode === 'project-add' ? newWorkspaceTargetKey && newWorkspaceCollectionId : newWorkspaceName.trim() && (captureMode !== 'project-create' || newWorkspaceProjectId && newWorkspaceCollectionId)) ? 'pointer' : 'not-allowed',
                 }}
               >
-                {captureMode === 'browser' ? 'Save snapshot' : captureMode === 'project-create' ? 'Create workspace' : 'Add tabs'}
+                {snapshotSaveProgress ? 'Saving…' : captureMode === 'browser' ? 'Save snapshot' : captureMode === 'project-create' ? 'Save and create workspace' : 'Save and add tabs'}
               </button>
             </div>
           </div>

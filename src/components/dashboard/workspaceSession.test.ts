@@ -6,6 +6,7 @@ import {
   activateSavedProjectWorkspace,
   activateWorkspace,
   addBrowserSnapshotToProjectWorkspace,
+  addItemsToProjectWorkspace,
   addEntryToProjectWorkspace,
   addItemToWorkspaceTarget,
   createProjectWorkspaceFromBrowserSnapshot,
@@ -328,6 +329,21 @@ describe('workspace sessions', () => {
     });
     expect(getProjectWorkspaceTabs(next, 'project-a', targetKey)).toHaveLength(2);
     expect(getActiveWorkspaceKey(next)).toBe(GLOBAL_WORKSPACE_KEY);
+  });
+
+  it('adds only canonical item references when snapshot URLs have been saved first', () => {
+    const targetKey = getProjectSessionWorkspaceKey('project-a');
+    const next = addItemsToProjectWorkspace({
+      state: GLOBAL_TAB_STATE_DEFAULT,
+      projectId: 'project-a',
+      targetWorkspaceKey: targetKey,
+      itemIds: ['docs', 'outside', 'docs'],
+    });
+
+    expect(getProjectWorkspaceTabs(next, 'project-a', targetKey)).toEqual([
+      expect.objectContaining({ kind: 'item', itemId: 'docs' }),
+      expect.objectContaining({ kind: 'item', itemId: 'outside' }),
+    ]);
   });
 
   it('can create a named Homebase workspace from a browser snapshot', () => {
