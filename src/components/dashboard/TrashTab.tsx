@@ -82,8 +82,10 @@ export const TrashTab: React.FC<TrashTabProps> = ({ onItemClick, variant = 'tab'
       const workspaceState = takeContainerTrashWorkspaceState(entry.id);
       if (workspaceState) {
         saveGlobalTabState(workspaceState);
-        window.dispatchEvent(new CustomEvent('workbench-container-trash-restored', { detail: workspaceState }));
       }
+      // The dashboard owns canonical project/collection state.  Always signal
+      // it, including collection restores that have no Home workspace state.
+      window.dispatchEvent(new CustomEvent('workbench-container-trash-restored', { detail: workspaceState }));
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

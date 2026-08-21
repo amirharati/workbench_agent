@@ -921,9 +921,18 @@ export const deleteCollectionAtomic = async (
   store.withTransaction(() => {
     const trashedItems: Item[] = [];
     for (const item of affected) {
+      const wasActiveInDeletedCollection = (item.collectionIds || []).includes(id);
       const active = (item.collectionIds || []).filter((collectionId) => collectionId !== id);
       const wasUnplaced = active.length === 0;
-      const nextActive = wasUnplaced ? [relocationCollectionId] : active;
+      // "Move" means move this collection membership for every active item,
+      // not merely rescue an item's final placement.  Other memberships stay
+      // intact, while the chosen destination becomes the replacement for this
+      // deleted collection.
+      const nextActive = mode === 'move' && wasActiveInDeletedCollection
+        ? [...new Set([...active, relocationCollectionId])]
+        : wasUnplaced
+          ? [relocationCollectionId]
+          : active;
       const synced = syncItemPlacementsWithCollectionIds(item, nextActive, now);
       const removedPlacements = { ...(synced.removedPlacements || {}) };
       delete removedPlacements[id];

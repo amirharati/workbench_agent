@@ -865,7 +865,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   : `Delete collection “${dialog.collectionName}”. Workspace entries are references and are not removed.`}
               </div>
               <label className="ui-form__label" htmlFor="container-delete-destination">
-                {dialog.type === 'delete-project' ? 'Move project structure to' : 'Move last-location links to'}
+                {dialog.type === 'delete-project' ? 'Move project structure to' : 'Move collection links to'}
               </label>
               <select
                 id="container-delete-destination"
@@ -882,7 +882,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </select>
               <label className="ui-choice-card" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
                 <input type="radio" name="container-delete-mode" checked={deleteMode === 'move'} onChange={() => setDeleteMode('move')} />
-                <span><strong>Move links and keep them saved</strong><br /><small>Every link remains active and is moved to the destination if this was its only location.</small></span>
+                <span><strong>Move links and keep them saved</strong><br /><small>Every active link in this collection is moved to the destination. Links saved elsewhere keep those locations too.</small></span>
               </label>
               <label className="ui-choice-card" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
                 <input type="radio" name="container-delete-mode" checked={deleteMode === 'trash-unplaced'} onChange={() => setDeleteMode('trash-unplaced')} />

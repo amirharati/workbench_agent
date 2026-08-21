@@ -407,13 +407,18 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   useEffect(() => {
     const restoreWorkspaceState = (event: Event) => {
       const state = (event as CustomEvent<GlobalTabState | null>).detail;
-      if (!state) return;
-      setGlobalTabState(state);
-      saveGlobalTabState(state);
+      if (state) {
+        setGlobalTabState(state);
+        saveGlobalTabState(state);
+      }
+      // `undoContainerDeletion` refreshes the remote worker cache, but App
+      // owns the dashboard's rendered Projects/Collections/Items arrays.
+      // Refresh those immediately so Restore is visible in the current view.
+      void onRefresh?.();
     };
     window.addEventListener('workbench-container-trash-restored', restoreWorkspaceState);
     return () => window.removeEventListener('workbench-container-trash-restored', restoreWorkspaceState);
-  }, []);
+  }, [onRefresh]);
 
   useEffect(() => {
     if (libraryLoading) return;
