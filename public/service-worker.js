@@ -5,7 +5,10 @@ importScripts('browser-fetch-service.js');
 const OFFSCREEN_URL = 'offscreen.html';
 // Increment when the dashboard requires new DB-owner/worker RPC capabilities.
 // Keep this in sync with src/offscreen/offscreen.ts and the DB worker response.
-const DB_OWNER_PROTOCOL_VERSION = 14;
+// Must match the DB and content worker protocol in src/offscreen/offscreen.ts.
+// A mismatch makes each newly started service worker tear down the otherwise
+// valid offscreen owner, which is especially disruptive during extension reloads.
+const DB_OWNER_PROTOCOL_VERSION = 16;
 const PIPELINE_RECOVERY_ALARM = 'pipeline-recovery-wake';
 const PIPELINE_JOB_HOSTS_KEY = 'pipelineJobHosts';
 let offscreenCreating = null;
