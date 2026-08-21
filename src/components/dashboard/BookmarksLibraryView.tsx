@@ -29,6 +29,7 @@ import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { buildItemQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { formatGeneralWorkspaceName, formatProjectWorkspaceName } from './workspaceLabels';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
+import { LinkVisual } from './LinkVisual';
 import { buildWorkspaceDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from './workspaceDestinations';
 
 const GLOBAL_WORKSPACE_KEY = getProjectSessionWorkspaceKey('all');
@@ -293,7 +294,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
     return {
       id: item.id,
       title: item.title || 'Untitled',
-      icon: isLink ? <ListPipelineBadge badge={badgeMap.get(item.id)} /> : <FileText size={12} />,
+      icon: isLink ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><LinkVisual url={item.url} title={item.title} favicon={item.favicon} /><ListPipelineBadge badge={badgeMap.get(item.id)} /></span> : <FileText size={12} />,
       subtitle: isLink
         ? <BookmarkUrlLink item={item} style={{ display: 'block', color: 'inherit' }} />
         : item.notes?.trim() || 'Empty note',

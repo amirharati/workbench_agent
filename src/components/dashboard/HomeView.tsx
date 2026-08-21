@@ -13,6 +13,7 @@ import { ContentBrowser, useContentBrowseMode, type ContentBrowseEntry } from '.
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { Resizer } from './Resizer';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
+import { LinkVisual } from './LinkVisual';
 import {
   AllLibraryWorkspaceOverview,
   normalizeAllLibraryItemFilter,
@@ -641,7 +642,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     return searchCompanionCollectionItems.map((item) => ({
       id: item.id,
       title: item.title || 'Untitled',
-      icon: item.url ? <Link2 size={12} /> : <FileText size={12} />,
+      icon: item.url ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} /> : <FileText size={12} />,
       subtitle: item.url || item.notes || 'Empty note',
       searchText: `${item.tags.join(' ')} ${item.notes ?? ''}`,
       actions: <ItemQuickAccessMarkers item={item} size={12} />,

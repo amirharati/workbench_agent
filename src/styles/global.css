@@ -3021,6 +3021,32 @@ button.ui-scope-chip {
   overflow: hidden;
 }
 
+.ui-link-visual {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex-shrink: 0;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.ui-link-visual--fallback {
+  display: inline-grid;
+  place-items: center;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ui-link-visual--thumbnail {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+.ui-content-browser__preview { display: none; }
+
 .ui-content-browser__item-kind {
   display: inline-flex;
   align-items: center;
@@ -3122,6 +3148,33 @@ button.ui-scope-chip {
   margin-top: 0;
   max-width: 100%;
 }
+
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__entry[data-has-preview='true'] {
+  grid-template-rows: 112px auto minmax(0, 1fr) auto auto;
+}
+
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__preview {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: block;
+  height: 112px;
+  overflow: hidden;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: var(--bg-subtle);
+}
+
+.ui-content-browser__body[data-content-view='gallery'] .ui-link-visual--thumbnail {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__entry[data-has-preview='true'] .ui-content-browser__leading,
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__entry[data-has-preview='true'] .ui-content-browser__controls { grid-row: 2; }
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__entry[data-has-preview='true'] .ui-content-browser__entry-title { grid-row: 3; }
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__entry[data-has-preview='true'] .ui-content-browser__subtitle { grid-row: 4; }
+.ui-content-browser__body[data-content-view='gallery'] .ui-content-browser__entry[data-has-preview='true'] .ui-content-browser__footer { grid-row: 5; }
 
 .ui-content-browser__meta {
   display: block;

@@ -136,6 +136,7 @@ export const localProvider: FetchProvider = {
           ok: true,
           markdown,
           title: parsed.title,
+          previewImage: parsed.previewImage,
           rawBytesApprox: new TextEncoder().encode(markdown).length,
           fetchSourceId: parsed.mode === 'page' ? 'local-page' : 'local',
         },

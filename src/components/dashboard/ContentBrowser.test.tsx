@@ -52,6 +52,14 @@ describe('ContentBrowser', () => {
     expect(markup).toContain('A useful article');
   });
 
+  it('renders a social preview only for the gallery surface', () => {
+    const markup = renderToStaticMarkup(
+      <ContentBrowser title="Library" entries={[{ id: 'link-a', title: 'Article', icon: 'A', preview: <img alt="" src="card" /> }]} selectedId={null} onSelect={vi.fn()} mode="gallery" onModeChange={vi.fn()} emptyMessage="Nothing here" />
+    );
+    expect(markup).toContain('ui-content-browser__preview');
+    expect(markup).toContain('data-has-preview="true"');
+  });
+
   it('uses the complete row as the shared drag surface', () => {
     const markup = renderToStaticMarkup(
       <ContentBrowser

@@ -6,6 +6,7 @@ import { useInspectorItemData } from '../../hooks/useInspectorItemData';
 import { DialogShell } from './DialogShell';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 import { openBookmarkInBrowser } from './BookmarkUrlLink';
+import { LinkVisual } from './LinkVisual';
 import type { WorkspaceDestination } from './workspaceDestinations';
 
 export interface ItemPeekOptions {
@@ -239,6 +240,9 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
                     <h3>{item.title || 'Untitled'}</h3>
                     {item.url ? <button type="button" className="ui-item-peek__url" onClick={() => void openBookmarkInBrowser(item)} title="Open original in Chrome">{item.url}</button> : null}
                   </header>
+                  {item.url ? <div style={{ height: 190, margin: '0 0 16px', overflow: 'hidden', borderRadius: 'var(--radius-md)', background: 'var(--bg-subtle)' }}>
+                    <LinkVisual variant="thumbnail" url={item.url} title={item.title} favicon={item.favicon} previewImage={typeof item.metadata?.previewImage === 'string' ? item.metadata.previewImage : undefined} />
+                  </div> : null}
                   <article className="ui-item-peek__document">
                     {rawLoading || (contextLoading && !previewText) ? (
                       <div className="ui-item-peek__empty">Loading stored preview…</div>

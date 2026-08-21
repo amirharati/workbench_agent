@@ -13,6 +13,8 @@ export interface ContentBrowseEntry {
   id: string;
   title: string;
   icon: React.ReactNode;
+  /** Rendered only in Gallery view; e.g. a fetched social-card image. */
+  preview?: React.ReactNode;
   subtitle?: React.ReactNode;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
@@ -57,12 +59,14 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
   onSelect,
   selectedEntryRef,
   previewItemIds,
+  showPreview,
 }: {
   entry: ContentBrowseEntry;
   selected: boolean;
   onSelect: (id: string) => void;
   selectedEntryRef?: React.RefObject<HTMLDivElement>;
   previewItemIds: readonly string[];
+  showPreview: boolean;
 }) {
   const { getDragProps, getUrlDragProps, getReorderTargetProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
@@ -97,7 +101,9 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       }}
       onContextMenu={entry.onContextMenu}
       className="ui-content-browser__entry"
+      data-has-preview={showPreview && entry.preview ? 'true' : undefined}
     >
+      {showPreview && entry.preview ? <span className="ui-content-browser__preview">{entry.preview}</span> : null}
       <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
       <span className="ui-content-browser__copy">
         <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
@@ -305,6 +311,7 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
           onSelect={selectEntry}
           selectedEntryRef={entry.id === selectedId ? selectedEntryRef : undefined}
           previewItemIds={previewItemIds}
+          showPreview={mode === 'gallery'}
         />
       ))}
       {renderedEntries.length < filteredEntries.length ? (

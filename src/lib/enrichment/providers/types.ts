@@ -5,6 +5,7 @@ export interface FetchProviderResult {
   ok: boolean;
   markdown?: string;
   title?: string;
+  previewImage?: string;
   errorCode?: EnrichmentErrorCode;
   /** Provider-specific detail (HTTP status line, parse reason, etc.). */
   error?: string;

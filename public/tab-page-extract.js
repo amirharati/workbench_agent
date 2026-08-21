@@ -706,8 +706,26 @@
     }
   }
 
+  function socialPreviewImage() {
+    var image = document.querySelector('meta[property="og:image"], meta[name="og:image"], meta[property="twitter:image"], meta[name="twitter:image"]');
+    var value = image && image.getAttribute('content');
+    if (!value) return undefined;
+    try {
+      var resolved = new URL(value, document.baseURI);
+      return /^https?:$/.test(resolved.protocol) ? resolved.href : undefined;
+    } catch (_) {
+      return undefined;
+    }
+  }
+
+  function withSocialPreview(result) {
+    if (!result || !result.ok) return result;
+    var previewImage = socialPreviewImage();
+    return previewImage ? Object.assign({}, result, { previewImage: previewImage }) : result;
+  }
+
   window.workbenchExtractPageContent = function workbenchExtractPageContent() {
-    return runExtract();
+    return withSocialPreview(runExtract());
   };
 
   window.workbenchExtractPageContentAsync = async function workbenchExtractPageContentAsync() {
@@ -716,11 +734,11 @@
       // Re-read article cards after waiting so author handles and quote/thread
       // structure are retained. Returning the raw text list here labeled every
       // authenticated post as @unknown, causing the safety gate to reject it.
-      return (await extractXWithBoundedScroll()) || extractX();
+      return withSocialPreview((await extractXWithBoundedScroll()) || extractX());
     }
     if (isGmailHost()) {
       await waitForGmailBody();
     }
-    return runExtract();
+    return withSocialPreview(runExtract());
   };
 })();

@@ -24,6 +24,7 @@ import {
   type ProjectWorkspaceManagerEntry,
 } from './ProjectWorkspaceManagerDialog';
 import { SourceMenuTab } from './SourceMenuTab';
+import { LinkVisual } from './LinkVisual';
 import { DialogShell } from './DialogShell';
 import { getTrashedItems } from '../../lib/itemQuickAccess';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
@@ -393,7 +394,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     return {
       id: tab.id,
       title: label,
-      icon: tab.kind === 'search' ? <Search size={12} /> : tab.kind === 'url' ? <ExternalLink size={12} /> : item?.url ? <Link2 size={12} /> : <FileText size={12} />,
+      icon: tab.kind === 'search' ? <Search size={12} /> : tab.kind === 'url' ? <LinkVisual url={tab.url} title={tab.title} favicon={tab.favIconUrl} /> : item?.url ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} /> : <FileText size={12} />,
       subtitle: tab.kind === 'url'
         ? <ExtensionPageUrlLink url={tab.url} style={{ color: 'inherit' }} title={`Open ${tab.url}`}>{tab.url}</ExtensionPageUrlLink>
         : tab.kind === 'item' && item?.url
@@ -495,7 +496,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
     return {
       id: item.id,
       title: item.title || 'Untitled',
-      icon: item.url ? <Link2 size={12} /> : <FileText size={12} />,
+      icon: item.url ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} /> : <FileText size={12} />,
       subtitle: item.url ? <BookmarkUrlLink item={item} style={{ color: 'inherit' }} /> : item.notes || 'Empty note',
       searchText: buildItemQuickFilterText(item, organizationProjects ?? [project], organizationCollections ?? collections),
       dragSource: browseSource === 'collection' && selectedCollection

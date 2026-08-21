@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ExternalLink, FileText, Layers3, Link2, MonitorUp, Pencil, Play, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, Layers3, MonitorUp, Pencil, Play, Plus, Search, Trash2, X } from 'lucide-react';
 import type { Collection, Item, Project, Workspace } from '../../lib/db';
 import { deleteWorkspace, normalizeBookmarkUrl, updateWorkspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, SavedWorkspaceSession } from './GlobalTabSystem';
@@ -28,6 +28,7 @@ import {
   ProjectWorkspaceManagerDialog,
   type ProjectWorkspaceManagerEntry,
 } from './ProjectWorkspaceManagerDialog';
+import { LinkVisual } from './LinkVisual';
 
 type WorkspaceFilter = 'all' | 'project' | 'browser';
 
@@ -323,8 +324,8 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           id: tab.id,
           title: tabLabel(tab),
           icon: item
-            ? item.url ? <Link2 size={12} /> : <FileText size={12} />
-            : tab.kind === 'search' ? <Search size={12} /> : <ExternalLink size={12} />,
+            ? item.url ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} /> : <FileText size={12} />
+            : tab.kind === 'search' ? <Search size={12} /> : tab.kind === 'url' ? <LinkVisual url={tab.url} title={tab.title} favicon={tab.favIconUrl} /> : <ExternalLink size={12} />,
           subtitle: tabDetailContent(tab),
           meta: tab.kind === 'item'
             ? item?.url ? 'Saved link' : 'Saved note'
@@ -351,7 +352,7 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           windowGroup.tabs.map((tab, tabIndex) => ({
             id: `${windowGroup.id}:${tabIndex}`,
             title: tab.title || 'Untitled',
-            icon: <ExternalLink size={12} />,
+            icon: <LinkVisual url={tab.url} title={tab.title} favicon={tab.favIconUrl} />,
             subtitle: (
               <ExtensionPageUrlLink
                 url={tab.url}

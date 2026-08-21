@@ -61,6 +61,7 @@ export type TabExtractResult = {
   ok: boolean;
   markdown?: string;
   title?: string;
+  previewImage?: string;
   /** Live tab URL after load (for redirect vs bookmark comparison). */
   pageUrl?: string;
   error?: string;
@@ -305,6 +306,7 @@ export async function extractFromTab(tabId: number): Promise<TabExtractResult> {
       ok: true,
       markdown,
       title: payload.title?.trim() || undefined,
+      previewImage: payload.previewImage?.trim() || undefined,
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

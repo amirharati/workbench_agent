@@ -195,11 +195,13 @@ async function applyItemTier2Updates(
   item: Item,
   parsedTitle: string | undefined,
   sourceKind: ReturnType<typeof classifySourceKind>,
-  ai?: { improvedTitle?: string; tags?: string[] }
+  ai?: { improvedTitle?: string; tags?: string[] },
+  previewImage?: string
 ): Promise<string[]> {
   const applied: string[] = [];
   const updates: Partial<Item> = {};
   const meta = { ...(item.metadata || {}) };
+  let metadataChanged = false;
 
   const titleCandidate = ai?.improvedTitle?.trim() || parsedTitle?.trim();
   if (
@@ -232,9 +234,11 @@ async function applyItemTier2Updates(
   }
   if (platformMerge.platform && !meta.platform) {
     meta.platform = platformMerge.platform;
+    metadataChanged = true;
     applied.push('metadata.platform');
   } else if (sourceKind === 'x' && !meta.platform) {
     meta.platform = 'x';
+    metadataChanged = true;
     applied.push('metadata.platform');
   } else if (sourceKind === 'video' && !meta.platform) {
     try {
@@ -244,10 +248,17 @@ async function applyItemTier2Updates(
     } catch {
       meta.platform = 'video';
     }
+    metadataChanged = true;
     applied.push('metadata.platform');
   }
 
-  if (Object.keys(meta).length > Object.keys(item.metadata || {}).length) {
+  if (previewImage && meta.previewImage !== previewImage) {
+    meta.previewImage = previewImage;
+    metadataChanged = true;
+    applied.push('metadata.previewImage');
+  }
+
+  if (metadataChanged) {
     updates.metadata = meta;
   }
 
@@ -376,6 +387,7 @@ async function tabSessionFetchResult(
         ok: true,
         markdown,
         title: tab.title,
+        previewImage: tab.previewImage,
         fetchSourceId: tab.fetchSourceId,
         rawBytesApprox: new TextEncoder().encode(markdown).length,
       },
@@ -415,6 +427,7 @@ async function tryOpenTabFetch(
           ok: true,
           markdown: remote.markdown.trim(),
           title: remote.title,
+          previewImage: remote.previewImage,
           fetchSourceId: remote.fetchSourceId,
           rawBytesApprox: new TextEncoder().encode(remote.markdown).length,
         },
@@ -484,6 +497,7 @@ async function tryOpenTabFetch(
             ok: true,
             markdown,
             title: ephemeral.title,
+            previewImage: ephemeral.previewImage,
             fetchSourceId: ephemeral.fetchSourceId,
             rawBytesApprox: new TextEncoder().encode(markdown).length,
           },
@@ -1303,7 +1317,7 @@ export async function enrichOne(
 
     let tier2Applied: string[] | undefined;
     if (status === 'ok') {
-      tier2Applied = await applyItemTier2Updates(item, parsed.title, sourceKind, aiExtract);
+      tier2Applied = await applyItemTier2Updates(item, parsed.title, sourceKind, aiExtract, fetchResult.previewImage);
       if (tier2Applied.length === 0) tier2Applied = undefined;
     }
 

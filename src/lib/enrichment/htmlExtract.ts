@@ -18,6 +18,7 @@ const MAX_HEADINGS = 25;
 
 export type HtmlExtractResult = {
   title?: string;
+  previewImage?: string;
   markdown: string;
   /** Readability article vs homepage/portal/listing snapshot */
   mode: 'article' | 'page';
@@ -55,6 +56,17 @@ function pageDescription(doc: Document): string | undefined {
     metaContent(doc, 'twitter:description') ??
     undefined
   );
+}
+
+function pagePreviewImage(doc: Document): string | undefined {
+  const value = metaContent(doc, 'og:image') ?? metaContent(doc, 'twitter:image');
+  if (!value) return undefined;
+  try {
+    const image = new URL(value, doc.baseURI || undefined);
+    return /^https?:$/.test(image.protocol) ? image.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function collectHeadings(doc: Document): string[] {
@@ -105,7 +117,7 @@ export function htmlToPageSnapshotFromDoc(doc: Document): HtmlExtractResult | nu
   }
 
   if (markdown.length < MIN_PAGE_SNAPSHOT_CHARS) return null;
-  return { title, markdown, mode: 'page' };
+  return { title, previewImage: pagePreviewImage(doc), markdown, mode: 'page' };
 }
 
 /** Homepage, course hub, docs index — meta + headings + visible text. */
@@ -123,6 +135,7 @@ export function htmlToArticleMarkdownFromDoc(doc: Document): HtmlExtractResult |
 
   return {
     title: article.title?.trim() || undefined,
+    previewImage: pagePreviewImage(doc),
     markdown,
     mode: 'article',
   };
@@ -139,7 +152,7 @@ export function htmlToListingMarkdown(html: string, url: string): HtmlExtractRes
   const title = pageTitle(doc);
   const listing = extractListingFromDocument(doc, url, title);
   if (!listing) return null;
-  return { title: listing.title, markdown: listing.markdown, mode: 'page' };
+  return { title: listing.title, previewImage: pagePreviewImage(doc), markdown: listing.markdown, mode: 'page' };
 }
 
 /**
@@ -152,14 +165,14 @@ export function htmlToMarkdown(html: string, url: string): HtmlExtractResult | n
 
   const listing = extractListingFromDocument(doc, url, title);
   if (listing) {
-    return { title: listing.title, markdown: listing.markdown, mode: 'page' };
+    return { title: listing.title, previewImage: pagePreviewImage(doc), markdown: listing.markdown, mode: 'page' };
   }
 
   const items = collectListingItems(doc, url);
   const article = htmlToArticleMarkdownFromDoc(doc);
   if (shouldPreferListingExtract(items, url, article?.markdown)) {
     const markdown = listingItemsToMarkdown(items, title);
-    if (markdown) return { title, markdown, mode: 'page' };
+    if (markdown) return { title, previewImage: pagePreviewImage(doc), markdown, mode: 'page' };
   }
 
   return article ?? htmlToPageSnapshotFromDoc(doc);

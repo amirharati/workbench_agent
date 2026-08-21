@@ -256,6 +256,7 @@
           ok: true,
           markdown,
           title: payload.title && String(payload.title).trim() || undefined,
+          previewImage: payload.previewImage && String(payload.previewImage).trim() || undefined,
           pageUrl: tab && tab.url && String(tab.url).trim() || undefined,
           fetchSourceId: 'tab-session',
         };
