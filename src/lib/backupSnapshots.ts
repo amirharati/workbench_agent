@@ -6,6 +6,7 @@ import { kvGet, kvPut } from './metaDb';
 import {
   WORKBENCH_DB_FILE,
   WORKBENCH_CONTENT_DB_FILE,
+  deleteFileFromBackupFolder,
   getBackupDirectoryHandle,
   readBinaryFromBackupFolder,
   writeBinaryAtomicallyToBackupFolder,
@@ -83,6 +84,29 @@ export function classifyFolderSqliteBackup(filename: string): FolderSqliteBackup
 export function isRestorableFolderSqliteBackup(filename: string): boolean {
   const kind = classifyFolderSqliteBackup(filename);
   return kind === 'auto' || kind === 'manual' || kind === 'safety' || kind === 'undo' || kind === 'other';
+}
+
+/** Only explicit user-created SQLite snapshots may be deleted from Settings. */
+export function isDeletableFolderSqliteBackup(filename: string): boolean {
+  return classifyFolderSqliteBackup(filename) === 'manual';
+}
+
+export async function deleteManualFolderSqliteBackup(filename: string): Promise<{
+  ok: boolean;
+  deleted?: boolean;
+  notFound?: boolean;
+  error?: string;
+}> {
+  if (!isDeletableFolderSqliteBackup(filename)) {
+    return { ok: false, error: 'Only manual Homebase snapshots can be deleted here' };
+  }
+  const result = await deleteFileFromBackupFolder(filename);
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    deleted: !result.notFound,
+    notFound: result.notFound,
+  };
 }
 
 export function clampSnapshotDepth(n: unknown): number {

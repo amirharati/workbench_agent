@@ -18,6 +18,26 @@ export type DbContentFingerprint = {
   itemsWithNotes: number;
 };
 
+/**
+ * Read-only inventory used by the recovery inspector. This is deliberately a
+ * compact summary, not a hydrated second library: it can be computed from an
+ * isolated SQLite connection and sent safely back to the Settings page.
+ */
+export type DbSnapshotSummary = DbContentFingerprint & {
+  projectCount: number;
+  collectionCount: number;
+  workspaceCount: number;
+};
+
+type SnapshotSummaryStore = Pick<
+  IdbCompatStore,
+  | 'getAllItems'
+  | 'getAllNotes'
+  | 'getAllProjects'
+  | 'getAllCollections'
+  | 'getAllWorkspaces'
+>;
+
 export function fingerprintFromStore(
   store: Pick<IdbCompatStore, 'getAllItems' | 'getAllNotes'>
 ): DbContentFingerprint {
@@ -42,6 +62,16 @@ export function fingerprintFromStore(
   };
 }
 
+/** Compute a safe, displayable inventory without modifying either database. */
+export function snapshotSummaryFromStore(store: SnapshotSummaryStore): DbSnapshotSummary {
+  return {
+    ...fingerprintFromStore(store),
+    projectCount: store.getAllProjects().length,
+    collectionCount: store.getAllCollections().length,
+    workspaceCount: store.getAllWorkspaces().length,
+  };
+}
+
 export function fingerprintFromBackupData(data: unknown): DbContentFingerprint {
   const record = data as { items?: Item[]; notes?: Note[] } | null;
   const items = Array.isArray(record?.items) ? record.items : [];
@@ -52,13 +82,14 @@ export function fingerprintFromBackupData(data: unknown): DbContentFingerprint {
   });
 }
 
-export async function fingerprintSqliteBytes(bytes: Uint8Array): Promise<DbContentFingerprint> {
+/** Open bytes in an isolated in-memory SQLite database and return its inventory. */
+export async function snapshotSummarySqliteBytes(bytes: Uint8Array): Promise<DbSnapshotSummary> {
   const s3 = await initSqlite3();
   const tempDb = deserializeFromBytes(s3, normalizeSqliteFileBytes(bytes));
   try {
     const conn = createConnectionFromDatabase(tempDb, 'memory');
     const store = new SqliteStore(conn);
-    return fingerprintFromStore(store);
+    return snapshotSummaryFromStore(store);
   } finally {
     try {
       tempDb.close();
@@ -66,6 +97,11 @@ export async function fingerprintSqliteBytes(bytes: Uint8Array): Promise<DbConte
       // ignore
     }
   }
+}
+
+/** Legacy/import compatibility fingerprint derived from the same isolated read. */
+export async function fingerprintSqliteBytes(bytes: Uint8Array): Promise<DbContentFingerprint> {
+  return snapshotSummarySqliteBytes(bytes);
 }
 
 export function isLiveNewerThanBackup(

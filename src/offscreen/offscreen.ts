@@ -268,7 +268,15 @@ async function rpcFromBackupFolderFile(
   }
   if (primary.notFound || !primary.data || primary.data.byteLength < 16) {
     if (workerMethod === 'inspectImportBytes') {
-      return { maxUpdatedAt: 0, itemCount: 0, notesRowCount: 0, itemsWithNotes: 0 };
+      return {
+        maxUpdatedAt: 0,
+        itemCount: 0,
+        notesRowCount: 0,
+        itemsWithNotes: 0,
+        projectCount: 0,
+        collectionCount: 0,
+        workspaceCount: 0,
+      };
     }
     return { imported: false, reason: 'empty' };
   }

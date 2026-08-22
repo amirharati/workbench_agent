@@ -14,7 +14,7 @@ import {
 } from './mirrorToFolder';
 import { exportOpfsDatabaseBytes, importFolderBytesIntoOpfs, openOpfsConnection, workerDatabaseHasDomainDataSync, getOpfsDatabaseSync } from '../sqlite/connectionOpfs';
 import { decodeBinaryFromRpc } from '../../binaryPayload';
-import { fingerprintSqliteBytes } from '../importFingerprint';
+import { snapshotSummarySqliteBytes } from '../importFingerprint';
 import { resetStoreSingletons, getIdbCompatStore } from '../sqlite/store';
 import type { DbMutation } from '../dbMutations';
 import * as dbCore from '../../dbCore';
@@ -779,9 +779,17 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'inspectImportBytes': {
       const payload = decodeBinaryFromRpc(args[0]);
       if (!payload || payload.byteLength < 16) {
-        return { maxUpdatedAt: 0, itemCount: 0, notesRowCount: 0, itemsWithNotes: 0 };
+        return {
+          maxUpdatedAt: 0,
+          itemCount: 0,
+          notesRowCount: 0,
+          itemsWithNotes: 0,
+          projectCount: 0,
+          collectionCount: 0,
+          workspaceCount: 0,
+        };
       }
-      return fingerprintSqliteBytes(payload);
+      return snapshotSummarySqliteBytes(payload);
     }
     case 'hydrate':
       return hydrateSnapshot();
@@ -987,8 +995,8 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     }
     case 'liveFingerprint': {
       const store = await getIdbCompatStore();
-      const { fingerprintFromStore } = await import('../importFingerprint');
-      return fingerprintFromStore(store);
+      const { snapshotSummaryFromStore } = await import('../importFingerprint');
+      return snapshotSummaryFromStore(store);
     }
     case 'batchMutate': {
       const ops = args[0] as DbMutation[];

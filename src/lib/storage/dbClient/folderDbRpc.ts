@@ -4,7 +4,7 @@
  * Offscreen reads the folder file and forwards to the worker via postMessage.
  */
 import { WORKBENCH_DB_FILE } from '../../backupFolder';
-import type { DbContentFingerprint } from '../importFingerprint';
+import type { DbSnapshotSummary } from '../importFingerprint';
 
 export type FolderImportResult = {
   imported: boolean;
@@ -42,7 +42,7 @@ export async function bootstrapFromBackupFolderFile(
 
 export async function inspectImportFromBackupFolderFile(
   filename: string
-): Promise<DbContentFingerprint> {
+): Promise<DbSnapshotSummary> {
   const { dbRpc } = await import('./index');
-  return dbRpc<DbContentFingerprint>('inspectImportFromBackupFolderFile', [filename]);
+  return dbRpc<DbSnapshotSummary>('inspectImportFromBackupFolderFile', [filename], { priority: 'low' });
 }

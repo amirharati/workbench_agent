@@ -31,12 +31,14 @@ describe('DB owner protocol contract', () => {
     expect(serviceWorkerSource).toContain('mismatchConfirmations >= 2');
   });
 
-  it('opens the manifest-enabled side panel without racing setOptions', () => {
-    const actionHandler = serviceWorkerSource.slice(
-      serviceWorkerSource.indexOf('chrome.action.onClicked.addListener'),
-      serviceWorkerSource.indexOf('chrome.tabs.onRemoved.addListener')
+  it('uses one native global panel instead of contextual tab entries', () => {
+    expect(serviceWorkerSource).toContain(
+      '.setPanelBehavior({ openPanelOnActionClick: true })'
     );
-    expect(actionHandler).toContain('.open({ tabId: tab.id })');
-    expect(actionHandler).not.toContain('.setOptions(');
+    expect(serviceWorkerSource).toContain('chrome.sidePanel.onOpened.addListener');
+    expect(serviceWorkerSource).toContain('chrome.sidePanel.onClosed.addListener');
+    expect(serviceWorkerSource).not.toContain('chrome.action.onClicked.addListener');
+    expect(serviceWorkerSource).not.toMatch(/sidePanel\s*\.\s*open\(\{\s*tabId/);
+    expect(serviceWorkerSource).not.toMatch(/sidePanel\s*\.\s*setOptions\(\{\s*tabId/);
   });
 });

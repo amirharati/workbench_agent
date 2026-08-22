@@ -31,6 +31,7 @@ describe('lightweight side-panel startup', () => {
     expect(dashboard).not.toContain('SidePanelConnected');
     expect(sidePanel).toContain('requestSidePanelStartupProjection');
     expect(sidePanel).toContain('items={[]}');
+    expect(sidePanel).toContain('<PipelineProgressProvider onRefresh={loadOrganization}>');
 
     const handler = worker.slice(
       worker.indexOf("case 'getSidePanelStartupProjection'"),
@@ -42,4 +43,3 @@ describe('lightweight side-panel startup', () => {
     expect(handler).not.toContain('scheduleSimilarityVectorWarm');
   });
 });
-

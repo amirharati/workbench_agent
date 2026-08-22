@@ -662,7 +662,8 @@ class BackupCoordinatorImpl {
       return { ok: false, error: 'File is empty or too small to be a SQLite database.' };
     }
 
-    await this.prepareForDestructiveImport();
+    const prepared = await this.prepareForDestructiveImport();
+    if (!prepared.ok) return { ok: false, error: prepared.error };
 
     const incomingFp = await fingerprintSqliteBytes(payload);
     const { dbRpc } = await import('./storage/dbClient');
@@ -752,7 +753,8 @@ class BackupCoordinatorImpl {
       return { ok: false, error: verification.error ?? 'Invalid backup file' };
     }
 
-    await this.prepareForDestructiveImport();
+    const prepared = await this.prepareForDestructiveImport();
+    if (!prepared.ok) return { ok: false, error: prepared.error };
 
     if (!options.forceOlder) {
       const parsed = parseBackupText(jsonString);
@@ -936,11 +938,25 @@ class BackupCoordinatorImpl {
    * Save current local DB before a destructive import.
    * Prefers `.sqlite` bytes (fast, matches live model); falls back to enveloped JSON.
    */
-  private async prepareForDestructiveImport(): Promise<void> {
+  private async prepareForDestructiveImport(): Promise<{ ok: boolean; error?: string }> {
     const { commitPendingDbWrites } = await import('./db');
     await commitPendingDbWrites();
     const { mirrorNow } = await import('./storage/dbClient');
-    await mirrorNow(true);
+    const mirror = await mirrorNow(true);
+    if (mirror.ok) return { ok: true };
+
+    // An empty first-run library has nothing to preserve. Any non-empty live
+    // library must be durably mirrored before a destructive import is allowed,
+    // because the subsequent safety copy is taken from that exact folder file.
+    const { dbRpc } = await import('./storage/dbClient');
+    const live = await dbRpc<{ itemCount?: number }>('liveFingerprint', []);
+    if ((live.itemCount ?? 0) === 0) return { ok: true };
+    return {
+      ok: false,
+      error:
+        `Could not preserve the current library before restore: ${mirror.error ?? 'folder mirror failed'}. ` +
+        'The restore was not started.',
+    };
   }
 
   private async detectLiveNewerThanImport(

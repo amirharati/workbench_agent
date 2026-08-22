@@ -30,6 +30,8 @@ const META_LINKED_KEY = 'backup.folderLinked';
 const META_NAME_KEY = 'backup.folderDisplayName';
 /** Stable id so Chrome remembers the last picked directory in the picker UI. */
 const DIRECTORY_PICKER_ID = 'homebase-backup-folder';
+/** Separate picker history for the non-mutating “show data folder” action. */
+const DIRECTORY_VIEW_PICKER_ID = 'homebase-view-data-folder';
 
 /** Canonical live database file in the user backup folder. */
 export const WORKBENCH_DB_FILE = 'workbench.sqlite';
@@ -772,6 +774,42 @@ export type PickBackupFolderResult = {
   /** Empty folder linked; caller may mirror once to create workbench.sqlite. */
   freshFolder?: boolean;
 };
+
+export type ShowBackupFolderResult = {
+  ok: boolean;
+  cancelled?: boolean;
+  error?: string;
+};
+
+/**
+ * Open Chrome's native directory chooser at the linked Homebase data folder.
+ *
+ * The File System Access API intentionally does not expose an absolute path or
+ * a Finder/Explorer “reveal” primitive. This is the closest safe equivalent:
+ * it lets the user inspect the selected folder without changing the persisted
+ * handle, even if they navigate elsewhere before dismissing the chooser.
+ */
+export async function showBackupFolderInPicker(): Promise<ShowBackupFolderResult> {
+  const existing = await getBackupDirectoryHandle();
+  if (!existing) return { ok: false, error: 'No Homebase data folder configured' };
+  if (typeof window.showDirectoryPicker !== 'function') {
+    return { ok: false, error: 'Folder viewing is not supported in this context' };
+  }
+  try {
+    await window.showDirectoryPicker({
+      // Browsing must never request extra write permission or alter the linked handle.
+      mode: 'read',
+      id: DIRECTORY_VIEW_PICKER_ID,
+      startIn: existing,
+    });
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return { ok: true, cancelled: true };
+    }
+    return { ok: false, error: formatBackupFolderError(e) };
+  }
+}
 
 /**
  * Directory picker + persist handle. Does not start the DB worker.

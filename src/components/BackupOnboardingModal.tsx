@@ -88,7 +88,7 @@ export const BackupOnboardingModal: React.FC<BackupOnboardingModalProps> = ({
     </>
   ) : recover ? (
     <>
-      Homebase needs your backup folder again
+      Homebase needs your data folder again
       {folderName ? (
         <>
           {' '}

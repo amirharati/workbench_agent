@@ -7,6 +7,7 @@ import {
   buildRotationCopyPlan,
   clampSnapshotDepth,
   classifyFolderSqliteBackup,
+  isDeletableFolderSqliteBackup,
   isRestorableFolderSqliteBackup,
   listAutoSnapshotFilenames,
   parseAutoSnapshotSlot,
@@ -75,6 +76,15 @@ describe('classifyFolderSqliteBackup', () => {
     expect(isRestorableFolderSqliteBackup('workbench.prev.sqlite')).toBe(true);
     expect(isRestorableFolderSqliteBackup('workbench.undo-restore.sqlite')).toBe(true);
     expect(isRestorableFolderSqliteBackup('manual-a.sqlite')).toBe(true);
+  });
+
+  it('only permits manual SQLite snapshots to be deleted from Settings', () => {
+    expect(isDeletableFolderSqliteBackup('manual-2026-07-11_120000.sqlite')).toBe(true);
+    expect(isDeletableFolderSqliteBackup('workbench.sqlite')).toBe(false);
+    expect(isDeletableFolderSqliteBackup('workbench.prev.sqlite')).toBe(false);
+    expect(isDeletableFolderSqliteBackup('safety-before-import-xyz.sqlite')).toBe(false);
+    expect(isDeletableFolderSqliteBackup('workbench.undo-restore.sqlite')).toBe(false);
+    expect(isDeletableFolderSqliteBackup('../manual-escape.sqlite')).toBe(false);
   });
 });
 

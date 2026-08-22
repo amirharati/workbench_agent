@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { SidePanelConnected } from './components/SidePanelConnected';
+import { PipelineProgressProvider } from './components/dashboard/PipelineProgressProvider';
 import {
   addCollection,
   addProject,
@@ -176,17 +177,18 @@ function SidePanelApp() {
           Could not load Homebase: {startupError}
         </div>
       ) : null}
-      <SidePanelConnected
-        projects={projects}
-        collections={collections}
-        items={[]}
-        onCreateProject={createProject}
-        onCreateCollection={createCollection}
-        onOpenFullPage={() => void openDashboard(false)}
-      />
+      <PipelineProgressProvider onRefresh={loadOrganization}>
+        <SidePanelConnected
+          projects={projects}
+          collections={collections}
+          items={[]}
+          onCreateProject={createProject}
+          onCreateCollection={createCollection}
+          onOpenFullPage={() => void openDashboard(false)}
+        />
+      </PipelineProgressProvider>
     </div>
   );
 }
 
 export default SidePanelApp;
-

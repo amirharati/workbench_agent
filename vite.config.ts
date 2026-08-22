@@ -8,6 +8,10 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: {
+    // Chrome extension pages do not share module-preload state across their
+    // isolated execution worlds. Vite's preload tags are rejected as
+    // cross-world mismatches and then fetched again normally, so omit them.
+    modulePreload: false,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),

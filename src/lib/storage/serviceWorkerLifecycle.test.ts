@@ -9,6 +9,9 @@ const source = rawSource.replace(
   /const OFFSCREEN_PROTOCOL_PROBE_DELAYS_MS = \[[^;]+;/,
   'const OFFSCREEN_PROTOCOL_PROBE_DELAYS_MS = [0, 0, 0, 0, 0];'
 );
+const currentProtocolVersion = Number(
+  rawSource.match(/const DB_OWNER_PROTOCOL_VERSION = (\d+);/)?.[1]
+);
 
 type ProtocolReply = {
   version: number;
@@ -18,6 +21,7 @@ type ProtocolReply = {
 
 function loadServiceWorker(options: {
   protocolReply: (created: boolean) => ProtocolReply | Promise<ProtocolReply>;
+  activeTab?: { id: number; windowId: number };
 }) {
   let offscreenExists = true;
   let created = false;
@@ -26,7 +30,10 @@ function loadServiceWorker(options: {
     sender: Record<string, unknown>,
     sendResponse: (response: unknown) => void
   ) => boolean | void> = [];
-  const actionListeners: Array<(tab: { id?: number }) => void> = [];
+  const installedListeners: Array<(details: { reason: string }) => void> = [];
+  const sidePanelOpenedListeners: Array<(info: { windowId: number; tabId?: number }) => void> = [];
+  const sidePanelClosedListeners: Array<(info: { windowId: number; tabId?: number }) => void> = [];
+  const tabActivatedListeners: Array<(info: { tabId: number; windowId: number }) => void> = [];
   const closeDocument = vi.fn(async () => {
     offscreenExists = false;
   });
@@ -34,8 +41,12 @@ function loadServiceWorker(options: {
     offscreenExists = true;
     created = true;
   });
-  const openSidePanel = vi.fn(async () => {});
-  const setSidePanelOptions = vi.fn(async () => {});
+  const setPanelBehavior = vi.fn(async () => {});
+  const extract = vi.fn(async () => ({ ok: true }));
+  const sessionValues: Record<string, unknown> = {};
+  const sessionSet = vi.fn(async (values: Record<string, unknown>) => {
+    Object.assign(sessionValues, values);
+  });
 
   const event = () => ({ addListener: vi.fn() });
   const chrome = {
@@ -49,7 +60,7 @@ function loadServiceWorker(options: {
         return undefined;
       },
       onMessage: { addListener: (listener: typeof runtimeListeners[number]) => runtimeListeners.push(listener) },
-      onInstalled: event(),
+      onInstalled: { addListener: (listener: typeof installedListeners[number]) => installedListeners.push(listener) },
       onStartup: event(),
     },
     offscreen: {
@@ -58,20 +69,25 @@ function loadServiceWorker(options: {
       createDocument,
     },
     sidePanel: {
-      open: openSidePanel,
-      setOptions: setSidePanelOptions,
+      setPanelBehavior,
+      onOpened: { addListener: (listener: typeof sidePanelOpenedListeners[number]) => sidePanelOpenedListeners.push(listener) },
+      onClosed: { addListener: (listener: typeof sidePanelClosedListeners[number]) => sidePanelClosedListeners.push(listener) },
     },
-    action: { onClicked: { addListener: (listener: typeof actionListeners[number]) => actionListeners.push(listener) } },
     tabs: {
       onRemoved: event(),
-      query: async () => [],
+      onActivated: { addListener: (listener: typeof tabActivatedListeners[number]) => tabActivatedListeners.push(listener) },
+      query: async (query: { windowId?: number }) => {
+        if (!options.activeTab) return [];
+        if (typeof query.windowId === 'number' && query.windowId !== options.activeTab.windowId) return [];
+        return [options.activeTab];
+      },
       get: async () => ({}),
       update: async () => ({}),
     },
     windows: { update: async () => ({}) },
     alarms: { create: vi.fn(), onAlarm: event() },
     storage: {
-      session: { get: async () => ({}), set: async () => {} },
+      session: { get: async () => sessionValues, set: sessionSet },
       local: { set: async () => {} },
     },
   };
@@ -79,7 +95,7 @@ function loadServiceWorker(options: {
     HomebaseBrowserFetchService: {
       createBrowserFetchService: () => ({
         cancel: async () => ({ ok: true }),
-        extract: async () => ({ ok: true }),
+        extract,
       }),
     },
   };
@@ -98,20 +114,41 @@ function loadServiceWorker(options: {
     });
   }
 
+  async function requestBrowserExtract(): Promise<unknown> {
+    const listener = runtimeListeners[0];
+    return new Promise((resolve, reject) => {
+      const handled = listener(
+        { target: 'browser-fetch-service', action: 'extract', requestId: 'fetch-1' },
+        {},
+        resolve
+      );
+      if (handled !== true) reject(new Error('Browser extract was not handled asynchronously'));
+    });
+  }
+
   return {
-    actionListeners,
     closeDocument,
     createDocument,
-    openSidePanel,
+    installedListeners,
+    extract,
     pingDbOwner,
-    setSidePanelOptions,
+    requestBrowserExtract,
+    sessionSet,
+    setPanelBehavior,
+    sidePanelClosedListeners,
+    sidePanelOpenedListeners,
+    tabActivatedListeners,
   };
 }
 
 describe('service-worker owner lifecycle', () => {
   it('reuses a current retained owner', async () => {
     const worker = loadServiceWorker({
-      protocolReply: () => ({ version: 16, coreVersion: 16, contentVersion: 16 }),
+      protocolReply: () => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+      }),
     });
     await expect(worker.pingDbOwner()).resolves.toMatchObject({ ok: true, result: 'pong' });
     expect(worker.closeDocument).not.toHaveBeenCalled();
@@ -121,8 +158,12 @@ describe('service-worker owner lifecycle', () => {
   it('replaces an explicitly incompatible owner once', async () => {
     const worker = loadServiceWorker({
       protocolReply: (created) => created
-        ? { version: 16, coreVersion: 16, contentVersion: 16 }
-        : { version: 0, coreVersion: 15, contentVersion: 16 },
+        ? {
+            version: currentProtocolVersion,
+            coreVersion: currentProtocolVersion,
+            contentVersion: currentProtocolVersion,
+          }
+        : { version: 0, coreVersion: currentProtocolVersion - 1, contentVersion: currentProtocolVersion },
     });
     await expect(worker.pingDbOwner()).resolves.toMatchObject({ ok: true, result: 'pong' });
     expect(worker.closeDocument).toHaveBeenCalledTimes(1);
@@ -143,13 +184,35 @@ describe('service-worker owner lifecycle', () => {
     expect(worker.createDocument).not.toHaveBeenCalled();
   });
 
-  it('opens the manifest panel without a setOptions race', () => {
+  it('delegates toolbar opening to Chrome global panel behavior', () => {
     const worker = loadServiceWorker({
-      protocolReply: () => ({ version: 16, coreVersion: 16, contentVersion: 16 }),
+      protocolReply: () => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+      }),
     });
-    worker.actionListeners[0]({ id: 42 });
-    expect(worker.openSidePanel).toHaveBeenCalledWith({ tabId: 42 });
-    expect(worker.setSidePanelOptions).not.toHaveBeenCalled();
+    worker.installedListeners[0]({ reason: 'update' });
+    expect(worker.setPanelBehavior).toHaveBeenCalledWith({ openPanelOnActionClick: true });
+    expect(worker.sidePanelOpenedListeners).toHaveLength(1);
+    expect(worker.sidePanelClosedListeners).toHaveLength(1);
+    expect(worker.tabActivatedListeners).toHaveLength(1);
+  });
+
+  it('tracks the active tab separately from the global panel scope', async () => {
+    const worker = loadServiceWorker({
+      protocolReply: () => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+      }),
+      activeTab: { id: 42, windowId: 7 },
+    });
+    worker.sidePanelOpenedListeners[0]({ windowId: 7 });
+    await vi.waitFor(() => expect(worker.sessionSet).toHaveBeenCalled());
+    await expect(worker.requestBrowserExtract()).resolves.toMatchObject({ ok: true });
+    expect(worker.extract).toHaveBeenCalledWith(expect.objectContaining({
+      sidePanelHostTabId: 42,
+    }));
   });
 });
-

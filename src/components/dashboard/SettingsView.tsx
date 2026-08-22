@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import type { BackupStatusSnapshot, RestoreBackupResult } from '../../lib/backupCoordinator';
-import type { DbWorkerStatus } from '../../lib/storage/dbClient';
+import { dbRpc, type DbWorkerStatus } from '../../lib/storage/dbClient';
+import type { DbSnapshotSummary } from '../../lib/storage/importFingerprint';
+import { inspectImportFromBackupFolderFile } from '../../lib/storage/dbClient/folderDbRpc';
 import type { AISettings } from '../../lib/ai/types';
 import { clearAllLibraryData } from '../../lib/db';
 import {
+  deleteManualFolderSqliteBackup,
   listFolderSqliteBackups,
   restoreFolderBackupIntoApp,
   type FolderSqliteBackupInfo,
 } from '../../lib/backupSnapshots';
+import { showBackupFolderInPicker } from '../../lib/backupFolder';
 import { formatRestoreSummary } from '../../lib/itemQuickAccess';
 import { PipelineDebugSection } from './PipelineDebugSection';
 import { CategorizationSetupSection } from './CategorizationPanel';
@@ -15,6 +19,7 @@ import { useToast } from '../ToastContainer';
 import { ThemeSelector } from '../ThemeToggle';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
+import { DialogShell } from './DialogShell';
 
 type FontScalePreset = 'small' | 'normal' | 'large';
 export type SettingsSection = 'general' | 'ai' | 'backup' | 'advanced';
@@ -79,6 +84,87 @@ const formatAbsolute = (ts: number | null | undefined): string => {
   if (!ts) return '';
   const d = new Date(ts);
   return d.toLocaleString();
+};
+
+const formatInventoryDifference = (snapshotValue: number, liveValue: number): string => {
+  const delta = snapshotValue - liveValue;
+  return delta === 0 ? 'same' : `${delta > 0 ? '+' : ''}${delta} vs live`;
+};
+
+/** Older retained workers can omit newly added inventory fields during reload. */
+const asInventoryCount = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+type FolderSnapshotInspection = {
+  snapshot: FolderSqliteBackupInfo;
+  snapshotSummary: DbSnapshotSummary;
+  liveSummary: DbSnapshotSummary;
+};
+
+const FolderSnapshotInspectionModal: React.FC<{
+  inspection: FolderSnapshotInspection;
+  onClose: () => void;
+}> = ({ inspection, onClose }) => {
+  const { snapshot, snapshotSummary, liveSummary } = inspection;
+  const rows: Array<[string, number, number]> = [
+    ['Links and notes', asInventoryCount(snapshotSummary.itemCount), asInventoryCount(liveSummary.itemCount)],
+    ['Standalone notes', asInventoryCount(snapshotSummary.notesRowCount), asInventoryCount(liveSummary.notesRowCount)],
+    ['Items with notes', asInventoryCount(snapshotSummary.itemsWithNotes), asInventoryCount(liveSummary.itemsWithNotes)],
+    ['Projects', asInventoryCount(snapshotSummary.projectCount), asInventoryCount(liveSummary.projectCount)],
+    ['Collections', asInventoryCount(snapshotSummary.collectionCount), asInventoryCount(liveSummary.collectionCount)],
+    ['Workspaces', asInventoryCount(snapshotSummary.workspaceCount), asInventoryCount(liveSummary.workspaceCount)],
+  ];
+  return (
+    <DialogShell
+      title="Read-only snapshot inspection"
+      description={`Inspecting ${snapshot.filename} without loading or restoring it.`}
+      onClose={onClose}
+      maxWidth={560}
+      raised
+      footer={<button className="ui-button ui-button--primary" type="button" onClick={onClose}>Done</button>}
+    >
+      <div className="ui-status" data-tone="info">
+        This copy is opened in an isolated temporary SQLite connection. Nothing is written to the
+        live library, data folder, or pipeline.
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+          <thead>
+            <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+              <th style={{ padding: '0.45rem 0.25rem' }}>Contents</th>
+              <th style={{ padding: '0.45rem 0.25rem', textAlign: 'right' }}>Snapshot</th>
+              <th style={{ padding: '0.45rem 0.25rem', textAlign: 'right' }}>Live</th>
+              <th style={{ padding: '0.45rem 0.25rem', textAlign: 'right' }}>Difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([label, snapshotValue, liveValue]) => (
+              <tr key={label} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '0.45rem 0.25rem' }}>{label}</td>
+                <td style={{ padding: '0.45rem 0.25rem', textAlign: 'right', fontWeight: 600 }}>
+                  {snapshotValue.toLocaleString()}
+                </td>
+                <td style={{ padding: '0.45rem 0.25rem', textAlign: 'right' }}>
+                  {liveValue.toLocaleString()}
+                </td>
+                <td style={{ padding: '0.45rem 0.25rem', textAlign: 'right', color: 'var(--text-muted)' }}>
+                  {formatInventoryDifference(snapshotValue, liveValue)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+        Newest stored update: {snapshotSummary.maxUpdatedAt ? formatAbsolute(snapshotSummary.maxUpdatedAt) : 'unknown'}
+        {' '}· live: {liveSummary.maxUpdatedAt ? formatAbsolute(liveSummary.maxUpdatedAt) : 'unknown'}
+      </div>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+        This initial inspector compares inventory only. Fetched raw page content lives in the separate
+        content database and is not part of an ordinary library snapshot.
+      </div>
+    </DialogShell>
+  );
 };
 
 /** Truncate a long deviceId for display: dev_8f3a-1c2d-… */
@@ -148,6 +234,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [folderBackupsLoading, setFolderBackupsLoading] = React.useState(false);
   const [restoringFolderBackup, setRestoringFolderBackup] = React.useState<string | null>(null);
   const [folderRestoreConfirm, setFolderRestoreConfirm] = React.useState<FolderSqliteBackupInfo | null>(null);
+  const [deletingFolderBackup, setDeletingFolderBackup] = React.useState<string | null>(null);
+  const [folderDeleteConfirm, setFolderDeleteConfirm] = React.useState<FolderSqliteBackupInfo | null>(null);
+  const [showingDataFolder, setShowingDataFolder] = React.useState(false);
+  const [inspectingFolderBackup, setInspectingFolderBackup] = React.useState<string | null>(null);
+  const [folderInspection, setFolderInspection] = React.useState<FolderSnapshotInspection | null>(null);
 
   React.useEffect(() => {
     if (aiSettings) setAiForm(aiSettings);
@@ -200,6 +291,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const deleteFolderSnapshot = async (snapshot: FolderSqliteBackupInfo) => {
+    setFolderDeleteConfirm(null);
+    setDeletingFolderBackup(snapshot.filename);
+    try {
+      const result = await deleteManualFolderSqliteBackup(snapshot.filename);
+      if (!result.ok) {
+        addToast({ type: 'error', message: result.error ?? 'Could not delete manual backup' });
+        return;
+      }
+      await refreshFolderBackups();
+      addToast({
+        type: result.notFound ? 'info' : 'success',
+        message: result.notFound
+          ? `${snapshot.filename} was already removed.`
+          : `Deleted manual backup ${snapshot.filename}.`,
+      });
+    } catch (error) {
+      addToast({ type: 'error', message: String(error) });
+    } finally {
+      setDeletingFolderBackup(null);
+    }
+  };
+
+  const showDataFolder = async () => {
+    setShowingDataFolder(true);
+    try {
+      const result = await showBackupFolderInPicker();
+      if (!result.ok) {
+        addToast({ type: 'error', message: result.error ?? 'Could not show the Homebase data folder' });
+      }
+    } catch (error) {
+      addToast({ type: 'error', message: String(error) });
+    } finally {
+      setShowingDataFolder(false);
+    }
+  };
+
+  const inspectFolderSnapshot = async (snapshot: FolderSqliteBackupInfo) => {
+    setInspectingFolderBackup(snapshot.filename);
+    try {
+      const [snapshotSummary, liveSummary] = await Promise.all([
+        inspectImportFromBackupFolderFile(snapshot.filename),
+        dbRpc<DbSnapshotSummary>('liveFingerprint', [], { priority: 'low' }),
+      ]);
+      setFolderInspection({ snapshot, snapshotSummary, liveSummary });
+    } catch (error) {
+      addToast({ type: 'error', message: `Could not inspect ${snapshot.filename}: ${String(error)}` });
+    } finally {
+      setInspectingFolderBackup(null);
+    }
+  };
+
   const handleRestoreInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -212,6 +355,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       const result = await onRestoreBackupFile(file, restoreMode);
       if (result.cancelled) return;
+      if (result.ok) {
+        // External-file restore creates a safety copy and rotates prev*. Refresh
+        // immediately so Settings never leaves the pre-restore list on screen.
+        await refreshFolderBackups();
+      }
       if (result.ok && result.unchanged) {
         addToast({
           type: 'info',
@@ -219,7 +367,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         });
       } else if (result.ok && result.stats) {
         const s = result.stats;
-        const safetyNote = result.safetyRef ? ` Saved ${result.safetyRef} first.` : '';
+        const safetyNote = result.safetyRef
+          ? ` Saved ${result.safetyRef} first and refreshed automatic recovery copies.`
+          : '';
         const label = result.format === 'sqlite' ? 'Database' : 'Backup';
         addToast({
           type: 'success',
@@ -811,7 +961,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {!backupFolderLinked && (
             <span style={{ fontSize: '0.8rem', color: 'var(--warning)' }}>
-              Choose a backup folder below for disk cache.
+              Choose a Homebase data folder below.
             </span>
           )}
         </div>
@@ -837,11 +987,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Automatic protection
         </div>
         <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-          Homebase keeps the live database in your chosen folder up to date after changes and rotates
+          Homebase keeps the live database in your chosen data folder up to date after changes and rotates
           two previous copies before overwriting it. This runs automatically once the folder is connected.
         </div>
         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          Status:{' '}
+          Data folder:{' '}
           {!backupFolderLinked
             ? 'Not linked'
             : backupFolderReady
@@ -1013,7 +1163,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             lineHeight: 1.45,
           }}
         >
-          <div><strong>How folder protection works</strong></div>
+          <div><strong>How the Homebase data folder works</strong></div>
           <div>
             1) If <code>workbench.sqlite</code> already exists there, the app loads it into browser storage (OPFS).
           </div>
@@ -1039,6 +1189,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             · <strong>Auto snapshots:</strong> before each live overwrite, the app rotates{' '}
             <code>workbench.prev.sqlite</code> / <code>workbench.prev2.sqlite</code> so you can roll back.
           </div>
+          {backupFolderLinked ? (
+            <div style={{ marginTop: '0.4rem', color: 'var(--text-muted)' }}>
+              <strong style={{ color: 'var(--text)' }}>Linked location:</strong>{' '}
+              <code>{backupFolderName || 'Homebase data folder'}/workbench.sqlite</code>. Chrome stores a
+              folder permission, not its absolute macOS path.
+            </div>
+          ) : null}
         </div>
 
         <div
@@ -1074,7 +1231,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center' }}>
               <div>
-                <strong>Backups in your folder</strong>
+                <strong>Backups in the Homebase data folder</strong>
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
                   Live, automatic <code>prev</code> copies, and <code>manual-</code> /{' '}
                   <code>safety-</code> files. <strong>Restore replaces</strong> the browser library
@@ -1084,7 +1241,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <button
                 type="button"
                 onClick={() => void refreshFolderBackups()}
-                disabled={folderBackupsLoading || !!restoringFolderBackup}
+                disabled={folderBackupsLoading || !!restoringFolderBackup || !!deletingFolderBackup}
                 style={{
                   padding: '0.35rem 0.6rem',
                   borderRadius: 6,
@@ -1146,36 +1303,74 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           : ''}
                       </div>
                     </div>
-                    {isLive ? (
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Current live file</span>
-                    ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                       <button
                         type="button"
-                        className="ui-button ui-button--warning"
-                        disabled={!!restoringFolderBackup || conflictBlocking}
-                        title={
-                          conflictBlocking
-                            ? 'Resolve the sync conflict above first'
-                            : 'Snapshot current live, then restore this copy into workbench.sqlite'
-                        }
-                        onClick={() => setFolderRestoreConfirm(snap)}
+                        className="ui-button ui-button--secondary"
+                        disabled={!!inspectingFolderBackup || !!restoringFolderBackup || !!deletingFolderBackup}
+                        title="Open this copy in an isolated temporary SQLite connection and compare its inventory with live data"
+                        onClick={() => void inspectFolderSnapshot(snap)}
                         style={{
                           padding: '0.4rem 0.65rem',
                           borderRadius: 6,
-                          border: '1px solid var(--warning-border)',
-                          background:
-                            restoringFolderBackup === snap.filename
-                              ? 'color-mix(in srgb, var(--warning) 20%, var(--bg-panel))'
-                              : 'var(--warning-weak)',
-                          color: 'var(--warning)',
-                          cursor: restoringFolderBackup || conflictBlocking ? 'not-allowed' : 'pointer',
                           fontSize: '0.78rem',
                           fontWeight: 600,
+                          cursor: inspectingFolderBackup || restoringFolderBackup || deletingFolderBackup ? 'not-allowed' : 'pointer',
                         }}
                       >
-                        {restoringFolderBackup === snap.filename ? 'Restoring…' : 'Restore'}
+                        {inspectingFolderBackup === snap.filename ? 'Inspecting…' : 'Inspect'}
                       </button>
-                    )}
+                      {isLive ? (
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Current live file</span>
+                      ) : (
+                        <>
+                        <button
+                          type="button"
+                          className="ui-button ui-button--warning"
+                          disabled={!!restoringFolderBackup || !!deletingFolderBackup || conflictBlocking}
+                          title={
+                            conflictBlocking
+                              ? 'Resolve the sync conflict above first'
+                              : 'Snapshot current live, then restore this copy into workbench.sqlite'
+                          }
+                          onClick={() => setFolderRestoreConfirm(snap)}
+                          style={{
+                            padding: '0.4rem 0.65rem',
+                            borderRadius: 6,
+                            border: '1px solid var(--warning-border)',
+                            background:
+                              restoringFolderBackup === snap.filename
+                                ? 'color-mix(in srgb, var(--warning) 20%, var(--bg-panel))'
+                                : 'var(--warning-weak)',
+                            color: 'var(--warning)',
+                            cursor: restoringFolderBackup || deletingFolderBackup || conflictBlocking ? 'not-allowed' : 'pointer',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {restoringFolderBackup === snap.filename ? 'Restoring…' : 'Restore'}
+                        </button>
+                        {snap.kind === 'manual' ? (
+                          <button
+                            type="button"
+                            className="ui-button ui-button--danger"
+                            disabled={!!restoringFolderBackup || !!deletingFolderBackup}
+                            title="Permanently delete this manual backup file"
+                            onClick={() => setFolderDeleteConfirm(snap)}
+                            style={{
+                              padding: '0.4rem 0.65rem',
+                              borderRadius: 6,
+                              fontSize: '0.78rem',
+                              fontWeight: 600,
+                              cursor: restoringFolderBackup || deletingFolderBackup ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                          {deletingFolderBackup === snap.filename ? 'Deleting…' : 'Delete'}
+                        </button>
+                        ) : null}
+                        </>
+                      )}
+                    </div>
                   </div>
                 );
               })
@@ -1199,8 +1394,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               fontWeight: 600,
             }}
           >
-            {backupFolderLinked ? 'Change backup folder' : 'Choose backup folder'}
+            {backupFolderLinked ? 'Change data folder' : 'Choose data folder'}
           </button>
+
+          {backupFolderLinked ? (
+            <button
+              type="button"
+              className="ui-button ui-button--secondary"
+              onClick={() => void showDataFolder()}
+              disabled={showingDataFolder}
+              title="Open Chrome's native folder chooser at the linked Homebase data folder"
+              style={{
+                padding: '0.5rem 0.75rem',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-panel)',
+                color: 'var(--text)',
+                cursor: showingDataFolder ? 'progress' : 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+              }}
+            >
+              {showingDataFolder ? 'Opening…' : 'Browse data folder…'}
+            </button>
+          ) : null}
 
           <button
             type="button"
@@ -1209,7 +1426,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             disabled={manualDisabled}
             title={
               !backupFolderLinked
-                ? 'Link a backup folder first'
+                ? 'Choose a Homebase data folder first'
                 : !backupFolderReady
                 ? 'Click the page once to resume folder access, then try again'
                 : conflictBlocking
@@ -1240,7 +1457,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             disabled={jsonExportDisabled || !onExportJsonSnapshot}
             title={
               !backupFolderLinked
-                ? 'Link a backup folder first'
+                ? 'Choose a Homebase data folder first'
                 : !backupFolderReady
                 ? 'Click the page once to resume folder access, then try again'
                 : conflictBlocking
@@ -1293,7 +1510,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }}
             title={
               !backupFolderLinked
-                ? 'Link a backup folder first (needed for safety snapshot)'
+                ? 'Choose a Homebase data folder first (needed for safety snapshot)'
                 : !backupFolderReady
                 ? 'Click the page once to resume folder access, then try again'
                 : 'Pick a .sqlite/.json from disk (e.g. outside this folder). Folder copies are listed above.'
@@ -1325,7 +1542,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--error)', lineHeight: 1.45 }}>
             Deletes all bookmarks, notes, enrichment, categories, and pipeline state from browser
-            storage and overwrites <code>workbench.sqlite</code> in your backup folder with an empty
+            storage and overwrites <code>workbench.sqlite</code> in your Homebase data folder with an empty
             library (Inbox + Incoming only). Use this instead of uninstalling the
             extension when re-testing imports.
           </p>
@@ -1407,7 +1624,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           {!backupFolderLinked ? (
             <span style={{ fontSize: '0.8rem', color: 'var(--warning)' }}>
-              Link a backup folder first so the empty database can be mirrored to disk.
+              Choose a Homebase data folder first so the empty database can be mirrored to disk.
             </span>
           ) : !backupFolderReady ? (
             <span style={{ fontSize: '0.8rem', color: 'var(--warning)' }}>
@@ -1430,6 +1647,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           confirmVariant="warn"
           onCancel={() => setFolderRestoreConfirm(null)}
           onConfirm={() => void restoreFolderSnapshot(folderRestoreConfirm)}
+        />
+      ) : null}
+      {folderInspection ? (
+        <FolderSnapshotInspectionModal
+          inspection={folderInspection}
+          onClose={() => setFolderInspection(null)}
+        />
+      ) : null}
+      {folderDeleteConfirm ? (
+        <HubActionConfirmModal
+          title="Delete this manual backup?"
+          description={`Permanently delete ${folderDeleteConfirm.filename} from the Homebase data folder.`}
+          bullets={[
+            'The current live database and automatic recovery copies are not affected.',
+            'This manual backup cannot be restored after deletion.',
+          ]}
+          warning="This removes the file immediately; it does not move it to Homebase Trash."
+          confirmLabel="Delete backup"
+          confirmVariant="danger"
+          onCancel={() => setFolderDeleteConfirm(null)}
+          onConfirm={() => void deleteFolderSnapshot(folderDeleteConfirm)}
         />
       ) : null}
     </div>
