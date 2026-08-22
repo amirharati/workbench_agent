@@ -8,7 +8,11 @@ import {
   resolveEnrichmentFailureLabel,
   type EnrichmentFailureLabel,
 } from '../enrichment/failureLabels';
-import { describeAiFailure, formatEnrichmentFailureMessage } from '../enrichment/errorMessages';
+import {
+  AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE,
+  describeAiFailure,
+  formatEnrichmentFailureMessage,
+} from '../enrichment/errorMessages';
 import type { ItemEnrichment } from '../enrichment/types';
 import { primaryLeafIdFromLinks, verifiedPrimaryLeafIdFromLinks } from '../categorization/counts';
 import { resolvePendingDiscoverBadgeLabel, resolvePipelineStatus, type PipelineBadge } from './pipelineBadge';
@@ -17,6 +21,7 @@ import {
   resolveClassifyDoneModalTone,
 } from './pipelineDictionary';
 import { hubStatusBadgeForEnrichment, type HubStatusStageInput } from './pipelineHubQueries';
+import { loadScopedPipelineRows } from './scopedPipelineRows';
 
 export {
   CLASSIFY_DONE_REPORT_SAMPLE_CAP,
@@ -53,6 +58,8 @@ export interface PipelineReportRow {
   /** Hub table status chip — when set, summary and row badge use this instead of generic outcome. */
   statusLabel?: string;
   statusColor?: string;
+  /** Non-fatal condition that should remain visible in the run summary. */
+  notice?: 'ai_not_configured';
 }
 
 export interface PipelineReportBuildOptions {
@@ -218,6 +225,14 @@ export function resolveEnrichReportOutcome(
   if (!enrichment || enrichment.status === 'none') {
     return { outcome: 'skipped', detail: 'Not enriched yet' };
   }
+
+  if (enrichment.status === 'ok' && enrichment.aiStatus === 'not_configured') {
+    return {
+      outcome: 'fetched',
+      detail: AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE,
+    };
+  }
+
   if (enrichment.status === 'skipped') {
     return {
       outcome: 'skipped',
@@ -304,49 +319,33 @@ function outcomeFromPipelineBadge(
   return 'skipped';
 }
 
-async function loadReportHubStageInputs(
+async function loadReportHubStageSnapshot(
   itemIds: string[]
-): Promise<Map<string, HubStatusStageInput>> {
-  const map = new Map<string, HubStatusStageInput>();
-  if (!itemIds.length) return map;
-
-  const db = await getDB();
-  const signalByItem = new Map<string, AiItemSignal>();
+): Promise<{
+  enrichById: Map<string, ItemEnrichment>;
+  stageByItem: Map<string, HubStatusStageInput>;
+}> {
+  const stageByItem = new Map<string, HubStatusStageInput>();
+  if (!itemIds.length) return { enrichById: new Map(), stageByItem };
+  const scoped = await loadScopedPipelineRows(itemIds, { authoritative: true });
   const linksByItem = new Map<string, AiItemCategoryLink[]>();
-
-  if (db.objectStoreNames.contains('ai_item_signals')) {
-    await Promise.all(
-      itemIds.map(async (id) => {
-        const signal = await db.get('ai_item_signals', id);
-        if (signal) signalByItem.set(id, signal);
-      })
-    );
-  }
-
-  if (db.objectStoreNames.contains('ai_item_category_links')) {
-    await Promise.all(
-      itemIds.map(async (id) => {
-        try {
-          const itemLinks = await db.getAllFromIndex('ai_item_category_links', 'by-item', id);
-          if (itemLinks.length) linksByItem.set(id, itemLinks);
-        } catch {
-          /* index may be missing in older stores */
-        }
-      })
-    );
+  for (const link of scoped.links) {
+    const itemLinks = linksByItem.get(link.itemId) ?? [];
+    itemLinks.push(link);
+    linksByItem.set(link.itemId, itemLinks);
   }
 
   for (const itemId of itemIds) {
-    const signal = signalByItem.get(itemId);
+    const signal = scoped.signalByItem.get(itemId);
     const itemLinks = linksByItem.get(itemId) ?? [];
-    map.set(itemId, {
+    stageByItem.set(itemId, {
       signal,
       primaryCategoryId: primaryLeafIdFromLinks(itemLinks),
       verifiedPrimaryCategoryId: verifiedPrimaryLeafIdFromLinks(itemLinks),
       suggestedLinkCount: itemLinks.filter((l) => l.status === 'suggested').length,
     });
   }
-  return map;
+  return { enrichById: scoped.enrichByItem, stageByItem };
 }
 
 /** Prefer this after digest — reads DB so report matches hub table. */
@@ -361,25 +360,14 @@ export async function buildEnrichOutcomeReportRows(
   const byResult = new Map((options?.enrichResults ?? []).map((r) => [r.itemId, r]));
   const { labels, urls } = await hydrateItemMeta(itemIds, itemLabels);
 
-  const enrichRows = await Promise.all(itemIds.map((id) => getEnrichment(id)));
-  const enrichById = new Map<string, ItemEnrichment>();
-  for (let i = 0; i < itemIds.length; i++) {
-    const row = enrichRows[i];
-    if (row) enrichById.set(itemIds[i]!, row);
-  }
-
-  const db = await getDB();
+  // Completion is an ownership boundary: read one authoritative scoped
+  // snapshot from the DB worker, not the submitting page's cache, which may
+  // still reflect the pre-run state when the coordinator broadcasts Done.
+  const { enrichById, stageByItem } = await loadReportHubStageSnapshot(itemIds);
   const embedFailedIds = new Set<string>();
-  if (db.objectStoreNames.contains('ai_item_signals')) {
-    await Promise.all(
-      itemIds.map(async (id) => {
-        const s = await db.get('ai_item_signals', id);
-        if (s?.signalStatus === 'embed_failed') embedFailedIds.add(id);
-      })
-    );
+  for (const [itemId, stage] of stageByItem) {
+    if (stage.signal?.signalStatus === 'embed_failed') embedFailedIds.add(itemId);
   }
-
-  const stageByItem = await loadReportHubStageInputs(itemIds);
 
   return itemIds.map((itemId) => {
     const enrichment = enrichById.get(itemId);
@@ -411,6 +399,9 @@ export async function buildEnrichOutcomeReportRows(
       detail,
       statusLabel: statusBadge.text,
       statusColor: statusBadge.color,
+      notice: enrichment?.status === 'ok' && enrichment.aiStatus === 'not_configured'
+        ? 'ai_not_configured'
+        : undefined,
     };
   });
 }
@@ -776,14 +767,26 @@ export function formatBatchDigestDoneSummary(input: {
 /** Summary line grouped by hub status labels (matches enrichment table). */
 export function formatPipelineReportSummaryFromRows(rows: PipelineReportRow[]): string {
   if (!rows.length) return 'No changes';
+  const aiNotConfiguredCount = rows.filter((row) => row.notice === 'ai_not_configured').length;
+  if (aiNotConfiguredCount === rows.length) {
+    return aiNotConfiguredCount === 1
+      ? AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE
+      : `${aiNotConfiguredCount} pages fetched and saved for keyword search. AI enrichment was skipped — add an API key in Settings > AI.`;
+  }
   if (!rows.some((r) => r.statusLabel)) {
-    return formatPipelineReportSummary(pipelineReportStats(rows));
+    const summary = formatPipelineReportSummary(pipelineReportStats(rows));
+    return aiNotConfiguredCount > 0
+      ? `${summary} · AI skipped for ${aiNotConfiguredCount} — add an API key in Settings > AI; fetched text remains searchable.`
+      : summary;
   }
   const counts = pipelineReportStatusLabelCounts(rows);
   const parts = [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([label, count]) => `${count} ${label}`);
-  return parts.length ? parts.join(' · ') : 'No changes';
+  const summary = parts.length ? parts.join(' · ') : 'No changes';
+  return aiNotConfiguredCount > 0
+    ? `${summary} · AI skipped for ${aiNotConfiguredCount} — add an API key in Settings > AI; fetched text remains searchable.`
+    : summary;
 }
 
 export function formatPipelineReportSummary(stats: ReturnType<typeof pipelineReportStats>): string {

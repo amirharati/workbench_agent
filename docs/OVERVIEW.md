@@ -123,7 +123,7 @@ When Homebase overrides the **New Tab Page** (`chrome_url_overrides.newtab`), Ch
 | **Notes (first-class)** | `notes` store exists and is exported; **UI largely treats “notes” as items** (bookmark `notes` / empty URL). Align UI with `notes` store or simplify docs—decision pending. |
 | **Quick access** | **Shipped (05.B + 05.C):** pin/fav/trash; pin sort-to-top; batch classify from Home. Open: 30-day purge, per-project quick-access filters. |
 | **Sharing** | Model supports `collection.projectIds[]`; **detach/share UI** not fully built. |
-| **Storage / backup** | **Shipped:** SQLite WASM + OPFS worker + atomic folder mirror + Settings restore (V2.1–V2.2). **Next:** V2.3 polish. **Later:** multi-device (**V4**), D-36 rotation — [`BACKLOG.md`](BACKLOG.md). |
+| **Storage / backup** | **Shipped:** SQLite WASM + OPFS worker + atomic folder mirror + Settings restore (V2.1–V2.2); two-phase folder selection lists recognized files before persistence and ends with an explicit setup receipt. **Next:** V2.3 polish. **Later:** multi-device (**V4**), D-36 rotation — [`BACKLOG.md`](BACKLOG.md). |
 | **Bulk bookmark import** | **Commit path shipped** (batch merge/dedupe). **Next:** import polish (**D-38**), **local folder library (D-45)**, provenance (**D-05**), scale/backup (**D-35**). |
 
 ---

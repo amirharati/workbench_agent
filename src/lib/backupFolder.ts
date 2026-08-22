@@ -767,12 +767,32 @@ export async function deleteFileFromBackupFolder(
 export type PickBackupFolderResult = {
   ok: boolean;
   error?: string;
+  folderName?: string;
+  source?: 'existing-workbench' | 'legacy-json' | 'legacy-sqlite' | 'fresh';
   /** Legacy latest.json found in folder — caller should import. */
   existingBackupJson?: string;
   /** Folder already has (or was migrated to) workbench.sqlite — caller must LOAD from disk. */
   hadExistingWorkbenchDb?: boolean;
   /** Empty folder linked; caller may mirror once to create workbench.sqlite. */
   freshFolder?: boolean;
+};
+
+export type BackupFolderCandidateFile = {
+  name: string;
+  size: number;
+};
+
+export type BackupFolderCandidate = {
+  handle: FileSystemDirectoryHandle;
+  folderName: string;
+  source: 'existing-workbench' | 'legacy-json' | 'legacy-sqlite' | 'fresh';
+  files: BackupFolderCandidateFile[];
+};
+
+export type PickBackupFolderCandidateResult = {
+  ok: boolean;
+  error?: string;
+  candidate?: BackupFolderCandidate;
 };
 
 export type ShowBackupFolderResult = {
@@ -811,12 +831,57 @@ export async function showBackupFolderInPicker(): Promise<ShowBackupFolderResult
   }
 }
 
+async function inspectCandidateFile(
+  handle: FileSystemDirectoryHandle,
+  name: string
+): Promise<BackupFolderCandidateFile | null> {
+  try {
+    const fileHandle = await handle.getFileHandle(name);
+    const file = await fileHandle.getFile();
+    return { name, size: file.size };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'NotFoundError') return null;
+    throw error;
+  }
+}
+
+async function inspectBackupFolderCandidate(
+  handle: FileSystemDirectoryHandle
+): Promise<BackupFolderCandidate> {
+  const knownNames = [
+    WORKBENCH_DB_FILE,
+    WORKBENCH_CONTENT_DB_FILE,
+    WORKBENCH_META_FILE,
+    LEGACY_LATEST_JSON,
+    LEGACY_LATEST_SQLITE,
+  ];
+  const inspected = await Promise.all(
+    knownNames.map((name) => inspectCandidateFile(handle, name))
+  );
+  const files = inspected.filter((file): file is BackupFolderCandidateFile => !!file);
+  const byName = new Map(files.map((file) => [file.name, file]));
+  const source =
+    (byName.get(WORKBENCH_DB_FILE)?.size ?? 0) > 16
+      ? 'existing-workbench'
+      : (byName.get(LEGACY_LATEST_JSON)?.size ?? 0) > 0
+        ? 'legacy-json'
+        : (byName.get(LEGACY_LATEST_SQLITE)?.size ?? 0) > 16
+          ? 'legacy-sqlite'
+          : 'fresh';
+  return {
+    handle,
+    folderName: handle.name || 'Selected folder',
+    source,
+    files,
+  };
+}
+
 /**
- * Directory picker + persist handle. Does not start the DB worker.
- * For an empty folder, returns `freshFolder: true` — the worker mirror creates
- * `workbench.sqlite` (avoid exporting bytes from the UI tab before worker boot).
+ * Pick and inspect a candidate without persisting it. This gives onboarding a
+ * real confirmation boundary: Chrome prompts or picker cancellation cannot
+ * silently change the linked data folder.
  */
-export async function pickAndPersistBackupFolder(): Promise<PickBackupFolderResult> {
+export async function pickBackupFolderCandidate(): Promise<PickBackupFolderCandidateResult> {
   if (typeof window.showDirectoryPicker !== 'function') {
     return { ok: false, error: 'Folder picker is not supported in this context' };
   }
@@ -829,40 +894,71 @@ export async function pickAndPersistBackupFolder(): Promise<PickBackupFolderResu
     });
     const perm = await ensureReadWritePermission(handle);
     if (!perm.ok) return perm;
-
-    await setBackupDirectoryHandle(handle);
-
-    const { purgeLegacyLocalDomainStorage } = await import('./storage/legacyStorageCleanup');
-    await purgeLegacyLocalDomainStorage();
-
-    const existingDb = await readBinaryWithHandle(handle, WORKBENCH_DB_FILE);
-    if (existingDb.ok && existingDb.data && existingDb.data.byteLength > 16) {
-      return { ok: true, hadExistingWorkbenchDb: true };
-    }
-
-    const legacyJson = await readJsonWithHandle(handle, LEGACY_LATEST_JSON);
-    if (legacyJson.ok && legacyJson.json) {
-      return { ok: true, existingBackupJson: legacyJson.json };
-    }
-
-    const legacyDb = await readBinaryWithHandle(handle, LEGACY_LATEST_SQLITE);
-    if (legacyDb.ok && legacyDb.data && legacyDb.data.byteLength > 16) {
-      await writeBinaryWithHandle(handle, WORKBENCH_DB_FILE, legacyDb.data);
-      return { ok: true, hadExistingWorkbenchDb: true };
-    }
-
-    if (
-      (!existingDb.notFound && existingDb.error) ||
-      (!legacyJson.notFound && legacyJson.error)
-    ) {
-      return { ok: false, error: existingDb.error ?? legacyJson.error };
-    }
-
-    return { ok: true, freshFolder: true };
+    return { ok: true, candidate: await inspectBackupFolderCandidate(handle) };
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') {
       return { ok: false, error: 'cancelled' };
     }
     return { ok: false, error: formatBackupFolderError(e) };
+  }
+}
+
+/** Persist a user-confirmed candidate and re-check its contents before use. */
+export async function persistBackupFolderCandidate(
+  candidate: BackupFolderCandidate
+): Promise<PickBackupFolderResult> {
+  try {
+    const perm = await ensureReadWritePermission(candidate.handle);
+    if (!perm.ok) return perm;
+    const inspected = await inspectBackupFolderCandidate(candidate.handle);
+    await setBackupDirectoryHandle(candidate.handle);
+
+    const { purgeLegacyLocalDomainStorage } = await import('./storage/legacyStorageCleanup');
+    await purgeLegacyLocalDomainStorage();
+
+    if (inspected.source === 'existing-workbench') {
+      return {
+        ok: true,
+        folderName: inspected.folderName,
+        source: inspected.source,
+        hadExistingWorkbenchDb: true,
+      };
+    }
+
+    if (inspected.source === 'legacy-json') {
+      const legacyJson = await readJsonWithHandle(candidate.handle, LEGACY_LATEST_JSON);
+      if (!legacyJson.ok || !legacyJson.json) {
+        return { ok: false, error: legacyJson.error ?? 'Could not read latest.json' };
+      }
+      return {
+        ok: true,
+        folderName: inspected.folderName,
+        source: inspected.source,
+        existingBackupJson: legacyJson.json,
+      };
+    }
+
+    if (inspected.source === 'legacy-sqlite') {
+      const legacyDb = await readBinaryWithHandle(candidate.handle, LEGACY_LATEST_SQLITE);
+      if (!legacyDb.ok || !legacyDb.data || legacyDb.data.byteLength <= 16) {
+        return { ok: false, error: legacyDb.error ?? 'Could not read latest.sqlite' };
+      }
+      await writeBinaryWithHandle(candidate.handle, WORKBENCH_DB_FILE, legacyDb.data);
+      return {
+        ok: true,
+        folderName: inspected.folderName,
+        source: inspected.source,
+        hadExistingWorkbenchDb: true,
+      };
+    }
+
+    return {
+      ok: true,
+      folderName: inspected.folderName,
+      source: 'fresh',
+      freshFolder: true,
+    };
+  } catch (error) {
+    return { ok: false, error: formatBackupFolderError(error) };
   }
 }

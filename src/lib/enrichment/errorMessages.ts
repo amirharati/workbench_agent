@@ -1,6 +1,9 @@
 import type { EnrichmentAIStatus, EnrichmentErrorCode, ItemEnrichment } from './types';
 import { resolveEnrichmentFailureLabel } from './failureLabels';
 
+export const AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE =
+  'Page fetched and saved for keyword search. AI enrichment was skipped — add an API key in Settings > AI.';
+
 export const ENRICHMENT_ERROR_HINTS: Record<EnrichmentErrorCode, string> = {
   excluded: 'This URL type is excluded from fetch',
   parse_empty: 'No usable article text could be extracted from the page',

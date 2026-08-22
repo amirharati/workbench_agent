@@ -6,7 +6,10 @@ import { hasSpecificPrimaryTopic } from '../categorization/categorizationFairGam
 import { linkCountsForCategories, primaryLeafIdFromLinks, resolveEffectiveClassifyState } from '../categorization/counts';
 import { isGeneralLeafId } from '../categorization/taxonomyCatalog';
 import type { AiCategory, AiItemCategoryLink, AiItemSignal, ClassifyState } from '../categorization/types';
-import { formatEnrichmentFailureMessage } from '../enrichment/errorMessages';
+import {
+  AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE,
+  formatEnrichmentFailureMessage,
+} from '../enrichment/errorMessages';
 import {
   countFailuresByCategory,
   formatFailureCategoryBreakdown,
@@ -299,6 +302,8 @@ export function formatPipelineStageHint(ctx: ItemPipelineContext): string | unde
     parts.push(detail ?? (e.lastErrorCode ? `Fetch failed (${e.lastErrorCode})` : 'Fetch failed'));
   } else if (e?.status === 'pending') {
     parts.push('Fetch in progress…');
+  } else if (e?.status === 'ok' && e.aiStatus === 'not_configured') {
+    parts.push(AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE);
   } else if (e?.aiStatus && e.aiStatus !== 'ok' && e.aiStatus !== 'not_configured') {
     parts.push(`AI extract: ${e.aiStatus.replace(/_/g, ' ')}`);
   } else if (e?.status === 'ok' && e.aiStatus !== 'ok' && !ctx.summary) {

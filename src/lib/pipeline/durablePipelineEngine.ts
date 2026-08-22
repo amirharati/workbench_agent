@@ -195,6 +195,9 @@ async function runStage(
         return { outcome: 'skipped', resultRef: 'classify:disabled' };
       }
       const enrichment = await getEnrichment(itemId);
+      if (enrichment?.aiStatus === 'not_configured') {
+        return { outcome: 'skipped', resultRef: 'classify:ai-not-configured' };
+      }
       if (!isDownstreamClassifyEligible(enrichment)) {
         return { outcome: 'skipped', resultRef: 'classify:ineligible' };
       }
@@ -227,6 +230,10 @@ async function runStage(
     }
 
     case 'discover': {
+      const aiSettings = await import('../ai/settings').then(({ loadAISettings }) => loadAISettings());
+      if (!aiSettings.apiKey.trim()) {
+        return { outcome: 'skipped', resultRef: 'discover:ai-not-configured' };
+      }
       const result = await discoverBatch({
         itemIds: options.discoverItemIds,
         stuckOnly: options.discoverStuckOnly !== false,

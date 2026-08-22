@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const pipelineClientMocks = vi.hoisted(() => ({
+  commitPendingDbWrites: vi.fn(async () => {}),
+}));
+
+vi.mock('../db', () => ({
+  commitPendingDbWrites: pipelineClientMocks.commitPendingDbWrites,
+}));
+
 describe('offscreenPipelineClient', () => {
   const listeners = new Set<(message: unknown) => void>();
   const storedAISettings = {
@@ -24,6 +32,7 @@ describe('offscreenPipelineClient', () => {
   beforeEach(() => {
     listeners.clear();
     sendMessage.mockClear();
+    pipelineClientMocks.commitPendingDbWrites.mockClear();
     vi.stubGlobal('window', globalThis);
     vi.stubGlobal('chrome', {
       storage: {
@@ -47,6 +56,10 @@ describe('offscreenPipelineClient', () => {
     const pending = runBatchOnOffscreen(['item-1'], { onProgress: progress });
 
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    expect(pipelineClientMocks.commitPendingDbWrites).toHaveBeenCalledTimes(1);
+    expect(pipelineClientMocks.commitPendingDbWrites.mock.invocationCallOrder[0]).toBeLessThan(
+      sendMessage.mock.invocationCallOrder[0]!
+    );
     const start = sendMessage.mock.calls[0][0] as {
       action: string;
       requestId: string;

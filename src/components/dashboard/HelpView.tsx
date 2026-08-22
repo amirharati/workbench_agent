@@ -145,8 +145,10 @@ export const HELP_TOPICS: HelpTopic[] = [
       <>
         <p>Homebase is local-first. Your live browser database is protected by a mirror in the data folder you choose during setup.</p>
         <GuideSteps steps={[
-            <>Choose a dedicated data folder. A Dropbox folder is useful for transport and backup on <strong>one active device</strong>.</>,
+            <>Finish any Chrome install or New Tab prompt, then choose a dedicated data folder. If Chrome interrupts the picker, Homebase keeps setup open and changes nothing.</>,
+            <>Review the folder name and recognized files, then select <strong>Use this folder</strong>. The folder is not linked before this confirmation.</>,
             <>If the folder already contains <code>workbench.sqlite</code>, Homebase loads it. An empty browser database must not replace it.</>,
+            <>Read the completion summary: it reports the selected folder, item count, and which database files were loaded or created.</>,
             <>Save an initial link with the side panel or create a note in Library. Unscoped captures go to <strong>Inbox / Incoming</strong>.</>,
             <>Open <strong>Settings → Backup &amp; restore</strong> and confirm the live mirror reports a successful write.</>,
           ]} />

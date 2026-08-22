@@ -139,6 +139,13 @@ async function runJob(
   operation: PipelineJobOperation = 'full_digest'
 ): Promise<PipelineOffscreenDoneEvent> {
   if (options.signal?.aborted) throw cancelledError();
+  // A side-panel save may have painted from the local write-through cache just
+  // before the user starts a digest. Drain that write before the DB-owned job
+  // snapshots its scope, otherwise the first attempt can see `no_item` and a
+  // second attempt succeeds only after the background write catches up.
+  const { commitPendingDbWrites } = await import('../db');
+  await commitPendingDbWrites();
+  if (options.signal?.aborted) throw cancelledError();
   const requestId = createRequestId();
   const { signal, onProgress, aiSettings: suppliedAISettings, ...durableOptions } = options;
   // AI settings are sent only in the in-extension submission message. The host

@@ -34,12 +34,22 @@ import {
 import { DashboardLayout } from './components/dashboard/layout/DashboardLayout';
 import { getActiveTabBookmarkContext, resolveTabBookmarkUrl } from './lib/tabUrlCapture';
 import { isAnyDigestInFlight } from './lib/pipeline/singleLinkDigest';
-import { BackupOnboardingModal } from './components/BackupOnboardingModal';
 import {
+  BackupOnboardingModal,
+  BackupSetupResultModal,
+  type BackupSetupReceipt,
+} from './components/BackupOnboardingModal';
+import {
+  getBackupFolderOnboarding,
   setBackupFolderOnboarding,
 } from './lib/backupOnboarding';
 import {
-  pickAndPersistBackupFolder,
+  clearBackupDirectoryHandle,
+  getBackupDirectoryHandle,
+  pickBackupFolderCandidate,
+  persistBackupFolderCandidate,
+  type BackupFolderCandidate,
+  type PickBackupFolderCandidateResult,
   type PickBackupFolderResult,
   wasBackupFolderLinked,
   markBackupFolderLinkedFlag,
@@ -47,6 +57,7 @@ import {
   hasConfiguredBackupFolder,
   getBackupFolderName,
   regrantBackupFolderPermission,
+  setBackupDirectoryHandle,
   tryReuseConfiguredBackupFolder,
 } from './lib/backupFolder';
 import {
@@ -109,6 +120,8 @@ function App() {
   /** Chrome currently grants read/write on the saved folder handle. */
   const [backupFolderReady, setBackupFolderReady] = useState(false);
   const [backupFolderName, setBackupFolderName] = useState<string | null>(null);
+  const [backupSetupModalOpen, setBackupSetupModalOpen] = useState(false);
+  const [backupSetupReceipt, setBackupSetupReceipt] = useState<BackupSetupReceipt | null>(null);
   const [backupStatus, setBackupStatus] = useState<BackupStatusSnapshot>(() =>
     backupCoordinator.getStatus()
   );
@@ -361,9 +374,11 @@ function App() {
     void ensureDbWorker().catch(() => { /* retried by dbRpc internally */ });
     (async () => {
       try {
+        const initialOnboardingState = await getBackupFolderOnboarding();
+        const initialFolderConfigured = await hasConfiguredBackupFolder();
         // Reuse the saved folder ASAP — while a click that opened this page may
         // still count as user activation (avoids an extra "Continue" when possible).
-        if (!cancelled && (await hasConfiguredBackupFolder())) {
+        if (!cancelled && initialFolderConfigured && initialOnboardingState === 'done') {
           setFolderConfigured(true);
           const early = await tryReuseConfiguredBackupFolder();
           if (early.ok && !cancelled) {
@@ -378,6 +393,21 @@ function App() {
         if (cancelled) return;
         await revisionTracker.start();
         backupCoordinator.start();
+
+        // A handle can be present while first setup/change was interrupted
+        // after selection but before database initialization completed. Never
+        // silently accept that half-linked folder on reload; require a fresh,
+        // explicit confirmation of the folder and its detected files.
+        if (initialFolderConfigured && initialOnboardingState !== 'done') {
+          if (!cancelled) {
+            setFolderConfigured(false);
+            setBackupFolderReady(false);
+            setBackupFolderName(await getBackupFolderName());
+            setFolderLinkLost(true);
+            setFolderGateResolved(true);
+          }
+          return;
+        }
 
         await refreshBackupFolderStatus();
         if (cancelled) return;
@@ -1104,25 +1134,57 @@ function App() {
     }
   };
 
-  const handleChooseBackupFolder = async (): Promise<PickBackupFolderResult> => {
-    // Forget what we knew about the OLD folder's remote BEFORE the picker
-    // runs, so that importDB (called below if an existing latest.json is
-    // found) can populate lastSeenRemote with the NEW folder's envelope.
-    revisionTracker.clearLastSeenRemote();
-    const res = await pickAndPersistBackupFolder();
-    if (!res.ok) {
-      if (res.error !== 'cancelled') {
-        showStatus(`Backup setup failed: ${res.error ?? 'Unknown error'}`);
+  const handleChooseBackupFolder = async (): Promise<PickBackupFolderCandidateResult> =>
+    pickBackupFolderCandidate();
+
+  const handleConfirmBackupFolder = async (
+    candidate: BackupFolderCandidate
+  ): Promise<PickBackupFolderResult> => {
+    // Nothing persistent changes until the user confirms the inspected folder.
+    // Only now forget the OLD folder's remote fingerprint so a cancelled or
+    // interrupted picker cannot disturb conflict tracking.
+    const previousHandle = await getBackupDirectoryHandle();
+    const previousOnboardingState = await getBackupFolderOnboarding();
+    let coreApplied = false;
+    await setBackupFolderOnboarding('pending');
+    const rollbackFolderSelection = async () => {
+      if (previousHandle) await setBackupDirectoryHandle(previousHandle);
+      else await clearBackupDirectoryHandle();
+      await setBackupFolderOnboarding(previousOnboardingState);
+      await refreshBackupFolderStatus();
+    };
+    const failSetup = async (error: string): Promise<PickBackupFolderResult> => {
+      if (coreApplied) {
+        // The confirmed folder's core DB is already active. Switching the
+        // handle back now would pair that live DB with the wrong folder.
+        // Keep onboarding pending and require the same folder to be confirmed
+        // again after the secondary failure is corrected.
+        await refreshBackupFolderStatus();
+        setFolderConfigured(false);
+        setBackupFolderReady(false);
+        setFolderLinkLost(true);
+        setFolderGateResolved(true);
+      } else {
+        await rollbackFolderSelection();
       }
-      return res;
+      showStatus(`Backup setup failed: ${error}`);
+      return { ok: false, error };
+    };
+    revisionTracker.clearLastSeenRemote();
+    const res = await persistBackupFolderCandidate(candidate);
+    if (!res.ok) {
+      return failSetup(res.error ?? 'Unknown error');
     }
+    let coreDetail = '';
     if (res.existingBackupJson) {
       const verification = verifyBackup(res.existingBackupJson);
       if (!verification.valid) {
-        showStatus('Folder linked. Existing latest.json is invalid, so current DB was kept unchanged.');
+        const error = 'Existing latest.json is invalid. Setup remains incomplete and no data was imported.';
+        return failSetup(error);
       } else {
         const imported = await importDB(res.existingBackupJson, true);
         if (imported) {
+          coreApplied = true;
           await reloadDB();
           // Legacy JSON → OPFS only; mirror only if we actually have items.
           const { dbRpc } = await import('./lib/storage/dbClient');
@@ -1132,8 +1194,10 @@ function App() {
           }
           await loadData();
           showStatus('Folder linked. Legacy latest.json imported into workbench.sqlite.');
+          coreDetail = 'Imported latest.json and created workbench.sqlite.';
         } else {
-          showStatus('Folder linked, but loading existing latest.json failed. Current DB was kept.');
+          const error = 'Could not import existing latest.json. Setup remains incomplete.';
+          return failSetup(error);
         }
       }
     } else {
@@ -1142,60 +1206,81 @@ function App() {
         if (res.hadExistingWorkbenchDb) {
           const loaded = await loadWorkbenchSqliteFromFolder();
           if (!loaded.ok) {
-            showStatus(
-              `Backup folder linked, but could not LOAD your library (folder was NOT overwritten): ${loaded.error}`
+            return failSetup(
+              `Could not load your library; the selected folder was not overwritten: ${loaded.error}`
             );
-            return { ok: false, error: loaded.error };
           }
+          coreApplied = true;
           await reloadDB();
           await loadData();
-          showStatus('Loaded your library from workbench.sqlite in that folder (folder was not overwritten).');
+          const migrated = res.source === 'legacy-sqlite';
+          showStatus(
+            migrated
+              ? 'Migrated latest.sqlite to workbench.sqlite and loaded your library.'
+              : 'Loaded your library from workbench.sqlite in that folder (folder was not overwritten).'
+          );
+          coreDetail = migrated
+            ? 'Copied latest.sqlite to workbench.sqlite and loaded it.'
+            : 'Loaded existing workbench.sqlite without overwriting it.';
         } else if (res.freshFolder) {
           // Re-check right before create — never allowEmptyMirror if a file appeared.
           const { folderHasWorkbenchSqlite } = await import('./lib/linkBackupFolder');
           if (await folderHasWorkbenchSqlite()) {
             const loaded = await loadWorkbenchSqliteFromFolder();
             if (!loaded.ok) {
-              showStatus(`Folder has workbench.sqlite but load failed (not overwritten): ${loaded.error}`);
-              return { ok: false, error: loaded.error };
+              return failSetup(
+                `A workbench.sqlite appeared, but could not be loaded; it was not overwritten: ${loaded.error}`
+              );
             }
+            coreApplied = true;
             await reloadDB();
             await loadData();
             showStatus('Loaded existing workbench.sqlite from that folder.');
+            coreDetail = 'A workbench.sqlite appeared before confirmation finished, so Homebase loaded it instead of overwriting it.';
           } else {
             await reloadDB();
             const mirror = await mirrorNow(true, { allowEmptyMirror: true });
             if (!mirror.ok) {
-              showStatus(
-                `Backup folder linked, but could not create workbench.sqlite: ${mirror.error ?? 'unknown error'}`
-              );
-              return { ok: false, error: mirror.error ?? 'Could not write workbench.sqlite' };
+              return failSetup(mirror.error ?? 'Could not create workbench.sqlite');
             }
+            coreApplied = true;
             await loadData();
             showStatus('Backup folder saved. Live database is workbench.sqlite in that folder.');
+            coreDetail = 'Created a new workbench.sqlite for the library.';
           }
         } else {
-          showStatus('Backup folder linked, but no database was found in that folder.');
-          return { ok: false, error: 'No workbench.sqlite in folder.' };
+          return failSetup('No workbench.sqlite was found and a new database could not be created.');
         }
       } catch (e) {
         const msg = String(e);
-        showStatus(`Backup setup failed: ${msg}`);
-        return { ok: false, error: msg };
+        return failSetup(msg);
       }
     }
     // Every successful folder-link path must also establish or load the
     // independently owned, folder-only content store. Fresh folders previously
     // skipped this because only the core allowEmptyMirror branch ran.
+    let contentDetail = '';
     try {
       const { bootstrapContentFromBackupFolderFile } = await import(
         './lib/storage/content/contentClient'
       );
-      await bootstrapContentFromBackupFolderFile();
+      const content = await bootstrapContentFromBackupFolderFile();
+      contentDetail = content.imported
+        ? `Loaded workbench-content.sqlite with ${content.rowCount.toLocaleString()} saved fetch record${content.rowCount === 1 ? '' : 's'}.`
+        : content.reason === 'created-empty-snapshot'
+          ? 'Created a new workbench-content.sqlite for fetched page content.'
+          : `Kept the active content database (${content.rowCount.toLocaleString()} saved fetch record${content.rowCount === 1 ? '' : 's'}).`;
     } catch (error) {
       const message = `Core database linked, but content database setup failed: ${String(error)}`;
-      showStatus(message);
-      return { ok: false, error: message };
+      return failSetup(message);
+    }
+    let itemCount = 0;
+    try {
+      const { dbRpc } = await import('./lib/storage/dbClient');
+      const live = await dbRpc<{ itemCount: number }>('liveFingerprint', []);
+      itemCount = live.itemCount;
+    } catch (error) {
+      console.warn('[backup-onboarding] Could not read final item count:', error);
     }
     await setBackupFolderOnboarding('done');
     setFolderConfigured(true);
@@ -1203,6 +1288,13 @@ function App() {
     await markBackupFolderLinkedFlag();
     await refreshBackupFolderStatus();
     await runStartupConflictCheck();
+    setBackupSetupReceipt({
+      folderName: res.folderName ?? candidate.folderName,
+      mode: res.source ?? candidate.source,
+      itemCount,
+      details: [coreDetail, contentDetail].filter(Boolean),
+    });
+    setBackupSetupModalOpen(false);
     return { ok: true };
   };
 
@@ -1391,6 +1483,7 @@ function App() {
         mode={folderLinkLost ? 'recover' : 'choose'}
         folderName={backupFolderName}
         onChooseFolder={handleChooseBackupFolder}
+        onConfirmFolder={handleConfirmBackupFolder}
         onReconnectFolder={handleReconnectBackupFolder}
       />
     );
@@ -1425,7 +1518,7 @@ function App() {
       libraryLoading={libraryLoading}
       libraryHydrateProgress={libraryLoading ? libraryHydrateProgress : null}
       onChooseBackupFolder={async () => {
-        await handleChooseBackupFolder();
+        setBackupSetupModalOpen(true);
       }}
       onSetAsBrowserHome={handleSetAsBrowserHome}
       onRestoreBackupFile={handleRestoreBackupFile}
@@ -1443,6 +1536,24 @@ function App() {
       onSaveAISettings={handleSaveAISettings}
       onTestAI={handleTestAI}
     />
+    {backupSetupModalOpen ? (
+      <BackupOnboardingModal
+        open
+        allowSkip
+        mode="choose"
+        folderName={backupFolderName}
+        onChooseFolder={handleChooseBackupFolder}
+        onConfirmFolder={handleConfirmBackupFolder}
+        onReconnectFolder={handleReconnectBackupFolder}
+        onSkip={() => setBackupSetupModalOpen(false)}
+      />
+    ) : null}
+    {backupSetupReceipt ? (
+      <BackupSetupResultModal
+        receipt={backupSetupReceipt}
+        onContinue={() => setBackupSetupReceipt(null)}
+      />
+    ) : null}
     </div>
   );
 }

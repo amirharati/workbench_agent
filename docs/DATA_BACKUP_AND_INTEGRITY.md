@@ -37,7 +37,11 @@ Non‑goals for this phase: perfect multi‑writer sync, conflict‑free merge a
 0. **V2.1.1 runtime storage (2026-05-29)**
    - Domain data in **SQLite WASM on OPFS** inside one **DB worker** (`src/lib/storage/dbWorker/`, `src/offscreen/offscreen.ts`).
    - **All UI tabs** use RPC (`dbClient` → service worker → offscreen → worker). Tab-side `RemoteIdbCompatStore` is a read cache only.
-   - **Backup folder required:** blocking onboarding until chosen.
+   - **Backup folder required:** blocking onboarding until chosen. Selection is two-phase: the native picker
+     only returns an in-memory candidate; Homebase lists the recognized files and requires an explicit
+     **Use this folder** confirmation before persisting the handle or touching database state. Picker
+     cancellation/interruption leaves onboarding pending. A completion receipt reports the folder, item count,
+     and whether each core/content database was loaded, migrated, kept, or created.
    - **Bootstrap:** if OPFS empty and folder has `workbench.sqlite` → import into OPFS once.
    - **Mirror:** worker `mirrorToFolder.ts` — 3s debounce, 60s min interval; scheduled after mutating RPCs.
    - Meta in IDB: `metaDb.ts` (folder handle, revision kv). Legacy domain IDB/localStorage purged on startup.
