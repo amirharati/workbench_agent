@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { Item } from '../../lib/db';
 import { getDomain, isValidBookmarkUrl, formatDateTime } from '../../lib/utils';
-import { ExternalLink, Eye, Search, X } from 'lucide-react';
+import { Eye, Search, X } from 'lucide-react';
 import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { ItemContextMenu } from './ItemContextMenu';
 import { TabScrollShell } from './TabScrollShell';
@@ -9,6 +9,7 @@ import { uiPatterns } from '../../styles/uiPatterns';
 import { buildItemQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
+import { LinkVisual } from './LinkVisual';
 
 interface QuickAccessItemListProps {
   title: string;
@@ -200,7 +201,7 @@ export const QuickAccessItemList: React.FC<QuickAccessItemListProps> = ({
                             gap: '0.25rem',
                           }}
                         >
-                          <ExternalLink size={12} />
+                          <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
                           {getDomain(item.url)}
                         </div>
                       )}

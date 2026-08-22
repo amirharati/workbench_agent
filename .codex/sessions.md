@@ -271,3 +271,59 @@
 - Also removed Vite `modulepreload` tags from extension HTML (`build.modulePreload: false`), eliminating Chrome's cross-world preload-mismatch warnings. The production `index.html` and `offscreen.html` contain no preload tags.
 - Status: Focused side-panel startup tests and production build pass; live reload of the unpacked extension is pending.
 - Next steps: Reload the unpacked extension, close/reopen the side panel, then confirm the capture UI remains visible after selecting a saved page and using the digest controls.
+
+## 2026-08-21 - Restore UI synchronization review
+- Session ID: unknown
+- Agent: codex
+- Summary: Committed the reviewed backup-recovery and side-panel checkpoint as `85a2d0a` (`Harden backup recovery and side panel`), excluding unrelated `.kilo/` and visualization folders. Restore is durable before the UI changes, but the current handoff resets the tab cache and waits for a forced full hydration of essential plus pipeline tables before App copies restored organization/items into React state. It also does not publish a revisioned `import.replace` notification after direct SQLite replacement, leaving other open extension surfaces stale until their next refresh.
+- Status: Diagnosis only after checkpoint; no follow-up code changes.
+- Next steps: Make restore hydrate and render the essential library first, defer pipeline tables, invalidate stale pipeline state, and publish one revisioned replace event so every open dashboard/side-panel surface converges without manual refresh.
+
+## 2026-08-21 - Sidebar footer placement
+- Session ID: unknown
+- Agent: codex
+- Summary: Moved the fixed Settings/Trash/Help group down to the shell edge by removing the page-scroll-only 88px Chrome footer clearance from the sidebar footer. Scrollable page content keeps its safety clearance; only the previously empty sidebar gap is reclaimed.
+- Status: Uncommitted visual adjustment. Responsive-layout test, production build, and diff check pass.
+
+## 2026-08-21 - Home link visual consistency
+- Session ID: unknown
+- Agent: codex
+- Summary: Corrected Home workspace rows to render saved URL items through the shared `LinkVisual` favicon/domain fallback, matching Library, project, workspace, inspector, preview, and enrichment surfaces. Generic semantic icons remain only for notes, searches, lists, and unsaved external snapshot URLs.
+- Status: Uncommitted alongside the sidebar-footer adjustment. Focused Home/ContentBrowser tests, production build, and diff check pass.
+
+## 2026-08-21 - App-wide link identity visuals
+- Session ID: unknown
+- Agent: codex
+- Summary: Extended the compact shared site visual rule to every active URL row, not just one Home path: Home/All Library/project workspaces, active workspace cards, Search, quick-access lists, legacy workspace tabs, and browser snapshots. Notes, searches, lists, filter buttons, and explicit external-open actions retain semantic/action icons; a rendered URL now gets favicon → site fallback consistently.
+- Status: Uncommitted. TypeScript, 20 focused Home/ContentBrowser/All-Library tests, production build, and diff check pass.
+
+## 2026-08-22 - Third-party preload warning clarification
+- Session ID: unknown
+- Agent: codex
+- Summary: Confirmed the reported CSS preload warning targets `cdn.prod.website-files.com` (Intrinio/Webflow), not a Homebase extension asset. It is a site performance warning: the page preloaded a stylesheet then did not consume it promptly. No repository change was made.
+- Status: Informational; safe to ignore for Homebase unless the external site itself is being developed.
+
+## 2026-08-22 - Mixed bulk completion wording
+- Session ID: unknown
+- Agent: codex
+- Summary: Corrected durable bulk completion copy so a successful mixed batch leads with completed work and calls expected per-link fetch/AI misses `unavailable` rather than making the entire run read as failed. An all-failed run remains explicitly failed/error; detailed report rows retain exact failure reasons and retry paths. The reported case now formats as `342 enriched · 261 classified · 2 skipped · 115 unavailable`.
+- Status: Uncommitted. Pipeline-client tests and script assertion passed; TypeScript, production build, and diff check pass. The repository retains its known script-style Vitest no-suite wrapper behavior.
+
+## 2026-08-22 - Classification discover action diagnosis
+- Session ID: unknown
+- Agent: codex
+- Summary: Confirmed a real coordinator-cache regression behind `Discover + Classify (121) — complete / 0 processed`: the dashboard computes the 121 eligible candidates from its warmed pipeline cache, but the offscreen durable runner deliberately skips installing a scoped cache seed for its synthetic `__taxonomy__` task. Discover therefore reads an unhydrated/essential-only remote cache and filters the same submitted IDs down to zero. The completion dialog accurately reports the empty runner input but hides its exclusion counts.
+- Status: Implemented but uncommitted. Full digest jobs now append one terminal, job-scoped Discover task; that task loads exactly its submitted item IDs plus the live DB-worker taxonomy/category set. The synthetic task is excluded from link progress/counts and recovery reconstruction. Explicit narrow actions can retain `skipDiscover`. Also repaired the Classification reload path: it now awaits the authoritative pipeline-table hydration before deriving statuses or Discover counts, preventing persisted data from rendering as `Not fetched yet`/zero candidates after reload.
+- Next steps: Reload the unpacked extension and open Classification; existing fetched state and candidate counts should settle correctly. Then test one full digest and a small import/bulk digest. Confirm Discover appears once at the end, uses the current taxonomy, and processes eligible links.
+- Follow-up hardening — 2026-08-22: The first repair still let scoped Discover re-read its selected rows through the offscreen cache after seeding. That cache can be partial after a reload, so it could again turn persisted enrichment into zero candidates. Discover now performs its scoped eligibility read directly against the DB-worker seed RPC; the generic pipeline catalog likewise hydrates pipeline tables before it derives any status labels. Added a regression test proving authoritative scoped reads do not touch the cache. Focused 19-test suite, TypeScript, production build, and diff check pass. These changes are uncommitted; reload the unpacked extension before retrying because already-completed jobs retain their prior zero-result report.
+- Direct database verification — 2026-08-22: Inspected the newest mirrored `homebase-test5/workbench.sqlite` after the repeated zero run. The job submitted 121 IDs and all 121 are persisted (`items`, `item_enrichment status=ok/ai_status=ok` with summaries, and `ai_item_signals classify_state=classified_general`), but its saved Discover summary has `totalConsidered=0`. This proves no data was missing and pinpoints the remaining failure to the offscreen scoped-reader transport. Replaced the remote-store-mediated read with a direct high-priority DB-worker RPC and fail closed if the DB returns no selected rows, rather than reporting a false successful zero run. Focused 19-test suite, TypeScript, production build, and diff check pass. Uncommitted; one reload is required for the new offscreen code.
+- Stored pipeline-integrity review — 2026-08-22: Inspected `End-to-End ASR in PyTorch - train_asr.py` directly in the newest mirror before making further code changes. Fetch + AI are correctly persisted (`status=ok`, `ai_status=ok`, 368-char summary), while `ai_item_signals` stores `classify_state=classified` and an LLM decision for `seed_nlp-transformers` but has an empty vector and no `ai_item_category_links` row. The durable job recorded `embed:1:0` and two successful classification passes with `assignedPrimary:1`; the state is therefore genuinely contradictory. The embed cause is clear in source: a subsequent classify stage receives a seed deliberately stripped of embedding vectors and writes that empty vector back. The missing-link completion is also not durably verified: the pipeline relies on client/cache-oriented transaction/readback paths, allowing a state claim without its link. No code change made in this review. Next design: worker-owned atomic downstream commits (embedding signal; classification signal+links) and worker readback verification before task completion; reconcile/requeue orphan `classified` signals afterward.
+
+## 2026-08-22 - Enforce durable downstream pipeline invariants
+- Session ID: unknown
+- Agent: codex
+- Summary: Replaced cache-oriented embedding/classification writes with worker-owned SQLite transactions and authoritative readback. Classification preserves vectors and cannot acknowledge an assigned state without a durable primary link; embedding preserves classification fields and verifies its hash/model/vector. Scoped caches carry dimension counts when vector bytes are stripped, and Inspector now reads authoritative per-item signal metadata directly from the worker. Reload-time reconciliation restores safe orphan links from stored LLM decisions and re-queues only unrecoverable rows. Advanced every DB-owner protocol participant to v18.
+- Live follow-up: Re-digesting the ASR test item proved its vector was actually present (6,144 bytes / 1,536 dimensions) despite the UI saying `Vector: None`, and exposed a separate destructive reclassification bug: an LLM `none` result deleted the last valid suggested category. Category replacement is now monotonic in both the caller and worker transaction, so no-result/error outcomes retain the last valid assignment and cannot downgrade it.
+- Vector-display correction: A second live Re-digest again stored 6,144 vector bytes with the exact `cdbc17b5…` hash shown by Inspector. The remaining false `None` was a concrete UI precedence bug: `embedding: []` produced a non-nullish length of zero, preventing fallback to the worker-provided `embeddingDimensions: 1536`. Inspector and shared stage logic now use the same dimension resolver; a regression test covers metadata-only transported vectors.
+- Status: Uncommitted implementation built and ready for live acceptance. TypeScript, 32 focused tests including vector-preservation, atomic classification, monotonic no-result replacement, and owner-protocol coverage, `git diff --check`, and production build pass.
+- Next steps: Reload the unpacked extension. The ASR item should immediately report `Vector: 1536 dimensions` without Re-embed. Its already-deleted old category cannot be reconstructed from its now-overwritten current decision; verify category retention by classifying/assigning it (or using another categorized item), then Re-digest and confirm the category remains. If accepted, clear the test database and execute clean one-link and small bulk imports before larger sleep/navigation tests.

@@ -195,6 +195,40 @@ describe('durable pipeline job store', () => {
     expect([second.task.item_id, second.task.stage]).toEqual(['item-1', 'embed']);
   });
 
+  it('runs one scoped Discover task only after every link in a full batch finishes', () => {
+    const submitted = submitPipelineJob(db, {
+      id: 'batch-discover',
+      dedupeKey: 'batch:discover',
+      action: 'full_digest_v2',
+      source: 'import',
+      itemIds: ['item-1', 'item-2'],
+      stages: ['enrich', 'classify', 'finalize', 'discover'],
+      now: 100,
+    });
+
+    expect(submitted.snapshot.tasks.filter((task) => task.stage === 'discover'))
+      .toEqual([expect.objectContaining({ item_id: '__taxonomy__', ordinal: 6 })]);
+
+    let now = 200;
+    for (let i = 0; i < 6; i++) {
+      const claim = claimNextPipelineTask(db, 'owner-a', 5_000, now++, 'batch-discover')!;
+      expect(claim.task.item_id).not.toBe('__taxonomy__');
+      finishPipelineTask(db, {
+        jobId: 'batch-discover',
+        itemId: claim.task.item_id,
+        stage: claim.task.stage,
+        ownerId: 'owner-a',
+        jobLeaseEpoch: claim.jobLeaseEpoch,
+        taskLeaseEpoch: claim.taskLeaseEpoch,
+        outcome: 'completed',
+        now: now++,
+      });
+    }
+
+    const discover = claimNextPipelineTask(db, 'owner-a', 5_000, now, 'batch-discover')!;
+    expect([discover.task.item_id, discover.task.stage]).toEqual(['__taxonomy__', 'discover']);
+  });
+
   it('yields a bulk job between items so a higher-priority single runs first', () => {
     submitPipelineJob(db, {
       id: 'bulk-job', dedupeKey: 'bulk:1', action: 'full_digest_v2', source: 'hub',

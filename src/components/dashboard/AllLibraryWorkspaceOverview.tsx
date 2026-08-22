@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, FileText, Folder, Layers3, Link2, List, Pin, Search, Star, Trash2, Workflow } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, FileText, Folder, Layers3, Link2, List, Pin, Search, Star, Trash2, Workflow } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import type { GlobalTab } from './GlobalTabSystem';
@@ -15,6 +15,7 @@ import { buildItemQuickFilterText } from '../../lib/itemQuickFilter';
 import { SourceMenuTab } from './SourceMenuTab';
 import { ItemFavoriteButton } from './ItemFavoriteButton';
 import { isItemPinnedToProject, updateProjectPinMetadata } from './projectPins';
+import { LinkVisual } from './LinkVisual';
 
 export interface WorkspaceViewGroup {
   key: string;
@@ -212,7 +213,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
         title: item.title || 'Untitled',
         icon: (
           <span className="ui-content-browser__item-kind">
-            {item.url ? <Link2 size={12} aria-hidden="true" /> : <FileText size={12} aria-hidden="true" />}
+            {item.url ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} /> : <FileText size={12} aria-hidden="true" />}
             <ItemQuickAccessMarkers item={item} size={9} />
           </span>
         ),
@@ -518,7 +519,7 @@ export const AllLibraryWorkspaceOverview: React.FC<AllLibraryWorkspaceOverviewPr
             </div>
           ) : activeSelectedTab?.kind === 'url' ? (
             <div className="scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 17 }}>
-              <span style={previewIconStyle}><ExternalLink size={15} /></span>
+              <span style={previewIconStyle}><LinkVisual url={activeSelectedTab.url} title={activeSelectedTab.title} favicon={activeSelectedTab.favIconUrl} /></span>
               <h3 style={{ margin: '12px 0 0', color: 'var(--text)', fontSize: 'var(--text-lg)' }}>{activeSelectedTab.title || 'Web page'}</h3>
               <ExtensionPageUrlLink url={activeSelectedTab.url} style={{ display: 'inline-block', marginTop: 7, color: 'var(--accent)', fontSize: 'var(--text-sm)', overflowWrap: 'anywhere' }}>{activeSelectedTab.url}</ExtensionPageUrlLink>
               <p style={{ margin: '15px 0 0', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}>{selectedTabProjectId === 'all' ? 'Global workspace' : projects.find((project) => project.id === selectedTabProjectId)?.name ?? 'Project workspace'}</p>

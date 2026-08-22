@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ExternalLink, FileText, Folder, Home as HomeIcon, Layers3, Link2, Search, GripVertical, X } from 'lucide-react';
+import { FileText, Folder, Home as HomeIcon, Layers3, Search, GripVertical, X } from 'lucide-react';
 import type { Item, Collection, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import type { GlobalTab, GlobalTabState, GlobalTabList, GlobalTabSearch, SavedWorkspaceSession } from './GlobalTabSystem';
 import { ItemContextMenu } from './ItemContextMenu';
@@ -721,9 +721,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
         icon: tab.kind === 'search'
           ? <Search size={12} />
           : tab.kind === 'url'
-            ? <ExternalLink size={12} />
+            ? <LinkVisual url={tab.url} title={tab.title} favicon={tab.favIconUrl} />
             : item?.url
-              ? <Link2 size={12} />
+              ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
               : <FileText size={12} />,
         subtitle,
         searchText: item ? `${item.tags.join(' ')} ${item.notes ?? ''}` : subtitle,

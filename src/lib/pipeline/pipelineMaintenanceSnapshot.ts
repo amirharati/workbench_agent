@@ -12,6 +12,7 @@ import {
 import { APP_DISCOVER_MAP_BATCH_SIZE, MIN_DISCOVER_POOL } from '../categorization/discoverPolicy';
 import { loadAISettings } from '../ai/settings';
 import { loadItemIdsForPipelineQueue } from './itemPipelineContext';
+import { ensurePipelineHydrated } from '../db';
 
 /** LLM chunk size for hub discover (v3 MAP batches; full pool across ceil(n / size) calls). */
 export const HUB_DISCOVER_SAMPLE_BATCH_SIZE = APP_DISCOVER_MAP_BATCH_SIZE;
@@ -211,6 +212,10 @@ export function buildDiscoverActionPlan(input: {
 export async function loadPipelineMaintenanceSnapshot(opts?: {
   itemIds?: string[];
 }): Promise<PipelineMaintenanceSnapshot> {
+  // The maintenance counts are a projection of enrichment, signals, and
+  // category links. Never treat an initial essential-only tab cache as a
+  // real zero-count classification queue after reload.
+  await ensurePipelineHydrated();
   const [catalog, taxonomyRaw, categories, aiSettings] = await Promise.all([
     getPipelineCatalog(),
     getTaxonomyState(),

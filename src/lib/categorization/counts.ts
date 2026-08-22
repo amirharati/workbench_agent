@@ -112,15 +112,27 @@ export function classifyStateFromPrimary(leafId: string | null, eligible: boolea
   return 'classified';
 }
 
-/** Derive display/queue bucket; persisted signal always wins. */
+/** Derive display/queue bucket; a claimed classification needs durable link evidence. */
 export function resolveEffectiveClassifyState(input: {
   signalState?: import('./types').ClassifyState;
   primaryCategoryId?: string | null;
   /** @deprecated eligibility is applied when classify runs, not before a signal exists */
   eligible?: boolean;
 }): import('./types').ClassifyState {
-  if (input.signalState) return input.signalState;
   const pid = input.primaryCategoryId ?? null;
+  if (
+    input.signalState &&
+    (
+      input.signalState === 'classified' ||
+      input.signalState === 'classified_general' ||
+      input.signalState === 'classified_removal' ||
+      input.signalState === 'classified_attention'
+    ) &&
+    !pid
+  ) {
+    return 'pending_classify';
+  }
+  if (input.signalState) return input.signalState;
   if (pid && isLinkQualityLeafId(pid)) return classifyStateForLinkQualityLeaf(pid);
   if (pid && !isGeneralLeafId(pid)) return 'classified';
   if (pid && isGeneralLeafId(pid)) return 'classified_general';

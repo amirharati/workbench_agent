@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Workspace } from '../../lib/db';
-import { ExternalLink, Globe } from 'lucide-react';
+import { Globe } from 'lucide-react';
+import { LinkVisual } from './LinkVisual';
 
 interface WorkspaceTabProps {
   workspace: Workspace;
@@ -134,7 +135,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ workspace }) => {
                       e.currentTarget.style.borderColor = 'var(--border)';
                     }}
                   >
-                    <ExternalLink size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                    <LinkVisual url={tab.url} title={tab.title} favicon={tab.favIconUrl} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
@@ -173,4 +174,3 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({ workspace }) => {
     </div>
   );
 };
-

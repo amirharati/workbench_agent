@@ -33,6 +33,16 @@ import { cosineSimilarity } from '../../categorization/math';
 import { WorkerSimilarityIndex } from '../../search/similarityIndex';
 import type { AiItemSignal } from '../../categorization/types';
 import {
+  classifyStateRequiresPrimary,
+  commitClassificationInStore,
+  commitEmbeddingSignalsInStore,
+  isCountableAiPrimary,
+  signalMetaOnly,
+  type PipelineClassificationCommitInput,
+  type PipelineDownstreamReconcileResult,
+  type PipelineStageCommitResult,
+} from './pipelineStageCommit';
+import {
   acknowledgePipelineCancellation,
   claimNextPipelineTask,
   finishPipelineTask,
@@ -118,6 +128,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'pauseAutoMirrorForDigest',
   'resumeAutoMirrorAfterDigest',
   'getSignalsByItemIds',
+  'getSignalMetadataByItemIds',
   'getEnrichmentsByItemIds',
   'rankSearchEmbeddings',
   'findSimilarVectorScores',
@@ -133,6 +144,8 @@ const READ_ONLY_RPC_METHODS = new Set([
   'pipelineHeartbeatTask',
   'pipelineFinishTask',
   'pipelineYieldJob',
+  'pipelineCommitEmbeddingSignals',
+  'pipelineCommitClassification',
   'pipelineRequestPause',
   'pipelineAcknowledgePause',
   'pipelineResumeJob',
@@ -251,7 +264,7 @@ async function hydrateSnapshot(): Promise<Record<string, unknown>> {
     enrichment: store.getAllEnrichment(),
     categories: store.getAllCategories(),
     links: store.getAllLinks(),
-    signals: store.getAllSignals(),
+    signals: store.getAllSignals().map(signalMetaOnly),
     taxonomy: store.getTaxonomyState(),
     trash: store.getAllTrashHistory(),
     deletedItems: store.getAllDeletedItems(),
@@ -802,9 +815,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         const rows = store.getAll(name);
         // Never ship embedding vectors to the tab via bulk refresh.
         if (name === 'ai_item_signals' && Array.isArray(rows)) {
-          out[name] = rows.map((s: { embedding?: number[] }) =>
-            s.embedding?.length ? { ...s, embedding: [] } : s
-          );
+          out[name] = (rows as AiItemSignal[]).map(signalMetaOnly);
         } else {
           out[name] = rows;
         }
@@ -821,6 +832,11 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         if (row) out.push(row);
       }
       return out;
+    }
+    case 'getSignalMetadataByItemIds': {
+      const ids = Array.isArray(args[0]) ? (args[0] as string[]) : [];
+      const store = await getIdbCompatStore();
+      return store.getSignalMetadataForItemIds(ids.filter(Boolean));
     }
     case 'getEnrichmentsByItemIds': {
       const ids = Array.isArray(args[0]) ? (args[0] as string[]) : [];
@@ -910,12 +926,159 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         enrichment,
         categories: store.getAllCategories(),
         links: store.getLinksForItemIds(ids),
-        signals: store.getSignalsForItemIds(ids).map((signal) =>
-          signal.embedding?.length ? { ...signal, embedding: [] } : signal
-        ),
+        signals: store.getSignalsForItemIds(ids).map(signalMetaOnly),
         taxonomy: store.getTaxonomyState(),
         revision: revisionTracker.getLocalRevisionSync(),
       };
+    }
+    case 'pipelineCommitEmbeddingSignals': {
+      const incoming = Array.isArray(args[0]) ? (args[0] as AiItemSignal[]) : [];
+      if (!incoming.length) {
+        return {
+          itemIds: [], signals: [], links: [], categories: [],
+          revision: revisionTracker.getLocalRevisionSync(),
+        } satisfies PipelineStageCommitResult;
+      }
+      const store = await getIdbCompatStore();
+      const committed = commitEmbeddingSignalsInStore(store, incoming);
+      for (const signal of committed) applySignalToSimilarityIndex(signal);
+      invalidateHubScopeEntryCache();
+      const revision = revisionTracker.recordSqliteMutation();
+      return {
+        itemIds: committed.map((signal) => signal.itemId),
+        signals: committed.map(signalMetaOnly),
+        links: [],
+        categories: [],
+        revision,
+      } satisfies PipelineStageCommitResult;
+    }
+    case 'pipelineCommitClassification': {
+      const input = (args[0] ?? {}) as PipelineClassificationCommitInput;
+      const categories = Array.isArray(input.categories) ? input.categories : [];
+      const itemWrites = Array.isArray(input.itemWrites) ? input.itemWrites : [];
+      if (!categories.length && !itemWrites.length) {
+        return {
+          itemIds: [], signals: [], links: [], categories: [],
+          revision: revisionTracker.getLocalRevisionSync(),
+        } satisfies PipelineStageCommitResult;
+      }
+      const store = await getIdbCompatStore();
+      const itemIds = [...new Set(itemWrites.map((write) => write.itemId).filter(Boolean))];
+      const committedSignals = commitClassificationInStore(store, { categories, itemWrites });
+      invalidateHubScopeEntryCache();
+      const revision = revisionTracker.recordSqliteMutation();
+      return {
+        itemIds,
+        signals: committedSignals.map(signalMetaOnly),
+        links: store.getLinksForItemIds(itemIds),
+        categories,
+        revision,
+      } satisfies PipelineStageCommitResult;
+    }
+    case 'pipelineReconcileDownstream': {
+      const store = await getIdbCompatStore();
+      const categories = new Map(store.getAllCategories().map((category) => [category.id, category]));
+      const signals = store.getAllSignals();
+      const changedSignals: AiItemSignal[] = [];
+      const changedItemIds: string[] = [];
+      const changedCategories: import('../../categorization/types').AiCategory[] = [];
+      let linksRestored = 0;
+      let signalsRequeued = 0;
+      let missingEmbeddings = 0;
+      const now = Date.now();
+      store.withTransaction(() => {
+        for (const signal of signals) {
+          if (!signal.embedding.length) missingEmbeddings++;
+          if (!classifyStateRequiresPrimary(signal.classifyState)) continue;
+          const existingLinks = store.getLinksByItem(signal.itemId);
+          if (existingLinks.some(isCountableAiPrimary)) continue;
+
+          const recoverableIds = existingLinks.length === 0
+            ? [...new Set(signal.llmReview?.categoryIds ?? [])].filter((categoryId) => {
+                const category = categories.get(categoryId);
+                return Boolean(
+                  category &&
+                  category.kind === 'leaf' &&
+                  category.assignable &&
+                  category.status !== 'deprecated'
+                );
+              })
+            : [];
+
+          if (recoverableIds.length) {
+            recoverableIds.forEach((categoryId, index) => {
+              store.putLink({
+                id: `link_${signal.itemId}_${categoryId}`,
+                itemId: signal.itemId,
+                categoryId,
+                score: signal.llmReview?.confidence ?? 0.5,
+                isPrimary: index === 0,
+                source: 'ai',
+                status: 'suggested',
+                created_at: signal.lastClassifiedAt ?? now,
+                updated_at: now,
+              });
+              linksRestored++;
+            });
+          } else {
+            const next: AiItemSignal = {
+              ...signal,
+              classifyState: 'pending_classify',
+              discoverState: 'none',
+              isNovelty: false,
+              classifyRetryCount: 0,
+              lastClassifySkipReason: 'Re-queued — classified state had no durable primary link',
+              lastClassifiedAt: undefined,
+              lastProcessedAt: now,
+            };
+            store.putSignal(next);
+            changedSignals.push(next);
+            signalsRequeued++;
+          }
+          changedItemIds.push(signal.itemId);
+        }
+        if (linksRestored > 0) {
+          const counts = new Map(
+            store.getCategoryLinkCounts().map((row) => [row.categoryId, row])
+          );
+          for (const category of categories.values()) {
+            const count = counts.get(category.id);
+            const next = {
+              ...category,
+              itemCount: count?.itemCount ?? 0,
+              primaryItemCount: count?.primaryItemCount ?? 0,
+              secondaryItemCount: count?.secondaryItemCount ?? 0,
+              updated_at: now,
+            };
+            if (
+              next.itemCount !== (category.itemCount ?? 0) ||
+              next.primaryItemCount !== (category.primaryItemCount ?? 0) ||
+              next.secondaryItemCount !== (category.secondaryItemCount ?? 0)
+            ) {
+              store.putCategory(next);
+              changedCategories.push(next);
+            }
+          }
+        }
+      });
+      const itemIds = [...new Set(changedItemIds)];
+      const revision = itemIds.length
+        ? revisionTracker.recordSqliteMutation()
+        : revisionTracker.getLocalRevisionSync();
+      if (itemIds.length) {
+        invalidateHubScopeEntryCache();
+        scheduleFolderMirror();
+      }
+      return {
+        itemIds,
+        signals: changedSignals.map(signalMetaOnly),
+        links: store.getLinksForItemIds(itemIds),
+        categories: changedCategories,
+        revision,
+        linksRestored,
+        signalsRequeued,
+        missingEmbeddings,
+      } satisfies PipelineDownstreamReconcileResult;
     }
     case 'getCategoryLinkCounts': {
       const store = await getIdbCompatStore();

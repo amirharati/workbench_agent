@@ -329,11 +329,17 @@ export async function loadItemPipelineContext(itemId: string): Promise<ItemPipel
   await commitPendingDbWrites();
   const { getRemoteStore, isDbWorkerProcess } = await import('../storage/dbClient');
   if (!isDbWorkerProcess()) {
-    const seed = await getRemoteStore().createPipelineCacheSeed([itemId]);
+    const { getSignalMetadataByItemIds } = await import('../storage/dbClient');
+    const [seed, signalMetadata] = await Promise.all([
+      getRemoteStore().createPipelineCacheSeed([itemId]),
+      getSignalMetadataByItemIds<AiItemSignal>([itemId]),
+    ]);
     const item = seed.items.find((row) => row.id === itemId);
     if (!item) return null;
     const enrichByItem = new Map(seed.enrichment.map((row) => [row.itemId, row]));
-    const signalByItem = new Map(seed.signals.map((row) => [row.itemId, row]));
+    const authoritativeSignal = signalMetadata[0];
+    const signalRows = authoritativeSignal ? [authoritativeSignal] : seed.signals;
+    const signalByItem = new Map(signalRows.map((row) => [row.itemId, row]));
     const linksByItem = new Map<string, AiItemCategoryLink[]>();
     for (const link of seed.links) {
       const list = linksByItem.get(link.itemId) ?? [];

@@ -23,12 +23,15 @@ import type {
   PipelineJobSnapshot,
 } from '../storage/dbWorker/pipelineJobStore';
 import type { OffscreenPipelineJobOptions } from './offscreenPipelineProtocol';
+import { formatPipelineCompletionSummary } from './pipelineDictionary';
 
 export const DURABLE_FULL_DIGEST_STAGES = [
   'enrich',
   'embed',
   'classify',
   'finalize',
+  // Stored as one terminal, job-scoped task rather than once per link.
+  'discover',
 ] as const;
 
 const LEASE_MS = 45_000;
@@ -321,12 +324,13 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
       embedFailed += Number(match[2]);
     }
   }
-  const parts = [
-    enriched ? `${enriched} enriched` : '',
-    skipped ? `${skipped} skipped` : '',
-    failed ? `${failed} failed` : '',
-    classified ? `${classified} classified` : '',
-  ].filter(Boolean);
+  const completionSummary = formatPipelineCompletionSummary({
+    enriched,
+    skipped,
+    failed,
+    classified,
+    classifySummary,
+  });
   let discoverResult: BatchDigestResult['discoverResult'];
   const discoverJson = discoverTask?.result_ref?.startsWith('discover-json:')
     ? discoverTask.result_ref.slice('discover-json:'.length)
@@ -345,7 +349,7 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
     discoverResult,
     embedded,
     embedFailed,
-    message: parts.join(' · ') || (discoverResult
+    message: completionSummary !== 'No changes' ? completionSummary : (discoverResult
       ? `${discoverResult.itemsSampled} processed · +${discoverResult.newLeaves} topics`
       : `${snapshot.job.total_items} processed`),
     itemEnrichResults,
@@ -356,6 +360,7 @@ export async function runDurablePipelineJob(
   input: DurablePipelineRunInput
 ): Promise<DurablePipelineRunResult> {
   let seededItemId: string | null = null;
+  let seededDiscoverScopeKey: string | null = null;
   let finalSnapshot: PipelineJobSnapshot | null = null;
   let yieldRequested = false;
 
@@ -401,7 +406,23 @@ export async function runDurablePipelineJob(
     }, HEARTBEAT_MS);
 
     try {
-      if (claim.task.stage !== 'discover' && seededItemId !== claim.task.item_id) {
+      if (claim.task.stage === 'discover') {
+        // Discover is a synthetic terminal task. Seed its exact submitted
+        // scope from the DB worker so it sees current enrichment, signals,
+        // category links, and the user's current taxonomy.
+        const discoverItemIds = [...new Set(
+          (input.options.discoverItemIds ?? input.itemIds).filter(
+            (itemId): itemId is string => Boolean(itemId)
+          )
+        )];
+        const scopeKey = discoverItemIds.join(',');
+        if (discoverItemIds.length && seededDiscoverScopeKey !== scopeKey) {
+          const seed = await getRemoteStore().createPipelineCacheSeed(discoverItemIds);
+          throwIfAborted(input.signal);
+          installPipelineCacheSeed(seed);
+          seededDiscoverScopeKey = scopeKey;
+        }
+      } else if (seededItemId !== claim.task.item_id) {
         const seed = await getRemoteStore().createPipelineCacheSeed([claim.task.item_id]);
         throwIfAborted(input.signal);
         installPipelineCacheSeed(seed);

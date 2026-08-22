@@ -80,6 +80,8 @@ export interface AiItemSignal {
   classifyTextHash?: string;
   embeddingModel: string;
   embedding: number[];
+  /** Read-cache metadata when worker strips the actual vector payload. Not persisted. */
+  embeddingDimensions?: number;
   derivedTags: string[];
   tagConfidence?: number;
   signalStatus: AiSignalStatus;

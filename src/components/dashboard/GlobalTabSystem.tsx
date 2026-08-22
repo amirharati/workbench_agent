@@ -25,6 +25,7 @@ import {
   itemMatchesScope,
 } from '../../lib/shell/itemScope';
 import { formatGeneralWorkspaceName, formatProjectWorkspaceName } from './workspaceLabels';
+import { LinkVisual } from './LinkVisual';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
 
@@ -1006,7 +1007,13 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   style={{ opacity: draggedTabId === tab.id ? 0.4 : 1 }}
                 >
                   <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20 }}>
-                    {isSearch ? <Search size={14} /> : isList ? <Layout size={14} /> : isUrl ? <ExternalLink size={14} /> : <FileText size={14} />}
+                    {isSearch
+                      ? <Search size={14} />
+                      : isList
+                        ? <Layout size={14} />
+                        : isUrl
+                          ? <LinkVisual url={tab.url} title={tab.title} favicon={tab.favIconUrl} />
+                          : <FileText size={14} />}
                   </div>
                   {!isSidebarCollapsed && (
                     <>

@@ -56,7 +56,9 @@ export async function loadPipelineCatalogFresh(): Promise<PipelineCatalog> {
   // Meta-only signals — catalog must never pin embedding vectors in its cache.
   const signals = db.objectStoreNames.contains('ai_item_signals')
     ? (await db.getAll('ai_item_signals')).map((s) =>
-        s.embedding?.length ? { ...s, embedding: [] } : s
+        s.embedding?.length
+          ? { ...s, embedding: [], embeddingDimensions: s.embedding.length }
+          : s
       )
     : [];
   const links = db.objectStoreNames.contains('ai_item_category_links')
@@ -88,9 +90,11 @@ export async function loadPipelineCatalogFresh(): Promise<PipelineCatalog> {
 
 export async function getPipelineCatalog(opts?: { force?: boolean }): Promise<PipelineCatalog> {
   const now = Date.now();
+  let digestInFlight = false;
   try {
     const { isAnyDigestInFlight } = await import('./singleLinkDigest');
-    if (isAnyDigestInFlight() && catalogCache) {
+    digestInFlight = isAnyDigestInFlight();
+    if (digestInFlight && catalogCache) {
       // Never rebuild a full catalog mid-digest.
       return catalogCache.catalog;
     }
@@ -100,8 +104,13 @@ export async function getPipelineCatalog(opts?: { force?: boolean }): Promise<Pi
   if (!opts?.force && catalogCache && now - catalogCache.at < CATALOG_TTL_MS) {
     return catalogCache.catalog;
   }
-  const { refreshPipelineCacheFromWorker } = await import('../db');
+  const { ensurePipelineHydrated, refreshPipelineCacheFromWorker } = await import('../db');
   await refreshPipelineCacheFromWorker();
+  // The essential startup cache deliberately omits pipeline tables. A catalog
+  // is used to label persisted fetch/AI/classification state, so it is never
+  // valid to derive one from that partial cache. While a local digest owns the
+  // cache we preserve an existing catalog above; otherwise hydrate first.
+  if (!digestInFlight) await ensurePipelineHydrated();
   const catalog = await loadPipelineCatalogFresh();
   catalogCache = { at: now, catalog };
   return catalog;

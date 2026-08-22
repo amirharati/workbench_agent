@@ -1,5 +1,6 @@
 import type { IdbCompatStore, SqliteStore } from '../sqlite/store';
 import type { BatchMutateResult, DbMutation } from '../dbMutations';
+import type { PipelineStageCommitResult } from '../dbWorker/pipelineStageCommit';
 
 async function rpc<T>(method: string, args: unknown[]): Promise<T> {
   const { dbRpc } = await import('./index');
@@ -129,7 +130,7 @@ function yieldToMain(): Promise<void> {
 
 function signalMetaOnlyForTab<T extends { embedding?: number[] }>(row: T): T {
   if (!row.embedding?.length) return row;
-  return { ...row, embedding: [] };
+  return { ...row, embedding: [], embeddingDimensions: row.embedding.length };
 }
 
 function mergeHydrateTableRows(
@@ -441,6 +442,19 @@ export class RemoteIdbCompatStore {
   acceptItemMutation(item: HydrateSnapshot['items'][number], revision: number): void {
     this.patchGenericPut('items', item);
     this.setRevision(revision);
+  }
+
+  /** Patch only rows returned by an authoritative pipeline-stage commit. */
+  acceptPipelineStageCommit(result: PipelineStageCommitResult): void {
+    if (!this.snapshot) return;
+    const itemIds = new Set(result.itemIds);
+    if (itemIds.size) {
+      this.snapshot.links = this.snapshot.links.filter((link) => !itemIds.has(link.itemId));
+    }
+    for (const category of result.categories) this.patchGenericPut('ai_categories', category);
+    for (const link of result.links) this.patchGenericPut('ai_item_category_links', link);
+    for (const signal of result.signals) this.patchGenericPut('ai_item_signals', signal);
+    this.setRevision(result.revision);
   }
 
   /** Merge selected tables from worker SQLite into the tab read cache (lightweight vs full hydrate). */

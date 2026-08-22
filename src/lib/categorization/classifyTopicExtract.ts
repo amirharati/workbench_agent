@@ -8,7 +8,11 @@ import {
   fetchFailedWithoutUsableBody,
 } from '../enrichment/categorizationEligibility';
 import { buildCategorizationText } from '../enrichment/categorizationText';
-import { applyCountsToCategories, linkCountsForCategories } from './counts';
+import {
+  applyCountsToCategories,
+  classifyStateFromPrimary,
+  linkCountsForCategories,
+} from './counts';
 import {
   getAssignableLeaves,
   getParentsFromCategories,
@@ -58,8 +62,11 @@ import type {
   TopicClassifyResult,
   DiscoverRunSummary,
 } from './types';
-import { syncClassifySignalsFromLinks } from '../enrichment/pipelineReset';
 import { aiLinkId } from './service';
+import {
+  commitPipelineClassification,
+  reconcilePipelineDownstream,
+} from '../pipeline/pipelineStagePersistence';
 import {
   applyClassifyRetryPolicy,
   bumpFailureBucket,
@@ -333,33 +340,26 @@ export async function listItemIdsWithGeneralCategory(itemIds: string[]): Promise
 
 export async function markItemsPendingClassify(itemIds: string[]): Promise<void> {
   if (!itemIds.length) return;
-  const db = await getDB();
-  if (!db.objectStoreNames.contains('ai_item_signals')) return;
-
+  const { loadScopedPipelineRows } = await import('../pipeline/scopedPipelineRows');
+  const scoped = await loadScopedPipelineRows(itemIds);
   const primaryCategoryByItem = new Map<string, string>();
-  if (db.objectStoreNames.contains('ai_item_category_links')) {
-    const links = await db.getAll('ai_item_category_links');
-    for (const l of links) {
-      if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
-        primaryCategoryByItem.set(l.itemId, l.categoryId);
-      }
+  for (const l of scoped.links) {
+    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+      primaryCategoryByItem.set(l.itemId, l.categoryId);
     }
   }
 
   const now = Date.now();
-  const tx = db.transaction(['ai_item_signals'], 'readwrite');
+  const itemWrites: Array<{
+    itemId: string;
+    signal: AiItemSignal;
+    links: AiItemCategoryLink[];
+    removeAiSuggested: boolean;
+  }> = [];
   for (const itemId of itemIds) {
-    const prev = await tx.objectStore('ai_item_signals').get(itemId);
+    const prev = scoped.signalByItem.get(itemId);
     const primaryId = primaryCategoryByItem.get(itemId);
-    if (primaryId) {
-      continue;
-    }
-    if (
-      prev?.classifyState === 'classified' ||
-      prev?.classifyState === 'classified_general'
-    ) {
-      // Orphan or stale — re-queue even when state says done.
-    }
+    if (primaryId) continue;
     const next: AiItemSignal = {
       itemId,
       textHash: prev?.textHash ?? '',
@@ -379,51 +379,24 @@ export async function markItemsPendingClassify(itemIds: string[]): Promise<void>
       lastProcessedAt: now,
       inputQualityTier: prev?.inputQualityTier,
     };
-    await tx.objectStore('ai_item_signals').put(next);
+    itemWrites.push({ itemId, signal: next, links: [], removeAiSuggested: false });
   }
-  await tx.done;
+  if (itemWrites.length) {
+    await commitPipelineClassification({ categories: [], itemWrites });
+  }
 }
 
 /** Reset classified / general signals that lost their primary category link. */
 export async function reconcileOrphanClassifiedSignals(): Promise<number> {
-  const db = await getDB();
-  if (
-    !db.objectStoreNames.contains('ai_item_signals') ||
-    !db.objectStoreNames.contains('ai_item_category_links')
-  ) {
-    return 0;
+  const result = await reconcilePipelineDownstream();
+  const updated = result.linksRestored + result.signalsRequeued;
+  if (updated > 0) {
+    console.info(
+      `[categorization] repaired ${result.linksRestored} durable links; ` +
+        `re-queued ${result.signalsRequeued} orphan signals; ` +
+        `${result.missingEmbeddings} signals still need vectors`
+    );
   }
-
-  const links = await db.getAll('ai_item_category_links');
-  const primaryByItem = new Map<string, string>();
-  for (const l of links) {
-    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
-      primaryByItem.set(l.itemId, l.categoryId);
-    }
-  }
-
-  const signals = await db.getAll('ai_item_signals');
-  const now = Date.now();
-  let updated = 0;
-  const tx = db.transaction(['ai_item_signals'], 'readwrite');
-  for (const sig of signals) {
-    if (sig.classifyState !== 'classified' && sig.classifyState !== 'classified_general') continue;
-    if (primaryByItem.has(sig.itemId)) continue;
-    await tx.objectStore('ai_item_signals').put({
-      ...sig,
-      itemId: sig.itemId,
-      classifyState: 'pending_classify',
-      discoverState: 'none',
-      isNovelty: false,
-      classifyRetryCount: 0,
-      lastClassifySkipReason: 'Re-queued — classified state without category link',
-      lastProcessedAt: now,
-      lastClassifiedAt: undefined,
-      llmReview: undefined,
-    });
-    updated++;
-  }
-  await tx.done;
   if (updated > 0) notifyDataChanged('categorization.update');
   return updated;
 }
@@ -453,7 +426,12 @@ export async function reconcileStaleIneligibleSignals(): Promise<number> {
   }
 
   const now = Date.now();
-  let updated = 0;
+  const itemWrites: Array<{
+    itemId: string;
+    signal: AiItemSignal;
+    links: AiItemCategoryLink[];
+    removeAiSuggested: boolean;
+  }> = [];
   for (const sig of stale) {
     const item = itemById.get(sig.itemId);
     if (!item?.url?.trim()) continue;
@@ -464,16 +442,22 @@ export async function reconcileStaleIneligibleSignals(): Promise<number> {
     const eligibility = assessCategorizationEligibility(item, enrichment);
     if (!eligibility.eligible) continue;
 
-    await db.put('ai_item_signals', {
-      ...sig,
-      signalStatus: 'ok',
-      classifyState: 'pending_classify',
-      eligibilityReason: undefined,
-      lastClassifySkipReason: undefined,
-      lastProcessedAt: now,
+    itemWrites.push({
+      itemId: sig.itemId,
+      links: [],
+      removeAiSuggested: false,
+      signal: {
+        ...sig,
+        signalStatus: 'ok',
+        classifyState: 'pending_classify',
+        eligibilityReason: undefined,
+        lastClassifySkipReason: undefined,
+        lastProcessedAt: now,
+      },
     });
-    updated++;
   }
+  if (itemWrites.length) await commitPipelineClassification({ categories: [], itemWrites });
+  const updated = itemWrites.length;
 
   if (updated > 0) notifyDataChanged('categorization.update');
   return updated;
@@ -504,8 +488,12 @@ export async function reconcileSkippedToPendingDiscover(): Promise<number> {
   }
 
   const now = Date.now();
-  let updated = 0;
-  const tx = db.transaction(['ai_item_signals'], 'readwrite');
+  const itemWrites: Array<{
+    itemId: string;
+    signal: AiItemSignal;
+    links: AiItemCategoryLink[];
+    removeAiSuggested: boolean;
+  }> = [];
   for (const sig of legacySkipped) {
     const primaryId = primaryByItem.get(sig.itemId);
     if (hasSpecificPrimaryTopic(primaryId, sig.classifyState)) continue;
@@ -514,17 +502,22 @@ export async function reconcileSkippedToPendingDiscover(): Promise<number> {
     const enrichment = enrichByItem.get(sig.itemId);
     if (enrichment?.aiStatus !== 'ok') continue;
 
-    await tx.objectStore('ai_item_signals').put({
-      ...sig,
-      classifyState: 'pending_discover',
-      discoverState: 'pending',
-      isNovelty: true,
-      lastClassifySkipReason: formatClassifySkipReason('pending_discover'),
-      lastProcessedAt: now,
+    itemWrites.push({
+      itemId: sig.itemId,
+      links: [],
+      removeAiSuggested: false,
+      signal: {
+        ...sig,
+        classifyState: 'pending_discover',
+        discoverState: 'pending',
+        isNovelty: true,
+        lastClassifySkipReason: formatClassifySkipReason('pending_discover'),
+        lastProcessedAt: now,
+      },
     });
-    updated++;
   }
-  await tx.done;
+  if (itemWrites.length) await commitPipelineClassification({ categories: [], itemWrites });
+  const updated = itemWrites.length;
   if (updated > 0) notifyDataChanged('categorization.update');
   return updated;
 }
@@ -552,8 +545,12 @@ export async function reconcileUnassignedAfterClassify(): Promise<number> {
   }
 
   const now = Date.now();
-  let updated = 0;
-  const tx = db.transaction(['ai_item_signals'], 'readwrite');
+  const itemWrites: Array<{
+    itemId: string;
+    signal: AiItemSignal;
+    links: AiItemCategoryLink[];
+    removeAiSuggested: boolean;
+  }> = [];
   for (const sig of candidates) {
     const primaryId = primaryByItem.get(sig.itemId);
     if (hasSpecificPrimaryTopic(primaryId, sig.classifyState)) continue;
@@ -567,17 +564,22 @@ export async function reconcileUnassignedAfterClassify(): Promise<number> {
     if (!classifyAttempted) continue;
     if (!isUnassignedClassifyAttempt(sig)) continue;
 
-    await tx.objectStore('ai_item_signals').put({
-      ...sig,
-      classifyState: 'pending_discover',
-      discoverState: 'pending',
-      isNovelty: true,
-      lastClassifySkipReason: formatClassifySkipReason('pending_discover'),
-      lastProcessedAt: now,
+    itemWrites.push({
+      itemId: sig.itemId,
+      links: [],
+      removeAiSuggested: false,
+      signal: {
+        ...sig,
+        classifyState: 'pending_discover',
+        discoverState: 'pending',
+        isNovelty: true,
+        lastClassifySkipReason: formatClassifySkipReason('pending_discover'),
+        lastProcessedAt: now,
+      },
     });
-    updated++;
   }
-  await tx.done;
+  if (itemWrites.length) await commitPipelineClassification({ categories: [], itemWrites });
+  const updated = itemWrites.length;
   if (updated > 0) notifyDataChanged('categorization.update');
   return updated;
 }
@@ -610,9 +612,10 @@ export async function ensurePendingClassifySignals(opts?: { force?: boolean }): 
 }
 
 async function ensurePendingClassifySignalsWork(): Promise<number> {
-  // Disabled: full-library scan of ai_item_signals OOMs Chrome on large libraries.
-  // Enrich/post-process already calls markItemsPendingClassify for touched item ids.
-  return 0;
+  // Worker-side SQLite reconciliation never transfers the full vector table.
+  // It restores links recorded in durable LLM review metadata and re-queues only
+  // genuinely unrecoverable classified signals.
+  return reconcileOrphanClassifiedSignals();
 }
 
 export async function ensureSeedTaxonomy(): Promise<void> {
@@ -667,26 +670,6 @@ export async function importSeedTaxonomy(replaceExisting = true): Promise<{
 
 const CLASSIFY_PERSIST_ITEM_CHUNK = 20;
 
-async function countPrimaryLinksForItems(
-  itemIds: Set<string>
-): Promise<number> {
-  const db = await getDB();
-  if (!db.objectStoreNames.contains('ai_item_category_links')) return 0;
-  const links = await db.getAll('ai_item_category_links');
-  let n = 0;
-  for (const l of links) {
-    if (
-      itemIds.has(l.itemId) &&
-      l.source === 'ai' &&
-      l.isPrimary &&
-      COUNTABLE_STATUSES.has(l.status)
-    ) {
-      n++;
-    }
-  }
-  return n;
-}
-
 async function persistClassifyResults(
   categories: AiCategory[],
   itemWrites: Array<{
@@ -703,48 +686,17 @@ async function persistClassifyResults(
     (category) => db.get('ai_categories', category.id) === undefined
   );
 
-  const expectedPrimary = new Set(
-    itemWrites
-      .filter((w) => w.links.some((l) => l.isPrimary && COUNTABLE_STATUSES.has(l.status)))
-      .map((w) => w.itemId)
-  );
-
   const { commitPendingDbWrites } = await import('../db');
 
   try {
-    // Phase 1: persist newly promoted FK targets before their assignment links.
-    if (newCategories.length) {
-      const catTx = db.transaction(['ai_categories'], 'readwrite');
-      for (const cat of newCategories) {
-        await catTx.objectStore('ai_categories').put(cat);
-      }
-      await catTx.done;
-      await commitPendingDbWrites();
-    }
-
-    // Phase 2: per-item link + signal batches (avoids chunked batchMutate splitting
-    // categories and links across worker transactions).
+    // Worker owns each atomic category/link/signal commit and verifies claimed
+    // classified states against its own SQLite readback before acknowledging.
     for (let i = 0; i < itemWrites.length; i += CLASSIFY_PERSIST_ITEM_CHUNK) {
       const slice = itemWrites.slice(i, i + CLASSIFY_PERSIST_ITEM_CHUNK);
-      const itemTx = db.transaction(['ai_item_category_links', 'ai_item_signals'], 'readwrite');
-      for (const w of slice) {
-        if (w.removeAiSuggested) {
-          const existing = await itemTx
-            .objectStore('ai_item_category_links')
-            .index('by-item')
-            .getAll(w.itemId);
-          for (const link of existing) {
-            if (link.source === 'ai' && link.status === 'suggested') {
-              await itemTx.objectStore('ai_item_category_links').delete(link.id);
-            }
-          }
-        }
-        for (const link of w.links) {
-          await itemTx.objectStore('ai_item_category_links').put(link);
-        }
-        await itemTx.objectStore('ai_item_signals').put(w.signal);
-      }
-      await itemTx.done;
+      await commitPipelineClassification({
+        categories: i === 0 ? newCategories : [],
+        itemWrites: slice,
+      });
     }
     await commitPendingDbWrites();
 
@@ -785,18 +737,6 @@ async function persistClassifyResults(
       await commitPendingDbWrites();
     }
 
-    if (expectedPrimary.size > 0) {
-      const persisted = await countPrimaryLinksForItems(expectedPrimary);
-      if (persisted < expectedPrimary.size) {
-        const missing = expectedPrimary.size - persisted;
-        console.error(
-          `[classify] persist verify failed: ${persisted}/${expectedPrimary.size} primary links in worker`
-        );
-        throw new Error(
-          `Failed to save ${missing} category assignment${missing === 1 ? '' : 's'} — try again`
-        );
-      }
-    }
   } catch (e) {
     console.error('[classify] persistClassifyResults failed:', e);
     throw e instanceof Error ? e : new Error('Failed to save classify results');
@@ -1402,20 +1342,6 @@ export async function classifyIncremental(
       retryManualReview: opts.retryManualReview,
     });
 
-    if (skipDecision.markPendingReclassify && prev && st === 'classified') {
-      const now = Date.now();
-      gateWrites.push({
-        itemId: item.id,
-        signal: {
-          ...prev,
-          itemId: item.id,
-          classifyState: 'pending_reclassify',
-          lastClassifySkipReason: 'Bookmark text changed — queued for reclassify',
-          lastProcessedAt: now,
-        },
-      });
-    }
-
     if (skipDecision.skip) {
       if (skipDecision.reason === 'unchanged_hash_specific' || skipDecision.reason === 'unchanged_hash_skipped') {
         summary.skippedHash++;
@@ -1488,19 +1414,18 @@ export async function classifyIncremental(
 
 
   if (gateWrites.length) {
-    const db = await getDB();
-    const tx = db.transaction(['ai_item_signals'], 'readwrite');
-    for (const w of gateWrites) {
-      await tx.objectStore('ai_item_signals').put(w.signal);
-    }
-    await tx.done;
-    const { commitPendingDbWrites } = await import('../db');
-    await commitPendingDbWrites();
+    await commitPipelineClassification({
+      categories: [],
+      itemWrites: gateWrites.map((write) => ({
+        ...write,
+        links: [],
+        removeAiSuggested: false,
+      })),
+    });
   }
 
   if (preBatchWrites.length) {
     categories = await persistClassifyResults(categories, preBatchWrites);
-    await syncClassifySignalsFromLinks(preBatchWrites.map((w) => w.itemId));
   }
 
   if (!toProcess.length) {
@@ -1591,9 +1516,11 @@ export async function classifyIncremental(
 
       let classifyState: ClassifyState = 'pending_classify';
       const links: AiItemCategoryLink[] = [];
-      const removeAiSuggested = true;
+      let removeAiSuggested = true;
       let retryCount = prevRetry;
       let lastClassifySkipReason: string | undefined;
+      const unassignedBefore = summary.unassigned;
+      const pendingDiscoverBefore = summary.pendingDiscover;
 
       if (!decision || decision.status === 'error') {
         const retry = applyClassifyRetryPolicy(prevRetry, 'error');
@@ -1841,33 +1768,75 @@ export async function classifyIncremental(
         });
       }
 
-      const signal: AiItemSignal = {
-        itemId: batchItem.itemId,
-        textHash: prevSignal?.textHash ?? hash,
-        classifyTextHash: hash,
-        embeddingModel: prevSignal?.embeddingModel ?? '',
-        embedding: prevSignal?.embedding ?? [],
-        derivedTags: prevSignal?.derivedTags ?? [],
-        signalStatus: 'ok',
-        classifyState,
-        discoverState: classifyState === 'pending_discover' ? 'pending' : 'none',
-        isNovelty:
-          classifyState === 'pending_discover' ||
-          classifyState === 'pending_classify' ||
-          classifyState === 'classified_general',
-        lastProcessedAt: now,
-        lastClassifiedAt: now,
-        classifyRetryCount: retryCount,
-        inputQualityTier: meta?.qualityTier ?? prevSignal?.inputQualityTier,
-        lastClassifySkipReason,
-        llmReview: {
-          decisionType: decision?.decisionType,
-          categoryIds: decision?.categoryIds,
-          confidence: decision?.confidence,
-          reason: decision?.reason,
-          classifyMode: 'topic-extract',
-        },
-      };
+      const previousPrimaryId = primaryCategoryByItem.get(batchItem.itemId);
+      const hasReplacementPrimary = links.some(
+        (link) => link.isPrimary && COUNTABLE_STATUSES.has(link.status)
+      );
+      const preservePreviousAssignment = Boolean(previousPrimaryId && !hasReplacementPrimary);
+      let signal: AiItemSignal;
+      if (preservePreviousAssignment) {
+        removeAiSuggested = false;
+        classifyState = prevSignal?.classifyState &&
+          (
+            prevSignal.classifyState === 'classified' ||
+            prevSignal.classifyState === 'classified_general' ||
+            prevSignal.classifyState === 'classified_attention' ||
+            prevSignal.classifyState === 'classified_removal'
+          )
+          ? prevSignal.classifyState
+          : classifyStateFromPrimary(previousPrimaryId!, true);
+        if (summary.unassigned > unassignedBefore) summary.unassigned--;
+        if (summary.pendingDiscover > pendingDiscoverBefore) summary.pendingDiscover--;
+        summary.assignedPrimary++;
+        if (classifyState === 'classified_general') summary.classifiedGeneral++;
+        else if (classifyState === 'classified_removal') summary.classifiedRemoval++;
+        else summary.classifiedSpecific++;
+        signal = {
+          ...(prevSignal ?? {
+            itemId: batchItem.itemId,
+            textHash: hash,
+            embeddingModel: '',
+            embedding: [],
+            derivedTags: [],
+            signalStatus: 'ok' as const,
+            lastProcessedAt: now,
+          }),
+          itemId: batchItem.itemId,
+          classifyState,
+          lastProcessedAt: now,
+          lastClassifySkipReason:
+            `Kept previous category — reclassification produced no replacement` +
+            (decision?.reason ? `: ${decision.reason}` : ''),
+        };
+      } else {
+        signal = {
+          itemId: batchItem.itemId,
+          textHash: prevSignal?.textHash ?? hash,
+          classifyTextHash: hash,
+          embeddingModel: prevSignal?.embeddingModel ?? '',
+          embedding: prevSignal?.embedding ?? [],
+          derivedTags: prevSignal?.derivedTags ?? [],
+          signalStatus: 'ok',
+          classifyState,
+          discoverState: classifyState === 'pending_discover' ? 'pending' : 'none',
+          isNovelty:
+            classifyState === 'pending_discover' ||
+            classifyState === 'pending_classify' ||
+            classifyState === 'classified_general',
+          lastProcessedAt: now,
+          lastClassifiedAt: now,
+          classifyRetryCount: retryCount,
+          inputQualityTier: meta?.qualityTier ?? prevSignal?.inputQualityTier,
+          lastClassifySkipReason,
+          llmReview: {
+            decisionType: decision?.decisionType,
+            categoryIds: decision?.categoryIds,
+            confidence: decision?.confidence,
+            reason: decision?.reason,
+            classifyMode: 'topic-extract',
+          },
+        };
+      }
 
       batchWrites.push({ itemId: batchItem.itemId, signal, links, removeAiSuggested });
       signalByItem.set(batchItem.itemId, signal);
@@ -1886,7 +1855,6 @@ export async function classifyIncremental(
       });
       await yieldToUi();
       categories = await persistClassifyResults(categories, batchWrites);
-      await syncClassifySignalsFromLinks(batchWrites.map((w) => w.itemId));
     }
   }
 
@@ -1996,7 +1964,10 @@ export async function discoverBatch(
 
   if (scopeIds?.length) {
     const { loadScopedPipelineRows } = await import('../pipeline/scopedPipelineRows');
-    const scoped = await loadScopedPipelineRows(scopeIds);
+    // Discovery determines which persisted rows deserve taxonomy work. Its
+    // scope must come from the DB owner, not an offscreen cache that may still
+    // be paging pipeline tables after a reload.
+    const scoped = await loadScopedPipelineRows(scopeIds, { authoritative: true });
     items = scoped.items;
     enrichByItem = scoped.enrichByItem;
     signalByItem = scoped.signalByItem;
@@ -2250,18 +2221,32 @@ export async function discoverBatch(
   });
 
   const reclassifyItemIds: string[] = [];
+  const reclassifyWrites: Array<{
+    itemId: string;
+    signal: AiItemSignal;
+    links: AiItemCategoryLink[];
+    removeAiSuggested: boolean;
+  }> = [];
   for (const itemId of successfulSampleIds) {
     const sig = await db.get('ai_item_signals', itemId);
     if (!sig) continue;
     if (!shouldMarkReclassifyAfterDiscover(sig.classifyState, sig.discoverState)) continue;
-    await db.put('ai_item_signals', {
-      ...sig,
-      classifyState: 'pending_classify',
-      discoverState: 'done',
-      lastProcessedAt: now,
+    reclassifyWrites.push({
+      itemId,
+      links: [],
+      removeAiSuggested: false,
+      signal: {
+        ...sig,
+        classifyState: 'pending_classify',
+        discoverState: 'done',
+        lastProcessedAt: now,
+      },
     });
     runSummary.itemsMarkedForReclassify++;
     reclassifyItemIds.push(itemId);
+  }
+  if (reclassifyWrites.length) {
+    await commitPipelineClassification({ categories: [], itemWrites: reclassifyWrites });
   }
 
   let doneLabel = anyAdded

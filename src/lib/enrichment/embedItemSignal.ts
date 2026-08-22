@@ -11,6 +11,7 @@ import {
   EMBED_BATCH_SIZE,
 } from './embedBackfillPlan';
 import type { ItemEnrichment } from './types';
+import { commitPipelineEmbeddingSignals } from '../pipeline/pipelineStagePersistence';
 
 export interface EnsureItemEmbeddingResult {
   itemId: string;
@@ -78,8 +79,8 @@ export async function getEmbedBackfillStats(): Promise<EmbedBackfillStats> {
     : [];
   for (const s of signals) {
     if (s.signalStatus === 'embed_failed') stats.embedFailed++;
-    // Tab cache strips vectors — treat non-failed with textHash as embedded.
-    else if (s.textHash && s.embeddingModel) stats.withEmbedding++;
+    // Tab cache strips vectors but carries an authoritative dimension count.
+    else if (s.embedding.length || (s.embeddingDimensions ?? 0) > 0) stats.withEmbedding++;
   }
   stats.pendingEmbed = Math.max(0, stats.aiSummaryOk - stats.withEmbedding - stats.embedFailed);
   return stats;
@@ -182,8 +183,9 @@ export async function embedIncrementalBatch(
       embeddedSoFar,
     });
 
+    let vectors: number[][];
     try {
-      const vectors = await embedTexts(
+      vectors = await embedTexts(
         {
           apiKey: aiSettings.apiKey,
           baseUrl: aiSettings.baseUrl,
@@ -195,45 +197,37 @@ export async function embedIncrementalBatch(
         opts.signal
       );
 
-      if (opts.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
-
-      opts.onProgress?.({
-        phase: 'write',
-        batchIndex: b + 1,
-        batchTotal,
-        embeddedSoFar,
-      });
-
-      const now = Date.now();
-      const tx = db.transaction(['ai_item_signals'], 'readwrite');
-      for (let i = 0; i < batch.length; i++) {
-        const row = batch[i];
-        const signal: AiItemSignal = {
-          ...buildEmbeddedSignal(row, vectors[i]),
-          lastProcessedAt: now,
-        };
-        await tx.objectStore('ai_item_signals').put(signal);
-      }
-      await tx.done;
-
-      embeddedSoFar += batch.length;
-      summary.embedded += batch.length;
     } catch (error) {
       if (opts.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
         throw error;
       }
       const now = Date.now();
-      const tx = db.transaction(['ai_item_signals'], 'readwrite');
-      for (const row of batch) {
-        const signal: AiItemSignal = {
+      await commitPipelineEmbeddingSignals(
+        batch.map((row): AiItemSignal => ({
           ...buildEmbedFailedSignal(row),
           lastProcessedAt: now,
-        };
-        await tx.objectStore('ai_item_signals').put(signal);
-      }
-      await tx.done;
+        }))
+      );
       summary.embedFailed += batch.length;
+      continue;
     }
+
+    if (opts.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+    opts.onProgress?.({
+      phase: 'write',
+      batchIndex: b + 1,
+      batchTotal,
+      embeddedSoFar,
+    });
+    const now = Date.now();
+    await commitPipelineEmbeddingSignals(
+      batch.map((row, index): AiItemSignal => ({
+        ...buildEmbeddedSignal(row, vectors[index]),
+        lastProcessedAt: now,
+      }))
+    );
+    embeddedSoFar += batch.length;
+    summary.embedded += batch.length;
   }
 
   if (summary.embedded > 0) {

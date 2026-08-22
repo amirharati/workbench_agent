@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Layers3, Link2, MoveRight, Pin, Plus, RotateCcw, Search, Settings2, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Check, Copy, ExternalLink, FileText, Folder, Layers3, MoveRight, Pin, Plus, RotateCcw, Search, Settings2, Trash2, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions, Workspace } from '../../lib/db';
 import { BookmarkUrlLink, ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemFavoriteButton } from './ItemFavoriteButton';
@@ -601,7 +601,11 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           </div>
           <div className="scrollbar ui-scroll-footer-safe" style={{ flex: 1, minHeight: 0, padding: 18, overflowY: 'auto' }}>
             <span style={{ width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-md)', background: 'var(--accent-weak)', color: 'var(--accent)' }}>
-              {selectedSessionTab.kind === 'search' ? <Search size={15} /> : selectedSessionTab.kind === 'url' ? <ExternalLink size={15} /> : <Layers3 size={15} />}
+              {selectedSessionTab.kind === 'search'
+                ? <Search size={15} />
+                : selectedSessionTab.kind === 'url'
+                  ? <LinkVisual url={selectedSessionTab.url} title={selectedSessionTab.title} favicon={selectedSessionTab.favIconUrl} />
+                  : <Layers3 size={15} />}
             </span>
             <h2 style={{ margin: '13px 0 0', color: 'var(--text)', fontSize: 'var(--text-lg)' }}>{selectedSessionTab.kind === 'url' ? selectedSessionTab.title || 'Web page' : selectedSessionTab.kind === 'search' ? selectedSessionTab.query || 'Search' : selectedSessionTab.kind === 'list' ? selectedSessionTab.title : 'Workspace item'}</h2>
             {selectedSessionTab.kind === 'url' ? (
@@ -771,7 +775,13 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
                   <React.Fragment key={tab.id}>
                   <div role="button" tabIndex={0} onClick={() => selectSessionTab(tab)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectSessionTab(tab); } }} style={{ minHeight: 42, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px 6px 11px', borderBottom: '1px solid var(--border)', background: selected ? 'var(--bg-active)' : 'transparent', cursor: 'pointer' }}>
                     <span style={{ width: 24, height: 24, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, background: 'var(--bg-hover)', color: selected ? 'var(--accent)' : 'var(--text-faint)' }}>
-                      {tab.kind === 'search' ? <Search size={11} /> : tab.kind === 'url' ? <ExternalLink size={11} /> : item?.url ? <Link2 size={11} /> : <FileText size={11} />}
+                      {tab.kind === 'search'
+                        ? <Search size={11} />
+                        : tab.kind === 'url'
+                          ? <LinkVisual url={tab.url} title={tab.title} favicon={tab.favIconUrl} />
+                          : item?.url
+                            ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
+                            : <FileText size={11} />}
                     </span>
                     <span style={{ minWidth: 0, flex: 1 }}>
                       <span style={{ display: 'block', color: 'var(--text)', fontSize: 'var(--text-xs)', fontWeight: selected ? 650 : 550, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
@@ -870,7 +880,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
           <div className="scrollbar" data-browse-surface="project-pins" style={browseListStyle}>
             {pinnedItems.map((item) => (
               <button key={item.id} type="button" onClick={() => selectProjectItem(item)} style={browseRowStyle(selectedItemId === item.id)}>
-                <span style={browseRowIconStyle}>{item.url ? <Link2 size={12} /> : <FileText size={12} />}</span>
+                <span style={browseRowIconStyle}>{item.url ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} /> : <FileText size={12} />}</span>
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={browseRowTitleStyle}>{item.title || 'Untitled'}</span>
                   <span style={browseRowDetailStyle}>{item.url || item.notes || 'Note'}</span>
@@ -927,7 +937,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
               return (
                 <div key={item.id} role="button" tabIndex={0} onClick={() => selectProjectItem(item)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectProjectItem(item); } }} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 11px', borderBottom: '1px solid var(--border)', background: selected ? 'var(--bg-active)' : 'transparent', color: selected ? 'var(--text)' : 'var(--text-muted)', cursor: 'pointer' }}>
                   <span style={{ width: 25, height: 25, borderRadius: 6, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-hover)', color: selected ? 'var(--accent)' : 'var(--text-faint)' }}>
-                    {item.url ? <Link2 size={12} /> : <FileText size={12} />}
+                    {item.url ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} /> : <FileText size={12} />}
                   </span>
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selected ? 'var(--text)' : 'inherit', fontSize: 'var(--text-sm)', fontWeight: selected ? 600 : 500 }}>{item.title || 'Untitled'}</span>

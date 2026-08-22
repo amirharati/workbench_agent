@@ -33,7 +33,7 @@ import { shouldOfferTabSessionFetch } from '../../lib/enrichment/tabSessionExtra
 import { resolveClassificationPresentation } from '../../lib/categorization/classificationPresentation';
 import { DEFAULT_EMBEDDING_MODEL } from '../../lib/categorization/service';
 import { useItemPipelineContext } from '../../hooks/useItemPipelineContext';
-import { resolvePipelineBadge } from '../../lib/pipeline';
+import { getEmbeddingDimensions, resolvePipelineBadge } from '../../lib/pipeline';
 import { usePipelineProgress } from './PipelineProgressProvider';
 import { EnrichmentContent } from './PipelineDisplayBlocks';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
@@ -491,7 +491,8 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           : 'var(--text-muted)';
 
   const signal = context?.signal;
-  const hasEmbed = Boolean(signal?.embedding?.length);
+  const embeddingDimensions = getEmbeddingDimensions(signal);
+  const hasEmbed = embeddingDimensions > 0;
   const embedCurrent =
     hasEmbed &&
     signal?.embeddingModel === DEFAULT_EMBEDDING_MODEL &&
@@ -975,7 +976,7 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
           />
           <StageBody>
             <MetaLine label="Vector">
-              {hasEmbed ? `${signal!.embedding!.length} dims` : 'None'}
+              {hasEmbed ? `${embeddingDimensions} dims` : 'None'}
             </MetaLine>
             <MetaLine label="Model">{signal?.embeddingModel || '—'}</MetaLine>
             <MetaLine label="Text hash">

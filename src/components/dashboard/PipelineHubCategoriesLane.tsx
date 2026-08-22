@@ -9,7 +9,7 @@ import {
   Tags,
 } from 'lucide-react';
 import type { Collection, Item } from '../../lib/db';
-import { refreshPipelineCacheFromWorker } from '../../lib/db';
+import { ensurePipelineHydrated, refreshPipelineCacheFromWorker } from '../../lib/db';
 import { ensurePendingClassifySignals } from '../../lib/categorization';
 import { isAnyDigestInFlight } from '../../lib/pipeline/singleLinkDigest';
 import {
@@ -302,8 +302,11 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
     }
     try {
       await refreshPipelineCacheFromWorker();
-      // Skip full-library ensure during/just after pipeline — reload UI from cache only.
+      // Classification derives fetch, AI, and category state from pipeline
+      // tables. After a page reload those are still paging in; reading first
+      // would turn persisted enrichment into a false “Not fetched yet”.
       if (!isAnyDigestInFlight()) {
+        await ensurePipelineHydrated();
         await ensurePendingClassifySignals();
       }
       invalidatePipelineCatalog();

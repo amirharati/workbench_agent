@@ -310,7 +310,6 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         beforeQueue = await loadHubQueueSnapshot();
       }
       try {
-        const scopedSelection = itemIds.length > 0 && itemIds.length <= 25;
         // Bulk executes offscreen with its own warm cache; SQLite drain is low-priority.
         const { runBatchOnOffscreen } = await import(
           '../../lib/pipeline/offscreenPipelineClient'
@@ -326,8 +325,9 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           skipAi: options?.skipAi,
           forceReclassify: options?.forceReclassify,
           collectItemResults: options?.collectItemResults,
-          skipDiscover:
-            options?.skipDiscover ?? (scopedSelection ? true : undefined),
+          // A full digest ends with one scoped Discover pass unless this
+          // intentionally narrow action opts out.
+          skipDiscover: options?.skipDiscover,
           drainPendingClassifyQueue: options?.drainPendingClassifyQueue,
           signal: controller.signal,
           onProgress: (p) => applyPipelineProgress(setModal, p),

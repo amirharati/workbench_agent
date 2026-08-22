@@ -25,13 +25,14 @@ function isSummarized(enrichment?: ItemEnrichment): boolean {
   return enrichment?.status === 'ok' && enrichment.aiStatus === 'ok';
 }
 
+export function getEmbeddingDimensions(signal?: AiItemSignal): number {
+  return signal?.embedding?.length || signal?.embeddingDimensions || 0;
+}
+
 function isEmbedded(signal?: AiItemSignal, embedFailed = false): boolean {
   if (embedFailed || signal?.signalStatus === 'embed_failed') return false;
   if (signal?.signalStatus !== 'ok') return false;
-  if (signal.embedding?.length) return true;
-  // Tab/scoped caches deliberately strip vectors after worker persistence to
-  // avoid hauling large embeddings through Chrome messaging.
-  return Boolean(signal?.textHash && signal?.embeddingModel);
+  return getEmbeddingDimensions(signal) > 0;
 }
 
 function isClassified(input: {

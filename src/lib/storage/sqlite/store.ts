@@ -209,6 +209,7 @@ interface SignalRow {
   classify_text_hash: string | null;
   embedding_model: string;
   embedding: Uint8Array | null;
+  embedding_byte_length?: number | null;
   derived_tags: string;
   tag_confidence: number | null;
   signal_status: string;
@@ -626,7 +627,7 @@ function linkToRow(l: AiItemCategoryLink): LinkRow {
 }
 
 function rowToSignal(row: SignalRow): AiItemSignal {
-  return {
+  const signal: AiItemSignal = {
     itemId: row.item_id,
     textHash: row.text_hash,
     classifyTextHash: row.classify_text_hash ?? undefined,
@@ -646,6 +647,12 @@ function rowToSignal(row: SignalRow): AiItemSignal {
     lastClassifiedAt: row.last_classified_at ?? undefined,
     llmReview: parseJson(row.llm_review, undefined),
   };
+  if (!signal.embedding.length && (row.embedding_byte_length ?? 0) > 0) {
+    signal.embeddingDimensions = Math.floor(
+      row.embedding_byte_length! / Float32Array.BYTES_PER_ELEMENT
+    );
+  }
+  return signal;
 }
 
 function signalToRow(s: AiItemSignal): SignalRow {
@@ -1028,7 +1035,8 @@ export class SqliteStore {
     const placeholders = itemIds.map(() => '?').join(',');
     const rows = this.conn.selectAll<SignalRow>(
       `SELECT item_id, text_hash, classify_text_hash, embedding_model,
-              NULL AS embedding, derived_tags, tag_confidence, signal_status,
+              NULL AS embedding, length(embedding) AS embedding_byte_length,
+              derived_tags, tag_confidence, signal_status,
               classify_state, discover_state, is_novelty, classify_retry_count,
               last_classify_skip_reason, eligibility_reason, input_quality_tier,
               last_processed_at, last_classified_at, llm_review
@@ -1596,7 +1604,9 @@ export class IdbCompatStore {
       case 'ai_item_signals':
         // Strip embeddings before postMessage — tab hydrate must stay meta-only.
         return this.store.getSignalsPage(off, lim).map((s) =>
-          s.embedding?.length ? { ...s, embedding: [] } : s
+          s.embedding?.length
+            ? { ...s, embedding: [], embeddingDimensions: s.embedding.length }
+            : s
         );
       case 'ai_item_category_links':
         return this.store.getLinksPage(off, lim);

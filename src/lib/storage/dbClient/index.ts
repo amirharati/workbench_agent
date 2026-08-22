@@ -230,6 +230,12 @@ export async function getSignalsByItemIds<T = unknown>(itemIds: string[]): Promi
   return dbRpc('getSignalsByItemIds', [itemIds]);
 }
 
+/** Signal status plus authoritative vector dimensions, without vector payload bytes. */
+export async function getSignalMetadataByItemIds<T = unknown>(itemIds: string[]): Promise<T[]> {
+  if (!itemIds.length) return [];
+  return dbRpc('getSignalMetadataByItemIds', [itemIds]);
+}
+
 /** Scoped enrichment rows without hydrating the tab's entire pipeline cache. */
 export async function getEnrichmentsByItemIds<T = unknown>(itemIds: string[]): Promise<T[]> {
   if (!itemIds.length) return [];

@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { ExternalLink, FileText, Layers3, Link2, Search, X } from 'lucide-react';
+import { FileText, Layers3, Search, X } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import type { GlobalTab } from './GlobalTabSystem';
 import { buildItemQuickFilterText, buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
 import { useItemPeek } from './ItemPeekProvider';
 import { ItemResultRow } from './ItemResultRow';
+import { LinkVisual } from './LinkVisual';
 
 function workspaceEntryLabel(tab: GlobalTab, items: readonly Item[]): string {
   if (tab.kind === 'search') return tab.query.trim() || 'Search';
@@ -170,7 +171,13 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
                 style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', fontSize: 'var(--text-xs)', fontWeight: selected ? 650 : 550, cursor: 'pointer' }}
               >
                 <span style={{ width: 24, height: 24, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, background: selected ? 'var(--accent-weak)' : 'var(--bg-hover)', color: selected ? 'var(--accent)' : 'var(--text-faint)' }}>
-                  {tab.kind === 'search' ? <Search size={11} /> : tab.kind === 'url' ? <ExternalLink size={11} /> : item?.url ? <Link2 size={11} /> : <FileText size={11} />}
+                  {tab.kind === 'search'
+                    ? <Search size={11} />
+                    : tab.kind === 'url'
+                      ? <LinkVisual url={tab.url} title={tab.title} favicon={tab.favIconUrl} />
+                      : item?.url
+                        ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
+                        : <FileText size={11} />}
                 </span>
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>

@@ -95,6 +95,7 @@ function durablePayload(options: OffscreenPipelineJobOptions): Record<string, un
     discoverItemIds: options.discoverItemIds,
     discoverStuckOnly: options.discoverStuckOnly,
     discoverMaxBatches: options.discoverMaxBatches,
+    skipDiscover: options.skipDiscover,
     classify: options.classify,
     preferTabSession: options.preferTabSession,
     tabId: options.tabId,
@@ -117,19 +118,26 @@ function itemIdsFromSnapshot(snapshot: PipelineJobSnapshot): string[] {
   return snapshot.tasks
     .sort((a, b) => a.ordinal - b.ordinal)
     .flatMap((task) => {
+      if (task.item_id === '__taxonomy__') return [];
       if (seen.has(task.item_id)) return [];
       seen.add(task.item_id);
       return [task.item_id];
     });
 }
 
-function stagesForOperation(operation: PipelineJobOperation): string[] {
+function stagesForOperation(
+  operation: PipelineJobOperation,
+  options: OffscreenPipelineJobOptions
+): string[] {
   switch (operation) {
     case 'reextract': return ['reextract', 'embed', 'classify', 'finalize'];
     case 'reembed': return ['embed', 'finalize'];
     case 'classify': return ['classify', 'finalize'];
     case 'discover': return ['discover', 'finalize'];
-    default: return [...DURABLE_FULL_DIGEST_STAGES];
+    default:
+      return options.skipDiscover
+        ? DURABLE_FULL_DIGEST_STAGES.filter((stage) => stage !== 'discover')
+        : [...DURABLE_FULL_DIGEST_STAGES];
   }
 }
 
@@ -137,21 +145,29 @@ async function submitJob(start: PipelineOffscreenStartJob): Promise<{
   accepted: boolean;
   snapshot: PipelineJobSnapshot;
 }> {
+  const operation = start.operation ?? 'full_digest';
+  const discoverItemIds = operation === 'discover'
+    ? start.itemIds
+    : operation === 'full_digest' && start.options.skipDiscover !== true
+      ? start.itemIds
+      : undefined;
   const input: SubmitPipelineJobInput = {
     id: start.requestId,
-    dedupeKey: start.operation === 'discover'
+    dedupeKey: operation === 'discover'
       ? 'taxonomy-discover'
       : `pipeline:${[...new Set(start.itemIds)].sort().join(',')}`,
-    action: `${start.operation ?? 'full_digest'}_v2`,
+    action: `${operation}_v2`,
     source: 'pipeline_client',
     priority: start.itemIds.length === 1 ? 10 : 50,
     payload: {
       ...durablePayload(start.options),
-      discoverItemIds: start.operation === 'discover' ? start.itemIds : undefined,
-      operation: start.operation ?? 'full_digest',
+      // Persist the exact scope so resume stays scoped and uses the user's
+      // current stored taxonomy rather than rebuilding code defaults.
+      discoverItemIds,
+      operation,
     },
-    itemIds: start.operation === 'discover' ? ['__taxonomy__'] : start.itemIds,
-    stages: stagesForOperation(start.operation ?? 'full_digest'),
+    itemIds: operation === 'discover' ? ['__taxonomy__'] : start.itemIds,
+    stages: stagesForOperation(operation, start.options),
   };
   return dbRpc('pipelineSubmitJob', [input], { priority: 'high' });
 }

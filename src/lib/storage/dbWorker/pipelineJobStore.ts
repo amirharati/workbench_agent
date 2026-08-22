@@ -247,16 +247,35 @@ export function submitPipelineJob(
         VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?);`,
       bind: [id, dedupeKey, action, source, priority, payloadJson, itemIds.length, now, now],
     });
+    // Full-digest Discover is one terminal task for this job. It runs after
+    // all submitted links finish, so it can evaluate the complete batch once
+    // against the current taxonomy instead of doing an expensive pass per link.
+    const terminalDiscover =
+      itemIds.length > 0 &&
+      itemIds[0] !== '__taxonomy__' &&
+      stages.includes('discover');
+    const perItemStages = terminalDiscover
+      ? stages.filter((stage) => stage !== 'discover')
+      : stages;
+
     itemIds.forEach((itemId, itemIndex) => {
-      stages.forEach((stage, ordinal) => {
+      perItemStages.forEach((stage, ordinal) => {
         db.exec({
           sql: `INSERT INTO pipeline_tasks
             (job_id, item_id, stage, ordinal, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'pending', ?, ?);`,
-          bind: [id, itemId, stage, itemIndex * stages.length + ordinal, now, now],
+          bind: [id, itemId, stage, itemIndex * perItemStages.length + ordinal, now, now],
         });
       });
     });
+    if (terminalDiscover) {
+      db.exec({
+        sql: `INSERT INTO pipeline_tasks
+          (job_id, item_id, stage, ordinal, status, created_at, updated_at)
+          VALUES (?, '__taxonomy__', 'discover', ?, 'pending', ?, ?);`,
+        bind: [id, itemIds.length * perItemStages.length, now, now],
+      });
+    }
     const snapshot = getPipelineJobSnapshot(db, id);
     if (!snapshot) throw new Error('Submitted pipeline job could not be read back');
     return { accepted: true, snapshot };
@@ -373,17 +392,17 @@ function refreshJobCounts(db: Database, jobId: string, now: number): PipelineJob
   const counts = one<{ total_items: number; completed_items: number; failed_items: number; active_tasks: number }>(
     db,
     `SELECT
-       COUNT(DISTINCT item_id) AS total_items,
+       COUNT(DISTINCT CASE WHEN item_id <> '__taxonomy__' THEN item_id END) AS total_items,
        COUNT(DISTINCT CASE WHEN NOT EXISTS (
          SELECT 1 FROM pipeline_tasks x
          WHERE x.job_id = t.job_id AND x.item_id = t.item_id
            AND x.status NOT IN ('completed', 'skipped')
-       ) THEN item_id END) AS completed_items,
+       ) AND item_id <> '__taxonomy__' THEN item_id END) AS completed_items,
        COUNT(DISTINCT CASE WHEN EXISTS (
          SELECT 1 FROM pipeline_tasks x
          WHERE x.job_id = t.job_id AND x.item_id = t.item_id
            AND x.status IN ('failed', 'uncertain')
-       ) THEN item_id END) AS failed_items,
+       ) AND item_id <> '__taxonomy__' THEN item_id END) AS failed_items,
        SUM(CASE WHEN status IN ('pending', 'running') THEN 1 ELSE 0 END) AS active_tasks
      FROM pipeline_tasks t WHERE job_id = ?;`,
     [jobId]

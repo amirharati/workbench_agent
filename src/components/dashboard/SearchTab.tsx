@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import type { Item, Collection } from '../../lib/db';
 import { getDomain, isValidBookmarkUrl } from '../../lib/utils';
 import { Input } from '../../styles/primitives';
-import { Search, X, ExternalLink, Eye } from 'lucide-react';
+import { Search, X, Eye } from 'lucide-react';
 import { TabScrollShell } from './TabScrollShell';
 import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
+import { LinkVisual } from './LinkVisual';
 
 interface SearchTabProps {
   items: Item[];
@@ -248,7 +249,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
                         gap: '0.25rem',
                       }}
                     >
-                      <ExternalLink size={12} />
+                      <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
                       {getDomain(item.url)}
                     </div>
                   )}

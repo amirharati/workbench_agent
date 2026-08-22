@@ -189,6 +189,23 @@ function pipelineSuccessCount(input: PipelineSummaryInput): number {
 }
 
 /**
+ * Completion copy deliberately distinguishes a completed mixed batch from a
+ * failed job. Individual rows still carry their exact failure reasons and
+ * remain retryable; the batch headline should not read as though its completed
+ * work was lost merely because some URLs were unavailable.
+ */
+export function formatPipelineCompletionSummary(input: PipelineSummaryInput): string {
+  const parts: string[] = [];
+  if (input.enriched) parts.push(`${input.enriched} enriched`);
+  if (input.classified) parts.push(`${input.classified} classified`);
+  if (input.skipped) parts.push(`${input.skipped} skipped`);
+  if (input.failed) {
+    parts.push(`${input.failed} ${pipelineSuccessCount(input) > 0 ? 'unavailable' : 'failed'}`);
+  }
+  return parts.length ? parts.join(' · ') : 'No changes';
+}
+
+/**
  * Large batch with a few fetch failures is still a success (green toast), not a run failure.
  */
 export function isPartialPipelineSuccess(input: PipelineSummaryInput): boolean {

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Eye, Loader2, Search, X } from 'lucide-react';
+import { Eye, Loader2, Search, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { SearchResult } from '../../lib/search';
 import type { LibrarySearchState } from '../../hooks/useLibrarySearch';
@@ -16,6 +16,7 @@ import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import type { WorkspaceDestination } from './workspaceDestinations';
 import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
+import { LinkVisual } from './LinkVisual';
 
 interface ProductSearchViewProps {
   items: Item[];
@@ -621,7 +622,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                       }}
                       title={`Open ${row.url}`}
                     >
-                      <ExternalLink size={12} style={{ flexShrink: 0 }} />
+                      <LinkVisual url={row.url} title={row.title} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.url}</span>
                     </ExtensionPageUrlLink>
                   )}

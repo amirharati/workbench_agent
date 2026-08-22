@@ -894,9 +894,13 @@ async function loadHubSignals(): Promise<{
   // Meta-only map — hub UI must never pin embedding vectors in extra structures.
   const signals = await db.getAll('ai_item_signals');
   for (const s of signals) {
-    byItem.set(s.itemId, s.embedding?.length ? { ...s, embedding: [] } : s);
+    byItem.set(
+      s.itemId,
+      s.embedding?.length
+        ? { ...s, embedding: [], embeddingDimensions: s.embedding.length }
+        : s
+    );
     if (s.signalStatus === 'embed_failed') failedIds.add(s.itemId);
   }
   return { byItem, failedIds };
 }
-

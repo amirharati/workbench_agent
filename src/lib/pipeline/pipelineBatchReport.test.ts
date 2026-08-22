@@ -1,6 +1,7 @@
 import {
   formatClassifyDoneModalSummary,
   formatClassifyRunSummary,
+  formatPipelineCompletionSummary,
   resolveClassifyDoneModalTone,
 } from './pipelineDictionary';
 import { emptyTopicClassifySummary } from '../categorization/classifyPolicy';
@@ -52,6 +53,16 @@ function runTests(): void {
   assert(
     resolveClassifyDoneModalTone(allFailSummary) === 'error',
     'all-LLM-error run stays error tone'
+  );
+
+  assert(
+    formatPipelineCompletionSummary({ enriched: 342, classified: 261, skipped: 2, failed: 115 }) ===
+      '342 enriched · 261 classified · 2 skipped · 115 unavailable',
+    'mixed completed batch calls per-link misses unavailable rather than failed'
+  );
+  assert(
+    formatPipelineCompletionSummary({ failed: 1 }) === '1 failed',
+    'all-failed batch remains an honest failure'
   );
 
   console.log('pipelineBatchReport.test.ts: all tests passed');
