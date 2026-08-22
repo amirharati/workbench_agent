@@ -35,20 +35,30 @@ describe('DB owner protocol contract', () => {
     expect(serviceWorkerSource).toContain('mismatchConfirmations >= 2');
   });
 
-  it('uses only contextual tab panels and never mixes in a manifest-global panel', () => {
+  it('uses lazy contextual panels and never mutates them during install/startup', () => {
     expect(manifest).not.toHaveProperty('side_panel');
-    expect(serviceWorkerSource).toContain(
-      '.setPanelBehavior({ openPanelOnActionClick: true })'
-    );
     expect(serviceWorkerSource).toContain('chrome.sidePanel.onOpened.addListener');
     expect(serviceWorkerSource).toContain('chrome.sidePanel.onClosed.addListener');
-    expect(serviceWorkerSource).toContain('isHomebaseDashboardUrl');
-    expect(serviceWorkerSource).toContain('chrome.tabs.onUpdated.addListener');
-    expect(serviceWorkerSource).toContain('path: SIDE_PANEL_PATH');
-    expect(serviceWorkerSource).toContain('setOptions({ tabId, enabled: false })');
-    expect(serviceWorkerSource).not.toContain('chrome.action.onClicked.addListener');
-    expect(serviceWorkerSource).not.toMatch(/sidePanel\s*\.\s*open\(\{\s*tabId/);
+    expect(serviceWorkerSource).toContain(
+      'chrome.action.onClicked.addListener(handleSidePanelActionClick)'
+    );
+    expect(serviceWorkerSource).toContain(
+      'chrome.sidePanel.open({ tabId: tab.id })'
+    );
+    expect(serviceWorkerSource).toContain('path: sidePanelPathForTab(tab.id)');
+    expect(serviceWorkerSource).toContain('&hostTabId=');
+    expect(serviceWorkerSource).not.toContain('configureExistingSidePanelTabs');
+    expect(serviceWorkerSource).not.toContain('setPanelBehavior(');
+    const installHandler = serviceWorkerSource.slice(
+      serviceWorkerSource.indexOf('chrome.runtime.onInstalled.addListener'),
+      serviceWorkerSource.indexOf('function armPipelineRecoveryAlarm')
+    );
+    expect(installHandler).not.toContain('sidePanel.');
+    const startupHandler = serviceWorkerSource.slice(
+      serviceWorkerSource.indexOf('chrome.runtime.onStartup.addListener'),
+      serviceWorkerSource.indexOf('chrome.alarms.onAlarm.addListener')
+    );
+    expect(startupHandler).not.toContain('sidePanel.');
     expect(serviceWorkerSource).not.toContain('chrome.sidePanel.close(');
-    expect(serviceWorkerSource).not.toMatch(/sidePanel\s*\.\s*setOptions\(\{\s*enabled:\s*false/);
   });
 });

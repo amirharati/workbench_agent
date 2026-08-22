@@ -131,7 +131,7 @@ The AI agent can access:
 
 ### Chrome Extension
 - **Manifest**: Chrome Extension Manifest V3 (`public/manifest.json`)
-- **Service Worker**: `service-worker.js` — side panel enable/open per tab on toolbar click; `focus-tab` message helper for dashboard tab activation
+- **Service Worker**: `service-worker.js` — lazy contextual side-panel visibility created only from toolbar gestures; install/startup/reload never mutate native panel state; dashboard and `chrome://extensions` tabs remain excluded (extension management opens/focuses the dashboard instead); `focus-tab` message helper for dashboard activation
 - **New Tab**: `chrome_url_overrides.newtab` → extension `index.html` so new tabs open Homebase directly
 - **Known limitation**: Chrome may show a persistent browser/extension footer on overridden new-tab pages; **not** reliably removable for extension-hosted UI. A hosted web dashboard would be the escape hatch if a chrome-free full viewport is required later.
 - **Content Scripts**: Not currently declared in manifest; future page-context capture would add them when implemented.

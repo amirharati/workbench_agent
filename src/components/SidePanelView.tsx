@@ -9,6 +9,7 @@ import {
   Star,
 } from 'lucide-react';
 import type { Collection, Item, Project } from '../lib/db';
+import { readSidePanelHostTabId } from '../lib/appSurface';
 import { normalizeBookmarkUrl } from '../lib/db';
 import { favoriteItem, unfavoriteItem } from '../lib/itemQuickAccess';
 import { getActiveTabBookmarkContext, getTabBookmarkContext } from '../lib/tabUrlCapture';
@@ -97,7 +98,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const [saving, setSaving] = useState(false);
   const [organizationSaving, setOrganizationSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const activeTabIdRef = useRef<number | null>(null);
+  const activeTabIdRef = useRef<number | null>(readSidePanelHostTabId());
   const activeUrlRef = useRef('');
   const prefillSeqRef = useRef(0);
   const syncedItemIdRef = useRef<string | null>(null);

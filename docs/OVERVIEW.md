@@ -63,7 +63,7 @@ Details and checkboxes live in [`BACKLOG.md`](BACKLOG.md).
 ```
 Chrome MV3 extension
 ├── UI: React + TypeScript + Vite (`src/`)
-├── Background: `public/service-worker.js` (side panel per-tab on action click, tab-focus helpers)
+├── Background: `public/service-worker.js` (lazy contextual side-panel visibility, tab-focus helpers)
 ├── Storage: IndexedDB `personal-tools-db` **v4** (`src/lib/db.ts`; placements + canonical URL dedup; see [`DATA_MODEL_DEDUP.md`](DATA_MODEL_DEDUP.md))
 ├── Entry: `index.html` — narrow width ≈ side panel; wide ≈ dashboard
 └── New tab: `chrome_url_overrides.newtab` → same `index.html` (see limitation below)
@@ -71,7 +71,7 @@ Chrome MV3 extension
 
 **Dual UI**
 
-- **Side panel**: bookmark-centric save flow (URL/title prefill from active tab; optional notes; project/collection pickers with inline create); “already saved” list with edit / remove copy / **add new copy** (placement-aware notes); duplicate prevention for same URL in the same collection; **Open Dashboard** and **Set Homebase as Home** (opens Chrome settings + copies extension dashboard URL). No backup UI in the panel (full dashboard only). Mutations sync with the dashboard via **`BroadcastChannel`** and focus/visibility refresh patterns.
+- **Side panel**: bookmark-centric save flow (URL/title prefill from its owning browser tab; optional notes; project/collection pickers with inline create); “already saved” list with edit / remove copy / **add new copy** (placement-aware notes); duplicate prevention for the same URL in the same collection; **Open Dashboard** and **Set Homebase as Home**. Panels are lazy contextual presentation instances over the same shared database/pipeline system. The first explicit toolbar click on a normal page configures/opens only eligible tabs already present in that window; later tabs remain untouched until explicitly opened; native close changes only that tab’s visibility and does not remove cohort membership or stop processing. Dashboard tabs and `chrome://extensions` never join the cohort; clicking the toolbar action on extension management opens or focuses the dashboard instead. Install/startup/reload perform no native panel configuration, open, or close calls. No backup UI appears in the panel (full dashboard only). Mutations sync with the dashboard via **`BroadcastChannel`** and focus/visibility refresh patterns.
 - **Dashboard**: IDE-style **three-region shell** — left navigation (**project dropdown**, collections for selected project, **Content** vs **Tools**); a shared active Homebase workspace in the middle; and a persistent **right assistant** panel. Homebase has one Global workspace, one automatic General workspace per project, and project-owned named workspaces. Internal work is presented as workspace entries, not tabs. Browser-window snapshots and live Chrome tabs remain separate. See [`PROJECT_SESSIONS_AND_WORKSPACES.md`](PROJECT_SESSIONS_AND_WORKSPACES.md).
 
 **Stores (conceptual)** — see `src/lib/db.ts` for truth:

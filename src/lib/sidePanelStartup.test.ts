@@ -43,12 +43,13 @@ describe('lightweight side-panel startup', () => {
     expect(handler).not.toContain('scheduleSimilarityVectorWarm');
   });
 
-  it('pins each contextual panel instance to its owning browser tab', () => {
+  it('pins each contextual panel to the browser tab that owns it', () => {
     const view = readFileSync(
       new URL('../components/SidePanelView.tsx', import.meta.url),
       'utf8'
     );
     expect(view).toContain('getActiveTabBookmarkContext()');
+    expect(view).toContain('useRef<number | null>(readSidePanelHostTabId())');
     expect(view).toContain('getTabBookmarkContext(activeTabIdRef.current)');
     expect(view).toContain('tabId === activeTabIdRef.current');
     expect(view).toContain('onOpenInApp={() => onOpenFullPage(activeItem.id)}');
