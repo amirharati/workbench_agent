@@ -72,7 +72,7 @@ export interface SidePanelConnectedProps {
   items: Item[];
   onCreateProject: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection: (data: { name: string; projectId: string }) => Promise<string | void>;
-  onOpenFullPage: () => void;
+  onOpenFullPage: (itemId?: string) => void;
 }
 
 export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({

@@ -69,6 +69,7 @@ interface BookmarksLibraryViewProps {
   onClearCategoryBrowse?: () => void;
   onClearPipelineBrowse?: () => void;
   onSelectedItemChange?: (item: Item | null) => void;
+  initialSelectedItemId?: string | null;
   initialTypeFilter?: LibraryTypeFilter;
   libraryLoading?: boolean;
 }
@@ -218,6 +219,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   onClearCategoryBrowse,
   onClearPipelineBrowse,
   onSelectedItemChange,
+  initialSelectedItemId,
   initialTypeFilter = 'all',
   libraryLoading = false,
 }) => {
@@ -237,7 +239,9 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
   const [typeFilter, setTypeFilter] = useState<LibraryTypeFilter>(
     initialTypeFilter === 'all' ? initialPageUi.typeFilter : initialTypeFilter
   );
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(initialPageUi.selectedItemId);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(
+    initialSelectedItemId ?? initialPageUi.selectedItemId
+  );
   const [createKind, setCreateKind] = useState<'bookmark' | 'note' | null>(null);
   const [workspaceKey, setWorkspaceKey] = useState(initialPageUi.workspaceKey);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);

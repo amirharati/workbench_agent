@@ -43,13 +43,15 @@ describe('lightweight side-panel startup', () => {
     expect(handler).not.toContain('scheduleSimilarityVectorWarm');
   });
 
-  it('pins each contextual panel instance to its original browser tab', () => {
+  it('pins each contextual panel instance to its owning browser tab', () => {
     const view = readFileSync(
       new URL('../components/SidePanelView.tsx', import.meta.url),
       'utf8'
     );
+    expect(view).toContain('getActiveTabBookmarkContext()');
     expect(view).toContain('getTabBookmarkContext(activeTabIdRef.current)');
     expect(view).toContain('tabId === activeTabIdRef.current');
+    expect(view).toContain('onOpenInApp={() => onOpenFullPage(activeItem.id)}');
   });
 
   it('uses readable side-panel typography instead of disabled system text colors', () => {

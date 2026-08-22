@@ -47,7 +47,7 @@ interface SidePanelViewProps {
   ) => Promise<void>;
   onCreateProject: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection: (data: { name: string; projectId: string }) => Promise<string | void>;
-  onOpenFullPage: () => void;
+  onOpenFullPage: (itemId?: string) => void;
   status: string;
   externalLinks?: SessionExternalLink[];
   onHostTabNavigate?: () => void;
@@ -348,7 +348,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         </ButtonGhost>
         <ButtonPrimary
           type="button"
-          onClick={onOpenFullPage}
+          onClick={() => onOpenFullPage()}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 8px' }}
         >
           <LayoutDashboard size={13} /> Dashboard
@@ -612,7 +612,10 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         </Panel>
 
         {activeItem ? (
-          <SidePanelDigestPanel itemId={activeItem.id} onOpenInApp={onOpenFullPage} />
+          <SidePanelDigestPanel
+            itemId={activeItem.id}
+            onOpenInApp={() => onOpenFullPage(activeItem.id)}
+          />
         ) : (
           <Panel className="side-panel-digest-card" style={{ padding: '0.75rem 0.75rem 0.75rem 0.85rem' }}>
             <div className="side-panel-supporting-copy">

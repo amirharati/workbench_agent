@@ -6,6 +6,10 @@ const serviceWorkerSource = readFileSync(
   new URL('../../../public/service-worker.js', import.meta.url),
   'utf8'
 );
+const manifest = JSON.parse(readFileSync(
+  new URL('../../../public/manifest.json', import.meta.url),
+  'utf8'
+)) as Record<string, unknown>;
 
 const participantSources = [
   new URL('../../offscreen/offscreen.ts', import.meta.url),
@@ -31,7 +35,8 @@ describe('DB owner protocol contract', () => {
     expect(serviceWorkerSource).toContain('mismatchConfirmations >= 2');
   });
 
-  it('uses contextual per-tab panels and disables the global/dashboard entries', () => {
+  it('uses only contextual tab panels and never mixes in a manifest-global panel', () => {
+    expect(manifest).not.toHaveProperty('side_panel');
     expect(serviceWorkerSource).toContain(
       '.setPanelBehavior({ openPanelOnActionClick: true })'
     );
@@ -39,15 +44,11 @@ describe('DB owner protocol contract', () => {
     expect(serviceWorkerSource).toContain('chrome.sidePanel.onClosed.addListener');
     expect(serviceWorkerSource).toContain('isHomebaseDashboardUrl');
     expect(serviceWorkerSource).toContain('chrome.tabs.onUpdated.addListener');
-    expect(serviceWorkerSource).toContain(
-      'setOptions({ enabled: false, path: SIDE_PANEL_PATH })'
-    );
-    expect(serviceWorkerSource).toContain('enabledSidePanelTabIds');
-    expect(serviceWorkerSource).toContain('openSidePanelTabIds');
     expect(serviceWorkerSource).toContain('path: SIDE_PANEL_PATH');
     expect(serviceWorkerSource).toContain('setOptions({ tabId, enabled: false })');
-    expect(serviceWorkerSource).toContain('chrome.sidePanel.close({ windowId })');
     expect(serviceWorkerSource).not.toContain('chrome.action.onClicked.addListener');
     expect(serviceWorkerSource).not.toMatch(/sidePanel\s*\.\s*open\(\{\s*tabId/);
+    expect(serviceWorkerSource).not.toContain('chrome.sidePanel.close(');
+    expect(serviceWorkerSource).not.toMatch(/sidePanel\s*\.\s*setOptions\(\{\s*enabled:\s*false/);
   });
 });

@@ -117,6 +117,46 @@ describe('BookmarksLibraryView', () => {
     expect(markup).not.toContain('Select an item to inspect and edit it.');
   });
 
+  it('honors an explicit item-open intent over the remembered library selection', () => {
+    const remembered = { ...item, id: 'remembered', title: 'Remembered item' };
+    const requested = { ...item, id: 'requested', title: 'Requested item' };
+    const saved = new Map<string, string>([
+      [
+        libraryPageUiKey('library', 'all', 'all'),
+        JSON.stringify({
+          query: '',
+          typeFilter: 'all',
+          selectedItemId: remembered.id,
+          workspaceKey: 'global-session:all',
+        }),
+      ],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => saved.set(key, value),
+    });
+
+    const markup = renderToStaticMarkup(
+      <BookmarksLibraryView
+        items={[remembered, requested]}
+        collections={[]}
+        projects={[project]}
+        scopeProjectId="all"
+        scopeCollectionId="all"
+        homeState={GLOBAL_TAB_STATE_DEFAULT}
+        onHomeStateChange={vi.fn()}
+        initialSelectedItemId={requested.id}
+      />
+    );
+
+    expect(markup).toContain('Requested item');
+    expect(markup).toContain('data-detail-open="true"');
+    expect(markup.match(/aria-current="true"/g)).toHaveLength(1);
+    expect(markup.split('Requested item')).toHaveLength(
+      markup.split('Remembered item').length + 1
+    );
+  });
+
   it('offers Global, project General, and named workspace destinations', () => {
     const destinations = buildBookmarkWorkspaceDestinations([project], [{ id: 'saved-a', name: 'Writing', projectId: project.id, createdAt: 1, updatedAt: 2 }]);
     expect(destinations.map((destination) => destination.label)).toEqual([

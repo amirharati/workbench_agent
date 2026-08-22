@@ -73,6 +73,10 @@ import { ItemDragDropProvider, type ItemTransferResult } from '../ItemDragDropPr
 import { ItemPeekProvider } from '../ItemPeekProvider';
 import type { ItemDragPayload, ItemDropTarget, ItemTransferOperation } from '../itemDragDrop';
 import { buildCollectionTransferPatch } from '../../../lib/collectionTransfer';
+import {
+  clearDashboardOpenItemIntent,
+  readDashboardOpenItemIntent,
+} from '../../../lib/shell/dashboardOpenIntent';
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -280,6 +284,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   onTestAI,
 }) => {
   const { addToast } = useToast();
+  const dashboardOpenItemIdRef = useRef(readDashboardOpenItemIntent());
+  const dashboardOpenItemId = dashboardOpenItemIdRef.current;
   const pipeline = usePipelineProgress();
   const { messages: statusMessages, addStatusMessage, dismissStatusMessage } = useStatusBar();
   const librarySearch = useLibrarySearch((message) => {
@@ -289,7 +295,12 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     addToast({ type: 'error', message: `Search tab failed: ${message}` });
   }, 'workbench:working-search-state:v2');
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [shellLayout, setShellLayout] = useState<ShellLayoutState>(() => loadShellLayout());
+  const [shellLayout, setShellLayout] = useState<ShellLayoutState>(() => {
+    const restored = loadShellLayout();
+    return dashboardOpenItemId
+      ? { ...restored, rightPanelCollapsed: false, rightPanelTab: 'inspector' }
+      : restored;
+  });
   const patchShellLayoutState = useCallback((patch: Partial<ShellLayoutState>) => {
     // Left nav expand/collapse is manual-only (chevron toggle) — never via generic patches.
     const { leftSidebarCollapsed: _omit, ...rest } = patch;
@@ -306,9 +317,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   );
 
   const initialNav = loadNavigationState();
-  const [activeView, setActiveView] = useState<DashboardView>(() => initialNav.activeView as DashboardView);
-  const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>(() => initialNav.scopeProjectId);
-  const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>(() => initialNav.scopeCollectionId);
+  const [activeView, setActiveView] = useState<DashboardView>(() =>
+    dashboardOpenItemId ? 'bookmarks' : initialNav.activeView as DashboardView
+  );
+  const [scopeProjectId, setScopeProjectId] = useState<string | 'all'>(() =>
+    dashboardOpenItemId ? 'all' : initialNav.scopeProjectId
+  );
+  const [scopeCollectionId, setScopeCollectionId] = useState<string | 'all'>(() =>
+    dashboardOpenItemId ? 'all' : initialNav.scopeCollectionId
+  );
   const [scopeNavigationRevision, setScopeNavigationRevision] = useState(0);
   useEffect(() => {
     if (scopeNavigationRevision === 0) return;
@@ -316,7 +333,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     return () => window.clearTimeout(timeoutId);
   }, [scopeNavigationRevision]);
   const [selectedBrowseItemId, setSelectedBrowseItemId] = useState<string | null>(() =>
-    loadRestoredBrowseItemId(
+    dashboardOpenItemId ?? loadRestoredBrowseItemId(
       initialNav.activeView as DashboardView,
       initialNav.scopeProjectId,
       initialNav.scopeCollectionId
@@ -327,6 +344,25 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   }, []);
   const browseContextKey = `${activeView}:${scopeProjectId}:${scopeCollectionId}`;
   const previousBrowseContextRef = useRef(browseContextKey);
+
+  useEffect(() => {
+    if (!dashboardOpenItemId) return;
+    clearDashboardOpenItemIntent();
+    patchNavigationState({
+      activeView: 'bookmarks',
+      scopeProjectId: 'all',
+      scopeCollectionId: 'all',
+    });
+    let cancelled = false;
+    void getItem(dashboardOpenItemId).then((item) => {
+      if (cancelled || item) return;
+      setSelectedBrowseItemId(null);
+      addToast({ type: 'error', message: 'That saved item could not be found.' });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [addToast, dashboardOpenItemId]);
 
   useEffect(() => {
     if (previousBrowseContextRef.current === browseContextKey) return;
@@ -1748,6 +1784,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               onSelectCollectionScope={handleSelectCollectionScope}
               onSwitchScopeForItem={handleSwitchScopeForItem}
               onSelectedBrowseItemChange={handleSelectedBrowseItemChange}
+              initialSelectedBrowseItemId={dashboardOpenItemId}
             />
           ) : (
             // Split view: List pane (left) + Tabbed detail pane (right)

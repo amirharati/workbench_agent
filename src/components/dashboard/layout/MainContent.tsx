@@ -174,6 +174,7 @@ interface MainContentProps {
   onSelectCollectionScope?: (collectionId: string, projectId?: string) => void;
   onSwitchScopeForItem?: (item: Item) => void;
   onSelectedBrowseItemChange?: (item: Item | null) => void;
+  initialSelectedBrowseItemId?: string | null;
 }
 
 export const MainContent: React.FC<MainContentProps> = ({ 
@@ -250,6 +251,7 @@ export const MainContent: React.FC<MainContentProps> = ({
   onSelectCollectionScope,
   onSwitchScopeForItem,
   onSelectedBrowseItemChange,
+  initialSelectedBrowseItemId,
 }) => {
   const resolvedShellLayout = shellLayout ?? SHELL_LAYOUT_DEFAULTS;
   const bookmarkListWidth = resolvedShellLayout.bookmarkListWidth;
@@ -847,6 +849,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           onClearCategoryBrowse={onClearCategoryBrowse}
           onClearPipelineBrowse={onClearPipelineBrowse}
           onSelectedItemChange={onSelectedBrowseItemChange}
+          initialSelectedItemId={initialSelectedBrowseItemId}
           initialTypeFilter={activeView === 'notes' ? 'notes' : 'all'}
           libraryLoading={libraryLoading}
         />

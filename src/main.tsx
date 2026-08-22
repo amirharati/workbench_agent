@@ -16,10 +16,6 @@ if (sidePanelSurface) {
 } else {
   document.documentElement.dataset.surface = 'dashboard'
   applyAppTheme(readAppTheme())
-  // The capture panel belongs beside web content, not beside Homebase itself.
-  // The worker disables this dashboard tab; eligible web tabs own independent
-  // contextual panel instances and open/closed state.
-  void chrome.runtime.sendMessage({ type: 'dashboard-surface-ready' }).catch(() => {})
 }
 
 const surfaceModule = sidePanelSurface
