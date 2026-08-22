@@ -7,16 +7,22 @@ import { isSidePanelSurface } from './lib/appSurface.ts'
 
 // The stored preference belongs to the dashboard. The narrow side-panel surface
 // intentionally follows the browser/OS theme so it feels native beside a web page.
-if (isSidePanelSurface()) {
+const sidePanelSurface = isSidePanelSurface()
+
+if (sidePanelSurface) {
   document.documentElement.dataset.surface = 'side-panel'
   document.documentElement.removeAttribute('data-theme')
   document.documentElement.style.colorScheme = 'light dark'
 } else {
   document.documentElement.dataset.surface = 'dashboard'
   applyAppTheme(readAppTheme())
+  // The capture panel belongs beside web content, not beside Homebase itself.
+  // The worker disables this dashboard tab; eligible web tabs own independent
+  // contextual panel instances and open/closed state.
+  void chrome.runtime.sendMessage({ type: 'dashboard-surface-ready' }).catch(() => {})
 }
 
-const surfaceModule = isSidePanelSurface()
+const surfaceModule = sidePanelSurface
   ? import('./SidePanelApp.tsx')
   : import('./App.tsx')
 

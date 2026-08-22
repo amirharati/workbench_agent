@@ -31,14 +31,23 @@ describe('DB owner protocol contract', () => {
     expect(serviceWorkerSource).toContain('mismatchConfirmations >= 2');
   });
 
-  it('uses one native global panel instead of contextual tab entries', () => {
+  it('uses contextual per-tab panels and disables the global/dashboard entries', () => {
     expect(serviceWorkerSource).toContain(
       '.setPanelBehavior({ openPanelOnActionClick: true })'
     );
     expect(serviceWorkerSource).toContain('chrome.sidePanel.onOpened.addListener');
     expect(serviceWorkerSource).toContain('chrome.sidePanel.onClosed.addListener');
+    expect(serviceWorkerSource).toContain('isHomebaseDashboardUrl');
+    expect(serviceWorkerSource).toContain('chrome.tabs.onUpdated.addListener');
+    expect(serviceWorkerSource).toContain(
+      'setOptions({ enabled: false, path: SIDE_PANEL_PATH })'
+    );
+    expect(serviceWorkerSource).toContain('enabledSidePanelTabIds');
+    expect(serviceWorkerSource).toContain('openSidePanelTabIds');
+    expect(serviceWorkerSource).toContain('path: SIDE_PANEL_PATH');
+    expect(serviceWorkerSource).toContain('setOptions({ tabId, enabled: false })');
+    expect(serviceWorkerSource).toContain('chrome.sidePanel.close({ windowId })');
     expect(serviceWorkerSource).not.toContain('chrome.action.onClicked.addListener');
     expect(serviceWorkerSource).not.toMatch(/sidePanel\s*\.\s*open\(\{\s*tabId/);
-    expect(serviceWorkerSource).not.toMatch(/sidePanel\s*\.\s*setOptions\(\{\s*tabId/);
   });
 });

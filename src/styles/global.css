@@ -180,32 +180,34 @@
 :root[data-surface='side-panel'] {
   color-scheme: light dark;
 
-  --bg: Canvas;
-  --bg-panel: Canvas;
-  --bg-raised: Canvas;
-  --bg-subtle: color-mix(in srgb, CanvasText 4%, Canvas);
-  --bg-glass: ButtonFace;
-  --bg-hover: color-mix(in srgb, CanvasText 6%, Canvas);
-  --bg-active: color-mix(in srgb, Highlight 12%, Canvas);
-  --input-bg: Field;
-  --bg-input: Field;
+  --bg: light-dark(#f5f7fb, #0d1117);
+  --bg-panel: light-dark(#f0f3f8, #161b22);
+  --bg-raised: light-dark(#ffffff, #181e27);
+  --bg-subtle: light-dark(#f4f6fa, #121820);
+  --bg-glass: light-dark(#f7f8fb, rgba(255, 255, 255, 0.055));
+  --bg-hover: light-dark(#eef1f7, rgba(255, 255, 255, 0.085));
+  --bg-active: light-dark(#eeedff, rgba(124, 116, 255, 0.16));
+  --input-bg: light-dark(#ffffff, rgba(255, 255, 255, 0.065));
+  --bg-input: var(--input-bg);
 
-  --text: CanvasText;
-  --text-muted: GrayText;
-  --text-faint: GrayText;
-  --text-placeholder: GrayText;
+  /* Do not use the system GrayText color here: Chromium intentionally renders
+     it like disabled copy, which made summaries and enrichment details fade. */
+  --text: light-dark(#172033, #eef2f7);
+  --text-muted: light-dark(#475467, #b9c2ce);
+  --text-faint: light-dark(#647187, #98a4b3);
+  --text-placeholder: light-dark(#778399, #8491a1);
 
-  --border: color-mix(in srgb, CanvasText 15%, transparent);
-  --border-strong: color-mix(in srgb, CanvasText 24%, transparent);
-  --border-focus: Highlight;
-  --border-active: color-mix(in srgb, Highlight 40%, transparent);
+  --border: light-dark(rgba(23, 32, 51, 0.14), rgba(238, 242, 247, 0.15));
+  --border-strong: light-dark(rgba(23, 32, 51, 0.24), rgba(238, 242, 247, 0.24));
+  --border-focus: light-dark(#5b55d9, #948cff);
+  --border-active: light-dark(rgba(91, 85, 217, 0.38), rgba(148, 140, 255, 0.46));
 
-  --accent: Highlight;
-  --accent-solid: Highlight;
-  --accent-hover: Highlight;
-  --accent-solid-hover: Highlight;
-  --accent-text: HighlightText;
-  --accent-weak: color-mix(in srgb, Highlight 15%, Canvas);
+  --accent: light-dark(#514bc5, #a49dff);
+  --accent-solid: light-dark(#5750d6, #6f64e8);
+  --accent-hover: light-dark(#443eaf, #bab5ff);
+  --accent-solid-hover: light-dark(#4841bd, #8076f2);
+  --accent-text: #ffffff;
+  --accent-weak: light-dark(rgba(87, 80, 214, 0.11), rgba(148, 140, 255, 0.16));
 
   --error: light-dark(#b42318, #ff7b72);
   --error-weak: color-mix(in srgb, var(--error) 12%, transparent);
@@ -225,6 +227,8 @@
   --er-warn: var(--warning);
 
   --overlay-backdrop: color-mix(in srgb, CanvasText 42%, transparent);
+  --shadow-sm: light-dark(0 1px 2px rgba(23, 32, 51, 0.06), 0 1px 2px rgba(0, 0, 0, 0.3));
+  --shadow-soft: light-dark(0 5px 18px rgba(23, 32, 51, 0.07), 0 6px 20px rgba(0, 0, 0, 0.24));
 }
 
 /* ===== Base Styles ===== */
@@ -4644,11 +4648,16 @@ button.ui-scope-chip {
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 88% -4%, var(--accent-weak), transparent 30%),
+    var(--bg);
 }
 
 .side-panel-header {
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 55%, transparent);
+  border-color: var(--border-strong) !important;
+  background: color-mix(in srgb, var(--bg) 90%, transparent) !important;
+  box-shadow: 0 1px 8px color-mix(in srgb, var(--text) 6%, transparent);
+  backdrop-filter: blur(14px);
 }
 
 .side-panel-main {
@@ -4656,12 +4665,57 @@ button.ui-scope-chip {
   overscroll-behavior: contain;
 }
 
-.side-panel-current-card {
+.side-panel-current-card,
+.side-panel-digest-card {
   background: var(--bg-raised);
+  border-color: var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-soft);
+}
+
+.side-panel-digest-card {
+  position: relative;
+}
+
+.side-panel-digest-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 10px 0 0 10px;
+  background: linear-gradient(180deg, var(--accent), var(--status-verified));
+  opacity: 0.8;
+}
+
+.side-panel-section-title {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 720;
+  letter-spacing: -0.005em;
+}
+
+.side-panel-section-kicker {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 720;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.side-panel-supporting-copy {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.side-panel-digest-copy {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.58;
 }
 
 .side-panel-current-status {
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 .side-panel-current-status[data-state='pending'] {
@@ -4687,6 +4741,24 @@ button.ui-scope-chip {
 .side-panel-organize-toggle[aria-expanded='true'] {
   border-color: var(--border-active);
   background: var(--accent-weak);
+}
+
+.side-panel-surface .ui-button {
+  border-radius: 6px;
+}
+
+.side-panel-surface .ui-button--secondary {
+  background: var(--bg-glass);
+  color: var(--text-muted);
+}
+
+.side-panel-surface .ui-field {
+  border-color: var(--border-strong);
+}
+
+.side-panel-surface .ui-field:focus {
+  border-color: var(--border-focus) !important;
+  box-shadow: 0 0 0 3px var(--accent-weak);
 }
 
 .side-panel-surface .scrollbar {

@@ -21,7 +21,7 @@ type ProtocolReply = {
 
 function loadServiceWorker(options: {
   protocolReply: (created: boolean) => ProtocolReply | Promise<ProtocolReply>;
-  activeTab?: { id: number; windowId: number };
+  activeTab?: { id: number; windowId: number; url?: string };
 }) {
   let offscreenExists = true;
   let created = false;
@@ -34,6 +34,11 @@ function loadServiceWorker(options: {
   const sidePanelOpenedListeners: Array<(info: { windowId: number; tabId?: number }) => void> = [];
   const sidePanelClosedListeners: Array<(info: { windowId: number; tabId?: number }) => void> = [];
   const tabActivatedListeners: Array<(info: { tabId: number; windowId: number }) => void> = [];
+  const tabUpdatedListeners: Array<(
+    tabId: number,
+    changeInfo: { url?: string },
+    tab: { id?: number; windowId?: number; url?: string }
+  ) => void> = [];
   const closeDocument = vi.fn(async () => {
     offscreenExists = false;
   });
@@ -42,6 +47,22 @@ function loadServiceWorker(options: {
     created = true;
   });
   const setPanelBehavior = vi.fn(async () => {});
+  const closeSidePanel = vi.fn(async () => {});
+  const tabPanelOptions = new Map<number, { enabled?: boolean; path?: string }>();
+  const getSidePanelOptions = vi.fn(async ({ tabId }: { tabId: number }) =>
+    tabPanelOptions.get(tabId) ?? {
+      enabled: true,
+      path: 'index.html?surface=side-panel',
+    }
+  );
+  const setSidePanelOptions = vi.fn(async (
+    next: { tabId: number; enabled?: boolean; path?: string }
+  ) => {
+    tabPanelOptions.set(next.tabId, {
+      ...(tabPanelOptions.get(next.tabId) ?? {}),
+      ...next,
+    });
+  });
   const extract = vi.fn(async () => ({ ok: true }));
   const sessionValues: Record<string, unknown> = {};
   const sessionSet = vi.fn(async (values: Record<string, unknown>) => {
@@ -70,18 +91,22 @@ function loadServiceWorker(options: {
     },
     sidePanel: {
       setPanelBehavior,
+      close: closeSidePanel,
+      getOptions: getSidePanelOptions,
+      setOptions: setSidePanelOptions,
       onOpened: { addListener: (listener: typeof sidePanelOpenedListeners[number]) => sidePanelOpenedListeners.push(listener) },
       onClosed: { addListener: (listener: typeof sidePanelClosedListeners[number]) => sidePanelClosedListeners.push(listener) },
     },
     tabs: {
       onRemoved: event(),
       onActivated: { addListener: (listener: typeof tabActivatedListeners[number]) => tabActivatedListeners.push(listener) },
+      onUpdated: { addListener: (listener: typeof tabUpdatedListeners[number]) => tabUpdatedListeners.push(listener) },
       query: async (query: { windowId?: number }) => {
         if (!options.activeTab) return [];
         if (typeof query.windowId === 'number' && query.windowId !== options.activeTab.windowId) return [];
         return [options.activeTab];
       },
-      get: async () => ({}),
+      get: async (tabId: number) => options.activeTab?.id === tabId ? options.activeTab : {},
       update: async () => ({}),
     },
     windows: { update: async () => ({}) },
@@ -126,18 +151,35 @@ function loadServiceWorker(options: {
     });
   }
 
+  async function notifyDashboardReady(tabId: number, url: string): Promise<unknown> {
+    const listener = runtimeListeners[0];
+    return new Promise((resolve, reject) => {
+      const handled = listener(
+        { type: 'dashboard-surface-ready' },
+        { tab: { id: tabId, windowId: 7, url } },
+        resolve
+      );
+      if (handled !== true) reject(new Error('Dashboard-ready message was not handled asynchronously'));
+    });
+  }
+
   return {
     closeDocument,
+    closeSidePanel,
     createDocument,
     installedListeners,
     extract,
+    notifyDashboardReady,
     pingDbOwner,
     requestBrowserExtract,
     sessionSet,
+    getSidePanelOptions,
     setPanelBehavior,
+    setSidePanelOptions,
     sidePanelClosedListeners,
     sidePanelOpenedListeners,
     tabActivatedListeners,
+    tabUpdatedListeners,
   };
 }
 
@@ -184,7 +226,7 @@ describe('service-worker owner lifecycle', () => {
     expect(worker.createDocument).not.toHaveBeenCalled();
   });
 
-  it('delegates toolbar opening to Chrome global panel behavior', () => {
+  it('initializes native action behavior for contextual panels', async () => {
     const worker = loadServiceWorker({
       protocolReply: () => ({
         version: currentProtocolVersion,
@@ -193,13 +235,112 @@ describe('service-worker owner lifecycle', () => {
       }),
     });
     worker.installedListeners[0]({ reason: 'update' });
-    expect(worker.setPanelBehavior).toHaveBeenCalledWith({ openPanelOnActionClick: true });
+    await vi.waitFor(() => expect(worker.setPanelBehavior).toHaveBeenCalledWith({
+      openPanelOnActionClick: true,
+    }));
+    expect(worker.setSidePanelOptions).toHaveBeenCalledWith({
+      enabled: false,
+      path: 'index.html?surface=side-panel',
+    });
     expect(worker.sidePanelOpenedListeners).toHaveLength(1);
     expect(worker.sidePanelClosedListeners).toHaveLength(1);
     expect(worker.tabActivatedListeners).toHaveLength(1);
+    expect(worker.tabUpdatedListeners).toHaveLength(1);
   });
 
-  it('tracks the active tab separately from the global panel scope', async () => {
+  it('disables the dashboard panel and enables a contextual panel after navigation', async () => {
+    const worker = loadServiceWorker({
+      protocolReply: () => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+      }),
+    });
+
+    await expect(worker.notifyDashboardReady(
+      42,
+      'chrome://newtab/'
+    )).resolves.toEqual({ ok: true });
+    await vi.waitFor(() => expect(worker.setSidePanelOptions).toHaveBeenCalledWith({
+      tabId: 42,
+      enabled: false,
+    }));
+    expect(worker.closeSidePanel).toHaveBeenCalledWith({ tabId: 42 });
+    expect(worker.closeSidePanel).toHaveBeenCalledWith({ windowId: 7 });
+
+    worker.tabUpdatedListeners[0](
+      42,
+      { url: 'https://example.com/article' },
+      { id: 42, windowId: 7, url: 'https://example.com/article' }
+    );
+    await vi.waitFor(() => expect(worker.setSidePanelOptions).toHaveBeenLastCalledWith({
+      tabId: 42,
+      enabled: true,
+      path: 'index.html?surface=side-panel',
+    }));
+  });
+
+  it('recognizes Chrome new-tab override URLs as the Homebase dashboard', async () => {
+    const worker = loadServiceWorker({
+      protocolReply: () => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+      }),
+    });
+    worker.tabUpdatedListeners[0](
+      51,
+      { url: 'chrome://newtab/' },
+      { id: 51, windowId: 7, url: 'chrome://newtab/' }
+    );
+    await vi.waitFor(() => expect(worker.setSidePanelOptions).toHaveBeenCalledWith({
+      tabId: 51,
+      enabled: false,
+    }));
+    expect(worker.closeSidePanel).toHaveBeenCalledWith({ windowId: 7 });
+  });
+
+  it('gives an ordinary tab its own contextual panel entry', async () => {
+    const worker = loadServiceWorker({
+      protocolReply: () => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+      }),
+    });
+    worker.tabUpdatedListeners[0](
+      42,
+      { url: 'https://example.com/article' },
+      { id: 42, windowId: 7, url: 'https://example.com/article' }
+    );
+    await vi.waitFor(() => expect(worker.setSidePanelOptions).toHaveBeenCalledWith({
+      tabId: 42,
+      enabled: true,
+      path: 'index.html?surface=side-panel',
+    }));
+  });
+
+  it('enables contextual panels on Chrome-owned pages other than Homebase New Tab', async () => {
+    const worker = loadServiceWorker({
+      protocolReply: () => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+      }),
+    });
+    worker.tabUpdatedListeners[0](
+      71,
+      { url: 'chrome://extensions/' },
+      { id: 71, windowId: 7, url: 'chrome://extensions/' }
+    );
+    await vi.waitFor(() => expect(worker.setSidePanelOptions).toHaveBeenCalledWith({
+      tabId: 71,
+      enabled: true,
+      path: 'index.html?surface=side-panel',
+    }));
+  });
+
+  it('resolves a contextual panel to its own active tab', async () => {
     const worker = loadServiceWorker({
       protocolReply: () => ({
         version: currentProtocolVersion,

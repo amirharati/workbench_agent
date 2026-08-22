@@ -52,28 +52,26 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
 
   return (
     <Panel
+      className="side-panel-digest-card"
       style={{
         display: 'flex',
         flexDirection: 'column',
         gap: '0.55rem',
-        padding: '0.65rem',
+        padding: '0.75rem 0.75rem 0.75rem 0.85rem',
         flexShrink: 0,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div>
           <div
+            className="side-panel-section-kicker"
             style={{
-              fontSize: 'var(--text-xs)',
               color: 'var(--text-muted)',
-              fontWeight: 650,
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
             }}
           >
             AI digest
           </div>
-          <div style={{ marginTop: 2, fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+          <div className="side-panel-supporting-copy" style={{ marginTop: 2 }}>
             Optional · runs only when requested
           </div>
         </div>
@@ -106,27 +104,25 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
         </div>
       ) : null}
       {stageHint && !statusLabel?.includes(stageHint) ? (
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>{stageHint}</div>
+        <div className="side-panel-supporting-copy">{stageHint}</div>
       ) : null}
 
       {loading ? (
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>Loading digest…</div>
+        <div className="side-panel-supporting-copy">Loading digest…</div>
       ) : !context ? (
-        <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+        <p className="side-panel-supporting-copy" style={{ margin: 0 }}>
           Could not load bookmark data.
         </p>
       ) : !hasData ? (
-        <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.45 }}>
+        <p className="side-panel-supporting-copy" style={{ margin: 0 }}>
           No AI data yet. Run a digest when you want to fetch and summarize this page.
         </p>
       ) : (
         <>
           <div
+            className="side-panel-section-title"
             style={{
               paddingTop: '0.1rem',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 650,
-              color: 'var(--text)',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -140,11 +136,9 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
             <>
               {preview ? (
                 <p
+                  className="side-panel-digest-copy"
                   style={{
                     margin: 0,
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--text-muted)',
-                    lineHeight: 1.5,
                     whiteSpace: 'pre-wrap',
                   }}
                 >
@@ -153,12 +147,10 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
               ) : null}
               {context.keyPoints.length > 0 ? (
                 <ul
+                  className="side-panel-digest-copy"
                   style={{
                     margin: 0,
                     paddingLeft: '1.1rem',
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--text-muted)',
-                    lineHeight: 1.45,
                   }}
                 >
                   {context.keyPoints.slice(0, 3).map((point, index) => (
@@ -184,7 +176,6 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                 summary={context.summary}
                 keyPoints={context.keyPoints}
                 references={context.references}
-                compact
                 emptyMessage={fetchedSnippet ? undefined : 'No summary is available yet.'}
               />
               {!context.summary && context.keyPoints.length === 0 && fetchedSnippet ? (
@@ -200,11 +191,9 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                     Fetched excerpt
                   </div>
                   <p
+                    className="side-panel-digest-copy"
                     style={{
                       margin: 0,
-                      fontSize: 'var(--text-xs)',
-                      color: 'var(--text-faint)',
-                      lineHeight: 1.5,
                       whiteSpace: 'pre-wrap',
                     }}
                   >
@@ -226,7 +215,7 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                 >
                   Categories
                 </div>
-                <p style={{ margin: '0 0 6px', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                <p className="side-panel-supporting-copy" style={{ margin: '0 0 6px' }}>
                   AI categories are separate from project collections.
                 </p>
                 {context.primaryCategoryName &&
@@ -235,7 +224,7 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                   <CategoryChip label={context.primaryCategoryName} />
                 ) : null}
                 {context.acceptedLinks.length === 0 && context.suggestedLinks.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+                  <p className="side-panel-supporting-copy" style={{ margin: 0 }}>
                     {statusLabel?.toLowerCase().includes('classif')
                       ? 'Classifying…'
                       : context.classifyState === 'manual_review'

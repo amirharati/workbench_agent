@@ -76,7 +76,7 @@ export async function getTabBookmarkContext(
     const tab = await chrome.tabs.get(tabId);
     if (!tab?.id || !tab.url) return null;
     const raw = tab.url.trim();
-    if (!/^https?:\/\//i.test(raw) && !/^file:\/\//i.test(raw)) return null;
+    if (!raw) return null;
 
     const url = await resolveTabBookmarkUrl(tab.id, tab.url);
     return {
@@ -102,7 +102,7 @@ async function queryFocusedActiveTabContext(): Promise<ActiveTabBookmarkContext 
     const [tab] = await chrome.tabs.query(query);
     if (!tab?.id || !tab.url) continue;
     const raw = tab.url.trim();
-    if (!/^https?:\/\//i.test(raw) && !/^file:\/\//i.test(raw)) continue;
+    if (!raw) continue;
     const url = await resolveTabBookmarkUrl(tab.id, tab.url);
     return {
       tabId: tab.id,

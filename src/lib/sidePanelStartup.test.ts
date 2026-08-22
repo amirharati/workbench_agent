@@ -42,4 +42,27 @@ describe('lightweight side-panel startup', () => {
     expect(handler).not.toContain('getAllItems()');
     expect(handler).not.toContain('scheduleSimilarityVectorWarm');
   });
+
+  it('pins each contextual panel instance to its original browser tab', () => {
+    const view = readFileSync(
+      new URL('../components/SidePanelView.tsx', import.meta.url),
+      'utf8'
+    );
+    expect(view).toContain('getTabBookmarkContext(activeTabIdRef.current)');
+    expect(view).toContain('tabId === activeTabIdRef.current');
+  });
+
+  it('uses readable side-panel typography instead of disabled system text colors', () => {
+    const css = readFileSync(new URL('../styles/global.css', import.meta.url), 'utf8');
+    const surfaceTokens = css.slice(
+      css.indexOf(":root[data-surface='side-panel']"),
+      css.indexOf('/* ===== Base Styles ===== */')
+    );
+
+    expect(surfaceTokens).not.toContain('--text-muted: GrayText');
+    expect(surfaceTokens).not.toContain('--text-faint: GrayText');
+    expect(surfaceTokens).toContain('--text-muted: light-dark(');
+    expect(css).toContain('.side-panel-digest-copy');
+    expect(css).toContain('.side-panel-digest-card::before');
+  });
 });

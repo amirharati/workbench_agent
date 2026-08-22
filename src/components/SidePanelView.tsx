@@ -11,7 +11,7 @@ import {
 import type { Collection, Item, Project } from '../lib/db';
 import { normalizeBookmarkUrl } from '../lib/db';
 import { favoriteItem, unfavoriteItem } from '../lib/itemQuickAccess';
-import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
+import { getActiveTabBookmarkContext, getTabBookmarkContext } from '../lib/tabUrlCapture';
 import { isValidBookmarkUrl } from '../lib/utils';
 import { ButtonGhost, ButtonPrimary, IconButton, Input, Panel } from '../styles/primitives';
 import { ItemOrganizationEditor } from './dashboard/ItemOrganizationEditor';
@@ -143,7 +143,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const applyHostTab = useCallback(
     (tabUrl: string, tabTitle: string) => {
       const nextUrl = tabUrl.trim();
-      if (!nextUrl || !isValidBookmarkUrl(nextUrl)) return;
+      if (!nextUrl) return;
       const changed =
         normalizeBookmarkUrl(nextUrl) !== normalizeBookmarkUrl(activeUrlRef.current);
       activeUrlRef.current = nextUrl;
@@ -166,7 +166,9 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const prefillFromHostTab = useCallback(async () => {
     const seq = ++prefillSeqRef.current;
     try {
-      const context = await getActiveTabBookmarkContext();
+      const context = activeTabIdRef.current != null
+        ? await getTabBookmarkContext(activeTabIdRef.current)
+        : await getActiveTabBookmarkContext();
       if (!context || seq !== prefillSeqRef.current) return;
       activeTabIdRef.current = context.tabId;
       applyHostTab(context.url, context.title);
@@ -181,7 +183,11 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     const onVisible = () => {
       if (document.visibilityState === 'visible') void prefillFromHostTab();
     };
-    const onActivated = () => void prefillFromHostTab();
+    const onActivated = ({ tabId }: { tabId: number }) => {
+      if (activeTabIdRef.current == null || tabId === activeTabIdRef.current) {
+        void prefillFromHostTab();
+      }
+    };
     const onUpdated = (
       tabId: number,
       changeInfo: { url?: string; title?: string; status?: string }
@@ -274,6 +280,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       return `${project?.name ?? 'Unassigned'} / ${collection?.name ?? 'Unknown'}`;
     });
   }, [activeItem, collections, projects]);
+  const currentPageCanBeSaved = isValidBookmarkUrl(url);
 
   const formatDestinationLabel = (ids: string[]) => {
     if (ids.length === 0) return 'Choose destination';
@@ -328,7 +335,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           background: 'var(--bg)',
         }}
       >
-        <div style={{ flex: 1, minWidth: 0, fontSize: 'var(--text-sm)', fontWeight: 750 }}>
+        <div className="side-panel-section-title" style={{ flex: 1, minWidth: 0 }}>
           Homebase
         </div>
         <ButtonGhost
@@ -409,15 +416,15 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                   color: 'var(--text-muted)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
-                  fontWeight: 650,
+                  fontWeight: 720,
                 }}
               >
                 Current page
               </div>
               <div
+                className="side-panel-supporting-copy"
                 style={{
                   marginTop: 2,
-                  fontSize: 'var(--text-xs)',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 4,
@@ -428,7 +435,9 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
                   ? 'Checking saved state…'
                   : activeItem
                     ? `Saved in ${placementLabels.length} ${placementLabels.length === 1 ? 'place' : 'places'}`
-                    : 'Not saved'}
+                    : currentPageCanBeSaved
+                      ? 'Not saved'
+                      : 'This browser page cannot be saved'}
               </div>
             </div>
             {activeItem ? (
@@ -501,6 +510,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
             type="button"
             className="ui-button ui-button--secondary side-panel-organize-toggle"
             aria-expanded={organizeOpen}
+            disabled={!currentPageCanBeSaved}
             onClick={() => setOrganizeOpen((open) => !open)}
             style={{
               width: '100%',
@@ -513,12 +523,17 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
               border: '1px solid var(--border)',
               background: organizeOpen ? 'var(--accent-weak)' : 'var(--bg-glass)',
               color: 'var(--text)',
-              cursor: 'pointer',
+              cursor: currentPageCanBeSaved ? 'pointer' : 'not-allowed',
+              opacity: currentPageCanBeSaved ? 1 : 0.65,
               fontSize: 'var(--text-xs)',
             }}
           >
             <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {activeItem ? 'Manage saved locations' : `Save to ${destinationLabel}`}
+              {activeItem
+                ? 'Manage saved locations'
+                : currentPageCanBeSaved
+                  ? `Save to ${destinationLabel}`
+                  : 'View-only browser page'}
             </span>
             {organizeOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
@@ -578,6 +593,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
               saving ||
               savedStatePending ||
               !url ||
+              !currentPageCanBeSaved ||
               (!activeItem && draftCollectionIds.length === 0)
             }
             style={{
@@ -598,9 +614,11 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         {activeItem ? (
           <SidePanelDigestPanel itemId={activeItem.id} onOpenInApp={onOpenFullPage} />
         ) : (
-          <Panel style={{ padding: '0.65rem' }}>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-              Save this page first, then run an optional AI digest. Saving alone never spends AI credits.
+          <Panel className="side-panel-digest-card" style={{ padding: '0.75rem 0.75rem 0.75rem 0.85rem' }}>
+            <div className="side-panel-supporting-copy">
+              {currentPageCanBeSaved
+                ? 'Save this page first, then run an optional AI digest. Saving alone never spends AI credits.'
+                : 'This browser-owned page is available as panel context but cannot be saved or enriched.'}
             </div>
           </Panel>
         )}

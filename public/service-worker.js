@@ -214,21 +214,74 @@ async function ensureOffscreenDocument() {
   }
 }
 
-// The manifest declares one global panel. Track which browser windows currently
-// show it, and separately remember their active tab for authenticated fetches.
-// Never create tab-specific panel entries: Chrome unloads contextual and global
-// entries through different native lifecycles during extension reload.
-const openSidePanelWindowIds = new Set();
+// Side panels are contextual: every eligible browser tab owns an independent
+// panel instance and native open/closed state. The global manifest entry stays
+// disabled, so a panel never follows the user into another tab or the dashboard.
+const enabledSidePanelTabIds = new Set();
+const openSidePanelTabIds = new Set();
 let sidePanelStateLoaded = false;
 let lastSidePanelHost = null;
 const SIDE_PANEL_HOST_KEY = 'sidePanelHost';
-const SIDE_PANEL_OPEN_WINDOWS_KEY = 'sidePanelOpenWindowIds';
+const SIDE_PANEL_ENABLED_TABS_KEY = 'sidePanelEnabledTabIds';
+const SIDE_PANEL_OPEN_TABS_KEY = 'sidePanelOpenTabIds';
+const SIDE_PANEL_PATH = 'index.html?surface=side-panel';
+
+function isHomebaseDashboardUrl(rawUrl) {
+  if (typeof rawUrl !== 'string' || rawUrl.length === 0) return false;
+  try {
+    const candidate = new URL(rawUrl);
+    // Chrome keeps the visible tab URL as chrome://newtab/ when this extension's
+    // new-tab override is rendering the Homebase dashboard.
+    if (candidate.protocol === 'chrome:' && candidate.hostname === 'newtab') {
+      return true;
+    }
+    const dashboard = new URL(chrome.runtime.getURL('index.html'));
+    return (
+      candidate.origin === dashboard.origin &&
+      candidate.pathname === dashboard.pathname &&
+      candidate.searchParams.get('surface') !== 'side-panel'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isSidePanelEligibleUrl(rawUrl) {
+  if (isHomebaseDashboardUrl(rawUrl)) return false;
+  try {
+    // Chrome-owned pages (for example chrome://extensions) still get their own
+    // panel. Bookmarkability is a UI/data concern, not a panel-availability rule.
+    return Boolean(new URL(rawUrl));
+  } catch {
+    return false;
+  }
+}
+
+async function closeDashboardSidePanels(tabId, windowId) {
+  if (typeof chrome.sidePanel.close !== 'function') return;
+  if (typeof tabId === 'number') {
+    try {
+      await chrome.sidePanel.close({ tabId });
+    } catch {
+      /* already closed or no contextual panel */
+    }
+  }
+  // Clean up a global panel retained from a previous extension version.
+  if (typeof windowId === 'number') {
+    try {
+      await chrome.sidePanel.close({ windowId });
+    } catch {
+      /* already closed or no legacy global panel */
+    }
+  }
+}
 
 async function persistSidePanelState() {
   try {
     await chrome.storage.session.set({
       [SIDE_PANEL_HOST_KEY]: lastSidePanelHost,
-      [SIDE_PANEL_OPEN_WINDOWS_KEY]: [...openSidePanelWindowIds],
+      [SIDE_PANEL_ENABLED_TABS_KEY]: [...enabledSidePanelTabIds],
+      [SIDE_PANEL_OPEN_TABS_KEY]: [...openSidePanelTabIds],
     });
   } catch {
     /* session storage unavailable */
@@ -241,13 +294,14 @@ async function loadSidePanelState() {
   try {
     const data = await chrome.storage.session.get([
       SIDE_PANEL_HOST_KEY,
-      SIDE_PANEL_OPEN_WINDOWS_KEY,
+      SIDE_PANEL_ENABLED_TABS_KEY,
+      SIDE_PANEL_OPEN_TABS_KEY,
     ]);
-    const windowIds = data[SIDE_PANEL_OPEN_WINDOWS_KEY];
-    if (Array.isArray(windowIds)) {
-      for (const id of windowIds) {
-        if (typeof id === 'number') openSidePanelWindowIds.add(id);
-      }
+    for (const id of data[SIDE_PANEL_ENABLED_TABS_KEY] ?? []) {
+      if (typeof id === 'number') enabledSidePanelTabIds.add(id);
+    }
+    for (const id of data[SIDE_PANEL_OPEN_TABS_KEY] ?? []) {
+      if (typeof id === 'number') openSidePanelTabIds.add(id);
     }
     const host = data[SIDE_PANEL_HOST_KEY];
     if (typeof host?.tabId === 'number' && typeof host?.windowId === 'number') {
@@ -258,42 +312,91 @@ async function loadSidePanelState() {
   }
 }
 
-async function rememberSidePanelWindow(windowId, explicitTabId) {
-  if (typeof windowId !== 'number') return;
+async function configureSidePanelForTab(tabId, rawUrl, windowId) {
+  if (typeof tabId !== 'number' || typeof rawUrl !== 'string') return;
   await loadSidePanelState();
-  openSidePanelWindowIds.add(windowId);
-  let tabId = explicitTabId;
+  const enabled = isSidePanelEligibleUrl(rawUrl);
+  try {
+    if (enabled) {
+      await chrome.sidePanel.setOptions({
+        tabId,
+        enabled: true,
+        path: SIDE_PANEL_PATH,
+      });
+      enabledSidePanelTabIds.add(tabId);
+    } else {
+      await chrome.sidePanel.setOptions({ tabId, enabled: false });
+      enabledSidePanelTabIds.delete(tabId);
+      openSidePanelTabIds.delete(tabId);
+      if (lastSidePanelHost?.tabId === tabId) lastSidePanelHost = null;
+      if (isHomebaseDashboardUrl(rawUrl)) {
+        await closeDashboardSidePanels(tabId, windowId);
+      }
+    }
+    await persistSidePanelState();
+  } catch (error) {
+    console.warn('[side-panel] could not update contextual tab:', error);
+  }
+}
+
+async function initializeContextualSidePanels() {
+  try {
+    await chrome.sidePanel.setOptions({ enabled: false, path: SIDE_PANEL_PATH });
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    const tabs = await chrome.tabs.query({});
+    await Promise.all(tabs.map((tab) =>
+      configureSidePanelForTab(tab.id, tab.url, tab.windowId)
+    ));
+  } catch (error) {
+    console.warn('[side-panel] could not initialize contextual panels:', error);
+  }
+}
+
+async function rememberOpenedSidePanel(info) {
+  await loadSidePanelState();
+  let tabId = info.tabId;
   if (typeof tabId !== 'number') {
     try {
-      const [active] = await chrome.tabs.query({ active: true, windowId });
+      const [active] = await chrome.tabs.query({ active: true, windowId: info.windowId });
       tabId = active?.id;
     } catch {
-      /* keep the prior host */
+      /* ignore legacy/global event */
     }
   }
-  if (typeof tabId === 'number') lastSidePanelHost = { tabId, windowId };
+  if (typeof tabId !== 'number') return;
+  enabledSidePanelTabIds.add(tabId);
+  openSidePanelTabIds.add(tabId);
+  lastSidePanelHost = { tabId, windowId: info.windowId };
   await persistSidePanelState();
 }
 
-async function forgetSidePanelWindow(windowId) {
+async function forgetClosedSidePanel(info) {
   await loadSidePanelState();
-  openSidePanelWindowIds.delete(windowId);
-  if (lastSidePanelHost?.windowId === windowId) lastSidePanelHost = null;
+  if (typeof info.tabId === 'number') openSidePanelTabIds.delete(info.tabId);
+  else if (lastSidePanelHost?.windowId === info.windowId) {
+    openSidePanelTabIds.delete(lastSidePanelHost.tabId);
+  }
+  if (
+    lastSidePanelHost &&
+    (lastSidePanelHost.tabId === info.tabId ||
+      (typeof info.tabId !== 'number' && lastSidePanelHost.windowId === info.windowId))
+  ) {
+    lastSidePanelHost = null;
+  }
   await persistSidePanelState();
 }
 
 async function readSidePanelHostTabId() {
   await loadSidePanelState();
 
-  // Prefer the active tab in the focused window when that window owns an open
-  // global Homebase panel. This preserves authenticated browser-session fetches
-  // without turning the panel itself into a contextual/tab-specific entry.
+  // A side-panel request comes from the visible contextual instance. Prefer its
+  // active tab, while retaining the last opened tab as a reload fallback.
   try {
     const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (
       typeof active?.id === 'number' &&
       typeof active?.windowId === 'number' &&
-      openSidePanelWindowIds.has(active.windowId)
+      enabledSidePanelTabIds.has(active.id)
     ) {
       lastSidePanelHost = { tabId: active.id, windowId: active.windowId };
       return active.id;
@@ -306,39 +409,51 @@ async function readSidePanelHostTabId() {
 }
 
 chrome.sidePanel.onOpened.addListener((info) => {
-  void rememberSidePanelWindow(info.windowId, info.tabId);
+  void rememberOpenedSidePanel(info);
 });
 
 chrome.sidePanel.onClosed.addListener((info) => {
-  void forgetSidePanelWindow(info.windowId);
+  void forgetClosedSidePanel(info);
 });
 
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
   void (async () => {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      await configureSidePanelForTab(tabId, tab?.url, windowId);
+    } catch {
+      /* tab disappeared or URL is unavailable */
+    }
     await loadSidePanelState();
-    if (!openSidePanelWindowIds.has(windowId)) return;
+    if (!openSidePanelTabIds.has(tabId)) return;
     lastSidePanelHost = { tabId, windowId };
     await persistSidePanelState();
   })();
 });
 
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const url = changeInfo.url;
+  if (typeof url === 'string') void configureSidePanelForTab(tabId, url, tab?.windowId);
+});
+
 chrome.tabs.onRemoved.addListener((tabId) => {
+  enabledSidePanelTabIds.delete(tabId);
+  openSidePanelTabIds.delete(tabId);
   if (lastSidePanelHost?.tabId === tabId) {
     lastSidePanelHost = null;
-    void persistSidePanelState();
   }
+  void persistSidePanelState();
   void pausePipelinesOwnedByTab(tabId);
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
-  chrome.sidePanel
-    .setPanelBehavior({ openPanelOnActionClick: true })
-    .catch((error) => console.error('[side-panel] could not enable action behavior:', error));
   if (details.reason === "install") {
     chrome.storage.local.set({ backupFolderOnboarding: "pending" }).catch(() => {});
   }
   console.log("Homebase:", details.reason);
 });
+
+void initializeContextualSidePanels();
 
 function armPipelineRecoveryAlarm() {
   chrome.alarms.create(PIPELINE_RECOVERY_ALARM, { when: Date.now() + 60_000 });
@@ -376,6 +491,23 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 // Listen for focus-tab messages (must be at top level, not inside onInstalled)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'dashboard-surface-ready') {
+    const tabId = sender.tab?.id;
+    if (typeof tabId !== 'number') {
+      sendResponse({ ok: false, error: 'Dashboard tab is unavailable' });
+      return false;
+    }
+    configureSidePanelForTab(
+      tabId,
+      // This message is emitted only by the dashboard entry point. Do not use
+      // sender.tab.url here: Chrome may expose the override as chrome://newtab/.
+      chrome.runtime.getURL('index.html'),
+      sender.tab?.windowId
+    )
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: String(error) }));
+    return true;
+  }
   if (message?.type === 'pipeline-offscreen-done' && typeof message.requestId === 'string') {
     void unbindPipelineJobHost(message.requestId);
     return false;

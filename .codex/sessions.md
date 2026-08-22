@@ -348,5 +348,15 @@
 - Session ID: unknown
 - Agent: codex
 - Summary: Added Categories as a first-class Home view beside Overview and Search. It reads a bounded topical-only category/membership snapshot from the canonical DB worker, scopes counts/results to All Library or the current project, supports hierarchical filtering and persistent multi-select OR browsing, and reuses the shared content browser for list/gallery, Inspector selection, Peek, and drag-and-drop. Protocol v22 replaces retained workers.
-- Status: Implemented but uncommitted. TypeScript, 48 focused category/Home/Help/worker tests, production build, and `git diff --check` pass; live extension acceptance remains.
+- Commits/PRs: `4b3db3e` (`Add scoped Home category browser`)
+- Status: Categories checkpoint committed. TypeScript, 48 focused category/Home/Help/worker tests, production build, and `git diff --check` pass; live extension acceptance remains.
 - Next steps: Reload the unpacked extension; compare All Library and two project scopes, select one then several categories, verify OR results and Inspector/Peek/drag, switch scopes to verify separate remembered selection, toggle empty categories, and check narrow layout. Confirm quality labels such as Login/Redirect do not appear.
+
+## 2026-08-22 - Hide capture panel on dashboard tabs
+- Session ID: unknown
+- Agent: codex
+- Summary: Superseded the global-panel attempt after clarifying the product model: every valid tab except Homebase's own dashboard/New Tab now owns a separate contextual panel instance and native open/closed state. The global entry is disabled, Homebase dashboard entries are disabled and closed, and each React panel pins its capture/edit context to the tab that opened it so hidden instances cannot follow later tab activation. Saved URLs render update/edit state; unsaved bookmarkable URLs render Save; Chrome-owned pages such as Extension Management show their true context in a view-only panel.
+- Follow-up: Dashboard detection explicitly handles Chrome's overridden `chrome://newtab/` identity and a dashboard-startup signal. Contextual options are prepared before toolbar clicks, so native `openPanelOnActionClick` opens the tab-specific instance without the prior `setOptions()`/`open()` race.
+- Visual follow-up: Replaced Chromium's disabled-looking `GrayText` side-panel tokens with readable light/dark palettes, strengthened input and card contrast, and gave the current-page and AI-digest sections clearer hierarchy. Digest previews and expanded enrichment now use readable body sizing while preserving the compact layout. The Browser visual-review surface was unavailable in this session, so live appearance still needs extension acceptance.
+- Status: Uncommitted pending live acceptance. Four focused lifecycle/surface/startup/context suites (17 tests), TypeScript, production build, and `git diff --check` pass.
+- Next steps: Reload with all Homebase panels closed first because this changes native panel ownership. Verify the panel opens on `chrome://extensions` and shows that page's context; open/close independently on two ordinary tabs and verify each shows only its own saved/unsaved URL state; verify dashboard/New Tab has no panel; then reload the extension with contextual panels both closed and open to check the prior Chrome reload-crash boundary.
