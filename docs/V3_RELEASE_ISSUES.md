@@ -728,6 +728,30 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   links after each run. Automated worker/SQLite tests cover repeated, General→specific, accepted,
   rejected, and vector-preservation cases.
 
+### V3-015 — AI backend failures are silent or misreported as enrichment success
+
+- Found: 2026-08-22, Run 01 continuation
+- Severity / gate: P1 / G2, G4
+- Status: READY TO RETEST
+- Reproduction: run a side-panel digest or bulk import with no key, an invalid key, exhausted
+  credits/quota, a rate-limited provider, or another provider/network failure.
+- Expected: preserve any successful fetch for keyword search and any prior good AI-derived fields;
+  identify the incomplete AI stage and show one actionable provider error in the initiating view.
+- Actual: the first side-panel attempt could report `Not enriched yet`; some AI callers silently
+  fell back; bulk completion could count fetch-only rows as Enriched; classification/discovery could
+  repeat dependent calls against the same rejected backend; a failed rerun could clear prior AI fields.
+- Data-safety check: the corrected contract stores successful fetched text with `status=ok`, retains
+  prior summary/tags/key points, and records the latest `aiStatus`/`aiError`. It never labels that row
+  Enriched until AI succeeds.
+- Fix: normalize missing configuration, authentication, quota/credits, rate limit, timeout, network,
+  and provider/model errors in the shared AI layer; propagate them through digest, embedding,
+  classification/discovery, Search, Ask, Settings, and direct review actions; stop terminal retries;
+  drain pending item writes before submission and read completion state authoritatively from the DB worker.
+- Retest: use one fresh ordinary URL for each practical failure case. On the first click, confirm the
+  modal says Fetched plus the exact AI problem, the fetched excerpt is keyword-searchable, prior good AI
+  fields survive rerun failure, Search visibly falls back to text, and the provider is not called once per
+  remaining item after a terminal error. Then repeat with five links and an Import Studio batch.
+
 For substantial issues, add a section using this template:
 
 ```md

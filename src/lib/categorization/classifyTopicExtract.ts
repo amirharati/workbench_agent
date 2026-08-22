@@ -1497,6 +1497,9 @@ export async function classifyIncremental(
     );
     throwIfAborted(opts.signal);
     const normalized = batchResult.decisions;
+    if (batchResult.lastError && batchResult.unresolvedItemIds.length > 0) {
+      summary.aiError ??= batchResult.lastError;
+    }
     for (const itemId of batchResult.unresolvedItemIds) {
       normalized.set(itemId, {
         itemId,
@@ -2164,13 +2167,16 @@ export async function discoverBatch(
   runSummary.mergeAuditCount = mapReduce.mergeAudit.length;
   llmErrors = mapReduce.llmErrors;
   runSummary.llmErrors = mapReduce.llmErrors;
+  const aiError = mapReduce.errors[0];
 
   if (mapReduce.llmErrors > 0) {
     runSummary.failureBuckets = bumpDiscoverFailureBucket(
       runSummary.failureBuckets,
       'llm_batch_error'
     );
-    batchErrors.push(`map/reduce: ${mapReduce.llmErrors} LLM error(s)`);
+    batchErrors.push(...(mapReduce.errors.length
+      ? mapReduce.errors
+      : [`map/reduce: ${mapReduce.llmErrors} LLM error(s)`]));
   }
 
   for (const row of sampledForRun) successfulSampleIds.add(row.itemId);
@@ -2303,6 +2309,7 @@ export async function discoverBatch(
     sampledItemIds: [...successfulSampleIds],
     reclassifyItemIds,
     batchErrors: batchErrors.length ? batchErrors : undefined,
+    aiError,
     summary: runSummary,
   };
 }

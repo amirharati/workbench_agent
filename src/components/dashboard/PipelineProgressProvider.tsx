@@ -395,12 +395,14 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           ? 'info'
           : reportRows?.length && result.classifySummary
             ? resolveReportRowsSummaryTone(reportRows, result.classifySummary)
-            : resolvePipelineSummaryTone({
+              : resolvePipelineSummaryTone({
                 enriched: result.enriched,
+                fetched: result.fetched,
                 skipped: result.skipped,
                 failed: result.failed,
                 classified: result.classified,
                 classifyError: result.classifyError,
+                aiError: result.aiError,
                 classifySummary: result.classifySummary,
               });
 
@@ -724,6 +726,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
         if (embedded > 0) parts.push(`${embedded} embedded`);
         if (skipped > 0) parts.push(`${skipped} skipped`);
         if (failed > 0) parts.push(`${failed} failed`);
+        if (batch.embedError) parts.push(batch.embedError);
         const summaryText = parts.length ? parts.join(' · ') : 'No changes';
 
         setModal({
@@ -801,6 +804,7 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           else if ((s?.stuckPool ?? 0) < 3 && !options?.itemIds?.length) summaryParts.push('need ≥3 items');
           else summaryParts.push('0 new topics proposed');
         }
+        if (discover.aiError) summaryParts.push(discover.aiError);
 
         const reclassifyIds = discover.reclassifyItemIds ?? [];
         const sampledIds = discover.sampledItemIds ?? [];
@@ -1151,10 +1155,12 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
           ? resolveReportRowsSummaryTone(reportRows, result.classifySummary)
           : resolvePipelineSummaryTone({
               enriched: result.enriched,
+              fetched: result.fetched,
               skipped: result.skipped,
               failed: result.failed,
               classified: result.classified,
               classifyError: result.classifyError,
+              aiError: result.aiError,
               classifySummary: result.classifySummary,
             });
 

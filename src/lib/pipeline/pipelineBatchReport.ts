@@ -59,7 +59,7 @@ export interface PipelineReportRow {
   statusLabel?: string;
   statusColor?: string;
   /** Non-fatal condition that should remain visible in the run summary. */
-  notice?: 'ai_not_configured';
+  notice?: 'ai_not_configured' | 'ai_backend_error';
 }
 
 export interface PipelineReportBuildOptions {
@@ -185,7 +185,10 @@ export function resolveEnrichReportOutcome(
 
   const failure = resolveEnrichmentFailureLabel(enrichment, embedFailed);
   if (failure) {
-    return { outcome: 'failed', detail: failureReportDetail(failure, enrichment) };
+    return {
+      outcome: enrichment?.status === 'ok' && failure.stage === 'ai' ? 'fetched' : 'failed',
+      detail: failureReportDetail(failure, enrichment),
+    };
   }
 
   if (enrichment?.pendingFetchReview) {
@@ -373,7 +376,7 @@ export async function buildEnrichOutcomeReportRows(
     const enrichment = enrichById.get(itemId);
     const embedFailed = embedFailedIds.has(itemId);
     const enrichResult = byResult.get(itemId);
-    const { detail } = resolveEnrichReportOutcome(
+    const resolvedOutcome = resolveEnrichReportOutcome(
       enrichment,
       embedFailed,
       action,
@@ -390,18 +393,23 @@ export async function buildEnrichOutcomeReportRows(
       classifyState: stage?.signal?.classifyState,
     });
     const statusBadge = hubStatusBadgeForEnrichment(enrichment, embedFailed, stage);
-    const outcome = outcomeFromPipelineBadge(pipelineBadge, action);
+    const notice = enrichment?.status === 'ok' && enrichment.aiStatus === 'not_configured'
+      ? 'ai_not_configured' as const
+      : enrichment?.status === 'ok' && enrichment.aiStatus === 'api_error'
+        ? 'ai_backend_error' as const
+        : undefined;
+    const outcome = notice
+      ? resolvedOutcome.outcome
+      : outcomeFromPipelineBadge(pipelineBadge, action);
     return {
       itemId,
       title: labels[itemId]?.trim() || itemId,
       subtitle: urls[itemId],
       outcome,
-      detail,
+      detail: resolvedOutcome.detail,
       statusLabel: statusBadge.text,
       statusColor: statusBadge.color,
-      notice: enrichment?.status === 'ok' && enrichment.aiStatus === 'not_configured'
-        ? 'ai_not_configured'
-        : undefined,
+      notice,
     };
   });
 }
@@ -688,7 +696,8 @@ export function resolveReportRowsSummaryTone(
   const stats = pipelineReportStats(rows);
   const successLabels = new Set(['Enriched', 'Verified', 'Classified']);
   const successCount = rows.filter((r) => successLabels.has(reportRowDisplayLabel(r))).length;
-  const issueCount = rows.length - successCount - stats.skipped - stats.unchanged;
+  const warningCount = rows.filter((row) => Boolean(row.notice)).length;
+  const issueCount = rows.length - successCount - stats.skipped - stats.unchanged - warningCount;
 
   if (issueCount > 0 && successCount === 0) return 'error';
   if (stats.failed > 0 && successCount === 0) return 'error';
@@ -768,6 +777,12 @@ export function formatBatchDigestDoneSummary(input: {
 export function formatPipelineReportSummaryFromRows(rows: PipelineReportRow[]): string {
   if (!rows.length) return 'No changes';
   const aiNotConfiguredCount = rows.filter((row) => row.notice === 'ai_not_configured').length;
+  const aiBackendErrorRows = rows.filter((row) => row.notice === 'ai_backend_error');
+  if (aiBackendErrorRows.length === rows.length) {
+    return aiBackendErrorRows.length === 1
+      ? aiBackendErrorRows[0]!.detail
+      : `${aiBackendErrorRows.length} pages fetched and saved for keyword search, but AI failed. ${aiBackendErrorRows[0]!.detail}`;
+  }
   if (aiNotConfiguredCount === rows.length) {
     return aiNotConfiguredCount === 1
       ? AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE
@@ -775,18 +790,28 @@ export function formatPipelineReportSummaryFromRows(rows: PipelineReportRow[]): 
   }
   if (!rows.some((r) => r.statusLabel)) {
     const summary = formatPipelineReportSummary(pipelineReportStats(rows));
-    return aiNotConfiguredCount > 0
-      ? `${summary} · AI skipped for ${aiNotConfiguredCount} — add an API key in Settings > AI; fetched text remains searchable.`
-      : summary;
+    const notices: string[] = [];
+    if (aiNotConfiguredCount > 0) {
+      notices.push(`AI skipped for ${aiNotConfiguredCount} — add an API key in Settings > AI; fetched text remains searchable.`);
+    }
+    if (aiBackendErrorRows.length > 0) {
+      notices.push(`AI failed for ${aiBackendErrorRows.length} after fetch; fetched text remains searchable. ${aiBackendErrorRows[0]!.detail}`);
+    }
+    return notices.length ? `${summary} · ${notices.join(' · ')}` : summary;
   }
   const counts = pipelineReportStatusLabelCounts(rows);
   const parts = [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([label, count]) => `${count} ${label}`);
   const summary = parts.length ? parts.join(' · ') : 'No changes';
-  return aiNotConfiguredCount > 0
-    ? `${summary} · AI skipped for ${aiNotConfiguredCount} — add an API key in Settings > AI; fetched text remains searchable.`
-    : summary;
+  const notices: string[] = [];
+  if (aiNotConfiguredCount > 0) {
+    notices.push(`AI skipped for ${aiNotConfiguredCount} — add an API key in Settings > AI; fetched text remains searchable.`);
+  }
+  if (aiBackendErrorRows.length > 0) {
+    notices.push(`AI failed for ${aiBackendErrorRows.length} after fetch; fetched text remains searchable. ${aiBackendErrorRows[0]!.detail}`);
+  }
+  return notices.length ? `${summary} · ${notices.join(' · ')}` : summary;
 }
 
 export function formatPipelineReportSummary(stats: ReturnType<typeof pipelineReportStats>): string {

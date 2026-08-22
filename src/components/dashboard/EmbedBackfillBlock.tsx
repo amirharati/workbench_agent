@@ -73,11 +73,13 @@ export function EmbedBackfillBlock({ onComplete, batchSize = 48, compact = false
 
         if (embedded === 0 || pendingAfter === 0) {
           setMessage(
-            totalEmbedded > 0
-              ? `Done — embedded ${totalEmbedded} this run (${pendingAfter} still pending).`
-              : pendingAfter === 0
-                ? 'All enriched items already have embeddings.'
-                : `Stopped — ${embedFailed} failed`
+            result.embedError
+              ? result.embedError
+              : totalEmbedded > 0
+                ? `Done — embedded ${totalEmbedded} this run (${pendingAfter} still pending).`
+                : pendingAfter === 0
+                  ? 'All enriched items already have embeddings.'
+                  : `Stopped — ${embedFailed} failed`
           );
           break;
         }

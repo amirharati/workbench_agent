@@ -393,7 +393,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         <h3>Settings</h3>
         <ul>
           <li><strong>General:</strong> dashboard theme, font size, and browser Home/New Tab guidance.</li>
-          <li><strong>AI &amp; processing:</strong> provider, model routing, API key, and a test prompt. AI is optional and user-triggered.</li>
+          <li><strong>AI &amp; processing:</strong> provider, model routing, API key, and a test prompt. AI is optional and user-triggered. If a key is missing or the provider rejects a request (authentication, credits, rate limit, timeout, network, or model/server error), the initiating view explains the failure; successful fetched text remains available to keyword search.</li>
           <li><strong>Backup &amp; restore:</strong> folder health, mirror status, snapshots, restore, and conflict choices.</li>
           <li><strong>Advanced:</strong> taxonomy repair and diagnostics. Use destructive controls only after reading their confirmation.</li>
         </ul>

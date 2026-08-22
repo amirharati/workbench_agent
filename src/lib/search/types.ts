@@ -138,4 +138,6 @@ export interface HybridSearchResult {
   /** Optional for backward-compatible restoration of pre-category-profile searches. */
   categoryResults?: SearchCategoryResult[];
   embeddingPathUsed: boolean;
+  /** Why Hybrid Search fell back to text ranking, when caused by the AI backend. */
+  semanticWarning?: string;
 }

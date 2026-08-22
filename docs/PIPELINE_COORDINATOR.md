@@ -66,6 +66,12 @@ Import / Hub / sidebar / inspectors / maintenance UI
 - Content serialization and backup mirroring are not on the job-completion critical path.
 - Saved AI settings cross the dashboard-to-offscreen boundary only in the internal submission message and
   are installed in memory for the serialized run. The API key is omitted from durable job/task storage.
+- AI transport/configuration failures have one shared user-facing contract. Missing or invalid credentials,
+  exhausted credits/quota, rate limits, timeouts, network failures, and provider/model errors are normalized
+  once and surfaced by the initiating digest, classification/discovery, embedding, Search, Ask, or Settings
+  view. A successful fetch remains `ok` and keyword-searchable when its AI step fails; it is reported as
+  **Fetched**, never **Enriched**. Reruns retain prior good summaries/tags/key points, while the latest
+  `aiStatus`/`aiError` records the failed attempt. Terminal backend errors stop dependent retries/batches.
 - Automatic `pipeline-runs/` output has been removed from normal and test processing paths.
 
 ## Browser-session fetching

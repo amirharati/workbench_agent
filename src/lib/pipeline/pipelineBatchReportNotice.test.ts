@@ -45,3 +45,34 @@ describe('missing AI configuration reports', () => {
     }])).toBe(AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE);
   });
 });
+
+describe('AI provider failure reports', () => {
+  const fetchedWithProviderFailure: ItemEnrichment = {
+    ...fetchedWithoutAi,
+    aiStatus: 'api_error',
+    aiError: 'AI credits or quota unavailable: Insufficient credits. Add provider credits or change the API key/provider in Settings > AI.',
+  };
+
+  it('preserves the fetched outcome and exposes the exact provider failure', () => {
+    const partial = resolveEnrichReportOutcome(
+      fetchedWithProviderFailure,
+      false,
+      'full_digest'
+    );
+
+    expect(partial.outcome).toBe('fetched');
+    expect(partial.detail).toContain('AI credits or quota unavailable');
+  });
+
+  it('puts the provider failure in the same-attempt completion summary', () => {
+    const detail = 'AI authentication failed: Invalid API key. Check the API key in Settings > AI.';
+    expect(formatPipelineReportSummaryFromRows([{
+      itemId: 'item-1',
+      title: 'Example',
+      outcome: 'fetched',
+      detail,
+      statusLabel: 'Fetched',
+      notice: 'ai_backend_error',
+    }])).toBe(detail);
+  });
+});

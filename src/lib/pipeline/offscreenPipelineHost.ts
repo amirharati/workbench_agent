@@ -80,6 +80,8 @@ function singleResult(
     },
     classifyAttempted: options.skipClassify !== true && options.classify !== false && !options.skipAi,
     classifyProcessed: result.classified,
+    classifyError: result.classifyError,
+    aiError: result.aiError,
     message: result.message,
   };
 }

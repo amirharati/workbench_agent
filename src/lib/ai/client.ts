@@ -1,15 +1,16 @@
 import { runOpenRouterCompletion } from './providers/openrouter';
 import { runChromeNativeCompletion } from './providers/chromeNative';
-import { AICompletionRequest, AICompletionResponse, AISettings } from './types';
+import { AIClientError, AICompletionRequest, AICompletionResponse, AISettings } from './types';
 import { recordAICallAudit } from './callAudit';
+import { normalizeAIBackendError } from './errors';
 
 const validateConfig = (settings: AISettings): void => {
   if (settings.provider === 'openrouter') {
     if (!settings.baseUrl.trim()) {
-      throw new Error('AI base URL is required.');
+      throw new AIClientError('invalid-config', 'AI base URL is required.');
     }
     if (!settings.model.trim()) {
-      throw new Error('AI model is required.');
+      throw new AIClientError('invalid-config', 'AI model is required.');
     }
   }
 };
@@ -35,7 +36,11 @@ export const runAICompletion = async (
   settings: AISettings,
   request: AICompletionRequest
 ): Promise<AICompletionResponse> => {
-  validateConfig(settings);
+  try {
+    validateConfig(settings);
+  } catch (error) {
+    throw normalizeAIBackendError(error);
+  }
   const effectiveModel = getEffectiveModelForTask(settings, request);
   const taskType = request.taskType ?? 'general';
   const startedAt = Date.now();
@@ -75,7 +80,7 @@ export const runAICompletion = async (
         error: message,
       });
     }
-    throw error;
+    throw normalizeAIBackendError(error);
   }
 };
 

@@ -453,7 +453,9 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
       });
       const result = batch.itemEnrichResults?.[0];
       await load();
-      if (result && (result.skipped || result.message)) {
+      if (batch.aiError) {
+        setRefetchError(batch.aiError);
+      } else if (result && (result.skipped || result.message)) {
         if (result.skipped && result.message !== 'ok') {
           setRefetchError(`Re-run AI: ${result.message}`);
         } else if (result.message && result.message !== 'ok') {
@@ -473,14 +475,17 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
     setRefetchError('');
     setRawDump(null);
     try {
-      const result = (await runSingleOnOffscreen(active.item.id, {
+      const run = await runSingleOnOffscreen(active.item.id, {
         forceEnrich: true,
         skipClassify: false,
         forceReclassify: true,
-      })).enrich;
+      });
+      const result = run.enrich;
       await load();
       if (result.status === 'failed' || result.skipped) {
         setRefetchError(result.message || result.errorCode || result.status);
+      } else if (run.aiError) {
+        setRefetchError(run.aiError);
       }
     } catch (e) {
       setRefetchError(e instanceof Error ? e.message : 'Re-fetch failed');
@@ -508,7 +513,9 @@ export const EnrichmentReviewModal: React.FC<Props> = ({ open, onClose, itemIds,
         },
       });
       await load();
-      if (result.failed > 0) {
+      if (result.aiError) {
+        setRefetchError(result.aiError);
+      } else if (result.failed > 0) {
         setRefetchError(`Re-fetch all done: ${result.enriched} ok, ${result.failed} failed, ${result.skipped} skipped`);
       }
     } catch (e) {

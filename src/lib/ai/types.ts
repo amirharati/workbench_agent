@@ -53,7 +53,7 @@ export interface AICompletionResponse {
 }
 
 export class AIClientError extends Error {
-  code: 'invalid-config' | 'timeout' | 'rate-limit' | 'auth' | 'provider' | 'network';
+  code: 'invalid-config' | 'timeout' | 'rate-limit' | 'auth' | 'quota' | 'provider' | 'network';
   status?: number;
 
   constructor(

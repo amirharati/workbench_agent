@@ -11,6 +11,7 @@ export interface SingleLinkDigestResult {
   classifyAttempted: boolean;
   classifyProcessed: number;
   classifyError?: string;
+  aiError?: string;
   message: string;
 }
 

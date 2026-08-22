@@ -24,6 +24,10 @@ import type {
 } from '../storage/dbWorker/pipelineJobStore';
 import type { OffscreenPipelineJobOptions } from './offscreenPipelineProtocol';
 import { formatPipelineCompletionSummary } from './pipelineDictionary';
+import {
+  AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE,
+  describeAiFailure,
+} from '../enrichment/errorMessages';
 
 export const DURABLE_FULL_DIGEST_STAGES = [
   'enrich',
@@ -185,7 +189,7 @@ async function runStage(
         outcome: summary.embedFailed > 0 && summary.embedded === 0 ? 'failed' : 'completed',
         resultRef: `embed:${summary.embedded}:${summary.embedFailed}`,
         error: summary.embedFailed > 0 && summary.embedded === 0
-          ? 'Search embedding failed'
+          ? summary.aiError ?? 'Search embedding failed'
           : undefined,
       };
     }
@@ -195,8 +199,13 @@ async function runStage(
         return { outcome: 'skipped', resultRef: 'classify:disabled' };
       }
       const enrichment = await getEnrichment(itemId);
-      if (enrichment?.aiStatus === 'not_configured') {
-        return { outcome: 'skipped', resultRef: 'classify:ai-not-configured' };
+      if (enrichment?.aiStatus === 'not_configured' || enrichment?.aiStatus === 'api_error') {
+        return {
+          outcome: 'skipped',
+          resultRef: enrichment.aiStatus === 'not_configured'
+            ? 'classify:ai-not-configured'
+            : 'classify:ai-backend-unavailable',
+        };
       }
       if (!isDownstreamClassifyEligible(enrichment)) {
         return { outcome: 'skipped', resultRef: 'classify:ineligible' };
@@ -218,13 +227,16 @@ async function runStage(
       });
       throwIfAborted(signal);
       await commitPendingDbWrites();
+      const classifiedCount =
+        classified.summary.classifiedSpecific +
+        classified.summary.classifiedGeneral +
+        classified.summary.classifiedRemoval;
+      const aiFailed = classified.summary.llmErrors > 0 && classifiedCount === 0;
       return {
-        outcome: classified.summary.llmErrors > 0 && classified.summary.processed === 0
-          ? 'failed'
-          : 'completed',
+        outcome: aiFailed ? 'failed' : 'completed',
         resultRef: `classify-json:${JSON.stringify(classified.summary)}`,
-        error: classified.summary.llmErrors > 0 && classified.summary.processed === 0
-          ? 'Classification AI call failed'
+        error: aiFailed
+          ? classified.summary.aiError ?? 'Classification AI call failed'
           : undefined,
       };
     }
@@ -233,6 +245,13 @@ async function runStage(
       const aiSettings = await import('../ai/settings').then(({ loadAISettings }) => loadAISettings());
       if (!aiSettings.apiKey.trim()) {
         return { outcome: 'skipped', resultRef: 'discover:ai-not-configured' };
+      }
+      const discoverScope = options.discoverItemIds ?? input.itemIds;
+      for (const scopedItemId of discoverScope) {
+        const enrichment = await getEnrichment(scopedItemId);
+        if (enrichment?.aiStatus === 'api_error') {
+          return { outcome: 'skipped', resultRef: 'discover:ai-backend-unavailable' };
+        }
       }
       const result = await discoverBatch({
         itemIds: options.discoverItemIds,
@@ -250,9 +269,11 @@ async function runStage(
       });
       throwIfAborted(signal);
       await commitPendingDbWrites();
+      const aiFailed = result.llmErrors > 0 && result.newParents === 0 && result.newLeaves === 0;
       return {
-        outcome: 'completed',
+        outcome: aiFailed ? 'failed' : 'completed',
         resultRef: `discover-json:${JSON.stringify(result)}`,
+        error: aiFailed ? result.aiError ?? 'Taxonomy discovery AI call failed' : undefined,
       };
     }
 
@@ -275,8 +296,10 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
   const discoverTask = snapshot.tasks.find((task) => task.stage === 'discover');
   const itemEnrichResults: EnrichmentResult[] = [];
   let enriched = 0;
+  let fetched = 0;
   let skipped = 0;
   let failed = 0;
+  let aiError: string | undefined;
 
   for (const task of enrichTasks) {
     const enrichment = await getEnrichment(task.item_id);
@@ -285,6 +308,11 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
       failed += 1;
     } else if (wasSkipped || task.status === 'skipped') {
       skipped += 1;
+    } else if (enrichment?.status === 'ok' && enrichment.aiStatus !== 'ok') {
+      fetched += 1;
+      aiError ??= enrichment.aiStatus === 'not_configured'
+        ? AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE
+        : describeAiFailure(enrichment.aiStatus, enrichment.aiError);
     } else {
       enriched += 1;
     }
@@ -310,6 +338,7 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
     classifySummary.inputQuality.high += next.inputQuality.high;
     classifySummary.inputQuality.medium += next.inputQuality.medium;
     classifySummary.inputQuality.low += next.inputQuality.low;
+    classifySummary.aiError ??= next.aiError;
   };
   for (const task of classifyTasks) {
     const raw = task.result_ref?.startsWith('classify-json:')
@@ -322,21 +351,28 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
     classifySummary.classifiedSpecific +
     classifySummary.classifiedGeneral +
     classifySummary.classifiedRemoval;
+  const classifyError = classifyTasks.find((task) => task.last_error?.trim())?.last_error?.trim()
+    ?? classifySummary.aiError;
   let embedded = 0;
   let embedFailed = 0;
+  let embedError: string | undefined;
   for (const task of embedTasks) {
     const match = /^embed:(\d+):(\d+)$/.exec(task.result_ref ?? '');
     if (match) {
       embedded += Number(match[1]);
       embedFailed += Number(match[2]);
     }
+    if (!embedError && task.last_error?.trim()) embedError = task.last_error.trim();
   }
   const completionSummary = formatPipelineCompletionSummary({
     enriched,
+    fetched,
     skipped,
     failed,
     classified,
     classifySummary,
+    classifyError,
+    aiError,
   });
   let discoverResult: BatchDigestResult['discoverResult'];
   const discoverJson = discoverTask?.result_ref?.startsWith('discover-json:')
@@ -349,6 +385,7 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
 
   return {
     enriched,
+    fetched,
     skipped,
     failed,
     classified,
@@ -356,6 +393,8 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
     discoverResult,
     embedded,
     embedFailed,
+    embedError,
+    aiError,
     message: completionSummary !== 'No changes' ? completionSummary : (discoverResult
       ? `${discoverResult.itemsSampled} processed · +${discoverResult.newLeaves} topics`
       : `${snapshot.job.total_items} processed`),

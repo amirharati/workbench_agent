@@ -1,5 +1,6 @@
 import { AIClientError } from './types';
 import { openRouterHeaders } from './openrouterHeaders';
+import { normalizeAIBackendError } from './errors';
 
 export interface EmbeddingSettings {
   apiKey: string;
@@ -25,7 +26,9 @@ export async function embedTexts(
   signal?: AbortSignal
 ): Promise<number[][]> {
   if (!settings.apiKey.trim()) {
-    throw new AIClientError('invalid-config', 'Missing API key for embeddings.');
+    throw normalizeAIBackendError(
+      new AIClientError('invalid-config', 'Missing API key for embeddings.')
+    );
   }
   if (!inputs.length) return [];
 
@@ -55,8 +58,15 @@ export async function embedTexts(
       if (!response.ok) {
         const errText = await response.text().catch(() => '');
         throw new AIClientError(
-          response.status === 429 ? 'rate-limit' : 'provider',
-          errText || `Embeddings HTTP ${response.status}`
+          response.status === 401 || response.status === 403
+            ? 'auth'
+            : response.status === 402
+              ? 'quota'
+              : response.status === 429
+                ? 'rate-limit'
+                : 'provider',
+          errText || `Embeddings HTTP ${response.status}`,
+          { status: response.status }
         );
       }
 
@@ -70,6 +80,9 @@ export async function embedTexts(
         const idx = row.index ?? 0;
         if (row.embedding) all[offset + idx] = row.embedding;
       }
+    } catch (error) {
+      if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+      throw normalizeAIBackendError(error, 'The embeddings request failed.');
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener('abort', abortFromCaller);
@@ -77,7 +90,9 @@ export async function embedTexts(
   }
 
   if (all.some((v) => !v)) {
-    throw new AIClientError('provider', 'Embeddings response missing vectors.');
+    throw normalizeAIBackendError(
+      new AIClientError('provider', 'Embeddings response missing vectors.')
+    );
   }
 
   return all;

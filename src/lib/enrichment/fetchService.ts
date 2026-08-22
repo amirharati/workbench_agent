@@ -1296,11 +1296,23 @@ export async function enrichOne(
             (softSuspect ? softSuspect.detail : undefined);
         }
       } else {
-        status = 'failed';
-        lastErrorCode = errorCodeAfterAiFailure(softSuspect?.code, aiOutcome.status);
-        lastErrorDetail =
-          aiOutcome.error?.trim() ||
-          (softSuspect ? softSuspect.detail : undefined);
+        const fallbackText = (parsed.snippet || enrichMarkdown || '')
+          .trim()
+          .slice(0, ENRICHMENT_DEFAULTS.snippetMaxChars);
+        if (fallbackText.length >= 8) {
+          // Fetch succeeded. An AI backend failure must not discard or relabel
+          // the fetched text; keep it available to keyword search and report
+          // the AI failure separately through aiStatus/aiError.
+          status = 'ok';
+          lastErrorCode = undefined;
+          parsed.snippet = fallbackText;
+        } else {
+          status = 'failed';
+          lastErrorCode = errorCodeAfterAiFailure(softSuspect?.code, aiOutcome.status);
+          lastErrorDetail =
+            aiOutcome.error?.trim() ||
+            (softSuspect ? softSuspect.detail : undefined);
+        }
       }
     }
 
@@ -1391,6 +1403,12 @@ export async function enrichOne(
       }
     }
 
+    // A rerun that reaches the AI provider but fails must not erase a prior
+    // successful summary, tags, or key points. The current aiStatus/aiError
+    // below still records the failed attempt so every UI can explain it.
+    const preservePriorAiFields =
+      options?.skipAi === true || (aiOutcome != null && aiOutcome.status !== 'ok');
+
     const record: ItemEnrichment = {
       itemId: item.id,
       normalizedUrl: pending.normalizedUrl,
@@ -1408,15 +1426,15 @@ export async function enrichOne(
       contentHash,
       textHash,
       snippet: parsed.snippet,
-      summary: options?.skipAi ? existing?.summary : aiExtract?.summary,
+      summary: preservePriorAiFields ? existing?.summary : aiExtract?.summary,
       fetchedTitle: parsed.title,
       sourceKind,
       quotedText: parsed.quotedText,
       quotedAuthor: parsed.quotedAuthor,
       channel: parsed.channel,
       description: parsed.description,
-      aiTags: options?.skipAi ? existing?.aiTags : aiExtract?.tags,
-      aiKeyPoints: options?.skipAi ? existing?.aiKeyPoints : aiExtract?.keyPoints,
+      aiTags: preservePriorAiFields ? existing?.aiTags : aiExtract?.tags,
+      aiKeyPoints: preservePriorAiFields ? existing?.aiKeyPoints : aiExtract?.keyPoints,
       references: hardFailure ? undefined : references,
       aiStatus: options?.skipAi ? existing?.aiStatus : aiOutcome?.status,
       aiError: options?.skipAi ? existing?.aiError : aiOutcome?.error,
@@ -1570,12 +1588,15 @@ export async function reextractAI(
   }
 
   const now = Date.now();
+  const aiSucceeded = aiOutcome.status === 'ok' && Boolean(aiExtract);
   const record: ItemEnrichment = {
     ...existing,
-    summary: aiExtract?.summary,
-    fetchedTitle: aiExtract?.improvedTitle || existing.fetchedTitle,
-    aiTags: aiExtract?.tags,
-    aiKeyPoints: aiExtract?.keyPoints,
+    summary: aiSucceeded ? aiExtract?.summary : existing.summary,
+    fetchedTitle: aiSucceeded
+      ? aiExtract?.improvedTitle || existing.fetchedTitle
+      : existing.fetchedTitle,
+    aiTags: aiSucceeded ? aiExtract?.tags : existing.aiTags,
+    aiKeyPoints: aiSucceeded ? aiExtract?.keyPoints : existing.aiKeyPoints,
     aiStatus: aiOutcome.status,
     aiError: aiOutcome.error,
     aiAt: aiOutcome.at,
@@ -1587,7 +1608,7 @@ export async function reextractAI(
   return {
     itemId,
     status: 'ok',
-    message: aiOutcome.status === 'ok' ? undefined : aiOutcome.status,
+    message: aiOutcome.status === 'ok' ? undefined : aiOutcome.error ?? aiOutcome.status,
   };
 }
 

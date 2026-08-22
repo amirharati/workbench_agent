@@ -64,6 +64,13 @@ function runTests(): void {
     formatPipelineCompletionSummary({ failed: 1 }) === '1 failed',
     'all-failed batch remains an honest failure'
   );
+  assert(
+    formatPipelineCompletionSummary({
+      fetched: 1,
+      aiError: 'AI authentication failed: Invalid API key.',
+    }) === '1 fetched · AI authentication failed: Invalid API key.',
+    'fetch success with AI failure is never labelled enriched'
+  );
 
   console.log('pipelineBatchReport.test.ts: all tests passed');
 }

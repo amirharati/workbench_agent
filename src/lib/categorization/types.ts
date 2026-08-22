@@ -287,6 +287,8 @@ export interface TopicClassifySummary {
   batches: number;
   failureBuckets: Record<string, number>;
   inputQuality: { high: number; medium: number; low: number };
+  /** First actionable AI backend failure for this run. */
+  aiError?: string;
 }
 
 export interface TopicClassifyResult {
@@ -317,6 +319,8 @@ export interface DiscoverBatchResult {
   /** Subset of sampled items queued for reclassify after discover. */
   reclassifyItemIds?: string[];
   batchErrors?: string[];
+  /** First actionable AI backend failure for this run. */
+  aiError?: string;
   summary?: DiscoverRunSummary;
 }
 

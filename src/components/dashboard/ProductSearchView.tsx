@@ -697,6 +697,14 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               Click to inspect · Click the URL to open the website · Double-click, Enter, or use Preview
             </span>
           )}
+          {state.result.semanticWarning ? (
+            <span
+              role="status"
+              style={{ display: 'block', marginTop: 4, color: 'var(--warning, #d29922)' }}
+            >
+              {state.result.semanticWarning}
+            </span>
+          ) : null}
         </div>
       )}
 

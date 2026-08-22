@@ -36,6 +36,8 @@ export interface EmbedBatchSummary {
   skippedNoKey: number;
   embedFailed: number;
   pendingAfter: number;
+  /** First actionable backend error for this run. */
+  aiError?: string;
 }
 
 export interface EmbedBackfillProgress {
@@ -167,6 +169,7 @@ export async function embedIncrementalBatch(
   const aiSettings = await loadAISettings();
   if (!aiSettings.apiKey.trim()) {
     summary.skippedNoKey = pending.length;
+    summary.aiError = 'AI configuration error: Missing API key for embeddings. Check Settings > AI.';
     return summary;
   }
 
@@ -209,7 +212,10 @@ export async function embedIncrementalBatch(
         }))
       );
       summary.embedFailed += batch.length;
-      continue;
+      summary.aiError ??= error instanceof Error ? error.message : String(error);
+      // A provider/configuration failure applies to the whole run. Do not
+      // repeat the same failing request for every remaining batch.
+      break;
     }
 
     if (opts.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');

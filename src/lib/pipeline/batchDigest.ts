@@ -7,6 +7,8 @@ export type BatchDigestProgress = ItemPipelineProgress;
 
 export interface BatchDigestResult {
   enriched: number;
+  /** Fetch succeeded, but AI enrichment did not complete or was intentionally skipped. */
+  fetched?: number;
   skipped: number;
   failed: number;
   classified: number;
@@ -14,6 +16,8 @@ export interface BatchDigestResult {
   discoverResult?: DiscoverBatchResult;
   enrichCancelled?: boolean;
   classifyError?: string;
+  /** First user-facing AI configuration/provider error from enrichment. */
+  aiError?: string;
   embedError?: string;
   embedded?: number;
   embedFailed?: number;

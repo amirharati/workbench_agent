@@ -97,12 +97,19 @@ export async function loadSearchIndexFromDb(options?: {
   return index;
 }
 
-async function embedQueryText(text: string): Promise<number[] | undefined> {
+async function embedQueryText(text: string): Promise<{
+  embedding?: number[];
+  warning?: string;
+}> {
   const trimmed = text.trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) return {};
 
   const aiSettings = await loadAISettings();
-  if (!aiSettings.apiKey.trim()) return undefined;
+  if (!aiSettings.apiKey.trim()) {
+    return {
+      warning: 'Semantic search unavailable: AI API key is missing. Using text search; configure Settings > AI.',
+    };
+  }
 
   try {
     const [vec] = await embedTexts(
@@ -114,9 +121,11 @@ async function embedQueryText(text: string): Promise<number[] | undefined> {
       },
       [trimmed]
     );
-    return vec;
-  } catch {
-    return undefined;
+    return { embedding: vec };
+  } catch (error) {
+    return {
+      warning: `${error instanceof Error ? error.message : String(error)} Using text search for this query.`,
+    };
   }
 }
 
@@ -141,13 +150,15 @@ async function resolveSemanticQuery(
   queryEmbedding?: number[];
   embeddingScores?: Record<string, number>;
   categoryEmbeddingScores?: Record<string, number>;
+  semanticWarning?: string;
 }> {
   if ((options.mode ?? 'hybrid') !== 'hybrid' || !parsedQuery.semanticText) return {};
 
-  const queryEmbedding = options.queryEmbedding?.length
-    ? options.queryEmbedding
+  const embeddedQuery = options.queryEmbedding?.length
+    ? { embedding: options.queryEmbedding }
     : await embedQueryText(parsedQuery.semanticText);
-  if (!queryEmbedding?.length) return {};
+  const queryEmbedding = embeddedQuery.embedding;
+  if (!queryEmbedding?.length) return { semanticWarning: embeddedQuery.warning };
 
   const [rankedItems, rankedCategories] = await Promise.all([
     rankQueryAgainstWorkerEmbeddings(index, queryEmbedding, options.filters, parsedQuery)
@@ -162,6 +173,7 @@ async function resolveSemanticQuery(
     queryEmbedding,
     embeddingScores: rankedItems.scores,
     categoryEmbeddingScores,
+    semanticWarning: embeddedQuery.warning,
   };
 }
 
@@ -171,7 +183,10 @@ export async function runAppHybridSearch(
   const index = await loadSearchIndexFromDb();
   const parsedQuery = parseSearchQuery(options.query);
   const semantic = await resolveSemanticQuery(index, options, parsedQuery);
-  return hybridSearch(index, { ...options, ...semantic });
+  return {
+    ...hybridSearch(index, { ...options, ...semantic }),
+    semanticWarning: semantic.semanticWarning,
+  };
 }
 
 export async function runAppHybridSearchWithRelated(
@@ -191,7 +206,7 @@ export async function runAppHybridSearchWithRelated(
     parsedQuery,
   });
 
-  return { ...result, related };
+  return { ...result, related, semanticWarning: semantic.semanticWarning };
 }
 
 export async function runAppFindSimilar(

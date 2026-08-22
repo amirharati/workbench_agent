@@ -1,4 +1,5 @@
 import { runAICompletion } from '../ai/client';
+import { isTerminalAIBackendError } from '../ai/errors';
 import { aiSettingsForBatchJob } from '../ai/settings';
 import type { AISettings } from '../ai/types';
 import { normalizeTag } from './naming';
@@ -166,7 +167,7 @@ export async function callTopicExtractBatch(
   batchItems: ClassifyBatchItem[],
   parents: Array<{ id: string; name: string; description?: string }> = [],
   signal?: AbortSignal
-): Promise<{ ok: boolean; rows?: Record<string, unknown>[]; error?: string }> {
+): Promise<{ ok: boolean; rows?: Record<string, unknown>[]; error?: string; terminal?: boolean }> {
   const topicCatalog = buildGroupedLeafCatalog(categories, parents);
   const prompt = buildTopicExtractPrompt(topicCatalog, batchItems);
   try {
@@ -191,7 +192,11 @@ export async function callTopicExtractBatch(
     return { ok: true, rows };
   } catch (e) {
     if (signal?.aborted || (e instanceof Error && e.message === 'Cancelled')) throw new Error('Cancelled');
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+      terminal: isTerminalAIBackendError(e),
+    };
   }
 }
 
@@ -199,6 +204,7 @@ export interface TopicExtractBatchRetryResult {
   decisions: Map<string, TopicExtractDecision>;
   unresolvedItemIds: string[];
   lastError?: string;
+  terminalError?: boolean;
 }
 
 function pendingTopicExtractItems(
@@ -235,22 +241,34 @@ export async function resolveTopicExtractBatchWithRetry(
 ): Promise<TopicExtractBatchRetryResult> {
   const decisions = new Map<string, TopicExtractDecision>();
   let lastError: string | undefined;
+  let terminalError = false;
   if (!batchItems.length) {
     return { decisions, unresolvedItemIds: [] };
   }
 
   const runBatch = async (items: ClassifyBatchItem[]): Promise<ClassifyBatchItem[]> => {
     if (signal?.aborted) throw new Error('Cancelled');
+    if (terminalError) return [];
     const resp = await callTopicExtractBatch(settings, categories, items, parents, signal);
     if (resp.ok && resp.rows?.length) {
       absorbTopicExtractRows(resp.rows, categoryIds, leafById, decisions);
     } else {
       lastError = resp.error ?? lastError ?? 'Empty or unparseable model response';
+      terminalError = resp.terminal === true;
     }
-    return pendingTopicExtractItems(items, decisions);
+    return terminalError ? [] : pendingTopicExtractItems(items, decisions);
   };
 
   let pending = await runBatch(batchItems);
+
+  if (terminalError) {
+    return {
+      decisions,
+      unresolvedItemIds: batchItems.map((item) => item.itemId),
+      lastError,
+      terminalError: true,
+    };
+  }
 
   for (let round = 1; round <= LLM_BATCH_RETRY_ROUNDS && pending.length > 0; round++) {
     if (signal?.aborted) throw new Error('Cancelled');
@@ -289,7 +307,7 @@ export async function resolveTopicExtractBatchWithRetry(
     .map((item) => item.itemId)
     .filter((itemId) => !decisions.has(itemId));
 
-  return { decisions, unresolvedItemIds, lastError };
+  return { decisions, unresolvedItemIds, lastError, terminalError };
 }
 
 export { chunk as chunkClassifyBatch };

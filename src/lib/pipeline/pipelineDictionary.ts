@@ -131,6 +131,7 @@ export function formatClassifyRunSummary(s: TopicClassifySummary, itemCount?: nu
   if (s.llmErrors > 0) {
     parts.push(`${s.llmErrors} LLM error${s.llmErrors === 1 ? '' : 's'}`);
   }
+  if (s.aiError) parts.push(s.aiError);
   if (itemCount != null && itemCount !== s.processed) {
     parts.unshift(`${itemCount} selected`);
   } else if (s.totalConsidered > s.processed && itemCount == null) {
@@ -170,9 +171,11 @@ export function resolveClassifyDoneModalTone(summary: TopicClassifySummary): Pip
 
 export interface PipelineSummaryInput {
   enriched?: number;
+  fetched?: number;
   skipped?: number;
   failed?: number;
   classified?: number;
+  aiError?: string;
   classifyError?: string;
   classifySummary?: TopicClassifySummary;
 }
@@ -182,6 +185,7 @@ export type PipelineSummaryTone = 'success' | 'error' | 'info';
 function pipelineSuccessCount(input: PipelineSummaryInput): number {
   return (
     (input.enriched ?? 0) +
+    (input.fetched ?? 0) +
     (input.classified ?? 0) +
     (input.classifySummary?.classifiedSpecific ?? 0) +
     (input.classifySummary?.classifiedGeneral ?? 0)
@@ -197,11 +201,13 @@ function pipelineSuccessCount(input: PipelineSummaryInput): number {
 export function formatPipelineCompletionSummary(input: PipelineSummaryInput): string {
   const parts: string[] = [];
   if (input.enriched) parts.push(`${input.enriched} enriched`);
+  if (input.fetched) parts.push(`${input.fetched} fetched`);
   if (input.classified) parts.push(`${input.classified} classified`);
   if (input.skipped) parts.push(`${input.skipped} skipped`);
   if (input.failed) {
     parts.push(`${input.failed} ${pipelineSuccessCount(input) > 0 ? 'unavailable' : 'failed'}`);
   }
+  if (input.aiError) parts.push(input.aiError);
   return parts.length ? parts.join(' · ') : 'No changes';
 }
 
@@ -226,6 +232,8 @@ export function resolvePipelineSummaryTone(input: PipelineSummaryInput): Pipelin
   const failed = input.failed ?? 0;
   const llmErrors = input.classifySummary?.llmErrors ?? 0;
   const succeeded = pipelineSuccessCount(input);
+
+  if (input.aiError) return 'info';
 
   if (isPartialPipelineSuccess(input)) {
     return 'success';

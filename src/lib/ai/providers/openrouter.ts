@@ -39,6 +39,7 @@ const toMessageText = (
 
 const toErrorCode = (status: number): AIClientError['code'] => {
   if (status === 401 || status === 403) return 'auth';
+  if (status === 402) return 'quota';
   if (status === 429) return 'rate-limit';
   return 'provider';
 };

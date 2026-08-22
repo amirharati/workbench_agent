@@ -5,6 +5,7 @@
  * Mechanical: dedupe, orphan parentId fix (mergeDiscovery*), taxonomyMerge safety net.
  */
 import { runAICompletion } from '../ai/client';
+import { isTerminalAIBackendError } from '../ai/errors';
 import { aiSettingsForBatchJob } from '../ai/settings';
 import type { AISettings } from '../ai/types';
 import {
@@ -84,8 +85,24 @@ export interface DiscoverMapReduceResult {
   reduceLeafCalls: number;
   reduceMode: DiscoverReduceMode | 'legacy';
   llmErrors: number;
+  errors: string[];
   mergeAudit: TaxonomyMergeAuditEntry[];
   taxonomyMerge: { mergedParents: number; mergedLeaves: number };
+}
+
+type DiscoveryCallResult<T> = {
+  ok: boolean;
+  data?: T;
+  error?: string;
+  terminal?: boolean;
+};
+
+function discoveryCallFailure(error: unknown): DiscoveryCallResult<never> {
+  return {
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+    terminal: isTerminalAIBackendError(error),
+  };
 }
 
 function normalizeNameKey(name: string): string {
@@ -353,7 +370,7 @@ export async function callDiscoveryMapBatch(
     gapFillMode?: boolean;
     signal?: AbortSignal;
   }
-): Promise<{ ok: boolean; data?: DiscoveryBatchResponse; error?: string }> {
+): Promise<DiscoveryCallResult<DiscoveryBatchResponse>> {
   try {
     const response = await runAICompletion(
       aiSettingsForBatchJob(settings, DISCOVER_MAP_MAX_TOKENS),
@@ -390,7 +407,7 @@ export async function callDiscoveryMapBatch(
     if (opts.signal?.aborted || (e instanceof Error && e.message === 'Cancelled')) {
       throw new Error('Cancelled');
     }
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return discoveryCallFailure(e);
   }
 }
 
@@ -438,7 +455,7 @@ export async function callDiscoveryReduceParents(
   parents: Array<{ id: string; name: string; description?: string }>,
   parentProposals: DiscoveryParentProposal[],
   opts: { maxNetParents: number; signal?: AbortSignal }
-): Promise<{ ok: boolean; data?: DiscoveryReduceParentsResponse; error?: string }> {
+): Promise<DiscoveryCallResult<DiscoveryReduceParentsResponse>> {
   if (!parentProposals.length) {
     return { ok: true, data: { newParents: [], parentRemap: [] } };
   }
@@ -471,7 +488,7 @@ export async function callDiscoveryReduceParents(
     if (opts.signal?.aborted || (e instanceof Error && e.message === 'Cancelled')) {
       throw new Error('Cancelled');
     }
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return discoveryCallFailure(e);
   }
 }
 
@@ -481,7 +498,7 @@ export async function callDiscoveryReduceLeavesForParent(
   existingLeaves: AiCategory[],
   leafProposals: DiscoveryLeafProposal[],
   opts: { maxLeavesForParent: number; signal?: AbortSignal }
-): Promise<{ ok: boolean; data?: DiscoveryReduceResponse; error?: string }> {
+): Promise<DiscoveryCallResult<DiscoveryReduceResponse>> {
   if (!leafProposals.length) {
     return { ok: true, data: { newLeaves: [], merges: [] } };
   }
@@ -522,7 +539,7 @@ export async function callDiscoveryReduceLeavesForParent(
     if (opts.signal?.aborted || (e instanceof Error && e.message === 'Cancelled')) {
       throw new Error('Cancelled');
     }
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return discoveryCallFailure(e);
   }
 }
 
@@ -634,7 +651,7 @@ export async function callDiscoveryReduce(
     maxNetLeaves: number;
     signal?: AbortSignal;
   }
-): Promise<{ ok: boolean; data?: DiscoveryReduceResponse; error?: string }> {
+): Promise<DiscoveryCallResult<DiscoveryReduceResponse>> {
   if (!parentProposals.length && !leafProposals.length) {
     return { ok: true, data: { newParents: [], newLeaves: [], merges: [] } };
   }
@@ -675,7 +692,7 @@ export async function callDiscoveryReduce(
     if (opts.signal?.aborted || (e instanceof Error && e.message === 'Cancelled')) {
       throw new Error('Cancelled');
     }
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return discoveryCallFailure(e);
   }
 }
 
@@ -743,6 +760,7 @@ export async function runDiscoverMapReduce(
   let proposedParentsRaw = 0;
   let proposedLeavesRaw = 0;
   let llmErrors = 0;
+  const errors: string[] = [];
   let reduceCalls = 0;
   let reduceLeafCalls = 0;
   const mergeAudit: TaxonomyMergeAuditEntry[] = [];
@@ -770,6 +788,7 @@ export async function runDiscoverMapReduce(
       );
       if (!resp.ok) {
         llmErrors++;
+        if (resp.error && !errors.includes(resp.error)) errors.push(resp.error);
         continue;
       }
       const data = resp.data ?? {};
@@ -794,6 +813,7 @@ export async function runDiscoverMapReduce(
       reduceLeafCalls: 0,
       reduceMode: 'legacy',
       llmErrors,
+      errors,
       mergeAudit: [...mergeAudit, ...mechanical.audit],
       taxonomyMerge: {
         mergedParents: mechanical.mergedParents,
@@ -813,7 +833,9 @@ export async function runDiscoverMapReduce(
     });
     if (!resp.ok) {
       llmErrors++;
+      if (resp.error && !errors.includes(resp.error)) errors.push(resp.error);
       console.warn(`[discoverMapReduce] map batch ${i + 1} failed:`, resp.error);
+      if (resp.terminal) break;
       continue;
     }
     const data = resp.data ?? {};
@@ -854,6 +876,7 @@ export async function runDiscoverMapReduce(
         finalLeaves = dedupeLeafProposals(reduceResp.data.newLeaves ?? []).slice(0, maxNetLeaves);
       } else {
         llmErrors++;
+        if (reduceResp.error && !errors.includes(reduceResp.error)) errors.push(reduceResp.error);
         finalLeaves = dedupedLeaves.slice(0, maxNetLeaves);
         opts.onProgress?.(`Reduce failed (${reduceResp.error ?? 'unknown'}); mechanical dedupe only`);
       }
@@ -875,7 +898,16 @@ export async function runDiscoverMapReduce(
         );
       } else {
         llmErrors++;
+        if (parentReduceResp.error && !errors.includes(parentReduceResp.error)) {
+          errors.push(parentReduceResp.error);
+        }
         finalParents = dedupedParents.slice(0, maxNetParents);
+        if (parentReduceResp.terminal) {
+          // Keep the usable map proposals, but do not fan the same provider
+          // failure out into one reduce call per parent.
+          finalLeaves = dedupedLeaves.slice(0, maxNetLeaves);
+          dedupedLeaves = [];
+        }
         opts.onProgress?.(
           `Reduce-parents failed (${parentReduceResp.error ?? 'unknown'}); using map parents`
         );
@@ -924,11 +956,15 @@ export async function runDiscoverMapReduce(
         `Reduce leaves: ${parentIdsWithLeaves.length} parent(s), ≤${maxPerParent}/parent, target ≥${minNetLeaves} leaves…`
       );
 
+      let leafBackendUnavailable = false;
       const leafResults = await runWithConcurrency(
         parentIdsWithLeaves,
         DISCOVER_REDUCE_LEAF_CONCURRENCY,
         async (parentId) => {
           if (opts.signal?.aborted) throw new Error('Cancelled');
+          if (leafBackendUnavailable) {
+            return { parentId, resp: null, skippedBackend: true };
+          }
           const proposals = leafGroups.get(parentId) ?? [];
           const parent =
             parentById.get(parentId) ??
@@ -940,14 +976,17 @@ export async function runDiscoverMapReduce(
             proposals,
             { maxLeavesForParent: maxPerParent, signal: opts.signal }
           );
-          return { parentId, resp };
+          if (resp.terminal) leafBackendUnavailable = true;
+          return { parentId, resp, skippedBackend: false };
         }
       );
 
-      for (const { resp } of leafResults) {
+      for (const { resp, skippedBackend } of leafResults) {
+        if (skippedBackend || !resp) continue;
         reduceLeafCalls++;
         if (!resp.ok) {
           llmErrors++;
+          if (resp.error && !errors.includes(resp.error)) errors.push(resp.error);
           continue;
         }
         mergeAudit.push(...mergeAuditFromReduce(resp.data?.merges));
@@ -988,6 +1027,7 @@ export async function runDiscoverMapReduce(
     reduceLeafCalls,
     reduceMode,
     llmErrors,
+    errors,
     mergeAudit,
     taxonomyMerge: {
       mergedParents: mechanical.mergedParents,

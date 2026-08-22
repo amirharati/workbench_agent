@@ -204,12 +204,13 @@ export const EnrichmentTestModal: React.FC<Props> = ({
       });
       const res: EnrichBatchResult = {
         runId: crypto.randomUUID(),
-        processed: batch.enriched,
+        processed: batch.enriched + (batch.fetched ?? 0),
         skipped: batch.skipped,
         failed: batch.failed,
         itemResults: batch.itemEnrichResults,
       };
       setResult(res);
+      if (batch.aiError) setError(batch.aiError);
       setLastRunIds(ids);
       await refreshStatuses();
       setReviewOpen(true);
