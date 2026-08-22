@@ -32,7 +32,7 @@ import {
 import { cosineSimilarity, l2Normalize, meanVector } from '../../categorization/math';
 import { hashText } from '../../categorization/textHash';
 import { WorkerSimilarityIndex } from '../../search/similarityIndex';
-import type { AiCategorySearchProfile, AiItemSignal } from '../../categorization/types';
+import type { AiCategorySearchProfile, AiItemCategoryLink, AiItemSignal } from '../../categorization/types';
 import {
   blendCategorySearchVectors,
   buildCategorySearchText,
@@ -126,6 +126,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'refreshTablePage',
   'getPipelineSeedRows',
   'getCategoryLinkCounts',
+  'getCategoryBrowseSnapshot',
   'getItemById',
   'getItemsByUrl',
   'hubEnrichmentPage',
@@ -1304,6 +1305,36 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
     case 'getCategoryLinkCounts': {
       const store = await getIdbCompatStore();
       return store.getCategoryLinkCounts();
+    }
+    case 'getCategoryBrowseSnapshot': {
+      const itemIds = Array.isArray(args[0])
+        ? [...new Set(
+            (args[0] as unknown[]).filter(
+              (value): value is string => typeof value === 'string' && value.length > 0
+            )
+          )]
+        : [];
+      const store = await getIdbCompatStore();
+      const allCategories = store.getAllCategories();
+      const leaves = allCategories.filter(isSearchableTopicCategory);
+      const leafIds = new Set(leaves.map((category) => category.id));
+      const parentIds = new Set(
+        leaves
+          .map((category) => category.parentId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      );
+      const categories = allCategories.filter(
+        (category) => leafIds.has(category.id) || parentIds.has(category.id)
+      );
+      const links: AiItemCategoryLink[] = [];
+      for (let offset = 0; offset < itemIds.length; offset += 400) {
+        links.push(
+          ...store
+            .getLinksForItemIds(itemIds.slice(offset, offset + 400))
+            .filter((link) => leafIds.has(link.categoryId))
+        );
+      }
+      return { categories, links };
     }
     case 'getItemById': {
       const id = typeof args[0] === 'string' ? args[0] : '';

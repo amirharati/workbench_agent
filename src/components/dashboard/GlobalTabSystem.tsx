@@ -158,7 +158,7 @@ export interface GlobalTabState {
   activeTabId: string | null;
   bottomLayout: 'tabs' | 'sidebar';
   isSidebarCollapsed: boolean;
-  homeSection?: 'overview' | 'search';
+  homeSection?: 'overview' | 'search' | 'categories';
   showAllTabs?: boolean;
   topPct?: number;
   searchQuery?: string;
@@ -343,7 +343,10 @@ export function loadGlobalTabState(): GlobalTabState {
       activeTabId,
       bottomLayout: parsed.bottomLayout === 'sidebar' ? 'sidebar' : 'tabs',
       isSidebarCollapsed: !!parsed.isSidebarCollapsed,
-      homeSection: parsed.homeSection === 'search' ? 'search' : 'overview',
+      homeSection:
+        parsed.homeSection === 'search' || parsed.homeSection === 'categories'
+          ? parsed.homeSection
+          : 'overview',
       showAllTabs: false,
       topPct: typeof parsed.topPct === 'number' ? parsed.topPct : 40,
       searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : '',

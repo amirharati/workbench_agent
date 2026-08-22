@@ -40,6 +40,15 @@ describe('loadGlobalTabState Home workspace state', () => {
     expect(state.searchQuery).toBe('local-first AI');
   });
 
+  it('restores Categories as a first-class Home section', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ tabs: [], activeTabId: null, homeSection: 'categories' })
+    );
+
+    expect(loadGlobalTabState().homeSection).toBe('categories');
+  });
+
   it('keeps Browse mode active when persisted workspaces contain tabs', () => {
     localStorage.setItem(
       STORAGE_KEY,

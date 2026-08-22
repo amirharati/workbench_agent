@@ -22,7 +22,7 @@ import { SearchBar } from '../SearchBar';
 import { Resizer } from '../Resizer';
 import { Panel } from '../../../styles/primitives';
 import { ItemContextMenu } from '../ItemContextMenu';
-import { List, Grid, ExternalLink, Pencil, Trash2, Plus, LayoutDashboard, Search } from 'lucide-react';
+import { List, Grid, ExternalLink, Pencil, Trash2, Plus, LayoutDashboard, Search, Tags } from 'lucide-react';
 import { NewProjectModal, NewCollectionModal, NewItemModal } from '../CreateModals';
 import { DeleteConfirmDialog } from '../../DeleteConfirmDialog';
 import { TrashView } from '../TrashView';
@@ -49,13 +49,14 @@ const WorkspacesView = React.lazy(() => import('../WorkspacesView').then((module
 const NoteWorkspace = React.lazy(() => import('../NoteWorkspace').then((module) => ({ default: module.NoteWorkspace })));
 
 export const HomeTitleTabs: React.FC<{
-  activeSection: 'overview' | 'search';
-  onSelect: (section: 'overview' | 'search') => void;
+  activeSection: 'overview' | 'search' | 'categories';
+  onSelect: (section: 'overview' | 'search' | 'categories') => void;
 }> = ({ activeSection, onSelect }) => (
   <div className="ui-home-title-tabs" role="tablist" aria-label="Home views">
     {([
       { id: 'overview' as const, label: 'Overview', Icon: LayoutDashboard },
       { id: 'search' as const, label: 'Search', Icon: Search },
+      { id: 'categories' as const, label: 'Categories', Icon: Tags },
     ]).map(({ id, label, Icon }) => {
       const active = activeSection === id;
       return (
@@ -2596,8 +2597,11 @@ export const MainContent: React.FC<MainContentProps> = ({
   }
 
   const usesContainedScroller = activeView === 'home' || activeView === 'bookmarks';
-  const selectedHomeSection = globalTabState?.homeSection === 'search' ? 'search' : 'overview';
-  const selectHomeSection = (section: 'overview' | 'search') => {
+  const selectedHomeSection =
+    globalTabState?.homeSection === 'search' || globalTabState?.homeSection === 'categories'
+      ? globalTabState.homeSection
+      : 'overview';
+  const selectHomeSection = (section: 'overview' | 'search' | 'categories') => {
     if (!globalTabState || !onGlobalTabStateChange) return;
     if (section === 'search' && librarySearch?.state.query.trim()) {
       librarySearch.openSearch({

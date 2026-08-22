@@ -14,6 +14,7 @@ import { ItemQuickAccessMarkers } from './ItemQuickAccessMarkers';
 import { Resizer } from './Resizer';
 import { WorkspaceDestinationPicker } from './WorkspaceDestinationPicker';
 import { LinkVisual } from './LinkVisual';
+import { HomeCategoriesView } from './HomeCategoriesView';
 import {
   AllLibraryWorkspaceOverview,
   normalizeAllLibraryItemFilter,
@@ -918,7 +919,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setHomeItemContextMenu({ item, x: e.clientX, y: e.clientY });
   };
 
-  const homeSection = homeState.homeSection === 'search' ? 'search' : 'overview';
+  const homeSection =
+    homeState.homeSection === 'search' || homeState.homeSection === 'categories'
+      ? homeState.homeSection
+      : 'overview';
   const openAllLibraryScope = () => {
     onHomeStateChange({ ...homeState, activeTabId: null, homeSection: 'overview' });
     onResetScope?.();
@@ -1163,6 +1167,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         ) : null}
       </div>
+      ) : homeSection === 'categories' ? (
+        <HomeCategoriesView
+          key={scopeProjectId}
+          items={scopeProjectId === 'all' ? items : projectItems}
+          scopeLabel={activeProject?.name ?? 'All Library'}
+          scopeKey={scopeProjectId}
+          onSelectedItemChange={onSelectedBrowseItemChange}
+        />
       ) : librarySearch ? (
         <div ref={searchLayoutRef} style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div

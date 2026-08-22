@@ -48,13 +48,14 @@ describe('dashboard shell polish contracts', () => {
     expect(markup).not.toContain('Overview');
   });
 
-  it('keeps Overview and Search beside the Home page title instead of in the sidebar', () => {
+  it('keeps Overview, Search, and Categories beside the Home page title instead of in the sidebar', () => {
     const markup = renderToStaticMarkup(<HomeTitleTabs activeSection="search" onSelect={vi.fn()} />);
     expect(markup).toContain('class="ui-home-title-tabs"');
     expect(markup).toContain('aria-label="Home views"');
     expect(markup).toContain('Overview');
     expect(markup).toContain('role="tab" aria-selected="true"');
     expect(markup).toContain('Search');
+    expect(markup).toContain('Categories');
   });
 
   it('exposes Inspector and Ask as one accessible tab set', () => {

@@ -191,6 +191,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         <DefinitionGrid entries={[
           { icon: Home, term: 'Home · Overview', description: <>Resume recent material, open projects, browse Favorites &amp; pins, and see the active workspace.</> },
           { icon: Search, term: 'Home · Search', description: <>Search without leaving the current Home context. Search state is retained when you return to Overview.</> },
+          { icon: Tags, term: 'Home · Categories', description: <>Browse topical AI categories across All Library or the current project. Select several categories to show items that belong to any selected topic.</> },
           { icon: BookMarked, term: 'Library', description: <>Browse the full catalog with All items, Links, Notes, Favorites &amp; pins, and Workspace views.</> },
           { icon: PanelLeft, term: 'Inspector / Item', description: <>Selecting an item opens its editable details. <strong>Add to workspace…</strong> files it into a working set without leaving the page; use <strong>View workspace</strong> in that picker only when you want to navigate there.</> },
         ]} />

@@ -3360,6 +3360,204 @@ button.ui-scope-chip {
   white-space: nowrap;
 }
 
+.ui-home-categories {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 20px var(--scroll-footer-safe-bottom);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.ui-home-categories__taxonomy,
+.ui-home-categories__results {
+  min-height: 0;
+  min-width: 0;
+}
+
+.ui-home-categories__taxonomy {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.ui-home-categories__taxonomy-header {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ui-home-categories__taxonomy-header > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ui-home-categories__taxonomy-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.ui-home-categories__taxonomy-header span,
+.ui-home-categories__selection-summary {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.ui-home-categories__taxonomy-header button,
+.ui-home-categories__filter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.ui-home-categories__filter {
+  height: 31px;
+  margin: 9px 10px 5px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg, var(--bg-input));
+  color: var(--text-faint);
+}
+
+.ui-home-categories__filter input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+
+.ui-home-categories__show-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 11px 8px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.ui-home-categories__groups {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.ui-home-categories__groups details {
+  border-bottom: 1px solid var(--border);
+}
+
+.ui-home-categories__groups summary {
+  min-height: 32px;
+  padding: 0 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ui-home-categories__groups summary::-webkit-details-marker { display: none; }
+.ui-home-categories__groups details:not([open]) summary svg { transform: rotate(-90deg); }
+.ui-home-categories__groups summary small,
+.ui-home-categories__leaves small {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-home-categories__leaves {
+  padding: 0 6px 6px;
+}
+
+.ui-home-categories__leaves label {
+  min-height: 30px;
+  padding: 3px 6px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.ui-home-categories__leaves label:hover,
+.ui-home-categories__leaves label[data-selected='true'] {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.ui-home-categories__leaves span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-home-categories__selection-summary,
+.ui-home-categories__status {
+  padding: 9px 11px;
+  line-height: 1.4;
+}
+
+.ui-home-categories__selection-summary {
+  border-top: 1px solid var(--border);
+}
+
+.ui-home-categories__status[data-error='true'] { color: var(--danger); }
+
+.ui-home-categories__results,
+.ui-home-categories__results > .ui-content-browser {
+  height: 100%;
+}
+
+.ui-home-categories__result-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+@media (max-width: 820px) {
+  .ui-home-categories {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(220px, 42%) minmax(0, 1fr);
+  }
+}
+
 .ui-product-search__body {
   min-width: 0;
   display: grid;
