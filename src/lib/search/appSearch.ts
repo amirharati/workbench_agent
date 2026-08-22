@@ -9,13 +9,14 @@ import type { ItemEnrichment } from '../enrichment/types';
 import type { Collection, Item } from '../db';
 import { buildSearchIndex } from './buildIndex';
 import { withSearchCategoryCentroids } from './categoryCentroids';
+import { rankQueryAgainstCategoryProfiles } from './categorySearchProfileService';
 import { findSimilarItems, type FindSimilarOptions, type FindSimilarResult } from './findSimilar';
 import { WorkerSimilarityFallbackIndex } from './similarityFallbackIndex';
 import { hybridSearch } from './hybridSearch';
 import { extractSearchRelated } from './searchRelated';
 import { applySearchFilters } from './filters';
 import {
-  matchesParsedSearchGuards,
+  matchesParsedSearchStructuredScope,
   parseSearchQuery,
   type ParsedSearchQuery,
 } from './queryLanguage';
@@ -126,7 +127,7 @@ async function rankQueryAgainstWorkerEmbeddings(
   parsedQuery: ParsedSearchQuery
 ): Promise<{ scores: Record<string, number>; withEmbeddings: number }> {
   const eligibleItemIds = applySearchFilters(index.documents, filters)
-    .filter((document) => matchesParsedSearchGuards(document, parsedQuery, index))
+    .filter((document) => matchesParsedSearchStructuredScope(document, parsedQuery, index))
     .map((document) => document.itemId);
   if (!eligibleItemIds.length) return { scores: {}, withEmbeddings: 0 };
   return dbRpc('rankSearchEmbeddings', [queryEmbedding, eligibleItemIds, 500]);
@@ -136,30 +137,32 @@ async function resolveSemanticQuery(
   index: SearchIndex,
   options: HybridSearchOptions,
   parsedQuery: ParsedSearchQuery
-): Promise<{ queryEmbedding?: number[]; embeddingScores?: Record<string, number> }> {
+): Promise<{
+  queryEmbedding?: number[];
+  embeddingScores?: Record<string, number>;
+  categoryEmbeddingScores?: Record<string, number>;
+}> {
   if ((options.mode ?? 'hybrid') !== 'hybrid' || !parsedQuery.semanticText) return {};
-  const hasSemanticDocuments = index.documents.some((document) => document.hasEmbedding);
-  if (!hasSemanticDocuments && !options.queryEmbedding?.length) return {};
 
   const queryEmbedding = options.queryEmbedding?.length
     ? options.queryEmbedding
     : await embedQueryText(parsedQuery.semanticText);
   if (!queryEmbedding?.length) return {};
 
-  try {
-    const ranked = await rankQueryAgainstWorkerEmbeddings(
-      index,
-      queryEmbedding,
-      options.filters,
-      parsedQuery
-    );
-    if (ranked.withEmbeddings === 0) return {};
-    return { queryEmbedding, embeddingScores: ranked.scores };
-  } catch {
-    // Semantic ranking is optional. Exact text rules remain fully usable and
-    // the result metadata will truthfully report text fallback.
-    return {};
-  }
+  const [rankedItems, rankedCategories] = await Promise.all([
+    rankQueryAgainstWorkerEmbeddings(index, queryEmbedding, options.filters, parsedQuery)
+      .catch(() => ({ scores: {}, withEmbeddings: 0 })),
+    rankQueryAgainstCategoryProfiles(queryEmbedding).catch(() => ({ matches: [], profileCount: 0 })),
+  ]);
+  const categoryEmbeddingScores = Object.fromEntries(
+    rankedCategories.matches.map((match) => [match.categoryId, match.score])
+  );
+  if (rankedItems.withEmbeddings === 0 && !rankedCategories.matches.length) return {};
+  return {
+    queryEmbedding,
+    embeddingScores: rankedItems.scores,
+    categoryEmbeddingScores,
+  };
 }
 
 export async function runAppHybridSearch(
@@ -181,6 +184,9 @@ export async function runAppHybridSearchWithRelated(
   const related = extractSearchRelated(index, result, {
     queryEmbedding: semantic.queryEmbedding,
     embeddingScores: semantic.embeddingScores,
+    matchedCategoryScores: new Map(
+      (result.categoryResults ?? []).map((category) => [category.categoryId, category.score])
+    ),
     filters: options.filters,
     parsedQuery,
   });

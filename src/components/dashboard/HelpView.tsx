@@ -252,7 +252,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     title: 'Search and list filtering',
     summary: 'Use full Search for discovery and local filters for quickly narrowing the list in front of you.',
     icon: Search,
-    keywords: ['search', 'hybrid', 'scope', 'filter', 'recent query', 'workspace', 'organize', 'command palette', 'exact phrase', 'boolean', 'site', 'exclude'],
+    keywords: ['search', 'hybrid', 'scope', 'filter', 'recent query', 'workspace', 'organize', 'command palette', 'exact phrase', 'boolean', 'site', 'exclude', 'tag', 'category'],
     content: (
       <>
         <DefinitionGrid entries={[
@@ -269,6 +269,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           { icon: Search, term: 'All terms', description: <><code>ml in trading</code> requires both meaningful terms. Connector words such as “in” do not become requirements.</> },
           { icon: Search, term: 'Exact phrase', description: <>Use quotes: <code>“machine learning in trading”</code>.</> },
           { icon: Search, term: 'Alternatives', description: <>Use uppercase or lowercase <code>OR</code>: <code>ai OR quant</code>. Plain spacing, <code>AND</code>, and a leading <code>+</code> are required-term forms.</> },
+          { icon: Search, term: 'Tags / categories', description: <>Use exact membership filters such as <code>tag:investing</code> or <code>category:“Investment Strategies”</code>, then add ordinary words to refine. Repeat fields with <code>+</code> / <code>AND</code>, or use <code>OR</code> for alternatives.</> },
           { icon: Search, term: 'Exclude / site', description: <>Use <code>-beginner</code>, <code>-“intro course”</code>, or <code>site:arxiv.org</code>.</> },
         ]} />
         <Callout title="Exact rules first; semantics remain visible">

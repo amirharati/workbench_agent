@@ -1,4 +1,4 @@
-import { ExternalLink, Eye, Sparkles } from 'lucide-react';
+import { ExternalLink, Eye, FolderOpen, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { FindSimilarResult } from '../../lib/search';
@@ -99,6 +99,7 @@ function LinkRow({
 export function SearchRelatedPanel({
   related,
   onTopicClick,
+  onCategoryOpen,
   onTagClick,
   onRelatedClick,
   variant = 'dev',
@@ -106,6 +107,7 @@ export function SearchRelatedPanel({
 }: {
   related: SearchRelatedFacets;
   onTopicClick?: (name: string) => void;
+  onCategoryOpen?: (categoryId: string, name: string) => void;
   onTagClick?: (tag: string) => void;
   onRelatedClick?: (itemId: string, title: string) => void;
   variant?: 'dev' | 'product';
@@ -122,6 +124,7 @@ export function SearchRelatedPanel({
 
   return (
     <section
+      className="ui-search-discovery"
       style={{
         marginTop: 16,
         padding: '12px 14px',
@@ -152,7 +155,7 @@ export function SearchRelatedPanel({
               marginBottom: 6,
             }}
           >
-            Topics
+            Categories
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {related.topics.map((t) => (
@@ -160,9 +163,19 @@ export function SearchRelatedPanel({
                 key={t.categoryId}
                 type="button"
                 style={{ ...chipStyle, fontSize: chipFontSize }}
-                onClick={() => onTopicClick?.(t.name)}
-                title={t.source === 'query' ? 'Matched by query' : 'From top results'}
+                onClick={() => {
+                  if (onCategoryOpen) onCategoryOpen(t.categoryId, t.name);
+                  else onTopicClick?.(t.name);
+                }}
+                title={
+                  onCategoryOpen
+                    ? `Open the full ${t.name} category`
+                    : t.source === 'query'
+                      ? 'Search this matched category'
+                      : 'Search this category from the top results'
+                }
               >
+                {onCategoryOpen ? <FolderOpen size={12} /> : null}
                 {t.name}
                 <span style={{ color: 'var(--text-faint)' }}>{t.count || ''}</span>
               </button>

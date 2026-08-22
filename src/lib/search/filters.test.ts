@@ -5,7 +5,9 @@ import type { SearchDocument } from './types';
 function document(
   itemId: string,
   projectIds: string[],
-  collectionIds: string[]
+  collectionIds: string[],
+  tags: string[] = [],
+  categoryIds: string[] = []
 ): SearchDocument {
   return {
     itemId,
@@ -13,14 +15,14 @@ function document(
     url: `https://example.com/${itemId}`,
     domain: 'example.com',
     notes: '',
-    tags: [],
+    tags,
     summary: '',
     keyPoints: [],
     updatedAt: 1,
     createdAt: 1,
     collectionIds,
     projectIds,
-    categoryIds: [],
+    categoryIds,
     categoryScores: {},
     hasQualityEnrichment: false,
   };
@@ -43,5 +45,16 @@ describe('applySearchFilters organization exclusions', () => {
     expect(
       applySearchFilters(documents, { excludeCollectionId: 'reading' }).map((row) => row.itemId)
     ).toEqual(['research-drafts', 'writing']);
+  });
+
+  it('supports exact tag and category membership for Search tabs', () => {
+    const tabDocuments = [
+      document('one', ['research'], ['reading'], ['machine learning'], ['ml']),
+      document('two', ['research'], ['reading'], ['machine'], ['finance']),
+    ];
+    expect(applySearchFilters(tabDocuments, { tag: 'Machine Learning' }).map((row) => row.itemId))
+      .toEqual(['one']);
+    expect(applySearchFilters(tabDocuments, { categoryId: 'finance' }).map((row) => row.itemId))
+      .toEqual(['two']);
   });
 });

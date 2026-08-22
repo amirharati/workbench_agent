@@ -1859,6 +1859,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                     statusBar={statusBar}
                     librarySearch={workingLibrarySearch}
                     onOpenItemFromSearch={handleOpenItemInInspector}
+                    onBrowseCategory={handleBrowseCategory}
                     scopeProjectId={scopeProjectId}
                     scopeCollectionId={scopeCollectionId}
                     onSwitchScopeForItem={handleSwitchScopeForItem}

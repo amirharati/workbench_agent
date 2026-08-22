@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SearchDocument } from './types';
+import type { SearchDocument, SearchIndex } from './types';
 import {
   describeParsedSearchQuery,
   matchesParsedSearchQuery,
@@ -63,5 +63,46 @@ describe('Google-like search query language', () => {
     expect(matchesParsedSearchQuery(document(), parsed)).toBe(true);
     expect(matchesParsedSearchQuery(document({ tags: ['beginner'] }), parsed)).toBe(false);
     expect(matchesParsedSearchQuery(document({ domain: 'example.net' }), parsed)).toBe(false);
+  });
+
+  it('supports exact tag and category fields combined with keywords and OR', () => {
+    const categoryById: SearchIndex['categoryById'] = new Map([[
+      'investment-strategies',
+      {
+        id: 'investment-strategies',
+        name: 'Investment Strategies',
+        kind: 'leaf',
+        status: 'approved',
+        assignable: true,
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]]);
+    const index = { categoryById };
+    const matching = document({
+      tags: ['Long Term'],
+      categoryIds: ['investment-strategies'],
+      title: 'Dividend portfolio construction',
+    });
+    const parsed = parseSearchQuery(
+      'categories: "Investment Strategies" +tags:"Long Term" dividend'
+    );
+
+    expect(parsed.clauses).toEqual([{ atoms: [
+      { kind: 'category', value: 'Investment Strategies' },
+      { kind: 'tag', value: 'Long Term' },
+      { kind: 'term', value: 'dividend' },
+    ] }]);
+    expect(parsed.semanticText).toBe('Investment Strategies Long Term dividend');
+    expect(matchesParsedSearchQuery(matching, parsed, index)).toBe(true);
+    expect(matchesParsedSearchQuery({ ...matching, tags: ['Short Term'] }, parsed, index)).toBe(false);
+    expect(matchesParsedSearchQuery(
+      { ...matching, categoryIds: [] },
+      parseSearchQuery('category:"Investment Strategies" OR tag:"Long Term"'),
+      index
+    )).toBe(true);
+    expect(describeParsedSearchQuery(parsed)).toBe(
+      'All: exact category “Investment Strategies” + exact tag “Long Term” + dividend'
+    );
   });
 });

@@ -1,6 +1,7 @@
 import { cosineSimilarity } from '../categorization/math';
 import { isGeneralLeafId } from '../categorization/taxonomyCatalog';
 import type { AiCategory } from '../categorization/types';
+import { isSearchableTopicCategory } from './categorySearchProfiles';
 import { tokenize } from './tokenize';
 import type { SearchDocument, SearchIndex, SearchWeights } from './types';
 import { DEFAULT_SEARCH_WEIGHTS } from './types';
@@ -24,7 +25,7 @@ export function matchCategoriesByName(
 
   const hits: Array<{ categoryId: string; score: number; name: string }> = [];
   for (const cat of categories) {
-    if (cat.kind !== 'leaf' || cat.status === 'deprecated') continue;
+    if (!isSearchableTopicCategory(cat)) continue;
     const nameTokens = new Set(tokenize(`${cat.name} ${cat.parentName ?? ''}`));
     let overlap = 0;
     for (const t of tokens) {
@@ -50,7 +51,7 @@ export function matchCategoriesByCentroid(
   if (!queryEmbedding.length) return [];
 
   const scored = categories
-    .filter((c) => c.kind === 'leaf' && c.centroid?.length && c.status !== 'deprecated')
+    .filter((c) => isSearchableTopicCategory(c) && c.centroid?.length)
     .map((c) => ({
       categoryId: c.id,
       score: Math.max(0, cosineSimilarity(queryEmbedding, c.centroid!)),
@@ -65,7 +66,8 @@ export function matchCategoriesByCentroid(
 export function scoreCategoryAffinity(
   doc: SearchDocument,
   matchedCategoryIds: Set<string>,
-  _categoryById: Map<string, AiCategory>
+  _categoryById: Map<string, AiCategory>,
+  matchedCategoryScores?: ReadonlyMap<string, number>
 ): { score: number; matched: string[] } {
   if (!matchedCategoryIds.size) return { score: 0, matched: [] };
 
@@ -77,10 +79,11 @@ export function scoreCategoryAffinity(
     matched.push(catId);
     const linkScore = doc.categoryScores[catId] ?? 0.5;
     const primaryBoost = doc.primaryCategoryId === catId ? 1.15 : 1;
-    best = Math.max(best, Math.min(1, linkScore * primaryBoost));
+    const queryCategoryScore = matchedCategoryScores?.get(catId) ?? 1;
+    best = Math.max(best, Math.min(1, linkScore * primaryBoost * queryCategoryScore));
   }
 
-  if (matched.length && best < 0.3) best = 0.3;
+  if (!matchedCategoryScores && matched.length && best < 0.3) best = 0.3;
 
   return { score: best, matched };
 }
@@ -208,23 +211,70 @@ export function resolveMatchedCategories(
   query: string,
   queryEmbedding: number[] | undefined,
   index: SearchIndex,
-  categoryTopK: number
-): { ids: Set<string>; labels: string[] } {
+  categoryTopK: number,
+  categoryEmbeddingScores?: Readonly<Record<string, number>>
+): {
+  ids: Set<string>;
+  labels: string[];
+  scores: Map<string, number>;
+  matches: Array<{
+    categoryId: string;
+    name: string;
+    score: number;
+    nameScore: number;
+    semanticScore: number;
+  }>;
+} {
   const byName = matchCategoriesByName(query, index.categories);
   const byCentroid = queryEmbedding?.length
     ? matchCategoriesByCentroid(queryEmbedding, index.categories, categoryTopK)
     : [];
 
-  const merged = new Map<string, { score: number; name: string }>();
-  for (const hit of [...byName, ...byCentroid]) {
+  const merged = new Map<
+    string,
+    { name: string; nameScore: number; semanticScore: number }
+  >();
+  for (const hit of byName) {
     const prev = merged.get(hit.categoryId);
-    if (!prev || hit.score > prev.score) {
-      merged.set(hit.categoryId, { score: hit.score, name: hit.name });
-    }
+    merged.set(hit.categoryId, {
+      name: hit.name,
+      nameScore: Math.max(prev?.nameScore ?? 0, hit.score),
+      semanticScore: prev?.semanticScore ?? 0,
+    });
+  }
+  for (const hit of byCentroid) {
+    const prev = merged.get(hit.categoryId);
+    merged.set(hit.categoryId, {
+      name: hit.name,
+      nameScore: prev?.nameScore ?? 0,
+      semanticScore: Math.max(prev?.semanticScore ?? 0, hit.score),
+    });
+  }
+  for (const [categoryId, score] of Object.entries(categoryEmbeddingScores ?? {})) {
+    const category = index.categoryById.get(categoryId);
+    if (!category || !isSearchableTopicCategory(category)) continue;
+    const prev = merged.get(categoryId);
+    merged.set(categoryId, {
+      name: category.name,
+      nameScore: prev?.nameScore ?? 0,
+      semanticScore: Math.max(prev?.semanticScore ?? 0, score),
+    });
   }
 
-  const sorted = [...merged.entries()].sort((a, b) => b[1].score - a[1].score);
-  const ids = new Set(sorted.map(([id]) => id));
-  const labels = sorted.map(([, v]) => v.name);
-  return { ids, labels };
+  const matches = [...merged.entries()]
+    .map(([categoryId, value]) => ({
+      categoryId,
+      name: value.name,
+      nameScore: value.nameScore,
+      semanticScore: value.semanticScore,
+      score: Math.max(value.nameScore, value.semanticScore),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, categoryTopK);
+  return {
+    ids: new Set(matches.map((match) => match.categoryId)),
+    labels: matches.map((match) => match.name),
+    scores: new Map(matches.map((match) => [match.categoryId, match.score])),
+    matches,
+  };
 }

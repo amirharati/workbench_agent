@@ -42,7 +42,8 @@ export function hybridSearch(
     scoringQuery,
     mode === 'hybrid' ? options.queryEmbedding : undefined,
     scopedIndex,
-    categoryTopK
+    categoryTopK,
+    mode === 'hybrid' ? options.categoryEmbeddingScores : undefined
   );
 
   const candidateMap = new Map<
@@ -71,7 +72,12 @@ export function hybridSearch(
             options.queryEmbedding?.length ? scoreEmbedding(options.queryEmbedding, doc) : 0
           )
         : 0;
-    const cat = scoreCategoryAffinity(doc, matchedCategories.ids, index.categoryById);
+    const cat = scoreCategoryAffinity(
+      doc,
+      matchedCategories.ids,
+      index.categoryById,
+      matchedCategories.scores
+    );
     if (lex.score > 0) sources.add('lexical');
     if (embedding > 0) sources.add('embedding');
     if (cat.matched.length > 0) sources.add('category');
@@ -130,10 +136,31 @@ export function hybridSearch(
     results: results.slice(0, limit),
     totalCandidates: scopedDocs.length,
     matchedCategoryIds: [...matchedCategories.ids],
+    categoryResults: matchedCategories.matches.map((match) => {
+      const category = index.categoryById.get(match.categoryId);
+      return {
+        categoryId: match.categoryId,
+        name: match.name,
+        parentName: category?.parentName ?? undefined,
+        description: category?.description,
+        itemCount: index.itemsByCategory.get(match.categoryId)?.length ?? 0,
+        score: match.score,
+        nameScore: match.nameScore,
+        semanticScore: match.semanticScore,
+        sources: [
+          ...(match.nameScore > 0 ? ['name' as const] : []),
+          ...(match.semanticScore > 0 ? ['semantic' as const] : []),
+        ],
+      };
+    }),
     embeddingPathUsed:
       mode === 'hybrid' && Boolean(
         options.queryEmbedding?.length &&
-        (Object.keys(options.embeddingScores ?? {}).length > 0 || scopedDocs.some((doc) => doc.embedding?.length))
+        (
+          Object.keys(options.embeddingScores ?? {}).length > 0 ||
+          Object.keys(options.categoryEmbeddingScores ?? {}).length > 0 ||
+          scopedDocs.some((doc) => doc.embedding?.length)
+        )
       ),
   };
 }

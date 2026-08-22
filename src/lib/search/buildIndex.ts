@@ -2,6 +2,7 @@ import { getDomain } from '../utils';
 import type { AiCategory, AiItemCategoryLink, AiItemSignal, ClassifyState } from '../categorization/types';
 import type { ItemEnrichment } from '../enrichment/types';
 import type { Collection, Item } from '../db';
+import { isSearchableTopicCategory } from './categorySearchProfiles';
 import type { SearchDocument, SearchIndex } from './types';
 
 const COUNTABLE_LINK_STATUSES = new Set(['suggested', 'accepted']);
@@ -21,11 +22,14 @@ export function buildSearchIndex(input: BuildSearchIndexInput): SearchIndex {
   );
   const signalByItem = new Map((input.signals ?? []).map((s) => [s.itemId, s]));
 
+  const categories = (input.categories ?? []).filter(isSearchableTopicCategory);
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
   const links = (input.links ?? []).filter(
-    (l) => l.source === 'ai' && COUNTABLE_LINK_STATUSES.has(l.status)
+    (l) =>
+      l.source === 'ai' &&
+      COUNTABLE_LINK_STATUSES.has(l.status) &&
+      categoryById.has(l.categoryId)
   );
-
-  const categoryById = new Map((input.categories ?? []).map((c) => [c.id, c]));
   const itemsByCategory = new Map<string, string[]>();
 
   const linksByItem = new Map<string, AiItemCategoryLink[]>();
@@ -46,7 +50,8 @@ export function buildSearchIndex(input: BuildSearchIndexInput): SearchIndex {
     const signal = signalByItem.get(item.id);
     const itemLinks = linksByItem.get(item.id) ?? [];
 
-    const primaryLink = itemLinks.find((l) => l.isPrimary);
+    const primaryLink = itemLinks.find((l) => l.isPrimary) ?? [...itemLinks]
+      .sort((left, right) => right.score - left.score)[0];
     const categoryIds = [...new Set(itemLinks.map((l) => l.categoryId))];
     const categoryScores: Record<string, number> = {};
     for (const l of itemLinks) {
@@ -96,7 +101,7 @@ export function buildSearchIndex(input: BuildSearchIndexInput): SearchIndex {
 
   return {
     documents,
-    categories: input.categories ?? [],
+    categories,
     categoryById,
     itemsByCategory,
   };

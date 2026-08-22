@@ -953,6 +953,12 @@ export const MainContent: React.FC<MainContentProps> = ({
             isItemInWorkspace={itemIsInWorkspace}
             onAddItemToWorkspace={addItemToChosenWorkspace}
             onViewItemInWorkspace={viewItemInChosenWorkspace}
+            searchTabs={librarySearch.searchTabs}
+            activeSearchTabId={librarySearch.activeSearchTabId}
+            onSelectSearchTab={librarySearch.selectSearchTab}
+            onCloseSearchTab={librarySearch.closeSearchTab}
+            onOpenTagTab={librarySearch.openTagTab}
+            onOpenCategoryTab={librarySearch.openCategoryTab}
           />
         );
       case 'trash':

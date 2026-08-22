@@ -8,7 +8,7 @@ const OFFSCREEN_URL = 'offscreen.html';
 // Must match the DB and content worker protocol in src/offscreen/offscreen.ts.
 // A mismatch makes each newly started service worker tear down the otherwise
 // valid offscreen owner, which is especially disruptive during extension reloads.
-const DB_OWNER_PROTOCOL_VERSION = 19;
+const DB_OWNER_PROTOCOL_VERSION = 21;
 const PIPELINE_RECOVERY_ALARM = 'pipeline-recovery-wake';
 const PIPELINE_JOB_HOSTS_KEY = 'pipelineJobHosts';
 let offscreenCreating = null;

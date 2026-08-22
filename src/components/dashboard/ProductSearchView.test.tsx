@@ -93,7 +93,7 @@ describe('ProductSearchView empty state', () => {
     expect(markup).toContain('local first');
     expect(markup).toContain('browser research');
     expect(markup).not.toContain('Inspector panel');
-    expect(markup).toContain('class="scrollbar ui-scroll-footer-safe"');
+    expect(markup).toContain('class="ui-product-search scrollbar ui-scroll-footer-safe"');
     expect(markup).toContain('padding:24px 28px var(--scroll-footer-safe-bottom)');
   });
 
@@ -130,11 +130,14 @@ describe('ProductSearchView empty state', () => {
     );
 
     expect(markup).toContain('All: ml + trading');
-    expect(markup).toContain('Syntax: “exact phrase” · OR · AND / + · -exclude · site:domain');
+    expect(markup).toContain('Syntax: “exact phrase” · tag:name · category:name · OR · AND / + · -exclude · site:domain');
     expect(markup).toContain('semantic ranking · exact rules');
-    expect(markup).toContain('No exact matches. Related semantic results are shown below.');
+    expect(markup).toContain('No exact matches. Related semantic results are shown nearby.');
     expect(markup).toContain('Related results');
     expect(markup).toContain('Semantic matches outside the exact query rules');
+    expect(markup.indexOf('ui-product-search__discovery')).toBeLessThan(
+      markup.indexOf('ui-product-search__results')
+    );
   });
 
   it('selects a related result for Inspector without opening workspace state', async () => {
@@ -174,6 +177,175 @@ describe('ProductSearchView empty state', () => {
 
     await act(async () => root.unmount());
     host.remove();
+  });
+
+  it('opens category and tag results in Search tabs without rewriting the current query', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onOpenCategoryTab = vi.fn();
+    const onOpenTagTab = vi.fn();
+    const onRunSearch = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <ProductSearchView
+          items={[]}
+          collections={[]}
+          state={{
+            ...resultState,
+            result: {
+              ...resultState.result,
+              results: [],
+              matchedCategoryIds: ['speech-asr'],
+              categoryResults: [{
+                categoryId: 'speech-asr',
+                name: 'Automatic Speech Recognition',
+                parentName: 'Machine Learning',
+                itemCount: 12,
+                score: 0.84,
+                nameScore: 0,
+                semanticScore: 0.84,
+                sources: ['semantic'],
+              }],
+              related: {
+                topics: [{
+                  categoryId: 'speech-asr',
+                  name: 'Automatic Speech Recognition',
+                  count: 12,
+                  source: 'query',
+                }],
+                tags: [{ tag: 'speech recognition', count: 4 }],
+                relatedLinks: [],
+              },
+            },
+          }}
+          onQueryChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+          onModeChange={vi.fn()}
+          onSelectedItemIdChange={vi.fn()}
+          onRunSearch={onRunSearch}
+          onOpenItem={vi.fn()}
+          onOpenCategoryTab={onOpenCategoryTab}
+          onOpenTagTab={onOpenTagTab}
+        />
+      );
+    });
+
+    const categoryButton = host.querySelector<HTMLButtonElement>(
+      'button[title="Open the full Automatic Speech Recognition category"]'
+    );
+    await act(async () => categoryButton?.click());
+    expect(onOpenCategoryTab).toHaveBeenCalledWith(
+      'speech-asr',
+      'Automatic Speech Recognition'
+    );
+    const tagButton = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('speech recognition'));
+    await act(async () => tagButton?.click());
+    expect(onOpenTagTab).toHaveBeenCalledWith('speech recognition');
+    expect(onRunSearch).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it('renders switchable, closeable Search-local tabs', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onSelectSearchTab = vi.fn();
+    const onCloseSearchTab = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <ProductSearchView
+          items={[item]}
+          collections={[collection]}
+          state={resultState}
+          onQueryChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+          onModeChange={vi.fn()}
+          onSelectedItemIdChange={vi.fn()}
+          onRunSearch={vi.fn()}
+          onOpenItem={vi.fn()}
+          searchTabs={[
+            { id: 'root', kind: 'search', label: 'Search: python' },
+            { id: 'tag', kind: 'tag', label: 'Tag: machine learning', tag: 'machine learning' },
+          ]}
+          activeSearchTabId="root"
+          onSelectSearchTab={onSelectSearchTab}
+          onCloseSearchTab={onCloseSearchTab}
+        />
+      );
+    });
+
+    const tagTab = host.querySelector<HTMLButtonElement>('[role="tab"][title="Tag: machine learning"]');
+    await act(async () => tagTab?.click());
+    expect(onSelectSearchTab).toHaveBeenCalledWith('tag');
+
+    const closeTag = host.querySelector<HTMLButtonElement>('[aria-label="Close Tag: machine learning"]');
+    await act(async () => closeTag?.click());
+    expect(onCloseSearchTab).toHaveBeenCalledWith('tag');
+
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it('labels an exact tag tab as membership browsing rather than keyword search', () => {
+    const markup = renderToStaticMarkup(
+      <ProductSearchView
+        items={[item]}
+        collections={[collection]}
+        state={{
+          ...resultState,
+          query: 'tag:"investing"',
+          filters: {},
+          result: {
+            ...resultState.result,
+            query: 'tag:"investing"',
+            embeddingPathUsed: true,
+          },
+        }}
+        onQueryChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onModeChange={vi.fn()}
+        onSelectedItemIdChange={vi.fn()}
+        onRunSearch={vi.fn()}
+        onOpenItem={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('Exact tag: investing');
+    expect(markup).toContain('All: exact tag “investing”');
+    expect(markup).toContain('Tag/category membership is exact · add words to refine');
+    expect(markup).toContain('1 link with exact tag “investing”');
+    expect(markup).toContain('hybrid relevance ranking · exact membership');
+    expect(markup).not.toContain('All: investing');
+  });
+
+  it('keeps completed results visible while the next query is being edited', () => {
+    const markup = renderToStaticMarkup(
+      <ProductSearchView
+        items={[item]}
+        collections={[collection]}
+        state={{
+          ...resultState,
+          query: 'python trading',
+          result: { ...resultState.result, query: 'python' },
+        }}
+        onQueryChange={vi.fn()}
+        onFiltersChange={vi.fn()}
+        onModeChange={vi.fn()}
+        onSelectedItemIdChange={vi.fn()}
+        onRunSearch={vi.fn()}
+        onOpenItem={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('Python guide');
+    expect(markup).toContain('1 displayed result for “python”');
+    expect(markup).toContain('Press Enter or Search to update');
   });
 
   it('always exposes Preview on a result, before selection or full item hydration', () => {

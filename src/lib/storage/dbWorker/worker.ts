@@ -29,9 +29,18 @@ import {
   createDashboardStartupProjection,
   type DashboardStartupProjection,
 } from '../../dashboardStartupProjection';
-import { cosineSimilarity } from '../../categorization/math';
+import { cosineSimilarity, l2Normalize, meanVector } from '../../categorization/math';
+import { hashText } from '../../categorization/textHash';
 import { WorkerSimilarityIndex } from '../../search/similarityIndex';
-import type { AiItemSignal } from '../../categorization/types';
+import type { AiCategorySearchProfile, AiItemSignal } from '../../categorization/types';
+import {
+  blendCategorySearchVectors,
+  buildCategorySearchText,
+  CATEGORY_MEMBER_SAMPLE_LIMIT,
+  categoryMemberRevision,
+  isSearchableTopicCategory,
+  scoreCategoryProfileVector,
+} from '../../search/categorySearchProfiles';
 import {
   classifyStateRequiresPrimary,
   commitClassificationInStore,
@@ -131,6 +140,11 @@ const READ_ONLY_RPC_METHODS = new Set([
   'getSignalMetadataByItemIds',
   'getEnrichmentsByItemIds',
   'rankSearchEmbeddings',
+  // These mutate only a rebuildable, worker-owned search projection. Do not
+  // make dashboard tabs rehydrate canonical library tables while searching.
+  'prepareCategorySearchProfiles',
+  'putCategorySearchMetadataEmbeddings',
+  'rankCategorySearchProfiles',
   'findSimilarVectorScores',
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
@@ -875,6 +889,213 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         scores: Object.fromEntries(scored.slice(0, limit)),
         withEmbeddings,
       };
+    }
+    case 'prepareCategorySearchProfiles': {
+      const embeddingModel = typeof args[0] === 'string' ? args[0].trim() : '';
+      if (!embeddingModel) throw new Error('prepareCategorySearchProfiles requires embedding model');
+      const store = await getIdbCompatStore();
+      const categories = store
+        .getAllCategories()
+        .filter(isSearchableTopicCategory);
+      const activeIds = new Set(categories.map((category) => category.id));
+      const existingProfiles = store.sqlite.getAllCategorySearchProfiles();
+      const existingByCategory = new Map(
+        existingProfiles.map((profile) => [profile.categoryId, profile])
+      );
+      const memberStatsByCategory = new Map(
+        store.sqlite
+          .getAllCategorySearchMemberStats(embeddingModel)
+          .map((stats) => [stats.categoryId, stats])
+      );
+      let changed = false;
+
+      for (const profile of existingProfiles) {
+        if (!activeIds.has(profile.categoryId)) {
+          store.sqlite.deleteCategorySearchProfile(profile.categoryId);
+          changed = true;
+        }
+      }
+
+      const pendingMetadata: Array<{
+        categoryId: string;
+        text: string;
+        textHash: string;
+      }> = [];
+
+      for (const category of categories) {
+        const text = buildCategorySearchText(category);
+        const textHash = await hashText(text);
+        const existing = existingByCategory.get(category.id);
+        const sameModel = existing?.embeddingModel === embeddingModel;
+        const stats = memberStatsByCategory.get(category.id) ?? {
+          categoryId: category.id,
+          memberCount: 0,
+          linkUpdatedAt: 0,
+          signalUpdatedAt: 0,
+          scoreSum: 0,
+        };
+        const memberRevision = categoryMemberRevision(stats);
+        let profile: AiCategorySearchProfile = sameModel && existing
+          ? existing
+          : {
+              categoryId: category.id,
+              embeddingModel,
+              metadataTextHash: '',
+              metadataEmbedding: [],
+              memberCentroid: [],
+              prototypeEmbedding: [],
+              memberCount: 0,
+              memberSampleCount: 0,
+              memberRevision: '',
+              updated_at: 0,
+            };
+
+        if (profile.memberRevision !== memberRevision) {
+          const memberEmbeddings = stats.memberCount
+            ? store.sqlite.getCategorySearchMemberEmbeddings(
+                category.id,
+                embeddingModel,
+                CATEGORY_MEMBER_SAMPLE_LIMIT
+              )
+            : [];
+          profile = {
+            ...profile,
+            memberCentroid: meanVector(memberEmbeddings),
+            memberCount: stats.memberCount,
+            memberSampleCount: memberEmbeddings.length,
+            memberRevision,
+          };
+        }
+
+        const metadataCurrent =
+          profile.metadataTextHash === textHash && profile.metadataEmbedding.length > 0;
+        const metadataEmbedding = metadataCurrent ? profile.metadataEmbedding : [];
+        const prototypeEmbedding = blendCategorySearchVectors(
+          metadataEmbedding,
+          profile.memberCentroid,
+          profile.memberCount
+        );
+        const next: AiCategorySearchProfile = {
+          ...profile,
+          metadataEmbedding,
+          metadataTextHash: metadataCurrent ? textHash : '',
+          prototypeEmbedding,
+          updated_at: Date.now(),
+        };
+        if (
+          !existing ||
+          !sameModel ||
+          existing.memberRevision !== next.memberRevision ||
+          existing.metadataTextHash !== next.metadataTextHash ||
+          existing.prototypeEmbedding.length !== next.prototypeEmbedding.length
+        ) {
+          store.sqlite.putCategorySearchProfile(next);
+          changed = true;
+        }
+        if (!metadataCurrent) pendingMetadata.push({ categoryId: category.id, text, textHash });
+      }
+
+      if (changed) {
+        revisionTracker.recordSqliteMutation();
+        scheduleFolderMirror();
+      }
+      return {
+        pendingMetadata,
+        profileCount: categories.length,
+      };
+    }
+    case 'putCategorySearchMetadataEmbeddings': {
+      const rows = Array.isArray(args[0]) ? args[0] : [];
+      const store = await getIdbCompatStore();
+      let committed = 0;
+      for (const raw of rows) {
+        if (!raw || typeof raw !== 'object') continue;
+        const row = raw as {
+          categoryId?: unknown;
+          embeddingModel?: unknown;
+          textHash?: unknown;
+          embedding?: unknown;
+        };
+        const categoryId = typeof row.categoryId === 'string' ? row.categoryId : '';
+        const embeddingModel = typeof row.embeddingModel === 'string' ? row.embeddingModel : '';
+        const textHash = typeof row.textHash === 'string' ? row.textHash : '';
+        const embedding = Array.isArray(row.embedding)
+          ? row.embedding.filter(
+              (value): value is number => typeof value === 'number' && Number.isFinite(value)
+            )
+          : [];
+        if (!categoryId || !embeddingModel || !textHash || !embedding.length) continue;
+        const category = store.getCategory(categoryId);
+        if (!category || category.kind !== 'leaf' || category.status === 'deprecated') continue;
+        if (await hashText(buildCategorySearchText(category)) !== textHash) continue;
+        const existing = store.sqlite.getCategorySearchProfile(categoryId);
+        const base: AiCategorySearchProfile =
+          existing?.embeddingModel === embeddingModel
+            ? existing
+            : {
+                categoryId,
+                embeddingModel,
+                metadataTextHash: '',
+                metadataEmbedding: [],
+                memberCentroid: [],
+                prototypeEmbedding: [],
+                memberCount: 0,
+                memberSampleCount: 0,
+                memberRevision: '',
+                updated_at: 0,
+              };
+        const metadataEmbedding = l2Normalize(embedding);
+        store.sqlite.putCategorySearchProfile({
+          ...base,
+          embeddingModel,
+          metadataTextHash: textHash,
+          metadataEmbedding,
+          prototypeEmbedding: blendCategorySearchVectors(
+            metadataEmbedding,
+            base.memberCentroid,
+            base.memberCount
+          ),
+          updated_at: Date.now(),
+        });
+        committed++;
+      }
+      if (committed) {
+        revisionTracker.recordSqliteMutation();
+        scheduleFolderMirror();
+      }
+      return { committed };
+    }
+    case 'rankCategorySearchProfiles': {
+      const queryEmbedding = Array.isArray(args[0])
+        ? (args[0] as unknown[]).filter(
+            (value): value is number => typeof value === 'number' && Number.isFinite(value)
+          )
+        : [];
+      const embeddingModel = typeof args[1] === 'string' ? args[1] : '';
+      const requestedLimit = Number(args[2]);
+      const limit = Number.isFinite(requestedLimit)
+        ? Math.min(50, Math.max(1, Math.floor(requestedLimit)))
+        : 10;
+      if (!queryEmbedding.length || !embeddingModel) return { matches: [], profileCount: 0 };
+      const store = await getIdbCompatStore();
+      const profiles = store.sqlite
+        .getAllCategorySearchProfiles()
+        .filter(
+          (profile) =>
+            profile.embeddingModel === embeddingModel && profile.prototypeEmbedding.length > 0
+        );
+      const matches = profiles
+        .map((profile) => ({
+          categoryId: profile.categoryId,
+          score: scoreCategoryProfileVector(queryEmbedding, profile.prototypeEmbedding),
+          metadataScore: scoreCategoryProfileVector(queryEmbedding, profile.metadataEmbedding),
+          memberScore: scoreCategoryProfileVector(queryEmbedding, profile.memberCentroid),
+          memberCount: profile.memberCount,
+        }))
+        .filter((match) => match.score >= 0.2)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, limit);
+      return { matches, profileCount: profiles.length };
     }
     case 'findSimilarVectorScores': {
       const itemId = typeof args[0] === 'string' ? args[0] : '';

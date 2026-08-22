@@ -2,7 +2,7 @@ import type { SearchDocument, SearchIndex } from './types';
 import { tokenize } from './tokenize';
 
 export type SearchQueryAtom = {
-  kind: 'term' | 'phrase';
+  kind: 'term' | 'phrase' | 'tag' | 'category';
   value: string;
 };
 
@@ -24,7 +24,40 @@ type ScannedToken = {
   value: string;
   quoted: boolean;
   prefix?: '+' | '-';
+  field?: 'site' | 'tag' | 'category';
 };
+
+const SEARCH_FIELD_ALIASES: Record<string, ScannedToken['field']> = {
+  site: 'site',
+  tag: 'tag',
+  tags: 'tag',
+  category: 'category',
+  categories: 'category',
+};
+
+function scanValue(
+  raw: string,
+  index: number
+): { value: string; quoted: boolean; nextIndex: number } {
+  if (raw[index] === '"' || raw[index] === '“' || raw[index] === '”') {
+    const openingQuote = raw[index];
+    const closingQuote = openingQuote === '“' ? '”' : openingQuote;
+    index++;
+    const start = index;
+    while (index < raw.length && raw[index] !== closingQuote) index++;
+    const value = raw.slice(start, index).trim();
+    if (index < raw.length && raw[index] === closingQuote) index++;
+    return { value, quoted: true, nextIndex: index };
+  }
+
+  const start = index;
+  while (index < raw.length && !/[\s,]/u.test(raw[index])) index++;
+  return {
+    value: raw.slice(start, index).trim(),
+    quoted: false,
+    nextIndex: index,
+  };
+}
 
 function scanQuery(raw: string): ScannedToken[] {
   const tokens: ScannedToken[] = [];
@@ -40,22 +73,22 @@ function scanQuery(raw: string): ScannedToken[] {
       index++;
     }
 
-    if (raw[index] === '"' || raw[index] === '“' || raw[index] === '”') {
-      const openingQuote = raw[index];
-      const closingQuote = openingQuote === '“' ? '”' : openingQuote;
-      index++;
-      const start = index;
-      while (index < raw.length && raw[index] !== closingQuote) index++;
-      const value = raw.slice(start, index).trim();
-      if (index < raw.length && raw[index] === closingQuote) index++;
-      if (value) tokens.push({ value, quoted: true, prefix });
+    const fieldMatch = raw.slice(index).match(/^([\p{L}]+):/u);
+    const field = fieldMatch
+      ? SEARCH_FIELD_ALIASES[fieldMatch[1].toLowerCase()]
+      : undefined;
+    if (field && fieldMatch) {
+      index += fieldMatch[0].length;
+      while (index < raw.length && /\s/u.test(raw[index])) index++;
+      const scanned = scanValue(raw, index);
+      index = scanned.nextIndex;
+      if (scanned.value) tokens.push({ ...scanned, prefix, field });
       continue;
     }
 
-    const start = index;
-    while (index < raw.length && !/[\s,]/u.test(raw[index])) index++;
-    const value = raw.slice(start, index).trim();
-    if (value) tokens.push({ value, quoted: false, prefix });
+    const scanned = scanValue(raw, index);
+    index = scanned.nextIndex;
+    if (scanned.value) tokens.push({ ...scanned, prefix });
   }
 
   return tokens;
@@ -67,6 +100,10 @@ function normalizePhrase(value: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+function normalizeExactMembership(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function normalizeSite(value: string): string | undefined {
@@ -81,6 +118,10 @@ function normalizeSite(value: string): string | undefined {
 }
 
 function atomsFromToken(token: ScannedToken): SearchQueryAtom[] {
+  if (token.field === 'tag' || token.field === 'category') {
+    const value = token.value.trim().replace(/\s+/g, ' ');
+    return value ? [{ kind: token.field, value }] : [];
+  }
   if (token.quoted) {
     const phrase = normalizePhrase(token.value);
     return phrase ? [{ kind: 'phrase', value: phrase }] : [];
@@ -101,8 +142,8 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
     }
     if (!token.quoted && !token.prefix && upper === 'AND') continue;
 
-    if (!token.quoted && !token.prefix && token.value.toLowerCase().startsWith('site:')) {
-      site = normalizeSite(token.value.slice('site:'.length)) ?? site;
+    if (token.field === 'site') {
+      site = normalizeSite(token.value) ?? site;
       continue;
     }
 
@@ -114,7 +155,7 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
   const populatedClauses = clauses.filter((clause) => clause.atoms.length > 0);
   const positiveAtoms = populatedClauses.flatMap((clause) => clause.atoms);
   const semanticText = positiveAtoms
-    .map((atom) => atom.kind === 'phrase' ? atom.value : atom.value)
+    .map((atom) => atom.value)
     .join(' ')
     .trim();
 
@@ -152,9 +193,33 @@ function documentFields(
   ].filter(Boolean);
 }
 
-function atomMatches(atom: SearchQueryAtom, fields: string[], tokens: Set<string>): boolean {
+function atomMatches(
+  atom: SearchQueryAtom,
+  doc: SearchDocument,
+  fields: string[],
+  tokens: Set<string>,
+  index?: Pick<SearchIndex, 'categoryById'>
+): boolean {
   if (atom.kind === 'term') return tokens.has(atom.value);
-  return fields.some((field) => normalizePhrase(field).includes(atom.value));
+  if (atom.kind === 'phrase') {
+    return fields.some((field) => normalizePhrase(field).includes(atom.value));
+  }
+  if (atom.kind === 'tag') {
+    return doc.tags.some((tag) =>
+      normalizeExactMembership(tag) === normalizeExactMembership(atom.value)
+    );
+  }
+  if (!index) return false;
+  return doc.categoryIds.some((categoryId) => {
+    const category = index.categoryById.get(categoryId);
+    return Boolean(
+      category &&
+      (
+        normalizeExactMembership(category.name) === normalizeExactMembership(atom.value) ||
+        category.id.toLowerCase() === atom.value.toLowerCase()
+      )
+    );
+  });
 }
 
 export function matchesParsedSearchGuards(
@@ -167,7 +232,29 @@ export function matchesParsedSearchGuards(
 
   const fields = documentFields(doc, index);
   const tokens = new Set(fields.flatMap((field) => tokenize(field, { dropStopWords: false })));
-  return !parsed.excluded.some((atom) => atomMatches(atom, fields, tokens));
+  return !parsed.excluded.some((atom) => atomMatches(atom, doc, fields, tokens, index));
+}
+
+/**
+ * Keep semantic/related candidates inside explicit tag/category membership,
+ * while allowing them to go beyond the query's ordinary keyword terms.
+ */
+export function matchesParsedSearchStructuredScope(
+  doc: SearchDocument,
+  parsed: ParsedSearchQuery,
+  index?: Pick<SearchIndex, 'categoryById'>
+): boolean {
+  if (!matchesParsedSearchGuards(doc, parsed, index)) return false;
+  const fields = documentFields(doc, index);
+  const tokens = new Set(fields.flatMap((field) => tokenize(field, { dropStopWords: false })));
+  const structuredClauses = parsed.clauses.map((clause) =>
+    clause.atoms.filter((atom) => atom.kind === 'tag' || atom.kind === 'category')
+  );
+  if (structuredClauses.length === 0) return true;
+  if (structuredClauses.some((atoms) => atoms.length === 0)) return true;
+  return structuredClauses.some((atoms) =>
+    atoms.every((atom) => atomMatches(atom, doc, fields, tokens, index))
+  );
 }
 
 export function matchesParsedSearchQuery(
@@ -181,12 +268,23 @@ export function matchesParsedSearchQuery(
   const fields = documentFields(doc, index);
   const tokens = new Set(fields.flatMap((field) => tokenize(field, { dropStopWords: false })));
   return parsed.clauses.some((clause) =>
-    clause.atoms.every((atom) => atomMatches(atom, fields, tokens))
+    clause.atoms.every((atom) => atomMatches(atom, doc, fields, tokens, index))
   );
 }
 
 function formatAtom(atom: SearchQueryAtom): string {
-  return atom.kind === 'phrase' ? `“${atom.value}”` : atom.value;
+  if (atom.kind === 'phrase') return `“${atom.value}”`;
+  if (atom.kind === 'tag') return `exact tag “${atom.value}”`;
+  if (atom.kind === 'category') return `exact category “${atom.value}”`;
+  return atom.value;
+}
+
+export function formatSearchFieldQuery(
+  field: 'tag' | 'category',
+  value: string
+): string {
+  const safeValue = value.trim().replace(/["“”]+/g, ' ').replace(/\s+/g, ' ');
+  return safeValue ? `${field}:"${safeValue}"` : '';
 }
 
 export function describeParsedSearchQuery(parsed: ParsedSearchQuery): string {

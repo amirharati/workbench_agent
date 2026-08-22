@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  formatSearchFieldQuery,
+  parseSearchQuery,
   runAppHybridSearchWithRelated,
   type HybridSearchResultWithRelated,
   type SearchFilters,
@@ -41,6 +43,37 @@ export interface LibrarySearchSnapshot {
   query: string;
   filters: SearchFilters;
   mode: 'hybrid' | 'lexical-only';
+}
+
+export type LibrarySearchTabKind = 'search' | 'tag' | 'category';
+
+export interface LibrarySearchTab {
+  id: string;
+  kind: LibrarySearchTabKind;
+  label: string;
+  tag?: string;
+  categoryId?: string;
+}
+
+interface LibrarySearchTabRecord extends LibrarySearchTab {
+  state: LibrarySearchState;
+}
+
+const ROOT_SEARCH_TAB_ID = 'search-root';
+
+function searchTabLabel(kind: LibrarySearchTabKind, value: string): string {
+  const trimmed = value.trim();
+  if (kind === 'tag') return `Tag: ${trimmed}`;
+  if (kind === 'category') return `Category: ${trimmed}`;
+  return trimmed ? `Search: ${trimmed}` : 'Search';
+}
+
+function structuredTabFromQuery(query: string): { kind: 'tag' | 'category'; value: string } | null {
+  const atoms = parseSearchQuery(query).clauses.flatMap((clause) =>
+    clause.atoms.filter((atom) => atom.kind === 'tag' || atom.kind === 'category')
+  );
+  if (atoms.length !== 1) return null;
+  return { kind: atoms[0].kind as 'tag' | 'category', value: atoms[0].value };
 }
 
 /**
@@ -193,6 +226,8 @@ function sameSearchSnapshot(
   const filterKeys: Array<keyof SearchFilters> = [
     'projectId',
     'collectionId',
+    'categoryId',
+    'tag',
     'excludeProjectId',
     'excludeCollectionId',
     'domain',
@@ -235,6 +270,16 @@ function savePersistedSearchResultDeferred(
 
 export function useLibrarySearch(onError?: (message: string) => void, storageKey?: string) {
   const [initialPersisted] = useState(() => loadPersistedSearchState(storageKey));
+  const initialStructuredTab = structuredTabFromQuery(initialPersisted.query ?? '');
+  const initialTabKind: LibrarySearchTabKind = initialPersisted.filters?.categoryId
+    ? 'category'
+    : initialPersisted.filters?.tag
+      ? 'tag'
+      : initialStructuredTab?.kind ?? 'search';
+  const initialTabValue = initialPersisted.filters?.tag ??
+    (initialPersisted.filters?.categoryId ? initialPersisted.query ?? '' : undefined) ??
+    initialStructuredTab?.value ??
+    initialPersisted.query ?? '';
   const pendingSelectedItemIdRef = useRef(initialPersisted.selectedItemId ?? null);
   const hasInteractedRef = useRef(false);
   const [state, setState] = useState<LibrarySearchState>(() => ({
@@ -250,9 +295,47 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
     indexEmpty: initialPersisted.indexEmpty ?? false,
     restoring: Boolean(storageKey && initialPersisted.query?.trim()),
   }));
+  const [searchTabs, setSearchTabs] = useState<LibrarySearchTabRecord[]>(() => [{
+    id: ROOT_SEARCH_TAB_ID,
+    kind: initialTabKind,
+    label: searchTabLabel(initialTabKind, initialTabValue),
+    tag: initialPersisted.filters?.tag ?? (initialStructuredTab?.kind === 'tag' ? initialStructuredTab.value : undefined),
+    categoryId: initialPersisted.filters?.categoryId,
+    state: {
+      query: initialPersisted.query ?? '',
+      filters: initialPersisted.filters ?? {},
+      mode: initialPersisted.mode ?? 'hybrid',
+      loading: false,
+      error: null,
+      result: null,
+      selectedItemId: null,
+      recentQueries: loadRecentQueries(),
+      indexEmpty: initialPersisted.indexEmpty ?? false,
+      restoring: Boolean(storageKey && initialPersisted.query?.trim()),
+    },
+  }]);
+  const [activeSearchTabId, setActiveSearchTabId] = useState(ROOT_SEARCH_TAB_ID);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const searchTabsRef = useRef(searchTabs);
+  searchTabsRef.current = searchTabs;
+  const activeSearchTabIdRef = useRef(activeSearchTabId);
+  activeSearchTabIdRef.current = activeSearchTabId;
+  const requestRevisionRef = useRef(0);
+  const tabSequenceRef = useRef(0);
   const lastPersistedStateRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setSearchTabs((tabs) => tabs.map((tab) =>
+      tab.id === activeSearchTabId
+        ? {
+            ...tab,
+            label: tab.kind === 'search' ? searchTabLabel('search', state.query) : tab.label,
+            state,
+          }
+        : tab
+    ));
+  }, [activeSearchTabId, state]);
 
   useEffect(() => {
     if (!storageKey) return;
@@ -295,17 +378,37 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
 
   const setQuery = useCallback((query: string) => {
     hasInteractedRef.current = true;
+    const activeTab = searchTabsRef.current.find((tab) => tab.id === activeSearchTabIdRef.current);
     setState((s) => {
       if (query === s.query) return { ...s, restoring: false };
+      const filters = activeTab?.kind === 'search'
+        ? s.filters
+        : { ...s.filters, categoryId: undefined, tag: undefined };
       return {
         ...s,
         query,
-        result: null,
-        selectedItemId: null,
-        indexEmpty: false,
+        filters,
+        // Keep the last completed result set mounted while the user refines
+        // the input. It is replaced only after Search runs successfully.
+        result: query.trim() ? s.result : null,
+        selectedItemId: query.trim() ? s.selectedItemId : null,
+        indexEmpty: query.trim() ? s.indexEmpty : false,
         restoring: false,
       };
     });
+    if (activeTab?.kind !== 'search') {
+      setSearchTabs((tabs) => tabs.map((tab) =>
+        tab.id === activeSearchTabIdRef.current
+          ? {
+              ...tab,
+              kind: 'search',
+              label: searchTabLabel('search', query),
+              tag: undefined,
+              categoryId: undefined,
+            }
+          : tab
+      ));
+    }
   }, []);
 
   const setFilters = useCallback((filters: SearchFilters) => {
@@ -326,6 +429,10 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
   useEffect(() => {
     const handleHistoryCleared = () => {
       setState((s) => ({ ...s, recentQueries: [] }));
+      setSearchTabs((tabs) => tabs.map((tab) => ({
+        ...tab,
+        state: { ...tab.state, recentQueries: [] },
+      })));
     };
     window.addEventListener(LIBRARY_SEARCH_HISTORY_CLEARED_EVENT, handleHistoryCleared);
     return () => window.removeEventListener(LIBRARY_SEARCH_HISTORY_CLEARED_EVENT, handleHistoryCleared);
@@ -334,11 +441,19 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
   const clearRecentQueries = useCallback(() => {
     clearLibrarySearchHistory();
     setState((s) => ({ ...s, recentQueries: [] }));
+    setSearchTabs((tabs) => tabs.map((tab) => ({
+      ...tab,
+      state: { ...tab.state, recentQueries: [] },
+    })));
     window.dispatchEvent(new Event(LIBRARY_SEARCH_HISTORY_CLEARED_EVENT));
   }, []);
 
   const executeSearch = useCallback(
-    async ({ query, mode, filters }: LibrarySearchSnapshot) => {
+    async (
+      { query, mode, filters }: LibrarySearchSnapshot,
+      requestRevision: number,
+      targetTabId: string
+    ) => {
       try {
         const filterPayload: SearchFilters | undefined = Object.values(filters).some(
           (value) => value !== undefined && value !== ''
@@ -351,27 +466,58 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
           limit: 30,
           filters: filterPayload,
         });
-        if (storageKey) savePersistedSearchResultDeferred(storageKey, { query, mode, filters }, res);
-        setState((p) => {
-          const nextHistory = [
-            query,
-            ...p.recentQueries.filter((q) => q.toLowerCase() !== query.toLowerCase()),
-          ].slice(0, MAX_HISTORY);
-          saveRecentQueries(nextHistory);
-          saveLastSearchQuery(query);
-          return {
-            ...p,
-            loading: false,
-            result: res,
-            error: null,
+        if (
+          requestRevision !== requestRevisionRef.current ||
+          targetTabId !== activeSearchTabIdRef.current
+        ) return;
+        if (storageKey) {
+          savePersistedSearchResultDeferred(storageKey, { query, mode, filters }, res);
+        }
+        const current = stateRef.current;
+        const nextHistory = [
+          query,
+          ...current.recentQueries.filter((q) => q.toLowerCase() !== query.toLowerCase()),
+        ].slice(0, MAX_HISTORY);
+        saveRecentQueries(nextHistory);
+        saveLastSearchQuery(query);
+        const next: LibrarySearchState = {
+          ...current,
+          loading: false,
+          result: res,
+          error: null,
+          recentQueries: nextHistory,
+          indexEmpty: res.totalCandidates === 0 && res.results.length === 0,
+          restoring: false,
+        };
+        stateRef.current = next;
+        setState(next);
+        const nextTabs = searchTabsRef.current.map((tab) => ({
+          ...tab,
+          state: {
+            ...tab.state,
             recentQueries: nextHistory,
-            indexEmpty: res.totalCandidates === 0 && res.results.length === 0,
-            restoring: false,
-          };
-        });
+            ...(tab.id === targetTabId
+              ? next
+              : {}),
+          },
+        }));
+        searchTabsRef.current = nextTabs;
+        setSearchTabs(nextTabs);
       } catch (err) {
+        if (
+          requestRevision !== requestRevisionRef.current ||
+          targetTabId !== activeSearchTabIdRef.current
+        ) return;
         const message = err instanceof Error ? err.message : String(err);
-        setState((p) => ({ ...p, loading: false, error: message, result: null, restoring: false }));
+        const next = {
+          ...stateRef.current,
+          loading: false,
+          error: message,
+          result: null,
+          restoring: false,
+        };
+        stateRef.current = next;
+        setState(next);
         onError?.(message);
       }
     },
@@ -381,25 +527,30 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
   const runSearch = useCallback(
     async (queryInput?: string, filtersInput?: SearchFilters) => {
       hasInteractedRef.current = true;
-      setState((prev) => {
-        const trimmed = (queryInput ?? prev.query).trim();
-        if (!trimmed) return prev;
-        const filters = filtersInput ? { ...filtersInput } : prev.filters;
-
-        void executeSearch({ query: trimmed, mode: prev.mode, filters });
-
-        return {
-          ...prev,
-          query: trimmed,
-          filters,
-          loading: true,
-          error: null,
-          result: null,
-          selectedItemId: null,
-          indexEmpty: false,
-          restoring: false,
-        };
-      });
+      const previous = stateRef.current;
+      const trimmed = (queryInput ?? previous.query).trim();
+      if (!trimmed) return;
+      const filters = filtersInput ? { ...filtersInput } : previous.filters;
+      const next: LibrarySearchState = {
+        ...previous,
+        query: trimmed,
+        filters,
+        loading: true,
+        error: null,
+        // Avoid a blank-results flash while the replacement query is running.
+        result: previous.result,
+        selectedItemId: previous.selectedItemId,
+        indexEmpty: false,
+        restoring: false,
+      };
+      stateRef.current = next;
+      setState(next);
+      const requestRevision = ++requestRevisionRef.current;
+      await executeSearch(
+        { query: trimmed, mode: previous.mode, filters },
+        requestRevision,
+        activeSearchTabIdRef.current
+      );
     },
     [executeSearch]
   );
@@ -409,8 +560,8 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
       hasInteractedRef.current = true;
       const trimmed = query.trim();
       const snapshot = { query: trimmed, filters: { ...filters }, mode };
-      setState((prev) => ({
-        ...prev,
+      const next: LibrarySearchState = {
+        ...stateRef.current,
         ...snapshot,
         loading: !!trimmed,
         error: null,
@@ -418,14 +569,153 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
         selectedItemId: null,
         indexEmpty: false,
         restoring: false,
-      }));
-      if (trimmed) void executeSearch(snapshot);
+      };
+      stateRef.current = next;
+      setState(next);
+      setSearchTabs((tabs) => tabs.map((tab) =>
+        tab.id === activeSearchTabIdRef.current
+          ? {
+              ...tab,
+              kind: 'search',
+              label: searchTabLabel('search', trimmed),
+              tag: undefined,
+              categoryId: undefined,
+              state: next,
+            }
+          : tab
+      ));
+      const requestRevision = ++requestRevisionRef.current;
+      if (trimmed) {
+        void executeSearch(snapshot, requestRevision, activeSearchTabIdRef.current);
+      }
     },
     [executeSearch]
   );
 
+  const openDerivedSearchTab = useCallback((input: {
+    kind: 'tag' | 'category';
+    value: string;
+    categoryId?: string;
+  }) => {
+    const value = input.value.trim();
+    if (!value) return;
+    hasInteractedRef.current = true;
+    const currentState = stateRef.current;
+    const baseFilters = {
+      ...currentState.filters,
+      categoryId: undefined,
+      tag: undefined,
+    };
+    const filters: SearchFilters = baseFilters;
+    const query = formatSearchFieldQuery(input.kind, value);
+    const id = `${input.kind}-${Date.now()}-${++tabSequenceRef.current}`;
+    const next: LibrarySearchState = {
+      ...currentState,
+      query,
+      filters,
+      loading: true,
+      error: null,
+      result: null,
+      selectedItemId: null,
+      indexEmpty: false,
+      restoring: false,
+    };
+    const nextTabs: LibrarySearchTabRecord[] = [
+      ...searchTabsRef.current.map((tab) =>
+        tab.id === activeSearchTabIdRef.current ? { ...tab, state: currentState } : tab
+      ),
+      {
+        id,
+        kind: input.kind,
+        label: searchTabLabel(input.kind, value),
+        tag: input.kind === 'tag' ? value : undefined,
+        categoryId: input.categoryId,
+        state: next,
+      },
+    ];
+    searchTabsRef.current = nextTabs;
+    setSearchTabs(nextTabs);
+    activeSearchTabIdRef.current = id;
+    setActiveSearchTabId(id);
+    stateRef.current = next;
+    setState(next);
+    const requestRevision = ++requestRevisionRef.current;
+    void executeSearch(
+      { query, filters, mode: currentState.mode },
+      requestRevision,
+      id
+    );
+  }, [executeSearch]);
+
+  const openTagTab = useCallback((tag: string) => {
+    openDerivedSearchTab({ kind: 'tag', value: tag });
+  }, [openDerivedSearchTab]);
+
+  const openCategoryTab = useCallback((categoryId: string, name: string) => {
+    openDerivedSearchTab({ kind: 'category', value: name, categoryId });
+  }, [openDerivedSearchTab]);
+
+  const selectSearchTab = useCallback((id: string) => {
+    if (id === activeSearchTabIdRef.current) return;
+    const target = searchTabsRef.current.find((tab) => tab.id === id);
+    if (!target) return;
+    const currentHistory = stateRef.current.recentQueries;
+    const nextTabs = searchTabsRef.current.map((tab) =>
+      tab.id === activeSearchTabIdRef.current
+        ? { ...tab, state: stateRef.current }
+        : tab
+    );
+    searchTabsRef.current = nextTabs;
+    setSearchTabs(nextTabs);
+    activeSearchTabIdRef.current = id;
+    setActiveSearchTabId(id);
+    const next = { ...target.state, recentQueries: currentHistory };
+    stateRef.current = next;
+    setState(next);
+    ++requestRevisionRef.current;
+    if (next.loading && next.query.trim()) {
+      const requestRevision = requestRevisionRef.current;
+      void executeSearch(
+        { query: next.query, filters: next.filters, mode: next.mode },
+        requestRevision,
+        id
+      );
+    }
+  }, [executeSearch]);
+
+  const closeSearchTab = useCallback((id: string) => {
+    const tabs = searchTabsRef.current;
+    if (tabs.length <= 1) return;
+    const index = tabs.findIndex((tab) => tab.id === id);
+    if (index < 0) return;
+    const remaining = tabs.filter((tab) => tab.id !== id);
+    searchTabsRef.current = remaining;
+    setSearchTabs(remaining);
+    if (id !== activeSearchTabIdRef.current) return;
+    const target = remaining[Math.max(0, Math.min(index - 1, remaining.length - 1))];
+    activeSearchTabIdRef.current = target.id;
+    setActiveSearchTabId(target.id);
+    const next = {
+      ...target.state,
+      recentQueries: stateRef.current.recentQueries,
+    };
+    stateRef.current = next;
+    setState(next);
+    ++requestRevisionRef.current;
+    if (next.loading && next.query.trim()) {
+      const requestRevision = requestRevisionRef.current;
+      void executeSearch(
+        { query: next.query, filters: next.filters, mode: next.mode },
+        requestRevision,
+        target.id
+      );
+    }
+  }, [executeSearch]);
+
   return {
     state,
+    searchTabs: searchTabs.map(({ state: _state, ...tab }) => tab),
+    activeSearchTabId,
     setQuery,
     setFilters,
     setMode,
@@ -433,5 +723,9 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
     clearRecentQueries,
     runSearch,
     openSearch,
+    openTagTab,
+    openCategoryTab,
+    selectSearchTab,
+    closeSearchTab,
   };
 }

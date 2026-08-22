@@ -1,6 +1,7 @@
+import { isSearchableTopicCategory } from './categorySearchProfiles';
 import { applySearchFilters } from './filters';
 import {
-  matchesParsedSearchGuards,
+  matchesParsedSearchStructuredScope,
   type ParsedSearchQuery,
 } from './queryLanguage';
 import {
@@ -46,6 +47,7 @@ export interface ExtractSearchRelatedOptions {
   filters?: SearchFilters;
   queryEmbedding?: number[];
   embeddingScores?: Record<string, number>;
+  matchedCategoryScores?: ReadonlyMap<string, number>;
   parsedQuery?: ParsedSearchQuery;
 }
 
@@ -86,6 +88,8 @@ function aggregateTopicsFromResults(
     const doc = docById.get(itemId);
     if (!doc) continue;
     for (const catId of doc.categoryIds) {
+      const category = index.categoryById.get(catId);
+      if (!category || !isSearchableTopicCategory(category)) continue;
       counts.set(catId, (counts.get(catId) ?? 0) + 1);
     }
   }
@@ -94,11 +98,13 @@ function aggregateTopicsFromResults(
 
   for (const catId of queryMatchedIds) {
     const cat = index.categoryById.get(catId);
-    if (!cat) continue;
+    if (!cat || !isSearchableTopicCategory(cat)) continue;
     topics.push({
       categoryId: catId,
       name: cat.name,
-      count: counts.get(catId) ?? 0,
+      // Query-matched categories are real navigation targets; show the full
+      // category size rather than only how many exact top results used it.
+      count: index.itemsByCategory.get(catId)?.length ?? 0,
       source: 'query',
     });
   }
@@ -106,7 +112,7 @@ function aggregateTopicsFromResults(
   for (const [catId, count] of counts.entries()) {
     if (queryMatchedIds.has(catId)) continue;
     const cat = index.categoryById.get(catId);
-    if (!cat || cat.kind !== 'leaf') continue;
+    if (!cat || !isSearchableTopicCategory(cat)) continue;
     topics.push({ categoryId: catId, name: cat.name, count, source: 'results' });
   }
 
@@ -126,6 +132,7 @@ export function findRelatedBeyondTopResults(
     matchedCategoryIds: Set<string>;
     queryEmbedding?: number[];
     embeddingScores?: Record<string, number>;
+    matchedCategoryScores?: ReadonlyMap<string, number>;
     excludeItemIds: Set<string>;
     filters?: SearchFilters;
     parsedQuery?: ParsedSearchQuery;
@@ -138,7 +145,7 @@ export function findRelatedBeyondTopResults(
   const organizationScopedDocs = applySearchFilters(index.documents, options.filters);
   const scopedDocs = options.parsedQuery
     ? organizationScopedDocs.filter((doc) =>
-        matchesParsedSearchGuards(doc, options.parsedQuery!, index)
+        matchesParsedSearchStructuredScope(doc, options.parsedQuery!, index)
       )
     : organizationScopedDocs;
   const scopedIndex: SearchIndex = { ...index, documents: scopedDocs };
@@ -202,7 +209,8 @@ export function findRelatedBeyondTopResults(
     const cat = scoreCategoryAffinity(
       doc,
       options.matchedCategoryIds,
-      index.categoryById
+      index.categoryById,
+      options.matchedCategoryScores
     );
     const finalScore = 0.6 * embedding + 0.4 * cat.score;
     if (finalScore < 0.08) continue;
@@ -260,6 +268,7 @@ export function extractSearchRelated(
     matchedCategoryIds: queryMatched,
     queryEmbedding: options.queryEmbedding,
     embeddingScores: options.embeddingScores,
+    matchedCategoryScores: options.matchedCategoryScores,
     excludeItemIds: exclude,
     filters: options.filters,
     parsedQuery: options.parsedQuery,

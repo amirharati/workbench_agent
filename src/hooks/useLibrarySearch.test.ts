@@ -10,9 +10,25 @@ import {
   useSearchNavigationScope,
 } from './useLibrarySearch';
 
+const runSearchMock = vi.hoisted(() => vi.fn(async (options: { query: string }) => ({
+  query: options.query,
+  mode: 'hybrid' as const,
+  results: [],
+  totalCandidates: 0,
+  matchedCategoryIds: [],
+  embeddingPathUsed: false,
+  related: { topics: [], tags: [], relatedLinks: [] },
+})));
+
+vi.mock('../lib/search', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/search')>()),
+  runAppHybridSearchWithRelated: runSearchMock,
+}));
+
 describe('library search history persistence', () => {
   beforeEach(() => {
     localStorage.clear();
+    runSearchMock.mockClear();
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   });
 
@@ -90,6 +106,13 @@ describe('library search history persistence', () => {
     await act(async () => search!.setQuery('rust trading'));
     expect(search!.state).toMatchObject({
       query: 'rust trading',
+      selectedItemId: 'item-python',
+    });
+    expect(search!.state.result?.query).toBe('python');
+
+    await act(async () => search!.setQuery(''));
+    expect(search!.state).toMatchObject({
+      query: '',
       result: null,
       selectedItemId: null,
     });
@@ -126,6 +149,52 @@ describe('library search history persistence', () => {
       domain: 'example.com',
       projectId: 'project-research',
       collectionId: undefined,
+    });
+
+    await act(async () => root.unmount());
+  });
+
+  it('opens exact tag and category searches as independent local tabs', async () => {
+    let search: ReturnType<typeof useLibrarySearch> | null = null;
+    const Probe = () => {
+      search = useLibrarySearch();
+      return null;
+    };
+    const host = document.createElement('div');
+    const root = createRoot(host);
+
+    await act(async () => root.render(React.createElement(Probe)));
+    await act(async () => search!.openSearch({
+      query: 'investing',
+      filters: { projectId: 'finance' },
+      mode: 'hybrid',
+    }));
+    await act(async () => search!.openTagTab('risk management'));
+
+    expect(search!.searchTabs).toHaveLength(2);
+    expect(search!.searchTabs[1]).toMatchObject({
+      kind: 'tag',
+      label: 'Tag: risk management',
+      tag: 'risk management',
+    });
+    expect(search!.state.query).toBe('tag:"risk management"');
+    expect(search!.state.filters).toEqual({ projectId: 'finance' });
+    expect(runSearchMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      query: 'tag:"risk management"',
+      filters: { projectId: 'finance' },
+    }));
+
+    const rootTabId = search!.searchTabs[0].id;
+    await act(async () => search!.selectSearchTab(rootTabId));
+    expect(search!.state.query).toBe('investing');
+    expect(search!.state.filters.tag).toBeUndefined();
+
+    await act(async () => search!.openCategoryTab('trading-strategies', 'Trading strategies'));
+    expect(search!.state.query).toBe('category:"Trading strategies"');
+    expect(search!.state.filters).toEqual({ projectId: 'finance' });
+    expect(search!.searchTabs.at(-1)).toMatchObject({
+      kind: 'category',
+      label: 'Category: Trading strategies',
     });
 
     await act(async () => root.unmount());

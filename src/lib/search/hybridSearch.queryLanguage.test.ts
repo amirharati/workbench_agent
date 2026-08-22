@@ -3,6 +3,7 @@ import { hybridSearch } from './hybridSearch';
 import { parseSearchQuery } from './queryLanguage';
 import { findRelatedBeyondTopResults } from './searchRelated';
 import type { SearchDocument, SearchIndex } from './types';
+import type { AiCategory } from '../categorization/types';
 
 function document(
   itemId: string,
@@ -77,6 +78,53 @@ describe('hybridSearch parsed query semantics', () => {
     }).results.map((row) => row.itemId)).toEqual(['ml']);
   });
 
+  it('uses visible category/tag fields as exact scope before ranking', () => {
+    const category: AiCategory = {
+      id: 'investing',
+      name: 'Investment Strategies',
+      kind: 'leaf',
+      status: 'approved',
+      assignable: true,
+      created_at: 1,
+      updated_at: 1,
+    };
+    const structuredIndex: SearchIndex = {
+      documents: [
+        document('match', 'Dividend portfolio construction', [0.9, 0.1], {
+          tags: ['long term'],
+          categoryIds: [category.id],
+          categoryScores: { [category.id]: 0.9 },
+        }),
+        document('wrong-tag', 'Dividend portfolio construction', [1, 0], {
+          tags: ['short term'],
+          categoryIds: [category.id],
+          categoryScores: { [category.id]: 0.9 },
+        }),
+        document('wrong-category', 'Dividend portfolio construction', [1, 0], {
+          tags: ['long term'],
+        }),
+      ],
+      categories: [category],
+      categoryById: new Map([[category.id, category]]),
+      itemsByCategory: new Map([[category.id, ['match', 'wrong-tag']]]),
+    };
+    const query = 'category:"Investment Strategies" tag:"long term" dividend';
+    const result = hybridSearch(structuredIndex, {
+      query,
+      mode: 'hybrid',
+      queryEmbedding: [1, 0],
+    });
+
+    expect(result.results.map((row) => row.itemId)).toEqual(['match']);
+    expect(result.totalCandidates).toBe(1);
+    expect(findRelatedBeyondTopResults(structuredIndex, {
+      matchedCategoryIds: new Set(),
+      queryEmbedding: [1, 0],
+      excludeItemIds: new Set(['match']),
+      parsedQuery: parseSearchQuery(query),
+    })).toEqual([]);
+  });
+
   it('keeps semantic discoveries separate from deterministic matches', () => {
     const parsedQuery = parseSearchQuery('ai quant');
     const semanticIndex = index([
@@ -112,5 +160,52 @@ describe('hybridSearch parsed query semantics', () => {
 
     expect(result.results.map((row) => row.itemId)).toEqual(['higher', 'lower']);
     expect(result.embeddingPathUsed).toBe(true);
+  });
+
+  it('suggests semantic categories and expands their linked bookmarks outside exact rules', () => {
+    const category: AiCategory = {
+      id: 'speech-asr',
+      name: 'Automatic Speech Recognition',
+      parentName: 'Machine Learning',
+      description: 'Speech-to-text and transcription models',
+      kind: 'leaf',
+      status: 'approved',
+      assignable: true,
+      created_at: 1,
+      updated_at: 1,
+    };
+    const linked = document('asr-paper', 'End-to-end acoustic model', undefined, {
+      categoryIds: [category.id],
+      primaryCategoryId: category.id,
+      categoryScores: { [category.id]: 0.9 },
+    });
+    const categoryIndex: SearchIndex = {
+      documents: [linked],
+      categories: [category],
+      categoryById: new Map([[category.id, category]]),
+      itemsByCategory: new Map([[category.id, [linked.itemId]]]),
+    };
+    const parsedQuery = parseSearchQuery('voice transcription');
+    const result = hybridSearch(categoryIndex, {
+      query: parsedQuery.raw,
+      mode: 'hybrid',
+      queryEmbedding: [1, 0],
+      categoryEmbeddingScores: { [category.id]: 0.8 },
+    });
+
+    expect(result.results).toEqual([]);
+    expect(result.categoryResults?.[0]).toMatchObject({
+      categoryId: category.id,
+      semanticScore: 0.8,
+      sources: ['semantic'],
+    });
+    const related = findRelatedBeyondTopResults(categoryIndex, {
+      matchedCategoryIds: new Set([category.id]),
+      matchedCategoryScores: new Map([[category.id, 0.8]]),
+      excludeItemIds: new Set(),
+      parsedQuery,
+    });
+    expect(related[0]?.itemId).toBe(linked.itemId);
+    expect(related[0]?.breakdown.category).toBeCloseTo(0.8 * 0.9 * 1.15);
   });
 });

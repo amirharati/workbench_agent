@@ -103,7 +103,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, onSearchQueryChange, librarySearch, onOpenPipelineHub, scopeProjectId = 'all', scopeCollectionId = 'all', scopeNavigationRevision = 0, recentProjectIds = [], recentProjectAccessIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSelectedBrowseItemChange, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, onSearchQueryChange, librarySearch, onOpenPipelineHub, onBrowseCategory: _onBrowseCategory, scopeProjectId = 'all', scopeCollectionId = 'all', scopeNavigationRevision = 0, recentProjectIds = [], recentProjectAccessIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSelectedBrowseItemChange, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const [homeItemContextMenu, setHomeItemContextMenu] = React.useState<{
     item: Item;
@@ -1313,6 +1313,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
           isItemInWorkspace={isItemInWorkspaceDestination}
           onAddItemToWorkspace={addItemToWorkspaceDestination}
           onViewItemInWorkspace={viewItemInWorkspaceDestination}
+          searchTabs={librarySearch.searchTabs}
+          activeSearchTabId={librarySearch.activeSearchTabId}
+          onSelectSearchTab={librarySearch.selectSearchTab}
+          onCloseSearchTab={librarySearch.closeSearchTab}
+          onOpenTagTab={librarySearch.openTagTab}
+          onOpenCategoryTab={librarySearch.openCategoryTab}
         />
         </div>
         </div>

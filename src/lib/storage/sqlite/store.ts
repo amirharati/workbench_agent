@@ -21,6 +21,7 @@ import type {
 import type { EnrichmentReference, ItemEnrichment } from '../../enrichment/types';
 import type {
   AiCategory,
+  AiCategorySearchProfile,
   AiItemCategoryLink,
   AiItemSignal,
   AiTaxonomyState,
@@ -188,6 +189,19 @@ interface CategoryRow {
   secondary_item_count: number;
   child_leaf_count: number;
   created_at: number;
+  updated_at: number;
+}
+
+interface CategorySearchProfileRow {
+  category_id: string;
+  embedding_model: string;
+  metadata_text_hash: string;
+  metadata_embedding: Uint8Array | null;
+  member_centroid: Uint8Array | null;
+  prototype_embedding: Uint8Array | null;
+  member_count: number;
+  member_sample_count: number;
+  member_revision: string;
   updated_at: number;
 }
 
@@ -595,6 +609,38 @@ function categoryToRow(c: AiCategory): CategoryRow {
     child_leaf_count: c.childLeafCount ?? 0,
     created_at: c.created_at,
     updated_at: c.updated_at,
+  };
+}
+
+function rowToCategorySearchProfile(row: CategorySearchProfileRow): AiCategorySearchProfile {
+  return {
+    categoryId: row.category_id,
+    embeddingModel: row.embedding_model,
+    metadataTextHash: row.metadata_text_hash,
+    metadataEmbedding: blobToArray(row.metadata_embedding),
+    memberCentroid: blobToArray(row.member_centroid),
+    prototypeEmbedding: blobToArray(row.prototype_embedding),
+    memberCount: row.member_count,
+    memberSampleCount: row.member_sample_count,
+    memberRevision: row.member_revision,
+    updated_at: row.updated_at,
+  };
+}
+
+function categorySearchProfileToRow(
+  profile: AiCategorySearchProfile
+): CategorySearchProfileRow {
+  return {
+    category_id: profile.categoryId,
+    embedding_model: profile.embeddingModel,
+    metadata_text_hash: profile.metadataTextHash,
+    metadata_embedding: arrayToBlob(profile.metadataEmbedding),
+    member_centroid: arrayToBlob(profile.memberCentroid),
+    prototype_embedding: arrayToBlob(profile.prototypeEmbedding),
+    member_count: profile.memberCount,
+    member_sample_count: profile.memberSampleCount,
+    member_revision: profile.memberRevision,
+    updated_at: profile.updated_at,
   };
 }
 
@@ -1287,6 +1333,150 @@ export class SqliteStore {
 
   deleteCategory(id: string): void {
     this.conn.exec('DELETE FROM ai_categories WHERE id = ?', [id]);
+  }
+
+  // --- Category semantic search profiles (derived, persisted, worker-owned) ---
+  getAllCategorySearchProfiles(): AiCategorySearchProfile[] {
+    return this.conn
+      .selectAll<CategorySearchProfileRow>('SELECT * FROM ai_category_search_profiles')
+      .map(rowToCategorySearchProfile);
+  }
+
+  getCategorySearchProfile(categoryId: string): AiCategorySearchProfile | undefined {
+    const row = this.conn.selectOne<CategorySearchProfileRow>(
+      'SELECT * FROM ai_category_search_profiles WHERE category_id = ?',
+      [categoryId]
+    );
+    return row ? rowToCategorySearchProfile(row) : undefined;
+  }
+
+  putCategorySearchProfile(profile: AiCategorySearchProfile): void {
+    const row = categorySearchProfileToRow(profile);
+    this.conn.exec(
+      `INSERT OR REPLACE INTO ai_category_search_profiles
+       (category_id, embedding_model, metadata_text_hash, metadata_embedding,
+        member_centroid, prototype_embedding, member_count, member_sample_count,
+        member_revision, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        row.category_id,
+        row.embedding_model,
+        row.metadata_text_hash,
+        row.metadata_embedding,
+        row.member_centroid,
+        row.prototype_embedding,
+        row.member_count,
+        row.member_sample_count,
+        row.member_revision,
+        row.updated_at,
+      ]
+    );
+  }
+
+  deleteCategorySearchProfile(categoryId: string): void {
+    this.conn.exec('DELETE FROM ai_category_search_profiles WHERE category_id = ?', [categoryId]);
+  }
+
+  getCategorySearchMemberStats(
+    categoryId: string,
+    embeddingModel: string
+  ): { memberCount: number; linkUpdatedAt: number; signalUpdatedAt: number; scoreSum: number } {
+    const row = this.conn.selectOne<{
+      member_count: number;
+      link_updated_at: number | null;
+      signal_updated_at: number | null;
+      score_sum: number | null;
+    }>(
+      `SELECT COUNT(DISTINCT l.item_id) AS member_count,
+              MAX(l.updated_at) AS link_updated_at,
+              MAX(s.last_processed_at) AS signal_updated_at,
+              SUM(l.score) AS score_sum
+       FROM ai_item_category_links l
+       JOIN ai_item_signals s ON s.item_id = l.item_id
+       WHERE l.category_id = ?
+         AND s.embedding_model = ?
+         AND s.embedding IS NOT NULL
+         AND length(s.embedding) > 0
+         AND (
+           l.status = 'accepted'
+           OR (l.status = 'suggested' AND (l.is_primary = 1 OR l.score >= 0.65))
+         )`,
+      [categoryId, embeddingModel]
+    );
+    return {
+      memberCount: row?.member_count ?? 0,
+      linkUpdatedAt: row?.link_updated_at ?? 0,
+      signalUpdatedAt: row?.signal_updated_at ?? 0,
+      scoreSum: row?.score_sum ?? 0,
+    };
+  }
+
+  getAllCategorySearchMemberStats(
+    embeddingModel: string
+  ): Array<{
+    categoryId: string;
+    memberCount: number;
+    linkUpdatedAt: number;
+    signalUpdatedAt: number;
+    scoreSum: number;
+  }> {
+    const rows = this.conn.selectAll<{
+      category_id: string;
+      member_count: number;
+      link_updated_at: number | null;
+      signal_updated_at: number | null;
+      score_sum: number | null;
+    }>(
+      `SELECT l.category_id,
+              COUNT(DISTINCT l.item_id) AS member_count,
+              MAX(l.updated_at) AS link_updated_at,
+              MAX(s.last_processed_at) AS signal_updated_at,
+              SUM(l.score) AS score_sum
+       FROM ai_item_category_links l
+       JOIN ai_item_signals s ON s.item_id = l.item_id
+       WHERE s.embedding_model = ?
+         AND s.embedding IS NOT NULL
+         AND length(s.embedding) > 0
+         AND (
+           l.status = 'accepted'
+           OR (l.status = 'suggested' AND (l.is_primary = 1 OR l.score >= 0.65))
+         )
+       GROUP BY l.category_id`,
+      [embeddingModel]
+    );
+    return rows.map((row) => ({
+      categoryId: row.category_id,
+      memberCount: row.member_count,
+      linkUpdatedAt: row.link_updated_at ?? 0,
+      signalUpdatedAt: row.signal_updated_at ?? 0,
+      scoreSum: row.score_sum ?? 0,
+    }));
+  }
+
+  getCategorySearchMemberEmbeddings(
+    categoryId: string,
+    embeddingModel: string,
+    limit = 256
+  ): number[][] {
+    const rows = this.conn.selectAll<{ embedding: Uint8Array }>(
+      `SELECT s.embedding
+       FROM ai_item_category_links l
+       JOIN ai_item_signals s ON s.item_id = l.item_id
+       WHERE l.category_id = ?
+         AND s.embedding_model = ?
+         AND s.embedding IS NOT NULL
+         AND length(s.embedding) > 0
+         AND (
+           l.status = 'accepted'
+           OR (l.status = 'suggested' AND (l.is_primary = 1 OR l.score >= 0.65))
+         )
+       GROUP BY l.item_id
+       ORDER BY (l.status = 'accepted') DESC, l.is_primary DESC, l.score DESC,
+                s.last_processed_at DESC, l.item_id
+       LIMIT ?`,
+      [categoryId, embeddingModel, Math.min(512, Math.max(1, Math.floor(limit)))]
+    );
+    return rows.map((row) => Array.from(blobToFloat32View(row.embedding)));
   }
 
   // --- AI Links ---

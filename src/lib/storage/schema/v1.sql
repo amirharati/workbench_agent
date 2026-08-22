@@ -226,6 +226,22 @@ CREATE INDEX IF NOT EXISTS idx_links_category ON ai_item_category_links(category
 CREATE INDEX IF NOT EXISTS idx_links_status ON ai_item_category_links(status);
 CREATE INDEX IF NOT EXISTS idx_links_updated ON ai_item_category_links(updated_at);
 
+CREATE TABLE IF NOT EXISTS ai_category_search_profiles (
+  category_id TEXT PRIMARY KEY,
+  embedding_model TEXT NOT NULL,
+  metadata_text_hash TEXT NOT NULL DEFAULT '',
+  metadata_embedding BLOB,
+  member_centroid BLOB,
+  prototype_embedding BLOB,
+  member_count INTEGER NOT NULL DEFAULT 0,
+  member_sample_count INTEGER NOT NULL DEFAULT 0,
+  member_revision TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (category_id) REFERENCES ai_categories(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_category_search_profiles_updated
+  ON ai_category_search_profiles(updated_at);
+
 CREATE TABLE IF NOT EXISTS ai_item_signals (
   item_id TEXT PRIMARY KEY,
   text_hash TEXT NOT NULL,

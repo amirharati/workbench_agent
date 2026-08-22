@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, Loader2, Search, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { SearchResult } from '../../lib/search';
-import type { LibrarySearchState } from '../../hooks/useLibrarySearch';
+import type { LibrarySearchState, LibrarySearchTab } from '../../hooks/useLibrarySearch';
 import type { SearchFilters } from '../../lib/search';
 import { describeParsedSearchQuery, parseSearchQuery } from '../../lib/search';
 import { SearchRelatedPanel } from './SearchDiscoveryBlocks';
@@ -52,6 +52,13 @@ interface ProductSearchViewProps {
   isItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => boolean;
   onAddItemToWorkspace?: (item: Item, destination: WorkspaceDestination) => void;
   onViewItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => void;
+  onBrowseCategory?: (categoryId: string, name: string) => void;
+  searchTabs?: LibrarySearchTab[];
+  activeSearchTabId?: string;
+  onSelectSearchTab?: (id: string) => void;
+  onCloseSearchTab?: (id: string) => void;
+  onOpenTagTab?: (tag: string) => void;
+  onOpenCategoryTab?: (categoryId: string, name: string) => void;
 }
 
 function getMatchReason(row: SearchResult): string {
@@ -102,6 +109,13 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   isItemInWorkspace,
   onAddItemToWorkspace,
   onViewItemInWorkspace,
+  onBrowseCategory,
+  searchTabs = [],
+  activeSearchTabId,
+  onSelectSearchTab,
+  onCloseSearchTab,
+  onOpenTagTab,
+  onOpenCategoryTab,
 }) => {
   const { openPeek } = useItemPeek();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -124,6 +138,28 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   const queryInterpretation = useMemo(
     () => describeParsedSearchQuery(parsedQuery),
     [parsedQuery]
+  );
+  const exactQueryConstraints = useMemo(() => {
+    const constraints = parsedQuery.clauses.flatMap((clause) =>
+      clause.atoms
+        .filter((atom) => atom.kind === 'tag' || atom.kind === 'category')
+        .map((atom) => ({ kind: atom.kind as 'tag' | 'category', value: atom.value }))
+    );
+    // Read old persisted Search tabs correctly while they transition to the
+    // visible query syntax used by all new tag/category tabs.
+    if (state.filters.tag) constraints.push({ kind: 'tag', value: state.filters.tag });
+    if (state.filters.categoryId) {
+      constraints.push({ kind: 'category', value: state.query });
+    }
+    return constraints.filter((constraint, index, all) =>
+      all.findIndex((candidate) =>
+        candidate.kind === constraint.kind &&
+        candidate.value.toLowerCase() === constraint.value.toLowerCase()
+      ) === index
+    );
+  }, [parsedQuery.clauses, state.filters.categoryId, state.filters.tag, state.query]);
+  const hasTextQueryConstraints = parsedQuery.clauses.some((clause) =>
+    clause.atoms.some((atom) => atom.kind === 'term' || atom.kind === 'phrase')
   );
 
   useEffect(() => {
@@ -163,10 +199,38 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
 
   const showRecent = !state.query.trim() && !state.result;
   const hasResults = (state.result?.results.length ?? 0) > 0;
+  const hasUnsubmittedQuery = Boolean(
+    state.result &&
+    state.query.trim().replace(/\s+/g, ' ') !== state.result.query.trim().replace(/\s+/g, ' ')
+  );
+  const hasDiscovery = Boolean(
+    state.result &&
+      (
+        state.result.related.topics.length ||
+        state.result.related.tags.length ||
+        state.result.related.relatedLinks.length
+      )
+  );
+  const exactBrowseConstraint = exactQueryConstraints.length
+    ? {
+        kind: exactQueryConstraints[0].kind,
+        value: exactQueryConstraints[0].value,
+        chip: exactQueryConstraints.length === 1
+          ? `${exactQueryConstraints[0].kind === 'tag' ? 'Exact tag' : 'Category'}: ${exactQueryConstraints[0].value}`
+          : 'Exact tag/category filters',
+        resultLabel: hasTextQueryConstraints || exactQueryConstraints.length > 1
+          ? `link${state.result?.results.length === 1 ? '' : 's'} matching the structured query`
+          : exactQueryConstraints.length === 1
+          ? exactQueryConstraints[0].kind === 'tag'
+            ? `link${state.result?.results.length === 1 ? '' : 's'} with exact tag “${exactQueryConstraints[0].value}”`
+            : `link${state.result?.results.length === 1 ? '' : 's'} in category “${exactQueryConstraints[0].value}”`
+          : `link${state.result?.results.length === 1 ? '' : 's'} matching the structured query`,
+      }
+    : null;
 
   return (
     <div
-      className={`scrollbar${embedded ? '' : ' ui-scroll-footer-safe'}`}
+      className={`ui-product-search scrollbar${embedded ? '' : ' ui-scroll-footer-safe'}`}
       style={{
         height: '100%',
         overflowY: 'auto',
@@ -202,6 +266,43 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
           </div>
         )}
 
+        {searchTabs.length > 0 ? (
+          <div className="ui-search-tabs" role="tablist" aria-label="Open searches">
+            {searchTabs.map((tab) => {
+              const active = tab.id === activeSearchTabId;
+              return (
+                <div
+                  key={tab.id}
+                  className="ui-search-tabs__item"
+                  data-active={active ? 'true' : 'false'}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className="ui-search-tabs__select"
+                    title={tab.label}
+                    onClick={() => onSelectSearchTab?.(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                  {searchTabs.length > 1 ? (
+                    <button
+                      type="button"
+                      className="ui-search-tabs__close"
+                      aria-label={`Close ${tab.label}`}
+                      title={`Close ${tab.label}`}
+                      onClick={() => onCloseSearchTab?.(tab.id)}
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
         <form onSubmit={handleSubmit}>
           <div
             style={{
@@ -227,7 +328,16 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                 type="text"
                 value={state.query}
                 onChange={(e) => onQueryChange(e.target.value)}
-                placeholder="Search your library..."
+                aria-label={
+                  exactBrowseConstraint
+                    ? `Search within ${exactBrowseConstraint.kind} ${exactBrowseConstraint.value}`
+                    : 'Search your library'
+                }
+                placeholder={
+                  exactBrowseConstraint
+                    ? 'Add keywords or another tag/category…'
+                    : 'Search your library...'
+                }
                 disabled={state.loading}
                 style={{
                   width: '100%',
@@ -321,6 +431,20 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               title={`Search scope: ${scopeLabel}`}
             >
               {scopeLabel}
+            </span>
+          ) : null}
+          {exactBrowseConstraint ? (
+            <span
+              className="ui-search-exact-scope"
+              title={
+                exactQueryConstraints.length > 1
+                  ? 'Membership follows the exact tag/category constraints shown in the query'
+                  : exactBrowseConstraint.kind === 'tag'
+                  ? 'Only links carrying this exact tag are included'
+                  : 'Only links assigned to this exact category are included'
+              }
+            >
+              {exactBrowseConstraint.chip}
             </span>
           ) : null}
           <select
@@ -465,12 +589,23 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               lineHeight: 1.45,
             }}
           >
-            {queryInterpretation && (
-              <strong style={{ color: 'var(--text-muted)', fontWeight: 600 }}>
-                {queryInterpretation}
-              </strong>
+            {exactBrowseConstraint ? (
+              <>
+                <strong style={{ color: 'var(--text-muted)', fontWeight: 600 }}>
+                  {queryInterpretation || exactBrowseConstraint.chip}
+                </strong>
+                <span>Tag/category membership is exact · add words to refine · repeat tag:/category: with + / AND, or use OR</span>
+              </>
+            ) : (
+              <>
+                {queryInterpretation && (
+                  <strong style={{ color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {queryInterpretation}
+                  </strong>
+                )}
+                <span>Syntax: “exact phrase” · tag:name · category:name · OR · AND / + · -exclude · site:domain</span>
+              </>
             )}
-            <span>Syntax: “exact phrase” · OR · AND / + · -exclude · site:domain</span>
           </div>
         )}
       </div>
@@ -529,16 +664,34 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
 
       {state.result && !state.loading && (
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
-          {state.result.results.length} result{state.result.results.length !== 1 ? 's' : ''}
-          {state.result.totalCandidates > state.result.results.length
-            ? ` (top ${state.result.results.length} of ${state.result.totalCandidates})`
-            : ''}
-          {' · '}
-          {state.result.mode === 'lexical-only'
-            ? 'text only · exact rules'
-            : state.result.embeddingPathUsed
-              ? 'semantic ranking · exact rules'
-              : 'text fallback · exact rules'}
+          {hasUnsubmittedQuery ? (
+            <>
+              {state.result.results.length} displayed result{state.result.results.length === 1 ? '' : 's'} for “{state.result.query}”
+              {' · '}Press Enter or Search to update
+            </>
+          ) : (
+            <>
+              {state.result.results.length}{' '}
+              {exactBrowseConstraint
+                ? exactBrowseConstraint.resultLabel
+                : `result${state.result.results.length !== 1 ? 's' : ''}`}
+              {state.result.totalCandidates > state.result.results.length
+                ? ` (top ${state.result.results.length} of ${state.result.totalCandidates})`
+                : ''}
+              {' · '}
+              {exactBrowseConstraint
+                ? state.result.mode === 'lexical-only'
+                  ? 'text relevance ranking · exact membership'
+                  : state.result.embeddingPathUsed
+                    ? 'hybrid relevance ranking · exact membership'
+                    : 'text fallback ranking · exact membership'
+                : state.result.mode === 'lexical-only'
+                  ? 'text only · exact rules'
+                  : state.result.embeddingPathUsed
+                    ? 'semantic ranking · exact rules'
+                    : 'text fallback · exact rules'}
+            </>
+          )}
           {hasResults && (
             <span style={{ display: 'block', marginTop: 4, color: 'var(--text-muted)' }}>
               Click to inspect · Click the URL to open the website · Double-click, Enter, or use Preview
@@ -547,6 +700,38 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
         </div>
       )}
 
+      <div
+        className="ui-product-search__body"
+        data-has-discovery={hasDiscovery ? 'true' : 'false'}
+      >
+      {hasDiscovery && state.result ? (
+        <aside className="ui-product-search__discovery" aria-label="Search categories and related results">
+          <SearchRelatedPanel
+            variant="product"
+            related={state.result.related}
+            semanticRelated={state.result.embeddingPathUsed}
+            onTopicClick={(name) => {
+              if (onOpenTagTab) onOpenTagTab(name);
+              else {
+                onQueryChange(name);
+                void onRunSearch(name);
+              }
+            }}
+            onCategoryOpen={onOpenCategoryTab ?? onBrowseCategory}
+            onTagClick={(tag) => {
+              if (onOpenTagTab) onOpenTagTab(tag);
+              else {
+                onQueryChange(tag);
+                void onRunSearch(tag);
+              }
+            }}
+            onRelatedClick={(itemId) => {
+              onSelectedItemIdChange(itemId);
+            }}
+          />
+        </aside>
+      ) : null}
+      <div className="ui-product-search__results">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {state.result && !hasResults && state.query.trim() && !state.loading && (
           <div
@@ -558,7 +743,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             }}
           >
             {state.result.related.relatedLinks.length > 0
-              ? 'No exact matches. Related semantic results are shown below.'
+              ? 'No exact matches. Related semantic results are shown nearby.'
               : 'No exact matches. Try OR, different words, or clear filters.'}
           </div>
         )}
@@ -728,25 +913,8 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
           );
         })}
       </div>
-
-      {state.result && (
-        <SearchRelatedPanel
-          variant="product"
-          related={state.result.related}
-          semanticRelated={state.result.embeddingPathUsed}
-          onTopicClick={(name) => {
-            onQueryChange(name);
-            void onRunSearch(name);
-          }}
-          onTagClick={(tag) => {
-            onQueryChange(tag);
-            void onRunSearch(tag);
-          }}
-          onRelatedClick={(itemId) => {
-            onSelectedItemIdChange(itemId);
-          }}
-        />
-      )}
+      </div>
+      </div>
       {contextMenu && (
         <ItemContextMenu
           item={contextMenu.item}

@@ -477,6 +477,7 @@ interface GlobalTabSystemProps {
   scopeProjectId?: string | 'all';
   scopeCollectionId?: string | 'all';
   onSwitchScopeForItem?: (item: Item) => void;
+  onBrowseCategory?: (categoryId: string, name: string) => void;
   /** Optional fixed, non-closeable Home workspace rendered when activeTabId is null. */
   homeContent?: React.ReactNode;
   /** Home activity + scope navigation, kept above workspace entries and their content. */
@@ -504,6 +505,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
   onSwitchScopeForItem,
+  onBrowseCategory: _onBrowseCategory,
   homeContent,
   workspaceHeader,
   strictProjectScope = false,
@@ -1250,6 +1252,12 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
                   : undefined
             }
             autofocus={false}
+            searchTabs={librarySearch.searchTabs}
+            activeSearchTabId={librarySearch.activeSearchTabId}
+            onSelectSearchTab={librarySearch.selectSearchTab}
+            onCloseSearchTab={librarySearch.closeSearchTab}
+            onOpenTagTab={librarySearch.openTagTab}
+            onOpenCategoryTab={librarySearch.openCategoryTab}
           />
         )}
         {activeTab?.kind === 'search' && !librarySearch && (

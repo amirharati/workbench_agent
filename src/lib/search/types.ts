@@ -4,6 +4,10 @@ import type { AiCategory, ClassifyState } from '../categorization/types';
 export interface SearchFilters {
   projectId?: string;
   collectionId?: string;
+  /** Exact AI category membership used by Search-local category tabs. */
+  categoryId?: string;
+  /** Exact normalized tag membership used by Search-local tag tabs. */
+  tag?: string;
   /** Exclude items already organized anywhere in this project. */
   excludeProjectId?: string;
   /** Exclude items already organized in this collection. */
@@ -97,6 +101,18 @@ export interface SearchResult {
   breakdown: ScoreBreakdown;
 }
 
+export interface SearchCategoryResult {
+  categoryId: string;
+  name: string;
+  parentName?: string;
+  description?: string;
+  itemCount: number;
+  score: number;
+  nameScore: number;
+  semanticScore: number;
+  sources: Array<'name' | 'semantic'>;
+}
+
 export interface HybridSearchOptions {
   query: string;
   limit?: number;
@@ -107,6 +123,8 @@ export interface HybridSearchOptions {
   queryEmbedding?: number[];
   /** Worker-computed similarities keyed by item id; vectors never leave the DB owner. */
   embeddingScores?: Record<string, number>;
+  /** Worker-computed query similarities against persisted category prototypes. */
+  categoryEmbeddingScores?: Record<string, number>;
   mode?: 'hybrid' | 'lexical-only';
 }
 
@@ -117,5 +135,7 @@ export interface HybridSearchResult {
   /** Candidates scored before top-k trim. */
   totalCandidates: number;
   matchedCategoryIds: string[];
+  /** Optional for backward-compatible restoration of pre-category-profile searches. */
+  categoryResults?: SearchCategoryResult[];
   embeddingPathUsed: boolean;
 }

@@ -54,6 +54,24 @@ export interface AiCategory {
   updated_at: number;
 }
 
+/**
+ * Persisted semantic search material for one category. Bookmark vectors remain
+ * independent; this row records the taxonomy text vector, member evidence, and
+ * the blended prototype used for query-to-category ranking.
+ */
+export interface AiCategorySearchProfile {
+  categoryId: string;
+  embeddingModel: string;
+  metadataTextHash: string;
+  metadataEmbedding: number[];
+  memberCentroid: number[];
+  prototypeEmbedding: number[];
+  memberCount: number;
+  memberSampleCount: number;
+  memberRevision: string;
+  updated_at: number;
+}
+
 export interface AiItemCategoryLink {
   id: string;
   itemId: string;
