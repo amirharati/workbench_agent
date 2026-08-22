@@ -115,6 +115,14 @@ Stage-only actions use the same engine:
 - `classify -> finalize`
 - global/scoped `discover -> finalize`; optional follow-up classification is submitted as the next job
 
+Classification commits are additive. The core DB worker merges deterministic item/category links,
+never treats omission from a later stochastic response as deletion, never resurrects a rejected link,
+and keeps accepted evidence locked. One primary is derived for presentation and queue state: an existing
+specific remains stable across equal/weaker additions, while a newly discovered specific may promote over
+a General fallback. Other active categories remain secondary and participate in browsing/search. Automated
+pruning is intentionally deferred until after V3 and must be a separate explicit policy, not a side effect
+of Full digest, Re-digest, Classify, or Discover.
+
 A failed item skips only its later stages. The next item continues. Final job counts are derived from durable
 task state rather than a page-owned counter.
 

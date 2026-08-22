@@ -928,7 +928,7 @@ export async function assignGeneralLeafFallback(itemIds: string[]): Promise<numb
       },
     };
 
-    itemWrites.push({ itemId: item.id, signal, links: [link], removeAiSuggested: true });
+    itemWrites.push({ itemId: item.id, signal, links: [link], removeAiSuggested: false });
   }
 
   if (!itemWrites.length) {
@@ -1158,7 +1158,7 @@ export async function classifyIncremental(
         if (lqState === 'classified_removal') summary.classifiedRemoval++;
         preBatchWrites.push({
           itemId: item.id,
-          removeAiSuggested: true,
+          removeAiSuggested: false,
           links: [
             {
               id: aiLinkId(item.id, lqLeaf.id),
@@ -1236,7 +1236,7 @@ export async function classifyIncremental(
         summary.assignedPrimary++;
         preBatchWrites.push({
           itemId: item.id,
-          removeAiSuggested: true,
+          removeAiSuggested: false,
           links: [
             {
               id: aiLinkId(item.id, lqLeaf.id),
@@ -1286,7 +1286,7 @@ export async function classifyIncremental(
         summary.assignedPrimary++;
         preBatchWrites.push({
           itemId: item.id,
-          removeAiSuggested: true,
+          removeAiSuggested: false,
           links: [
             {
               id: aiLinkId(item.id, lqLeaf.id),
@@ -1516,9 +1516,13 @@ export async function classifyIncremental(
 
       let classifyState: ClassifyState = 'pending_classify';
       const links: AiItemCategoryLink[] = [];
-      let removeAiSuggested = true;
+      const removeAiSuggested = false;
       let retryCount = prevRetry;
       let lastClassifySkipReason: string | undefined;
+      const assignedPrimaryBefore = summary.assignedPrimary;
+      const classifiedSpecificBefore = summary.classifiedSpecific;
+      const classifiedGeneralBefore = summary.classifiedGeneral;
+      const classifiedRemovalBefore = summary.classifiedRemoval;
       const unassignedBefore = summary.unassigned;
       const pendingDiscoverBefore = summary.pendingDiscover;
 
@@ -1769,13 +1773,24 @@ export async function classifyIncremental(
       }
 
       const previousPrimaryId = primaryCategoryByItem.get(batchItem.itemId);
-      const hasReplacementPrimary = links.some(
+      const replacementPrimary = links.find(
         (link) => link.isPrimary && COUNTABLE_STATUSES.has(link.status)
       );
-      const preservePreviousAssignment = Boolean(previousPrimaryId && !hasReplacementPrimary);
+      const evidenceStrength = (categoryId: string): number => {
+        if (isLinkQualityLeafId(categoryId)) return 0;
+        if (isGeneralLeafId(categoryId)) return 1;
+        return 2;
+      };
+      const preservePreviousAssignment = Boolean(
+        previousPrimaryId &&
+          (
+            !replacementPrimary ||
+            prevSignal?.classifyState === 'manual_only' ||
+            evidenceStrength(previousPrimaryId) >= evidenceStrength(replacementPrimary.categoryId)
+          )
+      );
       let signal: AiItemSignal;
       if (preservePreviousAssignment) {
-        removeAiSuggested = false;
         classifyState = prevSignal?.classifyState &&
           (
             prevSignal.classifyState === 'classified' ||
@@ -1785,9 +1800,12 @@ export async function classifyIncremental(
           )
           ? prevSignal.classifyState
           : classifyStateFromPrimary(previousPrimaryId!, true);
-        if (summary.unassigned > unassignedBefore) summary.unassigned--;
-        if (summary.pendingDiscover > pendingDiscoverBefore) summary.pendingDiscover--;
-        summary.assignedPrimary++;
+        summary.assignedPrimary = assignedPrimaryBefore + 1;
+        summary.classifiedSpecific = classifiedSpecificBefore;
+        summary.classifiedGeneral = classifiedGeneralBefore;
+        summary.classifiedRemoval = classifiedRemovalBefore;
+        summary.unassigned = unassignedBefore;
+        summary.pendingDiscover = pendingDiscoverBefore;
         if (classifyState === 'classified_general') summary.classifiedGeneral++;
         else if (classifyState === 'classified_removal') summary.classifiedRemoval++;
         else summary.classifiedSpecific++;
@@ -1805,7 +1823,7 @@ export async function classifyIncremental(
           classifyState,
           lastProcessedAt: now,
           lastClassifySkipReason:
-            `Kept previous category — reclassification produced no replacement` +
+            `Added classification evidence; kept previous primary` +
             (decision?.reason ? `: ${decision.reason}` : ''),
         };
       } else {

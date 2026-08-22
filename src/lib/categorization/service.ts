@@ -3,7 +3,12 @@ import { loadAISettings } from '../ai/settings';
 import { assessCategorizationEligibility } from '../enrichment/categorizationEligibility';
 import { buildCategorizationEmbedText } from '../enrichment/categorizationText';
 import { getDB } from '../db';
+import {
+  commitPipelineClassification,
+  commitPipelineEmbeddingSignals,
+} from '../pipeline/pipelineStagePersistence';
 import { clusterNoveltyIntoCategories } from './bootstrap';
+import { classifyStateFromPrimary } from './counts';
 import { runCategorizationPipeline } from './pipeline';
 import type {
   AiCategory,
@@ -186,59 +191,57 @@ export async function runCategorizationOnItems(
   categories = result.categories;
   const now = Date.now();
 
-  const tx = db.transaction(
-    ['ai_categories', 'ai_item_category_links', 'ai_item_signals'],
-    'readwrite'
-  );
-
-  for (const cat of categories) {
-    await tx.objectStore('ai_categories').put(cat);
+  const embeddingSignals: AiItemSignal[] = result.itemResults.map((row) => ({
+    itemId: row.itemId,
+    textHash: row.textHash,
+    embeddingModel,
+    embedding: row.embedding,
+    derivedTags: row.derivedTags,
+    signalStatus: row.signalStatus,
+    isNovelty: row.isNovelty,
+    lastProcessedAt: now,
+  }));
+  if (embeddingSignals.length) {
+    await commitPipelineEmbeddingSignals(embeddingSignals);
   }
 
-  const itemIdsRun = new Set(result.itemResults.map((r) => r.itemId));
-
-  for (const itemId of itemIdsRun) {
-    const existing = await tx
-      .objectStore('ai_item_category_links')
-      .index('by-item')
-      .getAll(itemId);
-    for (const link of existing) {
-      if (link.source === 'ai' && link.status === 'suggested') {
-        await tx.objectStore('ai_item_category_links').delete(link.id);
-      }
-    }
-  }
-
-  for (const row of result.itemResults) {
-    const signal: AiItemSignal = {
-      itemId: row.itemId,
-      textHash: row.textHash,
-      embeddingModel,
-      embedding: row.embedding,
-      derivedTags: row.derivedTags,
-      signalStatus: row.signalStatus,
-      isNovelty: row.isNovelty,
-      lastProcessedAt: now,
-    };
-    await tx.objectStore('ai_item_signals').put(signal);
-
-    for (const a of row.assignments) {
-      const link: AiItemCategoryLink = {
-        id: aiLinkId(row.itemId, a.categoryId),
-        itemId: row.itemId,
-        categoryId: a.categoryId,
-        score: a.score,
-        isPrimary: a.isPrimary,
-        source: 'ai',
-        status: 'suggested',
-        created_at: now,
-        updated_at: now,
-      };
-      await tx.objectStore('ai_item_category_links').put(link);
-    }
-  }
-
-  await tx.done;
+  await commitPipelineClassification({
+    categories,
+    itemWrites: result.itemResults
+      .filter((row) => row.assignments.length > 0)
+      .map((row) => {
+        const primaryId = row.assignments.find((assignment) => assignment.isPrimary)?.categoryId ?? null;
+        const links: AiItemCategoryLink[] = row.assignments.map((assignment) => ({
+          id: aiLinkId(row.itemId, assignment.categoryId),
+          itemId: row.itemId,
+          categoryId: assignment.categoryId,
+          score: assignment.score,
+          isPrimary: assignment.isPrimary,
+          source: 'ai',
+          status: 'suggested',
+          created_at: now,
+          updated_at: now,
+        }));
+        return {
+          itemId: row.itemId,
+          removeAiSuggested: false,
+          links,
+          signal: {
+            ...embeddingSignals.find((signal) => signal.itemId === row.itemId)!,
+            embedding: [],
+            classifyTextHash: row.textHash,
+            classifyState: classifyStateFromPrimary(primaryId, true),
+            discoverState: primaryId ? 'none' : 'pending',
+            lastClassifiedAt: now,
+            llmReview: {
+              decisionType: 'existing',
+              categoryIds: row.assignments.map((assignment) => assignment.categoryId),
+              classifyMode: 'embedding-assignment',
+            },
+          },
+        };
+      }),
+  });
 
   return result;
 }

@@ -1027,10 +1027,13 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
                   </span>
                 ))}
               </div>
-            ) : context?.suggestedLinks.length ? (
+            ) : null}
+            {context?.suggestedLinks.length ? (
               <div style={{ color: 'var(--text-muted)' }}>
                 <span style={{ color: 'var(--text-faint)' }}>
-                  {isQueuedClassifyState(context.classifyState)
+                  {context.acceptedLinks.length
+                    ? 'Additional model categories: '
+                    : isQueuedClassifyState(context.classifyState)
                     ? 'AI suggested: '
                     : 'Model selected (not accepted): '}
                 </span>
@@ -1051,18 +1054,21 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
                   </div>
                 ) : null}
               </div>
-            ) : context?.classifyState === 'classified' ? (
+            ) : null}
+            {!context?.acceptedLinks.length &&
+            !context?.suggestedLinks.length &&
+            context?.classifyState === 'classified' ? (
               <div style={{ color: 'var(--er-warn, #d29922)' }}>
                 Classified state but no category stored — run Classify again (or Clear categories).
               </div>
-            ) : (
+            ) : !context?.acceptedLinks.length && !context?.suggestedLinks.length ? (
               <div style={{ color: 'var(--text-faint)' }}>No accepted category</div>
-            )}
-            {context?.suggestedLinks.length ? (
-              <MetaLine
-                label={isQueuedClassifyState(context.classifyState) ? 'Suggested' : 'Model selected'}
-              >
-                {context.suggestedLinks.map((l) => l.name).join(', ')}
+            ) : null}
+            {context && context.acceptedLinks.length + context.suggestedLinks.length > 1 ? (
+              <MetaLine label="All categories">
+                {[...context.acceptedLinks, ...context.suggestedLinks]
+                  .map((link) => `${link.name}${link.isPrimary ? ' ★' : ''}`)
+                  .join(', ')}
               </MetaLine>
             ) : null}
           </StageBody>

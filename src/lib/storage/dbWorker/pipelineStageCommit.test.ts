@@ -10,6 +10,36 @@ import {
   signalMetaOnly,
 } from './pipelineStageCommit';
 
+function category(id: string): AiCategory {
+  return {
+    id,
+    name: id,
+    kind: 'leaf',
+    status: 'approved',
+    assignable: true,
+    created_at: 1,
+    updated_at: 1,
+  };
+}
+
+function link(
+  categoryId: string,
+  overrides: Partial<ReturnType<SqliteStore['getLinksByItem']>[number]> = {}
+) {
+  return {
+    id: `link_item-1_${categoryId}`,
+    itemId: 'item-1',
+    categoryId,
+    score: 0.9,
+    isPrimary: true,
+    source: 'ai' as const,
+    status: 'suggested' as const,
+    created_at: 2,
+    updated_at: 2,
+    ...overrides,
+  };
+}
+
 function signal(overrides: Partial<AiItemSignal> = {}): AiItemSignal {
   return {
     itemId: 'item-1',
@@ -172,6 +202,153 @@ describe('pipeline stage signal ownership', () => {
     expect(store.getSignal('item-1')?.classifyState).toBe('pending_classify');
     expect(store.getSignal('item-1')?.embedding).toHaveLength(3);
     expect(store.getSignal('item-1')?.embedding[0]).toBeCloseTo(0.1);
+    db.close();
+  });
+
+  it('adds repeated classifications without replacing an equally strong or stronger primary', async () => {
+    const sqlite = await initSqlite3();
+    const db = new sqlite.oo1.DB();
+    db.exec('PRAGMA foreign_keys = ON;');
+    initSchema(db, 8);
+    db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
+    const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    store.putSignal(signal({ classifyState: 'pending_classify', llmReview: undefined }));
+
+    commitClassificationInStore(store, {
+      categories: [category('nlp-transformers')],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [link('nlp-transformers')],
+        signal: signal({ llmReview: { decisionType: 'existing', categoryIds: ['nlp-transformers'] } }),
+      }],
+    });
+    commitClassificationInStore(store, {
+      categories: [category('machine-learning-general'), category('speech-asr')],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [link('machine-learning-general', { updated_at: 3 })],
+        signal: signal({
+          classifyState: 'classified_general',
+          llmReview: { decisionType: 'existing', categoryIds: ['machine-learning-general'] },
+        }),
+      }, {
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [link('speech-asr', { updated_at: 4 })],
+        signal: signal({ llmReview: { decisionType: 'existing', categoryIds: ['speech-asr'] } }),
+      }],
+    });
+
+    const links = store.getLinksByItem('item-1');
+    expect(links).toHaveLength(3);
+    expect(links.find((row) => row.isPrimary)?.categoryId).toBe('nlp-transformers');
+    expect(links.filter((row) => row.isPrimary)).toHaveLength(1);
+    expect(store.getSignal('item-1')?.classifyState).toBe('classified');
+    expect(new Set(store.getSignal('item-1')?.llmReview?.categoryIds)).toEqual(
+      new Set(['nlp-transformers', 'machine-learning-general', 'speech-asr'])
+    );
+    db.close();
+  });
+
+  it('promotes a newly added specific category over a General primary', async () => {
+    const sqlite = await initSqlite3();
+    const db = new sqlite.oo1.DB();
+    db.exec('PRAGMA foreign_keys = ON;');
+    initSchema(db, 8);
+    db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
+    const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    store.putSignal(signal({ classifyState: 'pending_classify', llmReview: undefined }));
+
+    commitClassificationInStore(store, {
+      categories: [category('machine-learning-general')],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [link('machine-learning-general')],
+        signal: signal({ classifyState: 'classified_general' }),
+      }],
+    });
+    expect(store.getSignal('item-1')?.classifyState).toBe('classified_general');
+
+    commitClassificationInStore(store, {
+      categories: [category('speech-asr')],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [link('speech-asr', { updated_at: 3 })],
+        signal: signal({ llmReview: { decisionType: 'existing', categoryIds: ['speech-asr'] } }),
+      }],
+    });
+
+    const links = store.getLinksByItem('item-1');
+    expect(links).toHaveLength(2);
+    expect(links.find((row) => row.isPrimary)?.categoryId).toBe('speech-asr');
+    expect(links.find((row) => row.categoryId === 'machine-learning-general')?.isPrimary).toBe(false);
+    expect(store.getSignal('item-1')?.classifyState).toBe('classified');
+    db.close();
+  });
+
+  it('keeps accepted evidence primary and never resurrects rejected evidence', async () => {
+    const sqlite = await initSqlite3();
+    const db = new sqlite.oo1.DB();
+    db.exec('PRAGMA foreign_keys = ON;');
+    initSchema(db, 8);
+    db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
+    const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    store.putSignal(signal({ classifyState: 'manual_only' }));
+    store.putCategory(category('accepted-topic'));
+    store.putCategory(category('rejected-topic'));
+    store.putLink(link('accepted-topic', { status: 'accepted' }));
+    store.putLink(link('rejected-topic', { status: 'rejected', isPrimary: false }));
+
+    commitClassificationInStore(store, {
+      categories: [category('new-topic')],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [
+          link('new-topic', { updated_at: 3 }),
+          link('rejected-topic', { updated_at: 3 }),
+        ],
+        signal: signal({ classifyState: 'classified' }),
+      }],
+    });
+
+    const links = store.getLinksByItem('item-1');
+    expect(links.find((row) => row.isPrimary)?.categoryId).toBe('accepted-topic');
+    expect(links.find((row) => row.categoryId === 'rejected-topic')?.status).toBe('rejected');
+    expect(links.find((row) => row.categoryId === 'new-topic')?.isPrimary).toBe(false);
+    expect(store.getSignal('item-1')?.classifyState).toBe('manual_only');
+    db.close();
+  });
+
+  it('keeps a rejected-only rerun unassigned instead of resurrecting or claiming classification', async () => {
+    const sqlite = await initSqlite3();
+    const db = new sqlite.oo1.DB();
+    db.exec('PRAGMA foreign_keys = ON;');
+    initSchema(db, 8);
+    db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
+    const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    store.putCategory(category('rejected-topic'));
+    store.putSignal(signal({ classifyState: 'pending_discover', discoverState: 'pending' }));
+    store.putLink(link('rejected-topic', { status: 'rejected', isPrimary: false }));
+
+    expect(() => commitClassificationInStore(store, {
+      categories: [],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [link('rejected-topic', { updated_at: 3 })],
+        signal: signal({ classifyState: 'classified' }),
+      }],
+    })).not.toThrow();
+
+    expect(store.getLinksByItem('item-1')).toHaveLength(1);
+    expect(store.getLinksByItem('item-1')[0]?.status).toBe('rejected');
+    expect(store.getSignal('item-1')?.classifyState).toBe('pending_discover');
+    expect(store.getSignal('item-1')?.llmReview?.categoryIds).toEqual([]);
     db.close();
   });
 });

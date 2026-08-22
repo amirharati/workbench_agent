@@ -5,7 +5,7 @@
 **Opened:** 2026-08-08  
 **Testing branch:** `design/ui-redesign`  
 **Starting product commit:** `b1114b4` (`Improve scoped list filtering`)  
-**Current test checkpoint:** `d824bad` (`Make Inspector width adjustable`)
+**Current test checkpoint:** `854ce70` (`Enforce durable pipeline stage integrity`)
 
 This is the single operating document for closing V3. Historical V3 plans explain how
 features were built; they do not determine the remaining release scope.
@@ -70,7 +70,8 @@ does not become a V3 blocker merely because it already has an old V3 planning do
 ### Not required for V3 unless testing exposes a trust or core-workflow failure
 
 - Perfect taxonomy or classification quality.
-- New-parent taxonomy generation, multi-topic classification, or user-signals Phase 2.
+- Automated category pruning, evidence decay, or user-signals Phase 2. V3 classification is
+  additive because repeated stochastic runs must not erase useful prior categories.
 - Notes AI, workspace AI, pre-save AI digest, and agentic/RAG additions.
 - Multi-device concurrent writing or automatic cross-device merge.
 - Scheduled backup policy controls or advanced cloud-provider integrations.
@@ -236,6 +237,8 @@ Keep AI runs small and explicitly initiated during release testing.
       threshold and the explicit reprocess-all option.
 - [ ] Pause/cancel and reload a small batch; no permanently false “paused” banner remains.
 - [ ] Run classification on a small eligible selection; assignments and suggestions remain distinct.
+- [ ] Re-run one link at least three times. New categories accumulate without duplicates; a later
+      General result does not remove a specific result; accepted and rejected decisions remain locked.
 - [ ] Reproduce or clear Risk R2 below before signoff: Discover must not make General items
       appear deleted merely because downstream classification skipped them.
 - [ ] No AI action runs unexpectedly or without an understandable cost-bearing user action.
@@ -691,6 +694,31 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   place without navigating to Home or creating/activating a Home workspace tab.
 - Deferred by agreement: workspace-tab actions and labels outside Home are a separate design issue and were not changed.
 - Automated evidence: 20 focused Hub/Library/shell tests and the production build pass.
+
+### V3-014 — Repeated classification destructively replaces earlier categories
+
+- Found: 2026-08-22, Run 01 continuation
+- Severity / gate: P1 / G1, G4
+- Status: READY TO RETEST
+- Environment: `design/ui-redesign`; exact ASR test bookmark inspected in the mirrored SQLite DB
+- Reproduction:
+  1. Classify a link and receive a specific topic.
+  2. Run Full digest/Re-digest again.
+  3. Let a later stochastic response return a General or different topic.
+- Expected: Classification is additive. Previous active categories remain, new categories are
+  deduplicated additions, and one stable primary is derived for presentation/queue state.
+- Actual: Full digest forced reclassification and deleted every prior suggested link before saving
+  the latest response. The ASR example regressed from `seed_nlp-transformers` to
+  `seed_machine-learning-general`, then reached `manual_review` after the second weak result.
+- Data-safety check: Item/enrichment/vector data remained intact; category-link history was lost.
+- Decision: fix now. This is derived-data loss and makes repeated pipeline runs unsafe.
+- Fix: the existing multi-link table now uses worker-owned additive merge semantics. Equal/weaker
+  results become secondary evidence; a new specific may promote over a General primary; accepted
+  evidence remains locked; rejected evidence cannot be resurrected. Inspector lists accepted and
+  additional model categories together. No schema migration is required.
+- Retest: reload protocol v19, run the same link repeatedly, and inspect both UI and SQLite category
+  links after each run. Automated worker/SQLite tests cover repeated, General→specific, accepted,
+  rejected, and vector-preservation cases.
 
 For substantial issues, add a section using this template:
 

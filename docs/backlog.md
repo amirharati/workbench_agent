@@ -83,6 +83,11 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
 
 ## 🟡 Product features
 
+- [ ] **Post-V3 category pruning/evidence policy**: additive V3 classification deliberately never
+  removes an active category merely because a later LLM run omits it. Design a separate, explicit
+  pruning pass with provenance/support counts, repeated negative evidence, ancestor-General
+  suppression, search weighting, review UI, and an absolute lock on user-accepted categories.
+
 **Data integrity — automated file backup** — design: [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md)
 
 - [x] **`BackupSink` abstraction** — interface + `FileSystemBackupSink` (writes serialized JSON).
