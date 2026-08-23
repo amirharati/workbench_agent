@@ -305,6 +305,19 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-021 | 2026-08-22 | Chrome side panel / reload stability | A manifest-global panel makes native close window-wide; earlier contextual and mixed attempts also mutated tab entries during reload/install and crashed Chrome. The remaining reproducible native crash occurred when this extension's contextual panel was attached to `chrome://extensions` while that page reloaded/unloaded the extension | P0 | EXPERIMENTAL — LIVE RETEST REQUIRED | Pure lazy contextual visibility over shared workers: no manifest global; install/startup/reload make zero panel API mutations; first eligible toolbar gesture configures/opens the existing-tab cohort; later/dashboard/extension-management tabs stay untouched; clicking the action on extension management opens/focuses the dashboard; native close hides only one ordinary tab while membership and processing remain | Uncommitted lazy-contextual prototype with `chrome://extensions` exclusion and focused lifecycle tests | Ensure no legacy Homebase panel is open on extension management, reload and wait; clicking the Homebase action there must open/focus the dashboard without showing a panel. Then open several ordinary tabs, verify per-tab context/close, and reload once closed and once with ordinary panels open; stop immediately on any Chrome crash |
 | V3-022 | 2026-08-22 | Fresh-install folder safety | Chrome-owned install/New Tab prompts can interrupt the native directory chooser, while the prior flow persisted a selected handle before showing what was found and ended with only a transient status message | P0 | READY TO RETEST | Mandatory two-phase setup: picker cancellation changes nothing and remains visible; selected folder and recognized core/content/legacy files require explicit confirmation; pending state survives reload; incomplete setup cannot silently enter the app; final receipt reports folder, item count, and load/migrate/create actions | Uncommitted onboarding safety checkpoint; 24 focused tests plus TypeScript pass | Fresh install with Chrome prompt: cancel once, select a wrong folder and choose again, then confirm an empty folder. Repeat with an existing folder. Verify no persistence before confirmation and accurate completion receipts in both cases |
 
+- 2026-08-23 side-panel context follow-up: `tabs.onUpdated` alone did not reliably report SPA/history
+  navigation, leaving a visible panel on the previous URL/item. Each contextual panel now polls only
+  its immutable host tab at 1.5-second intervals, resolves the live URL/title, and updates when that context
+  changes. Saved-item DB lookup runs only for a changed URL identity; title-only document changes do not
+  reload the panel or query the DB repeatedly. Retest ordinary links plus Gmail/YouTube same-tab navigation,
+  then verify two open panels continue showing their own tabs independently.
+- First YouTube retest still showed the prior video. Two independent causes were corrected: Chrome may report
+  the side-panel document as hidden while it is visibly open, suppressing the fallback poll; and YouTube can
+  update `document.title`/the visible heading before replacing old Open Graph metadata, so metadata-first
+  selection restored the previous video's title. Polling no longer uses side-panel visibility state, the host
+  page emits bounded SPA URL/title notifications, and title selection now prefers fresh document/visible
+  heading evidence before structured/Open Graph fallbacks.
+
 ### V3-001 — Replace stale Help with a comprehensive daily-use guide
 
 - Found: 2026-08-08, Run 01
@@ -756,7 +769,7 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 
 - Found: 2026-08-22, Run 01 continuation
 - Severity / gate: P1 / G2, G4
-- Status: READY TO RETEST
+- Status: SUPERSEDED BY CLEAN FETCH-SERVICE REPLACEMENT
 - Reproduction: run Full digest on `https://arxiv.org/pdf/2104.13478`, an OpenReview PDF,
   or an ordinary page whose first browser extraction contains mostly login/cookie/navigation chrome.
 - Expected: preserve the saved URL, fetch a readable representation, try the next provider when an
@@ -783,6 +796,21 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   OpenReview PDF already accessible in Chrome while signed in; it should also report `tab-session-pdf`
   without changing the open tab. Then test one normal article and one deliberately inaccessible page; the
   latter should show an honest auth/extraction failure rather than a false successful thin fetch.
+- 2026-08-23 architecture decision: do not continue patching this legacy routing stack. The `.pdf` suffix
+  check added by `8bf2004` also misroutes `file://` PDFs into an HTTP(S)-only authenticated PDF path. Local
+  PDF, remote/authenticated PDF, generic rendered pages, X, Reddit, and YouTube transcript/no-transcript cases
+  are now ordered acceptance gates for the isolated [V3 fetch service replacement](./FETCH_SERVICE_REBUILD.md).
+  Production will use either the complete legacy stack or the complete replacement; there will be no
+  per-item v2-to-legacy runtime fallback. The replacement preserves Jina, FxTwitter/X syndication,
+  authenticated Chrome, direct fetch, and PDF.js as v2 provider candidates; after it passes, remove their
+  old orchestration/wrappers rather than the useful provider capabilities.
+- 2026-08-23 v2 retest follow-up: the 42.7 MB local *Probabilistic Machine Learning: Advanced Topics* PDF
+  exposed an artificial 25 MB base64-message limit before PDF.js ran. V2 now stages and transfers document
+  bytes in 2 MB chunks and opts out of Legacy's separate 50 MB decoder guard. OpenReview document alternatives
+  are selected by an isolated v2 provider while the browser capability itself stays site-agnostic. Generic
+  captured title evidence also distinguishes meaningful structured/heading titles from Gmail/YouTube shell
+  titles. Reload, then retest that local PDF, the already-open authenticated OpenReview PDF, one Gmail message,
+  and one YouTube video before continuing the larger corpus.
 
 For substantial issues, add a section using this template:
 

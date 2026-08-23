@@ -1320,11 +1320,29 @@ export class SqliteStore {
   putCategory(category: AiCategory): void {
     const r = categoryToRow(category);
     this.conn.exec(
-      `INSERT OR REPLACE INTO ai_categories 
+      `INSERT INTO ai_categories
        (id, name, kind, status, assignable, parent_id, parent_name, description, source,
         centroid, canonical_tags, is_general_fallback, item_count, primary_item_count,
         secondary_item_count, child_leaf_count, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         kind = excluded.kind,
+         status = excluded.status,
+         assignable = excluded.assignable,
+         parent_id = excluded.parent_id,
+         parent_name = excluded.parent_name,
+         description = excluded.description,
+         source = excluded.source,
+         centroid = excluded.centroid,
+         canonical_tags = excluded.canonical_tags,
+         is_general_fallback = excluded.is_general_fallback,
+         item_count = excluded.item_count,
+         primary_item_count = excluded.primary_item_count,
+         secondary_item_count = excluded.secondary_item_count,
+         child_leaf_count = excluded.child_leaf_count,
+         created_at = excluded.created_at,
+         updated_at = excluded.updated_at`,
       [r.id, r.name, r.kind, r.status, r.assignable, r.parent_id, r.parent_name, r.description, r.source,
        r.centroid, r.canonical_tags, r.is_general_fallback, r.item_count, r.primary_item_count,
        r.secondary_item_count, r.child_leaf_count, r.created_at, r.updated_at]

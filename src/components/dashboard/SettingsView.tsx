@@ -20,6 +20,8 @@ import { ThemeSelector } from '../ThemeToggle';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { DialogShell } from './DialogShell';
+import { loadFetchEngine, saveFetchEngine } from '../../lib/acquisition/settings';
+import type { FetchEngine } from '../../lib/acquisition/types';
 
 type FontScalePreset = 'small' | 'normal' | 'large';
 export type SettingsSection = 'general' | 'ai' | 'backup' | 'advanced';
@@ -239,10 +241,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showingDataFolder, setShowingDataFolder] = React.useState(false);
   const [inspectingFolderBackup, setInspectingFolderBackup] = React.useState<string | null>(null);
   const [folderInspection, setFolderInspection] = React.useState<FolderSnapshotInspection | null>(null);
+  const [fetchEngine, setFetchEngine] = React.useState<FetchEngine>('v2');
+  const [fetchEngineReady, setFetchEngineReady] = React.useState(false);
 
   React.useEffect(() => {
     if (aiSettings) setAiForm(aiSettings);
   }, [aiSettings]);
+
+  React.useEffect(() => {
+    let mounted = true;
+    void loadFetchEngine().then((engine) => {
+      if (!mounted) return;
+      setFetchEngine(engine);
+      setFetchEngineReady(true);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  const handleFetchEngineChange = async (engine: FetchEngine) => {
+    setFetchEngine(engine);
+    await saveFetchEngine(engine);
+    addToast({
+      type: 'success',
+      message: engine === 'v2'
+        ? 'New jobs will use Fetch service v2.'
+        : 'New jobs will use the legacy fetch service.',
+    });
+  };
 
   const refreshFolderBackups = React.useCallback(async () => {
     if (!backupFolderReady) {
@@ -620,6 +645,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ) : null}
 
       {activeSection === 'ai' ? (
+      <>
+      <div
+        className="ui-settings-card"
+        style={{
+          border: '1px solid var(--border)',
+          borderRadius: 10,
+          padding: '1rem',
+          background: 'var(--bg-panel)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem',
+        }}
+      >
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>
+          Fetch service
+        </div>
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+          Choose the content-acquisition engine used by new sidebar, single-link, and bulk jobs.
+          A running or resumed job keeps the engine it started with.
+        </div>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxWidth: 560, fontSize: '0.84rem', color: 'var(--text)' }}>
+          Processing engine
+          <select
+            aria-label="Fetch processing engine"
+            value={fetchEngine}
+            disabled={!fetchEngineReady}
+            onChange={(event) => void handleFetchEngineChange(event.target.value as FetchEngine)}
+            style={{ padding: '0.55rem 0.65rem', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-panel)', color: 'var(--text)' }}
+          >
+            <option value="v2">Fetch service v2 (default)</option>
+            <option value="legacy">Legacy fetch service (fallback)</option>
+          </select>
+        </label>
+        <div className="ui-status" data-tone={fetchEngine === 'v2' ? 'info' : 'neutral'}>
+          {fetchEngine === 'v2'
+            ? 'V2 captures rendered browser evidence and evaluates independent local extractors. It does not fall back into legacy orchestration.'
+            : 'Legacy remains available as a manual fallback. New and resumed jobs never switch engines mid-run.'}
+        </div>
+      </div>
       <div
         className="ui-settings-card"
         style={{
@@ -912,6 +976,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
       </div>
+
+      </>
 
       ) : null}
 

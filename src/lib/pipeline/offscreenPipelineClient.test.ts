@@ -133,6 +133,7 @@ describe('offscreenPipelineClient', () => {
     });
     expect(start.options).not.toHaveProperty('signal');
     expect(start.options).not.toHaveProperty('onProgress');
+    expect(start.options.fetchEngine).toBe('v2');
 
     for (const listener of listeners) {
       listener({
@@ -160,6 +161,38 @@ describe('offscreenPipelineClient', () => {
       'Fetching',
     ]);
     expect(listeners.size).toBe(0);
+  });
+
+  it('pins the selected fetch engine into a new durable job', async () => {
+    const storageGet = chrome.storage.local.get as ReturnType<typeof vi.fn>;
+    storageGet.mockImplementation(async () => ({
+      'ai.settings.v1': storedAISettings,
+      'acquisition.fetch-engine.v1': 'v2',
+    }));
+    const { runSingleOnOffscreen } = await import('./offscreenPipelineClient');
+    const pending = runSingleOnOffscreen('item-v2', {});
+
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    const start = sendMessage.mock.calls[0][0] as {
+      requestId: string;
+      options: Record<string, unknown>;
+    };
+    expect(start.options.fetchEngine).toBe('v2');
+
+    for (const listener of listeners) {
+      listener({
+        type: 'pipeline-offscreen-done',
+        requestId: start.requestId,
+        ok: true,
+        singleResult: {
+          itemId: 'item-v2',
+          enrich: { itemId: 'item-v2', status: 'ok' },
+          classifyAttempted: true,
+          classifyProcessed: 1,
+        },
+      });
+    }
+    await expect(pending).resolves.toMatchObject({ itemId: 'item-v2' });
   });
 
   it('forwards single cancellation to the offscreen owner', async () => {

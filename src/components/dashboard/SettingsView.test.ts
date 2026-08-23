@@ -24,4 +24,11 @@ describe('SettingsView navigation', () => {
     expect(settingsSource).toContain('Delete this manual backup?');
     expect(settingsSource).toContain('Change data folder');
   });
+
+  it('exposes the whole-stack fetch engine switch for new durable jobs', () => {
+    expect(settingsSource).toContain('Fetch service v2 (default)');
+    expect(settingsSource).toContain('Legacy fetch service (fallback)');
+    expect(settingsSource).toContain('A running or resumed job keeps the engine it started with.');
+    expect(settingsSource).toContain('saveFetchEngine');
+  });
 });

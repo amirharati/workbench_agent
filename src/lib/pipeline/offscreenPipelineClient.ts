@@ -1,6 +1,7 @@
 /** Dashboard-side client for the extension-wide durable pipeline coordinator. */
 import type { BatchDigestProgress, BatchDigestResult } from './batchDigest';
 import { loadAISettings } from '../ai/settings';
+import { loadFetchEngine } from '../acquisition/settings';
 import {
   setPipelineClientJobActive,
   type SingleLinkDigestResult,
@@ -147,7 +148,11 @@ async function runJob(
   await commitPendingDbWrites();
   if (options.signal?.aborted) throw cancelledError();
   const requestId = createRequestId();
-  const { signal, onProgress, aiSettings: suppliedAISettings, ...durableOptions } = options;
+  const { signal, onProgress, aiSettings: suppliedAISettings, ...requestedDurableOptions } = options;
+  const durableOptions = {
+    ...requestedDurableOptions,
+    fetchEngine: requestedDurableOptions.fetchEngine ?? await loadFetchEngine(),
+  };
   // AI settings are sent only in the in-extension submission message. The host
   // deliberately omits them from the durable job payload so the API key never
   // lands in pipeline_jobs.

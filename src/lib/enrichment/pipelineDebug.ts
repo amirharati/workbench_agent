@@ -19,6 +19,7 @@ async function debugStoreInvoke<T>(method: string, args: unknown[] = []): Promis
 }
 
 import type { PipelineDebugAICall } from '../ai/callAudit';
+import type { FetchEngine } from '../acquisition/types';
 
 export interface PipelineDebugPhase {
   name: string;
@@ -58,6 +59,7 @@ export interface PipelineDebugPayload {
   enrichStatus: string;
   aiStatus?: string;
   errorCode?: string;
+  fetchEngine?: FetchEngine;
   preferTabSession?: boolean;
   tabId?: number;
   tabSessionOnly?: boolean;
@@ -139,6 +141,7 @@ export async function saveEnrichPipelineDebug(input: {
   redirect?: PipelineDebugRedirect;
   aiCalls?: PipelineDebugAICall[];
   options?: {
+    fetchEngine?: FetchEngine;
     preferTabSession?: boolean;
     tabId?: number;
     tabSessionOnly?: boolean;
@@ -159,6 +162,7 @@ export async function saveEnrichPipelineDebug(input: {
       enrichStatus: input.enrichStatus,
       aiStatus: input.aiStatus,
       errorCode: input.errorCode,
+      fetchEngine: input.options?.fetchEngine,
       preferTabSession: input.options?.preferTabSession,
       tabId: input.options?.tabId,
       tabSessionOnly: input.options?.tabSessionOnly,

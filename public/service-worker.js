@@ -1,6 +1,6 @@
 // Background service worker
 
-importScripts('browser-fetch-service.js');
+importScripts('browser-fetch-service.js', 'acquisition-v2-browser-service.js');
 
 const OFFSCREEN_URL = 'offscreen.html';
 // Increment when the dashboard requires new DB-owner/worker RPC capabilities.
@@ -8,12 +8,13 @@ const OFFSCREEN_URL = 'offscreen.html';
 // Must match the DB and content worker protocol in src/offscreen/offscreen.ts.
 // A mismatch makes each newly started service worker tear down the otherwise
 // valid offscreen owner, which is especially disruptive during extension reloads.
-const DB_OWNER_PROTOCOL_VERSION = 22;
+const DB_OWNER_PROTOCOL_VERSION = 23;
 const PIPELINE_RECOVERY_ALARM = 'pipeline-recovery-wake';
 const PIPELINE_JOB_HOSTS_KEY = 'pipelineJobHosts';
 let offscreenCreating = null;
 let offscreenProtocolVerified = false;
 const browserFetchService = globalThis.HomebaseBrowserFetchService.createBrowserFetchService(chrome);
+const acquisitionV2BrowserService = globalThis.HomebaseAcquisitionV2BrowserService.createAcquisitionV2BrowserService(chrome);
 const pipelineJobHosts = new Map();
 let pipelineJobHostsLoaded = false;
 const OFFSCREEN_PROTOCOL_PROBE_DELAYS_MS = [0, 150, 350, 700, 1_200];
@@ -667,6 +668,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse(message.action === 'fetch-pdf'
           ? await browserFetchService.fetchPdf(input)
           : await browserFetchService.extract(input));
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error), errorCode: 'provider_error' });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.target === 'acquisition-v2-browser') {
+    (async () => {
+      try {
+        if (message.action === 'cancel') {
+          sendResponse(await acquisitionV2BrowserService.cancel(message.requestId));
+          return;
+        }
+        const input = {
+          ...message,
+          sidePanelHostTabId: await readSidePanelHostTabId(),
+        };
+        if (message.action === 'capture') {
+          sendResponse(await acquisitionV2BrowserService.capture(input));
+          return;
+        }
+        if (message.action === 'read-document') {
+          sendResponse(await acquisitionV2BrowserService.readDocument(input));
+          return;
+        }
+        if (message.action === 'read-document-chunk') {
+          sendResponse(acquisitionV2BrowserService.readDocumentChunk(input));
+          return;
+        }
+        if (message.action === 'release-document') {
+          sendResponse(acquisitionV2BrowserService.releaseDocument(input));
+          return;
+        }
+        sendResponse({ ok: false, error: 'Unknown v2 acquisition action' });
       } catch (error) {
         sendResponse({ ok: false, error: String(error), errorCode: 'provider_error' });
       }

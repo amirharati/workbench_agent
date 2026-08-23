@@ -88,6 +88,7 @@ function singleResult(
 
 function durablePayload(options: OffscreenPipelineJobOptions): Record<string, unknown> {
   return {
+    fetchEngine: options.fetchEngine,
     forceEnrich: options.forceEnrich,
     forceReextract: options.forceReextract,
     skipClassify: options.skipClassify,

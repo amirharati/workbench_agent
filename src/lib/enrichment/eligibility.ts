@@ -46,10 +46,6 @@ const SITE_SUFFIX_RE =
 
 const BARE_SUBREDDIT_RE = /^r\/[\w-]+$/i;
 
-function normalizeTitleCompare(s: string): string {
-  return s.toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
 /** Browser tab title noise — not a user-crafted bookmark label. */
 export function titleLooksLikeBrowserChrome(title: string): boolean {
   const t = title.trim();
@@ -66,6 +62,12 @@ export function titleLooksLikeBrowserChrome(title: string): boolean {
 
 function stripSiteSuffix(title: string): string {
   return title.replace(SITE_SUFFIX_RE, '').trim();
+}
+
+/** Remove browser notification counts and common site suffixes from a live tab title. */
+export function cleanLiveDocumentTitle(title: string): string {
+  const withoutCount = title.trim().replace(/^\(\d+\)\s*/, '');
+  return stripSiteSuffix(withoutCount) || withoutCount;
 }
 
 function titleMatchesUrlSlug(title: string, url: string): boolean {
@@ -95,11 +97,10 @@ function titleMatchesUrlSlug(title: string, url: string): boolean {
 }
 
 /** True when the page title is generic, empty, or mostly site chrome — not the topic. */
-export function titleLooksWeak(title: string, url: string): boolean {
+export function titleIsGenericShell(title: string, url: string): boolean {
   const t = (title || '').trim();
   if (!t) return true;
   if (GENERIC_TITLE_EXACT.test(t)) return true;
-  if (BARE_SUBREDDIT_RE.test(t)) return true;
 
   const normalized = normalizeBookmarkUrl(url);
   if (t === url || t === normalized) return true;
@@ -113,6 +114,15 @@ export function titleLooksWeak(title: string, url: string): boolean {
   } catch {
     /* ignore */
   }
+
+  return false;
+}
+
+/** True when the page title is generic, empty, or mostly site chrome — not the topic. */
+export function titleLooksWeak(title: string, url: string): boolean {
+  const t = (title || '').trim();
+  if (titleIsGenericShell(t, url)) return true;
+  if (BARE_SUBREDDIT_RE.test(t)) return true;
 
   if (titleMatchesUrlSlug(t, url)) return true;
 
@@ -132,8 +142,7 @@ export function titleLooksWeak(title: string, url: string): boolean {
 export function shouldUpgradeBookmarkTitle(
   existingTitle: string | undefined,
   candidateTitle: string | undefined,
-  url: string,
-  options?: { afterEnrich?: boolean }
+  url: string
 ): boolean {
   const candidate = candidateTitle?.trim();
   if (!candidate || candidate.length < 6) return false;
@@ -151,12 +160,6 @@ export function shouldUpgradeBookmarkTitle(
 
   if (titleLooksWeak(current, url)) return true;
   if (titleLooksLikeBrowserChrome(current)) return true;
-
-  if (options?.afterEnrich && candidateCore.length >= 8) {
-    if (normalizeTitleCompare(currentCore) !== normalizeTitleCompare(candidateCore)) {
-      return true;
-    }
-  }
 
   if (
     SITE_SUFFIX_RE.test(current) &&

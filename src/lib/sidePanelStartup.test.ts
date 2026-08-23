@@ -52,6 +52,10 @@ describe('lightweight side-panel startup', () => {
     expect(view).toContain('useRef<number | null>(readSidePanelHostTabId())');
     expect(view).toContain('getTabBookmarkContext(activeTabIdRef.current)');
     expect(view).toContain('tabId === activeTabIdRef.current');
+    expect(view).toContain('window.setInterval');
+    expect(view).toContain('ensureTabContextMonitor(context.tabId)');
+    expect(view).toContain("message?.type !== 'side-panel-page-context-changed'");
+    expect(view).toContain('activeContextTitleRef');
     expect(view).toContain('onOpenInApp={() => onOpenFullPage(activeItem.id)}');
   });
 

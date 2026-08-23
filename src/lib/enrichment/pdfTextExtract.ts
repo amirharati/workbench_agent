@@ -1,4 +1,4 @@
-const MAX_PDF_BYTES = 50 * 1024 * 1024;
+const DEFAULT_MAX_PDF_BYTES = 50 * 1024 * 1024;
 const MAX_PDF_PAGES = 250;
 const MAX_PDF_TEXT_CHARS = 180_000;
 
@@ -54,9 +54,12 @@ export type PdfTextExtractResult = {
 /** Decode an already-authorized PDF response; no second network/provider hop. */
 export async function extractPdfText(
   bytes: Uint8Array,
-  options?: { signal?: AbortSignal; url?: string }
+  options?: { signal?: AbortSignal; url?: string; maxBytes?: number | null }
 ): Promise<PdfTextExtractResult> {
-  if (bytes.byteLength > MAX_PDF_BYTES) {
+  const maxBytes = options?.maxBytes === null
+    ? undefined
+    : options?.maxBytes ?? DEFAULT_MAX_PDF_BYTES;
+  if (maxBytes != null && bytes.byteLength > maxBytes) {
     throw new Error(`PDF is too large to extract (${Math.ceil(bytes.byteLength / 1024 / 1024)} MB)`);
   }
   if (options?.signal?.aborted) throw abortError();

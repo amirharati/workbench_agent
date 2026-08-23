@@ -5,6 +5,7 @@
  */
 
 import type { AISettings } from '../ai/types';
+import type { FetchEngine } from '../acquisition/types';
 import type { BatchDigestProgress, BatchDigestResult } from './batchDigest';
 import type { SingleLinkDigestResult } from './singleLinkDigest';
 
@@ -12,6 +13,8 @@ export const PIPELINE_OFFSCREEN_TARGET = 'pipeline-offscreen';
 export const PIPELINE_OFFSCREEN_OWNER = 'pipeline-offscreen-owner';
 
 export type OffscreenBatchJobOptions = {
+  /** Pinned when the durable job is submitted; resumes never re-read Settings. */
+  fetchEngine?: FetchEngine;
   enrich?: boolean;
   classify?: boolean;
   maxEnrich?: number;

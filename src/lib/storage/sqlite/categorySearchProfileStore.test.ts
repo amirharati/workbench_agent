@@ -94,6 +94,14 @@ describe('SQLite category search profiles', () => {
     expect(stored?.memberCentroid[0]).toBeCloseTo(0.5);
     expect(stored?.prototypeEmbedding[0]).toBeCloseTo(0.8);
     expect(stored?.prototypeEmbedding[1]).toBeCloseTo(0.2);
+
+    // Category edits and seed-hierarchy repair must update in place. SQLite
+    // REPLACE would delete the category first and cascade-delete both links
+    // and the persisted search profile.
+    store.putCategory({ ...category, name: 'Topic A updated', updated_at: 40 });
+    expect(store.getCategory(category.id)?.name).toBe('Topic A updated');
+    expect(store.getLinksByCategory(category.id)).toHaveLength(3);
+    expect(store.getCategorySearchProfile(category.id)?.metadataTextHash).toBe('metadata-hash');
     db.close();
   });
 });

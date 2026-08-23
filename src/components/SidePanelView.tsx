@@ -12,7 +12,12 @@ import type { Collection, Item, Project } from '../lib/db';
 import { readSidePanelHostTabId } from '../lib/appSurface';
 import { normalizeBookmarkUrl } from '../lib/db';
 import { favoriteItem, unfavoriteItem } from '../lib/itemQuickAccess';
-import { getActiveTabBookmarkContext, getTabBookmarkContext } from '../lib/tabUrlCapture';
+import {
+  ensureTabContextMonitor,
+  getActiveTabBookmarkContext,
+  getTabBookmarkContext,
+} from '../lib/tabUrlCapture';
+import { shouldUpgradeBookmarkTitle, titleIsGenericShell } from '../lib/enrichment/eligibility';
 import { isValidBookmarkUrl } from '../lib/utils';
 import { ButtonGhost, ButtonPrimary, IconButton, Input, Panel } from '../styles/primitives';
 import { ItemOrganizationEditor } from './dashboard/ItemOrganizationEditor';
@@ -100,6 +105,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const activeTabIdRef = useRef<number | null>(readSidePanelHostTabId());
   const activeUrlRef = useRef('');
+  const activeContextTitleRef = useRef('');
   const prefillSeqRef = useRef(0);
   const syncedItemIdRef = useRef<string | null>(null);
 
@@ -137,9 +143,13 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
     }
     if (syncedItemIdRef.current === activeItem.id) return;
     syncedItemIdRef.current = activeItem.id;
-    setTitle(activeItem.title || activeItem.url || '');
+    setTitle((current) => shouldUpgradeBookmarkTitle(
+      activeItem.title,
+      current,
+      activeItem.url || url
+    ) ? current : (activeItem.title || activeItem.url || ''));
     setNotes(activeItem.notes || '');
-  }, [activeItem, collections]);
+  }, [activeItem, collections, url]);
 
   const applyHostTab = useCallback(
     (tabUrl: string, tabTitle: string) => {
@@ -147,21 +157,27 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       if (!nextUrl) return;
       const changed =
         normalizeBookmarkUrl(nextUrl) !== normalizeBookmarkUrl(activeUrlRef.current);
+      const nextTitle = tabTitle.trim() || nextUrl;
+      const contextTitleChanged = nextTitle !== activeContextTitleRef.current;
       activeUrlRef.current = nextUrl;
+      activeContextTitleRef.current = nextTitle;
       setUrl(nextUrl);
       if (changed) {
         syncedItemIdRef.current = null;
-        setTitle(tabTitle.trim() || nextUrl);
+        setTitle(nextTitle);
         setNotes('');
         setError(null);
         setOrganizeOpen(false);
         onHostTabNavigate?.();
-      } else if (!activeItem) {
-        setTitle((current) => current || tabTitle.trim() || nextUrl);
+        onHostTabContext?.(nextUrl);
+      } else if (contextTitleChanged && !titleIsGenericShell(nextTitle, nextUrl)) {
+        // This is live browser context, not a stored-title overwrite. A SPA can
+        // replace the visible document while retaining the same URL, so a new
+        // meaningful live title must replace the previous page's title.
+        setTitle(nextTitle);
       }
-      onHostTabContext?.(nextUrl);
     },
-    [activeItem, onHostTabContext, onHostTabNavigate]
+    [onHostTabContext, onHostTabNavigate]
   );
 
   const prefillFromHostTab = useCallback(async () => {
@@ -173,6 +189,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
       if (!context || seq !== prefillSeqRef.current) return;
       activeTabIdRef.current = context.tabId;
       applyHostTab(context.url, context.title);
+      void ensureTabContextMonitor(context.tabId);
     } catch {
       /* restricted pages may not expose a normal tab context */
     }
@@ -181,9 +198,10 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   useEffect(() => {
     void prefillFromHostTab();
     const onFocus = () => void prefillFromHostTab();
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void prefillFromHostTab();
-    };
+    const onVisible = () => void prefillFromHostTab();
+    const contextPoll = window.setInterval(() => {
+      void prefillFromHostTab();
+    }, 1_500);
     const onActivated = ({ tabId }: { tabId: number }) => {
       if (activeTabIdRef.current == null || tabId === activeTabIdRef.current) {
         void prefillFromHostTab();
@@ -198,15 +216,26 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
         void prefillFromHostTab();
       }
     };
+    const onPageContextChanged = (
+      message: { type?: string },
+      sender: chrome.runtime.MessageSender
+    ) => {
+      if (message?.type !== 'side-panel-page-context-changed') return;
+      if (activeTabIdRef.current == null || sender.tab?.id !== activeTabIdRef.current) return;
+      void prefillFromHostTab();
+    };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisible);
     chrome.tabs.onActivated.addListener(onActivated);
     chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.runtime.onMessage.addListener(onPageContextChanged);
     return () => {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
       chrome.tabs.onActivated.removeListener(onActivated);
       chrome.tabs.onUpdated.removeListener(onUpdated);
+      chrome.runtime.onMessage.removeListener(onPageContextChanged);
+      window.clearInterval(contextPoll);
     };
   }, [prefillFromHostTab]);
 

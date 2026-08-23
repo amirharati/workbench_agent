@@ -76,6 +76,11 @@ Import / Hub / sidebar / inspectors / maintenance UI
 
 ## Browser-session fetching
 
+> Replacement plan — 2026-08-23: the browser-fetch/extraction implementation described below is the current
+> production stack, not the final design. Do not extend it with more routing patches. The approved clean
+> replacement, isolated build phases, acceptance corpus, atomic cutover, and legacy-removal criteria are in
+> [V3 fetch service replacement roadmap](./FETCH_SERVICE_REBUILD.md).
+
 The offscreen document cannot call `chrome.tabs` or `chrome.scripting`, so protocol v14 sends a cancellable
 browser-fetch request to the service worker. Every URL uses the authenticated browser path first: reuse an
 exact matching tab when one exists, otherwise open one inactive temporary tab in the user's Chrome profile,

@@ -128,6 +128,7 @@ async function runStage(
   switch (claim.task.stage) {
     case 'enrich': {
       const result = await enrichOne(itemId, {
+        fetchEngine: options.fetchEngine,
         force: options.forceEnrich === true,
         skipAi: options.skipAi,
         deferPostProcess: true,

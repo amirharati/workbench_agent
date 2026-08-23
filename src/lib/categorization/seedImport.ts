@@ -159,11 +159,49 @@ export function validateTaxonomyInvariant(
 }
 
 /**
+ * Older seed imports could persist a bundled leaf as a flat row with no
+ * parent. The parent is immutable bundled structure, so restoring this one
+ * missing field is safe and preserves assignments, counts, labels, and all
+ * user-created/discovered categories.
+ *
+ * Deliberately do not repair a non-empty/wrong parent, a non-seed row, a
+ * missing category, or any other invariant failure. Those cases still require
+ * an explicit taxonomy reset.
+ */
+export function planMissingBundledHierarchyRepair(
+  existing: AiCategory[],
+  bundledRows: AiCategory[],
+  now = Date.now()
+): AiCategory[] {
+  const existingById = new Map(existing.map((category) => [category.id, category]));
+  return bundledRows.flatMap((bundled) => {
+    if (bundled.kind !== 'leaf' || !bundled.parentId) return [];
+    const current = existingById.get(bundled.id);
+    if (
+      !current ||
+      current.kind !== 'leaf' ||
+      current.source !== 'seed' ||
+      current.parentId != null
+    ) {
+      return [];
+    }
+    return [{
+      ...current,
+      parentId: bundled.parentId,
+      parentName: bundled.parentName ?? bundled.parentId,
+      updated_at: now,
+    }];
+  });
+}
+
+/**
  * Create the complete taxonomy once, or validate an existing taxonomy.
- * Never patch, migrate, reparent, or otherwise mutate a non-empty taxonomy.
+ * The only automatic repair is the old seed-owned flat-leaf representation
+ * handled above. Custom/discovered structure is never migrated here.
  */
 export async function ensureBundledSeedTaxonomy(): Promise<{
   created: number;
+  repaired?: number;
 }> {
   const { getDB } = await import('../db');
   const { notifyDataChanged } = await import('../dataChangeNotifier');
@@ -173,7 +211,16 @@ export async function ensureBundledSeedTaxonomy(): Promise<{
   const bundledRows = seedDocumentToCategories(doc);
 
   if (existing.length) {
-    const errors = validateTaxonomyInvariant(existing, bundledRows);
+    const repairs = planMissingBundledHierarchyRepair(existing, bundledRows);
+    let validatedRows = existing;
+    if (repairs.length) {
+      const tx = db.transaction(['ai_categories'], 'readwrite');
+      for (const row of repairs) await tx.objectStore('ai_categories').put(row);
+      await tx.done;
+      const repairsById = new Map(repairs.map((row) => [row.id, row]));
+      validatedRows = existing.map((row) => repairsById.get(row.id) ?? row);
+    }
+    const errors = validateTaxonomyInvariant(validatedRows, bundledRows);
     if (errors.length) {
       const detail = errors.slice(0, 5).join('; ');
       const remaining = errors.length > 5 ? `; and ${errors.length - 5} more` : '';
@@ -182,7 +229,13 @@ export async function ensureBundledSeedTaxonomy(): Promise<{
           'Reset or recreate this test database; Homebase will not migrate it automatically.'
       );
     }
-    return { created: 0 };
+    if (repairs.length) {
+      notifyDataChanged('categorization.update');
+      const { flushDurableBackupSoon } = await import('../storage/flushDurableBackup');
+      flushDurableBackupSoon();
+      console.info(`[taxonomy] restored bundled parent hierarchy (${repairs.length} seed leaves)`);
+    }
+    return { created: 0, repaired: repairs.length };
   }
 
   const tx = db.transaction(['ai_categories', 'ai_taxonomy_state'], 'readwrite');

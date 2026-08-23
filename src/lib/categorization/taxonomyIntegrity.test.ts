@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mergeDiscoveryLeaves } from './discoverTaxonomy';
 import {
   getBundledSeedDocument,
+  planMissingBundledHierarchyRepair,
   seedDocumentToCategories,
   validateTaxonomyInvariant,
 } from './seedImport';
@@ -25,6 +26,44 @@ describe('taxonomy integrity', () => {
     const errors = validateTaxonomyInvariant(partial, bundled);
     expect(errors).toContain('missing bundled parent "machine-learning"');
     expect(errors).toContain('active leaf "seed_movies-tv-streaming" has no active parent');
+  });
+
+  it('repairs only seed-owned flat leaves while preserving their data', () => {
+    const bundled = seedDocumentToCategories(getBundledSeedDocument(), 10);
+    const target = bundled.find((category) => category.id === 'seed_ml-inference-infra');
+    expect(target?.parentId).toBe('ai-productivity');
+    const flat = bundled.map((category) => category.id === target?.id
+      ? {
+          ...category,
+          parentId: undefined,
+          parentName: undefined,
+          itemCount: 19,
+          description: 'Preserve this existing description',
+          updated_at: 11,
+        }
+      : category);
+
+    const repairs = planMissingBundledHierarchyRepair(flat, bundled, 20);
+    expect(repairs).toHaveLength(1);
+    expect(repairs[0]).toMatchObject({
+      id: 'seed_ml-inference-infra',
+      parentId: 'ai-productivity',
+      itemCount: 19,
+      description: 'Preserve this existing description',
+      updated_at: 20,
+    });
+    const repaired = flat.map((category) => repairs.find((row) => row.id === category.id) ?? category);
+    expect(validateTaxonomyInvariant(repaired, bundled)).toEqual([]);
+  });
+
+  it('does not silently reparent wrong or discovered rows', () => {
+    const bundled = seedDocumentToCategories(getBundledSeedDocument(), 10);
+    const target = bundled.find((category) => category.id === 'seed_ml-inference-infra')!;
+    const wrongParent = { ...target, parentId: 'product-gtm' };
+    const discoveredFlat = { ...target, parentId: undefined, source: 'discovered' as const };
+
+    expect(planMissingBundledHierarchyRepair([wrongParent], bundled)).toEqual([]);
+    expect(planMissingBundledHierarchyRepair([discoveredFlat], bundled)).toEqual([]);
   });
 
   it('rejects invalid leaf hierarchy and never creates discovered error children', () => {

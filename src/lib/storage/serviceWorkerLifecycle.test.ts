@@ -161,6 +161,13 @@ function loadServiceWorker(options: {
         fetchPdf,
       }),
     },
+    HomebaseAcquisitionV2BrowserService: {
+      createAcquisitionV2BrowserService: () => ({
+        cancel: async () => ({ ok: true }),
+        capture: async () => ({ ok: true, evidence: { frames: [] } }),
+        readDocument: async () => ({ ok: true, base64: 'JVBERg==' }),
+      }),
+    },
   };
   const evaluate = new Function('chrome', 'importScripts', 'globalThis', source);
   evaluate(chrome, () => {}, isolatedGlobal);

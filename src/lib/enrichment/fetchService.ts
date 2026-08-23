@@ -90,6 +90,8 @@ import {
   saveEnrichPipelineDebug,
 } from './pipelineDebug';
 import type { PipelineDebugAICall } from '../ai/callAudit';
+import { acquireContentV2, acquisitionResultToFetchResult } from '../acquisition/service';
+import type { FetchEngine } from '../acquisition/types';
 
 let activeProvider: FetchProvider = hybridProvider;
 
@@ -209,7 +211,7 @@ async function applyItemTier2Updates(
   const titleCandidate = ai?.improvedTitle?.trim() || parsedTitle?.trim();
   if (
     titleCandidate &&
-    shouldUpgradeBookmarkTitle(item.title, titleCandidate, item.url, { afterEnrich: true })
+    shouldUpgradeBookmarkTitle(item.title, titleCandidate, item.url)
   ) {
     updates.title = titleCandidate;
     applied.push('title');
@@ -941,6 +943,8 @@ async function preservePriorOnSuspiciousFetch(
 export async function enrichOne(
   itemId: string,
   options?: {
+    /** Acquisition implementation pinned by the durable pipeline job. */
+    fetchEngine?: FetchEngine;
     force?: boolean;
     signal?: AbortSignal;
     refetchCompare?: boolean;
@@ -959,6 +963,8 @@ export async function enrichOne(
   }
 ): Promise<EnrichmentResult> {
   const deferPostProcess = options?.deferPostProcess === true;
+  const fetchEngine = options?.fetchEngine ?? 'legacy';
+  const providerId = fetchEngine === 'v2' ? 'acquisition-v2' : activeProvider.id;
   const saveEnrichment = (record: ItemEnrichment) =>
     putEnrichment(record, { deferPostProcess });
   const item = await getItem(itemId);
@@ -971,7 +977,7 @@ export async function enrichOne(
   if (options?.tabSessionOnly) {
     preferTabSession = Boolean(options?.preferTabSession);
     tabId = options?.tabId;
-  } else if (isXStatusUrl(item.url) && options?.preferTabSession !== true) {
+  } else if (fetchEngine === 'legacy' && isXStatusUrl(item.url) && options?.preferTabSession !== true) {
     preferTabSession = false;
     tabId = undefined;
   } else {
@@ -1007,7 +1013,7 @@ export async function enrichOne(
     itemId: item.id,
     normalizedUrl: normalizeBookmarkUrl(item.url),
     status: 'pending',
-    providerId: activeProvider.id,
+    providerId,
     attempts,
     sourceKind,
     hasRawBody: false,
@@ -1051,6 +1057,7 @@ export async function enrichOne(
       redirect: redirectDebug,
       aiCalls: aiCalls.length ? aiCalls : undefined,
       options: {
+        fetchEngine,
         preferTabSession,
         tabId,
         tabSessionOnly: options?.tabSessionOnly,
@@ -1061,15 +1068,30 @@ export async function enrichOne(
 
   try {
     const fetchStart = Date.now();
-    let fetchResult = await resolveItemFetch(item, pending, sourceKind, {
-      force: options?.force,
-      signal: options?.signal,
-      preferTabSession,
-      tabId,
-      tabSessionOnly: options?.tabSessionOnly,
-      browserWindowId: options?.browserWindowId,
-      debug: collector,
-    });
+    let fetchResult: FetchProviderResult;
+    if (fetchEngine === 'v2') {
+      const acquisition = await acquireContentV2({
+        itemId: item.id,
+        url: item.url,
+        normalizedUrl: pending.normalizedUrl,
+        sourceKind,
+        signal: options?.signal,
+        preferredTabId: tabId,
+        browserWindowId: options?.browserWindowId,
+        tabSessionOnly: options?.tabSessionOnly,
+      });
+      fetchResult = acquisitionResultToFetchResult(acquisition);
+    } else {
+      fetchResult = await resolveItemFetch(item, pending, sourceKind, {
+        force: options?.force,
+        signal: options?.signal,
+        preferTabSession,
+        tabId,
+        tabSessionOnly: options?.tabSessionOnly,
+        browserWindowId: options?.browserWindowId,
+        debug: collector,
+      });
+    }
     fetchMs = Date.now() - fetchStart;
 
     if (!fetchResult.ok || !fetchResult.markdown) {
@@ -1203,6 +1225,16 @@ export async function enrichOne(
       existing.contentHash === contentHash;
 
     if (pageUnchanged && existing.aiStatus === 'ok') {
+      const applied = await applyItemTier2Updates(
+        item,
+        parsed.title,
+        sourceKind,
+        undefined,
+        fetchResult.previewImage
+      );
+      const tier2Applied = applied.length > 0
+        ? [...new Set([...(existing.tier2Applied || []), ...applied])]
+        : existing.tier2Applied;
       await saveEnrichment({
         ...existing,
         textHash,
@@ -1214,6 +1246,7 @@ export async function enrichOne(
         pendingFetchReview: false,
         pendingFetchReviewReason: undefined,
         reviewRawRef: undefined,
+        tier2Applied,
         updated_at: now,
       });
       debugOutcome = {
@@ -1444,7 +1477,7 @@ export async function enrichOne(
     const diskBody = buildDiskDump({
       url: item.url,
       fetchSourceId: fetchResult.fetchSourceId,
-      providerId: activeProvider.id,
+      providerId,
       ai: options?.skipAi ? null : (aiExtract ?? null),
       references: hardFailure ? null : references,
       redirect: redirectDebug ?? null,
@@ -1475,7 +1508,7 @@ export async function enrichOne(
       itemId: item.id,
       normalizedUrl: pending.normalizedUrl,
       status,
-      providerId: activeProvider.id,
+      providerId,
       fetchSourceId: fetchResult.fetchSourceId,
       fetchedAt: now,
       attempts,

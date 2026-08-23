@@ -62,14 +62,17 @@ Real-extension checkpoint — 2026-08-10:
 
 ## Remaining work
 
-1. Run the real-extension acceptance sequence below.
-2. Fix only concrete failures observed at the current gate; do not reintroduce alternate runners.
-3. After lifecycle acceptance, consider splitting `enrich` into real compute/commit boundaries:
+1. Replace the current browser-fetch/extraction stack using the isolated
+   [V3 fetch service replacement roadmap](./FETCH_SERVICE_REBUILD.md). Do not repair the local-PDF regression
+   by adding another branch to the legacy router; local PDF is an acceptance case for the replacement.
+2. Run the real-extension acceptance sequence below against the replacement service.
+3. Fix only concrete failures observed at the current gate; do not reintroduce alternate runners.
+4. After lifecycle acceptance, consider splitting `enrich` into real compute/commit boundaries:
    `fetch -> content commit -> AI extract -> enrichment commit`.
-4. Add explicit UI for retrying `failed`/`uncertain` items after the base lifecycle is proven.
-5. Remove the optional legacy pipeline-analysis folder/export feature after stabilization if it is no longer
+5. Add explicit UI for retrying `failed`/`uncertain` items after the base lifecycle is proven.
+6. Remove the optional legacy pipeline-analysis folder/export feature after stabilization if it is no longer
    useful. Normal processing no longer creates `pipeline-runs/`.
-6. Consider bounded concurrency only after the large-batch gate passes with one lane.
+7. Consider bounded concurrency only after the large-batch gate passes with one lane.
 
 ## Real-extension acceptance sequence
 
