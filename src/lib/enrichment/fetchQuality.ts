@@ -1,6 +1,7 @@
 import type { EnrichmentErrorCode } from './types';
 import { ENRICHMENT_DEFAULTS } from './types';
 import { classifySourceKind } from './eligibility';
+import { minExtractRawChars, prepareExtractInput } from './extractFilters';
 import { normalizeHost } from './urlPolicy';
 
 /** Remove Jina / markdown.new metadata header before parsing body. */
@@ -261,19 +262,44 @@ export function isHttpErrorPageBody(body: string, title?: string): boolean {
   return false;
 }
 
-/** Prefer arxiv abstract HTML over PDF stream for link-follow. */
-export function rewriteLinkFollowUrl(url: string): string {
+/**
+ * Prefer a readable scholarly landing page over a browser PDF viewer/binary.
+ * The saved bookmark URL remains unchanged; this is only the fetch representation.
+ */
+export function rewriteDocumentFetchUrl(url: string): string {
   try {
     const u = new URL(url);
     const host = u.hostname.replace(/^www\./i, '').toLowerCase();
     if (host === 'arxiv.org' && /\/pdf\//i.test(u.pathname)) {
-      u.pathname = u.pathname.replace(/\/pdf\//i, '/abs/');
+      u.pathname = u.pathname.replace(/\/pdf\//i, '/abs/').replace(/\.pdf$/i, '');
+      return u.toString();
+    }
+    if (host === 'openreview.net') {
+      const queryId = u.searchParams.get('id')?.trim();
+      // `?id=` identifies a Note and has a real forum landing page. A
+      // `/pdf/<40-char-file-id>.pdf` path identifies only the stored file;
+      // treating that hash as a forum ID produces an invalid helper page.
+      if (queryId && /^\/pdf\/?$/i.test(u.pathname)) {
+        u.pathname = '/forum';
+        u.search = '';
+        u.searchParams.set('id', queryId);
+        u.hash = '';
+        return u.toString();
+      }
+    }
+    if (host === 'aclanthology.org' && /\.pdf$/i.test(u.pathname)) {
+      u.pathname = u.pathname.replace(/\.pdf$/i, '/');
       return u.toString();
     }
   } catch {
     /* keep original */
   }
   return url;
+}
+
+/** @deprecated All document fetches now use the same representation rewrite. */
+export function rewriteLinkFollowUrl(url: string): string {
+  return rewriteDocumentFetchUrl(url);
 }
 
 /** High-confidence blocks — skip AI; body is almost certainly unusable. */
@@ -413,4 +439,22 @@ export function isFetchBodyUsable(
   const body = stripProviderWrapper(markdown);
   if (explainHardFetchFailure(body, ctx)) return false;
   return body.length >= minChars;
+}
+
+/**
+ * Shared provider/tab acceptance gate. For articles, require enough readable
+ * post-chrome content for the downstream AI extractor, not merely 80 raw DOM
+ * characters. This lets the next provider run instead of prematurely keeping
+ * a cookie/login/navigation shell.
+ */
+export function isFetchBodySubstantive(
+  markdown: string,
+  ctx: FetchQualityContext = {}
+): boolean {
+  const body = stripProviderWrapper(markdown);
+  if (!isFetchBodyUsable(body, ENRICHMENT_DEFAULTS.minUsefulSnippetChars, ctx)) return false;
+  if (explainSoftFetchSuspect(body, ctx)) return false;
+  if (!ctx.url || classifySourceKind(ctx.url) !== 'article') return true;
+  const prepared = prepareExtractInput(ctx.title, body, 'article');
+  return !prepared.shouldSkip && prepared.body.length >= minExtractRawChars('article');
 }

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 type BrowserFetchService = {
   extract(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  fetchPdf(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   cancel(requestId: string): Promise<Record<string, unknown>>;
 };
 
@@ -35,6 +36,47 @@ function extractedBody() {
 }
 
 describe('service-worker browser fetch capability', () => {
+  it('downloads protected PDF bytes inside an authenticated same-origin page', async () => {
+    const tab = { id: 31, url: 'https://openreview.net/forum?id=paper', status: 'complete' };
+    const tabs = {
+      query: vi.fn(async () => [tab]),
+      get: vi.fn(async () => tab),
+      create: vi.fn(),
+      remove: vi.fn(async () => undefined),
+      onUpdated: eventHook(),
+      onRemoved: eventHook(),
+    };
+    const scripting = {
+      executeScript: vi.fn(async () => [{
+        result: {
+          ok: true,
+          base64: 'JVBERi0xLjQ=',
+          contentType: 'application/pdf',
+          finalUrl: 'https://openreview.net/pdf/paper.pdf',
+        },
+      }]),
+    };
+    const service = loadFactory()({ tabs, scripting });
+
+    const result = await service.fetchPdf({
+      requestId: 'protected-pdf',
+      url: 'https://openreview.net/pdf/paper.pdf',
+      allowEphemeral: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      base64: 'JVBERi0xLjQ=',
+      fetchSourceId: 'tab-session-pdf',
+    });
+    expect(tabs.create).not.toHaveBeenCalled();
+    expect(scripting.executeScript).toHaveBeenCalledWith(expect.objectContaining({
+      target: { tabId: 31 },
+      world: 'MAIN',
+      args: ['https://openreview.net/pdf/paper.pdf', 25 * 1024 * 1024],
+    }));
+  });
+
   it('reuses a matching authenticated tab without opening a new one', async () => {
     const tab = { id: 41, url: 'https://private.example.com/article', status: 'complete' };
     const tabs = {

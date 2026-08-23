@@ -75,6 +75,7 @@ function loadServiceWorker(options: {
     });
   });
   const extract = vi.fn(async () => ({ ok: true }));
+  const fetchPdf = vi.fn(async () => ({ ok: true, base64: 'JVBERg==' }));
   const setBadgeText = vi.fn(async () => {});
   const setActionTitle = vi.fn(async () => {});
   const createTab = vi.fn(async () => ({}));
@@ -157,6 +158,7 @@ function loadServiceWorker(options: {
       createBrowserFetchService: () => ({
         cancel: async () => ({ ok: true }),
         extract,
+        fetchPdf,
       }),
     },
   };
@@ -187,6 +189,18 @@ function loadServiceWorker(options: {
     });
   }
 
+  async function requestBrowserPdf(): Promise<unknown> {
+    const listener = runtimeListeners[0];
+    return new Promise((resolve, reject) => {
+      const handled = listener(
+        { target: 'browser-fetch-service', action: 'fetch-pdf', requestId: 'pdf-1' },
+        {},
+        resolve
+      );
+      if (handled !== true) reject(new Error('Browser PDF fetch was not handled asynchronously'));
+    });
+  }
+
   return {
     actionClickedListeners,
     closeDocument,
@@ -196,8 +210,10 @@ function loadServiceWorker(options: {
     createDocument,
     installedListeners,
     extract,
+    fetchPdf,
     pingDbOwner,
     requestBrowserExtract,
+    requestBrowserPdf,
     runtimeSendMessage,
     sessionSet,
     sessionValues,
@@ -515,6 +531,10 @@ describe('service-worker owner lifecycle', () => {
     await vi.waitFor(() => expect(worker.sessionSet).toHaveBeenCalled());
     await expect(worker.requestBrowserExtract()).resolves.toMatchObject({ ok: true });
     expect(worker.extract).toHaveBeenCalledWith(expect.objectContaining({
+      sidePanelHostTabId: 42,
+    }));
+    await expect(worker.requestBrowserPdf()).resolves.toMatchObject({ ok: true });
+    expect(worker.fetchPdf).toHaveBeenCalledWith(expect.objectContaining({
       sidePanelHostTabId: 42,
     }));
   });

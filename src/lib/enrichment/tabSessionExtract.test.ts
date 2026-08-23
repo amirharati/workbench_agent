@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  fetchPdfThroughBrowserService,
   fetchThroughBrowserService,
   shouldUseEphemeralTab,
 } from './tabSessionExtract';
@@ -89,6 +90,38 @@ describe('offscreen browser-fetch client', () => {
     expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
       target: 'browser-fetch-service',
       action: 'extract',
+      allowEphemeral: true,
+      windowId: 17,
+    }));
+  });
+
+  it('decodes authenticated PDF bytes returned by the service worker', async () => {
+    const sendMessage = vi.fn(async (message: { action?: string }) => {
+      expect(message.action).toBe('fetch-pdf');
+      return {
+        ok: true,
+        base64: 'JVBERi0xLjQ=',
+        contentType: 'application/pdf',
+        finalUrl: 'https://openreview.net/pdf/paper.pdf',
+      };
+    });
+    vi.stubGlobal('chrome', { runtime: { sendMessage } });
+
+    const result = await fetchPdfThroughBrowserService(
+      'https://openreview.net/pdf/paper.pdf',
+      {
+        sessionUrl: 'https://openreview.net/forum?id=paper',
+        allowEphemeral: true,
+        windowId: 17,
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(new TextDecoder('latin1').decode(result.bytes)).toBe('%PDF-1.4');
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      target: 'browser-fetch-service',
+      action: 'fetch-pdf',
+      sessionUrl: 'https://openreview.net/forum?id=paper',
       allowEphemeral: true,
       windowId: 17,
     }));

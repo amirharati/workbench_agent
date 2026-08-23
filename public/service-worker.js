@@ -656,14 +656,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse(await browserFetchService.cancel(message.requestId));
           return;
         }
-        if (message.action !== 'extract') {
+        if (message.action !== 'extract' && message.action !== 'fetch-pdf') {
           sendResponse({ ok: false, error: 'Unknown browser-fetch action' });
           return;
         }
-        sendResponse(await browserFetchService.extract({
+        const input = {
           ...message,
           sidePanelHostTabId: await readSidePanelHostTabId(),
-        }));
+        };
+        sendResponse(message.action === 'fetch-pdf'
+          ? await browserFetchService.fetchPdf(input)
+          : await browserFetchService.extract(input));
       } catch (error) {
         sendResponse({ ok: false, error: String(error), errorCode: 'provider_error' });
       }

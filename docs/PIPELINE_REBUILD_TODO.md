@@ -18,8 +18,9 @@ Completed in code:
 - Shared read-only dashboard job banner and durable cross-tab cancellation.
 - Service-worker wake alarm plus browser-start recovery.
 - Protocol-v14 service-worker browser-fetch capability for reusing matching authenticated tabs and opening
-  one serialized temporary tab. Ordinary URL processing is browser-session first; X/video retain their
-  specialized provider-first routes.
+  one serialized temporary tab. All URL processing is browser-session first; source-specific providers remain
+  fallbacks when the rendered/authenticated result is unavailable or fails its quality gate. PDFs fetch bytes
+  in a first-party browser context and use the shared local decoder rather than scraping Chrome's viewer.
 - Schema-v6 job/window affinity: Start and Resume bind temporary fetch tabs to the calling dashboard's
   Chrome window; owner-dashboard closure pauses safely after the current stage and preserves pending work.
   Resume also resends AI settings ephemerally without persisting the key.

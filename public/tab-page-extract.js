@@ -638,6 +638,7 @@
     if (title) parts.push('# ' + title);
     if (description) parts.push(description);
 
+    var body = '';
     var main =
       document.querySelector('main') ||
       document.querySelector('[role="main"]');
@@ -647,14 +648,21 @@
         'script, style, noscript, svg, iframe, nav, footer, header'
       );
       for (var i = 0; i < remove.length; i++) remove[i].remove();
-      var body = cleanText(clone.innerText || clone.textContent).slice(0, 8000);
-      if (body.length >= MIN_MARKDOWN_CHARS) parts.push(body);
+      body = cleanText(clone.innerText || clone.textContent).slice(0, 8000);
     }
 
-    if (!parts.length) {
-      var fallback = cleanText(document.body && document.body.innerText).slice(0, 8000);
-      if (fallback.length >= MIN_MARKDOWN_CHARS) parts.push(fallback);
+    // Metadata can exist even when the site has no semantic <main>. Do not let
+    // a title plus one-line OG description suppress the visible document body.
+    if (body.length < MIN_MARKDOWN_CHARS && document.body) {
+      var bodyClone = document.body.cloneNode(true);
+      var bodyRemove = bodyClone.querySelectorAll(
+        'script, style, noscript, svg, iframe, nav, footer, header'
+      );
+      for (var j = 0; j < bodyRemove.length; j++) bodyRemove[j].remove();
+      var fallback = cleanText(bodyClone.innerText || bodyClone.textContent).slice(0, 8000);
+      if (fallback.length > body.length) body = fallback;
     }
+    if (body.length >= MIN_MARKDOWN_CHARS) parts.push(body);
 
     var markdown = parts.join('\n\n').trim();
     if (markdown.length < MIN_MARKDOWN_CHARS) {

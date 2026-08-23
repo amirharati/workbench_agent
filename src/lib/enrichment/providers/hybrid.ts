@@ -1,6 +1,10 @@
 import { classifySourceKind } from '../eligibility';
 import { buildRedirectContext, probeRedirectFinalUrl } from '../fetchRedirect';
-import { explainHardFetchFailure, isFetchBodyUsable, type FetchQualityContext } from '../fetchQuality';
+import {
+  isFetchBodySubstantive,
+  rewriteDocumentFetchUrl,
+  type FetchQualityContext,
+} from '../fetchQuality';
 import { isFileUrl, isRedditHost, isShortLinkHost, resolveFetchUrl, tcoUnresolvedError } from '../urlPolicy';
 import { jinaProvider } from './jina';
 import { localProvider } from './local';
@@ -13,8 +17,7 @@ const X_CHAIN = [syndicationProvider, localProvider] as const;
 
 function resultUsable(result: FetchProviderResult, ctx: FetchQualityContext): boolean {
   if (!result.ok || !result.markdown?.trim()) return false;
-  if (explainHardFetchFailure(result.markdown, ctx)) return false;
-  return isFetchBodyUsable(result.markdown, undefined, ctx);
+  return isFetchBodySubstantive(result.markdown, { ...ctx, title: result.title ?? ctx.title });
 }
 
 function chainForUrl(url: string): FetchProvider[] {
@@ -49,7 +52,7 @@ export const hybridProvider: FetchProvider = {
     const requestedUrl = input.hints?.requestedUrl ?? input.url;
     const probe = await probeRedirectFinalUrl(requestedUrl, input.signal);
     const { url: resolvedUrl } = await resolveFetchUrl(input.url, input.signal);
-    const ctx: FetchQualityContext = { url: resolvedUrl };
+    const contentUrl = rewriteDocumentFetchUrl(resolvedUrl);
 
     if (isShortLinkHost(input.url) && isShortLinkHost(resolvedUrl)) {
       return attachProbeRedirect(
@@ -91,31 +94,56 @@ export const hybridProvider: FetchProvider = {
       );
     }
 
-    const resolvedInput = {
-      ...input,
-      url: resolvedUrl,
-      hints: { ...input.hints, requestedUrl },
-    };
     let last: FetchProviderResult = { ok: false, errorCode: 'provider_error' };
     const failures: FetchProviderResult[] = [];
+    const representations =
+      contentUrl === resolvedUrl ? [resolvedUrl] : [resolvedUrl, contentUrl];
 
-    for (const provider of chainForUrl(resolvedUrl)) {
-      const result = await provider.fetchUrl(resolvedInput);
-      last = attachProbeRedirect(
-        {
-          ...result,
-          fetchSourceId: result.fetchSourceId ?? provider.id,
-        },
-        requestedUrl,
-        probe
-      );
-      if (resultUsable(result, ctx)) {
-        return last;
+    for (const representationUrl of representations) {
+      const representationInput = {
+        ...input,
+        url: representationUrl,
+        hints: { ...input.hints, requestedUrl: representationUrl },
+      };
+      const ctx: FetchQualityContext = { url: representationUrl };
+
+      for (const provider of chainForUrl(resolvedUrl)) {
+        const result = await provider.fetchUrl(representationInput);
+        last = attachProbeRedirect(
+          {
+            ...result,
+            ...(representationUrl !== resolvedUrl
+              ? {
+                  // A scholarly landing page is an intentional representation,
+                  // not a redirect away from the saved PDF bookmark.
+                  finalUrl: probe.finalUrl,
+                  redirectContext: buildRedirectContext(requestedUrl, probe.finalUrl, probe.hops),
+                }
+              : {}),
+            fetchSourceId: result.fetchSourceId ?? provider.id,
+          },
+          requestedUrl,
+          probe
+        );
+        if (resultUsable(result, ctx)) {
+          return last;
+        }
+        if (result.ok) {
+          last = {
+            ...last,
+            ok: false,
+            errorCode: 'parse_empty',
+            error:
+              provider.id === 'jina'
+                ? 'Reader returned no usable article text'
+                : 'Page contained too little readable article text',
+          };
+        }
+        failures.push(last);
       }
-      if (!result.ok) failures.push(last);
     }
 
-    const withDetail = failures.find((f) => f.error?.trim()) ?? last;
+    const withDetail = [...failures].reverse().find((f) => f.error?.trim()) ?? last;
     return attachProbeRedirect(
       {
         ...last,

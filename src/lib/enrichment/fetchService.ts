@@ -20,6 +20,7 @@ import {
   buildRedirectContext,
   shouldFlagRedirectReview,
   shouldRunRedirectAiVerdict,
+  urlsEquivalentForRedirect,
   type RedirectContext,
 } from './fetchRedirect';
 import { runRedirectAiVerdict, type RedirectAiVerdictData, type RedirectAiVerdictOutcome } from './redirectAiVerdict';
@@ -27,8 +28,9 @@ import { resolveSummaryRedirectPromptMode } from './prompts';
 import {
   explainHardFetchFailure,
   explainSoftFetchSuspect,
-  isFetchBodyUsable,
+  isFetchBodySubstantive,
   isVideoTabBodyUsable,
+  rewriteDocumentFetchUrl,
   stripProviderWrapper,
 } from './fetchQuality';
 import {
@@ -44,6 +46,7 @@ import { enrichMarkdownWithVision, needsImageVisionEnrichment } from './imageVis
 import { buildMediaPrimaryMechanicalSummary, isMediaPrimaryXContent } from './xMedia';
 import { hybridProvider } from './providers/hybrid';
 import { jinaProvider } from './providers/jina';
+import { fetchAuthenticatedPdf, looksLikeRemotePdf } from './providers/local';
 import { noopProvider } from './providers/noop';
 import type { FetchProvider, FetchProviderResult } from './providers/types';
 import { timedAbortSignal } from './fetchAbort';
@@ -512,7 +515,7 @@ async function tryOpenTabFetch(
   return { result: null, error: lastError };
 }
 
-function acceptTabFetchResult(result: FetchProviderResult, url: string): boolean {
+export function acceptTabFetchResult(result: FetchProviderResult, url: string): boolean {
   if (!result.ok || !result.markdown?.trim()) return false;
   const clean = stripProviderWrapper(result.markdown);
   if (classifySourceKind(url) === 'x') {
@@ -521,7 +524,7 @@ function acceptTabFetchResult(result: FetchProviderResult, url: string): boolean
   if (classifySourceKind(url) === 'video') {
     return isVideoTabBodyUsable(clean, url, result.title);
   }
-  return true;
+  return isFetchBodySubstantive(clean, { url, title: result.title });
 }
 
 function headlessSyndicationIsGoodEnough(
@@ -556,14 +559,7 @@ export function shouldRetryWithBrowserTab(
 
   if (!cleanMarkdown?.trim()) return true;
 
-  const qualityCtx = { url, title: headless.title };
-  if (explainHardFetchFailure(cleanMarkdown, qualityCtx)) return true;
-  if (explainSoftFetchSuspect(cleanMarkdown, qualityCtx)) return true;
-  if (!isFetchBodyUsable(cleanMarkdown, ENRICHMENT_DEFAULTS.minUsefulSnippetChars, qualityCtx)) {
-    return true;
-  }
-
-  return false;
+  return !isFetchBodySubstantive(cleanMarkdown, { url, title: headless.title });
 }
 
 export function shouldAllowEphemeralTabRetry(
@@ -579,21 +575,36 @@ function headlessResultIsGoodEnough(
   cleanMarkdown: string
 ): boolean {
   if (!headless.ok || !cleanMarkdown.trim()) return false;
-  const qualityCtx = { url, title: headless.title };
-  if (explainHardFetchFailure(cleanMarkdown, qualityCtx)) return false;
-  if (explainSoftFetchSuspect(cleanMarkdown, qualityCtx)) return false;
-  return isFetchBodyUsable(cleanMarkdown, ENRICHMENT_DEFAULTS.minUsefulSnippetChars, qualityCtx);
+  return isFetchBodySubstantive(cleanMarkdown, { url, title: headless.title });
 }
 
-/**
- * Normal URL processing uses Chrome's rendered, authenticated page first.
- * X and video URLs retain their specialized provider-first routing because a
- * DOM scrape of those applications is commonly navigation/UI chrome rather
- * than the requested post or media content.
- */
+function restoreSavedDocumentIdentity(
+  result: FetchProviderResult,
+  savedUrl: string,
+  contentUrl: string
+): FetchProviderResult {
+  if (savedUrl === contentUrl) return result;
+
+  const finalUrl = result.finalUrl?.trim();
+  if (finalUrl && !urlsEquivalentForRedirect(contentUrl, finalUrl)) {
+    return attachFetchRedirectFields(
+      { ...result, redirectContext: undefined, requestedUrl: undefined },
+      savedUrl,
+      finalUrl
+    );
+  }
+
+  return {
+    ...result,
+    requestedUrl: savedUrl,
+    finalUrl: savedUrl,
+    redirectContext: buildRedirectContext(savedUrl, savedUrl),
+  };
+}
+
+/** All URL processing starts in Chrome's authenticated browsing context. */
 export function shouldUseBrowserSessionFirstForUrl(url: string): boolean {
-  const sourceKind = classifySourceKind(url);
-  return sourceKind !== 'x' && sourceKind !== 'video';
+  return Boolean(url.trim());
 }
 
 async function resolveItemFetch(
@@ -613,15 +624,36 @@ async function resolveItemFetch(
 ): Promise<FetchProviderResult> {
   const userSignal = options?.signal;
   const overall = timedAbortSignal(ENRICHMENT_DEFAULTS.fetchOverallTimeoutMs, userSignal);
+  const contentFetchUrl = rewriteDocumentFetchUrl(item.url);
 
   const runTabFetch = async (allowEphemeral: boolean) => {
     const tabPhase = timedAbortSignal(ENRICHMENT_DEFAULTS.tabFetchTimeoutMs, overall.signal);
     try {
-      return await tryOpenTabFetch(item.url, options?.tabId, {
+      // Chrome's PDF viewer has no useful page DOM. "Tab first" for a PDF
+      // therefore means downloading its bytes inside an authenticated,
+      // same-origin browser page and decoding them with the shared PDF parser.
+      if (looksLikeRemotePdf(item.url)) {
+        const pdf = await fetchAuthenticatedPdf(item.url, {
+          requestedUrl: item.url,
+          tabId: options?.tabId,
+          windowId: options?.browserWindowId,
+          signal: tabPhase.signal,
+        });
+        return pdf?.ok
+          ? { result: pdf }
+          : { result: null, error: pdf ?? tabSessionEmptyError() };
+      }
+      const attempt = await tryOpenTabFetch(contentFetchUrl, options?.tabId, {
         allowEphemeral,
         windowId: options?.browserWindowId,
         signal: tabPhase.signal,
       });
+      return {
+        ...attempt,
+        result: attempt.result
+          ? restoreSavedDocumentIdentity(attempt.result, item.url, contentFetchUrl)
+          : null,
+      };
     } finally {
       tabPhase.dispose();
     }
@@ -638,6 +670,8 @@ async function resolveItemFetch(
           force: options?.force,
           requestedUrl: item.url,
           browserWindowId: options?.browserWindowId,
+          browserTabId: options?.tabId,
+          browserSessionAttempted: true,
         },
         signal: headlessPhase.signal,
       });
@@ -671,6 +705,10 @@ async function resolveItemFetch(
   try {
     const debug = options?.debug;
     const isXStatus = classifySourceKind(item.url) === 'x';
+    let browserFirstError: FetchProviderResult | undefined;
+    if (contentFetchUrl !== item.url) {
+      debug?.phase('document_representation', true, contentFetchUrl);
+    }
     const allowEphemeralTab = Boolean(
       options?.tabSessionOnly || options?.preferTabSession || shouldUseEphemeralTab(item.url)
     );
@@ -686,7 +724,7 @@ async function resolveItemFetch(
         !!tabOnly.result?.ok,
         tabOnly.result?.fetchSourceId ?? tabOnly.error?.fetchSourceId
       );
-      if (tabOnly.result && acceptTabFetchResult(tabOnly.result, item.url)) {
+      if (tabOnly.result && acceptTabFetchResult(tabOnly.result, contentFetchUrl)) {
         return expandAcceptedTabResult(tabOnly.result);
       }
       if (!isXStatus) {
@@ -703,12 +741,22 @@ async function resolveItemFetch(
         !!tabAttempt.result?.ok,
         tabAttempt.result?.fetchSourceId ?? tabAttempt.error?.fetchSourceId
       );
-      if (tabAttempt.result && acceptTabFetchResult(tabAttempt.result, item.url)) {
+      if (tabAttempt.result && acceptTabFetchResult(tabAttempt.result, contentFetchUrl)) {
         return expandAcceptedTabResult(tabAttempt.result);
       }
       if (tabAttempt.result && isXStatus) {
         debug?.phase('tab_first_rejected', false, 'x_not_acceptable');
       }
+      browserFirstError = tabAttempt.error ?? (
+        tabAttempt.result
+          ? {
+              ok: false,
+              errorCode: 'parse_empty',
+              error: 'Authenticated browser content did not pass the content quality check',
+              fetchSourceId: tabAttempt.result.fetchSourceId ?? 'tab-session',
+            }
+          : undefined
+      );
       if (skipHeadlessAfterTabMiss(item.url)) {
         return tabAttempt.error ?? tabSessionEmptyError();
       }
@@ -720,7 +768,7 @@ async function resolveItemFetch(
         !!quickTab.result?.ok,
         quickTab.result?.fetchSourceId ?? quickTab.error?.fetchSourceId
       );
-      if (quickTab.result && acceptTabFetchResult(quickTab.result, item.url)) {
+      if (quickTab.result && acceptTabFetchResult(quickTab.result, contentFetchUrl)) {
         return expandAcceptedTabResult(quickTab.result);
       }
     } else {
@@ -736,7 +784,7 @@ async function resolveItemFetch(
     debug?.phase('headless', headless.ok, headless.fetchSourceId);
     if (headless.ok && headless.markdown) {
       const clean = stripProviderWrapper(headless.markdown);
-      if (headlessResultIsGoodEnough(headless, item.url, clean)) return headless;
+      if (headlessResultIsGoodEnough(headless, contentFetchUrl, clean)) return headless;
     }
 
     const headlessClean =
@@ -744,12 +792,25 @@ async function resolveItemFetch(
 
     if (
       headlessClean &&
-      headlessSyndicationIsGoodEnough(headless, item.url, headlessClean)
+      headlessSyndicationIsGoodEnough(headless, contentFetchUrl, headlessClean)
     ) {
       return headless;
     }
 
-    if (!shouldRetryWithBrowserTab(headless, item.url, headlessClean)) {
+    // The default route already completed one authenticated browser attempt.
+    // Do not reopen the same page after the provider fallback.
+    if (tabFirst) {
+      if (!headless.ok && browserFirstError?.error) {
+        return {
+          ...headless,
+          errorCode: browserFirstError.errorCode ?? headless.errorCode,
+          error: `Browser session: ${browserFirstError.error}. Provider fallback: ${headless.error ?? 'no usable content'}`,
+        };
+      }
+      return headless;
+    }
+
+    if (!shouldRetryWithBrowserTab(headless, contentFetchUrl, headlessClean)) {
       return headless;
     }
 
@@ -761,9 +822,7 @@ async function resolveItemFetch(
       return headless;
     }
 
-    // X/video normally reach this path after their specialized provider fails.
-    // Ordinary pages already attempted the authenticated browser path first,
-    // but may retry after a headless fallback if their earlier tab load failed.
+    // Legacy/provider-first callers may still request a browser retry here.
     const allowEphemeralRetry = shouldAllowEphemeralTabRetry(item.url, allowEphemeralTab);
     const tabRetry = await runTabFetch(allowEphemeralRetry);
     debug?.phase(
@@ -788,7 +847,7 @@ async function resolveItemFetch(
             fetchSourceId: 'tab-session',
           };
         }
-        if (acceptTabFetchResult(tabRetry.result, item.url)) {
+        if (acceptTabFetchResult(tabRetry.result, contentFetchUrl)) {
           return expandAcceptedTabResult(tabRetry.result);
         }
         return headless;
@@ -813,8 +872,11 @@ async function resolveItemFetch(
         !looksLikeSyndicationXMarkdown(tabClean)
       ) {
         return headless;
-      } else {
+      } else if (acceptTabFetchResult(tabRetry.result, contentFetchUrl)) {
         return tabRetry.result;
+      } else {
+        debug?.phase('tab_retry_rejected', false, 'not_substantive');
+        return headless;
       }
     }
 

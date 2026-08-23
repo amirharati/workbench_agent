@@ -59,6 +59,10 @@ export type ContentHints = {
   requestedUrl?: string;
   /** Dashboard-bound Chrome window used for authenticated linked-page retrieval. */
   browserWindowId?: number;
+  /** Explicit originating browser tab, when the pipeline was submitted from one. */
+  browserTabId?: number;
+  /** The shared router already completed its browser-session attempt. */
+  browserSessionAttempted?: boolean;
 };
 
 export interface ItemEnrichment {

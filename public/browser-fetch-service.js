@@ -9,6 +9,7 @@
   const MIN_MARKDOWN_CHARS = 80;
   const TAB_LOAD_MS = 45_000;
   const SESSION_POST_LOAD_MS = 2_000;
+  const MAX_AUTH_PDF_BYTES = 25 * 1024 * 1024;
   const TRACKING_PARAMS = [
     'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
     'ref', 'fbclid', 'gclid', 'mc_cid', 'mc_eid', 'msclkid', 'zanpid',
@@ -273,6 +274,83 @@
       }
     }
 
+    async function fetchPdfFromTab(tabId, pdfUrl, state) {
+      throwIfCancelled(state);
+      try {
+        const rows = await chromeApi.scripting.executeScript({
+          target: { tabId },
+          world: 'MAIN',
+          func: async (targetUrl, maxBytes) => {
+            try {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 20_000);
+              let response;
+              try {
+                response = await fetch(targetUrl, {
+                  credentials: 'include',
+                  redirect: 'follow',
+                  cache: 'default',
+                  signal: controller.signal,
+                });
+              } finally {
+                clearTimeout(timeout);
+              }
+              if (!response.ok) {
+                return {
+                  ok: false,
+                  status: response.status,
+                  error: `Authenticated page fetch returned HTTP ${response.status}`,
+                };
+              }
+              const declared = Number(response.headers.get('content-length') || 0);
+              if (declared > maxBytes) {
+                return { ok: false, error: `PDF is too large (${Math.ceil(declared / 1024 / 1024)} MB)` };
+              }
+              const bytes = new Uint8Array(await response.arrayBuffer());
+              if (bytes.byteLength > maxBytes) {
+                return { ok: false, error: `PDF is too large (${Math.ceil(bytes.byteLength / 1024 / 1024)} MB)` };
+              }
+              let binary = '';
+              const chunkSize = 0x8000;
+              for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+                binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+              }
+              return {
+                ok: true,
+                base64: btoa(binary),
+                contentType: response.headers.get('content-type') || undefined,
+                finalUrl: response.url || targetUrl,
+              };
+            } catch (error) {
+              return { ok: false, error: error instanceof Error ? error.message : String(error) };
+            }
+          },
+          args: [pdfUrl, MAX_AUTH_PDF_BYTES],
+        });
+        throwIfCancelled(state);
+        const payload = rows && rows[0] && rows[0].result;
+        if (!payload || !payload.ok || typeof payload.base64 !== 'string') {
+          const status = payload && Number(payload.status);
+          return failure(
+            (payload && payload.error) || 'Could not download PDF through the authenticated page',
+            status === 401 || status === 403 ? 'auth_required' : 'provider_error'
+          );
+        }
+        return {
+          ok: true,
+          base64: payload.base64,
+          contentType: payload.contentType,
+          finalUrl: payload.finalUrl || pdfUrl,
+          fetchSourceId: 'tab-session-pdf',
+        };
+      } catch (error) {
+        if (state.cancelled || (error && error.message === 'browser_fetch_cancelled')) {
+          return failure('Fetch cancelled');
+        }
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    }
+
     function waitForTabComplete(tabId, state) {
       return new Promise((resolve, reject) => {
         let settled = false;
@@ -358,6 +436,39 @@
       }
     }
 
+    async function runEphemeralPdf(sessionUrl, pdfUrl, state, windowId) {
+      const previous = ephemeralTail;
+      let release;
+      ephemeralTail = new Promise((resolve) => { release = resolve; });
+      await previous.catch(() => {});
+      try {
+        throwIfCancelled(state);
+        const createProperties = { url: sessionUrl, active: false };
+        if (typeof windowId === 'number') createProperties.windowId = windowId;
+        const created = await chromeApi.tabs.create(createProperties);
+        if (!created || typeof created.id !== 'number') {
+          return failure('Could not open an authenticated PDF helper tab');
+        }
+        state.tabId = created.id;
+        state.ephemeral = true;
+        await waitForTabComplete(created.id, state);
+        await delay(SESSION_POST_LOAD_MS, state);
+        return await fetchPdfFromTab(created.id, pdfUrl, state);
+      } catch (error) {
+        if (state.cancelled || (error && error.message === 'browser_fetch_cancelled')) {
+          return failure('Fetch cancelled');
+        }
+        return failure(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (state.ephemeral && typeof state.tabId === 'number') {
+          await chromeApi.tabs.remove(state.tabId).catch(() => {});
+        }
+        state.tabId = undefined;
+        state.ephemeral = false;
+        release();
+      }
+    }
+
     async function extract(input) {
       const requestId = input && String(input.requestId || '');
       const url = input && String(input.url || '').trim();
@@ -409,6 +520,74 @@
       }
     }
 
+    async function fetchPdf(input) {
+      const requestId = input && String(input.requestId || '');
+      const url = input && String(input.url || '').trim();
+      if (!requestId || !/^https?:\/\//i.test(url)) {
+        return failure('Authenticated PDF fetch requires a valid request ID and HTTP(S) URL', 'excluded');
+      }
+      pruneCancellationTombstones();
+      const wasCancelled = cancelledBeforeStart.delete(requestId);
+      const state = {
+        requestId,
+        cancelled: wasCancelled,
+        cancelCurrent: null,
+        tabId: undefined,
+        ephemeral: false,
+      };
+      requests.set(requestId, state);
+      let lastFailure = null;
+      const tried = new Set();
+      try {
+        const tryTab = async (tab) => {
+          if (!tab || typeof tab.id !== 'number' || tried.has(tab.id)) return null;
+          if (!isScriptableUrl(tab.url) || !sameHost(tab.url, url)) return null;
+          tried.add(tab.id);
+          const result = await fetchPdfFromTab(tab.id, url, state);
+          if (result.ok) return result;
+          lastFailure = result;
+          return null;
+        };
+
+        const candidateIds = [input.tabId, input.sidePanelHostTabId]
+          .filter((value, index, all) => typeof value === 'number' && all.indexOf(value) === index);
+        for (const candidateId of candidateIds) {
+          throwIfCancelled(state);
+          const result = await tryTab(await chromeApi.tabs.get(candidateId).catch(() => null));
+          if (result) return result;
+        }
+
+        const query = typeof input.windowId === 'number' ? { windowId: input.windowId } : {};
+        const sameHostTabs = (await chromeApi.tabs.query(query))
+          .filter((tab) => isScriptableUrl(tab && tab.url) && sameHost(tab.url, url))
+          .sort((left, right) =>
+            Number(/\.pdf(?:$|[?#])/i.test(left.url || '')) -
+            Number(/\.pdf(?:$|[?#])/i.test(right.url || ''))
+          );
+        for (const tab of sameHostTabs) {
+          throwIfCancelled(state);
+          const result = await tryTab(tab);
+          if (result) return result;
+        }
+
+        if (input.allowEphemeral === true) {
+          const requestedSessionUrl = String(input.sessionUrl || '');
+          const sessionUrl = /^https?:\/\//i.test(requestedSessionUrl) && sameHost(requestedSessionUrl, url)
+            ? requestedSessionUrl
+            : new URL(url).origin + '/';
+          return await runEphemeralPdf(sessionUrl, url, state, input.windowId);
+        }
+        return lastFailure || failure('No authenticated page is available for this PDF');
+      } catch (error) {
+        if (state.cancelled || (error && error.message === 'browser_fetch_cancelled')) {
+          return failure('Fetch cancelled');
+        }
+        return lastFailure || failure(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (requests.get(requestId) === state) requests.delete(requestId);
+      }
+    }
+
     async function cancel(requestId) {
       const normalizedRequestId = String(requestId || '');
       const state = requests.get(normalizedRequestId);
@@ -427,6 +606,7 @@
 
     return {
       extract,
+      fetchPdf,
       cancel,
       _test: { normalizeUrl, urlsMatch, sharesSessionPrefix },
     };

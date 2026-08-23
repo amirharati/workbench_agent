@@ -752,6 +752,38 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   fields survive rerun failure, Search visibly falls back to text, and the provider is not called once per
   remaining item after a terminal error. Then repeat with five links and an Import Studio batch.
 
+### V3-016 — PDF and thin browser extracts stop enrichment prematurely
+
+- Found: 2026-08-22, Run 01 continuation
+- Severity / gate: P1 / G2, G4
+- Status: READY TO RETEST
+- Reproduction: run Full digest on `https://arxiv.org/pdf/2104.13478`, an OpenReview PDF,
+  or an ordinary page whose first browser extraction contains mostly login/cookie/navigation chrome.
+- Expected: preserve the saved URL, fetch a readable representation, try the next provider when an
+  extract is not substantive, and produce a real summary whenever usable article text is available.
+- Actual: Chrome's PDF viewer produced no DOM article; Jina returned a successful but empty wrapper for
+  the arXiv PDF; and any non-empty ordinary tab result could prematurely win even when it contained too
+  little real content. The final error could also repeat the local PDF handoff message instead of the
+  reader's actual failure.
+- Data-safety check: this changes only fetch-time routing and acceptance. Bookmark identity remains the
+  original PDF URL, and no existing enrichment or content-store data is migrated or deleted.
+- Fix: make the authenticated browser session the first fetch path for every URL. Ordinary pages, X, and
+  video use rendered-tab extraction with source-specific quality checks; their specialized/headless readers
+  remain fallbacks. PDFs do not scrape Chrome's viewer: download their bytes inside an authenticated
+  same-origin page and extract selectable text locally with PDF.js, without sending protected documents to
+  an external reader. OpenReview `/pdf/<file-hash>.pdf` URLs are file identifiers rather than forum IDs, so
+  they use a real OpenReview session page and retry through the documented authenticated API2 `/pdf/{id}`
+  endpoint instead of inventing `/forum?id=<file-hash>`. The visible tab is not navigated or closed,
+  canonical scholarly landing pages remain a final fallback, and one shared substantive-content gate
+  prevents thin browser results from winning. Generic rendered pages also read a cleaned `document.body`
+  fallback whenever no substantive semantic `<main>` exists; OG title/description metadata must not suppress
+  richer visible episode/product/reference metadata elsewhere in the page.
+- Retest: reload the extension and Re-fetch/Full digest the arXiv example. Confirm it retains the PDF URL,
+  reports `tab-session-pdf`, stores substantial full-paper text, and produces a summary. Repeat with one
+  OpenReview PDF already accessible in Chrome while signed in; it should also report `tab-session-pdf`
+  without changing the open tab. Then test one normal article and one deliberately inaccessible page; the
+  latter should show an honest auth/extraction failure rather than a false successful thin fetch.
+
 For substantial issues, add a section using this template:
 
 ```md

@@ -71,6 +71,16 @@ export type TabExtractResult = {
 
 type BrowserFetchServiceResult = TabExtractResult & { fetchSourceId: 'tab-session' };
 
+export type BrowserPdfFetchResult = {
+  ok: boolean;
+  bytes?: Uint8Array;
+  contentType?: string;
+  finalUrl?: string;
+  error?: string;
+  errorCode?: EnrichmentErrorCode;
+  fetchSourceId: 'tab-session-pdf';
+};
+
 export function hasDirectBrowserTabAccess(): boolean {
   const runtimeGlobal = globalThis as typeof globalThis & {
     chrome?: {
@@ -139,6 +149,87 @@ export async function fetchThroughBrowserService(
       return fail('Browser-session fetch service returned no result');
     }
     return { ...response, fetchSourceId: 'tab-session' };
+  } catch (error) {
+    if (options?.signal?.aborted) return fail('Fetch cancelled');
+    return fail(error instanceof Error ? error.message : String(error));
+  } finally {
+    options?.signal?.removeEventListener('abort', cancel);
+  }
+}
+
+function decodeBase64Bytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+/** Download protected PDF bytes inside a same-origin browser page, then return them to the pipeline. */
+export async function fetchPdfThroughBrowserService(
+  url: string,
+  options?: {
+    tabId?: number;
+    windowId?: number;
+    sessionUrl?: string;
+    allowEphemeral?: boolean;
+    signal?: AbortSignal;
+  }
+): Promise<BrowserPdfFetchResult> {
+  const fail = (
+    error: string,
+    errorCode: EnrichmentErrorCode = 'provider_error'
+  ): BrowserPdfFetchResult => ({
+    ok: false,
+    error,
+    errorCode,
+    fetchSourceId: 'tab-session-pdf',
+  });
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+    return fail('Authenticated PDF browser service is unavailable');
+  }
+  if (options?.signal?.aborted) return fail('Fetch cancelled');
+
+  const requestId = crypto.randomUUID();
+  const cancel = () => {
+    chrome.runtime.sendMessage({
+      target: 'browser-fetch-service',
+      action: 'cancel',
+      requestId,
+    }).catch(() => {});
+  };
+  options?.signal?.addEventListener('abort', cancel, { once: true });
+  try {
+    const response = await chrome.runtime.sendMessage({
+      target: 'browser-fetch-service',
+      action: 'fetch-pdf',
+      requestId,
+      url,
+      tabId: options?.tabId,
+      windowId: options?.windowId,
+      sessionUrl: options?.sessionUrl,
+      allowEphemeral: options?.allowEphemeral === true,
+    }) as {
+      ok?: boolean;
+      base64?: string;
+      contentType?: string;
+      finalUrl?: string;
+      error?: string;
+      errorCode?: EnrichmentErrorCode;
+    } | undefined;
+    if (options?.signal?.aborted) return fail('Fetch cancelled');
+    if (!response?.ok || !response.base64) {
+      return fail(
+        response?.error ?? 'Authenticated PDF browser service returned no data',
+        response?.errorCode
+      );
+    }
+    return {
+      ok: true,
+      bytes: decodeBase64Bytes(response.base64),
+      contentType: response.contentType,
+      finalUrl: response.finalUrl,
+      fetchSourceId: 'tab-session-pdf',
+    };
   } catch (error) {
     if (options?.signal?.aborted) return fail('Fetch cancelled');
     return fail(error instanceof Error ? error.message : String(error));

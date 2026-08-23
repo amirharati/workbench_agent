@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+declare module 'pdfjs-dist/legacy/build/pdf.worker.mjs' {
+  export const WorkerMessageHandler: unknown;
+}
+
 /** File System Access API — Chromium; TS DOM lib may lag behind */
 interface FileSystemHandlePermissionDescriptor {
   mode?: 'read' | 'readwrite';

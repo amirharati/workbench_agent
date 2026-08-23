@@ -77,12 +77,14 @@ Import / Hub / sidebar / inspectors / maintenance UI
 ## Browser-session fetching
 
 The offscreen document cannot call `chrome.tabs` or `chrome.scripting`, so protocol v14 sends a cancellable
-browser-fetch request to the service worker. Ordinary pages use the authenticated browser path first: reuse
-an exact matching tab when one exists, otherwise open one inactive temporary tab in the user's Chrome
-profile, extract the rendered page, and close it. If browser extraction fails, the headless provider remains
-a fallback. X and video retain their specialized provider-first routing because their rendered DOM often
-contains application chrome rather than the requested post or media content. Temporary tabs are serialized,
-bounded by the existing fetch timeout, and always closed after success, failure, or cancellation.
+browser-fetch request to the service worker. Every URL uses the authenticated browser path first: reuse an
+exact matching tab when one exists, otherwise open one inactive temporary tab in the user's Chrome profile,
+extract the rendered page, and close it. X/video tab output still passes source-specific quality checks before
+it can win; their public/specialized providers remain fallbacks. PDFs use the same browser-first policy without
+scraping Chrome's viewer: the service fetches the PDF bytes inside an authenticated same-origin page and the
+offscreen pipeline decodes them locally. Headless/Jina remain fallbacks after an unusable browser result.
+Temporary tabs are serialized, bounded by the existing fetch timeout, and always closed after success,
+failure, or cancellation.
 
 At Start or Resume, the service worker derives the caller's tab and window from Chrome's trusted message
 sender and stores that placement with the durable job. Matching-tab lookup and temporary-tab creation are
