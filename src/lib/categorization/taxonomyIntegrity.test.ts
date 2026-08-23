@@ -7,6 +7,7 @@ import {
   validateTaxonomyInvariant,
 } from './seedImport';
 import { getAssignableLeaves } from './taxonomyCatalog';
+import { TOPIC_FEW_SHOT } from './topicFewShot';
 import type { AiCategory } from './types';
 
 describe('taxonomy integrity', () => {
@@ -14,6 +15,36 @@ describe('taxonomy integrity', () => {
     const bundled = seedDocumentToCategories(getBundledSeedDocument(), 10);
 
     expect(validateTaxonomyInvariant(bundled, bundled)).toEqual([]);
+  });
+
+  it('ships broad parent coverage with useful starter leaves and one fallback per topic parent', () => {
+    const doc = getBundledSeedDocument();
+    const topicalParents = doc.parents.filter((parent) => parent.id !== 'link-quality');
+
+    expect(topicalParents).toHaveLength(23);
+    for (const parent of topicalParents) {
+      const children = doc.leaves.filter((leaf) => leaf.parentId === parent.id);
+      expect(children.filter((leaf) => !leaf.isGeneralFallback).length).toBeGreaterThanOrEqual(3);
+      expect(children.filter((leaf) => leaf.isGeneralFallback)).toHaveLength(1);
+    }
+    expect(doc.leaves.find((leaf) => leaf.id === 'movies-tv-streaming')?.parentId)
+      .toBe('arts-media-entertainment');
+    expect(doc.leaves.find((leaf) => leaf.id === 'government-services-immigration')?.parentId)
+      .toBe('society-government-law');
+    expect(doc.leaves.find((leaf) => leaf.id === 'adult-erotic-content')?.parentId)
+      .toBe('relationships-sexuality');
+  });
+
+  it('keeps every classification example pointed at a bundled category', () => {
+    const bundledIds = new Set(
+      seedDocumentToCategories(getBundledSeedDocument(), 10).map((category) => category.id)
+    );
+
+    for (const example of TOPIC_FEW_SHOT) {
+      for (const topicId of example.output.topicIds) {
+        expect(bundledIds.has(topicId), `missing few-shot category ${topicId}`).toBe(true);
+      }
+    }
   });
 
   it('rejects a partially-created database instead of migrating it', () => {
@@ -30,7 +61,7 @@ describe('taxonomy integrity', () => {
 
   it('repairs only seed-owned flat leaves while preserving their data', () => {
     const bundled = seedDocumentToCategories(getBundledSeedDocument(), 10);
-    const target = bundled.find((category) => category.id === 'seed_ml-inference-infra');
+    const target = bundled.find((category) => category.id === 'seed_model-apis-ai-platforms');
     expect(target?.parentId).toBe('ai-productivity');
     const flat = bundled.map((category) => category.id === target?.id
       ? {
@@ -46,7 +77,7 @@ describe('taxonomy integrity', () => {
     const repairs = planMissingBundledHierarchyRepair(flat, bundled, 20);
     expect(repairs).toHaveLength(1);
     expect(repairs[0]).toMatchObject({
-      id: 'seed_ml-inference-infra',
+      id: 'seed_model-apis-ai-platforms',
       parentId: 'ai-productivity',
       itemCount: 19,
       description: 'Preserve this existing description',
@@ -58,8 +89,8 @@ describe('taxonomy integrity', () => {
 
   it('does not silently reparent wrong or discovered rows', () => {
     const bundled = seedDocumentToCategories(getBundledSeedDocument(), 10);
-    const target = bundled.find((category) => category.id === 'seed_ml-inference-infra')!;
-    const wrongParent = { ...target, parentId: 'product-gtm' };
+    const target = bundled.find((category) => category.id === 'seed_model-apis-ai-platforms')!;
+    const wrongParent = { ...target, parentId: 'business-product-marketing' };
     const discoveredFlat = { ...target, parentId: undefined, source: 'discovered' as const };
 
     expect(planMissingBundledHierarchyRepair([wrongParent], bundled)).toEqual([]);
@@ -74,7 +105,7 @@ describe('taxonomy integrity', () => {
       kind: 'leaf',
       status: 'approved',
       assignable: true,
-      parentId: 'health-lifestyle',
+      parentId: 'arts-media-entertainment',
       source: 'seed',
       created_at: 1,
       updated_at: 1,

@@ -6,31 +6,92 @@ import type { AiCategory } from './types';
 
 const SEED_PARENT_ABSORBS: Record<string, string[]> = {
   'machine-learning': [
-    'deep learning', 'neural network', 'data science', 'nlp',
+    'deep learning', 'neural network', 'nlp',
     'natural language', 'tensorflow', 'pytorch', 'computer vision',
-    'speech recognition', 'reinforcement learning', 'data analytics',
-    'data structures', 'data analysis', 'machine learning', 'ml ',
-    'statistical', 'statistics', 'mathematics', 'math resource',
-    'big data', 'pandas', 'numpy', 'academic integrity', 'stem education',
-    'mathematics resource',
+    'speech recognition', 'reinforcement learning', 'machine learning', 'ml research',
+    'generative model', 'model evaluation',
+  ],
+  'data-analytics': [
+    'data science', 'data analytics', 'data engineering', 'data analysis',
+    'database', 'business intelligence', 'big data', 'pandas', 'numpy',
+  ],
+  'science-math': [
+    'mathematics', 'math resource', 'statistics', 'statistical science',
+    'physics', 'biology', 'scientific research',
+  ],
+  'environment-nature': [
+    'environment', 'climate', 'sustainability', 'ecology', 'conservation',
+    'agriculture', 'farming', 'horticulture', 'gardening', 'animal care', 'pet care',
+  ],
+  'education-careers': [
+    'education', 'course resource', 'academic integrity', 'stem education',
+    'career resource', 'job search', 'interview preparation',
   ],
   'infra-hosting': [
     'cloud computing', 'cloud training', 'cloud pricing', 'gpu cloud',
     'server hosting', 'cloud resources', 'operating system',
-    'linux ', 'linux backup', 'backup restoration',
+    'linux ', 'linux backup', 'backup restoration', 'devops', 'container',
+    'site reliability', 'observability',
+  ],
+  'security-privacy': [
+    'cybersecurity', 'information security', 'application security',
+    'privacy', 'cryptography', 'identity management', 'malware',
+  ],
+  hardware: [
+    'computer hardware', 'electronics', 'embedded system', 'workstation',
+    'microcontroller', 'network hardware', 'smart device',
   ],
   'software-dev': [
     'software engineering', 'open source', 'developer tools', 'ide ',
-    'programming', 'algorithm', 'data structure',
+    'programming', 'algorithm', 'data structure', 'web development',
   ],
   'ai-productivity': [
-    'ai tools', 'llm tools', 'ai assistant',
+    'ai tools', 'llm tools', 'ai assistant', 'knowledge management',
+    'research assistant', 'workflow automation',
   ],
   'personal-finance': [
     'tax ', 'tax resource', 'personal finance', 'investing',
   ],
-  'health-lifestyle': [
-    'mental health', 'health resource', 'wellness',
+  'quant-finance': [
+    'quantitative finance', 'algorithmic trading', 'market data', 'trading strategy',
+  ],
+  'business-product-marketing': [
+    'business', 'product management', 'marketing', 'sales enablement',
+    'startup', 'entrepreneurship', 'customer success',
+  ],
+  'health-medicine': [
+    'mental health', 'health resource', 'wellness', 'medicine', 'healthcare',
+    'nutrition', 'sleep health',
+  ],
+  'sports-fitness': [
+    'sports', 'fitness', 'exercise', 'athletic training', 'outdoor recreation',
+  ],
+  'relationships-sexuality': [
+    'relationship', 'sexuality', 'sexual health', 'adult content', 'family life',
+  ],
+  'society-government-law': [
+    'government', 'immigration', 'law ', 'legal resource', 'politics',
+    'public policy', 'social issue',
+  ],
+  'arts-media-entertainment': [
+    'movie', 'television', 'streaming', 'music', 'literature', 'visual art',
+    'game ', 'entertainment',
+  ],
+  'travel-places-housing': [
+    'travel', 'tourism', 'real estate', 'housing', 'rental', 'transportation',
+  ],
+  'food-home-lifestyle': [
+    'food', 'cooking', 'home improvement', 'lifestyle',
+  ],
+  'language-writing': [
+    'writing', 'grammar', 'language learning', 'publishing', 'communication',
+  ],
+  'history-philosophy-religion': [
+    'history', 'archaeology', 'philosophy', 'ethics', 'religion',
+    'spirituality', 'humanities', 'cultural studies',
+  ],
+  'shopping-consumer': [
+    'shopping', 'consumer product', 'product review', 'buying guide', 'retail',
   ],
 };
 

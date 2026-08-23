@@ -895,9 +895,13 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const embeddingModel = typeof args[0] === 'string' ? args[0].trim() : '';
       if (!embeddingModel) throw new Error('prepareCategorySearchProfiles requires embedding model');
       const store = await getIdbCompatStore();
-      const categories = store
-        .getAllCategories()
-        .filter(isSearchableTopicCategory);
+      const allCategories = store.getAllCategories();
+      const categories = allCategories.filter(isSearchableTopicCategory);
+      const parentDescriptionById = new Map(
+        allCategories
+          .filter((category) => category.kind === 'parent')
+          .map((category) => [category.id, category.description ?? ''])
+      );
       const activeIds = new Set(categories.map((category) => category.id));
       const existingProfiles = store.sqlite.getAllCategorySearchProfiles();
       const existingByCategory = new Map(
@@ -924,7 +928,10 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       }> = [];
 
       for (const category of categories) {
-        const text = buildCategorySearchText(category);
+        const text = buildCategorySearchText(
+          category,
+          category.parentId ? parentDescriptionById.get(category.parentId) : undefined
+        );
         const textHash = await hashText(text);
         const existing = existingByCategory.get(category.id);
         const sameModel = existing?.embeddingModel === embeddingModel;
@@ -1028,7 +1035,10 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         if (!categoryId || !embeddingModel || !textHash || !embedding.length) continue;
         const category = store.getCategory(categoryId);
         if (!category || category.kind !== 'leaf' || category.status === 'deprecated') continue;
-        if (await hashText(buildCategorySearchText(category)) !== textHash) continue;
+        const parentDescription = category.parentId
+          ? store.getCategory(category.parentId)?.description
+          : undefined;
+        if (await hashText(buildCategorySearchText(category, parentDescription)) !== textHash) continue;
         const existing = store.sqlite.getCategorySearchProfile(categoryId);
         const base: AiCategorySearchProfile =
           existing?.embeddingModel === embeddingModel

@@ -9,7 +9,7 @@ Completed in code:
 
 - Search scope restoration and folder-only `workbench-content.sqlite` storage.
 - Dedicated core DB worker and dedicated content worker.
-- Schema-v5 durable jobs/tasks, ordered item stages, leases, fencing, cancellation, and recovery.
+- Schema-v5 durable jobs/tasks, explicit item-major/stage-major plans, leases, fencing, cancellation, and recovery.
 - One generic offscreen coordinator and one serialized execution lane.
 - One/many links, Import Studio, Hub, side panel, inspectors, review/debug tools, re-extract, re-embed,
   classify, discovery, and embedding backfill migrated to that coordinator.
@@ -31,9 +31,9 @@ acceptance is in progress.
 Real-extension checkpoint — 2026-08-10:
 
 - One-link full digest completed in the installed extension.
-- The first protocol-v13 five-link/urgent-single run appears to honor the intended priority boundary: finish
-  the active bulk item, run the interactive link, and resume the bulk. Treat this as provisional until the
-  final item counts are checked.
+- The first protocol-v13 five-link/urgent-single run appeared to honor the earlier item-boundary priority
+  rule. Full digest now uses stage barriers and yields after the current committed stage instead; this new
+  behavior requires a fresh five-link/urgent-single acceptance run.
 - Close/reopen also appears to preserve processing. The next audit exposed that tab-session code could not
   access `chrome.tabs` or `chrome.scripting` from the offscreen document. Protocol v14 now delegates only
   that browser capability to the service worker while leaving scheduling and writes in the coordinator.
@@ -44,8 +44,8 @@ Real-extension checkpoint — 2026-08-10:
   owner-close pause/Resume passed its first live interaction test. Review then found seven post-Resume
   classification failures because Resume did not resend the AI settings; all seven fetches themselves
   succeeded with `tab-session`. The ephemeral Resume settings handoff is fixed and awaits retest.
-- Taxonomy discovery and the existing `pending_discover` pool are a separate product issue and are not part
-  of pipeline lifecycle acceptance.
+- Discover's internal map/reduce taxonomy policy remains a separate product issue. Its placement as one
+  pre-classification full-digest barrier is now part of pipeline lifecycle acceptance.
 
 ## Preserve these design rules
 
@@ -58,7 +58,10 @@ Real-extension checkpoint — 2026-08-10:
 - Folder serialization and backup mirroring stay outside processing completion/cancel/recovery.
 - One serialized lane remains until the complete lifecycle acceptance suite passes.
 - Interrupted ambiguous paid work becomes `uncertain`; other items continue without restarting completed work.
-- Taxonomy discovery is an explicit coordinator action, not a hidden side effect owned by a page.
+- Taxonomy discovery is an explicit coordinator action, not a hidden side effect owned by a page. Full-digest
+  scopes of at least three discover over their exact submitted eligible scope. One/two-item jobs consult the global
+  stuck pool and preserve its three-candidate minimum; if it is too small, classification continues against the
+  full current taxonomy without making a one-item category. Standalone maintenance retains stuck-only gap-fill.
 
 ## Remaining work
 

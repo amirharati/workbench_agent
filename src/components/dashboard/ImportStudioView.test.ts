@@ -4,6 +4,7 @@ import {
   getDefaultImportPipelineSelection,
   getDefaultImportSelection,
   resolveImportDestinationLabel,
+  resolveImportPipelineToastType,
   resolveImportReportProcessedIds,
 } from './ImportStudioView';
 import type { ItemEnrichment } from '../../lib/enrichment';
@@ -47,6 +48,25 @@ describe('Import Studio workflow', () => {
     expect(
       [...resolveImportReportProcessedIds({ completedItemIds: ['done-a', 'done-b'] })]
     ).toEqual(['done-a', 'done-b']);
+  });
+
+  it('does not render a completed mixed bulk import as a red failure', () => {
+    expect(resolveImportPipelineToastType({
+      enriched: 359,
+      fetched: 11,
+      classified: 288,
+      skipped: 2,
+      failed: 90,
+      aiError: 'Could not parse AI response as JSON.',
+    })).toBe('info');
+
+    expect(resolveImportPipelineToastType({
+      enriched: 342,
+      fetched: 0,
+      classified: 261,
+      skipped: 2,
+      failed: 115,
+    })).toBe('success');
   });
 
   it('selects new or incomplete imports while skipping completed enrichment by default', () => {

@@ -32,10 +32,11 @@ import {
 export const DURABLE_FULL_DIGEST_STAGES = [
   'enrich',
   'embed',
+  // One job-scoped barrier. Every classification runs against the taxonomy
+  // produced from the complete submitted scope.
+  'discover',
   'classify',
   'finalize',
-  // Stored as one terminal, job-scoped task rather than once per link.
-  'discover',
 ] as const;
 
 const LEASE_MS = 45_000;
@@ -55,8 +56,8 @@ export type DurablePipelineRunInput = {
   signal: AbortSignal;
   onAbortRequired?: (reason: string) => void;
   onProgress?: (progress: BatchDigestProgress) => void;
-  /** Re-evaluated only after the current item reaches a terminal boundary. */
-  shouldYieldAfterItem?: () => boolean;
+  /** Re-evaluated after the current durable stage commits. */
+  shouldYieldAfterStage?: () => boolean;
   /** Cooperative owner-close pause, evaluated after a stage safely commits. */
   shouldPauseAfterStage?: () => boolean;
 };
@@ -106,6 +107,8 @@ function overallItemProgress(
     : {};
 }
 
+type TaskWorkProgress = Pick<BatchDigestProgress, 'workCurrent' | 'workTotal'>;
+
 function withOverallItemLabel(
   label: string,
   input: DurablePipelineRunInput,
@@ -119,7 +122,8 @@ function withOverallItemLabel(
 
 async function runStage(
   claim: ClaimedPipelineTask,
-  input: DurablePipelineRunInput
+  input: DurablePipelineRunInput,
+  workProgress: TaskWorkProgress
 ): Promise<StageOutcome> {
   const itemId = claim.task.item_id;
   const { options, signal } = input;
@@ -182,6 +186,7 @@ async function runStage(
           current: progress.batchIndex,
           total: Math.max(progress.batchTotal, 1),
           ...overallItemProgress(input, itemId),
+          ...workProgress,
         }),
       });
       throwIfAborted(signal);
@@ -224,6 +229,7 @@ async function runStage(
           current: progress.current,
           total: Math.max(progress.total, 1),
           ...overallItemProgress(input, itemId),
+          ...workProgress,
         }),
       });
       throwIfAborted(signal);
@@ -255,7 +261,7 @@ async function runStage(
         }
       }
       const result = await discoverBatch({
-        itemIds: options.discoverItemIds,
+        itemIds: discoverScope,
         stuckOnly: options.discoverStuckOnly !== false,
         maxBatches: options.discoverMaxBatches,
         sampleBatchSize: APP_DISCOVER_MAP_BATCH_SIZE,
@@ -266,6 +272,7 @@ async function runStage(
           label: progress.label || 'Discovering taxonomy gaps…',
           current: progress.current,
           total: Math.max(progress.total, 1),
+          ...workProgress,
         }),
       });
       throwIfAborted(signal);
@@ -411,6 +418,14 @@ export async function runDurablePipelineJob(
   let seededDiscoverScopeKey: string | null = null;
   let finalSnapshot: PipelineJobSnapshot | null = null;
   let yieldRequested = false;
+  const initialSnapshot = await dbRpc<PipelineJobSnapshot | null>(
+    'pipelineGetJob',
+    [input.jobId],
+    { priority: 'high' }
+  );
+  if (!initialSnapshot) throw new Error('Durable pipeline job disappeared before execution');
+  const workTotal = Math.max(initialSnapshot.tasks.length, 1);
+  const terminalTaskStatuses = new Set(['completed', 'skipped', 'failed', 'uncertain', 'cancelled']);
 
   while (true) {
     throwIfAborted(input.signal);
@@ -422,6 +437,11 @@ export async function runDurablePipelineJob(
     if (!claim) break;
 
     const itemIndex = Math.max(0, input.itemIds.indexOf(claim.task.item_id));
+    const progressSnapshot = finalSnapshot ?? initialSnapshot;
+    const workCurrent = progressSnapshot.tasks.filter((task) =>
+      terminalTaskStatuses.has(task.status)
+    ).length;
+    const workProgress: TaskWorkProgress = { workCurrent, workTotal };
     input.onProgress?.({
       phase: progressPhase(claim.task.stage),
       label: stageLabel(claim.task.stage, itemIndex, input.itemIds.length),
@@ -429,6 +449,7 @@ export async function runDurablePipelineJob(
       total: Math.max(input.itemIds.length, 1),
       overallCurrent: itemIndex,
       overallTotal: Math.max(input.itemIds.length, 1),
+      ...workProgress,
     });
 
     const leaseInput = {
@@ -455,7 +476,7 @@ export async function runDurablePipelineJob(
 
     try {
       if (claim.task.stage === 'discover') {
-        // Discover is a synthetic terminal task. Seed its exact submitted
+        // Discover is a synthetic job barrier. Seed its exact submitted
         // scope from the DB worker so it sees current enrichment, signals,
         // category links, and the user's current taxonomy.
         const discoverItemIds = [...new Set(
@@ -476,7 +497,9 @@ export async function runDurablePipelineJob(
         installPipelineCacheSeed(seed);
         seededItemId = claim.task.item_id;
       }
-      const outcome = await runWithDataChangeNotificationsSuppressed(() => runStage(claim, input));
+      const outcome = await runWithDataChangeNotificationsSuppressed(() =>
+        runStage(claim, input, workProgress)
+      );
       throwIfAborted(input.signal);
       const finished = await dbRpc<{ accepted: boolean; snapshot: PipelineJobSnapshot | null }>(
         'pipelineFinishTask',
@@ -522,13 +545,10 @@ export async function runDurablePipelineJob(
       }
     }
 
-    if (finalSnapshot && input.shouldYieldAfterItem?.()) {
-      const itemIsTerminal = finalSnapshot.tasks
-        .filter((task) => task.item_id === claim.task.item_id)
-        .every((task) => !['pending', 'running'].includes(task.status));
+    if (finalSnapshot && input.shouldYieldAfterStage?.()) {
       const jobHasMoreWork = finalSnapshot.tasks
         .some((task) => ['pending', 'running'].includes(task.status));
-      if (itemIsTerminal && jobHasMoreWork) {
+      if (jobHasMoreWork) {
         yieldRequested = true;
         break;
       }

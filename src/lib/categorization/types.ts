@@ -90,6 +90,18 @@ export interface LlmReviewSnapshot {
   confidence?: number;
   reason?: string;
   classifyMode?: string;
+  semanticLabel?: string;
+  primarySubject?: string;
+  likelySavePurpose?: string;
+  contentKind?: string;
+  secondaryThemes?: string[];
+  freeTopics?: string[];
+  semanticDomain?: string;
+  semanticEvidence?: string;
+  semanticContentState?: 'substantive' | 'login_wall' | 'dead_or_error' | 'empty';
+  parentCandidates?: Array<{ parentId: string; similarity: number; reason?: string }>;
+  primaryParentId?: string;
+  novelTopicSuggestion?: ProposedCategoryDraft;
 }
 
 export interface AiItemSignal {
@@ -389,4 +401,16 @@ export interface TopicExtractDecision {
   reason?: string;
   needsReclassify?: boolean;
   status?: 'ok' | 'error';
+  semanticLabel?: string;
+  primarySubject?: string;
+  likelySavePurpose?: string;
+  contentKind?: string;
+  secondaryThemes?: string[];
+  freeTopics?: string[];
+  semanticDomain?: string;
+  semanticEvidence?: string;
+  semanticContentState?: 'substantive' | 'login_wall' | 'dead_or_error' | 'empty';
+  parentCandidates?: Array<{ parentId: string; similarity: number; reason?: string }>;
+  primaryParentId?: string;
+  novelTopicSuggestion?: ProposedCategoryDraft;
 }

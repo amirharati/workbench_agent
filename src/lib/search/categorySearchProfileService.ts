@@ -50,6 +50,11 @@ async function prepareCategorySearchProfiles(): Promise<void> {
   return prepareInFlight;
 }
 
+/** Best-effort persisted metadata/member profile warm, safe outside critical paths. */
+export async function warmCategorySearchProfiles(): Promise<void> {
+  await prepareCategorySearchProfiles();
+}
+
 export async function rankQueryAgainstCategoryProfiles(
   queryEmbedding: number[],
   limit = 10

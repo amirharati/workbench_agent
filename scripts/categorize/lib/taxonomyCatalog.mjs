@@ -207,19 +207,21 @@ export function enforceGeneralSiblingRules(topicIds, leafById) {
 
 export const TOPIC_CATALOG_RULES = [
   'Taxonomy is 2 levels: parent (grouping only) → leaf (assignable). Use leafId from topicCatalog only.',
-  'Each leaf shows path and pathIds — use topicIds (leaf id) or topicPaths [parentId, leafId] when disambiguating similar names.',
+  'Classify hierarchically: first identify the semantic parent domain from the full meaning, then choose a leaf only under that parent.',
+  'Each leaf shows path and pathIds — return topicPaths [parentId, leafId] for every assignment; topicIds may mirror those leaf ids.',
   'Pick the most specific leaf first. Use the *-general leaf under a parent only when no sibling leaf fits.',
+  'A shared generic word is not domain evidence. “Personal growth/development/values” is not Personal finance; Personal finance requires money, investing, budgeting, tax, insurance, or retirement evidence.',
+  'A *-general choice still requires clear evidence for its parent domain. Never use General merely because one word in the parent name appears.',
   'Never assign both a *-general leaf and another leaf under the same parent in one result.',
-  'topicIds: 0-3 leaf ids (first = primary). Multiple ids only for distinct topics (often different parents).',
-  '**link-quality = garbage bucket — ONLY truly worthless pages:** errors, placeholders, fetch failures, empty login shells. NOT substantive content.',
-  '  - 404 / 410 / page not found → `page-not-found`. 500–504 with no article → `page-not-found`.',
-  '  - example.com, captcha-only → `placeholder-junk`. enrich failed → `enrich-fetch-failed`.',
-  '  - `generic-low-signal` ONLY for sign-in-only / blank pages with zero subject — never movies, visas, lists, adult, or guides.',
-  '  - `social-no-topic` ONLY for empty social hype; substantive threads get normal leaves.',
-  '**Never link-quality for:** movies/TV, immigration, directories, tutorials, adult (use adult-erotic-content), or any describable topic — use normal leaf, *-general, or proposed.',
-  'skip: true is rare. NEVER skip substantive or adult content.',
-  'Adult/porn → adult-erotic-content. Sexuality wellness → sexuality-wellness-education.',
-  'proposed: at most 1 new specific leaf when topic is clear but missing (include parentId). Do not propose a second *-general.',
+  'Assign 1-3 leaf ids (first = primary) when the taxonomy fits. Multiple ids only for genuinely distinct topics (often different parents).',
+  '**link-quality parent has two baskets (not topic taxonomy):**',
+  '  - **Removal:** 404/5xx → `page-not-found`; example.com → `placeholder-junk`; fetch fail → `enrich-fetch-failed`; blank no-subject → `generic-low-signal`; empty social → `social-no-topic`.',
+  '  - **Needs attention (keep bookmark):** sign-in/auth wall → `login-auth-required`; ONLY when summary explicitly says saved URL does not match fetched page (article→hub, not www/https) → `url-redirect-mismatch`. When unsure about redirects, use a normal topic — never this bucket.',
+  '  - Never use removal leaves for substantive pages (movies, visas, adult, guides).',
+  '**Never use link-quality for:** movie/TV lists, visa/immigration guides, directories, articles, tutorials, adult/porn, or any page whose summary names a real subject. When unsure, pick a normal topic leaf — not link-quality.',
+  'Every input already passed the content gate: skip must be false. Return a valid assignment when a parent fits; otherwise return one novelTopicSuggestion instead of force-fitting.',
+  'Adult/porn/explicit tube → adult-erotic-content. Sexuality wellness articles → sexuality-sexual-health.',
+  'Classify is read-only over taxonomy: it may record one novelTopicSuggestion but never creates a category. If a parent fits but its specific leaf is missing, use that parent’s *-general leaf; clustered Discover alone grows taxonomy.',
 ];
 
 export const DISCOVER_CATALOG_RULES = [
@@ -227,8 +229,8 @@ export const DISCOVER_CATALOG_RULES = [
   'newLeaves.parentId must be an existing parent id or an id from newParents in the same response.',
   'Each existing leaf includes path and pathIds. itemResults must use leaf id from categoriesSoFar, never a parent id.',
   'Reuse *-general leaves for in-domain items when no specific leaf fits; do not add duplicate General/Other leaves.',
-  'NEVER skip or omit items solely because they are adult/erotic/pornographic — propose leaves under health-lifestyle (e.g. adult-erotic-content, sexuality-wellness-education) or assign_existing.',
-  'Explicit adult video/tube → propose or assign adult-erotic-content. Sexuality wellness articles → sexuality-wellness-education.',
+  'NEVER skip or omit items solely because they are adult/erotic/pornographic — propose leaves under relationships-sexuality or assign_existing.',
+  'Explicit adult video/tube → propose or assign adult-erotic-content. Sexuality wellness articles → sexuality-sexual-health.',
 ];
 
 export const DISCOVER_SKIP_RULES =

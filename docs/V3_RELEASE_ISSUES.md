@@ -304,6 +304,38 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
 | V3-020 | 2026-08-22 | Search / categories | Category names affected exact matching, category semantics were not durably indexed, category/tag exploration replaced the current activity, no product browse page exposed the full or project taxonomy, and pipeline-quality leaves leaked into topic discovery | P2 | READY TO RETEST | Persisted worker-owned metadata + member-centroid profiles for topical leaves only; quality/attention leaves excluded from Search and browse; confidence-weighted expansion; exact category/tag results open in closeable Search-local tabs initialized with visible, composable `category:` / `tag:` syntax; Home Categories provides hierarchical All Library/project browsing with persistent multi-select OR results | Current category-search-profile + Home Categories checkpoint | Reload for schema/protocol v9/v22; search finance/trading and confirm Login/Redirect quality labels never appear; open several category/tag tabs and refine/combine exact fields; in Home Categories compare All Library with two projects, select one then several categories, confirm OR results plus Inspector/Preview/drag, switch scopes and confirm selection persistence, toggle empty topics, and resize across the responsive boundary |
 | V3-021 | 2026-08-22 | Chrome side panel / reload stability | A manifest-global panel makes native close window-wide; earlier contextual and mixed attempts also mutated tab entries during reload/install and crashed Chrome. The remaining reproducible native crash occurred when this extension's contextual panel was attached to `chrome://extensions` while that page reloaded/unloaded the extension | P0 | EXPERIMENTAL — LIVE RETEST REQUIRED | Pure lazy contextual visibility over shared workers: no manifest global; install/startup/reload make zero panel API mutations; first eligible toolbar gesture configures/opens the existing-tab cohort; later/dashboard/extension-management tabs stay untouched; clicking the action on extension management opens/focuses the dashboard; native close hides only one ordinary tab while membership and processing remain | Uncommitted lazy-contextual prototype with `chrome://extensions` exclusion and focused lifecycle tests | Ensure no legacy Homebase panel is open on extension management, reload and wait; clicking the Homebase action there must open/focus the dashboard without showing a panel. Then open several ordinary tabs, verify per-tab context/close, and reload once closed and once with ordinary panels open; stop immediately on any Chrome crash |
 | V3-022 | 2026-08-22 | Fresh-install folder safety | Chrome-owned install/New Tab prompts can interrupt the native directory chooser, while the prior flow persisted a selected handle before showing what was found and ended with only a transient status message | P0 | READY TO RETEST | Mandatory two-phase setup: picker cancellation changes nothing and remains visible; selected folder and recognized core/content/legacy files require explicit confirmation; pending state survives reload; incomplete setup cannot silently enter the app; final receipt reports folder, item count, and load/migrate/create actions | Uncommitted onboarding safety checkpoint; 24 focused tests plus TypeScript pass | Fresh install with Chrome prompt: cancel once, select a wrong folder and choose again, then confirm an empty folder. Repeat with an existing folder. Verify no persistence before confirmation and accurate completion receipts in both cases |
+| V3-023 | 2026-08-23 | Taxonomy / clean bootstrap | The bundled seed was an overfit 111-item experiment with only nine topic parents, permanent singleton leaves, and unrelated movies/government/adult topics forced under Health & lifestyle | P1 | READY TO RETEST | Clean 23-parent topical scaffold with 90 durable starter leaves plus generated General leaves; Link-quality remains a separate operational branch; prompt and merge routing aligned; seed profiles embed parent/leaf metadata in the background and blend reliable assigned-link vectors | Uncommitted clean-taxonomy checkpoint | Recreate the disposable DB; before import confirm all 23 parent groups and empty starter leaves appear. Run one-link then five-link full digest, confirm Discover adds only supported gaps and classifications use fitting parents. Search a broad term and confirm category profiles exist once embeddings complete. |
+
+- V3-023 first live retest: a one-link YouTube job was enriched and embedded, but exact-scope Discover incorrectly
+  created a one-item `Human flourishing & AI` leaf and Classify then accepted a confident empty decision as success.
+  One/two-item full digests now use the global pending pool with the three-candidate minimum; below it, Discover is a
+  no-op and Classify uses the full seed/current catalog. Eligible empty decisions receive one strict correction and
+  then a generic broad-domain General fallback when possible. Retest from a clean DB because the failed run already
+  polluted its disposable taxonomy with the one-item leaf.
+
+- V3-023 fresh test11 follow-up: the corrected coordinator made one-link Discover a proper zero-sample no-op and
+  left the fresh taxonomy unmodified, but Classify explicitly returned `seed_personal-finance-general` for a video
+  about human flourishing and meaningful work in the age of AI. The catalog ID was valid, so the former validator
+  accepted a semantically contradictory parent. Classification is now a two-pass, read-only process. Pass one sees
+  no taxonomy and states the subject/free topics/evidence in its own words; pass two compares that compact result
+  with every parent, returns ranked parent similarity, and then matches a child. The finance/non-finance boundary
+  has contrasting examples. A fitting parent with no specific child uses General; no fitting parent creates a
+  durable novel-topic suggestion for clustered Discover rather than a forced assignment or singleton category. A
+  generic General-parent consistency check remains as a final semantic safety net. Only Discover may grow taxonomy.
+  Reload, Clear categories on the already-misclassified test11 item, then Classify/Re-digest it; it must not return
+  to Personal finance and no new category may be created. Clearing first isolates the classifier because automatic
+  category evidence is intentionally additive and a rerun does not silently delete an older suggestion. Also test
+  one genuinely uncovered subject: it should remain pending with a stored novel
+  suggestion rather than being forced into a misleading General category.
+
+- V3-023 object-versus-theme follow-up: the Californication episode was assigned Relationships & family. Stored
+  two-pass evidence showed pass one correctly recognized `television and storytelling`, while pass two ranked the
+  relationship events inside the plot above the saved TV episode object. Pass one now explicitly records
+  `primarySubject`, `contentKind`, `secondaryThemes`, and `likelySavePurpose` (“why would the user retrieve this exact
+  link?”). Pass two chooses the primary parent from explicit intent/save purpose/object before themes and enforces
+  that the selected primary leaf belongs to its declared primary parent. Contrasting generic episode-page versus
+  relationship-advice examples cover the boundary. Clear the old category and rerun: the episode should classify
+  primarily as Movies, TV & streaming; plot relationships must not become the primary category.
 
 - 2026-08-23 side-panel context follow-up: `tabs.onUpdated` alone did not reliably report SPA/history
   navigation, leaving a visible panel on the previous URL/item. Each contextual panel now polls only
@@ -760,6 +792,10 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   and provider/model errors in the shared AI layer; propagate them through digest, embedding,
   classification/discovery, Search, Ask, Settings, and direct review actions; stop terminal retries;
   drain pending item writes before submission and read completion state authoritatively from the DB worker.
+- Import Studio follow-up: its completion toast still bypassed the shared batch-tone policy and rendered
+  any resolved result with `failed > 0` as a persistent red error. It now uses the same authoritative totals
+  as the pipeline modal: mixed completion is informational/successful, while red is reserved for a rejected
+  job or a genuinely unsuccessful run. Per-bookmark failures remain visible in the report.
 - Retest: use one fresh ordinary URL for each practical failure case. On the first click, confirm the
   modal says Fetched plus the exact AI problem, the fetched excerpt is keyword-searchable, prior good AI
   fields survive rerun failure, Search visibly falls back to text, and the provider is not called once per

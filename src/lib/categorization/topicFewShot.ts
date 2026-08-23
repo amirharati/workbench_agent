@@ -2,6 +2,100 @@
 
 export const TOPIC_FEW_SHOT = [
   {
+    title: 'Night Harbor - Season 2 Episode 4 Watch',
+    summary:
+      'A streaming episode page whose plot includes family conflict, addiction, and a dramatic fundraiser.',
+    semanticAnalysis: {
+      semanticLabel: 'Night Harbor TV episode',
+      primarySubject: 'A streaming/watch page for one television episode',
+      likelySavePurpose: 'Watch or return to this television episode',
+      contentKind: 'TV episode page',
+      secondaryThemes: ['family conflict', 'addiction', 'fundraiser drama'],
+      freeTopics: ['television episode', 'drama series', 'streaming'],
+      broadDomain: 'television and entertainment',
+      evidence: 'The saved object is an episode page; plot relationships are secondary themes.',
+      contentState: 'substantive',
+    },
+    output: {
+      skip: false,
+      primaryParentId: 'arts-media-entertainment',
+      topicPaths: [['arts-media-entertainment', 'seed_movies-tv-streaming']],
+      topicIds: ['seed_movies-tv-streaming'],
+      parentCandidates: [
+        { parentId: 'arts-media-entertainment', similarity: 0.97, reason: 'The primary saved object is a TV episode/watch page.' },
+        { parentId: 'relationships-sexuality', similarity: 0.22, reason: 'Relationships occur only inside the episode plot.' },
+        { parentId: 'health-medicine', similarity: 0.12, reason: 'Addiction is only a plot theme here.' },
+      ],
+      proposed: [],
+      confidence: 0.96,
+      reason: 'Classify the media object, not incidental plot themes.',
+    },
+  },
+  {
+    title: 'How to Resolve Recurring Family Conflict',
+    summary:
+      'A practical advice article about communication, boundaries, and recurring conflict between family members.',
+    semanticAnalysis: {
+      semanticLabel: 'Resolving family conflict',
+      primarySubject: 'Advice for handling conflict in family relationships',
+      likelySavePurpose: 'Use practical guidance for resolving family conflict',
+      contentKind: 'relationship advice article',
+      secondaryThemes: [],
+      freeTopics: ['family relationships', 'conflict resolution', 'communication'],
+      broadDomain: 'relationships and family',
+      evidence: 'The page itself teaches family relationship skills rather than depicting them in fiction.',
+      contentState: 'substantive',
+    },
+    output: {
+      skip: false,
+      primaryParentId: 'relationships-sexuality',
+      topicPaths: [['relationships-sexuality', 'seed_relationships-family']],
+      topicIds: ['seed_relationships-family'],
+      parentCandidates: [
+        { parentId: 'relationships-sexuality', similarity: 0.97, reason: 'Family conflict is the article’s direct subject.' },
+        { parentId: 'arts-media-entertainment', similarity: 0.04, reason: 'This is not a creative work or entertainment page.' },
+      ],
+      proposed: [],
+      confidence: 0.96,
+      reason: 'The page purpose is relationship guidance.',
+    },
+  },
+  {
+    title: 'Growing on Purpose: Meaningful Work in the Age of AI',
+    summary:
+      'A discussion of human flourishing, personal values, meaningful work, and purpose as artificial intelligence changes professional life.',
+    output: {
+      skip: false,
+      topicPaths: [['ai-productivity', 'seed_ai-productivity-general']],
+      topicIds: ['seed_ai-productivity-general'],
+      parentCandidates: [
+        { parentId: 'ai-productivity', similarity: 0.82, reason: 'AI-driven work and productivity context.' },
+        { parentId: 'history-philosophy-religion', similarity: 0.69, reason: 'Human flourishing and values.' },
+        { parentId: 'personal-finance', similarity: 0.03, reason: 'No money, investing, tax, insurance, or retirement subject.' },
+      ],
+      proposed: [],
+      confidence: 0.86,
+      reason: 'AI and work are the domain; personal growth is not personal finance.',
+    },
+  },
+  {
+    title: 'A Practical Retirement Portfolio',
+    summary:
+      'How to allocate index funds, manage retirement savings, rebalance investments, and control portfolio risk.',
+    output: {
+      skip: false,
+      topicPaths: [['personal-finance', 'seed_investing-retirement']],
+      topicIds: ['seed_investing-retirement'],
+      parentCandidates: [
+        { parentId: 'personal-finance', similarity: 0.97, reason: 'Direct retirement and investment evidence.' },
+        { parentId: 'quant-finance', similarity: 0.31, reason: 'Portfolio language, but no quantitative trading system.' },
+      ],
+      proposed: [],
+      confidence: 0.94,
+      reason: 'Explicit investing and retirement evidence supports Personal finance.',
+    },
+  },
+  {
     title: 'Key Concepts in RL — Spinning Up documentation',
     summary: 'Intro to RL: policies, value functions, policy gradients, MDPs.',
     output: {
@@ -17,7 +111,7 @@ export const TOPIC_FEW_SHOT = [
     summary: 'LEAN engine, backtesting, live algorithmic trading.',
     output: {
       skip: false,
-      topicIds: ['seed_algo-trading-platforms', 'seed_trading-strategies-education'],
+      topicIds: ['seed_algorithmic-trading-backtesting', 'seed_markets-trading-strategies'],
       proposed: [],
       confidence: 0.9,
       reason: 'Algo platform plus systematic trading.',
@@ -28,7 +122,7 @@ export const TOPIC_FEW_SHOT = [
     summary: 'Guide to inducing sex dreams and lucid dreaming for erotic dream control; wellness-focused article.',
     output: {
       skip: false,
-      topicIds: ['seed_sexuality-wellness-education'],
+      topicIds: ['seed_sexuality-sexual-health'],
       proposed: [],
       confidence: 0.88,
       reason: 'Sexuality/wellness education — not explicit adult video.',
@@ -125,7 +219,7 @@ export const TOPIC_FEW_SHOT = [
       'Steps for immigrant visas: I-130/I-140 petition, NVC processing, interview, medical exam, post-visa procedures.',
     output: {
       skip: false,
-      topicIds: ['seed_government-forms-requests'],
+      topicIds: ['seed_government-services-immigration'],
       proposed: [],
       confidence: 0.93,
       reason: 'Government immigration/visa guide — specific civic topic.',

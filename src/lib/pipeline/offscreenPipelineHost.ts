@@ -20,6 +20,7 @@ import type { BatchDigestResult } from './batchDigest';
 import type { SingleLinkDigestResult } from './singleLinkDigest';
 import {
   PIPELINE_OFFSCREEN_OWNER,
+  normalizePipelineExecutionOptions,
   type OffscreenPipelineJobOptions,
   type PipelineOffscreenCancel,
   type PipelineOffscreenPause,
@@ -149,11 +150,6 @@ async function submitJob(start: PipelineOffscreenStartJob): Promise<{
   snapshot: PipelineJobSnapshot;
 }> {
   const operation = start.operation ?? 'full_digest';
-  const discoverItemIds = operation === 'discover'
-    ? start.itemIds
-    : operation === 'full_digest' && start.options.skipDiscover !== true
-      ? start.itemIds
-      : undefined;
   const input: SubmitPipelineJobInput = {
     id: start.requestId,
     dedupeKey: operation === 'discover'
@@ -164,13 +160,11 @@ async function submitJob(start: PipelineOffscreenStartJob): Promise<{
     priority: start.itemIds.length === 1 ? 10 : 50,
     payload: {
       ...durablePayload(start.options),
-      // Persist the exact scope so resume stays scoped and uses the user's
-      // current stored taxonomy rather than rebuilding code defaults.
-      discoverItemIds,
       operation,
     },
     itemIds: operation === 'discover' ? ['__taxonomy__'] : start.itemIds,
     stages: stagesForOperation(operation, start.options),
+    taskOrder: operation === 'full_digest' ? 'stage-major' : 'item-major',
   };
   return dbRpc('pipelineSubmitJob', [input], { priority: 'high' });
 }
@@ -254,7 +248,7 @@ async function executeQueuedJob(entry: QueuedPipelineJob): Promise<'yielded' | '
         reason.includes('lost its lease') ? LEASE_LOST_REASON : reason
       ),
       onProgress: (progress) => broadcastProgress(jobId, progress),
-      shouldYieldAfterItem: () => hasHigherPriorityWaiting(entry),
+      shouldYieldAfterStage: () => hasHigherPriorityWaiting(entry),
       shouldPauseAfterStage: () => pauseRequestedJobs.has(jobId),
     }));
     if (execution.paused) {
@@ -270,7 +264,7 @@ async function executeQueuedJob(entry: QueuedPipelineJob): Promise<'yielded' | '
     if (execution.yielded) {
       broadcastProgress(jobId, {
         phase: 'prep',
-        label: 'Paused safely for an urgent link; bulk will resume automatically…',
+        label: 'Paused safely after the current stage for an urgent link; bulk will resume automatically…',
         current: execution.snapshot.job.completed_items,
         total: Math.max(execution.snapshot.job.total_items, 1),
       });
@@ -489,7 +483,9 @@ export function installOffscreenPipelineHost(): void {
       return false;
     }
 
-    void submitJob({ ...start, itemIds })
+    const operation = start.operation ?? 'full_digest';
+    const options = normalizePipelineExecutionOptions(operation, itemIds, start.options);
+    void submitJob({ ...start, itemIds, operation, options })
       .then((submitted) => {
         if (!submitted.accepted) {
           sendResponse({
@@ -498,10 +494,14 @@ export function installOffscreenPipelineHost(): void {
           } satisfies PipelineOffscreenStartResponse);
           return;
         }
-        enqueueAcceptedJob(start.requestId, itemIds, {
-          ...start.options,
-          discoverItemIds: start.operation === 'discover' ? itemIds : start.options.discoverItemIds,
-        }, start.operation ?? 'full_digest', submitted.snapshot.job.priority, submitted.snapshot.job.created_at);
+        enqueueAcceptedJob(
+          start.requestId,
+          itemIds,
+          options,
+          operation,
+          submitted.snapshot.job.priority,
+          submitted.snapshot.job.created_at
+        );
         sendResponse({ ok: true, requestId: start.requestId } satisfies PipelineOffscreenStartResponse);
       })
       .catch((error) => sendResponse({

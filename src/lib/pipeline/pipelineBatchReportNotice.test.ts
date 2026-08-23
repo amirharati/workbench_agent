@@ -87,4 +87,16 @@ describe('AI provider failure reports', () => {
       aiError: 'Could not parse AI response as JSON.',
     })).toBe('info');
   });
+
+  it('keeps even failure-heavy mixed completion non-red', () => {
+    expect(resolvePipelineSummaryTone({
+      enriched: 1,
+      failed: 9,
+    })).toBe('info');
+
+    expect(resolvePipelineSummaryTone({
+      enriched: 0,
+      failed: 9,
+    })).toBe('error');
+  });
 });

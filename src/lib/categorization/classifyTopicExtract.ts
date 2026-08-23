@@ -41,7 +41,7 @@ import {
 } from './categorizationFairGame';
 import { hashText } from './textHash';
 import { getTaxonomyState, saveTaxonomyState, shouldTriggerDiscover } from './taxonomyState';
-import { promoteProposedLeaf, type DiscoverSampleItem } from './discoverTaxonomy';
+import type { DiscoverSampleItem } from './discoverTaxonomy';
 import {
   ensureTaxonomyReady,
   getBundledSeedDocument,
@@ -749,12 +749,22 @@ const GENERAL_FALLBACK_PATTERNS: Array<{ parentId: string; pattern: RegExp }> = 
   {
     parentId: 'ai-productivity',
     pattern:
-      /\b(chatgpt|claude|openai|anthropic|perplexity|copilot|cursor|prompt engineering|rag|langchain|llamaindex|ai agent|ai workflow|n8n|ai tool|ai assistant)\b/i,
+      /\b(artificial intelligence|ai|chatgpt|claude|openai|anthropic|perplexity|copilot|cursor|prompt engineering|rag|langchain|llamaindex|ai agent|ai workflow|n8n|ai tool|ai assistant)\b/i,
   },
   {
     parentId: 'machine-learning',
     pattern:
       /\b(machine learning|deep learning|neural net|pytorch|tensorflow|llm|bert|transformer|model training|fine.?tun|pre.?train|inference|embedding|diffusion model|gradient|backprop|reinforcement learning|nlp|computer vision|speech recogni|asr|tts|dataset|epoch|optimizer|loss function|attention mechanism|generative model)\b/i,
+  },
+  {
+    parentId: 'data-analytics',
+    pattern:
+      /\b(database|sql|data engineering|etl|warehouse|lakehouse|business intelligence|data analytics|data visualization|data science|pandas|numpy)\b/i,
+  },
+  {
+    parentId: 'security-privacy',
+    pattern:
+      /\b(cybersecurity|application security|cloud security|privacy|cryptography|authentication|authorization|malware|exploit|vulnerability|penetration test)\b/i,
   },
   {
     parentId: 'infra-hosting',
@@ -777,14 +787,74 @@ const GENERAL_FALLBACK_PATTERNS: Array<{ parentId: string; pattern: RegExp }> = 
       /\b(index fund|etf|401k|roth ira|dividend|retirement savings|personal finance|wealth building|compound interest|vanguard|fidelity|budget|emergency fund)\b/i,
   },
   {
-    parentId: 'product-gtm',
+    parentId: 'business-product-marketing',
     pattern:
       /\b(product launch|startup|saas|go.to.market|landing page|growth hack|indie hacker|mvp|user acquisition|product demo|no.code)\b/i,
   },
   {
-    parentId: 'health-lifestyle',
+    parentId: 'science-math',
     pattern:
-      /\b(health|fitness|nutrition|diet|exercise|sleep|mental health|meditation|wellness|medicine|supplement|workout|therapy|stress)\b/i,
+      /\b(mathematics|probability|statistics|physics|biology|chemistry|scientific method|research paper|experiment|neuroscience|genetics)\b/i,
+  },
+  {
+    parentId: 'environment-nature',
+    pattern:
+      /\b(climate|sustainability|environment|ecology|conservation|biodiversity|wildlife|agriculture|farming|horticulture|gardening|pet care|veterinary)\b/i,
+  },
+  {
+    parentId: 'education-careers',
+    pattern:
+      /\b(course|lecture|textbook|curriculum|university|career|job search|resume|interview prep|professional development|certification)\b/i,
+  },
+  {
+    parentId: 'language-writing',
+    pattern:
+      /\b(writing|editing|grammar|vocabulary|language learning|translation|public speaking|rhetoric|publishing|newsletter)\b/i,
+  },
+  {
+    parentId: 'history-philosophy-religion',
+    pattern:
+      /\b(history|historical|archaeology|philosophy|ethics|religion|religious|spirituality|theology|humanities|classics|cultural studies)\b/i,
+  },
+  {
+    parentId: 'health-medicine',
+    pattern:
+      /\b(health|nutrition|diet|sleep|mental health|meditation|wellness|medicine|supplement|therapy|stress)\b/i,
+  },
+  {
+    parentId: 'sports-fitness',
+    pattern:
+      /\b(sports|fitness training|workout|running|cycling|football|basketball|soccer|athlete|hiking|camping)\b/i,
+  },
+  {
+    parentId: 'relationships-sexuality',
+    pattern:
+      /\b(relationship|dating|family|parenting|sexuality|sexual health|intimacy|erotic|porn|adult video)\b/i,
+  },
+  {
+    parentId: 'society-government-law',
+    pattern:
+      /\b(government|immigration|visa|citizenship|legal|law|politics|public policy|election|social issue)\b/i,
+  },
+  {
+    parentId: 'arts-media-entertainment',
+    pattern:
+      /\b(movie|film|television|tv show|tv series|episode|season|streaming|music|podcast|book|literature|art|design|video game|gaming)\b/i,
+  },
+  {
+    parentId: 'travel-places-housing',
+    pattern:
+      /\b(travel|destination|hotel|flight|tourism|apartment|housing|real estate|rental|transportation|transit)\b/i,
+  },
+  {
+    parentId: 'food-home-lifestyle',
+    pattern:
+      /\b(recipe|cooking|food|restaurant|home improvement|diy|furniture|personal style|grooming)\b/i,
+  },
+  {
+    parentId: 'shopping-consumer',
+    pattern:
+      /\b(product review|buying guide|shopping|deal|coupon|retail|amazon|consumer service|subscription)\b/i,
   },
   {
     parentId: 'software-dev',
@@ -805,11 +875,62 @@ function detectGeneralLeafDomain(text: string): string | null {
   return best?.parentId ?? null;
 }
 
+function generalLeafDomainScore(text: string, parentId: string): number {
+  const entry = GENERAL_FALLBACK_PATTERNS.find((candidate) => candidate.parentId === parentId);
+  if (!entry) return 0;
+  return text.match(new RegExp(entry.pattern.source, 'gi'))?.length ?? 0;
+}
+
+export function findGeneralLeafFallback(
+  categories: AiCategory[],
+  text: string
+): AiCategory | undefined {
+  const parentId = detectGeneralLeafDomain(text);
+  if (!parentId) return undefined;
+  return categories.find(
+    (category) =>
+      category.kind === 'leaf' &&
+      category.parentId === parentId &&
+      isGeneralLeafId(category.id)
+  );
+}
+
+/**
+ * A General leaf is still a semantic claim about its parent. If the selected
+ * parent has no evidence in the item while another seeded parent does, repair
+ * the broad assignment rather than persisting a contradictory model answer.
+ * Specific leaves are deliberately left to the classifier: this guard only
+ * checks the broad parent boundary.
+ */
+export function reconcileGeneralLeafAssignment(
+  categories: AiCategory[],
+  categoryIds: string[],
+  text: string
+): { categoryIds: string[]; correctedFrom?: string; correctedTo?: string } {
+  const primaryId = categoryIds[0];
+  if (!primaryId || !isGeneralLeafId(primaryId)) return { categoryIds };
+
+  const primary = categories.find((category) => category.id === primaryId);
+  const selectedParentId = primary?.parentId;
+  if (!selectedParentId || generalLeafDomainScore(text, selectedParentId) > 0) {
+    return { categoryIds };
+  }
+
+  const fallback = findGeneralLeafFallback(categories, text);
+  if (!fallback || fallback.parentId === selectedParentId) return { categoryIds };
+
+  return {
+    categoryIds: [fallback.id, ...categoryIds.slice(1).filter((id) => id !== fallback.id)].slice(0, 3),
+    correctedFrom: primaryId,
+    correctedTo: fallback.id,
+  };
+}
+
 /**
  * After all classify + discover attempts, assign the best-matching general leaf
  * to items that still have no primary category. This is a deterministic, LLM-free
- * fallback ensuring all eligible fetched items get at least a general classification.
- * Falls back to software-dev-general when no domain keyword matches.
+ * fallback for a confidently detected broad domain. Unmatched items stay
+ * unassigned for Discover rather than being mislabeled as software.
  */
 export async function assignGeneralLeafFallback(itemIds: string[]): Promise<number> {
   if (!itemIds.length) return 0;
@@ -879,11 +1000,8 @@ export async function assignGeneralLeafFallback(itemIds: string[]): Promise<numb
       .toLowerCase();
 
     const domainId = detectGeneralLeafDomain(text);
-    const parentId = domainId ?? 'software-dev';
-    const generalLeaf =
-      generalLeafByParent.get(parentId) ??
-      generalLeafByParent.get('software-dev') ??
-      [...generalLeafByParent.values()][0];
+    if (!domainId) continue;
+    const generalLeaf = generalLeafByParent.get(domainId);
 
     if (!generalLeaf) continue;
 
@@ -1496,7 +1614,7 @@ export async function classifyIncremental(
       summary.processed++;
       const meta = toProcess.find((x) => x.batch.itemId === batchItem.itemId);
       const hash = meta?.hash ?? '';
-      const decision = normalized.get(batchItem.itemId);
+      let decision = normalized.get(batchItem.itemId);
       const prevSignal = signalByItem.get(batchItem.itemId);
       const prevRetry = prevSignal?.classifyRetryCount ?? 0;
 
@@ -1511,6 +1629,29 @@ export async function classifyIncremental(
       const classifiedRemovalBefore = summary.classifiedRemoval;
       const unassignedBefore = summary.unassigned;
       const pendingDiscoverBefore = summary.pendingDiscover;
+
+      if (decision?.decisionType === 'existing' && decision.categoryIds?.length) {
+        const reconciled = reconcileGeneralLeafAssignment(
+          categories,
+          decision.categoryIds,
+          [
+            batchItem.title,
+            batchItem.textForClassification,
+            ...(batchItem.enrichmentAiTags ?? []),
+            decision.reason ?? '',
+          ].join('\n')
+        );
+        if (reconciled.correctedTo) {
+          decision = {
+            ...decision,
+            categoryIds: reconciled.categoryIds,
+            reason: [
+              decision.reason,
+              `Broad-parent validation corrected ${reconciled.correctedFrom} → ${reconciled.correctedTo}.`,
+            ].filter(Boolean).join(' '),
+          };
+        }
+      }
 
       if (!decision || decision.status === 'error') {
         const retry = applyClassifyRetryPolicy(prevRetry, 'error');
@@ -1556,22 +1697,65 @@ export async function classifyIncremental(
           if (classifyState === 'classified_removal') summary.classifiedRemoval++;
           lastClassifySkipReason = lq.reason;
         } else {
-          const retry = applyClassifyRetryPolicy(prevRetry, 'unassigned');
-          classifyState = retry.nextState;
-          retryCount = retry.nextRetryCount;
-          summary.unassigned++;
-          if (retry.routedToManualReview) {
-            summary.failureBuckets = bumpFailureBucket(
-              summary.failureBuckets,
-              'manual_review_unassigned'
-            );
+          // The model has already received one strict correction request. A
+          // remaining empty answer is not a valid success for eligible topical
+          // content: use the deterministic broad-domain General leaf when the
+          // seed can identify one, and leave only truly unmatched content for
+          // the multi-item Discover pool.
+          const generalFallback = findGeneralLeafFallback(
+            categories,
+            [
+              batchItem.title,
+              batchItem.textForClassification,
+              ...(batchItem.enrichmentAiTags ?? []),
+              decision.reason ?? '',
+            ].join('\n')
+          );
+          if (generalFallback) {
+            links.push({
+              id: aiLinkId(batchItem.itemId, generalFallback.id),
+              itemId: batchItem.itemId,
+              categoryId: generalFallback.id,
+              score: 0.68,
+              isPrimary: true,
+              source: 'ai',
+              status: 'suggested',
+              created_at: now,
+              updated_at: now,
+            });
+            const retry = applyClassifyRetryPolicy(prevRetry, 'general');
+            classifyState = retry.nextState;
+            retryCount = retry.nextRetryCount;
+            summary.assignedPrimary++;
+            summary.classifiedGeneral++;
+            lastClassifySkipReason = classifyOutcomeReason('general', {
+              routedToManualReview: retry.routedToManualReview,
+              llmReason: `Empty AI classification; broad-domain fallback → ${generalFallback.name}`,
+            });
+            if (retry.routedToManualReview) {
+              summary.failureBuckets = bumpFailureBucket(
+                summary.failureBuckets,
+                'manual_review_general'
+              );
+            }
           } else {
-            summary.pendingDiscover++;
+            const retry = applyClassifyRetryPolicy(prevRetry, 'unassigned');
+            classifyState = retry.nextState;
+            retryCount = retry.nextRetryCount;
+            summary.unassigned++;
+            if (retry.routedToManualReview) {
+              summary.failureBuckets = bumpFailureBucket(
+                summary.failureBuckets,
+                'manual_review_unassigned'
+              );
+            } else {
+              summary.pendingDiscover++;
+            }
+            lastClassifySkipReason = classifyOutcomeReason('unassigned', {
+              routedToManualReview: retry.routedToManualReview,
+              llmReason: decision.reason,
+            });
           }
-          lastClassifySkipReason = classifyOutcomeReason('unassigned', {
-            routedToManualReview: retry.routedToManualReview,
-            llmReason: decision.reason,
-          });
         }
       } else if (decision.decisionType === 'existing' && decision.categoryIds?.length) {
         const assignments = assignmentsFromCategoryIds(decision.categoryIds);
@@ -1637,32 +1821,9 @@ export async function classifyIncremental(
         if (decision.categoryIds.length > 1) summary.multiLabel++;
         if (assignments.length > 1) summary.assignedSecondary += assignments.length - 1;
       } else if (decision.decisionType === 'new_category' && decision.proposedCategory) {
-        const promoted = promoteProposedLeaf(categories, decision.proposedCategory, now);
-        if (promoted.leaf) {
-          categories = promoted.categories;
-          categoryIds.add(promoted.leaf.id);
-          leafById.set(promoted.leaf.id, promoted.leaf);
-          links.push({
-            id: aiLinkId(batchItem.itemId, promoted.leaf.id),
-            itemId: batchItem.itemId,
-            categoryId: promoted.leaf.id,
-            score: 0.88,
-            isPrimary: true,
-            source: 'ai',
-            status: 'suggested',
-            created_at: now,
-            updated_at: now,
-          });
-          const retry = applyClassifyRetryPolicy(prevRetry, 'specific');
-          classifyState = retry.nextState;
-          retryCount = retry.nextRetryCount;
-          summary.assignedPrimary++;
-          summary.classifiedSpecific++;
-        } else {
-          // promoteProposedLeaf failed (invalid parentId, name clash with existing leaf, etc.).
-          // Before giving up to pending_discover, try to fall back:
-          //   1. Existing leaf whose normalized name matches the proposed name (discover already created it).
-          //   2. *-general leaf for the proposed parent domain.
+        // Classify is read-only over taxonomy. A model proposal can only be
+        // recovered to an already-existing exact leaf or the proposed parent's
+        // General leaf; only clustered Discover may create new categories.
           const proposedParentId = decision.proposedCategory?.parentId?.trim();
           const proposedNameNorm = (decision.proposedCategory?.name ?? '')
             .replace(/\s*\/\s*/g, ' ')
@@ -1693,10 +1854,23 @@ export async function classifyIncremental(
                 )
               : null;
 
-          const recoveryLeaf = existingByName ?? generalFallback;
+          let recoveryLeaf = existingByName ?? generalFallback;
+          if (recoveryLeaf && isGeneralLeafId(recoveryLeaf.id)) {
+            const reconciled = reconcileGeneralLeafAssignment(
+              categories,
+              [recoveryLeaf.id],
+              [
+                batchItem.title,
+                batchItem.textForClassification,
+                ...(batchItem.enrichmentAiTags ?? []),
+                decision.reason ?? '',
+                decision.proposedCategory.description ?? '',
+              ].join('\n')
+            );
+            recoveryLeaf = categories.find((category) => category.id === reconciled.categoryIds[0]);
+          }
 
           if (recoveryLeaf) {
-            categoryIds.add(recoveryLeaf.id);
             links.push({
               id: aiLinkId(batchItem.itemId, recoveryLeaf.id),
               itemId: batchItem.itemId,
@@ -1741,7 +1915,6 @@ export async function classifyIncremental(
               routedToManualReview: retry.routedToManualReview,
             });
           }
-        }
       } else {
         const retry = applyClassifyRetryPolicy(prevRetry, 'unassigned');
         classifyState = retry.nextState;
@@ -1837,7 +2010,19 @@ export async function classifyIncremental(
             categoryIds: decision?.categoryIds,
             confidence: decision?.confidence,
             reason: decision?.reason,
-            classifyMode: 'topic-extract',
+            classifyMode: 'semantic-then-taxonomy',
+            semanticLabel: decision?.semanticLabel,
+            primarySubject: decision?.primarySubject,
+            likelySavePurpose: decision?.likelySavePurpose,
+            contentKind: decision?.contentKind,
+            secondaryThemes: decision?.secondaryThemes,
+            freeTopics: decision?.freeTopics,
+            semanticDomain: decision?.semanticDomain,
+            semanticEvidence: decision?.semanticEvidence,
+            semanticContentState: decision?.semanticContentState,
+            parentCandidates: decision?.parentCandidates,
+            primaryParentId: decision?.primaryParentId,
+            novelTopicSuggestion: decision?.novelTopicSuggestion,
           },
         };
       }

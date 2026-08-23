@@ -19,6 +19,8 @@ import {
   buildImportReport,
   pipelineProgressBar,
   preflightImportPipelineStart,
+  resolvePipelineSummaryTone,
+  type BatchDigestResult,
   type ImportReport,
 } from '../../lib/pipeline';
 import { runBatchOnOffscreen } from '../../lib/pipeline/offscreenPipelineClient';
@@ -89,6 +91,28 @@ export function resolveImportReportProcessedIds(result: {
   completedItemIds: string[];
 }): Set<string> {
   return new Set(result.completedItemIds);
+}
+
+/**
+ * A resolved bulk job is not itself an error merely because individual URLs
+ * were unavailable. Keep Import Studio aligned with the shared pipeline modal:
+ * red is reserved for a rejected/failed job, while mixed outcomes are success
+ * or informational completion.
+ */
+export function resolveImportPipelineToastType(
+  result: Pick<
+    BatchDigestResult,
+    | 'enriched'
+    | 'fetched'
+    | 'skipped'
+    | 'failed'
+    | 'classified'
+    | 'classifyError'
+    | 'aiError'
+    | 'classifySummary'
+  >
+): 'success' | 'error' | 'info' {
+  return resolvePipelineSummaryTone(result);
 }
 
 export function getDefaultImportPipelineSelection(
@@ -362,7 +386,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
         },
       });
       setProcessProgressPercent(100);
-      addToast({ type: result.failed > 0 ? 'error' : 'info', message: result.message });
+      addToast({ type: resolveImportPipelineToastType(result), message: result.message });
       if (onImported) {
         await onImported();
       }

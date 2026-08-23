@@ -1,671 +1,144 @@
 {
   "version": 1,
-  "taxonomyVersion": 5,
-  "description": "LLM-discovered leaf taxonomy from batched title+summary samples (parents fixed). Used for embedding shortlist + classify.",
-  "discoveredAt": "2026-05-25T03:54:51.184Z",
-  "corpusMeta": {
-    "initialSeed": "/Users/amir/Dropbox/CodingProjects/personal_tools/workbench_agent/scripts/categorize/seed/categories.seed.manual-v0.json",
-    "corpora": [
-      "2026-05-21T02-02-56",
-      "2026-05-21T03-03-24"
-    ],
-    "aiEvalJsonl": "data/experiments/enrich-fetch/ai-eval-2026-05-25T01-53-38/results-v2.jsonl",
-    "eligible": 111,
-    "batches": 4,
-    "batchSize": 32
-  },
+  "taxonomyVersion": 7,
+  "description": "Broad, stable parent scaffold with durable starter leaves. Discover extends leaves and may add genuinely missing top-level domains from the user's corpus.",
   "parents": [
-    {
-      "id": "quant-finance",
-      "name": "Quantitative finance & trading",
-      "description": "Algorithmic trading, backtesting, market systems, and trading education — not generic personal budgeting."
-    },
-    {
-      "id": "machine-learning",
-      "name": "Machine learning & AI research",
-      "description": "ML theory, models, training, diffusion, transformers, RL — not SaaS productivity wrappers unless core topic is the model."
-    },
-    {
-      "id": "ai-productivity",
-      "name": "AI tools & research workflows",
-      "description": "AI assistants, research tools, writing partners, browser automation, and ML infrastructure APIs for builders."
-    },
-    {
-      "id": "software-dev",
-      "name": "Software development",
-      "description": "Programming languages, frameworks, mobile, native integration, and developer tooling."
-    },
-    {
-      "id": "product-gtm",
-      "name": "Product, demos & go-to-market",
-      "description": "Interactive demos, sales enablement, onboarding products, and no-code site builders."
-    },
-    {
-      "id": "personal-finance",
-      "name": "Personal finance & investing",
-      "description": "Retail investing education, budgeting, and personal money topics — not health, sexuality, or adult content."
-    },
-    {
-      "id": "health-lifestyle",
-      "name": "Health, sexuality & lifestyle",
-      "description": "Health, nutrition, sexuality education, adult content, and personal civic/lifestyle topics — not trading or personal finance."
-    },
-    {
-      "id": "infra-hosting",
-      "name": "Infrastructure & hosting",
-      "description": "Cloud hosting, servers, DevOps, and platform operations for self-hosted or VPS workloads."
-    },
-    {
-      "id": "hardware",
-      "name": "Hardware & workstations",
-      "description": "PC builds, fanless/quiet systems, components, and physical workstation topics."
-    },
-    {
-      "id": "link-quality",
-      "name": "Link quality & attention",
-      "description": "Not topic taxonomy: removal candidates (404, placeholder, fetch fail) and needs-attention (login/auth, clear URL redirect mismatch — keep bookmark)."
-    }
+    { "id": "machine-learning", "name": "Machine learning & AI research", "description": "Machine learning theory, model architectures, training, evaluation, and research—not end-user AI products." },
+    { "id": "ai-productivity", "name": "AI tools, productivity & knowledge", "description": "AI assistants, agents, research and knowledge tools, workflow automation, and model-powered applications." },
+    { "id": "software-dev", "name": "Software engineering", "description": "Programming, application architecture, frameworks, APIs, testing, developer tooling, and software delivery." },
+    { "id": "data-analytics", "name": "Data, databases & analytics", "description": "Databases, data engineering, analytics, visualization, and applied data science distinct from model research." },
+    { "id": "infra-hosting", "name": "Infrastructure & cloud", "description": "Cloud platforms, hosting, operating systems, networks, containers, DevOps, reliability, and observability." },
+    { "id": "security-privacy", "name": "Cybersecurity & privacy", "description": "Application and cloud security, identity, privacy, cryptography, vulnerabilities, threats, and defensive practice." },
+    { "id": "hardware", "name": "Hardware & electronics", "description": "Computers, components, workstations, electronics, embedded systems, devices, and acceleration hardware." },
+    { "id": "quant-finance", "name": "Quantitative finance & trading", "description": "Algorithmic trading, market data, backtesting, portfolio models, trading systems, and quantitative research." },
+    { "id": "personal-finance", "name": "Personal finance & investing", "description": "Household money, investing, retirement, taxes, insurance, budgeting, and individual financial planning." },
+    { "id": "business-product-marketing", "name": "Business, product & marketing", "description": "Entrepreneurship, product management, sales, marketing, growth, customer experience, and business operations." },
+    { "id": "science-math", "name": "Science & mathematics", "description": "Mathematics, statistics, physical and life sciences, engineering research, and scientific methods outside applied ML." },
+    { "id": "environment-nature", "name": "Environment, nature & agriculture", "description": "Climate, sustainability, ecology, conservation, agriculture, gardening, animals, and the natural world." },
+    { "id": "education-careers", "name": "Education & careers", "description": "Courses, teaching, study resources, academic life, careers, hiring, interviews, and professional development." },
+    { "id": "language-writing", "name": "Language, writing & communication", "description": "Writing, editing, grammar, language learning, rhetoric, publishing, and interpersonal or public communication." },
+    { "id": "history-philosophy-religion", "name": "History, philosophy & religion", "description": "History, archaeology, philosophy, ethics, religion, spirituality, and the study of human ideas and traditions." },
+    { "id": "health-medicine", "name": "Health & medicine", "description": "Medicine, healthcare, mental health, nutrition, sleep, wellness, treatments, and health research." },
+    { "id": "sports-fitness", "name": "Sports & fitness", "description": "Exercise, training, competitive and recreational sports, outdoor activity, and athletic performance." },
+    { "id": "relationships-sexuality", "name": "Relationships & sexuality", "description": "Relationships, family, sexuality, sexual health and education, and explicit adult content." },
+    { "id": "society-government-law", "name": "Society, government & law", "description": "Government services, immigration, law, politics, public policy, civic life, and social issues." },
+    { "id": "arts-media-entertainment", "name": "Arts, culture & entertainment", "description": "Film, television, music, books, visual arts, design, games, streaming, and cultural criticism." },
+    { "id": "travel-places-housing", "name": "Travel, places & housing", "description": "Travel planning, destinations, transportation, local places, rentals, housing, and real estate." },
+    { "id": "food-home-lifestyle", "name": "Food, home & everyday life", "description": "Cooking, food, home improvement, household life, personal style, hobbies, and everyday living." },
+    { "id": "shopping-consumer", "name": "Shopping & consumer products", "description": "Product research, reviews, buying guides, deals, retail, and consumer services." }
   ],
   "leaves": [
-    {
-      "id": "page-not-found",
-      "parentId": "link-quality",
-      "name": "Page not found / dead link",
-      "description": "404, page not found, or removed content.",
-      "canonicalTags": ["404", "dead-link", "removal-candidate"],
-      "isRemovalCandidate": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "enrich-fetch-failed",
-      "parentId": "link-quality",
-      "name": "Fetch or AI enrich failed",
-      "description": "Could not extract usable summary for classification.",
-      "canonicalTags": ["enrich-failed", "removal-candidate"],
-      "isRemovalCandidate": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "placeholder-junk",
-      "parentId": "link-quality",
-      "name": "Reserved placeholder domain",
-      "description": "ONLY example.com / example.org / example.net — never real sites with a topical summary.",
-      "canonicalTags": ["placeholder", "junk", "removal-candidate"],
-      "isRemovalCandidate": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "login-auth-required",
-      "parentId": "link-quality",
-      "name": "Login or auth required",
-      "description": "Sign-in/auth gate — keep bookmark; may re-enrich when user is logged in. Not removal junk.",
-      "canonicalTags": ["login", "auth", "attention"],
-      "isRemovalCandidate": false,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "url-redirect-mismatch",
-      "parentId": "link-quality",
-      "name": "URL redirect mismatch",
-      "description": "Saved URL clearly no longer points at that resource (article→hub). AI-confirmed only — not benign www/https redirects. Keep bookmark.",
-      "canonicalTags": ["redirect", "stale-url", "attention"],
-      "isRemovalCandidate": false,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "media-not-transcribed",
-      "parentId": "link-quality",
-      "name": "Media not transcribed",
-      "description": "Embedded X video with almost no readable text — keep for manual review. Images use vision + normal classify.",
-      "canonicalTags": ["media", "video", "attention", "manual-review"],
-      "isRemovalCandidate": false,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "generic-low-signal",
-      "parentId": "link-quality",
-      "name": "Empty page (no subject)",
-      "description": "Blank page with zero topical content (not a login gate) — not lists, guides, or adult.",
-      "canonicalTags": ["generic", "low-signal", "removal-candidate"],
-      "isRemovalCandidate": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "social-no-topic",
-      "parentId": "link-quality",
-      "name": "Social post (no topic)",
-      "description": "Short social post without a durable technical or topical subject.",
-      "canonicalTags": ["social", "removal-candidate"],
-      "isRemovalCandidate": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "algo-trading-platforms",
-      "parentId": "quant-finance",
-      "name": "Algorithmic trading platforms",
-      "description": "Open-source or commercial algo trading platforms, brokers APIs, and quant dev environments (QuantConnect, vectorbt, Zipline-style).",
-      "canonicalTags": [
-        "trading",
-        "algorithmic",
-        "backtesting",
-        "quant"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "trading-strategies-education",
-      "parentId": "quant-finance",
-      "name": "Trading strategies & education",
-      "description": "Articles on rules, breakouts, systematic strategies, and practitioner trading guides — not RL theory alone.",
-      "canonicalTags": [
-        "trading",
-        "strategies",
-        "backtesting",
-        "markets"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "reinforcement-learning",
-      "parentId": "machine-learning",
-      "name": "Reinforcement learning",
-      "description": "RL algorithms, policies, Spinning Up, Stable Baselines, robotics RL — not generic quant platform docs.",
-      "canonicalTags": [
-        "reinforcementlearning",
-        "rl",
-        "robotics",
-        "policy"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "ml-theory-tutorials",
-      "parentId": "machine-learning",
-      "name": "ML theory & tutorials",
-      "description": "General ML concepts, model families, training intuition, and course-style ML content not specific to diffusion or trading.",
-      "canonicalTags": [
-        "machinelearning",
-        "tutorial",
-        "models"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "diffusion-generative-models",
-      "parentId": "machine-learning",
-      "name": "Diffusion & generative models",
-      "description": "Diffusion models, image generation, Imagen/SD-class material, and generative ML math or implementations.",
-      "canonicalTags": [
-        "diffusion",
-        "generative",
-        "imagen",
-        "deeplearning"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "nlp-transformers",
-      "parentId": "machine-learning",
-      "name": "NLP & transformers",
-      "description": "Transformers, ViT, language models, and NLP implementation articles — not generic AI product landing pages.",
-      "canonicalTags": [
-        "transformers",
-        "nlp",
-        "pytorch",
-        "vit"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "ml-inference-infra",
-      "parentId": "ai-productivity",
-      "name": "ML inference infrastructure",
-      "description": "Hosted inference APIs, GPU clouds, and model-serving infra (DeepInfra-class) for running models.",
-      "canonicalTags": [
-        "inference",
-        "hosting",
-        "gpu",
-        "models"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "ai-research-assistants",
-      "parentId": "ai-productivity",
-      "name": "AI research assistants",
-      "description": "Tools for literature review, research writing, knowledge synthesis (Otio-class) — not generic chatbots.",
-      "canonicalTags": [
-        "research",
-        "writing",
-        "productivity",
-        "ai"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "browser-ai-automation",
-      "parentId": "ai-productivity",
-      "name": "Browser AI automation",
-      "description": "Browser extensions and agents that automate web tasks, summaries, or workflows (HARPA-class).",
-      "canonicalTags": [
-        "browser",
-        "automation",
-        "productivity",
-        "ai"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "knowledge-management",
-      "parentId": "ai-productivity",
-      "name": "Knowledge management",
-      "description": "PKM, wissensmanagement, note systems, and organizing personal knowledge — not Flutter or trading.",
-      "canonicalTags": [
-        "pkm",
-        "knowledge",
-        "notes",
-        "productivity"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "flutter-mobile",
-      "parentId": "software-dev",
-      "name": "Flutter & mobile development",
-      "description": "Flutter apps, Dart, mobile UI, speech recognition, liveness, SQLite on mobile — not generic web frontend.",
-      "canonicalTags": [
-        "flutter",
-        "dart",
-        "mobile",
-        "android",
-        "ios"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "native-ffi-integration",
-      "parentId": "software-dev",
-      "name": "Native & FFI integration",
-      "description": "Calling native libraries from Dart/Flutter, FFI, ONNX in mobile, and cross-language bindings.",
-      "canonicalTags": [
-        "ffi",
-        "native",
-        "onnx",
-        "integration"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "webrtc-realtime",
-      "parentId": "software-dev",
-      "name": "WebRTC & realtime media",
-      "description": "WebRTC, live video/audio SDKs, and realtime communication in apps.",
-      "canonicalTags": [
-        "webrtc",
-        "video",
-        "realtime",
-        "streaming"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "coding-interview-prep",
-      "parentId": "software-dev",
-      "name": "Coding interview prep",
-      "description": "LeetCode, algorithm puzzles, and interview preparation platforms.",
-      "canonicalTags": [
-        "leetcode",
-        "algorithms",
-        "interview",
-        "coding"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "interactive-product-demos",
-      "parentId": "product-gtm",
-      "name": "Interactive product demos",
-      "description": "Demo software for sales and onboarding (Storylane, Supademo, Navattic-class) — not the product being demoed.",
-      "canonicalTags": [
-        "demos",
-        "sales",
-        "onboarding",
-        "saas"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "no-code-website-builders",
-      "parentId": "product-gtm",
-      "name": "No-code & website builders",
-      "description": "AI or visual site builders and landing-page tools (Typedream-class).",
-      "canonicalTags": [
-        "nocode",
-        "website",
-        "builder",
-        "saas"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "personal-investing-education",
-      "parentId": "personal-finance",
-      "name": "Personal investing education",
-      "description": "Retail investing ideas, trader education, Minervini-style content — not algo dev platforms.",
-      "canonicalTags": [
-        "investing",
-        "trading",
-        "education",
-        "finance"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "personal-finance-money",
-      "parentId": "personal-finance",
-      "name": "Personal finance & money",
-      "description": "Budgeting, financial planning, and personal money management articles.",
-      "canonicalTags": [
-        "personalfinance",
-        "money",
-        "planning"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "health-nutrition",
-      "parentId": "health-lifestyle",
-      "name": "Health & nutrition",
-      "description": "Food, supplements, health claims, and wellness — not financial trading or explicit adult video.",
-      "canonicalTags": [
-        "health",
-        "nutrition",
-        "supplements",
-        "food"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "adult-erotic-content",
-      "parentId": "health-lifestyle",
-      "name": "Adult & erotic content",
-      "description": "Explicit adult video, erotic fiction/audio platforms, fetish and pornographic pages — classify and track like any other topic; not login shells.",
-      "canonicalTags": [
-        "adult",
-        "erotic",
-        "sexual",
-        "fetish",
-        "porn"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "sexuality-wellness-education",
-      "parentId": "health-lifestyle",
-      "name": "Sexuality & wellness education",
-      "description": "Articles on sex dreams, lucid dreaming, sexual health education, relationships — not explicit porn/video tube pages.",
-      "canonicalTags": [
-        "sexuality",
-        "wellness",
-        "education",
-        "dreams",
-        "relationships"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "seo-data-analytics",
-      "parentId": "product-gtm",
-      "name": "SEO & marketing analytics",
-      "description": "SEO tools, marketing data, analytics dashboards — not quant trading backtests.",
-      "canonicalTags": [
-        "seo",
-        "analytics",
-        "marketing",
-        "data"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "cloud-vps-hosting",
-      "parentId": "infra-hosting",
-      "name": "Cloud & VPS hosting",
-      "description": "VPS providers, cloud servers, Hetzner-class hosting and deployment targets.",
-      "canonicalTags": [
-        "hosting",
-        "vps",
-        "cloud",
-        "servers"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "quiet-pc-hardware",
-      "parentId": "hardware",
-      "name": "Quiet & fanless PCs",
-      "description": "Silent PCs, fanless workstations, and hardware for low-noise builds.",
-      "canonicalTags": [
-        "hardware",
-        "pc",
-        "fanless",
-        "workstation"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "government-forms-requests",
-      "parentId": "health-lifestyle",
-      "name": "Government, visas & official forms",
-      "description": "Embassy/consular pages, immigrant & nonimmigrant visa processes (I-130, NVC, interviews), government portals, benefits, and official request flows — not SaaS demos.",
-      "canonicalTags": [
-        "government",
-        "forms",
-        "official"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "movies-tv-streaming",
-      "parentId": "health-lifestyle",
-      "name": "Movies, TV & streaming",
-      "description": "Film and TV streaming, watchlists, free-movie/TV site lists, anime and sports stream guides — not software dev.",
-      "canonicalTags": [
-        "movies",
-        "tv",
-        "streaming",
-        "media"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "crypto-web3",
-      "parentId": "software-dev",
-      "name": "Crypto & Web3",
-      "description": "Wallets, dApps, MetaMask, and blockchain developer or user tooling.",
-      "canonicalTags": [
-        "crypto",
-        "web3",
-        "wallet",
-        "blockchain"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "gaming-hardware",
-      "parentId": "hardware",
-      "name": "Gaming PCs & components",
-      "description": "Gaming rigs, GPUs for gaming builds, and consumer PC hardware retail — not algo trading.",
-      "canonicalTags": [
-        "gaming",
-        "gpu",
-        "hardware",
-        "pc"
-      ],
-      "fromInitialSeed": true
-    },
-    {
-      "id": "residual-memorization-algorithm",
-      "parentId": "machine-learning",
-      "name": "Residual memorization algorithm",
-      "description": "Algorithm enhancing model performance by fitting residuals, not generic ML concepts.",
-      "canonicalTags": [
-        "algorithm",
-        "residuals",
-        "model"
-      ],
-      "discoveredFrom": [
-        "2026-05-21T02-02-56/090-marktechpost.com"
-      ]
-    },
-    {
-      "id": "tensor-manipulation-tool",
-      "parentId": "machine-learning",
-      "name": "Tensor manipulation tool",
-      "description": "Tool for efficient tensor operations in PyTorch, not general ML libraries.",
-      "canonicalTags": [
-        "tensor",
-        "manipulation",
-        "pytorch"
-      ],
-      "discoveredFrom": [
-        "2026-05-21T03-03-24/020-linkedin.com"
-      ]
-    },
-    {
-      "id": "edge-llm-inference",
-      "parentId": "machine-learning",
-      "name": "Edge LLM inference",
-      "description": "Running large language models on edge devices, not cloud-based solutions.",
-      "canonicalTags": [
-        "llm",
-        "edge",
-        "inference"
-      ],
-      "discoveredFrom": [
-        "2026-05-21T02-02-56/096-ubiquitouslearning.github.io"
-      ]
-    },
-    {
-      "id": "diffusion-models-implementation",
-      "parentId": "machine-learning",
-      "name": "Diffusion models implementation",
-      "description": "Tutorials and guides on implementing diffusion models for image generation and other applications.",
-      "canonicalTags": [
-        "diffusion",
-        "models",
-        "implementation"
-      ],
-      "discoveredFrom": [
-        "2026-05-21T02-02-56/085-assemblyai.com"
-      ]
-    },
-    {
-      "id": "quant-finance-general",
-      "parentId": "quant-finance",
-      "name": "Other (Quantitative finance & trading)",
-      "description": "Bookmarks clearly in “Quantitative finance & trading” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
-      "canonicalTags": [
-        "quant",
-        "other"
-      ],
-      "isGeneralFallback": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "machine-learning-general",
-      "parentId": "machine-learning",
-      "name": "Other (Machine learning & AI research)",
-      "description": "Bookmarks clearly in “Machine learning & AI research” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
-      "canonicalTags": [
-        "machine",
-        "other"
-      ],
-      "isGeneralFallback": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "ai-productivity-general",
-      "parentId": "ai-productivity",
-      "name": "Other (AI tools & research workflows)",
-      "description": "Bookmarks clearly in “AI tools & research workflows” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
-      "canonicalTags": [
-        "ai",
-        "other"
-      ],
-      "isGeneralFallback": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "software-dev-general",
-      "parentId": "software-dev",
-      "name": "Other (Software development)",
-      "description": "Bookmarks clearly in “Software development” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
-      "canonicalTags": [
-        "software",
-        "other"
-      ],
-      "isGeneralFallback": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "product-gtm-general",
-      "parentId": "product-gtm",
-      "name": "Other (Product, demos & go-to-market)",
-      "description": "Bookmarks clearly in “Product, demos & go-to-market” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
-      "canonicalTags": [
-        "product",
-        "other"
-      ],
-      "isGeneralFallback": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "personal-finance-general",
-      "parentId": "personal-finance",
-      "name": "Other (Personal finance & investing)",
-      "description": "Bookmarks clearly in personal finance/investing when no more specific sibling leaf applies.",
-      "canonicalTags": [
-        "finance",
-        "other"
-      ],
-      "isGeneralFallback": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "health-lifestyle-general",
-      "parentId": "health-lifestyle",
-      "name": "Other (Health, sexuality & lifestyle)",
-      "description": "Bookmarks clearly in health/sexuality/lifestyle when no more specific sibling leaf applies.",
-      "canonicalTags": [
-        "lifestyle",
-        "other"
-      ],
-      "isGeneralFallback": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "infra-hosting-general",
-      "parentId": "infra-hosting",
-      "name": "Other (Infrastructure & hosting)",
-      "description": "Bookmarks clearly in “Infrastructure & hosting” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
-      "canonicalTags": [
-        "infra",
-        "other"
-      ],
-      "isGeneralFallback": true,
-      "fromInitialSeed": true
-    },
-    {
-      "id": "hardware-general",
-      "parentId": "hardware",
-      "name": "Other (Hardware & workstations)",
-      "description": "Bookmarks clearly in “Hardware & workstations” when no more specific sibling leaf applies. Do not use if a specific leaf under this parent fits.",
-      "canonicalTags": [
-        "hardware",
-        "other"
-      ],
-      "isGeneralFallback": true,
-      "fromInitialSeed": true
-    }
+    { "id": "ml-foundations-theory", "parentId": "machine-learning", "name": "ML foundations & theory", "description": "Learning theory, optimization, probabilistic ML, neural-network fundamentals, and general model training.", "canonicalTags": ["machine-learning", "deep-learning", "optimization", "probabilistic-ml"] },
+    { "id": "nlp-language-models", "parentId": "machine-learning", "name": "NLP & language models", "description": "Natural-language processing, transformers, language models, speech-language research, and text generation.", "canonicalTags": ["nlp", "transformers", "language-models", "llm"] },
+    { "id": "vision-generative-media", "parentId": "machine-learning", "name": "Vision & generative media", "description": "Computer vision, image and video models, diffusion, multimodal learning, and generative media research.", "canonicalTags": ["computer-vision", "diffusion", "multimodal", "generative-ai"] },
+    { "id": "reinforcement-learning", "parentId": "machine-learning", "name": "Reinforcement learning", "description": "Policies, value learning, planning, agents, robotics RL, and sequential decision-making.", "canonicalTags": ["reinforcement-learning", "rl", "agents", "robotics"] },
+    { "id": "ml-systems-evaluation", "parentId": "machine-learning", "name": "ML systems & evaluation", "description": "Model inference, evaluation, benchmarking, datasets, fine-tuning, efficiency, and research infrastructure.", "canonicalTags": ["ml-systems", "inference", "evaluation", "datasets"] },
+
+    { "id": "ai-assistants-agents", "parentId": "ai-productivity", "name": "AI assistants & agents", "description": "General-purpose assistants, copilots, autonomous agents, and agentic applications.", "canonicalTags": ["ai-assistant", "agents", "copilot", "chatbot"] },
+    { "id": "research-knowledge-tools", "parentId": "ai-productivity", "name": "Research & knowledge tools", "description": "Literature, note-taking, retrieval, knowledge management, synthesis, and research-writing tools.", "canonicalTags": ["research-tools", "knowledge-management", "notes", "rag"] },
+    { "id": "workflow-browser-automation", "parentId": "ai-productivity", "name": "Workflow & browser automation", "description": "AI or rule-based automation for browsers, documents, repetitive work, and connected workflows.", "canonicalTags": ["automation", "browser-automation", "workflow", "productivity"] },
+    { "id": "model-apis-ai-platforms", "parentId": "ai-productivity", "name": "Model APIs & AI platforms", "description": "Hosted models, AI application platforms, model APIs, and tools for building model-powered products.", "canonicalTags": ["model-api", "ai-platform", "hosted-inference", "ai-apps"] },
+
+    { "id": "programming-fundamentals", "parentId": "software-dev", "name": "Programming fundamentals", "description": "Programming languages, algorithms, data structures, compilers, and core software concepts.", "canonicalTags": ["programming", "algorithms", "data-structures", "languages"] },
+    { "id": "web-application-development", "parentId": "software-dev", "name": "Web application development", "description": "Frontend, backend, web frameworks, browser applications, and full-stack engineering.", "canonicalTags": ["web-development", "frontend", "backend", "full-stack"] },
+    { "id": "mobile-desktop-development", "parentId": "software-dev", "name": "Mobile & desktop development", "description": "Mobile, desktop, cross-platform, native, and graphical application development.", "canonicalTags": ["mobile", "desktop", "flutter", "native-apps"] },
+    { "id": "developer-tools-quality", "parentId": "software-dev", "name": "Developer tools & quality", "description": "IDEs, version control, testing, debugging, code quality, build systems, and engineering workflows.", "canonicalTags": ["developer-tools", "testing", "debugging", "git"] },
+    { "id": "apis-integration-realtime", "parentId": "software-dev", "name": "APIs, integration & realtime", "description": "APIs, SDKs, FFI, protocols, messaging, WebRTC, and integration between systems.", "canonicalTags": ["api", "sdk", "integration", "realtime"] },
+
+    { "id": "databases-storage", "parentId": "data-analytics", "name": "Databases & storage", "description": "Relational, document, vector, analytical, and distributed databases plus data storage design.", "canonicalTags": ["databases", "sql", "storage", "vector-database"] },
+    { "id": "data-engineering", "parentId": "data-analytics", "name": "Data engineering", "description": "Pipelines, ETL, streaming, warehouses, lakehouses, orchestration, and large-scale data processing.", "canonicalTags": ["data-engineering", "etl", "pipelines", "warehousing"] },
+    { "id": "analytics-visualization", "parentId": "data-analytics", "name": "Analytics & visualization", "description": "Business intelligence, metrics, dashboards, exploratory analysis, and data visualization.", "canonicalTags": ["analytics", "visualization", "business-intelligence", "dashboards"] },
+    { "id": "applied-data-science", "parentId": "data-analytics", "name": "Applied data science", "description": "Practical statistical analysis, notebooks, experimentation, and data-science workflows outside model research.", "canonicalTags": ["data-science", "statistics", "experiments", "notebooks"] },
+
+    { "id": "cloud-hosting", "parentId": "infra-hosting", "name": "Cloud & hosting", "description": "Cloud providers, VPS services, hosting platforms, deployment targets, and infrastructure pricing.", "canonicalTags": ["cloud", "hosting", "vps", "servers"] },
+    { "id": "devops-containers", "parentId": "infra-hosting", "name": "DevOps & containers", "description": "Containers, orchestration, infrastructure as code, CI/CD, deployment automation, and platform engineering.", "canonicalTags": ["devops", "containers", "kubernetes", "cicd"] },
+    { "id": "systems-networking", "parentId": "infra-hosting", "name": "Systems & networking", "description": "Operating systems, Linux administration, networking, distributed systems, and systems performance.", "canonicalTags": ["linux", "operating-systems", "networking", "distributed-systems"] },
+    { "id": "reliability-observability", "parentId": "infra-hosting", "name": "Reliability & observability", "description": "Monitoring, logging, tracing, incidents, backup, recovery, and site reliability engineering.", "canonicalTags": ["observability", "monitoring", "sre", "backup"] },
+
+    { "id": "application-cloud-security", "parentId": "security-privacy", "name": "Application & cloud security", "description": "Secure software, cloud defense, vulnerability management, penetration testing, and security architecture.", "canonicalTags": ["application-security", "cloud-security", "vulnerabilities", "pentesting"] },
+    { "id": "identity-privacy", "parentId": "security-privacy", "name": "Identity & privacy", "description": "Authentication, authorization, identity systems, personal privacy, tracking, and privacy-preserving tools.", "canonicalTags": ["identity", "authentication", "privacy", "authorization"] },
+    { "id": "cryptography-trust", "parentId": "security-privacy", "name": "Cryptography & trust", "description": "Cryptography, keys, certificates, secure protocols, wallets, signatures, and trust infrastructure.", "canonicalTags": ["cryptography", "certificates", "keys", "secure-protocols"] },
+    { "id": "threats-security-research", "parentId": "security-privacy", "name": "Threats & security research", "description": "Malware, exploits, threat intelligence, incident analysis, and offensive or defensive security research.", "canonicalTags": ["threats", "malware", "exploits", "security-research"] },
+
+    { "id": "computers-components", "parentId": "hardware", "name": "Computers & components", "description": "PCs, laptops, processors, memory, storage, displays, peripherals, and component selection.", "canonicalTags": ["computers", "components", "laptops", "pc"] },
+    { "id": "electronics-embedded", "parentId": "hardware", "name": "Electronics & embedded systems", "description": "Electronics, microcontrollers, sensors, embedded devices, robotics hardware, and maker projects.", "canonicalTags": ["electronics", "embedded", "microcontrollers", "sensors"] },
+    { "id": "workstations-acceleration", "parentId": "hardware", "name": "Workstations & acceleration", "description": "GPU and accelerator hardware, high-performance workstations, quiet systems, and compute builds.", "canonicalTags": ["gpu", "workstations", "accelerators", "hpc"] },
+    { "id": "networks-smart-devices", "parentId": "hardware", "name": "Networks & smart devices", "description": "Routers, network appliances, phones, smart-home devices, and connected consumer hardware.", "canonicalTags": ["routers", "smart-devices", "phones", "network-hardware"] },
+
+    { "id": "algorithmic-trading-backtesting", "parentId": "quant-finance", "name": "Algorithmic trading & backtesting", "description": "Trading algorithms, backtesting engines, quantitative platforms, execution, and systematic strategy development.", "canonicalTags": ["algorithmic-trading", "backtesting", "quant", "execution"] },
+    { "id": "markets-trading-strategies", "parentId": "quant-finance", "name": "Markets & trading strategies", "description": "Market structure, technical or systematic strategies, portfolio tactics, and practitioner trading research.", "canonicalTags": ["markets", "trading-strategies", "portfolio", "market-research"] },
+    { "id": "market-data-brokerage", "parentId": "quant-finance", "name": "Market data & brokerage", "description": "Historical and live market data, brokers, exchanges, trading APIs, and financial data infrastructure.", "canonicalTags": ["market-data", "brokerage", "exchanges", "trading-api"] },
+    { "id": "quant-models-risk", "parentId": "quant-finance", "name": "Quant models & risk", "description": "Asset pricing, risk, derivatives, portfolio optimization, factors, and quantitative financial modeling.", "canonicalTags": ["risk", "derivatives", "portfolio-optimization", "asset-pricing"] },
+
+    { "id": "investing-retirement", "parentId": "personal-finance", "name": "Investing & retirement", "description": "Long-term investing, retirement accounts, funds, allocation, dividends, and wealth building.", "canonicalTags": ["investing", "retirement", "etf", "wealth"] },
+    { "id": "budgeting-money-management", "parentId": "personal-finance", "name": "Budgeting & money management", "description": "Budgets, saving, debt, credit, banking, household finances, and everyday money decisions.", "canonicalTags": ["budgeting", "saving", "debt", "banking"] },
+    { "id": "tax-insurance-planning", "parentId": "personal-finance", "name": "Tax, insurance & planning", "description": "Personal taxes, insurance, estate planning, benefits, and financial planning guidance.", "canonicalTags": ["tax", "insurance", "estate-planning", "financial-planning"] },
+
+    { "id": "product-management-design", "parentId": "business-product-marketing", "name": "Product management & design", "description": "Product strategy, discovery, roadmaps, user research, product design, onboarding, and product operations.", "canonicalTags": ["product-management", "product-design", "user-research", "onboarding"] },
+    { "id": "startups-entrepreneurship", "parentId": "business-product-marketing", "name": "Startups & entrepreneurship", "description": "Startup ideas, company building, founders, business models, fundraising, and independent businesses.", "canonicalTags": ["startups", "entrepreneurship", "founders", "business-models"] },
+    { "id": "marketing-growth", "parentId": "business-product-marketing", "name": "Marketing & growth", "description": "Marketing strategy, SEO, content, analytics, acquisition, branding, and audience development.", "canonicalTags": ["marketing", "growth", "seo", "branding"] },
+    { "id": "sales-customer-success", "parentId": "business-product-marketing", "name": "Sales & customer success", "description": "Sales processes, demos, enablement, CRM, support, retention, and customer success.", "canonicalTags": ["sales", "customer-success", "crm", "product-demos"] },
+    { "id": "business-operations", "parentId": "business-product-marketing", "name": "Business operations", "description": "Management, finance operations, incorporation, contracts, administration, and organizational processes.", "canonicalTags": ["management", "operations", "incorporation", "administration"] },
+
+    { "id": "mathematics-statistics", "parentId": "science-math", "name": "Mathematics & statistics", "description": "Pure and applied mathematics, probability, statistics, mathematical proofs, and quantitative methods.", "canonicalTags": ["mathematics", "statistics", "probability", "proofs"] },
+    { "id": "physics-engineering-science", "parentId": "science-math", "name": "Physics & engineering science", "description": "Physics, electrical and mechanical engineering science, materials, energy, and physical systems.", "canonicalTags": ["physics", "engineering", "materials", "energy"] },
+    { "id": "biology-life-sciences", "parentId": "science-math", "name": "Biology & life sciences", "description": "Biology, genetics, neuroscience, biotechnology, and life-science research.", "canonicalTags": ["biology", "genetics", "neuroscience", "biotechnology"] },
+    { "id": "scientific-methods-research", "parentId": "science-math", "name": "Scientific methods & research", "description": "Research methods, experiments, measurement, reproducibility, papers, and scientific practice across disciplines.", "canonicalTags": ["research-methods", "experiments", "reproducibility", "science"] },
+
+    { "id": "climate-sustainability", "parentId": "environment-nature", "name": "Climate & sustainability", "description": "Climate science and impacts, clean energy, emissions, sustainability, environmental policy, and resilient systems.", "canonicalTags": ["climate", "sustainability", "clean-energy", "environment"] },
+    { "id": "ecology-conservation", "parentId": "environment-nature", "name": "Ecology & conservation", "description": "Ecosystems, biodiversity, wildlife, oceans, forests, conservation, and environmental restoration.", "canonicalTags": ["ecology", "conservation", "biodiversity", "wildlife"] },
+    { "id": "agriculture-gardening", "parentId": "environment-nature", "name": "Agriculture & gardening", "description": "Farming, crops, soil, horticulture, gardening, food production, and agricultural technology.", "canonicalTags": ["agriculture", "farming", "gardening", "horticulture"] },
+    { "id": "animals-pets", "parentId": "environment-nature", "name": "Animals & pets", "description": "Animal behavior, pets, veterinary information, care, training, and relationships with domestic animals.", "canonicalTags": ["animals", "pets", "veterinary", "animal-care"] },
+
+    { "id": "courses-learning-resources", "parentId": "education-careers", "name": "Courses & learning resources", "description": "Courses, lectures, textbooks, tutorials, syllabi, and structured self-learning resources.", "canonicalTags": ["courses", "lectures", "textbooks", "learning"] },
+    { "id": "teaching-academic-life", "parentId": "education-careers", "name": "Teaching & academic life", "description": "Teaching, curriculum, universities, study methods, academic policies, and student life.", "canonicalTags": ["teaching", "academia", "curriculum", "study"] },
+    { "id": "careers-job-search", "parentId": "education-careers", "name": "Careers & job search", "description": "Career planning, job listings, resumes, recruiting, workplace choices, and professional transitions.", "canonicalTags": ["careers", "jobs", "recruiting", "resume"] },
+    { "id": "interviews-professional-skills", "parentId": "education-careers", "name": "Interviews & professional skills", "description": "Interview preparation, workplace communication, leadership skills, certifications, and professional development.", "canonicalTags": ["interviews", "professional-development", "leadership", "certifications"] },
+
+    { "id": "writing-editing", "parentId": "language-writing", "name": "Writing & editing", "description": "Writing craft, editing, style, composition, technical writing, and clear prose.", "canonicalTags": ["writing", "editing", "style", "technical-writing"] },
+    { "id": "language-learning-grammar", "parentId": "language-writing", "name": "Language learning & grammar", "description": "Learning languages, grammar, vocabulary, pronunciation, translation, and linguistic usage.", "canonicalTags": ["language-learning", "grammar", "vocabulary", "translation"] },
+    { "id": "communication-rhetoric", "parentId": "language-writing", "name": "Communication & rhetoric", "description": "Rhetoric, presentations, public speaking, persuasion, conversation, and interpersonal communication.", "canonicalTags": ["communication", "rhetoric", "public-speaking", "persuasion"] },
+    { "id": "publishing-content-creation", "parentId": "language-writing", "name": "Publishing & content creation", "description": "Publishing, blogging, newsletters, documentation, content workflows, and author tools.", "canonicalTags": ["publishing", "blogging", "newsletters", "content"] },
+
+    { "id": "history-archaeology", "parentId": "history-philosophy-religion", "name": "History & archaeology", "description": "World and regional history, historical events, biographies, archives, archaeology, and material evidence of the past.", "canonicalTags": ["history", "archaeology", "archives", "historical-research"] },
+    { "id": "philosophy-ethics", "parentId": "history-philosophy-religion", "name": "Philosophy & ethics", "description": "Philosophical traditions, logic, ethics, epistemology, metaphysics, and applied moral questions.", "canonicalTags": ["philosophy", "ethics", "logic", "epistemology"] },
+    { "id": "religion-spirituality", "parentId": "history-philosophy-religion", "name": "Religion & spirituality", "description": "Religions, theology, sacred texts, spiritual practice, belief, ritual, and religious communities.", "canonicalTags": ["religion", "spirituality", "theology", "sacred-texts"] },
+    { "id": "humanities-cultural-studies", "parentId": "history-philosophy-religion", "name": "Humanities & cultural studies", "description": "Humanistic scholarship, classics, cultural theory, intellectual history, and interpretation of human traditions.", "canonicalTags": ["humanities", "cultural-studies", "classics", "intellectual-history"] },
+
+    { "id": "medicine-healthcare", "parentId": "health-medicine", "name": "Medicine & healthcare", "description": "Diseases, diagnosis, treatment, clinical care, healthcare systems, medications, and medical guidance.", "canonicalTags": ["medicine", "healthcare", "treatment", "clinical"] },
+    { "id": "nutrition-wellness", "parentId": "health-medicine", "name": "Nutrition & wellness", "description": "Food and health, diets, supplements, preventive wellness, and evidence-based health habits.", "canonicalTags": ["nutrition", "wellness", "diet", "supplements"] },
+    { "id": "mental-health", "parentId": "health-medicine", "name": "Mental health", "description": "Psychology, therapy, emotional wellbeing, psychiatric conditions, and mental-health support.", "canonicalTags": ["mental-health", "psychology", "therapy", "wellbeing"] },
+    { "id": "sleep-recovery", "parentId": "health-medicine", "name": "Sleep & recovery", "description": "Sleep science, recovery, fatigue, circadian health, and restorative practices.", "canonicalTags": ["sleep", "recovery", "circadian", "fatigue"] },
+
+    { "id": "exercise-training", "parentId": "sports-fitness", "name": "Exercise & training", "description": "Strength, conditioning, mobility, running, workouts, and general fitness programs.", "canonicalTags": ["exercise", "training", "fitness", "workouts"] },
+    { "id": "competitive-recreational-sports", "parentId": "sports-fitness", "name": "Competitive & recreational sports", "description": "Teams, leagues, athletes, sporting events, coaching, and recreational sport participation.", "canonicalTags": ["sports", "athletes", "leagues", "coaching"] },
+    { "id": "outdoors-adventure", "parentId": "sports-fitness", "name": "Outdoors & adventure", "description": "Hiking, camping, cycling, climbing, water sports, and outdoor recreation.", "canonicalTags": ["outdoors", "hiking", "cycling", "adventure"] },
+
+    { "id": "relationships-family", "parentId": "relationships-sexuality", "name": "Relationships & family", "description": "Dating, partnerships, family life, parenting, interpersonal bonds, and relationship guidance.", "canonicalTags": ["relationships", "family", "dating", "parenting"] },
+    { "id": "sexuality-sexual-health", "parentId": "relationships-sexuality", "name": "Sexuality & sexual health", "description": "Sexuality education, sexual wellbeing, identity, intimacy, and sexual-health guidance.", "canonicalTags": ["sexuality", "sexual-health", "intimacy", "education"] },
+    { "id": "adult-erotic-content", "parentId": "relationships-sexuality", "name": "Adult & erotic content", "description": "Explicit adult video, erotic media, fetish content, and pornographic pages retained as a normal topic.", "canonicalTags": ["adult", "erotic", "explicit", "pornography"] },
+
+    { "id": "government-services-immigration", "parentId": "society-government-law", "name": "Government services & immigration", "description": "Government portals, official forms, visas, immigration, citizenship, benefits, and public services.", "canonicalTags": ["government", "immigration", "visas", "public-services"] },
+    { "id": "law-legal-guidance", "parentId": "society-government-law", "name": "Law & legal guidance", "description": "Legal systems, rights, cases, contracts, legal processes, and practical legal information.", "canonicalTags": ["law", "legal", "rights", "contracts"] },
+    { "id": "politics-public-policy", "parentId": "society-government-law", "name": "Politics & public policy", "description": "Political institutions, elections, policy, governance, geopolitics, and public administration.", "canonicalTags": ["politics", "policy", "elections", "governance"] },
+    { "id": "society-social-issues", "parentId": "society-government-law", "name": "Society & social issues", "description": "Communities, inequality, demographics, civic debates, social movements, and contemporary social questions.", "canonicalTags": ["society", "social-issues", "communities", "civic-life"] },
+
+    { "id": "movies-tv-streaming", "parentId": "arts-media-entertainment", "name": "Movies, TV & streaming", "description": "Film, television, streaming services, watchlists, episode pages, reviews, and screen entertainment.", "canonicalTags": ["movies", "television", "streaming", "film"] },
+    { "id": "music-audio", "parentId": "arts-media-entertainment", "name": "Music & audio", "description": "Music, musicians, recordings, podcasts, radio, audio production, and listening platforms.", "canonicalTags": ["music", "audio", "podcasts", "recordings"] },
+    { "id": "books-literature", "parentId": "arts-media-entertainment", "name": "Books & literature", "description": "Books, literature, authors, reading, libraries, archives, criticism, and literary culture.", "canonicalTags": ["books", "literature", "reading", "libraries"] },
+    { "id": "art-design-culture", "parentId": "arts-media-entertainment", "name": "Art, design & culture", "description": "Visual art, graphic and interaction design, photography, architecture, museums, and cultural works.", "canonicalTags": ["art", "design", "photography", "culture"] },
+    { "id": "games-interactive-entertainment", "parentId": "arts-media-entertainment", "name": "Games & interactive entertainment", "description": "Video games, tabletop games, interactive fiction, game design, esports, and gaming communities.", "canonicalTags": ["games", "gaming", "interactive-fiction", "esports"] },
+
+    { "id": "travel-planning-destinations", "parentId": "travel-places-housing", "name": "Travel planning & destinations", "description": "Destinations, itineraries, hotels, flights, travel advice, tourism, and trip planning.", "canonicalTags": ["travel", "destinations", "tourism", "itineraries"] },
+    { "id": "housing-real-estate", "parentId": "travel-places-housing", "name": "Housing & real estate", "description": "Homes, apartments, rentals, real-estate listings, mortgages, neighborhoods, and housing markets.", "canonicalTags": ["housing", "real-estate", "rentals", "apartments"] },
+    { "id": "local-places-transportation", "parentId": "travel-places-housing", "name": "Local places & transportation", "description": "Local businesses, venues, maps, neighborhoods, transit, driving, and getting around.", "canonicalTags": ["local", "places", "transportation", "maps"] },
+
+    { "id": "food-cooking", "parentId": "food-home-lifestyle", "name": "Food & cooking", "description": "Recipes, cooking techniques, ingredients, restaurants, food culture, and meal planning.", "canonicalTags": ["food", "cooking", "recipes", "restaurants"] },
+    { "id": "home-diy", "parentId": "food-home-lifestyle", "name": "Home & DIY", "description": "Home improvement, repairs, furnishings, organization, and do-it-yourself projects.", "canonicalTags": ["home", "diy", "repairs", "furnishings"] },
+    { "id": "personal-style-everyday-life", "parentId": "food-home-lifestyle", "name": "Personal style & everyday life", "description": "Clothing, grooming, routines, personal interests, celebrations, and everyday lifestyle topics.", "canonicalTags": ["style", "grooming", "routines", "lifestyle"] },
+
+    { "id": "product-reviews-buying-guides", "parentId": "shopping-consumer", "name": "Product reviews & buying guides", "description": "Comparisons, recommendations, reviews, specifications, and guidance for choosing products.", "canonicalTags": ["product-reviews", "buying-guides", "comparisons", "recommendations"] },
+    { "id": "shopping-deals", "parentId": "shopping-consumer", "name": "Shopping & deals", "description": "Retail stores, marketplaces, prices, promotions, coupons, wishlists, and deal discovery.", "canonicalTags": ["shopping", "deals", "retail", "marketplaces"] },
+    { "id": "consumer-services", "parentId": "shopping-consumer", "name": "Consumer services", "description": "Subscriptions, utilities, service providers, reservations, memberships, and customer-facing services.", "canonicalTags": ["consumer-services", "subscriptions", "providers", "memberships"] }
   ]
 }

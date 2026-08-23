@@ -253,6 +253,13 @@ export async function ensureBundledSeedTaxonomy(): Promise<{
   const { flushDurableBackupSoon } = await import('../storage/flushDurableBackup');
   flushDurableBackupSoon();
   console.info(`[taxonomy] created complete seed taxonomy (${bundledRows.length} categories)`);
+  // Category search profiles are derived projections, never part of the seed
+  // transaction or pipeline completion path. Warm metadata vectors in the
+  // background when credentials are available; member evidence is blended in
+  // by the same profile service as classified links accumulate.
+  void import('../search/categorySearchProfileService')
+    .then(({ warmCategorySearchProfiles }) => warmCategorySearchProfiles())
+    .catch((error) => console.warn('[taxonomy] category profile warm deferred:', error));
   return { created: bundledRows.length };
 }
 

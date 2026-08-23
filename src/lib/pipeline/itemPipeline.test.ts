@@ -31,6 +31,23 @@ describe('pipelineProgressBar', () => {
     expect(bar.percent).toBe(13);
   });
 
+  it('prefers monotonic durable work across barriered stage waves', () => {
+    const bar = pipelineProgressBar({
+      phase: 'embed',
+      label: 'Building search embedding · Link 1/2',
+      current: 0,
+      total: 2,
+      overallCurrent: 0,
+      overallTotal: 2,
+      workCurrent: 2,
+      workTotal: 9,
+    });
+
+    expect(bar.completed).toBe(2);
+    expect(bar.total).toBe(9);
+    expect(bar.percent).toBe(28);
+  });
+
   it('still gives a one-item job useful stage movement', () => {
     const values = ['prep', 'enrich', 'embed', 'classify', 'save', 'done'].map((phase) =>
       pipelineProgressBar({

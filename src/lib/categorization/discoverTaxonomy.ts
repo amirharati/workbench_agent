@@ -557,6 +557,6 @@ export const DISCOVER_CATALOG_RULES = [
   'Each existing leaf includes its name under the parent. itemResults must use an exact leaf id ' +
     'from the catalog — never a parent id.',
   'Reuse *-general leaves for in-domain items when no specific leaf fits; do not add duplicate General/Other leaves.',
-  'NEVER skip or omit items solely because they are adult/erotic/pornographic — propose or assign under health-lifestyle or a fitting parent.',
-  'Explicit adult video/tube → adult-erotic-content or new parent if needed. Sexuality wellness → sexuality-wellness-education.',
+  'NEVER skip or omit items solely because they are adult/erotic/pornographic — propose or assign under relationships-sexuality.',
+  'Explicit adult video/tube → adult-erotic-content. Sexuality wellness → sexuality-sexual-health.',
 ];

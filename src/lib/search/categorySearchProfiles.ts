@@ -30,9 +30,13 @@ export function isSearchableTopicCategory(category: AiCategory): boolean {
   );
 }
 
-export function buildCategorySearchText(category: AiCategory): string {
+export function buildCategorySearchText(
+  category: AiCategory,
+  parentDescription?: string
+): string {
   return [
     category.parentName?.trim(),
+    parentDescription?.trim(),
     category.name.trim(),
     category.description?.trim(),
     ...(category.canonicalTags ?? []).map((tag) => tag.trim()),

@@ -17,6 +17,32 @@ const MAX_CLASSIFY_PREVIEW = 1600;
 /** Few-shot examples — ids match seed_* leaf ids in categories.seed.json */
 export const TOPIC_FEW_SHOT = [
   {
+    title: 'Growing on Purpose: Meaningful Work in the Age of AI',
+    summary:
+      'A discussion of human flourishing, personal values, meaningful work, and purpose as artificial intelligence changes professional life.',
+    output: {
+      skip: false,
+      topicPaths: [['ai-productivity', 'seed_ai-productivity-general']],
+      topicIds: ['seed_ai-productivity-general'],
+      proposed: [],
+      confidence: 0.86,
+      reason: 'AI and work are the domain; personal growth is not personal finance.',
+    },
+  },
+  {
+    title: 'A Practical Retirement Portfolio',
+    summary:
+      'How to allocate index funds, manage retirement savings, rebalance investments, and control portfolio risk.',
+    output: {
+      skip: false,
+      topicPaths: [['personal-finance', 'seed_investing-retirement']],
+      topicIds: ['seed_investing-retirement'],
+      proposed: [],
+      confidence: 0.94,
+      reason: 'Explicit investing and retirement evidence supports Personal finance.',
+    },
+  },
+  {
     title: 'Key Concepts in RL — Spinning Up documentation',
     summary: 'Intro to RL: policies, value functions, policy gradients, MDPs.',
     output: {
@@ -32,7 +58,7 @@ export const TOPIC_FEW_SHOT = [
     summary: 'LEAN engine, backtesting, live algorithmic trading.',
     output: {
       skip: false,
-      topicIds: ['seed_algo-trading-platforms', 'seed_trading-strategies-education'],
+      topicIds: ['seed_algorithmic-trading-backtesting', 'seed_markets-trading-strategies'],
       proposed: [],
       confidence: 0.9,
       reason: 'Algo platform plus systematic trading.',
@@ -43,7 +69,7 @@ export const TOPIC_FEW_SHOT = [
     summary: 'Vision transformer implementation walkthrough.',
     output: {
       skip: false,
-      topicIds: ['seed_nlp-transformers', 'seed_ml-theory-tutorials'],
+      topicIds: ['seed_vision-generative-media', 'seed_ml-foundations-theory'],
       proposed: [],
       confidence: 0.88,
       reason: 'Transformers + ML tutorial.',
@@ -54,7 +80,7 @@ export const TOPIC_FEW_SHOT = [
     summary: 'Fanless workstations and quiet PC hardware.',
     output: {
       skip: false,
-      topicIds: ['seed_quiet-pc-hardware'],
+      topicIds: ['seed_workstations-acceleration'],
       proposed: [],
       confidence: 0.95,
       reason: 'Quiet PC hardware retail.',
@@ -65,7 +91,7 @@ export const TOPIC_FEW_SHOT = [
     summary: 'Health and nutrition analysis of processed meats.',
     output: {
       skip: false,
-      topicIds: ['seed_health-nutrition'],
+      topicIds: ['seed_nutrition-wellness'],
       proposed: [],
       confidence: 0.85,
       reason: 'Food health topic.',
@@ -76,7 +102,7 @@ export const TOPIC_FEW_SHOT = [
     summary: 'Guide to inducing sex dreams and lucid dreaming for erotic dream control; wellness-focused article.',
     output: {
       skip: false,
-      topicIds: ['seed_sexuality-wellness-education'],
+      topicIds: ['seed_sexuality-sexual-health'],
       proposed: [],
       confidence: 0.88,
       reason: 'Sexuality/wellness education — not explicit adult video.',
@@ -185,7 +211,7 @@ export const TOPIC_FEW_SHOT = [
       'Immigrant visa steps: I-130/I-140, NVC, interview, medical exam, post-visa procedures.',
     output: {
       skip: false,
-      topicIds: ['seed_government-forms-requests'],
+      topicIds: ['seed_government-services-immigration'],
       proposed: [],
       confidence: 0.93,
       reason: 'Immigration/visa guide — not link-quality.',
@@ -224,11 +250,11 @@ export function buildTopicExtractPrompt(topicCatalog, batchItems) {
   const rules = [
     'Each specific topic is ONE atomic subject (2-5 words). Never slash-separated mashups.',
     ...TOPIC_CATALOG_RULES,
-    'NEVER skip or reject links because they are adult/erotic/porn — assign adult-erotic-content or sexuality-wellness-education.',
-    'NEVER use link-quality generic-low-signal for substantive pages (movies, immigration, lists, adult).',
+    'NEVER skip or reject links because they are adult/erotic/porn — assign adult-erotic-content or sexuality-sexual-health.',
+    'NEVER use link-quality generic-low-signal for substantive pages (movies, immigration, lists, adult). Use a normal topic leaf or the correct *-general leaf.',
     'Singularity/containers/HPC runtime → infra-hosting-general unless a specific infra leaf fits.',
-    'Indie hackers / business ideas → product-gtm-general or propose one specific GTM leaf.',
-    'proposed: parentId one of quant-finance, machine-learning, ai-productivity, software-dev, product-gtm, personal-finance, health-lifestyle, infra-hosting, hardware.',
+    'Indie hackers / business ideas → the best existing business leaf, otherwise business-product-marketing-general.',
+    'If no parent fits, return one novelTopicSuggestion. It is evidence for Discover and never creates taxonomy here.',
     'Do not invent topics from URL alone; use summary substance.',
     'Old bookmarks: if title/summary is only 404/410/5xx/error-page text, assign link-quality (usually page-not-found) — do not leave topicIds empty.',
     'Return one result object per item in items[] — same itemId, no omissions.',
@@ -258,10 +284,10 @@ export function buildTopicExtractPrompt(topicCatalog, batchItems) {
       results: [
         {
           itemId: 'string — must match every item above',
-          skip: 'boolean',
+          skip: false,
           topicIds: ['leafId from catalog', 'max 3'],
           topicPaths: [['parentId', 'leafId'], 'optional'],
-          proposed: [{ parentId: 'string', name: 'string', description: 'string', canonicalTags: ['string'] }],
+          novelTopicSuggestion: null,
           confidence: '0..1',
           reason: 'short',
         },
@@ -311,7 +337,7 @@ export function topicRowToDecision(raw, categoryIds, leafById = null) {
   }
 
   const proposedList = Array.isArray(raw.proposed) ? raw.proposed : [];
-  const p = proposedList[0] ?? raw.proposedCategory;
+  const p = raw.novelTopicSuggestion ?? proposedList[0] ?? raw.proposedCategory;
   if (p && typeof p === 'object' && typeof p.name === 'string' && p.name.trim()) {
     const canonicalTags = Array.isArray(p.canonicalTags)
       ? p.canonicalTags

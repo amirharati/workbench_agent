@@ -52,9 +52,13 @@ Import / Hub / sidebar / inspectors / maintenance UI
 - One generic `start-job` message is used for single links, selections, imports, and maintenance actions.
 - The job and all item/stage task rows commit before submission is acknowledged.
 - One serialized offscreen lane executes every job; there is no separate single-link lane.
-- The coordinator processes all stages for item 1 before beginning item 2.
-- Interactive one-link jobs have priority over bulk jobs. A running bulk finishes its current item, releases
-  its fenced lease, runs queued urgent links first, and then resumes at its next unfinished item.
+- Full-digest jobs use stage-major barriers: enrich the submitted scope, embed eligible items, run one Discover
+  checkpoint, classify each eligible item once against the available taxonomy, then finalize. Scopes of at
+  least three use exact-scope Discover; one/two-item jobs consult the global pending pool and no-op below its
+  three-candidate minimum, so classification never waits for a one-item cluster. Maintenance operations retain
+  item-major plans where a cross-item taxonomy barrier is unnecessary.
+- Interactive one-link jobs have priority over bulk jobs. A running bulk commits its current durable stage,
+  releases its fenced lease, runs queued urgent links first, and then resumes at its exact unfinished stage.
 - Active jobs with overlapping item scopes are rejected instead of running concurrently.
 - Dashboard navigation and refresh do not affect execution ownership. Closing the dashboard tab that owns
   browser placement requests a durable pause after the current stage commits; completed work is retained.
@@ -113,13 +117,37 @@ attempt count, fenced lease generation, result reference, timestamps, and error.
 The clean URL-processing stages are currently:
 
 ```text
-enrich -> embed -> classify -> finalize
+enrich -> embed -> discover (exact batch or minimum-sized pending pool) -> classify -> finalize
 ```
 
 `enrich` is one honest domain boundary around fetch, fetched-body persistence, AI extraction, and the core
 enrichment write. It is not represented as smaller durable stages because those existing domain functions
 have not yet been split into compute-plus-fenced-commit APIs. If sleep or process loss interrupts `enrich`,
 the task becomes `uncertain` rather than risking a duplicate paid call.
+
+For a bulk full digest of at least three items, each per-item stage is a wave: every `enrich` task precedes every
+`embed` task; the single synthetic Discover task then reads every eligible item in the exact submitted scope—not
+only the maintenance gap-fill/stuck pool—and the current stored taxonomy; only after it commits may the per-item
+`classify` tasks run. A one/two-link full digest uses the same durable checkpoint, but that checkpoint reads the
+global pending gap-fill pool and enforces the three-item minimum. Below the minimum it performs no AI call and
+classification continues immediately against the complete seed/current taxonomy. There is exactly one classify
+task per submitted item—no classify-before-Discover/reclassify cycle. Empty classifications from eligible content
+receive one mandatory-assignment correction; a still-empty response may use a matching broad-domain General leaf,
+while genuinely unmatched content remains pending evidence for a later multi-item Discover run.
+
+Classify is read-only over the taxonomy and uses two batched AI passes. The first pass never sees the taxonomy: it
+produces a neutral semantic label, the primary saved object, likely reason the user would retrieve the link, content
+kind, secondary themes, atomic free topics, broad domain, evidence, and content-state assessment. Explicit user
+notes or tags win when they state intent; otherwise the pass infers purpose conservatively from what the exact URL
+lets the user do. The second pass sees that compact analysis plus the hierarchy, compares it against every parent,
+reports ranked candidates, and selects a leaf beneath the best-fitting parent. Primary classification follows save
+purpose and saved object; entities or themes merely depicted inside a film, episode, book, game, or other creative
+work do not outrank its media identity unless the page itself analyzes that theme. When the parent fits but no
+specific sibling does, it uses that parent's General leaf. When no parent fits, it records one durable novel-topic
+suggestion and leaves the item for clustered Discover instead of force-fitting or creating a singleton category.
+Unexpected model proposals can resolve only to an already-existing exact leaf or General leaf. Before a General
+result is persisted, a taxonomy-wide parent-consistency check rejects a selected parent with no item evidence when
+another seeded parent has direct evidence. Discover is the sole owner of taxonomy growth.
 
 Stage-only actions use the same engine:
 
@@ -152,11 +180,11 @@ On expiry:
 2. An interrupted paid/ambiguous stage (`enrich`, `reextract`, `embed`, `classify`, or `discover`) becomes
    `uncertain` and is not charged again automatically.
 3. Later stages for that item are skipped.
-4. Remaining items stay queued and continue from their first unfinished task.
+4. Remaining tasks stay queued and continue from their first unfinished stage in the current wave.
 5. A stale executor is fenced from committing and aborted when it learns that its lease is gone.
 
-This means a 445-item job does not restart at item 1 after sleep. Completed items remain complete, the one
-ambiguous in-flight item is reported for explicit retry, and the remaining items continue.
+This means a 445-item job does not restart its completed acquisition, embedding, or classification work after
+sleep. The one ambiguous in-flight item is reported for explicit retry, and the remaining stage wave continues.
 
 ## Cancellation
 
@@ -193,9 +221,10 @@ split into pretend checkpoints until each compute result and fenced commit can a
 Run in order on the real unpacked extension:
 
 1. One Hub link completes and creates/updates both appropriate database records.
-2. Five links finish sequentially with exact completed/failed counts.
-3. During a five-link batch, submit a new side-panel link; the batch finishes its current item, the single
-   runs next, and the batch then resumes without repeating completed work.
+2. Five links show the barrier order: all Fetch + AI work, all eligible embeddings, one Discover, then one
+   classification per eligible link, with exact completed/failed counts.
+3. During a five-link batch, submit a new side-panel link; the bulk finishes its current durable stage, the
+   single runs next, and the bulk then resumes without repeating completed work.
 4. Re-digest an authenticated URL already open in Chrome, then close it and confirm the temporary-tab path.
 5. Cancel during temporary-tab load, another fetch, or embedding; wait for `Cancelled`, then start another job.
 6. Navigate and refresh during a job; the shared banner remains stable and work continues.

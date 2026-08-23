@@ -201,24 +201,42 @@ describe('durable pipeline job store', () => {
     expect([second.task.item_id, second.task.stage]).toEqual(['item-1', 'embed']);
   });
 
-  it('runs one scoped Discover task only after every link in a full batch finishes', () => {
+  it('barriers a full batch so Discover runs once before any classification', () => {
     const submitted = submitPipelineJob(db, {
       id: 'batch-discover',
       dedupeKey: 'batch:discover',
       action: 'full_digest_v2',
       source: 'import',
       itemIds: ['item-1', 'item-2'],
-      stages: ['enrich', 'classify', 'finalize', 'discover'],
+      stages: ['enrich', 'embed', 'discover', 'classify', 'finalize'],
+      taskOrder: 'stage-major',
       now: 100,
     });
 
     expect(submitted.snapshot.tasks.filter((task) => task.stage === 'discover'))
-      .toEqual([expect.objectContaining({ item_id: '__taxonomy__', ordinal: 6 })]);
+      .toEqual([expect.objectContaining({ item_id: '__taxonomy__', ordinal: 4 })]);
+    expect(
+      submitted.snapshot.tasks
+        .slice()
+        .sort((a, b) => a.ordinal - b.ordinal)
+        .map((task) => [task.item_id, task.stage, task.ordinal])
+    ).toEqual([
+      ['item-1', 'enrich', 0],
+      ['item-2', 'enrich', 1],
+      ['item-1', 'embed', 2],
+      ['item-2', 'embed', 3],
+      ['__taxonomy__', 'discover', 4],
+      ['item-1', 'classify', 5],
+      ['item-2', 'classify', 6],
+      ['item-1', 'finalize', 7],
+      ['item-2', 'finalize', 8],
+    ]);
 
     let now = 200;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 4; i++) {
       const claim = claimNextPipelineTask(db, 'owner-a', 5_000, now++, 'batch-discover')!;
       expect(claim.task.item_id).not.toBe('__taxonomy__');
+      expect(claim.task.stage).not.toBe('classify');
       finishPipelineTask(db, {
         jobId: 'batch-discover',
         itemId: claim.task.item_id,
@@ -233,12 +251,48 @@ describe('durable pipeline job store', () => {
 
     const discover = claimNextPipelineTask(db, 'owner-a', 5_000, now, 'batch-discover')!;
     expect([discover.task.item_id, discover.task.stage]).toEqual(['__taxonomy__', 'discover']);
+    const discovered = finishPipelineTask(db, {
+      jobId: 'batch-discover', itemId: '__taxonomy__', stage: 'discover', ownerId: 'owner-a',
+      jobLeaseEpoch: discover.jobLeaseEpoch, taskLeaseEpoch: discover.taskLeaseEpoch,
+      outcome: 'completed', now: now + 1,
+    });
+    expect(discovered.accepted).toBe(true);
+    expect(claimNextPipelineTask(db, 'owner-a', 5_000, now + 2, 'batch-discover')?.task.stage)
+      .toBe('classify');
   });
 
-  it('yields a bulk job between items so a higher-priority single runs first', () => {
+  it('uses the same pre-classify Discover barrier for a single link without double classification', () => {
+    const submitted = submitPipelineJob(db, {
+      id: 'single-digest',
+      dedupeKey: 'single:digest',
+      action: 'full_digest_v2',
+      source: 'sidebar',
+      itemIds: ['item-1'],
+      stages: ['enrich', 'embed', 'discover', 'classify', 'finalize'],
+      taskOrder: 'stage-major',
+      now: 100,
+    });
+
+    expect(
+      submitted.snapshot.tasks
+        .slice()
+        .sort((a, b) => a.ordinal - b.ordinal)
+        .map((task) => [task.item_id, task.stage])
+    ).toEqual([
+      ['item-1', 'enrich'],
+      ['item-1', 'embed'],
+      ['__taxonomy__', 'discover'],
+      ['item-1', 'classify'],
+      ['item-1', 'finalize'],
+    ]);
+    expect(submitted.snapshot.tasks.filter((task) => task.stage === 'classify')).toHaveLength(1);
+  });
+
+  it('yields a barriered bulk job after one committed stage so a priority single runs first', () => {
     submitPipelineJob(db, {
       id: 'bulk-job', dedupeKey: 'bulk:1', action: 'full_digest_v2', source: 'hub',
-      priority: 50, itemIds: ['item-1', 'item-2'], stages: ['enrich', 'finalize'], now: 100,
+      priority: 50, itemIds: ['item-1', 'item-2'], stages: ['enrich', 'finalize'],
+      taskOrder: 'stage-major', now: 100,
     });
     submitPipelineJob(db, {
       id: 'single-job', dedupeKey: 'single:1', action: 'full_digest_v2', source: 'sidebar',
@@ -251,22 +305,18 @@ describe('durable pipeline job store', () => {
       jobLeaseEpoch: enrich.jobLeaseEpoch, taskLeaseEpoch: enrich.taskLeaseEpoch,
       outcome: 'completed', now: 201,
     });
-    const finalize = claimNextPipelineTask(db, 'owner-a', 5_000, 202, 'bulk-job')!;
-    const finalized = finishPipelineTask(db, {
-      jobId: 'bulk-job', itemId: 'item-1', stage: 'finalize', ownerId: 'owner-a',
-      jobLeaseEpoch: finalize.jobLeaseEpoch, taskLeaseEpoch: finalize.taskLeaseEpoch,
-      outcome: 'completed', now: 203,
-    });
-    expect(finalized.snapshot?.job.completed_items).toBe(1);
+    expect(enriched.snapshot?.job.completed_items).toBe(0);
 
     const yielded = yieldPipelineJob(db, {
       jobId: 'bulk-job', ownerId: 'owner-a',
-      jobLeaseEpoch: finalized.snapshot!.job.lease_epoch, now: 204,
+      jobLeaseEpoch: enriched.snapshot!.job.lease_epoch, now: 202,
     });
     expect(yielded.accepted).toBe(true);
     expect(yielded.snapshot?.job.status).toBe('queued');
-    expect(yielded.snapshot?.tasks.filter((task) => task.item_id === 'item-2')
-      .every((task) => task.status === 'pending')).toBe(true);
+    expect(yielded.snapshot?.tasks.find(
+      (task) => task.item_id === 'item-1' && task.stage === 'enrich'
+    )?.status).toBe('completed');
+    expect(yielded.snapshot?.tasks.filter((task) => task.status === 'pending')).toHaveLength(3);
 
     const urgent = claimNextPipelineTask(db, 'owner-b', 5_000, 300)!;
     expect([urgent.job.id, urgent.task.item_id]).toEqual(['single-job', 'item-3']);
@@ -433,5 +483,44 @@ describe('durable pipeline job store', () => {
 
     const next = claimNextPipelineTask(db, 'owner-b', 5_000, 5_300, 'batch-job')!;
     expect([next.task.item_id, next.task.stage]).toEqual(['item-2', 'enrich']);
+  });
+
+  it('resumes a barriered batch in the same wave without repeating committed paid work', () => {
+    submitPipelineJob(db, {
+      id: 'barrier-resume',
+      dedupeKey: 'barrier:resume',
+      action: 'full_digest_v2',
+      source: 'import',
+      itemIds: ['item-1', 'item-2'],
+      stages: ['enrich', 'embed', 'discover', 'classify', 'finalize'],
+      taskOrder: 'stage-major',
+      now: 100,
+    });
+
+    const first = claimNextPipelineTask(db, 'owner-a', 5_000, 200, 'barrier-resume')!;
+    expect([first.task.item_id, first.task.stage]).toEqual(['item-1', 'enrich']);
+    finishPipelineTask(db, {
+      jobId: first.job.id, itemId: first.task.item_id, stage: first.task.stage,
+      ownerId: 'owner-a', jobLeaseEpoch: first.jobLeaseEpoch,
+      taskLeaseEpoch: first.taskLeaseEpoch, outcome: 'completed', now: 300,
+    });
+
+    const interrupted = claimNextPipelineTask(db, 'owner-a', 5_000, 400, 'barrier-resume')!;
+    expect([interrupted.task.item_id, interrupted.task.stage]).toEqual(['item-2', 'enrich']);
+    expect(recoverExpiredPipelineTasks(db, 5_401)).toMatchObject({ uncertain: 1 });
+
+    const recovered = getPipelineJobSnapshot(db, 'barrier-resume')!;
+    expect(recovered.tasks.find(
+      (task) => task.item_id === 'item-1' && task.stage === 'enrich'
+    )?.status).toBe('completed');
+    expect(recovered.tasks.find(
+      (task) => task.item_id === 'item-2' && task.stage === 'enrich'
+    )?.status).toBe('uncertain');
+    expect(recovered.tasks.filter(
+      (task) => task.item_id === 'item-2' && ['embed', 'classify', 'finalize'].includes(task.stage)
+    ).every((task) => task.status === 'skipped')).toBe(true);
+
+    const next = claimNextPipelineTask(db, 'owner-b', 5_000, 5_500, 'barrier-resume')!;
+    expect([next.task.item_id, next.task.stage]).toEqual(['item-1', 'embed']);
   });
 });

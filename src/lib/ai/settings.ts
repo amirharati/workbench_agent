@@ -113,5 +113,13 @@ export const saveAISettings = async (settings: AISettings): Promise<AISettings> 
   } catch {
     /* ignore — UI may still hold settings in memory */
   }
+  if (clean.apiKey) {
+    // Category profiles are a derived search projection. If taxonomy creation
+    // happened before credentials existed, saving credentials is the next safe
+    // opportunity to build its metadata vectors without delaying a pipeline job.
+    void import('../search/categorySearchProfileService')
+      .then(({ warmCategorySearchProfiles }) => warmCategorySearchProfiles())
+      .catch((error) => console.warn('[AI settings] Category profile warm deferred:', error));
+  }
   return clean;
 };

@@ -98,6 +98,12 @@ export type SubmitPipelineJobInput = {
   payload?: unknown;
   itemIds: string[];
   stages?: string[];
+  /**
+   * item-major: finish every stage for item 1 before item 2 (maintenance jobs).
+   * stage-major: finish a stage for the whole scope before the next stage
+   * (full digest barrier plan: enrich/embed → Discover → classify/finalize).
+   */
+  taskOrder?: 'item-major' | 'stage-major';
   now?: number;
 };
 
@@ -247,34 +253,49 @@ export function submitPipelineJob(
         VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?);`,
       bind: [id, dedupeKey, action, source, priority, payloadJson, itemIds.length, now, now],
     });
-    // Full-digest Discover is one terminal task for this job. It runs after
-    // all submitted links finish, so it can evaluate the complete batch once
-    // against the current taxonomy instead of doing an expensive pass per link.
-    const terminalDiscover =
-      itemIds.length > 0 &&
-      itemIds[0] !== '__taxonomy__' &&
-      stages.includes('discover');
-    const perItemStages = terminalDiscover
-      ? stages.filter((stage) => stage !== 'discover')
-      : stages;
-
-    itemIds.forEach((itemId, itemIndex) => {
-      perItemStages.forEach((stage, ordinal) => {
-        db.exec({
-          sql: `INSERT INTO pipeline_tasks
-            (job_id, item_id, stage, ordinal, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'pending', ?, ?);`,
-          bind: [id, itemId, stage, itemIndex * perItemStages.length + ordinal, now, now],
-        });
-      });
-    });
-    if (terminalDiscover) {
+    const insertTask = (itemId: string, stage: string, ordinal: number) => {
       db.exec({
         sql: `INSERT INTO pipeline_tasks
           (job_id, item_id, stage, ordinal, status, created_at, updated_at)
-          VALUES (?, '__taxonomy__', 'discover', ?, 'pending', ?, ?);`,
-        bind: [id, itemIds.length * perItemStages.length, now, now],
+          VALUES (?, ?, ?, ?, 'pending', ?, ?);`,
+        bind: [id, itemId, stage, ordinal, now, now],
       });
+    };
+
+    const scopedDiscover =
+      itemIds.length > 0 &&
+      itemIds[0] !== '__taxonomy__' &&
+      stages.includes('discover');
+
+    if (input.taskOrder === 'stage-major') {
+      // Full digest is barriered by stage. One synthetic Discover task sits
+      // between the pre-taxonomy waves and classification, so every classify
+      // call sees the taxonomy produced from the complete submitted scope.
+      let ordinal = 0;
+      for (const stage of stages) {
+        if (stage === 'discover' && scopedDiscover) {
+          insertTask('__taxonomy__', 'discover', ordinal++);
+          continue;
+        }
+        for (const itemId of itemIds) {
+          insertTask(itemId, stage, ordinal++);
+        }
+      }
+    } else {
+      // Maintenance/compatibility operations retain item-major ordering.
+      // When such a plan contains Discover, keep its historical terminal
+      // job-scoped behavior rather than creating one paid call per item.
+      const perItemStages = scopedDiscover
+        ? stages.filter((stage) => stage !== 'discover')
+        : stages;
+      itemIds.forEach((itemId, itemIndex) => {
+        perItemStages.forEach((stage, stageIndex) => {
+          insertTask(itemId, stage, itemIndex * perItemStages.length + stageIndex);
+        });
+      });
+      if (scopedDiscover) {
+        insertTask('__taxonomy__', 'discover', itemIds.length * perItemStages.length);
+      }
     }
     const snapshot = getPipelineJobSnapshot(db, id);
     if (!snapshot) throw new Error('Submitted pipeline job could not be read back');
@@ -504,7 +525,7 @@ export function finishPipelineTask(
 }
 
 /**
- * Cooperatively release a job between items so the coordinator can run a
+ * Cooperatively release a job between durable stages so the coordinator can run a
  * higher-priority job. No task is interrupted and every completed stage stays
  * committed. The fenced job lease is revoked before the job returns to queue.
  */

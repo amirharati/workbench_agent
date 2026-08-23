@@ -10,63 +10,10 @@ import {
   formatGroupedCatalogMarkdown,
   isGeneralLeafId,
 } from './taxonomyCatalog.mjs';
+import { loadSeedTaxonomy } from './seedTaxonomy.mjs';
 
-/** Initial parent buckets — discovery may add more via newParents[]. */
-export const DEFAULT_PARENTS = [
-  {
-    id: 'quant-finance',
-    name: 'Quantitative finance & trading',
-    description:
-      'Algorithmic trading, backtesting, market systems, and trading education — not generic personal budgeting.',
-  },
-  {
-    id: 'machine-learning',
-    name: 'Machine learning & AI research',
-    description:
-      'ML theory, models, training, diffusion, transformers, RL — not SaaS productivity wrappers unless core topic is the model.',
-  },
-  {
-    id: 'ai-productivity',
-    name: 'AI tools & research workflows',
-    description:
-      'AI assistants, research tools, writing partners, browser automation, and ML infrastructure APIs for builders.',
-  },
-  {
-    id: 'software-dev',
-    name: 'Software development',
-    description:
-      'Programming languages, frameworks, mobile, native integration, and developer tooling.',
-  },
-  {
-    id: 'product-gtm',
-    name: 'Product, demos & go-to-market',
-    description:
-      'Interactive demos, sales enablement, onboarding products, and no-code site builders.',
-  },
-  {
-    id: 'personal-finance',
-    name: 'Personal finance & investing',
-    description:
-      'Retail investing education, budgeting, and personal money topics — not health, sexuality, or adult content.',
-  },
-  {
-    id: 'health-lifestyle',
-    name: 'Health, sexuality & lifestyle',
-    description:
-      'Health, nutrition, sexuality education, adult content, and personal civic/lifestyle topics — not trading or personal finance.',
-  },
-  {
-    id: 'infra-hosting',
-    name: 'Infrastructure & hosting',
-    description:
-      'Cloud hosting, servers, DevOps, and platform operations for self-hosted or VPS workloads.',
-  },
-  {
-    id: 'hardware',
-    name: 'Hardware & workstations',
-    description: 'PC builds, fanless/quiet systems, components, and physical workstation topics.',
-  },
-];
+/** Initial parent buckets — sourced from the same scaffold as the app. */
+export const DEFAULT_PARENTS = loadSeedTaxonomy().parents;
 
 function stripFences(text) {
   const trimmed = (text || '').trim();

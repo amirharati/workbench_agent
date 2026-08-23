@@ -256,11 +256,14 @@ export function resolvePipelineSummaryTone(input: PipelineSummaryInput): Pipelin
   if (failed > 0 && succeeded === 0) return 'error';
 
   if (input.classifyError && !isPipelineSkipMessage(input.classifyError)) {
-    return succeeded > 0 ? 'success' : 'error';
+    return succeeded > 0 ? 'info' : 'error';
   }
 
   if (failed > 0 || llmErrors > 0) {
-    return succeeded > failed + llmErrors ? 'success' : 'error';
+    // A resolved batch with any completed work is a mixed result, regardless
+    // of ratio. Per-item misses belong in the report; a red batch-level state
+    // is reserved for a run that produced no successful work at all.
+    return succeeded > 0 ? 'info' : 'error';
   }
 
   if (succeeded > 0) return 'success';

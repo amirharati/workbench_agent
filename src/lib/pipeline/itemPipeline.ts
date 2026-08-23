@@ -10,6 +10,12 @@ export interface ItemPipelineProgress {
   /** Authoritative whole-job item progress. Prefer this for user-facing bars/counts. */
   overallCurrent?: number;
   overallTotal?: number;
+  /**
+   * Durable task progress for barriered jobs. This is monotonic across stage
+   * waves, unlike the per-stage item index which returns to zero each wave.
+   */
+  workCurrent?: number;
+  workTotal?: number;
 }
 
 export function formatItemPipelineProgress(update: ItemPipelineProgress): string {
@@ -36,12 +42,17 @@ export function pipelineProgressBar(update: ItemPipelineProgress): {
   completed: number;
   percent: number;
 } {
+  const hasDurableWork = Boolean(update.workTotal && update.workTotal > 0);
   const total = Math.max(1, Math.trunc(
-    update.overallTotal && update.overallTotal > 0
-      ? update.overallTotal
-      : update.total
+    hasDurableWork
+      ? update.workTotal!
+      : update.overallTotal && update.overallTotal > 0
+        ? update.overallTotal
+        : update.total
   ));
-  const rawCurrent = update.overallCurrent ?? update.current;
+  const rawCurrent = hasDurableWork
+    ? update.workCurrent ?? 0
+    : update.overallCurrent ?? update.current;
   const completed = Math.min(total, Math.max(0, Math.trunc(
     Number.isFinite(rawCurrent) ? rawCurrent : 0
   )));

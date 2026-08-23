@@ -6,6 +6,7 @@
 
 import type { AISettings } from '../ai/types';
 import type { FetchEngine } from '../acquisition/types';
+import { MIN_DISCOVER_POOL } from '../categorization/discoverPolicy';
 import type { BatchDigestProgress, BatchDigestResult } from './batchDigest';
 import type { SingleLinkDigestResult } from './singleLinkDigest';
 
@@ -59,6 +60,43 @@ export type PipelineJobOperation =
   | 'reembed'
   | 'classify'
   | 'discover';
+
+/**
+ * Pin the execution scope and discovery policy that must survive coordinator
+ * reloads. Batches large enough to support discovery use their exact submitted
+ * scope. Smaller jobs consult the global stuck pool and preserve its minimum,
+ * so one link cannot manufacture a one-item taxonomy leaf.
+ */
+export function normalizePipelineExecutionOptions(
+  operation: PipelineJobOperation,
+  itemIds: string[],
+  options: OffscreenPipelineJobOptions
+): OffscreenPipelineJobOptions {
+  const scopedItemIds = [...new Set(itemIds.filter(Boolean))];
+  if (operation === 'discover') {
+    return {
+      ...options,
+      discoverItemIds: scopedItemIds,
+    };
+  }
+  if (operation === 'full_digest' && options.skipDiscover !== true) {
+    if (scopedItemIds.length < MIN_DISCOVER_POOL) {
+      return {
+        ...options,
+        // An empty explicit list tells the runner to use the global pending
+        // pool. discoverBatch then enforces MIN_DISCOVER_POOL before any AI call.
+        discoverItemIds: [],
+        discoverStuckOnly: true,
+      };
+    }
+    return {
+      ...options,
+      discoverItemIds: scopedItemIds,
+      discoverStuckOnly: options.discoverStuckOnly ?? false,
+    };
+  }
+  return { ...options };
+}
 
 export type PipelineOffscreenStartJob = {
   target: typeof PIPELINE_OFFSCREEN_TARGET | typeof PIPELINE_OFFSCREEN_OWNER;

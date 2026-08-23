@@ -258,18 +258,21 @@ export function enforceGeneralSiblingRules(
 
 export const TOPIC_CATALOG_RULES = [
   'Taxonomy is 2 levels: parent (grouping only) → leaf (assignable). Use leafId from topicCatalog only.',
-  'Each leaf shows path and pathIds — use topicIds (leaf id) or topicPaths [parentId, leafId] when disambiguating similar names.',
+  'Classify hierarchically: first identify the semantic parent domain from the full meaning, then choose a leaf only under that parent.',
+  'Each leaf shows path and pathIds — return topicPaths [parentId, leafId] for every assignment; topicIds may mirror those leaf ids.',
   'Pick the most specific leaf first. Use the *-general leaf under a parent only when no sibling leaf fits.',
+  'A shared generic word is not domain evidence. “Personal growth/development/values” is not Personal finance; Personal finance requires money, investing, budgeting, tax, insurance, or retirement evidence.',
+  'A *-general choice still requires clear evidence for its parent domain. Never use General merely because one word in the parent name appears.',
   'Never assign both a *-general leaf and another leaf under the same parent in one result.',
-  'topicIds: 0-3 leaf ids (first = primary). Multiple ids only for distinct topics (often different parents).',
+  'Assign 1-3 leaf ids (first = primary) when the taxonomy fits. Multiple ids only for genuinely distinct topics (often different parents).',
   '**link-quality parent has two baskets (not topic taxonomy):**',
   '  - **Removal:** 404/5xx → `page-not-found`; example.com → `placeholder-junk`; fetch fail → `enrich-fetch-failed`; blank no-subject → `generic-low-signal`; empty social → `social-no-topic`.',
   '  - **Needs attention (keep bookmark):** sign-in/auth wall → `login-auth-required`; ONLY when summary explicitly says saved URL does not match fetched page (article→hub, not www/https) → `url-redirect-mismatch`. When unsure about redirects, use a normal topic — never this bucket.',
   '  - Never use removal leaves for substantive pages (movies, visas, adult, guides).',
-  '**Never use link-quality for:** movie/TV lists, visa/immigration guides, directories, articles, tutorials, adult/porn, or any page whose summary names a real subject. When unsure, pick a topic leaf or `proposed` — not link-quality.',
-  'skip: true is rare. NEVER skip substantive, adult, or “edgy” content.',
-  'Adult/porn/explicit tube → adult-erotic-content. Sexuality wellness articles → sexuality-wellness-education.',
-  'proposed: at most 1 new specific leaf when topic is clear but missing (include parentId). Do not propose a second *-general.',
+  '**Never use link-quality for:** movie/TV lists, visa/immigration guides, directories, articles, tutorials, adult/porn, or any page whose summary names a real subject. When unsure, pick a normal topic leaf — not link-quality.',
+  'Every input already passed the content gate: skip must be false. Return a valid assignment when a parent fits; otherwise return one novelTopicSuggestion instead of force-fitting.',
+  'Adult/porn/explicit tube → adult-erotic-content. Sexuality wellness articles → sexuality-sexual-health.',
+  'Classify is read-only over taxonomy: it may record one novelTopicSuggestion but never creates a category. If a parent fits but its specific leaf is missing, use that parent’s *-general leaf; clustered Discover alone grows taxonomy.',
 ];
 
 export function getParentsFromCategories(categories: AiCategory[]) {

@@ -24,9 +24,13 @@ const category: AiCategory = {
 
 describe('category search profiles', () => {
   it('builds stable semantic text from taxonomy metadata', () => {
-    expect(buildCategorySearchText(category)).toBe(
+    expect(buildCategorySearchText(
+      category,
+      'Models, training, evaluation, and machine-learning research.'
+    )).toBe(
       [
         'Machine Learning',
+        'Models, training, evaluation, and machine-learning research.',
         'Automatic Speech Recognition',
         'Speech-to-text models and acoustic transcription systems.',
         'ASR',
