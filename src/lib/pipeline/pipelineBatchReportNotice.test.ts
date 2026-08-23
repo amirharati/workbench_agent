@@ -5,6 +5,7 @@ import {
   formatPipelineReportSummaryFromRows,
   resolveEnrichReportOutcome,
 } from './pipelineBatchReport';
+import { resolvePipelineSummaryTone } from './pipelineDictionary';
 
 const fetchedWithoutAi: ItemEnrichment = {
   itemId: 'item-1',
@@ -74,5 +75,16 @@ describe('AI provider failure reports', () => {
       statusLabel: 'Fetched',
       notice: 'ai_backend_error',
     }])).toBe(detail);
+  });
+
+  it('uses an informational completion tone for a mostly completed bulk batch', () => {
+    expect(resolvePipelineSummaryTone({
+      enriched: 359,
+      fetched: 11,
+      classified: 288,
+      skipped: 2,
+      failed: 90,
+      aiError: 'Could not parse AI response as JSON.',
+    })).toBe('info');
   });
 });

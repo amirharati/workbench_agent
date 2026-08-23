@@ -148,7 +148,7 @@ export const HELP_TOPICS: HelpTopic[] = [
             <>Finish any Chrome install or New Tab prompt, then choose a dedicated data folder. If Chrome interrupts the picker, Homebase keeps setup open and changes nothing.</>,
             <>Review the folder name and recognized files, then select <strong>Use this folder</strong>. The folder is not linked before this confirmation.</>,
             <>If the folder already contains <code>workbench.sqlite</code>, Homebase loads it. An empty browser database must not replace it.</>,
-            <>Read the completion summary: it reports the selected folder, item count, and which database files were loaded or created.</>,
+            <>Read the completion summary: it reports the selected folder, item count, and whether <code>workbench.sqlite</code> and <code>workbench-content.sqlite</code> were loaded or created.</>,
             <>Save an initial link with the side panel or create a note in Library. Unscoped captures go to <strong>Inbox / Incoming</strong>.</>,
             <>Open <strong>Settings → Backup &amp; restore</strong> and confirm the live mirror reports a successful write.</>,
           ]} />
@@ -173,7 +173,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           { icon: Tags, term: 'Collection', description: <>A manual folder inside a project. Collections are not AI categories.</> },
           { icon: Star, term: 'Favorite', description: <>A global quick-access flag visible across the library.</> },
           { icon: Pin, term: 'Pin', description: <>A project-local quick-access flag. The same item can be pinned in one project and not another.</> },
-          { icon: Layers3, term: 'Workspace', description: <>A working set of links, notes, saved searches, or captured browser tabs. It does not replace permanent project/collection membership.</> },
+          { icon: Layers3, term: 'Workspace', description: <>A working set of library items and saved searches. A browser snapshot stays separate until you explicitly add its URLs. Workspace membership does not replace permanent project/collection membership.</> },
         ]} />
         <Callout title="Temporary versus permanent">
           <strong>Add to workspace</strong> changes the working set. <strong>Organize…</strong> changes durable project and collection membership.
@@ -328,27 +328,60 @@ export const HELP_TOPICS: HelpTopic[] = [
     ),
   },
   {
-    id: 'enrichment',
+    id: 'move-remove',
     group: 'Daily workflows',
-    title: 'Enrichment, classification, and taxonomy',
-    summary: 'Inspect what happened, understand what is suggested, and rerun only the scope you intend.',
-    icon: Workflow,
-    keywords: ['enrichment', 'pipeline', 'fetch', 'ai', 'embed', 'classification', 'taxonomy', 'status', 'retry', 'discover'],
+    title: 'Copy, move, remove, and restore',
+    summary: 'Understand what drag and drop changes, and how to recover items or containers safely.',
+    icon: Trash2,
+    keywords: ['drag', 'drop', 'copy', 'move', 'remove', 'delete', 'trash', 'restore', 'undo', 'workspace', 'collection', 'project'],
     content: (
       <>
         <DefinitionGrid entries={[
-          { icon: Workflow, term: 'Enrichment review', description: <>Inspect fetch and AI quality, failures, raw/extracted content, and the next available action.</> },
-          { icon: Tags, term: 'Classification review', description: <>Review readiness, blockers, assigned categories, and suggested categories before reruns.</> },
-          { icon: FolderTree, term: 'Taxonomy', description: <>The library-wide semantic category tree used by classification. It is separate from manual collections.</> },
+          { icon: Search, term: 'Result → container', description: <>Dragging from Search, Similar, All Library, Favorites, Recent, or Enrichment adds the item to the destination. The source result is never removed.</> },
+          { icon: Layers3, term: 'Same container type', description: <>Workspace to workspace and collection to collection can Copy or Move. Homebase asks which action you intend.</> },
+          { icon: FolderTree, term: 'Different container types', description: <>Workspace to collection, or collection to workspace, always copies. Their roles are different, so the source membership remains.</> },
+          { icon: Trash2, term: 'Trash', description: <>Removing an item from every saved location moves it to Trash. Restore returns it; Delete permanently or Empty trash cannot be undone.</> },
         ]} />
         <ul>
+          <li><strong>All Library</strong> is a source view, never a drop destination.</li>
+          <li>Removing an entry from a workspace removes only that reference. It does not delete the library item or its enrichment.</li>
+          <li>When an item has several collection placements, the removal dialog shows them so you can remove selected locations or move the item to Trash.</li>
+          <li>Deleted projects and collections appear in Trash as complete recoverable containers. Restoring the container restores its saved structure.</li>
+          <li>A collection deletion does not delete its canonical items. The confirmation explains where items without another active placement will go.</li>
+        </ul>
+        <Callout tone="warning" title="Empty Trash is final">
+          Empty Trash permanently removes deleted items and the recovery snapshots for deleted projects and collections. Verify the list before confirming.
+        </Callout>
+      </>
+    ),
+  },
+  {
+    id: 'enrichment',
+    group: 'Daily workflows',
+    title: 'Enrichment, classification, and AI categories',
+    summary: 'Inspect what happened, understand what is suggested, and rerun only the scope you intend.',
+    icon: Workflow,
+    keywords: ['enrichment', 'pipeline', 'fetch', 'browser tab', 'authenticated', 'resume', 'cancel', 'sleep', 'ai', 'embed', 'classification', 'taxonomy', 'status', 'retry', 'discover'],
+    content: (
+      <>
+        <DefinitionGrid entries={[
+          { icon: Workflow, term: 'Shared job', description: <>Import, Enrichment, the side panel, and item actions submit to the same background pipeline. Pages observe jobs; they do not run separate copies.</> },
+          { icon: ExternalLink, term: 'Browser-first fetch', description: <>Homebase first reads the rendered page through an authenticated browser tab, so signed-in content can be captured. Temporary fetch tabs open inactive in the job's dashboard window and close after use.</> },
+          { icon: ShieldCheck, term: 'Durable progress', description: <>Navigation, refresh, another dashboard, sleep, or an extension restart does not erase completed stages. Resume continues pending work instead of starting the batch at item one.</> },
+          { icon: Workflow, term: 'Enrichment review', description: <>Inspect fetch and AI quality, failures, raw/extracted content, and the next available action.</> },
+          { icon: Tags, term: 'Classification review', description: <>Review readiness, blockers, assigned categories, and suggested categories before reruns.</> },
+          { icon: FolderTree, term: 'AI categories', description: <>The library-wide topics used by classification. <strong>All categories</strong> shows every group and category; these remain separate from your manual collections.</> },
+        ]} />
+        <ul>
+          <li>For PDFs, Homebase downloads bytes through the signed-in tab and extracts text locally. It does not depend on scraping Chrome's PDF viewer.</li>
+          <li><strong>Fetched</strong> means useful page text was saved. <strong>Enriched</strong> means later AI work also succeeded. Missing, invalid, rate-limited, or out-of-credit AI settings do not discard a successful fetch.</li>
           <li>Click a status badge for item-specific meaning and suggested next steps.</li>
           <li>Use per-item actions while diagnosing; use selected/bulk actions only after confirming their scope and expected AI cost.</li>
           <li>Suggested categories are not assigned categories. Accept/reject signals should remain visible and distinct.</li>
-          <li>Cancel or pause stops future work; completed writes are retained. The final outcome should distinguish processed, skipped, failed, and still queued.</li>
+          <li>Cancel or closing the job's owner dashboard stops at a safe stage boundary; completed writes are retained. Resume binds the job to an open dashboard and continues what remains.</li>
         </ul>
-        <Callout tone="warning" title="Discover is a library-level maintenance action">
-          Review its selected scope and outcome carefully. V3 testing is specifically checking that skipped classification cannot look like deleted categories.
+        <Callout title="Failures are stage-specific">
+          A fetch, AI, embedding, or classification failure should identify its own stage. Retry that scope instead of assuming the saved bookmark or earlier completed work was lost.
         </Callout>
       </>
     ),
@@ -359,22 +392,26 @@ export const HELP_TOPICS: HelpTopic[] = [
     title: 'Backup, restore, and recovery',
     summary: 'Know which file is live, what automatic copies exist, and how to recover without clobbering data.',
     icon: Database,
-    keywords: ['backup', 'restore', 'recovery', 'workbench.sqlite', 'prev', 'manual', 'safety', 'undo', 'conflict', 'reconnect'],
+    keywords: ['backup', 'restore', 'recovery', 'workbench.sqlite', 'workbench-content.sqlite', 'content database', 'raw fetch', 'prev', 'manual', 'safety', 'undo', 'conflict', 'reconnect'],
     content: (
       <>
         <DefinitionGrid entries={[
-          { icon: Database, term: 'workbench.sqlite', description: <>The live portable mirror in your chosen folder. Normal browser mutations commit locally first, then mirror to this file.</> },
+          { icon: Database, term: 'workbench.sqlite', description: <>The core library: items, projects, collections, workspaces, enrichment metadata, and durable jobs. Homebase works from its browser-local database and maintains this recovery mirror in your chosen folder.</> },
+          { icon: FileText, term: 'workbench-content.sqlite', description: <>The fetched and extracted page bodies, stored compressed under opaque content keys. It has its own worker and exactly one durable copy in the chosen folder.</> },
           { icon: ShieldCheck, term: 'Automatic previous copies', description: <><code>workbench.prev.sqlite</code> and <code>workbench.prev2.sqlite</code> rotate before live replacement.</> },
-          { icon: BookMarked, term: 'Manual snapshot', description: <>Backup now creates a timestamped SQLite snapshot. JSON export is an optional portable representation.</> },
+          { icon: BookMarked, term: 'Manual core snapshot', description: <>Backup now creates a timestamped snapshot of the core library. JSON export is an optional portable representation. Neither one contains fetched page bodies.</> },
           { icon: Trash2, term: 'Safety / undo snapshot', description: <>Restore protects the state being replaced so an accidental rollback can itself be reversed.</> },
         ]} />
         <GuideSteps steps={[
             <>Check <strong>Settings → Backup &amp; restore</strong> for the linked folder, last mirror, and any error or conflict.</>,
             <>If folder access is paused, reconnect the saved folder. Do not choose a new empty folder just to dismiss the message.</>,
-            <>Use <strong>Backup now</strong> before destructive testing or major imports.</>,
+            <>Use <strong>Backup now</strong> before destructive testing or major imports. It also flushes current fetched bodies to <code>workbench-content.sqlite</code>, but it does not create versioned content history.</>,
             <>Restore replaces the current library. Compare the snapshot date/size and read the confirmation; Homebase saves the current state first.</>,
-            <>After reinstall, choose the existing folder and verify counts and recognizable items before making new edits.</>,
+            <>After reinstall, choose the existing folder and verify counts and recognizable items before making new edits. Keep both database files if you also need the saved raw fetch bodies.</>,
           ]} />
+        <Callout title="Different data, different lifecycle">
+          Core snapshots protect organization and enrichment state. <code>workbench-content.sqlite</code> is a replaceable content cache with one current durable copy, so snapshot comparison covers library inventory—not historical raw page content.
+        </Callout>
         <Callout tone="warning" title="Never ignore suspected loss">
           Stop writing, preserve the folder files, and record counts, timestamps, and the exact action. Do not repeatedly reload or restore until the cause is understood.
         </Callout>
@@ -485,7 +522,6 @@ export const HelpView: React.FC = () => {
               </div>
             );
           })}
-          <div className="ui-help__contents-note">Images and videos can be attached to any topic later without changing this layout.</div>
         </nav>
 
         <main className="ui-help__articles" aria-label="Help articles" aria-live="polite">

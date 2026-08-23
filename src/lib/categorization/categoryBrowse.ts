@@ -14,12 +14,17 @@ export interface CategoryBrowseLeaf {
 export interface CategoryBrowseGroup {
   id: string;
   name: string;
+  category?: AiCategory;
   leaves: CategoryBrowseLeaf[];
 }
 
 export async function loadCategoryBrowseSnapshot(
   itemIds: string[]
 ): Promise<CategoryBrowseSnapshot> {
+  const { ensureTaxonomyReady } = await import('./seedImport');
+  await ensureTaxonomyReady();
+  const { commitPendingDbWrites } = await import('../db');
+  await commitPendingDbWrites();
   return dbRpc('getCategoryBrowseSnapshot', [itemIds], { priority: 'low' });
 }
 
@@ -43,6 +48,7 @@ export function buildCategoryBrowseGroups(
     const group = groups.get(groupId) ?? {
       id: groupId,
       name: parent?.name ?? category.parentName ?? 'Other topics',
+      category: parent,
       leaves: [],
     };
     group.leaves.push({
@@ -53,17 +59,8 @@ export function buildCategoryBrowseGroups(
   }
 
   for (const group of groups.values()) {
-    group.leaves.sort(
-      (left, right) =>
-        right.itemIds.length - left.itemIds.length ||
-        left.category.name.localeCompare(right.category.name)
-    );
+    group.leaves.sort((left, right) => left.category.name.localeCompare(right.category.name));
   }
 
-  return [...groups.values()].sort((left, right) => {
-    const leftCount = new Set(left.leaves.flatMap((leaf) => leaf.itemIds)).size;
-    const rightCount = new Set(right.leaves.flatMap((leaf) => leaf.itemIds)).size;
-    return rightCount - leftCount || left.name.localeCompare(right.name);
-  });
+  return [...groups.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
-

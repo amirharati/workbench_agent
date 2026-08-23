@@ -43,20 +43,7 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
 
   if (loading && !snapshot) {
     return (
-      <div
-        style={{
-          padding: '12px 14px',
-          marginBottom: 14,
-          borderRadius: 8,
-          border: '1px solid var(--border)',
-          background: 'var(--bg-panel)',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--text-muted)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}
-      >
+      <div className="ui-pipeline-maintenance ui-pipeline-maintenance--loading">
         <Loader2 size={14} className="spin" />
         Loading category stats…
       </div>
@@ -86,9 +73,9 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
 
       {reclassifyConfirmOpen ? (
         <HubActionConfirmModal
-          title="Reclassify entire scope?"
+          title="Reclassify every bookmark in this scope?"
           description={`Re-run topic classification AI on ${discoverConfigPlan?.counts.all ?? 0} bookmarks in ${scopeLabel}, including bookmarks that already have a specific topic.`}
-          warning="This is intended after a significant taxonomy change and may consume many paid API calls."
+          warning="Use this after a significant category change. It may consume many paid API calls."
           confirmLabel="Start reclassify"
           confirmVariant="warn"
           onCancel={() => setReclassifyConfirmOpen(false)}
@@ -99,46 +86,15 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
         />
       ) : null}
 
-      <div
-        style={{
-          marginBottom: 14,
-          borderRadius: 8,
-          border: '1px solid var(--border)',
-          background: 'var(--bg-panel)',
-          padding: '12px 14px',
-        }}
-      >
-        <p
-          style={{
-            margin: '0 0 12px',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--text-faint)',
-            lineHeight: 1.45,
-          }}
-        >
+      <div className="ui-pipeline-maintenance">
+        <p className="ui-pipeline-maintenance__eyebrow">
           Staged AI — nothing runs until you click Run below.
         </p>
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap',
-            marginBottom: 16,
-          }}
-        >
+        <div className="ui-pipeline-maintenance__header">
           <div style={{ flex: 1, minWidth: 200 }}>
-            <div
-              style={{
-                fontSize: 'var(--text-sm)',
-                fontWeight: 700,
-                color: 'var(--text)',
-                marginBottom: 6,
-              }}
-            >
-              Taxonomy Actions
+            <div className="ui-pipeline-maintenance__title">
+              Category actions
             </div>
             <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.45 }}>
               Scope: {scopeLabel}. Select rows below to limit what runs. Filter chips are view-only.
@@ -150,28 +106,17 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
               onClick={onRefresh}
               disabled={refreshing}
               title="Refresh stats"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
-                borderRadius: 6,
-                border: '1px solid var(--border)',
-                background: 'var(--bg-glass)',
-                color: 'var(--text-muted)',
-                fontSize: 'var(--text-xs)',
-                cursor: refreshing ? 'wait' : 'pointer',
-              }}
+              className="ui-button ui-button--secondary ui-button--icon"
             >
               <RefreshCw size={13} />
             </button>
           ) : null}
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+        <div className="ui-pipeline-maintenance__actions">
           {/* DISCOVER SECTION */}
-          <div style={{ flex: 1, minWidth: 220, paddingRight: 16, borderRight: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div className="ui-pipeline-maintenance__action-card">
+            <div className="ui-pipeline-maintenance__action-title">
               Discover
             </div>
             <p style={{ margin: '0 0 10px', fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.4 }}>
@@ -186,29 +131,16 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
               type="button"
               disabled={discoverDisabled}
               onClick={() => setDiscoverModalOpen(true)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 12px',
-                borderRadius: 6,
-                border: '1px solid #d29922',
-                background: 'color-mix(in srgb, #d29922 15%, transparent)',
-                color: 'var(--text)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 600,
-                cursor: discoverDisabled ? 'not-allowed' : 'pointer',
-                opacity: discoverDisabled ? 0.7 : 1,
-              }}
+              className="ui-button ui-button--warning"
             >
-              <Sparkles size={13} color="#d29922" />
+              <Sparkles size={13} />
               Run discover ({discoverWaiting})
             </button>
           </div>
 
           {/* CLASSIFY SECTION */}
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div className="ui-pipeline-maintenance__action-card">
+            <div className="ui-pipeline-maintenance__action-title">
               Classify
             </div>
             <p style={{ margin: '0 0 10px', fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.4 }}>
@@ -220,20 +152,7 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
                   type="button"
                   disabled={classifyPendingDisabled}
                   onClick={onClassifyPending}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '6px 12px',
-                    borderRadius: 6,
-                    border: 'none',
-                    background: 'var(--accent)',
-                    color: '#fff',
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 600,
-                    cursor: classifyPendingDisabled ? 'not-allowed' : 'pointer',
-                    opacity: classifyPendingDisabled ? 0.7 : 1,
-                  }}
+                  className="ui-button ui-button--primary"
                 >
                   <Tags size={13} />
                   Classify Pending ({pendingClassify})
@@ -244,20 +163,7 @@ export const PipelineMaintenanceStrip: React.FC<PipelineMaintenanceStripProps> =
                   type="button"
                   disabled={disabled || discoverConfigPlan?.counts.all === 0}
                   onClick={() => setReclassifyConfirmOpen(true)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '6px 12px',
-                    borderRadius: 6,
-                    border: '1px solid var(--border)',
-                    background: 'var(--bg-glass)',
-                    color: 'var(--text)',
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 600,
-                    cursor: disabled || discoverConfigPlan?.counts.all === 0 ? 'not-allowed' : 'pointer',
-                    opacity: disabled || discoverConfigPlan?.counts.all === 0 ? 0.7 : 1,
-                  }}
+                  className="ui-button ui-button--secondary"
                 >
                   <RefreshCw size={13} />
                   Reclassify in scope ({discoverConfigPlan?.counts.all ?? 0})

@@ -16,9 +16,11 @@ describe('PipelineHubView navigation', () => {
 
     expect(markup).toContain('data-enrichment-hub-views="true"');
     expect(markup).toContain('aria-label="Enrichment Hub view"');
-    expect(markup).toContain('Enrichment review');
-    expect(markup).toContain('Classification review');
-    expect(markup).toContain('Taxonomy');
+    expect(markup).toContain('>Enrichment<');
+    expect(markup).toContain('>Classification<');
+    expect(markup).toContain('All categories');
+    expect(markup).toContain('ui-pipeline-hub__views');
+    expect(markup.match(/ui-pipeline-hub__view-tab/g)).toHaveLength(3);
     expect(markup.match(/role="tab"/g)).toHaveLength(3);
     expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
   });

@@ -30,7 +30,7 @@ describe('category browse grouping', () => {
   it('groups leaves by parent, deduplicates members, and ignores rejected links', () => {
     const groups = buildCategoryBrowseGroups({
       categories: [
-        category({ id: 'finance', name: 'Finance', kind: 'parent' }),
+        category({ id: 'finance', name: 'Finance', kind: 'parent', source: 'seed' }),
         category({ id: 'investing', name: 'Investing', kind: 'leaf', parentId: 'finance' }),
         category({ id: 'trading', name: 'Trading', kind: 'leaf', parentId: 'finance' }),
         category({ id: 'orphan', name: 'Research', kind: 'leaf' }),
@@ -45,6 +45,7 @@ describe('category browse grouping', () => {
     });
 
     expect(groups[0].name).toBe('Finance');
+    expect(groups[0].category?.source).toBe('seed');
     expect(groups[0].leaves.map((leaf) => [leaf.category.name, leaf.itemIds])).toEqual([
       ['Investing', ['one', 'two']],
       ['Trading', ['three']],

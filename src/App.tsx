@@ -228,6 +228,11 @@ function App() {
    */
   const bootstrapAfterFolderReady = async (options?: { deferCanonicalHydrate?: boolean }) => {
     await ensureDbWorker();
+    const { ensureSeedTaxonomy } = await import('./lib/categorization/classifyTopicExtract');
+    // A fresh database must receive its complete taxonomy before any screen or
+    // pipeline consumer can observe it. Existing invalid taxonomies fail here;
+    // startup never patches or migrates them implicitly.
+    await ensureSeedTaxonomy();
     const folderWritable = await hasWritableBackupFolder();
     if (options?.deferCanonicalHydrate) {
       // The compact projection is already a usable screen. Let it paint and
@@ -241,24 +246,6 @@ function App() {
     void import('./lib/storage/legacyStorageCleanup')
       .then(({ purgeLegacyLocalDomainStorage }) => purgeLegacyLocalDomainStorage())
       .catch((error) => console.warn('[startup] legacy cleanup failed:', error));
-    void (async () => {
-      const { ensureSeedTaxonomy } = await import('./lib/categorization/classifyTopicExtract');
-      const { ensureTaxonomyPatches } = await import('./lib/categorization/seedImport');
-      try {
-        await ensureSeedTaxonomy();
-        await ensureTaxonomyPatches();
-      } catch (e) {
-        console.error('[startup] ensureSeedTaxonomy failed — classify will be blocked:', e);
-        await new Promise((r) => setTimeout(r, 1500));
-        try {
-          await ensureSeedTaxonomy();
-          await ensureTaxonomyPatches();
-          console.info('[startup] ensureSeedTaxonomy succeeded on retry');
-        } catch (e2) {
-          console.error('[startup] ensureSeedTaxonomy retry also failed:', e2);
-        }
-      }
-    })();
     if (folderWritable) {
       void runStartupConflictCheck();
     }

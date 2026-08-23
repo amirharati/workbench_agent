@@ -9,6 +9,7 @@ import {
 } from '../../lib/categorization/categoryBrowse';
 import { ContentBrowser, useContentBrowseMode, type ContentBrowseEntry } from './ContentBrowser';
 import { LinkVisual } from './LinkVisual';
+import { isLinkQualityTaxonomyParent } from '../../lib/categorization/classificationPresentation';
 
 const RELOAD_REASONS = new Set([
   'item.add',
@@ -43,6 +44,14 @@ function saveSelectedCategories(storageKey: string, categoryIds: string[]): void
   }
 }
 
+function categorySourceLabel(source?: string): string {
+  if (source === 'seed') return 'Seed';
+  if (source === 'discovered') return 'Discovered';
+  if (source === 'manual') return 'Manual';
+  if (source === 'bootstrap') return 'Bootstrap';
+  return 'Existing';
+}
+
 export function HomeCategoriesView({
   items,
   scopeLabel,
@@ -60,7 +69,6 @@ export function HomeCategoriesView({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [showEmpty, setShowEmpty] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>(() =>
     loadSelectedCategories(selectionStorageKey)
   );
@@ -118,7 +126,7 @@ export function HomeCategoriesView({
   useEffect(() => {
     setExpandedGroupIds((current) => current.length > 0
       ? current.filter((id) => groups.some((group) => group.id === id))
-      : groups.slice(0, 4).map((group) => group.id)
+      : groups.map((group) => group.id)
     );
   }, [groups]);
 
@@ -134,14 +142,23 @@ export function HomeCategoriesView({
     .map((group) => {
       const parentMatches = group.name.toLowerCase().includes(normalizedQuery);
       const leaves = group.leaves.filter((leaf) => {
-        if (!showEmpty && !normalizedQuery && leaf.itemIds.length === 0) return false;
         return !normalizedQuery || parentMatches ||
           leaf.category.name.toLowerCase().includes(normalizedQuery) ||
-          leaf.category.description?.toLowerCase().includes(normalizedQuery);
+          leaf.category.description?.toLowerCase().includes(normalizedQuery) ||
+          leaf.category.source?.toLowerCase().includes(normalizedQuery);
       });
       return { ...group, leaves };
     })
-    .filter((group) => group.leaves.length > 0), [groups, normalizedQuery, showEmpty]);
+    .filter((group) => group.leaves.length > 0), [groups, normalizedQuery]);
+
+  const topicGroups = useMemo(
+    () => visibleGroups.filter((group) => !isLinkQualityTaxonomyParent(group.id)),
+    [visibleGroups]
+  );
+  const statusGroups = useMemo(
+    () => visibleGroups.filter((group) => isLinkQualityTaxonomyParent(group.id)),
+    [visibleGroups]
+  );
 
   const selectedCategorySet = useMemo(
     () => new Set(selectedCategoryIds),
@@ -216,7 +233,7 @@ export function HomeCategoriesView({
         <div className="ui-home-categories__taxonomy-header">
           <div>
             <strong>{scopeLabel} categories</strong>
-            <span>{groups.reduce((count, group) => count + group.leaves.length, 0)} topics · {categorizedItemCount} categorized items</span>
+            <span>{groups.length} parents · {groups.reduce((count, group) => count + group.leaves.length, 0)} children · {categorizedItemCount} categorized items</span>
           </div>
           {selectedCategoryIds.length > 0 ? (
             <button type="button" onClick={() => setSelectedCategoryIds([])} title="Clear selected categories">
@@ -239,10 +256,6 @@ export function HomeCategoriesView({
             </button>
           ) : null}
         </label>
-        <label className="ui-home-categories__show-empty">
-          <input type="checkbox" checked={showEmpty} onChange={(event) => setShowEmpty(event.target.checked)} />
-          Show empty categories
-        </label>
         <div className="scrollbar ui-home-categories__groups">
           {loading && !snapshot ? (
             <div className="ui-home-categories__status">Loading categories…</div>
@@ -250,49 +263,24 @@ export function HomeCategoriesView({
             <div className="ui-home-categories__status" data-error="true">Could not load categories: {error}</div>
           ) : visibleGroups.length === 0 ? (
             <div className="ui-home-categories__status">No categories match this view.</div>
-          ) : visibleGroups.map((group) => {
-            const groupItemCount = new Set(group.leaves.flatMap((leaf) => leaf.itemIds)).size;
-            const selectedCount = group.leaves.filter((leaf) => selectedCategorySet.has(leaf.category.id)).length;
-            return (
-              <details
-                key={group.id}
-                open={Boolean(normalizedQuery || selectedCount || expandedGroupSet.has(group.id))}
-                onToggle={(event) => {
-                  if (normalizedQuery || selectedCount) return;
-                  const isOpen = event.currentTarget.open;
-                  setExpandedGroupIds((current) => isOpen
-                    ? current.includes(group.id) ? current : [...current, group.id]
-                    : current.filter((id) => id !== group.id)
-                  );
-                }}
-              >
-                <summary>
-                  <ChevronDown size={12} aria-hidden="true" />
-                  <span>{group.name}</span>
-                  <small>{groupItemCount}</small>
-                </summary>
-                <div className="ui-home-categories__leaves">
-                  {group.leaves.map((leaf) => (
-                    <label key={leaf.category.id} data-selected={selectedCategorySet.has(leaf.category.id) ? 'true' : 'false'}>
-                      <input
-                        type="checkbox"
-                        checked={selectedCategorySet.has(leaf.category.id)}
-                        onChange={() => toggleCategory(leaf.category.id)}
-                      />
-                      <span title={leaf.category.description || leaf.category.name}>{leaf.category.name}</span>
-                      <small>{leaf.itemIds.length}</small>
-                    </label>
-                  ))}
+          ) : (
+            <>
+              {topicGroups.length > 0 ? <div className="ui-home-categories__section-label">Topic hierarchy</div> : null}
+              {topicGroups.map((group) => renderCategoryGroup(group))}
+              {statusGroups.length > 0 ? (
+                <div className="ui-home-categories__section-label ui-home-categories__section-label--status">
+                  Page status &amp; errors
                 </div>
-              </details>
-            );
-          })}
+              ) : null}
+              {statusGroups.map((group) => renderCategoryGroup(group, true))}
+            </>
+          )}
         </div>
         <div className="ui-home-categories__selection-summary">
           {refreshing ? 'Refreshing… · ' : ''}
           {selectedCategoryIds.length > 0
             ? `${selectedCategoryIds.length} selected · showing items in any selected category`
-            : 'Select one or more categories to browse their items'}
+            : 'Select one or more child categories to browse their items'}
         </div>
       </aside>
 
@@ -321,4 +309,53 @@ export function HomeCategoriesView({
       </main>
     </div>
   );
+
+  function renderCategoryGroup(group: (typeof visibleGroups)[number], status = false) {
+            const groupItemCount = new Set(group.leaves.flatMap((leaf) => leaf.itemIds)).size;
+            const selectedCount = group.leaves.filter((leaf) => selectedCategorySet.has(leaf.category.id)).length;
+            return (
+              <details
+                key={group.id}
+                data-status-group={status ? 'true' : 'false'}
+                open={Boolean(normalizedQuery || selectedCount || expandedGroupSet.has(group.id))}
+                onToggle={(event) => {
+                  if (normalizedQuery || selectedCount) return;
+                  const isOpen = event.currentTarget.open;
+                  setExpandedGroupIds((current) => isOpen
+                    ? current.includes(group.id) ? current : [...current, group.id]
+                    : current.filter((id) => id !== group.id)
+                  );
+                }}
+              >
+                <summary>
+                  <ChevronDown size={12} aria-hidden="true" />
+                  <span className="ui-home-categories__group-name">
+                    <strong>{group.name}</strong>
+                    <em data-source={group.category?.source ?? 'existing'}>
+                      {categorySourceLabel(group.category?.source)}
+                    </em>
+                  </span>
+                  <small>{groupItemCount}</small>
+                </summary>
+                <div className="ui-home-categories__leaves">
+                  {group.leaves.map((leaf) => (
+                    <label key={leaf.category.id} data-selected={selectedCategorySet.has(leaf.category.id) ? 'true' : 'false'}>
+                      <input
+                        type="checkbox"
+                        checked={selectedCategorySet.has(leaf.category.id)}
+                        onChange={() => toggleCategory(leaf.category.id)}
+                      />
+                      <span title={leaf.category.description || leaf.category.name}>
+                        <strong>{leaf.category.name}</strong>
+                        <em data-source={leaf.category.source ?? 'existing'}>
+                          {categorySourceLabel(leaf.category.source)}
+                        </em>
+                      </span>
+                      <small>{leaf.itemIds.length}</small>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            );
+  }
 }

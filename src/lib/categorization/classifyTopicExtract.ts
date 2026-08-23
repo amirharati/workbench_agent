@@ -43,11 +43,12 @@ import { hashText } from './textHash';
 import { getTaxonomyState, saveTaxonomyState, shouldTriggerDiscover } from './taxonomyState';
 import { promoteProposedLeaf, type DiscoverSampleItem } from './discoverTaxonomy';
 import {
-  ensureTaxonomyPatches,
+  ensureTaxonomyReady,
   getBundledSeedDocument,
   seedDocumentToCategories,
 } from './seedImport';
 import { APP_DISCOVER_MAP_BATCH_SIZE } from './discoverPolicy';
+import { DEFAULT_TAXONOMY_STATE } from './types';
 import type {
   AiCategory,
   AiItemCategoryLink,
@@ -619,16 +620,11 @@ async function ensurePendingClassifySignalsWork(): Promise<number> {
 }
 
 export async function ensureSeedTaxonomy(): Promise<void> {
-  const stats = await getCategorizationQueueStats();
-  if (stats.leafCount > 0) {
-    await ensureTaxonomyPatches();
-    return;
-  }
-  console.info('[taxonomy] no leaves found — auto-importing seed taxonomy');
-  await importSeedTaxonomy(false); // false = don't replace existing (none to replace anyway)
+  // Create the complete seed atomically when empty. An existing invalid
+  // taxonomy is rejected and must be reset explicitly; never repair it here.
+  await ensureTaxonomyReady();
   const { commitPendingDbWrites } = await import('../db');
   await commitPendingDbWrites();
-  await ensureTaxonomyPatches();
 }
 
 export async function importSeedTaxonomy(replaceExisting = true): Promise<{
@@ -650,16 +646,15 @@ export async function importSeedTaxonomy(replaceExisting = true): Promise<{
   for (const row of rows) {
     await tx.objectStore('ai_categories').put(row);
   }
+  await tx.objectStore('ai_taxonomy_state').put({
+    ...DEFAULT_TAXONOMY_STATE,
+    taxonomyVersion: doc.taxonomyVersion,
+    updated_at: Date.now(),
+  });
   await tx.done;
 
-  await saveTaxonomyState({
-    taxonomyVersion: doc.taxonomyVersion,
-    lastClassifyAt: undefined,
-    bulkModeActive: false,
-    bulkDiscoverRuns: 0,
-  });
   notifyDataChanged('categorization.update');
-  await ensureTaxonomyPatches();
+  await ensureTaxonomyReady();
 
   return {
     parents: doc.parents.length,
@@ -1033,7 +1028,7 @@ export async function previewClassifyBatchItemIds(
 export async function classifyIncremental(
   opts: ClassifyIncrementalOptions = {}
 ): Promise<TopicClassifyResult> {
-  await ensureTaxonomyPatches();
+  await ensureTaxonomyReady();
   throwIfAborted(opts.signal);
   reportProgress(opts, {
     phase: 'prepare',
@@ -1055,26 +1050,14 @@ export async function classifyIncremental(
 
   let categories = await db.getAll('ai_categories');
   if (!getAssignableLeaves(categories).length) {
-    // Taxonomy is empty — auto-load seed before throwing.
-    // Discover warm-up (run before classify in itemPipeline) will add domain leaves on top.
-    console.warn('[classify] no taxonomy leaves — auto-importing seed taxonomy');
-    try {
-      await importSeedTaxonomy(false);
-      const { commitPendingDbWrites } = await import('../db');
-      await commitPendingDbWrites();
-      categories = await db.getAll('ai_categories');
-    } catch (e) {
-      console.error('[classify] seed taxonomy auto-import failed:', e);
-    }
-    // If still empty after seed load, proceed anyway — discover will add leaves.
-    if (!getAssignableLeaves(categories).length) {
-      console.warn('[classify] taxonomy still empty after seed load — proceeding anyway (discover will bootstrap)');
-    }
+    throw new Error(
+      'Taxonomy has no valid assignable categories. Reset or recreate this test database.'
+    );
   }
   const leaves = getAssignableLeaves(categories);
 
   const parents = getParentsFromCategories(categories);
-  const categoryIds = new Set(categories.map((c) => c.id));
+  const categoryIds = new Set(leaves.map((category) => category.id));
   const leafById = new Map(categories.map((c) => [c.id, c]));
 
   let items: Item[];
@@ -1789,7 +1772,7 @@ export async function classifyIncremental(
           (
             !replacementPrimary ||
             prevSignal?.classifyState === 'manual_only' ||
-            evidenceStrength(previousPrimaryId) >= evidenceStrength(replacementPrimary.categoryId)
+            evidenceStrength(previousPrimaryId) > evidenceStrength(replacementPrimary.categoryId)
           )
       );
       let signal: AiItemSignal;
@@ -1937,7 +1920,7 @@ export async function discoverBatch(
     signal?: AbortSignal;
   } = {}
 ): Promise<DiscoverBatchResult> {
-  await ensureTaxonomyPatches();
+  await ensureTaxonomyReady();
   throwIfAborted(opts.signal);
   opts.onProgress?.({
     phase: 'prepare',

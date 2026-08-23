@@ -1,16 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, RefreshCw, Search } from 'lucide-react';
+import { ArrowRight, RefreshCw, Search } from 'lucide-react';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
-import {
-  isLinkQualityTaxonomyParent,
-  resolveClassificationPresentation,
-} from '../../lib/categorization/classificationPresentation';
+import { isLinkQualityTaxonomyParent } from '../../lib/categorization/classificationPresentation';
 import {
   getTaxonomyTreeWithCounts,
   type TaxonomyLeafRow,
   type TaxonomyParentRow,
 } from '../../lib/categorization/devQueries';
-import { isLinkQualityRemovalLeafId, isLinkQualityAttentionLeafId } from '../../lib/categorization/linkQuality';
 
 interface AiCategoriesViewProps {
   onBrowseCategory?: (categoryId: string, name: string) => void;
@@ -47,7 +43,6 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
-  const [showEmpty, setShowEmpty] = useState(false);
   const taxonomyRef = useRef(taxonomy);
   taxonomyRef.current = taxonomy;
   const reloadSeqRef = useRef(0);
@@ -94,21 +89,19 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
   const filtered = useMemo(() => {
     if (!taxonomy) return taxonomy;
 
-    const hideEmpty = !showEmpty && !q;
-    const match = (name: string) => name.toLowerCase().includes(q);
+    const matchesCategory = (category: TaxonomyParentRow['category'] | TaxonomyLeafRow['category']) =>
+      [category.name, category.description, category.source]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q));
 
     const parents = taxonomy.parents
       .map((row) => {
-        const isPipelineParent = isLinkQualityTaxonomyParent(row.category.id);
         let leaves = row.leaves;
         if (q) {
-          const parentMatch = match(row.category.name);
-          leaves = row.leaves.filter((leaf) => parentMatch || match(leaf.category.name));
+          const parentMatch = matchesCategory(row.category);
+          leaves = row.leaves.filter((leaf) => parentMatch || matchesCategory(leaf.category));
           if (!parentMatch && leaves.length === 0) return null;
           return { ...row, leaves: parentMatch ? row.leaves : leaves };
-        }
-        if (hideEmpty && !isPipelineParent) {
-          leaves = row.leaves.filter((leaf) => leaf.primaryItemCount > 0);
         }
         return { ...row, leaves };
       })
@@ -116,13 +109,11 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
 
     let orphanLeaves = taxonomy.orphanLeaves;
     if (q) {
-      orphanLeaves = orphanLeaves.filter((leaf) => match(leaf.category.name));
-    } else if (hideEmpty) {
-      orphanLeaves = orphanLeaves.filter((leaf) => leaf.primaryItemCount > 0);
+      orphanLeaves = orphanLeaves.filter((leaf) => matchesCategory(leaf.category));
     }
 
     return { ...taxonomy, parents, orphanLeaves };
-  }, [taxonomy, q, showEmpty]);
+  }, [taxonomy, q]);
 
   const data = filtered ?? taxonomy;
   const { topicParents, pipelineParents } = splitTaxonomyParents(data?.parents ?? []);
@@ -179,38 +170,17 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
         </div>
       </header>
       ) : (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginBottom: 12,
-            flexWrap: 'wrap',
-          }}
-        >
-          <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.5, flex: 1 }}>
-            All topic parents are listed; enable <strong style={{ color: 'var(--text)' }}>Show empty topic leaves</strong>{' '}
-            to expand zero-count leaves. Link quality &amp; attention leaves always show for inspection.
-          </p>
+        <div className="ui-taxonomy__intro">
+          <div>
+            <h2>All categories</h2>
+            <p>Complete parent and child hierarchy, including categories with no bookmarks yet.</p>
+          </div>
           <button
             type="button"
             onClick={() => void reload()}
             disabled={loading || refreshing}
             title="Refresh counts"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '4px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'var(--bg-glass)',
-              color: 'var(--text-muted)',
-              fontSize: 'var(--text-xs)',
-              cursor: loading || refreshing ? 'wait' : 'pointer',
-              flexShrink: 0,
-            }}
+            className="ui-button ui-button--secondary"
           >
             <RefreshCw size={13} className={refreshing ? 'spin' : undefined} />
             {refreshing ? 'Refreshing…' : 'Refresh'}
@@ -219,66 +189,27 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
       )}
 
       {data && (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 16,
-            marginBottom: 16,
-            fontSize: 'var(--text-xs)',
-            color: 'var(--text-muted)',
-          }}
-        >
+        <div className="ui-taxonomy__summary">
           <span>
-            <strong style={{ color: 'var(--text)' }}>{data.totals.parents}</strong> parent topics
+            <strong>{data.totals.parents}</strong> parent categories
           </span>
           <span>
-            <strong style={{ color: 'var(--text)' }}>{data.totals.leaves}</strong> leaf topics
+            <strong>{data.totals.leaves}</strong> child categories
           </span>
           <span>
-            <strong style={{ color: 'var(--text)' }}>{data.totals.itemsWithPrimary}</strong> bookmarks with a
-            primary topic
-            {data.totals.itemsWithPrimaryEnrichIncomplete > 0 ? (
-              <>
-                {' '}
-                ·{' '}
-                <strong style={{ color: 'var(--er-warn, #d29922)' }}>
-                  {data.totals.itemsWithPrimaryEnrichIncomplete}
-                </strong>{' '}
-                topic assigned but enrich incomplete (see Enrichment tab)
-              </>
-            ) : null}
+            <strong>{data.totals.itemsWithPrimary}</strong> bookmarks assigned
           </span>
         </div>
       )}
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginBottom: 12,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            flex: '1 1 200px',
-            padding: '8px 12px',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border)',
-            background: 'var(--input-bg)',
-          }}
-        >
+      <div className="ui-taxonomy__controls">
+        <div className="ui-taxonomy__search">
           <Search size={16} color="var(--text-muted)" />
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter by name…"
+            placeholder="Search categories…"
             style={{
               flex: 1,
               border: 'none',
@@ -289,101 +220,59 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
             }}
           />
         </div>
-        <label
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 'var(--text-xs)',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            userSelect: 'none',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={showEmpty}
-            onChange={(e) => setShowEmpty(e.target.checked)}
-          />
-          Show empty topic leaves
-        </label>
       </div>
 
       {loading && !data ? (
-        <p style={{ color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>Loading taxonomy…</p>
+        <p style={{ color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>Loading categories…</p>
       ) : !hasTaxonomyRows ? (
         <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
           {taxonomy
-            ? showEmpty || q
+            ? q
               ? 'No categories match your filter.'
-              : 'The starter taxonomy is still loading. Reopen this view if it does not appear shortly.'
-            : 'Loading taxonomy…'}
+              : 'The starter categories are still loading. Reopen this view if they do not appear shortly.'
+            : 'Loading categories…'}
         </p>
       ) : (
-        <div
-          style={{
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-md)',
-            overflow: 'hidden',
-            background: 'var(--bg-panel)',
-            opacity: refreshing ? 0.72 : 1,
-            transition: 'opacity 0.15s ease',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              gap: 8,
-              padding: '8px 12px',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              color: 'var(--text-faint)',
-              textTransform: 'uppercase',
-              letterSpacing: 0.4,
-              borderBottom: '1px solid var(--border)',
-              background: 'var(--bg)',
-            }}
-          >
-            <span style={{ flex: 1 }}>Topic</span>
-            <span style={{ width: 52, textAlign: 'right' }}>Leaves</span>
-            <span style={{ width: 56, textAlign: 'right' }}>Primary</span>
-            <span style={{ width: 48, textAlign: 'right' }}>Total</span>
-            {onBrowseCategory && <span style={{ width: 64 }} />}
+        <div className="ui-taxonomy__browser" data-refreshing={refreshing ? 'true' : 'false'}>
+          <div className="ui-taxonomy__section-heading">
+            <div>
+              <h3>Topic hierarchy</h3>
+              <p>Parent categories contain the child categories used to organize bookmarks.</p>
+            </div>
+            <span>{topicParents.length} parents</span>
           </div>
-
-          {topicParents.map((row, i) => (
-            <ParentRow
+          <div className="ui-taxonomy__groups">
+          {topicParents.map((row) => (
+            <CategoryGroup
               key={row.category.id}
               row={row}
-              defaultOpen={showEmpty || i < 2 || !!q}
               onBrowse={onBrowseCategory}
             />
           ))}
+          </div>
 
           {pipelineParents.length > 0 ? (
-            <PipelineTaxonomySection
+            <PageStatusCategories
               parents={pipelineParents}
-              defaultOpen
               onBrowse={onBrowseCategory}
             />
           ) : null}
 
           {orphanLeaves.length > 0 && (
-            <div style={{ borderTop: '1px solid var(--border)', padding: '8px 0' }}>
-              <div
-                style={{
-                  padding: '4px 12px 8px',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--text-muted)',
-                }}
-              >
-                Other topics (no parent)
+            <section className="ui-taxonomy__orphans">
+              <div className="ui-taxonomy__section-heading">
+                <div>
+                  <h3>Categories without a parent</h3>
+                  <p>These categories are part of the hierarchy but are not attached to a parent yet.</p>
+                </div>
+                <span>{orphanLeaves.length} categories</span>
               </div>
-              {orphanLeaves.map((leaf) => (
-                <LeafRow key={leaf.category.id} leaf={leaf} onBrowse={onBrowseCategory} />
-              ))}
-            </div>
+              <div className="ui-taxonomy__children ui-taxonomy__children--standalone">
+                {orphanLeaves.map((leaf) => (
+                  <CategoryLeaf key={leaf.category.id} leaf={leaf} onBrowse={onBrowseCategory} />
+                ))}
+              </div>
+            </section>
           )}
         </div>
       )}
@@ -391,278 +280,128 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
   );
 };
 
-function CountCell({ value, muted }: { value: number; muted?: boolean }) {
+function sourceLabel(source?: string): string {
+  if (source === 'seed') return 'Seed';
+  if (source === 'discovered') return 'Discovered';
+  if (source === 'manual') return 'Manual';
+  if (source === 'bootstrap') return 'Bootstrap';
+  return 'Existing';
+}
+
+function CategoryCount({ value }: { value: number }) {
   return (
-    <span
-      style={{
-        width: 48,
-        textAlign: 'right',
-        fontSize: 'var(--text-xs)',
-        fontWeight: 600,
-        color: muted || value === 0 ? 'var(--text-faint)' : 'var(--text-muted)',
-      }}
-    >
-      {value}
+    <span className="ui-taxonomy__bookmark-count" data-empty={value === 0 ? 'true' : 'false'}>
+      <strong>{value}</strong> {value === 1 ? 'bookmark' : 'bookmarks'}
     </span>
   );
 }
 
-function BrowseButton({
-  label,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  if (disabled) return <span style={{ width: 64 }} />;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        width: 64,
-        padding: '2px 6px',
-        fontSize: 'var(--text-xs)',
-        borderRadius: 'var(--radius-sm)',
-        border: '1px solid var(--border)',
-        background: 'transparent',
-        color: 'var(--accent)',
-        cursor: 'pointer',
-        fontWeight: 600,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function PipelineTaxonomySection({
+function PageStatusCategories({
   parents,
-  defaultOpen,
   onBrowse,
 }: {
   parents: TaxonomyParentRow[];
-  defaultOpen?: boolean;
   onBrowse?: (categoryId: string, name: string) => void;
 }) {
   return (
-    <div
-      style={{
-        borderTop: '2px solid color-mix(in srgb, var(--er-warn, #d29922) 45%, var(--border))',
-        background: 'color-mix(in srgb, var(--er-warn, #d29922) 5%, var(--bg-panel))',
-      }}
-    >
-      <div
-        style={{
-          padding: '10px 12px 6px',
-          borderBottom: '1px solid var(--border)',
-        }}
-      >
-        <div
-          style={{
-            fontSize: 'var(--text-xs)',
-            fontWeight: 700,
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
-            color: 'var(--er-warn, #d29922)',
-          }}
-        >
-          Link quality &amp; attention
+    <section className="ui-taxonomy__status-section">
+      <div className="ui-taxonomy__section-heading">
+        <div>
+          <h3>Page status hierarchy</h3>
+          <p>Non-topic categories for broken, low-content, redirected, or sign-in-only pages.</p>
         </div>
-        <p
-          style={{
-            margin: '4px 0 0',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--text-muted)',
-            lineHeight: 1.45,
-          }}
-        >
-          Pipeline buckets for broken, low-signal, or auth-gated pages — still in the taxonomy tree, but not
-          normal topic classification.
-        </p>
+        <span>{parents.length} {parents.length === 1 ? 'parent' : 'parents'}</span>
       </div>
-      {parents.map((row) => (
-        <ParentRow
-          key={row.category.id}
-          row={row}
-          variant="pipeline"
-          defaultOpen={defaultOpen ?? true}
-          onBrowse={onBrowse}
-        />
-      ))}
-    </div>
+      <div className="ui-taxonomy__groups">
+        {parents.map((row) => (
+          <CategoryGroup key={row.category.id} row={row} variant="status" onBrowse={onBrowse} />
+        ))}
+      </div>
+    </section>
   );
 }
 
-function ParentRow({
+function CategoryGroup({
   row,
-  defaultOpen,
   onBrowse,
   variant = 'topic',
 }: {
   row: TaxonomyParentRow;
-  defaultOpen?: boolean;
   onBrowse?: (categoryId: string, name: string) => void;
-  variant?: 'topic' | 'pipeline';
+  variant?: 'topic' | 'status';
 }) {
-  const [open, setOpen] = useState(defaultOpen ?? row.itemCount > 0);
-  const canBrowse = !!onBrowse && row.itemCount > 0;
-  const pipelineParent = variant === 'pipeline';
-
   return (
-    <div
-      style={{
-        borderBottom: '1px solid var(--border)',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 12px',
-          background: open
-            ? pipelineParent
-              ? 'color-mix(in srgb, var(--er-warn, #d29922) 10%, var(--bg))'
-              : 'var(--accent-weak)'
-            : 'transparent',
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          style={{
-            all: 'unset',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            flex: 1,
-            cursor: 'pointer',
-            minWidth: 0,
-          }}
-        >
-          {open ? <ChevronDown size={14} color="var(--text-muted)" /> : <ChevronRight size={14} color="var(--text-muted)" />}
-          <span
-            style={{
-              fontWeight: 600,
-              fontSize: 'var(--text-sm)',
-              color: pipelineParent ? 'var(--er-warn, #d29922)' : 'var(--text)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {row.category.name}
-          </span>
-        </button>
-        <span style={{ width: 52, textAlign: 'right', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
-          {row.childLeafCount}
-        </span>
-        <CountCell value={row.primaryItemCount} />
-        <CountCell value={row.itemCount} muted />
-        {onBrowse && (
-          <BrowseButton
-            label="Browse"
-            disabled={!canBrowse}
-            onClick={() => onBrowse(row.category.id, row.category.name)}
-          />
-        )}
-      </div>
-      {open && (
-        <div style={{ paddingLeft: 20, paddingBottom: 4 }}>
-          {row.leaves.map((leaf) => (
-            <LeafRow
-              key={leaf.category.id}
-              leaf={leaf}
-              onBrowse={onBrowse}
-              indent
-              variant={pipelineParent ? 'pipeline' : 'topic'}
-            />
-          ))}
-          {!row.leaves.length && (
-            <p style={{ margin: '4px 12px', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>No leaf topics</p>
-          )}
+    <section className="ui-taxonomy__group" data-variant={variant}>
+      <header className="ui-taxonomy__group-header">
+        <div className="ui-taxonomy__group-copy">
+          <div className="ui-taxonomy__category-meta">
+            <span className="ui-taxonomy__level">Parent</span>
+            <span className="ui-taxonomy__source" data-source={row.category.source ?? 'existing'}>
+              {sourceLabel(row.category.source)}
+            </span>
+          </div>
+          <h4>{row.category.name}</h4>
+          {row.category.description ? <p>{row.category.description}</p> : null}
         </div>
-      )}
-    </div>
+        <div className="ui-taxonomy__group-stats">
+          <span>{row.leaves.length} {row.leaves.length === 1 ? 'child' : 'children'}</span>
+          <CategoryCount value={row.itemCount} />
+          {onBrowse ? (
+            <button
+              type="button"
+              className="ui-taxonomy__browse-parent"
+              onClick={() => onBrowse(row.category.id, row.category.name)}
+            >
+              View all <ArrowRight size={13} />
+            </button>
+          ) : null}
+        </div>
+      </header>
+      <div className="ui-taxonomy__children">
+        {row.leaves.map((leaf) => (
+          <CategoryLeaf key={leaf.category.id} leaf={leaf} onBrowse={onBrowse} />
+        ))}
+        {!row.leaves.length ? (
+          <p className="ui-taxonomy__empty-children">No child categories</p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
-function LeafRow({
+function CategoryLeaf({
   leaf,
   onBrowse,
-  indent,
-  variant = 'topic',
 }: {
   leaf: TaxonomyLeafRow;
   onBrowse?: (categoryId: string, name: string) => void;
-  indent?: boolean;
-  variant?: 'topic' | 'pipeline';
 }) {
-  const canBrowse = !!onBrowse && leaf.itemCount > 0;
-  const leafPresentation = resolveClassificationPresentation({
-    primaryCategoryId: leaf.category.id,
-  });
-  const removalLeaf = isLinkQualityRemovalLeafId(leaf.category.id);
-  const attentionLeaf = isLinkQualityAttentionLeafId(leaf.category.id);
-  const leafColor =
-    variant === 'pipeline'
-      ? removalLeaf
-        ? 'var(--error, #f85149)'
-        : attentionLeaf
-          ? 'var(--er-warn, #d29922)'
-          : leaf.primaryItemCount
-            ? 'var(--text)'
-            : 'var(--text-muted)'
-      : leafPresentation?.tier === 'general'
-        ? 'var(--er-warn, #d29922)'
-        : leaf.primaryItemCount
-          ? 'var(--text)'
-          : 'var(--text-muted)';
-  const leafPrefix =
-    variant === 'pipeline'
-      ? removalLeaf
-        ? '⚠ '
-        : attentionLeaf
-          ? '◉ '
-          : '• '
-      : leafPresentation?.leafPrefix ?? (leaf.category.isGeneralFallback ? '◦ ' : '• ');
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: indent ? '4px 12px 4px 20px' : '6px 12px',
-        fontSize: 'var(--text-sm)',
-        color: leafColor,
-      }}
+  const content = (
+    <>
+      <div className="ui-taxonomy__leaf-copy">
+        <div className="ui-taxonomy__category-meta">
+          <span className="ui-taxonomy__level">Child</span>
+          <span className="ui-taxonomy__source" data-source={leaf.category.source ?? 'existing'}>
+            {sourceLabel(leaf.category.source)}
+          </span>
+        </div>
+        <strong>{leaf.category.name}</strong>
+        {leaf.category.description ? <span>{leaf.category.description}</span> : null}
+      </div>
+      <CategoryCount value={leaf.itemCount} />
+      {onBrowse ? <ArrowRight className="ui-taxonomy__leaf-arrow" size={14} /> : null}
+    </>
+  );
+
+  return onBrowse ? (
+    <button
+      type="button"
+      className="ui-taxonomy__leaf"
+      onClick={() => onBrowse(leaf.category.id, leaf.category.name)}
     >
-      <span
-        style={{
-          flex: 1,
-          minWidth: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-        title={leaf.category.name}
-      >
-        {leafPrefix}
-        {leaf.category.name}
-      </span>
-      <span style={{ width: 52 }} />
-      <CountCell value={leaf.primaryItemCount} />
-      <CountCell value={leaf.itemCount} muted />
-      {onBrowse && (
-        <BrowseButton
-          label="Browse"
-          disabled={!canBrowse}
-          onClick={() => onBrowse(leaf.category.id, leaf.category.name)}
-        />
-      )}
-    </div>
+      {content}
+    </button>
+  ) : (
+    <div className="ui-taxonomy__leaf">{content}</div>
   );
 }

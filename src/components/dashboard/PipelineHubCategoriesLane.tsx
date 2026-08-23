@@ -143,21 +143,6 @@ function topicSourceColor(row: PipelineQueueItemRow): string {
   return 'var(--text-faint)';
 }
 
-const chipBase: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  padding: '4px 10px',
-  borderRadius: 999,
-  border: '1px solid var(--border)',
-  background: 'var(--bg-glass)',
-  color: 'var(--text-muted)',
-  fontSize: 'var(--text-xs)',
-  fontWeight: 600,
-  cursor: 'pointer',
-  lineHeight: 1.3,
-};
-
 function FilterChip({
   label,
   count,
@@ -177,16 +162,12 @@ function FilterChip({
       title={hint}
       onClick={onClick}
       aria-pressed={active}
-      style={{
-        ...chipBase,
-        border: active ? '2px solid var(--accent)' : chipBase.border,
-        background: active ? 'var(--accent-weak)' : chipBase.background,
-        color: active ? 'var(--text)' : chipBase.color,
-      }}
+      className="ui-pipeline-chip ui-pipeline-chip--neutral"
     >
+      <span className="ui-pipeline-chip__dot" aria-hidden="true" />
       {label}
       {count != null ? (
-        <span style={{ opacity: 0.75, fontWeight: 500 }}>{count}</span>
+        <span className="ui-pipeline-chip__count">{count}</span>
       ) : null}
     </button>
   );
@@ -800,7 +781,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
               type="button"
               onClick={() => void reload({ silent: true })}
               title="Refresh queue"
-              style={{ ...chipBase, padding: '4px 8px', marginBottom: 6 }}
+              className="ui-button ui-button--secondary ui-button--icon"
+              style={{ marginBottom: 6 }}
             >
               <RefreshCw size={13} />
             </button>
@@ -812,20 +794,13 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
         <AiCategoriesView embedded onBrowseCategory={onBrowseCategory} />
       ) : (
         <>
-          <p
-            style={{
-              margin: '0 0 10px',
-              fontSize: 'var(--text-xs)',
-              color: 'var(--text-faint)',
-              lineHeight: 1.45,
-            }}
-          >
+          <p className="ui-pipeline-hub__queue-note">
             Filter chip counts = {scopedRows.length} bookmark{scopedRows.length === 1 ? '' : 's'} in
             current scope
             {scopeActive ? ' (project/collection)' : ''}. Use <strong>Update categories</strong>{' '}
             above when the waiting counts look ready — select rows first to limit scope.
           </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+          <div className="ui-pipeline-hub__chip-row ui-pipeline-hub__classification-chips">
             {PIPELINE_QUEUE_FILTER_OPTIONS.map((opt) => (
               <FilterChip
                 key={opt.id}
@@ -838,8 +813,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
             ))}
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12, alignItems: 'center' }}>
-            <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 320 }}>
+          <div className="ui-pipeline-hub__search-row ui-pipeline-hub__classification-search">
+            <div className="ui-pipeline-hub__search-field">
               <Search
                 size={14}
                 style={{
@@ -852,23 +827,14 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                 }}
               />
               <input
+                className="ui-field"
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search title, URL, topic…"
-                style={{
-                  width: '100%',
-                  padding: '7px 10px 7px 32px',
-                  borderRadius: 6,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-input)',
-                  color: 'var(--text)',
-                  fontSize: 'var(--text-sm)',
-                  boxSizing: 'border-box',
-                }}
               />
             </div>
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+            <span className="ui-pipeline-hub__filter-summary">
               {tableRowsForList.length} in view · filter:{' '}
               {PIPELINE_QUEUE_FILTER_OPTIONS.find((o) => o.id === filter)?.label}
               {recentUpdateIds.length > 0
@@ -878,36 +844,12 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
           </div>
 
           {selectedIds.size > 0 ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '10px 14px',
-                marginBottom: 12,
-                borderRadius: 8,
-                border: '1px solid var(--accent)',
-                background: 'var(--accent-weak)',
-                flexWrap: 'wrap',
-              }}
-            >
+            <div className="ui-pipeline-hub__selection-bar">
               <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{selectedIds.size} selected</span>
               <button
                 type="button"
                 onClick={() => void handleBulkClassify(false)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '5px 12px',
-                  borderRadius: 6,
-                  border: 'none',
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
+                className="ui-button ui-button--primary"
                 title={
                   pipeline.isRunning
                     ? 'Queues classify behind the current job'
@@ -920,19 +862,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
               <button
                 type="button"
                 onClick={() => void handleBulkClassify(true)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '5px 12px',
-                  borderRadius: 6,
-                  border: `1px solid ${RECLASSIFY_ACCENT}`,
-                  background: RECLASSIFY_ACCENT,
-                  color: '#fff',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
+                className="ui-button ui-button--secondary ui-pipeline-hub__reclassify"
                 title="Re-run topic LLM even when already classified"
               >
                 <RotateCcw size={13} />
@@ -941,14 +871,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set())}
-                style={{
-                  padding: '5px 10px',
-                  borderRadius: 6,
-                  border: '1px solid var(--border)',
-                  background: 'transparent',
-                  fontSize: 'var(--text-xs)',
-                  cursor: 'pointer',
-                }}
+                className="ui-button ui-button--secondary"
               >
                 Clear
               </button>
@@ -956,25 +879,13 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
           ) : null}
 
           <div
-            style={{
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              overflow: 'hidden',
-              background: 'var(--bg-panel)',
-            }}
+            className="ui-pipeline-table"
           >
             <div
+              className="ui-pipeline-table__header"
               style={{
                 display: 'grid',
                 gridTemplateColumns: '32px 1fr 120px 1fr 140px 100px',
-                gap: 8,
-                padding: '8px 12px',
-                borderBottom: '1px solid var(--border)',
-                background: 'var(--bg)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 700,
-                color: 'var(--text-faint)',
-                textTransform: 'uppercase',
               }}
             >
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1009,11 +920,18 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                 const isCurrentInspect =
                   inspectState != null && inspectState.ids[inspectState.index] === row.item.id;
                 return (
-                  <div key={row.item.id}>
+                  <div
+                    key={row.item.id}
+                    className="ui-pipeline-table__row-shell"
+                    data-recent={isRecentUpdate ? 'true' : 'false'}
+                  >
                     <ItemResultRow
+                      className="ui-pipeline-table__row"
                       item={row.item}
                       dragSource={{ kind: 'reference', label: 'Classification queue' }}
                       selected={isCurrentInspect}
+                      data-checked={selectedIds.has(row.item.id) ? 'true' : 'false'}
+                      data-recent={isRecentUpdate ? 'true' : 'false'}
                       onSelectItem={() => openInspect(row.item)}
                       onDoubleClick={(event) => {
                         if ((event.target as HTMLElement).closest('button, input, a')) return;
@@ -1024,16 +942,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                         gridTemplateColumns: '32px 1fr 120px 1fr 140px 100px',
                         gap: 8,
                         padding: '10px 12px',
-                        borderBottom: isCurrentInspect ? 'none' : '1px solid var(--border)',
                         alignItems: 'center',
                         fontSize: 'var(--text-sm)',
-                        background: isCurrentInspect
-                          ? 'var(--accent-weak)'
-                          : isRecentUpdate
-                            ? 'color-mix(in srgb, var(--er-ok, #3fb950) 8%, transparent)'
-                            : selectedIds.has(row.item.id)
-                              ? 'color-mix(in srgb, var(--accent-weak) 55%, transparent)'
-                              : 'transparent',
                       }}
                     >
                       <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1074,11 +984,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                         ) : null}
                       </div>
                       <span
-                        style={{
-                          fontSize: 'var(--text-xs)',
-                          fontWeight: 600,
-                          color: rowStateColor(row),
-                        }}
+                        className="ui-pipeline-table__state"
+                        style={{ '--pipeline-status-tone': rowStateColor(row) } as React.CSSProperties}
                         title={row.pendingBlockerLabel ?? rowStateLabel(row)}
                       >
                         {rowStateLabel(row)}
@@ -1141,18 +1048,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                           type="button"
                           onClick={() => openInspect(row.item)}
                           title="Inspect pipeline"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 28,
-                            height: 28,
-                            borderRadius: 6,
-                            border: `1px solid ${isCurrentInspect ? 'var(--accent)' : 'var(--border)'}`,
-                            background: 'transparent',
-                            color: isCurrentInspect ? 'var(--accent)' : 'var(--text-muted)',
-                            cursor: 'pointer',
-                          }}
+                          className="ui-button ui-button--icon"
                         >
                           <Eye size={13} />
                         </button>
@@ -1164,18 +1060,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                               void openBookmarkInBrowser(row.item);
                             }}
                             title="Open URL in new tab"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: 28,
-                              height: 28,
-                              borderRadius: 6,
-                              border: '1px solid var(--border)',
-                              background: 'transparent',
-                              color: 'var(--text-muted)',
-                              cursor: 'pointer',
-                            }}
+                            className="ui-button ui-button--icon"
                           >
                             <ExternalLink size={13} />
                           </button>

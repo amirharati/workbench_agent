@@ -6,7 +6,7 @@ import {
   LINK_QUALITY_SEED_PARENT,
 } from './linkQuality';
 import { ensureGeneralFallbackLeaves } from './taxonomyCatalog';
-import type { AiCategory } from './types';
+import { DEFAULT_TAXONOMY_STATE, type AiCategory } from './types';
 
 export interface SeedDocument {
   taxonomyVersion: number;
@@ -98,95 +98,111 @@ export function seedDocumentToCategories(doc: SeedDocument, now = Date.now()): A
 }
 
 /**
- * Merge link-quality parent + leaves into an existing DB (startup / before classify).
- * No-op when any link-quality leaf is already present.
+ * Validate the taxonomy invariant required by Discover and Classify.
+ *
+ * This deliberately reports problems without repairing them. A taxonomy is
+ * created in full when the store is empty; an already populated but invalid
+ * store must be reset explicitly instead of being silently migrated.
  */
-export async function ensureLinkQualityTaxonomy(): Promise<{ added: number }> {
-  const { getDB } = await import('../db');
-  const { notifyDataChanged } = await import('../dataChangeNotifier');
-  const db = await getDB();
-  const categories = await db.getAll('ai_categories');
-  const hasLqLeaf = categories.some(
-    (c) =>
-      c.kind === 'leaf' &&
-      (isLinkQualityLeafId(c.id) || c.parentId === LINK_QUALITY_PARENT_ID)
-  );
-  if (hasLqLeaf) return { added: 0 };
+export function validateTaxonomyInvariant(
+  existing: AiCategory[],
+  bundledRows: AiCategory[]
+): string[] {
+  const existingById = new Map(existing.map((category) => [category.id, category]));
+  const errors: string[] = [];
 
-  const allRows = seedDocumentToCategories(getBundledSeedDocument());
-  const toAdd = allRows.filter(
-    (c) => c.id === LINK_QUALITY_PARENT_ID || c.parentId === LINK_QUALITY_PARENT_ID
-  );
-  if (!toAdd.length) return { added: 0 };
-
-  const now = Date.now();
-  const tx = db.transaction(['ai_categories'], 'readwrite');
-  for (const row of toAdd) {
-    await tx.objectStore('ai_categories').put({ ...row, created_at: row.created_at ?? now, updated_at: now });
-  }
-  await tx.done;
-
-  const parent = toAdd.find((c) => c.kind === 'parent');
-  if (parent) {
-    parent.childLeafCount = toAdd.filter((c) => c.kind === 'leaf').length;
-    await db.put('ai_categories', parent);
-  }
-
-  notifyDataChanged('categorization.update');
-  console.info(`[taxonomy] merged link-quality bucket (+${toAdd.length} categories)`);
-  return { added: toAdd.length };
-}
-
-/** Seed leaves added after v5 — merged into existing DBs on startup/classify. */
-const BUNDLED_LEAF_PATCH_IDS = [
-  'movies-tv-streaming',
-  'login-auth-required',
-  'url-redirect-mismatch',
-  'media-not-transcribed',
-] as const;
-
-export async function ensureBundledSeedLeafPatches(): Promise<{ added: number }> {
-  const { getDB } = await import('../db');
-  const { notifyDataChanged } = await import('../dataChangeNotifier');
-  const db = await getDB();
-  const categories = await db.getAll('ai_categories');
-  const existing = new Set(categories.map((c) => c.id));
-
-  const allRows = seedDocumentToCategories(getBundledSeedDocument());
-  const want = new Set(
-    BUNDLED_LEAF_PATCH_IDS.flatMap((id) => [id, `seed_${id}`])
-  );
-
-  const toAdd = allRows.filter((c) => want.has(c.id) && !existing.has(c.id));
-  if (!toAdd.length) return { added: 0 };
-
-  const now = Date.now();
-  const tx = db.transaction(['ai_categories'], 'readwrite');
-  for (const row of toAdd) {
-    await tx.objectStore('ai_categories').put({
-      ...row,
-      created_at: row.created_at ?? now,
-      updated_at: now,
-    });
-  }
-  await tx.done;
-
-  for (const pid of new Set(toAdd.map((c) => c.parentId).filter(Boolean) as string[])) {
-    const parent = await db.get('ai_categories', pid);
-    if (parent?.kind === 'parent') {
-      const childLeafCount = (await db.getAll('ai_categories')).filter(
-        (c) => c.kind === 'leaf' && c.parentId === pid
-      ).length;
-      await db.put('ai_categories', { ...parent, childLeafCount, updated_at: now });
+  for (const bundled of bundledRows) {
+    const current = existingById.get(bundled.id);
+    if (!current) {
+      errors.push(`missing bundled ${bundled.kind} "${bundled.id}"`);
+      continue;
+    }
+    if (current.kind !== bundled.kind) {
+      errors.push(`bundled category "${bundled.id}" has kind ${current.kind}, expected ${bundled.kind}`);
+    }
+    if (current.status === 'deprecated') {
+      errors.push(`bundled category "${bundled.id}" is deprecated`);
+    }
+    if (current.assignable !== bundled.assignable) {
+      errors.push(`bundled category "${bundled.id}" has invalid assignable state`);
+    }
+    if ((current.parentId ?? null) !== (bundled.parentId ?? null)) {
+      errors.push(
+        `bundled category "${bundled.id}" has parent "${current.parentId ?? 'none'}", ` +
+          `expected "${bundled.parentId ?? 'none'}"`
+      );
     }
   }
 
-  notifyDataChanged('categorization.update');
-  console.info(`[taxonomy] merged seed leaf patches (+${toAdd.length})`);
-  return { added: toAdd.length };
+  for (const category of existing) {
+    if (
+      category.kind !== 'leaf' ||
+      category.status === 'deprecated' ||
+      category.assignable === false
+    ) {
+      continue;
+    }
+    const parent = category.parentId ? existingById.get(category.parentId) : undefined;
+    if (!parent || parent.kind !== 'parent' || parent.status === 'deprecated') {
+      errors.push(`active leaf "${category.id}" has no active parent`);
+      continue;
+    }
+    if (
+      category.parentId === LINK_QUALITY_PARENT_ID &&
+      !isLinkQualityLeafId(category.id)
+    ) {
+      errors.push(`topic leaf "${category.id}" cannot be under Link quality`);
+    }
+  }
+
+  return [...new Set(errors)];
 }
 
-export async function ensureTaxonomyPatches(): Promise<void> {
-  await ensureLinkQualityTaxonomy();
-  await ensureBundledSeedLeafPatches();
+/**
+ * Create the complete taxonomy once, or validate an existing taxonomy.
+ * Never patch, migrate, reparent, or otherwise mutate a non-empty taxonomy.
+ */
+export async function ensureBundledSeedTaxonomy(): Promise<{
+  created: number;
+}> {
+  const { getDB } = await import('../db');
+  const { notifyDataChanged } = await import('../dataChangeNotifier');
+  const db = await getDB();
+  const existing = await db.getAll('ai_categories');
+  const doc = getBundledSeedDocument();
+  const bundledRows = seedDocumentToCategories(doc);
+
+  if (existing.length) {
+    const errors = validateTaxonomyInvariant(existing, bundledRows);
+    if (errors.length) {
+      const detail = errors.slice(0, 5).join('; ');
+      const remaining = errors.length > 5 ? `; and ${errors.length - 5} more` : '';
+      throw new Error(
+        `Taxonomy is incomplete or invalid: ${detail}${remaining}. ` +
+          'Reset or recreate this test database; Homebase will not migrate it automatically.'
+      );
+    }
+    return { created: 0 };
+  }
+
+  const tx = db.transaction(['ai_categories', 'ai_taxonomy_state'], 'readwrite');
+  // The single transaction makes the seed visible either completely or not at all.
+  // Parents occur before leaves in seedDocumentToCategories.
+  for (const row of bundledRows) await tx.objectStore('ai_categories').put(row);
+  await tx.objectStore('ai_taxonomy_state').put({
+    ...DEFAULT_TAXONOMY_STATE,
+    taxonomyVersion: doc.taxonomyVersion,
+    updated_at: Date.now(),
+  });
+  await tx.done;
+
+  notifyDataChanged('categorization.update');
+  const { flushDurableBackupSoon } = await import('../storage/flushDurableBackup');
+  flushDurableBackupSoon();
+  console.info(`[taxonomy] created complete seed taxonomy (${bundledRows.length} categories)`);
+  return { created: bundledRows.length };
+}
+
+export async function ensureTaxonomyReady(): Promise<void> {
+  await ensureBundledSeedTaxonomy();
 }

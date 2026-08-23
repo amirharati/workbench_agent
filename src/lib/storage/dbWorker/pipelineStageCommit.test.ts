@@ -17,9 +17,23 @@ function category(id: string): AiCategory {
     kind: 'leaf',
     status: 'approved',
     assignable: true,
+    parentId: 'topics',
+    parentName: 'Topics',
     created_at: 1,
     updated_at: 1,
   };
+}
+
+function putTopicParent(store: SqliteStore): void {
+  store.putCategory({
+    id: 'topics',
+    name: 'Topics',
+    kind: 'parent',
+    status: 'approved',
+    assignable: false,
+    created_at: 1,
+    updated_at: 1,
+  });
 }
 
 function link(
@@ -123,12 +137,15 @@ describe('pipeline stage signal ownership', () => {
     initSchema(db, 8);
     db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
     const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putTopicParent(store);
     const category: AiCategory = {
       id: 'topic-1',
       name: 'Topic',
       kind: 'leaf',
       status: 'approved',
       assignable: true,
+      parentId: 'topics',
+      parentName: 'Topics',
       created_at: 1,
       updated_at: 1,
     };
@@ -188,6 +205,7 @@ describe('pipeline stage signal ownership', () => {
     initSchema(db, 8);
     db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
     const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putTopicParent(store);
     store.putSignal(signal({ classifyState: 'pending_classify', llmReview: undefined }));
 
     expect(() => commitClassificationInStore(store, {
@@ -205,13 +223,40 @@ describe('pipeline stage signal ownership', () => {
     db.close();
   });
 
-  it('adds repeated classifications without replacing an equally strong or stronger primary', async () => {
+  it('refuses to persist a category assignment without a valid parent hierarchy', async () => {
     const sqlite = await initSqlite3();
     const db = new sqlite.oo1.DB();
     db.exec('PRAGMA foreign_keys = ON;');
     initSchema(db, 8);
     db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
     const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    store.putSignal(signal({ classifyState: 'pending_classify', llmReview: undefined }));
+
+    expect(() => commitClassificationInStore(store, {
+      categories: [{
+        id: 'orphan-topic', name: 'Orphan topic', kind: 'leaf', status: 'approved',
+        assignable: true, created_at: 1, updated_at: 1,
+      }],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [link('orphan-topic')],
+        signal: signal(),
+      }],
+    })).toThrow(/has no parent/);
+    expect(store.getLinksByItem('item-1')).toEqual([]);
+    expect(store.getSignal('item-1')?.classifyState).toBe('pending_classify');
+    db.close();
+  });
+
+  it('keeps additive history while allowing a newer equally specific suggestion to correct the primary', async () => {
+    const sqlite = await initSqlite3();
+    const db = new sqlite.oo1.DB();
+    db.exec('PRAGMA foreign_keys = ON;');
+    initSchema(db, 8);
+    db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
+    const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putTopicParent(store);
     store.putSignal(signal({ classifyState: 'pending_classify', llmReview: undefined }));
 
     commitClassificationInStore(store, {
@@ -243,7 +288,7 @@ describe('pipeline stage signal ownership', () => {
 
     const links = store.getLinksByItem('item-1');
     expect(links).toHaveLength(3);
-    expect(links.find((row) => row.isPrimary)?.categoryId).toBe('nlp-transformers');
+    expect(links.find((row) => row.isPrimary)?.categoryId).toBe('speech-asr');
     expect(links.filter((row) => row.isPrimary)).toHaveLength(1);
     expect(store.getSignal('item-1')?.classifyState).toBe('classified');
     expect(new Set(store.getSignal('item-1')?.llmReview?.categoryIds)).toEqual(
@@ -259,6 +304,7 @@ describe('pipeline stage signal ownership', () => {
     initSchema(db, 8);
     db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
     const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putTopicParent(store);
     store.putSignal(signal({ classifyState: 'pending_classify', llmReview: undefined }));
 
     commitClassificationInStore(store, {
@@ -297,6 +343,7 @@ describe('pipeline stage signal ownership', () => {
     initSchema(db, 8);
     db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
     const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putTopicParent(store);
     store.putSignal(signal({ classifyState: 'manual_only' }));
     store.putCategory(category('accepted-topic'));
     store.putCategory(category('rejected-topic'));
@@ -331,6 +378,7 @@ describe('pipeline stage signal ownership', () => {
     initSchema(db, 8);
     db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
     const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putTopicParent(store);
     store.putCategory(category('rejected-topic'));
     store.putSignal(signal({ classifyState: 'pending_discover', discoverState: 'pending' }));
     store.putLink(link('rejected-topic', { status: 'rejected', isPrimary: false }));

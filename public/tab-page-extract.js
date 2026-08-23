@@ -335,7 +335,7 @@
           '#channel-name a, ytd-channel-name a, #owner #channel-name a, ytd-video-owner-renderer a, [data-testid="channel-name"], a[href*="/@" i], a[href*="/channel/"]'
         ) || {}
       ).innerText ||
-        (document.querySelector('meta[name="author"]') || {}).getAttribute('content')
+        metaContent('author')
     );
 
     var metaLine = cleanText(

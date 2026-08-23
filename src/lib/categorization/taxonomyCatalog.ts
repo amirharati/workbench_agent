@@ -279,5 +279,16 @@ export function getParentsFromCategories(categories: AiCategory[]) {
 }
 
 export function getAssignableLeaves(categories: AiCategory[]): AiCategory[] {
-  return categories.filter((c) => c.kind === 'leaf' && c.assignable !== false);
+  const activeParentIds = new Set(
+    categories
+      .filter((category) => category.kind === 'parent' && category.status !== 'deprecated')
+      .map((category) => category.id)
+  );
+  return categories.filter(
+    (category) =>
+      category.kind === 'leaf' &&
+      category.assignable !== false &&
+      category.status !== 'deprecated' &&
+      Boolean(category.parentId && activeParentIds.has(category.parentId))
+  );
 }

@@ -79,22 +79,12 @@ export function PipelineHubViewTabs({
       data-enrichment-hub-views
       role="tablist"
       aria-label="Enrichment Hub view"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 5,
-        marginBottom: 14,
-        padding: 5,
-        flexWrap: 'wrap',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-md)',
-        background: 'var(--bg-panel)',
-      }}
+      className="ui-pipeline-hub__views"
     >
       {([
-        ['enrichment', 'Enrichment review'],
-        ['classification', 'Classification review'],
-        ['taxonomy', 'Taxonomy'],
+        ['enrichment', 'Enrichment'],
+        ['classification', 'Classification'],
+        ['taxonomy', 'All categories'],
       ] as const).map(([view, label]) => (
         <button
           key={view}
@@ -102,7 +92,7 @@ export function PipelineHubViewTabs({
           role="tab"
           aria-selected={activeView === view}
           onClick={() => onChange(view)}
-          style={hubViewTabStyle(activeView === view)}
+          className="ui-pipeline-hub__view-tab"
         >
           {label}
         </button>
@@ -134,21 +124,6 @@ function formatTime(ts?: number): string {
   });
 }
 
-const chipBase: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  padding: '4px 10px',
-  borderRadius: 999,
-  border: '1px solid var(--border)',
-  background: 'var(--bg-glass)',
-  color: 'var(--text-muted)',
-  fontSize: 'var(--text-xs)',
-  fontWeight: 600,
-  cursor: 'pointer',
-  lineHeight: 1.3,
-};
-
 function FilterChip({
   label,
   count,
@@ -164,7 +139,6 @@ function FilterChip({
   dimmed?: boolean;
   onClick: () => void;
 }) {
-  const tinted = color !== 'var(--text-muted)';
   const isEmpty = count === 0;
 
   return (
@@ -172,41 +146,15 @@ function FilterChip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      data-dimmed={dimmed && !active ? 'true' : 'false'}
       title={isEmpty ? 'No bookmarks in this status in current scope' : undefined}
-      style={{
-        ...chipBase,
-        opacity: dimmed && !active ? 0.5 : 1,
-        border: active
-          ? `2px solid ${color}`
-          : tinted
-            ? `1px solid ${color}55`
-            : '1px solid var(--border)',
-        background: active
-          ? `${color}24`
-          : tinted
-            ? `${color}10`
-            : 'var(--bg-glass)',
-        color: tinted ? color : active ? 'var(--text)' : 'var(--text-muted)',
-        fontWeight: active ? 700 : 600,
-        padding: active ? '3px 9px' : '4px 10px',
-        boxShadow: active ? `0 0 0 1px ${color}18` : undefined,
-      }}
+      className="ui-pipeline-chip"
+      style={{ '--pipeline-chip-tone': color } as React.CSSProperties}
     >
-      {active ? '✓ ' : ''}
+      <span className="ui-pipeline-chip__dot" aria-hidden="true" />
       <span>{label}</span>
       {count !== undefined ? (
-        <span
-          style={{
-            minWidth: 18,
-            textAlign: 'center',
-            padding: '0 4px',
-            borderRadius: 999,
-            background: active ? color : tinted ? `${color}20` : 'var(--bg-hover)',
-            color: active ? '#fff' : tinted ? color : 'var(--text)',
-            fontSize: 10,
-            fontWeight: 700,
-          }}
-        >
+        <span className="ui-pipeline-chip__count">
           {count}
         </span>
       ) : null}
@@ -428,43 +376,30 @@ function StatusHelpPanel({
 }) {
   return (
     <div
-      style={{
-        padding: compact ? '10px 12px' : '14px 16px',
-        borderBottom: '1px solid var(--border)',
-        background: `${color}08`,
-        borderLeft: `3px solid ${color}`,
-        fontSize: 'var(--text-xs)',
-        lineHeight: 1.55,
-        color: 'var(--text-muted)',
-      }}
+      className="ui-pipeline-status-help"
+      data-compact={compact ? 'true' : 'false'}
+      style={{ '--pipeline-status-tone': color } as React.CSSProperties}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ fontWeight: 700, color, fontSize: 'var(--text-sm)' }}>{help.badge}</div>
+        <div className="ui-pipeline-status-help__title">{help.badge}</div>
         {onClose ? (
           <button
             type="button"
             onClick={onClose}
             aria-label="Close status help"
-            style={{
-              padding: 2,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-faint)',
-              cursor: 'pointer',
-              borderRadius: 4,
-            }}
+            className="ui-pipeline-status-help__close"
           >
             <X size={14} />
           </button>
         ) : null}
       </div>
-      <p style={{ margin: '6px 0 0', color: 'var(--text)' }}>{help.meaning}</p>
+      <p className="ui-pipeline-status-help__meaning">{help.meaning}</p>
       {help.detail ? (
-        <p style={{ margin: '6px 0 0' }}>
+        <p className="ui-pipeline-status-help__detail">
           <strong style={{ color: 'var(--text)' }}>Details:</strong> {help.detail}
         </p>
       ) : null}
-      <p style={{ margin: '8px 0 0' }}>
+      <p className="ui-pipeline-status-help__try">
         <strong style={{ color: 'var(--text)' }}>What to try:</strong> {help.tryThis}
       </p>
     </div>
@@ -1313,7 +1248,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
   return (
     <div
-      className="scrollbar ui-page-frame"
+      className="scrollbar ui-page-frame ui-pipeline-hub"
       style={{
         ...uiPatterns.pageFrame,
         overflow: 'auto',
@@ -1322,7 +1257,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       }}
     >
       <header>
-        <div className="ui-page-header" style={uiPatterns.pageHeader}>
+        <div className="ui-page-header ui-pipeline-hub__header" style={uiPatterns.pageHeader}>
           <div>
             <h1 style={uiPatterns.pageTitle}>
               Enrichment Hub
@@ -1332,7 +1267,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                 ? 'Inspect enrichment quality, diagnose failures, and rerun individual links or selected groups.'
                 : activeHubView === 'classification'
                   ? 'Review classification readiness, blockers, assignments, and category reruns.'
-                  : 'Browse the taxonomy that supports library-wide classification.'}
+                  : 'See every AI category and the bookmarks assigned to it.'}
             </p>
           </div>
           <button
@@ -1371,8 +1306,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         >
           <AlertTriangle size={16} style={{ flexShrink: 0, color: 'var(--warning)' }} />
           <span>
-            <strong>Taxonomy is not ready, so classify cannot run yet.</strong>{' '}
-            The starter taxonomy normally loads automatically. If this remains after a reload, use{' '}
+            <strong>Categories are not ready, so classification cannot run yet.</strong>{' '}
+            The starter categories normally load automatically. If this remains after a reload, use{' '}
             <strong>Settings → Advanced → Reset to starter taxonomy</strong>.
           </span>
         </div>
@@ -1411,27 +1346,11 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       {activeHubView === 'enrichment' ? (
         <>
       {showStatusGuide ? (
-        <div
-          style={{
-            marginBottom: 16,
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            overflow: 'hidden',
-            background: 'var(--bg-panel)',
-          }}
-        >
-          <div
-            style={{
-              padding: '10px 14px',
-              borderBottom: '1px solid var(--border)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 600,
-              color: 'var(--text)',
-            }}
-          >
+        <div className="ui-pipeline-hub__status-guide">
+          <div className="ui-pipeline-hub__status-guide-title">
             What statuses mean
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="ui-pipeline-hub__status-guide-grid">
             {ENRICHMENT_STATUS_GUIDE.map((entry) => (
               <StatusHelpPanel
                 key={entry.badge}
@@ -1445,27 +1364,19 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               />
             ))}
           </div>
-          <div style={{ padding: '8px 14px', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+          <div className="ui-pipeline-hub__status-guide-tip">
             Tip: click any status badge in the table for item-specific help.
           </div>
         </div>
       ) : null}
 
+      <section className="ui-pipeline-hub__review-controls" aria-label="Enrichment review filters">
       {/* Status filters — counts stay fixed; selection highlights active chip only */}
-      <div style={{ marginBottom: 16 }}>
-        <div
-          style={{
-            fontSize: 'var(--text-xs)',
-            fontWeight: 600,
-            color: 'var(--text-faint)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            marginBottom: 6,
-          }}
-        >
+      <div className="ui-pipeline-hub__status-filters">
+        <div className="ui-pipeline-hub__control-label">
           Status
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <div className="ui-pipeline-hub__chip-row">
           <SummaryChip
             label="All"
             count={allChipCount}
@@ -1498,31 +1409,17 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             onClick={toggleTrashSuggestions}
           />
           {initialLoading ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', color: 'var(--text-faint)', fontSize: 'var(--text-xs)' }}><Loader2 size={14} className="spin" /> Loading…</span>
+            <span className="ui-pipeline-hub__refresh-state"><Loader2 size={14} className="spin" /> Loading…</span>
           ) : refreshing ? (
-            <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>Refreshing…</span>
+            <span className="ui-pipeline-hub__refresh-state">Refreshing…</span>
           ) : (
-            <button type="button" onClick={() => void reload({ silent: true })} title="Refresh enrichment review" aria-label="Refresh enrichment review" style={{ ...chipBase, marginLeft: 'auto', padding: '4px 8px' }}><RefreshCw size={13} /></button>
+            <button type="button" onClick={() => void reload({ silent: true })} title="Refresh enrichment review" aria-label="Refresh enrichment review" className="ui-button ui-button--secondary ui-button--icon ui-pipeline-hub__refresh"><RefreshCw size={13} /></button>
           )}
         </div>
       </div>
 
       {trashSuggestionsOnly ? (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 10,
-            marginBottom: 12,
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: '1px solid color-mix(in srgb, var(--er-warn, #d29922) 45%, var(--border))',
-            background: 'color-mix(in srgb, var(--er-warn, #d29922) 10%, transparent)',
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-muted)',
-          }}
-        >
+        <div className="ui-pipeline-hub__trash-suggestions">
           <span style={{ flex: '1 1 200px' }}>
             {trashSuggestionCount === 0
               ? 'No bookmarks in this scope look like trash suggestions.'
@@ -1532,15 +1429,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             type="button"
             disabled={trashSuggestionCount === 0}
             onClick={handleSelectAllTrashSuggestions}
-            style={{
-              padding: '5px 12px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'var(--bg)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
+            className="ui-button ui-button--secondary"
           >
             Select all
           </button>
@@ -1548,19 +1437,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             type="button"
             disabled={trashSuggestionCount === 0}
             onClick={handleTrashAllSuggestions}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '5px 12px',
-              borderRadius: 6,
-              border: 'none',
-              background: 'var(--danger)',
-              color: '#fff',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
+            className="ui-button ui-button--danger"
           >
             <Trash2 size={13} />
             Trash all {trashSuggestionCount}
@@ -1569,8 +1446,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       ) : null}
 
       {/* Filters */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12, alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 320 }}>
+      <div className="ui-pipeline-hub__search-row">
+        <div className="ui-pipeline-hub__search-field">
           <Search
             size={14}
             style={{
@@ -1583,24 +1460,15 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             }}
           />
           <input
+            className="ui-field"
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search title or URL…"
-            style={{
-              width: '100%',
-              padding: '7px 10px 7px 32px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'var(--bg-input)',
-              color: 'var(--text)',
-              fontSize: 'var(--text-sm)',
-              boxSizing: 'border-box',
-            }}
           />
         </div>
         {outcomeLabel !== 'all' || trashSuggestionsOnly || debouncedSearch.trim() ? (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          <span className="ui-pipeline-hub__filter-summary">
             Showing {Math.min(pageLimit, tableRowsForList.length)} of {totalInScope}
             {outcomeLabel !== 'all' ? ` · ${outcomeLabel}` : ''}
             {trashSuggestionsOnly ? ' · trash suggestions' : ''}
@@ -1608,22 +1476,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           </span>
         ) : null}
       </div>
+      </section>
 
       {isProcessing ? (
-        <div
-          style={{
-            marginBottom: 12,
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: '1px solid var(--border)',
-            background: 'var(--bg-glass)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-muted)',
-          }}
-        >
+        <div className="ui-pipeline-hub__running">
           <Loader2 size={16} className="spin" />
           Job running in the shared coordinator — you can navigate away or close this dashboard safely.
         </div>
@@ -1631,19 +1487,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
 
       {/* Bulk bar */}
       {selectedIds.size > 0 ? (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 12,
-            padding: '10px 14px',
-            marginBottom: 12,
-            borderRadius: 8,
-            border: '1px solid var(--accent)',
-            background: 'var(--accent-weak)',
-          }}
-        >
+        <div className="ui-pipeline-hub__selection-bar">
           <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
             {selectedIds.size} selected
           </span>
@@ -1653,19 +1497,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
               const ids = getOrderedSelectedIds();
               if (ids.length) setInspectState({ ids, index: 0 });
             }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '5px 12px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
+            className="ui-button ui-button--secondary"
           >
             <Eye size={13} />
             Inspect
@@ -1675,20 +1507,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             type="button"
             onClick={() => void handleBulkRedigest()}
             disabled={pipeline.isRunning}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '5px 12px',
-              borderRadius: 6,
-              border: 'none',
-              background: 'var(--accent)',
-              color: '#fff',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: pipeline.isRunning ? 'not-allowed' : 'pointer',
-              opacity: pipeline.isRunning ? 0.65 : 1,
-            }}
+            className="ui-button ui-button--primary"
             title={
               pipeline.isRunning
                 ? 'Wait for the current dashboard job to finish'
@@ -1701,19 +1520,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           <button
             type="button"
             onClick={() => void handleMoveSelectedToTrash()}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '5px 12px',
-              borderRadius: 6,
-              border: '1px solid color-mix(in srgb, var(--danger) 40%, var(--border))',
-              background: 'var(--bg)',
-              color: 'var(--danger)',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
+            className="ui-button ui-button--danger"
             title="Move selected bookmarks to trash"
           >
             <Trash2 size={13} />
@@ -1722,15 +1529,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
-            style={{
-              padding: '5px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: 'var(--text-muted)',
-              fontSize: 'var(--text-xs)',
-              cursor: 'pointer',
-            }}
+            className="ui-button ui-button--secondary"
           >
             Clear
           </button>
@@ -1753,27 +1552,16 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       >
         <div style={{ minWidth: 0, overflowX: 'auto' }}>
           <div
+            className="ui-pipeline-table"
             style={{
               minWidth: activeInspectRow ? 820 : undefined,
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              overflow: 'hidden',
-              background: 'var(--bg-panel)',
             }}
           >
         <div
+          className="ui-pipeline-table__header"
           style={{
             display: 'grid',
             gridTemplateColumns: '32px 1fr 140px 1fr 120px 100px',
-            gap: 8,
-            padding: '8px 12px',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg)',
-            fontSize: 'var(--text-xs)',
-            fontWeight: 700,
-            color: 'var(--text-faint)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
           }}
         >
           <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1819,29 +1607,20 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             const isRecentUpdate = recentUpdateIdSet.has(item.id);
             const isCurrentInspect =
               inspectState != null && inspectState.ids[inspectState.index] === item.id;
-            const rowBackground = isCurrentInspect
-              ? 'var(--accent-weak)'
-              : isRecentUpdate
-                ? 'color-mix(in srgb, var(--er-ok, #3fb950) 12%, transparent)'
-                : isInInspectSet
-                  ? 'color-mix(in srgb, var(--accent-weak) 55%, transparent)'
-                  : selectedIds.has(item.id)
-                    ? 'var(--accent-weak)'
-                    : 'transparent';
-
             return (
               <div
                 key={item.id}
-                style={
-                  isRecentUpdate
-                    ? { boxShadow: 'inset 3px 0 0 var(--er-ok, #3fb950)' }
-                    : undefined
-                }
+                className="ui-pipeline-table__row-shell"
+                data-recent={isRecentUpdate ? 'true' : 'false'}
               >
                 <ItemResultRow
+                  className="ui-pipeline-table__row"
                   item={item}
                   dragSource={{ kind: 'reference', label: 'Enrichment Hub' }}
                   selected={isCurrentInspect}
+                  data-inspect-set={isInInspectSet ? 'true' : 'false'}
+                  data-checked={selectedIds.has(item.id) ? 'true' : 'false'}
+                  data-recent={isRecentUpdate ? 'true' : 'false'}
                   onSelectItem={onOpenItem ? () => onOpenItem(item) : undefined}
                   onDoubleClick={(event) => {
                     if ((event.target as HTMLElement).closest('button, input, a')) return;
@@ -1852,10 +1631,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                     gridTemplateColumns: '32px 1fr 140px 1fr 120px 100px',
                     gap: 8,
                     padding: '10px 12px',
-                    borderBottom: '1px solid var(--border)',
                     alignItems: 'center',
                     fontSize: 'var(--text-sm)',
-                    background: rowBackground,
                     cursor: onOpenItem ? 'pointer' : undefined,
                   }}
                 >
@@ -1931,21 +1708,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                       }
                       aria-expanded={showStatusHelp}
                       title="Click for what this status means"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        fontSize: 'var(--text-xs)',
-                        fontWeight: 600,
-                        background: `${statusBadge.color}22`,
-                        color: statusBadge.color,
-                        border: showStatusHelp
-                          ? `2px solid ${statusBadge.color}`
-                          : `1px solid ${statusBadge.color}44`,
-                        cursor: 'pointer',
-                      }}
+                      className="ui-pipeline-table__status"
+                      style={{ '--pipeline-status-tone': statusBadge.color } as React.CSSProperties}
                     >
                       {statusBadge.text}
                       <HelpCircle size={11} style={{ opacity: 0.75, flexShrink: 0 }} />
@@ -1991,11 +1755,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                           : 'Inspect enrichment data & run steps'
                       }
                       aria-expanded={isInInspectSet}
-                      style={{
-                        ...actionBtnStyle,
-                        borderColor: isCurrentInspect ? 'var(--accent)' : 'var(--border)',
-                        color: isCurrentInspect ? 'var(--accent)' : 'var(--text-muted)',
-                      }}
+                      className="ui-button ui-button--icon"
                     >
                       <Eye size={13} />
                     </button>
@@ -2007,7 +1767,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                           void openBookmarkInBrowser(item);
                         }}
                         title="Open URL in new tab"
-                        style={actionBtnStyle}
+                        className="ui-button ui-button--icon"
                       >
                         <ExternalLink size={13} />
                       </button>
@@ -2031,16 +1791,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         {activeInspectRow && inspectState ? (
           <aside
             aria-label="Enrichment inspector"
-            style={{
-              position: 'sticky',
-              top: 0,
-              minWidth: 0,
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              overflow: 'hidden',
-              background: 'var(--bg-panel)',
-              boxShadow: 'var(--shadow-sm)',
-            }}
+            className="ui-pipeline-hub__inspector"
           >
             <div
               ref={inspectPanelRef}
@@ -2133,18 +1884,3 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     </div>
   );
 };
-
-const actionBtnStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 28,
-  height: 28,
-  borderRadius: 6,
-  border: '1px solid var(--border)',
-  background: 'transparent',
-  color: 'var(--text-muted)',
-  cursor: 'pointer',
-};
-
-const hubViewTabStyle = (active: boolean): React.CSSProperties => ({ minHeight: 31, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 11px', border: active ? '1px solid var(--border-active)' : '1px solid transparent', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent-weak)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-muted)', fontSize: 'var(--text-xs)', fontWeight: 650, cursor: 'pointer' });

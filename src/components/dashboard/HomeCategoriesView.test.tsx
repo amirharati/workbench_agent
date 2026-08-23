@@ -9,9 +9,12 @@ import { HomeCategoriesView } from './HomeCategoriesView';
 
 const snapshot: CategoryBrowseSnapshot = {
   categories: [
-    { id: 'finance', name: 'Finance', kind: 'parent', status: 'approved', assignable: false, created_at: 1, updated_at: 1 },
-    { id: 'investing', name: 'Investing', kind: 'leaf', status: 'approved', assignable: true, parentId: 'finance', created_at: 1, updated_at: 1 },
-    { id: 'trading', name: 'Trading', kind: 'leaf', status: 'approved', assignable: true, parentId: 'finance', created_at: 1, updated_at: 1 },
+    { id: 'finance', name: 'Finance', kind: 'parent', status: 'approved', assignable: false, source: 'seed', created_at: 1, updated_at: 1 },
+    { id: 'investing', name: 'Investing', kind: 'leaf', status: 'approved', assignable: true, parentId: 'finance', source: 'discovered', created_at: 1, updated_at: 1 },
+    { id: 'trading', name: 'Trading', kind: 'leaf', status: 'approved', assignable: true, parentId: 'finance', source: 'seed', created_at: 1, updated_at: 1 },
+    { id: 'empty', name: 'No assignments yet', kind: 'leaf', status: 'approved', assignable: true, parentId: 'finance', source: 'seed', created_at: 1, updated_at: 1 },
+    { id: 'link-quality', name: 'Link quality', kind: 'parent', status: 'approved', assignable: false, source: 'seed', created_at: 1, updated_at: 1 },
+    { id: 'seed_page-not-found', name: 'Page not found', kind: 'leaf', status: 'approved', assignable: true, parentId: 'link-quality', source: 'seed', created_at: 1, updated_at: 1 },
   ],
   links: [
     { id: 'one-investing', itemId: 'one', categoryId: 'investing', score: 0.9, isPrimary: true, source: 'ai', status: 'suggested', created_at: 1, updated_at: 1 },
@@ -61,6 +64,12 @@ describe('HomeCategoriesView', () => {
     expect(loadCategoryBrowseSnapshot).toHaveBeenCalledWith(['one', 'two']);
     expect(host.textContent).toContain('Research categories');
     expect(host.textContent).toContain('Select one or more categories');
+    expect(host.textContent).toContain('No assignments yet');
+    expect(host.textContent).toContain('Page status & errors');
+    expect(host.textContent).toContain('Page not found');
+    expect(host.textContent).toContain('Seed');
+    expect(host.textContent).toContain('Discovered');
+    expect(host.textContent).not.toContain('Show empty categories');
 
     const investing = [...host.querySelectorAll('label')]
       .find((label) => label.textContent?.includes('Investing'))

@@ -71,6 +71,19 @@ function runTests(): void {
     }) === '1 fetched · AI authentication failed: Invalid API key.',
     'fetch success with AI failure is never labelled enriched'
   );
+  assert(
+    formatPipelineCompletionSummary({
+      enriched: 359,
+      fetched: 11,
+      classified: 288,
+      skipped: 2,
+      failed: 90,
+      aiError: 'Could not parse AI response as JSON.',
+      compactAiNotice: true,
+    }) ===
+      '359 enriched · 11 fetched · 288 classified · 2 skipped · 90 unavailable · Some AI steps need attention — see affected bookmarks below',
+    'completed bulk batches never surface one raw item error as a batch failure'
+  );
 
   console.log('pipelineBatchReport.test.ts: all tests passed');
 }

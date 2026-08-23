@@ -1316,7 +1316,12 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         : [];
       const store = await getIdbCompatStore();
       const allCategories = store.getAllCategories();
-      const leaves = allCategories.filter(isSearchableTopicCategory);
+      // Home > Categories is the authoritative taxonomy browser, not a search
+      // shortlist. Return every active parent and leaf, including zero-use seed
+      // rows, discovered rows, and the link-quality/error branch.
+      const leaves = allCategories.filter(
+        (category) => category.kind === 'leaf' && category.status !== 'deprecated'
+      );
       const leafIds = new Set(leaves.map((category) => category.id));
       const parentIds = new Set(
         leaves
@@ -1324,7 +1329,9 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
           .filter((id): id is string => typeof id === 'string' && id.length > 0)
       );
       const categories = allCategories.filter(
-        (category) => leafIds.has(category.id) || parentIds.has(category.id)
+        (category) =>
+          category.status !== 'deprecated' &&
+          (leafIds.has(category.id) || parentIds.has(category.id))
       );
       const links: AiItemCategoryLink[] = [];
       for (let offset = 0; offset < itemIds.length; offset += 400) {

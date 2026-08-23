@@ -176,6 +176,8 @@ export interface PipelineSummaryInput {
   failed?: number;
   classified?: number;
   aiError?: string;
+  /** Large completed batches keep an affected-item AI error in the details, not the headline. */
+  compactAiNotice?: boolean;
   classifyError?: string;
   classifySummary?: TopicClassifySummary;
 }
@@ -207,7 +209,13 @@ export function formatPipelineCompletionSummary(input: PipelineSummaryInput): st
   if (input.failed) {
     parts.push(`${input.failed} ${pipelineSuccessCount(input) > 0 ? 'unavailable' : 'failed'}`);
   }
-  if (input.aiError) parts.push(input.aiError);
+  if (input.aiError) {
+    parts.push(
+      input.compactAiNotice && pipelineSuccessCount(input) > 0
+        ? 'Some AI steps need attention — see affected bookmarks below'
+        : input.aiError
+    );
+  }
   return parts.length ? parts.join(' · ') : 'No changes';
 }
 

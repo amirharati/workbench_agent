@@ -7,6 +7,7 @@ import type {
 import {
   classifyStateForLinkQualityLeaf,
   isLinkQualityLeafId,
+  isLinkQualityParentId,
 } from '../../categorization/linkQuality';
 import { isGeneralLeafId } from '../../categorization/taxonomyCatalog';
 
@@ -44,6 +45,7 @@ export interface PipelineDownstreamReconcileResult extends PipelineStageCommitRe
 }
 
 export interface PipelineCommitStore {
+  getCategory(id: string): AiCategory | undefined;
   getSignal(itemId: string): AiItemSignal | undefined;
   putSignal(signal: AiItemSignal): void;
   getLinksByItem(itemId: string): AiItemCategoryLink[];
@@ -51,6 +53,33 @@ export interface PipelineCommitStore {
   deleteLink(id: string): void;
   putCategory(category: AiCategory): void;
   withTransaction<T>(fn: () => T): T;
+}
+
+function assertAssignableCategoryHierarchy(
+  store: PipelineCommitStore,
+  categoryId: string
+): void {
+  const category = store.getCategory(categoryId);
+  if (
+    !category ||
+    category.kind !== 'leaf' ||
+    category.assignable === false ||
+    category.status === 'deprecated'
+  ) {
+    throw new Error(`Classification category ${categoryId} is not an active assignable leaf`);
+  }
+  if (!category.parentId) {
+    throw new Error(`Classification category ${categoryId} has no parent`);
+  }
+  const parent = store.getCategory(category.parentId);
+  if (!parent || parent.kind !== 'parent' || parent.status === 'deprecated') {
+    throw new Error(
+      `Classification category ${categoryId} has missing or inactive parent ${category.parentId}`
+    );
+  }
+  if (isLinkQualityParentId(parent.id) && !isLinkQualityLeafId(category.id)) {
+    throw new Error(`Normal category ${categoryId} cannot belong to Link quality`);
+  }
 }
 
 /** Embedding owns only vector-search fields; it must preserve classification work. */
@@ -117,10 +146,9 @@ function categoryStrength(categoryId: string): number {
 }
 
 /**
- * Pick one stable UI/queue primary from an additive category set.
- * Accepted evidence is locked. Otherwise an existing primary remains stable
- * until a more specific category arrives; equal-strength reruns only add
- * secondaries and never churn the primary.
+ * Pick one UI/queue primary from an additive category set. Accepted evidence
+ * is locked. A more recent model-selected primary may correct an equally
+ * specific earlier suggestion; the earlier category remains as secondary.
  */
 export function selectAdditivePrimary(
   links: AiItemCategoryLink[],
@@ -143,11 +171,12 @@ export function selectAdditivePrimary(
     ? active.find((link) => link.id === previousPrimaryId || link.categoryId === previousPrimaryId)
     : undefined;
   const strongest = Math.max(...active.map((link) => categoryStrength(link.categoryId)));
-  if (previous && categoryStrength(previous.categoryId) >= strongest) return previous;
+  if (previous && categoryStrength(previous.categoryId) > strongest) return previous;
 
   return active
     .filter((link) => categoryStrength(link.categoryId) === strongest)
     .sort((a, b) => {
+      if (a.updated_at !== b.updated_at) return b.updated_at - a.updated_at;
       if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
       return b.score - a.score || a.created_at - b.created_at || a.id.localeCompare(b.id);
     })[0];
@@ -260,6 +289,7 @@ export function commitClassificationInStore(
         if (link.itemId !== write.itemId) {
           throw new Error(`Classification link itemId mismatch for ${write.itemId}`);
         }
+        assertAssignableCategoryHierarchy(store, link.categoryId);
         const previous = existingLinks.find((row) => row.id === link.id);
         // A user rejection is durable negative evidence. Normal reruns may add
         // other categories but must never silently resurrect this one.

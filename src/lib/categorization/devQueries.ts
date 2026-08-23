@@ -348,7 +348,7 @@ export async function getTaxonomyTreeWithCounts(): Promise<{
           secondaryItemCount: n.secondaryItemCount,
         };
       })
-      .sort((a, b) => b.primaryItemCount - a.primaryItemCount || a.category.name.localeCompare(b.category.name));
+      .sort((a, b) => a.category.name.localeCompare(b.category.name));
 
     return {
       category: { ...parent, ...parentCounts, childLeafCount: childLeaves.length },
@@ -358,9 +358,7 @@ export async function getTaxonomyTreeWithCounts(): Promise<{
     };
   });
 
-  parentRows.sort(
-    (a, b) => b.primaryItemCount - a.primaryItemCount || a.category.name.localeCompare(b.category.name)
-  );
+  parentRows.sort((a, b) => a.category.name.localeCompare(b.category.name));
 
   const orphanLeaves = leaves
     .filter((l) => !l.parentId || !parents.some((p) => p.id === l.parentId))
@@ -373,7 +371,7 @@ export async function getTaxonomyTreeWithCounts(): Promise<{
         secondaryItemCount: n.secondaryItemCount,
       };
     })
-    .sort((a, b) => b.primaryItemCount - a.primaryItemCount);
+    .sort((a, b) => a.category.name.localeCompare(b.category.name));
 
   const itemsWithPrimary = new Set<string>();
   const itemsWithPrimaryEnrichIncomplete = new Set<string>();

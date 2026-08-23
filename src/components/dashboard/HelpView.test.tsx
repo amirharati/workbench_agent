@@ -19,9 +19,14 @@ describe('HelpView', () => {
     expect(markup).toContain('Exact rules first; semantics remain visible');
     expect(markup).toContain('Backup, restore, and recovery');
     expect(markup).toContain('workbench.sqlite');
+    expect(markup).toContain('workbench-content.sqlite');
+    expect(markup).toContain('Browser-first fetch');
+    expect(markup).toContain('Durable progress');
+    expect(markup).toContain('Copy, move, remove, and restore');
     expect(markup).not.toContain('Drag the horizontal divider');
     expect(markup).not.toContain('tab strip appears at the bottom of Home');
     expect(markup).not.toContain('Processing Digest');
+    expect(markup).not.toContain('Images and videos can be attached');
   });
 
   it('filters topics across titles, summaries, groups, and explicit keywords', () => {
@@ -44,6 +49,7 @@ describe('HelpView', () => {
       'search',
       'workspaces-tabs',
       'import',
+      'move-remove',
       'enrichment',
       'backup-restore',
       'settings-shortcuts',

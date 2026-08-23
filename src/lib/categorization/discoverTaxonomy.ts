@@ -8,6 +8,7 @@ import {
 import { normalizeTag, slugFromTerms } from './naming';
 import { stripFences } from './parseReview';
 import type { AiCategory } from './types';
+import { LINK_QUALITY_PARENT_ID } from './linkQuality';
 
 function normalizeNameKey(name: string): string {
   return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -351,6 +352,15 @@ export function mergeDiscoveryLeaves(
         );
         continue;
       }
+    }
+    // Link quality is a fixed system branch. Discover may classify into its
+    // seeded leaves elsewhere, but it must never invent ordinary topic leaves
+    // beneath this error/status parent.
+    if (resolvedParentId === LINK_QUALITY_PARENT_ID) {
+      console.warn(
+        `[discoverTaxonomy] leaf "${cleanName}" dropped — Link quality does not accept discovered topics`
+      );
+      continue;
     }
 
     let id = typeof p.id === 'string' ? p.id.trim().replace(/[^a-z0-9-]/g, '-') : '';

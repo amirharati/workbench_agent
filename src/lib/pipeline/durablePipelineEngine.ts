@@ -373,6 +373,7 @@ async function buildResult(snapshot: PipelineJobSnapshot): Promise<BatchDigestRe
     classifySummary,
     classifyError,
     aiError,
+    compactAiNotice: snapshot.job.total_items > 1,
   });
   let discoverResult: BatchDigestResult['discoverResult'];
   const discoverJson = discoverTask?.result_ref?.startsWith('discover-json:')

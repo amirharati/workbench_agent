@@ -3,6 +3,39 @@ import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 
 describe('generic authenticated tab extraction', () => {
+  it('extracts a YouTube video when no author meta element exists', () => {
+    const dom = new JSDOM(
+      `<!doctype html>
+      <head>
+        <title>Probabilistic ML - Gaussian Inference - YouTube</title>
+        <meta property="og:title" content="Probabilistic ML - Gaussian Inference" />
+        <meta property="og:description" content="A lecture covering Gaussian inference, conditioning, and posterior prediction in probabilistic machine learning." />
+      </head>
+      <body>
+        <h1>Probabilistic ML - Gaussian Inference</h1>
+        <div id="description">A lecture covering Gaussian inference, conditioning, and posterior prediction in probabilistic machine learning.</div>
+      </body>`,
+      {
+        url: 'https://www.youtube.com/watch?v=CXCNoAw3YYM',
+        runScripts: 'outside-only',
+      }
+    );
+    const source = readFileSync(
+      new URL('../../../public/tab-page-extract.js', import.meta.url),
+      'utf8'
+    );
+    dom.window.eval(source);
+
+    const result = (dom.window as typeof dom.window & {
+      workbenchExtractPageContent: () => { ok: boolean; markdown: string };
+    }).workbenchExtractPageContent();
+
+    expect(result.ok).toBe(true);
+    expect(result.markdown).toContain('# Probabilistic ML - Gaussian Inference');
+    expect(result.markdown).toContain('Gaussian inference, conditioning, and posterior prediction');
+    dom.window.close();
+  });
+
   it('keeps visible body metadata when OG metadata exists but the page has no main element', () => {
     const dom = new JSDOM(
       `<!doctype html>

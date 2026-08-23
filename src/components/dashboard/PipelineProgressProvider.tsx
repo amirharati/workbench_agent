@@ -393,18 +393,16 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
                 : result.message;
         const tone: SummaryTone = cancelled
           ? 'info'
-          : reportRows?.length && result.classifySummary
-            ? resolveReportRowsSummaryTone(reportRows, result.classifySummary)
-              : resolvePipelineSummaryTone({
-                enriched: result.enriched,
-                fetched: result.fetched,
-                skipped: result.skipped,
-                failed: result.failed,
-                classified: result.classified,
-                classifyError: result.classifyError,
-                aiError: result.aiError,
-                classifySummary: result.classifySummary,
-              });
+          : resolvePipelineSummaryTone({
+              enriched: result.enriched,
+              fetched: result.fetched,
+              skipped: result.skipped,
+              failed: result.failed,
+              classified: result.classified,
+              classifyError: result.classifyError,
+              aiError: result.aiError,
+              classifySummary: result.classifySummary,
+            });
 
         const cs = result.classifySummary;
         const afterQueue =
@@ -1151,18 +1149,16 @@ export const PipelineProgressProvider: React.FC<PipelineProgressProviderProps> =
               })
             : formatPipelineReportSummaryFromRows(reportRows) || result.message
           : result.message;
-        const tone: SummaryTone = reportRows?.length
-          ? resolveReportRowsSummaryTone(reportRows, result.classifySummary)
-          : resolvePipelineSummaryTone({
-              enriched: result.enriched,
-              fetched: result.fetched,
-              skipped: result.skipped,
-              failed: result.failed,
-              classified: result.classified,
-              classifyError: result.classifyError,
-              aiError: result.aiError,
-              classifySummary: result.classifySummary,
-            });
+        const tone: SummaryTone = resolvePipelineSummaryTone({
+          enriched: result.enriched,
+          fetched: result.fetched,
+          skipped: result.skipped,
+          failed: result.failed,
+          classified: result.classified,
+          classifyError: result.classifyError,
+          aiError: result.aiError,
+          classifySummary: result.classifySummary,
+        });
 
         setModal({
           open: true,
