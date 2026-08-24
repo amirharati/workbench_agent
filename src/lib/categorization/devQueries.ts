@@ -162,7 +162,7 @@ export function buildPipelineQueueRowsFromCatalog(
   const acceptedPrimaryByItem = new Map<string, string>();
   const suggestedPrimaryByItem = new Map<string, string>();
   for (const link of catalog.links) {
-    if (link.source !== 'ai' || !link.isPrimary || !COUNTABLE_STATUSES.has(link.status)) continue;
+    if (!link.isPrimary || !COUNTABLE_STATUSES.has(link.status)) continue;
     if (link.status === 'accepted') acceptedPrimaryByItem.set(link.itemId, link.categoryId);
     else if (link.status === 'suggested') suggestedPrimaryByItem.set(link.itemId, link.categoryId);
   }
@@ -376,7 +376,7 @@ export async function getTaxonomyTreeWithCounts(): Promise<{
   const itemsWithPrimary = new Set<string>();
   const itemsWithPrimaryEnrichIncomplete = new Set<string>();
   for (const l of links) {
-    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+    if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
       itemsWithPrimary.add(l.itemId);
       const enrichment = enrichByItem.get(l.itemId);
       const embedFailed = embedFailedIds.has(l.itemId);

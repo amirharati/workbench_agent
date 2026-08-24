@@ -38,6 +38,7 @@ import {
   buildCategorySearchText,
   CATEGORY_MEMBER_SAMPLE_LIMIT,
   categoryMemberRevision,
+  isManageableTopicCategory,
   isSearchableTopicCategory,
   scoreCategoryProfileVector,
 } from '../../search/categorySearchProfiles';
@@ -68,6 +69,14 @@ import {
   yieldPipelineJob,
 } from './pipelineJobStore';
 import { DB_OWNER_PROTOCOL_VERSION } from '../dbOwnerProtocol';
+import {
+  createManualCategoryInStore,
+  deleteManualCategoryInStore,
+  manageItemCategoryInStore,
+  updateManualCategoryInStore,
+  type ManualCategoryAction,
+  type ManualCategoryDraftInput,
+} from './manualCategoryStore';
 
 markDbWorkerProcess();
 setStorageBackend('opfs');
@@ -127,6 +136,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'getPipelineSeedRows',
   'getCategoryLinkCounts',
   'getCategoryBrowseSnapshot',
+  'getCategoryManagementSnapshot',
   'getItemById',
   'getItemsByUrl',
   'hubEnrichmentPage',
@@ -146,6 +156,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'prepareCategorySearchProfiles',
   'putCategorySearchMetadataEmbeddings',
   'rankCategorySearchProfiles',
+  'rankCategoryManagementProfiles',
   'findSimilarVectorScores',
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
@@ -896,7 +907,9 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       if (!embeddingModel) throw new Error('prepareCategorySearchProfiles requires embedding model');
       const store = await getIdbCompatStore();
       const allCategories = store.getAllCategories();
-      const categories = allCategories.filter(isSearchableTopicCategory);
+      // The same persisted metadata cache serves Search and category management.
+      // Management also needs parent vectors so a new child can find its likely home.
+      const categories = allCategories.filter(isManageableTopicCategory);
       const parentDescriptionById = new Map(
         allCategories
           .filter((category) => category.kind === 'parent')
@@ -1034,7 +1047,7 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
           : [];
         if (!categoryId || !embeddingModel || !textHash || !embedding.length) continue;
         const category = store.getCategory(categoryId);
-        if (!category || category.kind !== 'leaf' || category.status === 'deprecated') continue;
+        if (!category || !isManageableTopicCategory(category)) continue;
         const parentDescription = category.parentId
           ? store.getCategory(category.parentId)?.description
           : undefined;
@@ -1093,12 +1106,50 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         .getAllCategorySearchProfiles()
         .filter(
           (profile) =>
-            profile.embeddingModel === embeddingModel && profile.prototypeEmbedding.length > 0
+            profile.embeddingModel === embeddingModel &&
+            profile.prototypeEmbedding.length > 0 &&
+            Boolean(store.getCategory(profile.categoryId) && isSearchableTopicCategory(store.getCategory(profile.categoryId)!))
         );
       const matches = profiles
         .map((profile) => ({
           categoryId: profile.categoryId,
           score: scoreCategoryProfileVector(queryEmbedding, profile.prototypeEmbedding),
+          metadataScore: scoreCategoryProfileVector(queryEmbedding, profile.metadataEmbedding),
+          memberScore: scoreCategoryProfileVector(queryEmbedding, profile.memberCentroid),
+          memberCount: profile.memberCount,
+        }))
+        .filter((match) => match.score >= 0.2)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, limit);
+      return { matches, profileCount: profiles.length };
+    }
+    case 'rankCategoryManagementProfiles': {
+      const queryEmbedding = Array.isArray(args[0])
+        ? (args[0] as unknown[]).filter(
+            (value): value is number => typeof value === 'number' && Number.isFinite(value)
+          )
+        : [];
+      const embeddingModel = typeof args[1] === 'string' ? args[1] : '';
+      const requestedLimit = Number(args[2]);
+      const limit = Number.isFinite(requestedLimit)
+        ? Math.min(50, Math.max(1, Math.floor(requestedLimit)))
+        : 20;
+      if (!queryEmbedding.length || !embeddingModel) return { matches: [], profileCount: 0 };
+      const store = await getIdbCompatStore();
+      const profiles = store.sqlite
+        .getAllCategorySearchProfiles()
+        .filter((profile) => {
+          const category = store.getCategory(profile.categoryId);
+          return (
+            profile.embeddingModel === embeddingModel &&
+            profile.metadataEmbedding.length > 0 &&
+            Boolean(category && isManageableTopicCategory(category))
+          );
+        });
+      const matches = profiles
+        .map((profile) => ({
+          categoryId: profile.categoryId,
+          score: scoreCategoryProfileVector(queryEmbedding, profile.metadataEmbedding),
           metadataScore: scoreCategoryProfileVector(queryEmbedding, profile.metadataEmbedding),
           memberScore: scoreCategoryProfileVector(queryEmbedding, profile.memberCentroid),
           memberCount: profile.memberCount,
@@ -1311,6 +1362,74 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         signalsRequeued,
         missingEmbeddings,
       } satisfies PipelineDownstreamReconcileResult;
+    }
+    case 'getCategoryManagementSnapshot': {
+      const itemId = typeof args[0] === 'string' ? args[0].trim() : '';
+      const store = await getIdbCompatStore();
+      const signal = itemId ? store.getSignal(itemId) : undefined;
+      return {
+        categories: store.getAllCategories(),
+        links: itemId ? store.getLinksByItem(itemId) : [],
+        signal: signal ? signalMetaOnly(signal) : undefined,
+      };
+    }
+    case 'createManualCategoryAtomic': {
+      const store = await getIdbCompatStore();
+      const result = createManualCategoryInStore(
+        store,
+        (args[0] ?? {}) as ManualCategoryDraftInput,
+        (args[1] ?? {}) as { itemId?: string; makePrimary?: boolean }
+      );
+      invalidateHubScopeEntryCache();
+      scheduleFolderMirror();
+      return {
+        ...result,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
+    }
+    case 'manageItemCategoryAtomic': {
+      const itemId = typeof args[0] === 'string' ? args[0].trim() : '';
+      const categoryId = typeof args[1] === 'string' ? args[1].trim() : '';
+      const action = typeof args[2] === 'string' ? args[2] : '';
+      if (!['add', 'accept', 'reject', 'remove', 'primary'].includes(action)) {
+        throw new Error('Unknown category action');
+      }
+      const store = await getIdbCompatStore();
+      const result = manageItemCategoryInStore(
+        store,
+        itemId,
+        categoryId,
+        action as ManualCategoryAction
+      );
+      invalidateHubScopeEntryCache();
+      scheduleFolderMirror();
+      return {
+        ...result,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
+    }
+    case 'updateManualCategoryAtomic': {
+      const categoryId = typeof args[0] === 'string' ? args[0].trim() : '';
+      const input = (args[1] ?? {}) as { name: string; description?: string };
+      const store = await getIdbCompatStore();
+      const result = updateManualCategoryInStore(store, categoryId, input);
+      invalidateHubScopeEntryCache();
+      scheduleFolderMirror();
+      return {
+        ...result,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
+    }
+    case 'deleteManualCategoryAtomic': {
+      const categoryId = typeof args[0] === 'string' ? args[0].trim() : '';
+      const store = await getIdbCompatStore();
+      const result = deleteManualCategoryInStore(store, categoryId);
+      invalidateHubScopeEntryCache();
+      scheduleFolderMirror();
+      return {
+        ...result,
+        revision: revisionTracker.recordSqliteMutation(),
+      };
     }
     case 'getCategoryLinkCounts': {
       const store = await getIdbCompatStore();

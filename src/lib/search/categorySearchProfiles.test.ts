@@ -5,6 +5,7 @@ import {
   buildCategorySearchText,
   categoryMemberRevision,
   categoryMemberWeight,
+  isManageableTopicCategory,
   isSearchableTopicCategory,
   scoreCategoryProfileVector,
 } from './categorySearchProfiles';
@@ -85,5 +86,19 @@ describe('category search profiles', () => {
       parentName: 'Link quality & attention',
       name: 'Login or auth required',
     })).toBe(false);
+  });
+
+  it('keeps parent profiles available for category management but out of item search', () => {
+    const parent: AiCategory = {
+      ...category,
+      id: 'machine-learning',
+      name: 'Machine Learning',
+      kind: 'parent',
+      assignable: false,
+      parentId: null,
+      parentName: null,
+    };
+    expect(isManageableTopicCategory(parent)).toBe(true);
+    expect(isSearchableTopicCategory(parent)).toBe(false);
   });
 });

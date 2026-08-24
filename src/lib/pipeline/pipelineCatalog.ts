@@ -70,7 +70,7 @@ export async function loadPipelineCatalogFresh(): Promise<PipelineCatalog> {
 
   const primaryByItem = new Map<string, string>();
   for (const l of links) {
-    if (l.source !== 'ai' || !l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
+    if (!l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
     primaryByItem.set(l.itemId, l.categoryId);
   }
 

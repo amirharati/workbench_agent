@@ -164,6 +164,48 @@ a General fallback. Other active categories remain secondary and participate in 
 pruning is intentionally deferred until after V3 and must be a separate explicit policy, not a side effect
 of Full digest, Re-digest, Classify, or Discover.
 
+Manual taxonomy management uses the same additive evidence model but does not run through a page-owned
+classification path. Taxonomy and Inspector open one shared category manager; the page submits a command and
+the core DB worker atomically creates/attaches a category or updates an item/category link. User-created
+categories are `manual`, user attachments are accepted evidence, and making a category primary only demotes
+the old primary—it does not delete other active categories. Remove/Reject persists a rejected link so a later
+stochastic classify run cannot silently resurrect it. Classify may record a one-item novel-topic draft, but it
+never creates that category automatically; the user can review the draft in the same manager, while automatic
+taxonomy growth remains owned by clustered Discover.
+
+Before creation, exact normalized names are blocked transactionally. The manager is intent-first rather than
+splitting “search existing” from “create new”: one plain-language concept searches parents and children together,
+can expand a likely parent's current children, and offers a new child under likely parents or a new parent in the
+same result view. The intent is not reused blindly as stored taxonomy: after the user chooses a structure, one
+small naming call proposes editable final fields. Creating under an existing parent proposes one child name and
+optional description; creating a new structure proposes distinct parent and child names and optional descriptions.
+Without configured AI, the same review remains available for manual naming and explains why no proposal was made.
+Near duplicates and relationships are advisory: local lexical matching always runs, and—when
+credentials exist—one hierarchy-neutral embedding of the concept is compared inside the DB worker with persisted
+metadata profiles for both topical parents and leaves. Normal Search remains leaf-only even though the shared
+derived profile cache also holds parents. A new parent structure atomically receives both the named child the user
+reviewed and its standard General/Other fallback. When creation starts from an item, the meaningful named child—not
+the fallback—is accepted for the item immediately. A lower-level parent-only storage call still creates and attaches
+the fallback, so no parent can be persisted in an unusable state.
+
+The intent field is explicitly a category name or idea; description is optional supporting metadata and is
+never presented as the category's identity. User-created parents and children can be renamed or deleted from
+the same manager. Those mutations are also DB-worker transactions: a parent rename updates every child's
+cached parent label and its generated Other child, while deleting a parent removes its child branch and category
+assignments without deleting bookmarks, enrichment, or content. Bundled/discovered categories and generated
+fallback children cannot be edited directly. Renames invalidate derived category profiles so they are rebuilt
+from the new definition.
+
+The shared manager uses a wide, viewport-height dialog. Actions that reveal creation, editing, or destructive
+confirmation sections scroll the newly revealed section into view so the user is never expected to notice hidden
+content below the fold.
+
+Creation context is explicit. Inspector and an Enrichment Hub Taxonomy view that retains a current inspected item
+pass that immutable item ID into the same atomic create-and-attach command. The dialog identifies the target bookmark,
+and successful UI completion requires the worker response to contain the accepted attachment. A truly global Taxonomy
+launch is labeled `Taxonomy only` and directs the user to Inspector when assignment is intended; it must never look
+like a bookmark-scoped action while silently creating standalone categories.
+
 A failed item skips only its later stages. The next item continues. Final job counts are derived from durable
 task state rather than a page-owned counter.
 

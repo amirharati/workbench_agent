@@ -2027,6 +2027,9 @@ export class IdbCompatStore {
   getCategory(id: string) { return this.store.getCategory(id); }
   putCategory(category: AiCategory) { this.store.putCategory(category); }
   deleteCategory(id: string) { this.store.deleteCategory(id); }
+  deleteCategorySearchProfile(categoryId: string) {
+    this.store.deleteCategorySearchProfile(categoryId);
+  }
   
   getAllLinks() { return this.store.getAllLinks(); }
   getLinksByItem(itemId: string) { return this.store.getLinksByItem(itemId); }

@@ -1337,6 +1337,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           scopeCollectionId={scopeCollectionId}
           onOpenItem={onOpenItem}
           onBrowseCategory={onBrowseCategory}
+          targetItem={activeInspectRow?.item ?? null}
           onScopeItemCount={setCategoriesScopeItemCount}
           activeView={activeHubView === 'taxonomy' ? 'taxonomy' : 'queue'}
           hideViewTabs

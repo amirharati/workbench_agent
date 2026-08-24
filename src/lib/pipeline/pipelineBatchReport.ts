@@ -517,7 +517,7 @@ function resolvePrimaryCategoryId(
   if (linked) return linked;
 
   const itemLinks = linksByItem.get(itemId) ?? [];
-  const anyPrimary = itemLinks.find((l) => l.source === 'ai' && l.isPrimary);
+  const anyPrimary = itemLinks.find((l) => l.isPrimary && COUNTABLE_LINK_STATUSES.has(l.status));
   if (anyPrimary) return anyPrimary.categoryId;
 
   const fromReview = sig?.llmReview?.categoryIds?.[0];
@@ -578,7 +578,7 @@ export async function buildClassifyOutcomeReportRows(
       if (!itemLinks.length) continue;
       linksByItem.set(id, itemLinks);
       for (const l of itemLinks) {
-        if (l.source === 'ai' && l.isPrimary && COUNTABLE_LINK_STATUSES.has(l.status)) {
+        if (l.isPrimary && COUNTABLE_LINK_STATUSES.has(l.status)) {
           primaryByItem.set(l.itemId, l.categoryId);
         }
       }

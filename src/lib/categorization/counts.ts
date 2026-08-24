@@ -93,7 +93,7 @@ export function applyCountsToCategories(
 
 export function primaryLeafIdFromLinks(links: AiItemCategoryLink[]): string | null {
   const primary = links.find(
-    (l) => l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)
+    (l) => l.isPrimary && COUNTABLE_STATUSES.has(l.status)
   );
   return primary?.categoryId ?? null;
 }

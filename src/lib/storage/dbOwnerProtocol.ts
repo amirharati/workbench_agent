@@ -4,4 +4,4 @@
  * The service worker is copied from public/ rather than bundled by Vite, so its
  * mirrored value is guarded by dbOwnerProtocol.contract.test.ts.
  */
-export const DB_OWNER_PROTOCOL_VERSION = 23;
+export const DB_OWNER_PROTOCOL_VERSION = 26;

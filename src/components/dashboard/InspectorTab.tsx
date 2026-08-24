@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import { Clock, ChevronDown, ChevronRight, Tags } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import { useInspectorItemData } from '../../hooks/useInspectorItemData';
 import { resolveEnrichmentFailureLabel } from '../../lib/enrichment/failureLabels';
@@ -11,6 +11,7 @@ import { ItemDigestQuickActions } from './ItemDigestQuickActions';
 import { CategoryChip, SuggestedCategoryRow } from '../shared/CategoryReviewRows';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { LinkVisual } from './LinkVisual';
+import { ManageCategoriesDialog } from './ManageCategoriesDialog';
 
 interface InspectorTabProps {
   activeItem: Item | null;
@@ -211,6 +212,7 @@ function ItemInspectorBody({
     reload,
   } = useInspectorItemData(item.id);
   const [summaryOpen, setSummaryOpen] = useState(!enrichmentPrimaryInItemTab);
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const badge = context ? resolvePipelineBadge(context) : null;
   const failureLabel = context?.enrichment
     ? resolveEnrichmentFailureLabel(context.enrichment)
@@ -219,11 +221,13 @@ function ItemInspectorBody({
 
   useEffect(() => {
     setSummaryOpen(!enrichmentPrimaryInItemTab);
+    setManageCategoriesOpen(false);
   }, [item.id, enrichmentPrimaryInItemTab]);
 
   const hasEnrichment = Boolean(context?.summary || (context?.keyPoints.length ?? 0) > 0);
 
   return (
+    <>
     <div
       style={{
         padding: '10px 12px',
@@ -358,6 +362,10 @@ function ItemInspectorBody({
           <section>
             <div
               style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
                 fontSize: 'var(--text-xs)',
                 fontWeight: 600,
                 color: 'var(--text-muted)',
@@ -366,7 +374,15 @@ function ItemInspectorBody({
                 marginBottom: 4,
               }}
             >
-              Categories
+              <span>Categories</span>
+              <button
+                type="button"
+                className="ui-button ui-button--compact ui-button--secondary"
+                onClick={() => setManageCategoriesOpen(true)}
+                style={{ textTransform: 'none', letterSpacing: 0 }}
+              >
+                <Tags size={12} /> Manage
+              </button>
             </div>
             <p
               style={{
@@ -399,6 +415,7 @@ function ItemInspectorBody({
                         itemId={item.id}
                         link={l}
                         onDone={reload}
+                        onEdit={() => setManageCategoriesOpen(true)}
                       />
                     ))}
                   </div>
@@ -433,7 +450,16 @@ function ItemInspectorBody({
         <span>Added: {new Date(item.created_at).toLocaleDateString()}</span>
         <span>Updated: {new Date(item.updated_at).toLocaleDateString()}</span>
       </div>
-    </div>
+      </div>
+      {manageCategoriesOpen ? (
+        <ManageCategoriesDialog
+          itemId={item.id}
+          itemTitle={item.title}
+          onClose={() => setManageCategoriesOpen(false)}
+          onChanged={() => void reload()}
+        />
+      ) : null}
+    </>
   );
 }
 

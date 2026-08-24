@@ -70,7 +70,7 @@ export async function loadScopedPipelineRows(
     }
     const primaryCategoryByItem = new Map<string, string>();
     for (const link of seed.links) {
-      if (link.source === 'ai' && link.isPrimary && COUNTABLE_STATUSES.has(link.status)) {
+      if (link.isPrimary && COUNTABLE_STATUSES.has(link.status)) {
         primaryCategoryByItem.set(link.itemId, link.categoryId);
       }
     }
@@ -110,7 +110,7 @@ export async function loadScopedPipelineRows(
         )) as AiItemCategoryLink[];
         for (const l of itemLinks) {
           links.push(l);
-          if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+          if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
             primaryCategoryByItem.set(l.itemId, l.categoryId);
           }
         }

@@ -179,6 +179,8 @@ export type PipelineHubCategoriesLaneProps = {
   scopeCollectionId?: string | 'all';
   onOpenItem?: (item: Item) => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
+  /** Current item retained by the parent hub while switching into Taxonomy. */
+  targetItem?: Item | null;
   /** Scope chips bar — full scoped/filtered count (not enrichment page size). */
   onScopeItemCount?: (count: number) => void;
   activeView?: 'queue' | 'taxonomy';
@@ -191,6 +193,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   scopeCollectionId = 'all',
   onOpenItem,
   onBrowseCategory,
+  targetItem = null,
   onScopeItemCount,
   activeView,
   hideViewTabs = false,
@@ -791,7 +794,11 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
       </div>}
 
       {subTab === 'taxonomy' ? (
-        <AiCategoriesView embedded onBrowseCategory={onBrowseCategory} />
+        <AiCategoriesView
+          embedded
+          onBrowseCategory={onBrowseCategory}
+          targetItem={inspectRow?.item ?? targetItem}
+        />
       ) : (
         <>
           <p className="ui-pipeline-hub__queue-note">

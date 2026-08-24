@@ -93,4 +93,18 @@ describe('AiCategoriesView', () => {
 
     await act(async () => root.unmount());
   });
+
+  it('labels creation as bookmark-scoped when the hub retains a current item', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(
+      <AiCategoriesView
+        embedded
+        targetItem={{ id: 'item-1', title: 'Current bookmark', url: 'https://example.com' }}
+      />
+    ));
+    expect(host.textContent).toContain('Add category to current bookmark');
+    await act(async () => root.unmount());
+  });
 });

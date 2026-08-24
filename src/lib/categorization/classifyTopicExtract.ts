@@ -279,7 +279,7 @@ export async function listItemIdsWithoutCategory(itemIds?: string[]): Promise<st
   if (db.objectStoreNames.contains('ai_item_category_links')) {
     const links = await db.getAll('ai_item_category_links');
     for (const l of links) {
-      if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+      if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
         primaryByItem.set(l.itemId, l.categoryId);
       }
     }
@@ -325,7 +325,7 @@ export async function listItemIdsWithGeneralCategory(itemIds: string[]): Promise
   if (db.objectStoreNames.contains('ai_item_category_links')) {
     const links = await db.getAll('ai_item_category_links');
     for (const l of links) {
-      if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+      if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
         primaryByItem.set(l.itemId, l.categoryId);
       }
     }
@@ -345,7 +345,7 @@ export async function markItemsPendingClassify(itemIds: string[]): Promise<void>
   const scoped = await loadScopedPipelineRows(itemIds);
   const primaryCategoryByItem = new Map<string, string>();
   for (const l of scoped.links) {
-    if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+    if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
       primaryCategoryByItem.set(l.itemId, l.categoryId);
     }
   }
@@ -422,7 +422,7 @@ export async function reconcileStaleIneligibleSignals(): Promise<number> {
     : [];
   const primaryByItem = new Map<string, string>();
   for (const l of links) {
-    if (l.source !== 'ai' || !l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
+    if (!l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
     primaryByItem.set(l.itemId, l.categoryId);
   }
 
@@ -484,7 +484,7 @@ export async function reconcileSkippedToPendingDiscover(): Promise<number> {
     : [];
   const primaryByItem = new Map<string, string>();
   for (const l of links) {
-    if (l.source !== 'ai' || !l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
+    if (!l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
     primaryByItem.set(l.itemId, l.categoryId);
   }
 
@@ -541,7 +541,7 @@ export async function reconcileUnassignedAfterClassify(): Promise<number> {
     : [];
   const primaryByItem = new Map<string, string>();
   for (const l of links) {
-    if (l.source !== 'ai' || !l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
+    if (!l.isPrimary || !COUNTABLE_STATUSES.has(l.status)) continue;
     primaryByItem.set(l.itemId, l.categoryId);
   }
 
@@ -968,7 +968,7 @@ export async function assignGeneralLeafFallback(itemIds: string[]): Promise<numb
   if (db.objectStoreNames.contains('ai_item_category_links')) {
     const links = await db.getAll('ai_item_category_links');
     for (const l of links) {
-      if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+      if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
         existingPrimary.add(l.itemId);
       }
     }
@@ -1206,7 +1206,7 @@ export async function classifyIncremental(
       : [];
     primaryCategoryByItem = new Map<string, string>();
     for (const l of allLinks) {
-      if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+      if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
         primaryCategoryByItem.set(l.itemId, l.categoryId);
       }
     }
@@ -2167,7 +2167,7 @@ export async function discoverBatch(
     const allLinks = await db.getAll('ai_item_category_links');
     primaryCategoryByItem = new Map<string, string>();
     for (const l of allLinks) {
-      if (l.source === 'ai' && l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
+      if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
         primaryCategoryByItem.set(l.itemId, l.categoryId);
       }
     }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, RefreshCw, Search } from 'lucide-react';
+import { ArrowRight, Plus, RefreshCw, Search } from 'lucide-react';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import { isLinkQualityTaxonomyParent } from '../../lib/categorization/classificationPresentation';
 import {
@@ -7,9 +7,13 @@ import {
   type TaxonomyLeafRow,
   type TaxonomyParentRow,
 } from '../../lib/categorization/devQueries';
+import type { Item } from '../../lib/db';
+import { ManageCategoriesDialog } from './ManageCategoriesDialog';
 
 interface AiCategoriesViewProps {
   onBrowseCategory?: (categoryId: string, name: string) => void;
+  /** Current Inspector item when this taxonomy is opened from an item-aware surface. */
+  targetItem?: Pick<Item, 'id' | 'title' | 'url'> | null;
   /** When nested inside Enrichment Hub — hide page chrome. */
   embedded?: boolean;
 }
@@ -36,13 +40,18 @@ const RELOAD_REASONS = new Set([
   'pipeline.clear',
 ]);
 
-export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCategory, embedded = false }) => {
+export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({
+  onBrowseCategory,
+  targetItem = null,
+  embedded = false,
+}) => {
   const [taxonomy, setTaxonomy] = useState<Awaited<ReturnType<typeof getTaxonomyTreeWithCounts>> | null>(
     null
   );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const taxonomyRef = useRef(taxonomy);
   taxonomyRef.current = taxonomy;
   const reloadSeqRef = useRef(0);
@@ -145,28 +154,21 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
                 Counts include suggested and accepted links.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void reload()}
-              disabled={loading || refreshing}
-              title="Refresh counts"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 12px',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--border)',
-                background: 'var(--bg-panel)',
-                color: 'var(--text-muted)',
-                fontSize: 'var(--text-xs)',
-              cursor: loading || refreshing ? 'wait' : 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            <RefreshCw size={14} className={refreshing ? 'spin' : undefined} />
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button type="button" className="ui-button ui-button--primary" onClick={() => setCreateOpen(true)}>
+                <Plus size={14} /> {targetItem ? 'Add category to current bookmark' : 'New category'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void reload()}
+                disabled={loading || refreshing}
+                title="Refresh counts"
+                className="ui-button ui-button--secondary"
+              >
+                <RefreshCw size={14} className={refreshing ? 'spin' : undefined} />
+                {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
         </div>
       </header>
       ) : (
@@ -175,16 +177,21 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
             <h2>All categories</h2>
             <p>Complete parent and child hierarchy, including categories with no bookmarks yet.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => void reload()}
-            disabled={loading || refreshing}
-            title="Refresh counts"
-            className="ui-button ui-button--secondary"
-          >
-            <RefreshCw size={13} className={refreshing ? 'spin' : undefined} />
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" className="ui-button ui-button--primary" onClick={() => setCreateOpen(true)}>
+              <Plus size={13} /> {targetItem ? 'Add category to current bookmark' : 'New category'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void reload()}
+              disabled={loading || refreshing}
+              title="Refresh counts"
+              className="ui-button ui-button--secondary"
+            >
+              <RefreshCw size={13} className={refreshing ? 'spin' : undefined} />
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -276,6 +283,14 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({ onBrowseCate
           )}
         </div>
       )}
+      {createOpen ? (
+        <ManageCategoriesDialog
+          itemId={targetItem?.id}
+          itemTitle={targetItem?.title || targetItem?.url}
+          onClose={() => setCreateOpen(false)}
+          onChanged={() => void reload({ silent: true })}
+        />
+      ) : null}
     </div>
   );
 };

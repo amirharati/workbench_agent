@@ -19,14 +19,22 @@ export interface RankedCategoryProfile {
   memberCount: number;
 }
 
+/** Category-management matching includes parents, but never pipeline-status taxonomy. */
+export function isManageableTopicCategory(category: AiCategory): boolean {
+  return (
+    category.status !== 'deprecated' &&
+    !isLinkQualityParentId(category.id) &&
+    !isLinkQualityLeafId(category.id) &&
+    !isLinkQualityParentId(category.parentId)
+  );
+}
+
 /** Search discovery is topical; pipeline quality/attention leaves live elsewhere. */
 export function isSearchableTopicCategory(category: AiCategory): boolean {
   return (
     category.kind === 'leaf' &&
     category.assignable !== false &&
-    category.status !== 'deprecated' &&
-    !isLinkQualityLeafId(category.id) &&
-    !isLinkQualityParentId(category.parentId)
+    isManageableTopicCategory(category)
   );
 }
 

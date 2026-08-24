@@ -116,7 +116,7 @@ function computePipelineQueues(
     if (l.source === 'ai' && l.status === 'suggested') {
       suggestedByItem.add(l.itemId);
     }
-    if (l.source === 'ai' && l.isPrimary && COUNTABLE_LINK_STATUSES.has(l.status)) {
+    if (l.isPrimary && COUNTABLE_LINK_STATUSES.has(l.status)) {
       primaryByItem.set(l.itemId, l.categoryId);
     }
   }
