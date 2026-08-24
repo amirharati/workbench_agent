@@ -79,6 +79,10 @@ import {
 } from './pipelineJobStore';
 import { DB_OWNER_PROTOCOL_VERSION } from '../dbOwnerProtocol';
 import {
+  aggregateNovelTopicProposals,
+  queueNovelTopicProposalSignals,
+} from '../../categorization/novelTopicProposals';
+import {
   createManualCategoryInStore,
   deleteManualCategoryInStore,
   manageItemCategoryInStore,
@@ -1511,10 +1515,55 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       const itemId = typeof args[0] === 'string' ? args[0].trim() : '';
       const store = await getIdbCompatStore();
       const signal = itemId ? store.getSignal(itemId) : undefined;
+      const activeCategoryItemIds = new Set(
+        store.getAllLinks()
+          .filter((link) => link.status === 'suggested' || link.status === 'accepted')
+          .map((link) => link.itemId)
+      );
+      const proposalSignals = itemId
+        ? signal ? [signal] : []
+        : store.getAllSignals();
+      const currentItem = itemId ? store.getItem(itemId) : undefined;
+      const proposalItems = itemId
+        ? currentItem ? [currentItem] : []
+        : store.getAllItems();
       return {
         categories: store.getAllCategories(),
         links: itemId ? store.getLinksByItem(itemId) : [],
         signal: signal ? signalMetaOnly(signal) : undefined,
+        novelTopicProposals: aggregateNovelTopicProposals({
+          signals: proposalSignals,
+          items: proposalItems,
+          activeCategoryItemIds,
+        }),
+      };
+    }
+    case 'queueNovelTopicProposalForReclassify': {
+      const proposalKey = typeof args[0] === 'string' ? args[0].trim() : '';
+      if (!proposalKey) throw new Error('Proposal key is required');
+      const store = await getIdbCompatStore();
+      const activeCategoryItemIds = new Set(
+        store.getAllLinks()
+          .filter((link) => link.status === 'suggested' || link.status === 'accepted')
+          .map((link) => link.itemId)
+      );
+      const queued = queueNovelTopicProposalSignals({
+        signals: store.getAllSignals(),
+        proposalKey,
+        activeCategoryItemIds,
+      });
+      store.withTransaction(() => {
+        for (const signal of queued) store.putSignal(signal);
+      });
+      if (queued.length) {
+        invalidateHubScopeEntryCache();
+        scheduleFolderMirror();
+      }
+      return {
+        queuedCount: queued.length,
+        revision: queued.length
+          ? revisionTracker.recordSqliteMutation()
+          : revisionTracker.getLocalRevisionSync(),
       };
     }
     case 'createManualCategoryAtomic': {

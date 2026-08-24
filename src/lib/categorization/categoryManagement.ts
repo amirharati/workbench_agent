@@ -13,6 +13,7 @@ import type {
   AiItemSignal,
   AiCategoryKind,
 } from './types';
+import type { NovelTopicProposalGroup } from './novelTopicProposals';
 
 export type CategoryDraft = {
   name: string;
@@ -46,6 +47,7 @@ export type CategoryManagementSnapshot = {
   categories: AiCategory[];
   links: AiItemCategoryLink[];
   signal?: AiItemSignal;
+  novelTopicProposals: NovelTopicProposalGroup[];
 };
 
 export type CategorySimilarityMatch = {
@@ -76,6 +78,17 @@ export async function getCategoryManagementSnapshot(
   itemId?: string
 ): Promise<CategoryManagementSnapshot> {
   return dbRpc('getCategoryManagementSnapshot', itemId ? [itemId] : []);
+}
+
+export async function queueNovelTopicProposalForReclassify(
+  proposalKey: string
+): Promise<{ queuedCount: number; revision: number }> {
+  const result = await dbRpc<{ queuedCount: number; revision: number }>(
+    'queueNovelTopicProposalForReclassify',
+    [proposalKey]
+  );
+  notifyDataChanged('categorization.review');
+  return result;
 }
 
 function draftEmbeddingText(draft: CategoryDraft): string {

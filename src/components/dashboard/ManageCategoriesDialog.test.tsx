@@ -12,6 +12,7 @@ const service = vi.hoisted(() => ({
   manage: vi.fn(),
   propose: vi.fn(),
   proposeDescription: vi.fn(),
+  queueProposal: vi.fn(),
   update: vi.fn(),
   deleteCategory: vi.fn(),
 }));
@@ -24,6 +25,7 @@ vi.mock('../../lib/categorization/categoryManagement', async (importOriginal) =>
   manageItemCategory: service.manage,
   proposeCategoryStructure: service.propose,
   proposeCategoryDescription: service.proposeDescription,
+  queueNovelTopicProposalForReclassify: service.queueProposal,
   updateManualCategory: service.update,
   deleteManualCategory: service.deleteCategory,
 }));
@@ -80,6 +82,7 @@ describe('ManageCategoriesDialog', () => {
       description: 'Updated description for the edited category name.',
       generated: true,
     });
+    service.queueProposal.mockReset().mockResolvedValue({ queuedCount: 2, revision: 3 });
     service.update.mockReset().mockResolvedValue({ revision: 2 });
     service.deleteCategory.mockReset().mockResolvedValue({ revision: 2 });
   });
@@ -118,7 +121,9 @@ describe('ManageCategoriesDialog', () => {
       setter?.call(name, 'Machine learning');
       name?.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect(document.body.textContent).toContain('Technology › Machine learning');
+    expect(document.body.textContent).toContain('Machine learningTechnology');
+    expect(document.querySelector('.ui-category-manager__category-parent')?.textContent)
+      .toBe('Technology');
     const add = [...document.body.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === 'Use this');
     await act(async () => add?.click());
@@ -198,6 +203,50 @@ describe('ManageCategoriesDialog', () => {
     ));
     expect(document.body.textContent).toContain('Taxonomy only:');
     expect(document.body.textContent).toContain('not attached to a bookmark');
+    await act(async () => root.unmount());
+  });
+
+  it('shows durable unmatched-topic proposals without treating them as categories', async () => {
+    service.getSnapshot.mockResolvedValue({
+      categories: [parent, existing],
+      links: [],
+      novelTopicProposals: [{
+        key: '::habit tracking',
+        proposal: {
+          name: 'Habit tracking',
+          description: 'Tools and practices for monitoring personal habits.',
+          canonicalTags: ['habits', 'routines'],
+        },
+        itemCount: 2,
+        pendingReclassifyCount: 0,
+        sampleItems: [
+          { itemId: 'habit-1', title: 'Q4 habit tracker' },
+          { itemId: 'habit-2', title: 'Weekly routines' },
+        ],
+        latestAt: 20,
+      }],
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<ManageCategoriesDialog onClose={() => {}} />));
+
+    expect(document.body.textContent).toContain('Unmatched topic suggestions');
+    expect(document.body.textContent).toContain('Habit tracking');
+    expect(document.body.textContent).toContain('2 supporting bookmarks');
+    expect(document.body.textContent).toContain('not active categories');
+
+    const review = [...document.body.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.trim() === 'Review suggestion');
+    await act(async () => review?.click());
+    expect(document.body.querySelector<HTMLInputElement>('input[placeholder^="For example:"]')?.value)
+      .toBe('Habit tracking');
+
+    const reclassify = [...document.body.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.trim() === 'Reclassify 2');
+    await act(async () => reclassify?.click());
+    expect(service.queueProposal).toHaveBeenCalledWith('::habit tracking');
+
     await act(async () => root.unmount());
   });
 

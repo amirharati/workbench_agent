@@ -21,7 +21,10 @@ import {
 } from './lib/dataChangeNotifier';
 import { INBOX_COLLECTION_LIMIT_MESSAGE } from './lib/systemDataModel';
 import { requestSidePanelStartupProjection } from './lib/sidePanelStartup';
-import { buildDashboardOpenItemUrl } from './lib/shell/dashboardOpenIntent';
+import {
+  buildDashboardOpenItemUrl,
+  type DashboardOpenAction,
+} from './lib/shell/dashboardOpenIntent';
 
 function shouldRefreshOrganization(event: DataChangeEvent): boolean {
   return (
@@ -96,10 +99,14 @@ function SidePanelApp() {
     };
   }, [folderConfigured, loadOrganization]);
 
-  const openDashboard = useCallback(async (openSetup = false, itemId?: string) => {
+  const openDashboard = useCallback(async (
+    openSetup = false,
+    itemId?: string,
+    action?: DashboardOpenAction
+  ) => {
     if (openSetup) await requestBackupOnboardingOpen();
     await chrome.tabs.create({
-      url: buildDashboardOpenItemUrl(chrome.runtime.getURL('index.html'), itemId),
+      url: buildDashboardOpenItemUrl(chrome.runtime.getURL('index.html'), itemId, action),
     });
   }, []);
 
@@ -188,6 +195,7 @@ function SidePanelApp() {
           onCreateProject={createProject}
           onCreateCollection={createCollection}
           onOpenFullPage={(itemId) => void openDashboard(false, itemId)}
+          onManageCategories={(itemId) => void openDashboard(false, itemId, 'manage-categories')}
         />
       </PipelineProgressProvider>
     </div>

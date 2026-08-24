@@ -163,6 +163,7 @@ describe('required topic assignment correction', () => {
         text: JSON.stringify({
           results: [{
             itemId: 'novel',
+            matchStatus: 'NO_MATCH',
             skip: false,
             topicIds: [],
             topicPaths: [],
@@ -196,7 +197,7 @@ describe('required topic assignment correction', () => {
 
     expect(runAICompletionMock).toHaveBeenCalledTimes(2);
     expect(result.decisions.get('novel')).toMatchObject({
-      decisionType: 'new_category',
+      decisionType: 'none',
       semanticLabel: 'Competitive memory sculpture',
       freeTopics: ['memory sculpture', 'competitive performance'],
       novelTopicSuggestion: {
@@ -204,6 +205,8 @@ describe('required topic assignment correction', () => {
       },
     });
     expect(result.decisions.get('novel')?.categoryIds).toBeUndefined();
+    expect(runAICompletionMock.mock.calls[1]?.[1]?.messages?.[1]?.content)
+      .toContain('matchStatus: "NO_MATCH"');
   });
 
   it('classifies a watch page by its save purpose rather than its plot themes', async () => {

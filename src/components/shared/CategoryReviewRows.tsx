@@ -12,14 +12,43 @@ import { useToast } from '../ToastContainer';
 
 export type CategoryReviewFeedback = (message: string, type: 'success' | 'error') => void;
 
+export function UnmatchedTopicSuggestion({
+  name,
+  description,
+  onReview,
+}: {
+  name: string;
+  description?: string;
+  onReview: () => void;
+}) {
+  return (
+    <div className="ui-unmatched-topic">
+      <div className="ui-unmatched-topic__copy">
+        <span>Suggested topic · no existing category matched</span>
+        <strong>{name}</strong>
+        {description ? <small>{description}</small> : null}
+      </div>
+      <button
+        className="ui-button ui-button--compact ui-button--secondary"
+        type="button"
+        onClick={onReview}
+      >
+        Review categories
+      </button>
+    </div>
+  );
+}
+
 export function CategoryChip({
   label,
+  parentLabel,
   muted,
   onClick,
   title,
   categoryId,
 }: {
   label: string;
+  parentLabel?: string;
   muted?: boolean;
   onClick?: () => void;
   title?: string;
@@ -27,8 +56,14 @@ export function CategoryChip({
 }) {
   const danger = isLinkQualityRemovalLeafId(categoryId);
   const warning = isLinkQualityAttentionLeafId(categoryId);
+  const visibleParent = parentLabel?.trim() && parentLabel.trim() !== label.trim()
+    ? parentLabel.trim()
+    : undefined;
   const style = {
     display: 'inline-flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 1,
     padding: '2px 8px',
     borderRadius: 999,
     border: `1px solid ${
@@ -65,12 +100,26 @@ export function CategoryChip({
           cursor: 'pointer',
         }}
       >
-        {label}
+        <span>{label}</span>
+        {visibleParent ? (
+          <small style={{ color: 'var(--text-faint)', fontSize: '10px', fontWeight: 500, lineHeight: 1.2 }}>
+            {visibleParent}
+          </small>
+        ) : null}
       </button>
     );
   }
 
-  return <span style={style}>{label}</span>;
+  return (
+    <span style={style}>
+      <span>{label}</span>
+      {visibleParent ? (
+        <small style={{ color: 'var(--text-faint)', fontSize: '10px', fontWeight: 500, lineHeight: 1.2 }}>
+          {visibleParent}
+        </small>
+      ) : null}
+    </span>
+  );
 }
 
 function ReviewActionButton({
@@ -117,7 +166,7 @@ export function SuggestedCategoryRow({
   feedback,
 }: {
   itemId: string;
-  link: { categoryId: string; name: string; score: number };
+  link: { categoryId: string; name: string; parentName?: string; score: number };
   onDone: () => void;
   onEdit?: () => void;
   feedback?: CategoryReviewFeedback;
@@ -170,6 +219,7 @@ export function SuggestedCategoryRow({
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
         <CategoryChip
           label={`${link.name} (suggested)`}
+          parentLabel={link.parentName}
           categoryId={link.categoryId}
           muted
         />
@@ -194,7 +244,7 @@ export function SuggestedCategoryRow({
         />
         {onEdit ? (
           <ReviewActionButton
-            label="Edit in app"
+            label="Manage categories"
             variant="edit"
             disabled={busy !== null}
             onClick={onEdit}

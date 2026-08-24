@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronUp, ExternalLink, Tags } from 'lucide-react';
 import { useItemPipelineContext } from '../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../lib/pipeline';
 import {
@@ -12,6 +12,7 @@ import { EnrichmentContent, ItemPipelineBadge } from './dashboard/PipelineDispla
 import {
   CategoryChip,
   SuggestedCategoryRow,
+  UnmatchedTopicSuggestion,
   type CategoryReviewFeedback,
 } from './shared/CategoryReviewRows';
 
@@ -19,6 +20,7 @@ interface SidePanelDigestPanelProps {
   itemId: string;
   statusLabel?: string;
   onOpenInApp?: () => void;
+  onManageCategories?: () => void;
 }
 
 function truncate(value: string, limit: number): string {
@@ -30,6 +32,7 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
   itemId,
   statusLabel,
   onOpenInApp,
+  onManageCategories,
 }) => {
   const { context, loading, reload } = useItemPipelineContext(itemId);
   const [expanded, setExpanded] = useState(false);
@@ -55,6 +58,12 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
     if (!context) return '';
     return truncate(context.summary || fetchedSnippet, 420);
   }, [context, fetchedSnippet]);
+  const unmatchedTopic = context &&
+    context.acceptedLinks.length === 0 &&
+    context.suggestedLinks.length === 0
+      ? context.signal?.llmReview?.novelTopicSuggestion
+      : undefined;
+  const openCategoryManager = onManageCategories ?? onOpenInApp;
 
   return (
     <Panel
@@ -184,6 +193,13 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                       : null}
                 </div>
               ) : null}
+              {unmatchedTopic ? (
+                <UnmatchedTopicSuggestion
+                  name={unmatchedTopic.name}
+                  description={unmatchedTopic.description}
+                  onReview={() => openCategoryManager?.()}
+                />
+              ) : null}
             </>
           ) : (
             <>
@@ -256,7 +272,15 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                 context.suggestedLinks.length === 0 ? (
                   <CategoryChip
                     label={context.primaryCategoryName}
+                    parentLabel={context.primaryCategoryParentName ?? undefined}
                     categoryId={context.primaryCategoryId ?? undefined}
+                  />
+                ) : null}
+                {unmatchedTopic ? (
+                  <UnmatchedTopicSuggestion
+                    name={unmatchedTopic.name}
+                    description={unmatchedTopic.description}
+                    onReview={() => openCategoryManager?.()}
                   />
                 ) : null}
                 {context.acceptedLinks.length === 0 && context.suggestedLinks.length === 0 ? (
@@ -265,7 +289,9 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                       ? 'Classifying…'
                       : context.classifyState === 'manual_review'
                         ? 'In manual review — open the dashboard or run Classify now.'
-                        : 'Not yet classified.'}
+                        : unmatchedTopic
+                          ? 'No existing category matched. Review the suggested topic above.'
+                          : 'Not yet classified.'}
                   </p>
                 ) : (
                   <>
@@ -275,6 +301,7 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                           <CategoryChip
                             key={`accepted-${link.categoryId}`}
                             label={link.name}
+                            parentLabel={link.parentName}
                             categoryId={link.categoryId}
                           />
                         ))}
@@ -286,7 +313,7 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                         itemId={context.item.id}
                         link={link}
                         onDone={reload}
-                        onEdit={onOpenInApp}
+                        onEdit={openCategoryManager}
                         feedback={onFeedback}
                       />
                     ))}
@@ -306,15 +333,26 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
               {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
               {expanded ? 'Show less' : 'Show full digest'}
             </ButtonGhost>
-            {onOpenInApp ? (
-              <ButtonGhost
-                type="button"
-                onClick={onOpenInApp}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 8px' }}
-              >
-                Dashboard <ExternalLink size={12} />
-              </ButtonGhost>
-            ) : null}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' }}>
+              {openCategoryManager ? (
+                <ButtonGhost
+                  type="button"
+                  onClick={openCategoryManager}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 8px' }}
+                >
+                  Categories <Tags size={12} />
+                </ButtonGhost>
+              ) : null}
+              {onOpenInApp ? (
+                <ButtonGhost
+                  type="button"
+                  onClick={onOpenInApp}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 8px' }}
+                >
+                  Dashboard <ExternalLink size={12} />
+                </ButtonGhost>
+              ) : null}
+            </div>
           </div>
         </>
       )}

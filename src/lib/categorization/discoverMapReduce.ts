@@ -178,6 +178,9 @@ function buildMapDiscoveryPrompt(
         title: i.title,
         summary: i.aiSummary.slice(0, 1200),
         ...(i.stuckKind ? { stuckKind: i.stuckKind } : {}),
+        ...(i.novelTopicSuggestion
+          ? { proposedTopic: i.novelTopicSuggestion }
+          : {}),
       })),
       null,
       2

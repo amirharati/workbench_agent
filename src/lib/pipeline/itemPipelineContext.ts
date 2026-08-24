@@ -32,10 +32,11 @@ export interface ItemPipelineContext {
   eligibilityReason?: string;
   primaryCategoryId: string | null;
   primaryCategoryName: string | null;
+  primaryCategoryParentName: string | null;
   /** `Parent › leaf` when parent exists — matches Hub classify queue column. */
   primaryTopicPath: string | null;
-  acceptedLinks: Array<{ categoryId: string; name: string; isPrimary: boolean }>;
-  suggestedLinks: Array<{ categoryId: string; name: string; isPrimary: boolean; score: number }>;
+  acceptedLinks: Array<{ categoryId: string; name: string; parentName?: string; isPrimary: boolean }>;
+  suggestedLinks: Array<{ categoryId: string; name: string; parentName?: string; isPrimary: boolean; score: number }>;
   hasSuggestedLinks: boolean;
   summary?: string;
   keyPoints: string[];
@@ -224,12 +225,19 @@ function buildContextForItem(
     eligible: eligibility.eligible,
   });
 
-  const mapLink = (l: AiItemCategoryLink) => ({
-    categoryId: l.categoryId,
-    name: categoryById.get(l.categoryId)?.name ?? l.categoryId,
-    isPrimary: l.isPrimary,
-    score: l.score,
-  });
+  const mapLink = (l: AiItemCategoryLink) => {
+    const category = categoryById.get(l.categoryId);
+    const parentName = category?.kind === 'leaf' && category.parentId
+      ? categoryById.get(category.parentId)?.name ?? category.parentName ?? undefined
+      : undefined;
+    return {
+      categoryId: l.categoryId,
+      name: category?.name ?? l.categoryId,
+      parentName,
+      isPrimary: l.isPrimary,
+      score: l.score,
+    };
+  };
 
   const acceptedLinks = itemLinks
     .filter((l) => l.status === 'accepted')
@@ -260,6 +268,7 @@ function buildContextForItem(
     eligibilityReason: eligibility.reason,
     primaryCategoryId,
     primaryCategoryName,
+    primaryCategoryParentName: parentName,
     primaryTopicPath,
     acceptedLinks,
     suggestedLinks,

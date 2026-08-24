@@ -7,7 +7,7 @@ import {
 } from './taxonomyCatalog';
 import { normalizeTag, slugFromTerms } from './naming';
 import { stripFences } from './parseReview';
-import type { AiCategory } from './types';
+import type { AiCategory, ProposedCategoryDraft } from './types';
 import { LINK_QUALITY_PARENT_ID } from './linkQuality';
 
 function normalizeNameKey(name: string): string {
@@ -77,6 +77,8 @@ export interface DiscoverSampleItem {
   aiSummary: string;
   /** Why this item is in a discover batch (drives gap-fill prompting). */
   stuckKind?: 'pending_discover' | 'general' | 'unassigned' | 'manual_review';
+  /** Durable classifier abstention evidence; advisory until Discover clusters it. */
+  novelTopicSuggestion?: ProposedCategoryDraft;
 }
 
 export interface DiscoveryParentProposal {
@@ -200,6 +202,9 @@ function buildDiscoveryPrompt(
         title: i.title,
         summary: i.aiSummary.slice(0, 800),
         ...(i.stuckKind ? { stuckKind: i.stuckKind } : {}),
+        ...(i.novelTopicSuggestion
+          ? { proposedTopic: i.novelTopicSuggestion }
+          : {}),
       })),
       null,
       2

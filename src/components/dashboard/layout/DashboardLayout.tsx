@@ -26,6 +26,7 @@ import { PipelineProgressProvider, usePipelineProgress } from '../PipelineProgre
 import { PipelineBatchConfirmModal } from '../PipelineBatchConfirmModal';
 import { PipelineCoordinatorBanner } from '../PipelineCoordinatorBanner';
 import { CommandPalette } from '../CommandPalette';
+import { ManageCategoriesDialog } from '../ManageCategoriesDialog';
 import {
   useLibrarySearch,
   useSearchNavigationScope,
@@ -75,6 +76,7 @@ import type { ItemDragPayload, ItemDropTarget, ItemTransferOperation } from '../
 import { buildCollectionTransferPatch } from '../../../lib/collectionTransfer';
 import {
   clearDashboardOpenItemIntent,
+  readDashboardOpenActionIntent,
   readDashboardOpenItemIntent,
 } from '../../../lib/shell/dashboardOpenIntent';
 
@@ -286,6 +288,10 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   const { addToast } = useToast();
   const dashboardOpenItemIdRef = useRef(readDashboardOpenItemIntent());
   const dashboardOpenItemId = dashboardOpenItemIdRef.current;
+  const dashboardOpenActionRef = useRef(readDashboardOpenActionIntent());
+  const [manageCategoriesItemId, setManageCategoriesItemId] = useState<string | null>(() =>
+    dashboardOpenActionRef.current === 'manage-categories' ? dashboardOpenItemId : null
+  );
   const pipeline = usePipelineProgress();
   const { messages: statusMessages, addStatusMessage, dismissStatusMessage } = useStatusBar();
   const librarySearch = useLibrarySearch((message) => {
@@ -1953,6 +1959,15 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         onClose={() => setCommandPaletteOpen(false)}
         onSearch={(query) => openLibrarySearch(query)}
       />
+
+      {manageCategoriesItemId ? (
+        <ManageCategoriesDialog
+          itemId={manageCategoriesItemId}
+          itemTitle={items.find((item) => item.id === manageCategoriesItemId)?.title}
+          onClose={() => setManageCategoriesItemId(null)}
+          onChanged={() => { void onRefresh?.(); }}
+        />
+      ) : null}
 
       {batchConfirm ? (
         <PipelineBatchConfirmModal

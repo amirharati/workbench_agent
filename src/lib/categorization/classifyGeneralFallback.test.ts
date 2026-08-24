@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AiCategory } from './types';
 import {
   findGeneralLeafFallback,
+  generalFallbackSourceEvidence,
   reconcileGeneralLeafAssignment,
 } from './classifyTopicExtract';
 
@@ -64,5 +65,35 @@ describe('broad-domain classification fallback', () => {
       ['seed_personal-finance-general'],
       'Personal finance guide to index funds, retirement savings, and budgeting.',
     )).toEqual({ categoryIds: ['seed_personal-finance-general'] });
+  });
+
+  it('rejects an unsupported General parent instead of force-fitting it', () => {
+    expect(reconcileGeneralLeafAssignment(
+      categories,
+      ['seed_ai-productivity-general'],
+      'Quarterly habit tracker spreadsheet for personal growth, routines, and goal setting.',
+    )).toEqual({
+      categoryIds: [],
+      rejectedFrom: 'seed_ai-productivity-general',
+    });
+  });
+
+  it('drops an unsupported General primary without erasing a specific secondary', () => {
+    expect(reconcileGeneralLeafAssignment(
+      categories,
+      ['seed_ai-productivity-general', 'habit-tracking'],
+      'Quarterly habit tracker spreadsheet for personal growth and routines.',
+    )).toEqual({
+      categoryIds: ['habit-tracking'],
+      rejectedFrom: 'seed_ai-productivity-general',
+    });
+  });
+
+  it('builds fallback evidence only from bookmark-derived fields', () => {
+    expect(generalFallbackSourceEvidence({
+      title: 'Habit tracker',
+      textForClassification: 'Personal growth and routines.',
+      enrichmentAiTags: ['goal setting'],
+    })).toBe('Habit tracker\nPersonal growth and routines.\ngoal setting');
   });
 });

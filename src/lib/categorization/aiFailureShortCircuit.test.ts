@@ -73,4 +73,27 @@ describe('terminal AI backend failures', () => {
     expect(result.llmErrors).toBe(1);
     expect(result.errors[0]).toContain('AI authentication failed');
   });
+
+  it('passes durable no-match proposal evidence into Discover', async () => {
+    await runDiscoverMapReduce(
+      settings,
+      [],
+      [{
+        itemId: 'habit',
+        title: 'Q4 habit tracker',
+        aiSummary: 'A spreadsheet for monitoring habits and goals.',
+        stuckKind: 'pending_discover',
+        novelTopicSuggestion: {
+          name: 'Habit tracking',
+          description: 'Tools and practices for monitoring personal habits.',
+          canonicalTags: ['habits'],
+        },
+      }],
+      { mapBatchSize: 1, maxMapBatches: 1, gapFillMode: true }
+    );
+
+    const prompt = runAICompletionMock.mock.calls[0]?.[1]?.messages?.[1]?.content;
+    expect(prompt).toContain('"proposedTopic"');
+    expect(prompt).toContain('"name": "Habit tracking"');
+  });
 });

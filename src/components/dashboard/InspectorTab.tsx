@@ -8,7 +8,11 @@ import { formatPipelineStageHint } from '../../lib/pipeline/itemPipelineContext'
 import { ItemPipelineBadge, EnrichmentContent } from './PipelineDisplayBlocks';
 import { ItemSimilarSectionView } from './SearchDiscoveryBlocks';
 import { ItemDigestQuickActions } from './ItemDigestQuickActions';
-import { CategoryChip, SuggestedCategoryRow } from '../shared/CategoryReviewRows';
+import {
+  CategoryChip,
+  SuggestedCategoryRow,
+  UnmatchedTopicSuggestion,
+} from '../shared/CategoryReviewRows';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { LinkVisual } from './LinkVisual';
 import { ManageCategoriesDialog } from './ManageCategoriesDialog';
@@ -219,6 +223,9 @@ function ItemInspectorBody({
     ? resolveEnrichmentFailureLabel(context.enrichment)
     : null;
   const stageHint = context ? formatPipelineStageHint(context) : undefined;
+  const unmatchedTopic = context?.acceptedLinks.length === 0 && context.suggestedLinks.length === 0
+    ? context.signal?.llmReview?.novelTopicSuggestion
+    : undefined;
 
   useEffect(() => {
     setSummaryOpen(true);
@@ -356,9 +363,18 @@ function ItemInspectorBody({
             >
               AI categories are semantic tags; Collections are manual folders.
             </p>
+            {unmatchedTopic ? (
+              <UnmatchedTopicSuggestion
+                name={unmatchedTopic.name}
+                description={unmatchedTopic.description}
+                onReview={() => setManageCategoriesOpen(true)}
+              />
+            ) : null}
             {context.acceptedLinks.length === 0 && context.suggestedLinks.length === 0 ? (
               <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
-                Not yet classified…
+                {unmatchedTopic
+                  ? 'No existing category was a defensible match. The topic suggestion is ready for review.'
+                  : 'Not yet classified…'}
               </p>
             ) : (
               <>
@@ -368,6 +384,7 @@ function ItemInspectorBody({
                       <CategoryChip
                         key={`a-${l.categoryId}`}
                         label={l.name}
+                        parentLabel={l.parentName}
                         categoryId={l.categoryId}
                         onClick={onBrowseCategory
                           ? () => onBrowseCategory(l.categoryId, l.name)

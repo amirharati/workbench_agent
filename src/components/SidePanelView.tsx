@@ -54,6 +54,7 @@ interface SidePanelViewProps {
   onCreateProject: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection: (data: { name: string; projectId: string }) => Promise<string | void>;
   onOpenFullPage: (itemId?: string) => void;
+  onManageCategories: (itemId: string) => void;
   status: string;
   externalLinks?: SessionExternalLink[];
   onHostTabNavigate?: () => void;
@@ -87,6 +88,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
   onCreateProject,
   onCreateCollection,
   onOpenFullPage,
+  onManageCategories,
   status,
   externalLinks = [],
   onHostTabNavigate,
@@ -645,6 +647,7 @@ export const SidePanelView: React.FC<SidePanelViewProps> = ({
           <SidePanelDigestPanel
             itemId={activeItem.id}
             onOpenInApp={() => onOpenFullPage(activeItem.id)}
+            onManageCategories={() => onManageCategories(activeItem.id)}
           />
         ) : (
           <Panel className="side-panel-digest-card" style={{ padding: '0.75rem 0.75rem 0.75rem 0.85rem' }}>

@@ -31,6 +31,7 @@ import {
 } from './linkQuality';
 import {
   chunkClassifyBatch,
+  novelTopicSuggestionFromDecision,
   resolveTopicExtractBatchWithRetry,
   topicExtractBatchSize,
   type ClassifyBatchItem,
@@ -913,6 +914,19 @@ function generalLeafDomainScore(text: string, parentId: string): number {
   return text.match(new RegExp(entry.pattern.source, 'gi'))?.length ?? 0;
 }
 
+/** Source-derived evidence only; classifier explanations must never feed fallback routing. */
+export function generalFallbackSourceEvidence(input: {
+  title: string;
+  textForClassification: string;
+  enrichmentAiTags?: string[];
+}): string {
+  return [
+    input.title,
+    input.textForClassification,
+    ...(input.enrichmentAiTags ?? []),
+  ].join('\n');
+}
+
 export function findGeneralLeafFallback(
   categories: AiCategory[],
   text: string
@@ -938,7 +952,12 @@ export function reconcileGeneralLeafAssignment(
   categories: AiCategory[],
   categoryIds: string[],
   text: string
-): { categoryIds: string[]; correctedFrom?: string; correctedTo?: string } {
+): {
+  categoryIds: string[];
+  correctedFrom?: string;
+  correctedTo?: string;
+  rejectedFrom?: string;
+} {
   const primaryId = categoryIds[0];
   if (!primaryId || !isGeneralLeafId(primaryId)) return { categoryIds };
 
@@ -949,7 +968,13 @@ export function reconcileGeneralLeafAssignment(
   }
 
   const fallback = findGeneralLeafFallback(categories, text);
-  if (!fallback || fallback.parentId === selectedParentId) return { categoryIds };
+  if (!fallback) {
+    return {
+      categoryIds: categoryIds.slice(1).filter((categoryId) => !isGeneralLeafId(categoryId)),
+      rejectedFrom: primaryId,
+    };
+  }
+  if (fallback.parentId === selectedParentId) return { categoryIds };
 
   return {
     categoryIds: [fallback.id, ...categoryIds.slice(1).filter((id) => id !== fallback.id)].slice(0, 3),
@@ -1710,12 +1735,7 @@ export async function classifyIncremental(
         const reconciled = reconcileGeneralLeafAssignment(
           categories,
           decision.categoryIds,
-          [
-            batchItem.title,
-            batchItem.textForClassification,
-            ...(batchItem.enrichmentAiTags ?? []),
-            decision.reason ?? '',
-          ].join('\n')
+          generalFallbackSourceEvidence(batchItem)
         );
         if (reconciled.correctedTo) {
           decision = {
@@ -1724,6 +1744,28 @@ export async function classifyIncremental(
             reason: [
               decision.reason,
               `Broad-parent validation corrected ${reconciled.correctedFrom} → ${reconciled.correctedTo}.`,
+            ].filter(Boolean).join(' '),
+          };
+        } else if (reconciled.rejectedFrom && reconciled.categoryIds.length) {
+          decision = {
+            ...decision,
+            categoryIds: reconciled.categoryIds,
+            reason: [
+              decision.reason,
+              `Removed unsupported General assignment ${reconciled.rejectedFrom}; retained source-supported specific evidence.`,
+            ].filter(Boolean).join(' '),
+          };
+        } else if (reconciled.rejectedFrom) {
+          const proposal = novelTopicSuggestionFromDecision(decision);
+          decision = {
+            ...decision,
+            decisionType: 'none',
+            categoryIds: [],
+            proposedCategory: proposal,
+            novelTopicSuggestion: proposal,
+            reason: [
+              decision.reason,
+              `Rejected unsupported General assignment ${reconciled.rejectedFrom}; no existing parent has source evidence.`,
             ].filter(Boolean).join(' '),
           };
         }
@@ -1772,6 +1814,12 @@ export async function classifyIncremental(
           summary.assignedPrimary++;
           if (classifyState === 'classified_removal') summary.classifiedRemoval++;
           lastClassifySkipReason = lq.reason;
+        } else if (decision.novelTopicSuggestion || decision.proposedCategory) {
+          classifyState = 'pending_discover';
+          retryCount = prevRetry;
+          summary.unassigned++;
+          summary.pendingDiscover++;
+          lastClassifySkipReason = 'No existing category fits — queued for discover';
         } else {
           // The model has already received one strict correction request. A
           // remaining empty answer is not a valid success for eligible topical
@@ -1780,12 +1828,7 @@ export async function classifyIncremental(
           // the multi-item Discover pool.
           const generalFallback = findGeneralLeafFallback(
             categories,
-            [
-              batchItem.title,
-              batchItem.textForClassification,
-              ...(batchItem.enrichmentAiTags ?? []),
-              decision.reason ?? '',
-            ].join('\n')
+            generalFallbackSourceEvidence(batchItem)
           );
           if (generalFallback) {
             links.push({
@@ -1944,13 +1987,7 @@ export async function classifyIncremental(
             const reconciled = reconcileGeneralLeafAssignment(
               categories,
               [recoveryLeaf.id],
-              [
-                batchItem.title,
-                batchItem.textForClassification,
-                ...(batchItem.enrichmentAiTags ?? []),
-                decision.reason ?? '',
-                decision.proposedCategory.description ?? '',
-              ].join('\n')
+              generalFallbackSourceEvidence(batchItem)
             );
             recoveryLeaf = categories.find((category) => category.id === reconciled.categoryIds[0]);
           }
@@ -2337,6 +2374,7 @@ export async function discoverBatch(
       title: item.title || '',
       aiSummary: summaryText || text.slice(0, 2000),
       stuckKind,
+      novelTopicSuggestion: prev?.llmReview?.novelTopicSuggestion,
     });
     runSummary.stuckPool++;
     if (opts.maxItems && samples.length >= opts.maxItems) break;

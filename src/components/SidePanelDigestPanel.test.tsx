@@ -21,10 +21,18 @@ vi.mock('../hooks/useItemPipelineContext', () => ({
       summary: 'A complete summary that belongs in the bounded content area.',
       keyPoints: ['First point', 'Second point'],
       references: [],
-      acceptedLinks: [{ categoryId: 'topic', name: 'Model deployment', isPrimary: true }],
+      acceptedLinks: [],
       suggestedLinks: [],
-      primaryCategoryName: 'Model deployment',
-      classifyState: 'classified',
+      primaryCategoryName: null,
+      signal: {
+        llmReview: {
+          novelTopicSuggestion: {
+            name: 'Habit tracking',
+            description: 'Tools and templates for monitoring personal habits.',
+          },
+        },
+      },
+      classifyState: 'pending_discover',
     },
     loading: false,
     reload: vi.fn(),
@@ -51,6 +59,9 @@ vi.mock('./dashboard/PipelineDisplayBlocks', () => ({
 vi.mock('./shared/CategoryReviewRows', () => ({
   CategoryChip: ({ label }: { label: string }) => <span>{label}</span>,
   SuggestedCategoryRow: () => null,
+  UnmatchedTopicSuggestion: ({ name, onReview }: { name: string; onReview: () => void }) => (
+    <div><span>{name}</span><button type="button" onClick={onReview}>Review categories</button></div>
+  ),
 }));
 
 describe('SidePanelDigestPanel information layout', () => {
@@ -88,7 +99,27 @@ describe('SidePanelDigestPanel information layout', () => {
       .toContain('A complete summary that belongs in the bounded content area.');
     expect(host.querySelector('[data-testid="digest-tags"]')?.textContent)
       .toBe('AI tag|manual tag');
-    expect(categories?.textContent).toContain('Model deployment');
+    expect(categories?.textContent).toContain('Habit tracking');
+    expect(categories?.textContent).toContain('No existing category matched');
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows the unmatched topic and requests the dashboard category manager', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onManageCategories = vi.fn();
+    await act(async () => root.render(
+      <SidePanelDigestPanel itemId="item-1" onManageCategories={onManageCategories} />
+    ));
+
+    expect(host.textContent).toContain('Habit tracking');
+    const review = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Review categories');
+    expect(review).toBeDefined();
+    await act(async () => review!.click());
+    expect(onManageCategories).toHaveBeenCalledTimes(1);
 
     await act(async () => root.unmount());
   });

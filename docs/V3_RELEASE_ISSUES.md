@@ -338,6 +338,15 @@ Alternative terminal states require a note: `NOT REPRODUCED`, `DUPLICATE`,
   relationship-advice examples cover the boundary. Clear the old category and rerun: the episode should classify
   primarily as Movies, TV & streaming; plot relationships must not become the primary category.
 
+- V3-024 abstention follow-up: the Q4 Habit Tracker semantic pass correctly identified habit tracking and personal
+  productivity, but the matcher chose the AI-productivity General leaf and broad validation then classified its own
+  diagnostic phrase `LLM classification` as Machine-learning evidence. Protocol v30 makes `NO_MATCH` an explicit
+  successful outcome with durable per-item proposal evidence, excludes all classifier diagnostics from fallback
+  routing, rejects unsupported General parents, feeds proposals into Discover, and exposes grouped Review/Reclassify
+  actions without creating fake categories. Retest by clearing the old ML suggestion and classifying the tracker:
+  expect no category link, `pending_discover`, an unmatched `Habit tracking` proposal, then create/merge a fitting
+  category and use Reclassify; fetch/AI extraction and the existing vector must remain untouched.
+
 - 2026-08-23 side-panel context follow-up: `tabs.onUpdated` alone did not reliably report SPA/history
   navigation, leaving a visible panel on the previous URL/item. Each contextual panel now polls only
   its immutable host tab at 1.5-second intervals, resolves the live URL/title, and updates when that context

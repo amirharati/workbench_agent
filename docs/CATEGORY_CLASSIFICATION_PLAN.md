@@ -1,6 +1,6 @@
 # Dual-signal category classification
 
-Status: V3 exact-classifier implementation completed on 2026-08-23; live acceptance remains. This document is
+Status: V3 exact-classifier and durable abstention implementation completed on 2026-08-24; live acceptance remains. This document is
 the durable source of truth for the classification work; live bugs and acceptance evidence remain tracked in
 `V3_RELEASE_ISSUES.md`.
 
@@ -47,6 +47,36 @@ Keep the existing independent two-pass behavior:
 
 The LLM path must not be restricted to an embedding shortlist. Embedding failure or a cold category profile must
 not make a valid category invisible to semantic reasoning.
+
+### Explicit abstention — `NO_MATCH`
+
+Taxonomy matching is not required to assign a category. The in-flight matcher returns the reserved
+`matchStatus: "NO_MATCH"` outcome when the taxonomy-free subject has no defensible parent. `NO_MATCH` is never an
+`ai_categories` row, category link, embedding target, search result, or countable taxonomy member.
+
+The coordinator converts that transient token into durable per-bookmark evidence in
+`ai_item_signals.llm_review`:
+
+- `decisionType: "none"` and an empty category ID list;
+- the taxonomy-free semantic label, subject, retrieval purpose, and evidence;
+- one editable `novelTopicSuggestion`; and
+- `pending_discover` / novelty state with no category link.
+
+This state is a successful classification abstention, not an AI failure. It does not consume the ordinary
+general/unassigned retry budget. A General leaf is valid only when source-derived bookmark text supports its
+parent; classifier explanations, ensemble diagnostics, and proposed-category prose never participate in broad
+fallback keyword checks. If an unsupported General result is rejected, the free-form semantic analysis becomes
+the durable novel-topic suggestion instead of being redirected into another unrelated parent.
+
+The DB worker projects unresolved suggestions into compact groups for the category manager. The projection shows
+supporting-bookmark counts and samples but does not create taxonomy. A user can review a proposal through the
+normal existing-category/parent/child search, create or merge taxonomy deliberately, and then mark that proposal
+group `pending_reclassify`. This reuses existing enrichment and embeddings; it does not refetch, rerun extraction,
+or create another pipeline owner.
+
+Discover includes the stored proposed topic beside each pending bookmark's summary, so clustered proposals can
+justify a new parent/leaf. Proposal evidence remains per item until a real category is attached or a later
+classification replaces it. Items with an active category are excluded from the unresolved-proposal projection.
 
 ### Signal B — exact local embedding classifier
 
@@ -132,6 +162,7 @@ proposed the link.
    - Keep detailed component evidence in Inspector/dev diagnostics; ordinary users need a concise reason, not raw
      vector numbers.
    - Never label a mixed but successful classification as a pipeline failure.
+   - Show unresolved `NO_MATCH` proposals separately from active taxonomy, with Review and Reclassify actions.
 
 5. **Acceptance gates**
    - Fresh taxonomy: classify ordinary seed-covered links without manual examples.
@@ -143,6 +174,8 @@ proposed the link.
    - Repeat with five links, bulk import, cancellation, navigation/reload, closed dashboards, sleep/wake, and Resume;
      verify no duplicate paid LLM call and no lost committed metric/LLM evidence.
    - Record latency and memory at realistic 20k-library scale before V3 signoff.
+   - Run an uncovered habit-tracker case: confirm `NO_MATCH`, no fake/General category link, durable proposal UI,
+     Discover eligibility, and classify-only requeue after a fitting category is created.
 
 ## Explicit post-V3 upgrade
 

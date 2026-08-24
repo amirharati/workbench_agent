@@ -95,6 +95,7 @@ export interface SidePanelConnectedProps {
   onCreateProject: (data: { name: string; description?: string }) => Promise<string | void>;
   onCreateCollection: (data: { name: string; projectId: string }) => Promise<string | void>;
   onOpenFullPage: (itemId?: string) => void;
+  onManageCategories: (itemId: string) => void;
 }
 
 export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
@@ -104,6 +105,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
   onCreateProject,
   onCreateCollection,
   onOpenFullPage,
+  onManageCategories,
 }) => {
   const [status, setStatus] = useState('');
   const [externalLinks, setExternalLinks] = useState<SessionExternalLink[]>([]);
@@ -384,6 +386,7 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
       onCreateProject={handleCreateProjectLocal}
       onCreateCollection={handleCreateCollectionLocal}
       onOpenFullPage={onOpenFullPage}
+      onManageCategories={onManageCategories}
       status={status}
       externalLinks={externalLinks}
       onHostTabNavigate={clearExternalLinks}

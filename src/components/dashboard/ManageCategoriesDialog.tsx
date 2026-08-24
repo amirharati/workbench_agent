@@ -8,6 +8,7 @@ import {
   manageItemCategory,
   proposeCategoryDescription,
   proposeCategoryStructure,
+  queueNovelTopicProposalForReclassify,
   updateManualCategory,
   type CategoryDraft,
   type CategoryManagementSnapshot,
@@ -31,6 +32,20 @@ function categoryPath(category: AiCategory): string {
   return category.kind === 'leaf' && category.parentName
     ? `${category.parentName} › ${category.name}`
     : category.name;
+}
+
+function CategoryNameWithParent({ category }: { category: AiCategory }) {
+  const parentName = category.kind === 'leaf' && category.parentName?.trim() !== category.name.trim()
+    ? category.parentName?.trim()
+    : undefined;
+  return (
+    <>
+      <strong>{category.name}</strong>
+      {parentName ? (
+        <small className="ui-category-manager__category-parent">{parentName}</small>
+      ) : null}
+    </>
+  );
 }
 
 function isUserEditableCategory(category: AiCategory): boolean {
@@ -723,6 +738,7 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
   };
   const hasIntent = normalizeCategoryName(intent).length >= 2;
   const proposedDraft = snapshot?.signal?.llmReview?.novelTopicSuggestion;
+  const novelTopicProposals = snapshot?.novelTopicProposals ?? [];
   const editingCategory = editingCategoryId ? categoryById.get(editingCategoryId) : undefined;
   const editingChildren = editingCategory?.kind === 'parent'
     ? categories.filter((category) => category.parentId === editingCategory.id)
@@ -731,6 +747,45 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
   const selectedStructureParent = selectedExistingParentId
     ? categoryById.get(selectedExistingParentId)
     : undefined;
+
+  const reviewNovelTopicProposal = (group: CategoryManagementSnapshot['novelTopicProposals'][number]) => {
+    const proposal = group.proposal;
+    setIntent(proposal.name);
+    setDraft({
+      name: proposal.name,
+      description: proposal.description ?? '',
+      kind: 'leaf',
+      parentId: proposal.parentId,
+      canonicalTags: proposal.canonicalTags ?? [],
+    });
+    setParentQuery(
+      categoryById.get(proposal.parentId ?? '')?.name ?? proposal.name
+    );
+    setCreationOpen(false);
+    setProposalWarning(null);
+    setSelectedExistingParentId(null);
+  };
+
+  const queueNovelTopicProposal = async (
+    group: CategoryManagementSnapshot['novelTopicProposals'][number]
+  ) => {
+    setBusyKey(`proposal:${group.key}`);
+    try {
+      const result = await queueNovelTopicProposalForReclassify(group.key);
+      await reload();
+      onChanged?.();
+      addToast({
+        type: result.queuedCount ? 'success' : 'info',
+        message: result.queuedCount
+          ? `${result.queuedCount} bookmark${result.queuedCount === 1 ? '' : 's'} added to the Classify queue`
+          : 'These bookmarks are already queued or now have a category',
+      });
+    } catch (error) {
+      addToast({ type: 'error', message: `Could not queue bookmarks: ${String(error)}` });
+    } finally {
+      setBusyKey(null);
+    }
+  };
 
   const renderChildMatches = (bounded = false) => childIntentKey.length >= 2 ? (
     <div className={`ui-category-manager__parent-results ui-category-manager__field-matches${bounded ? ' ui-category-manager__field-matches--bounded' : ''}`}>
@@ -750,7 +805,7 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
           return (
             <div className="ui-category-manager__parent-result" key={category.id}>
               <div>
-                <strong>{category.name}</strong>
+                <CategoryNameWithParent category={category} />
                 <span>
                   {Math.round(match.score * 100)}% match
                   {category.description ? ` · ${category.description}` : ''}
@@ -985,7 +1040,7 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
                     return (
                       <div className="ui-category-manager__row" key={link.id}>
                         <div>
-                          <strong>{categoryPath(category)}</strong>
+                          <CategoryNameWithParent category={category} />
                           <span>{link.status === 'suggested' ? 'AI suggestion' : link.source === 'manual' ? 'Added by you' : 'Accepted AI suggestion'}{link.isPrimary ? ' · Primary' : ''}</span>
                         </div>
                         <div className="ui-category-manager__actions">
@@ -1015,6 +1070,66 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
               <Sparkles size={14} />
               <span>The classifier suggested this concept, but nothing will be created automatically. Existing matches are checked first.</span>
             </div>
+          ) : null}
+
+          {novelTopicProposals.length ? (
+            <section className="ui-dialog__section ui-category-manager__novel-topics">
+              <div className="ui-category-manager__section-heading">
+                <div>
+                  <h3 className="ui-dialog__section-title">Unmatched topic suggestions</h3>
+                  <p>
+                    These are durable classifier proposals, not active categories. Review one against the taxonomy,
+                    then reclassify its bookmarks after you create or merge a fitting category.
+                  </p>
+                </div>
+                <span>{novelTopicProposals.length} suggestion{novelTopicProposals.length === 1 ? '' : 's'}</span>
+              </div>
+              <div className="ui-category-manager__novel-topic-list">
+                {novelTopicProposals.map((group) => {
+                  const allQueued = group.pendingReclassifyCount >= group.itemCount;
+                  const parent = group.proposal.parentId
+                    ? categoryById.get(group.proposal.parentId)
+                    : undefined;
+                  return (
+                    <article className="ui-category-manager__novel-topic" key={group.key}>
+                      <div className="ui-category-manager__novel-topic-copy">
+                        <strong>{group.proposal.name}</strong>
+                        {parent ? <small>Suggested parent: {parent.name}</small> : null}
+                        {group.proposal.description ? <span>{group.proposal.description}</span> : null}
+                        <small>
+                          {group.itemCount} supporting bookmark{group.itemCount === 1 ? '' : 's'}
+                          {group.sampleItems.length
+                            ? ` · ${group.sampleItems.map((item) => item.title).join(' · ')}`
+                            : ''}
+                        </small>
+                      </div>
+                      <div className="ui-category-manager__actions">
+                        <button
+                          className="ui-button ui-button--compact ui-button--secondary"
+                          type="button"
+                          disabled={busyKey != null}
+                          onClick={() => reviewNovelTopicProposal(group)}
+                        >
+                          Review suggestion
+                        </button>
+                        <button
+                          className="ui-button ui-button--compact ui-button--primary"
+                          type="button"
+                          disabled={busyKey != null || allQueued}
+                          onClick={() => void queueNovelTopicProposal(group)}
+                        >
+                          {busyKey === `proposal:${group.key}`
+                            ? 'Queueing…'
+                            : allQueued
+                              ? 'Queued for classification'
+                              : `Reclassify ${group.itemCount}`}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
           ) : null}
 
           <div className={`ui-category-manager__context ${itemId ? 'ui-category-manager__context--item' : 'ui-category-manager__context--taxonomy'}`}>
@@ -1111,7 +1226,7 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
                           <div className="ui-category-manager__row">
                             <div>
                               <span className="ui-category-manager__kind">{isParent ? 'Parent' : 'Child'}</span>
-                              <strong>{categoryPath(category)}</strong>
+                              <CategoryNameWithParent category={category} />
                               <span>{Math.round(match.score * 100)}% match{category.description ? ` · ${category.description}` : ''}</span>
                             </div>
                             {isParent ? (

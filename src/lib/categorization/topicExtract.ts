@@ -14,6 +14,8 @@ import {
 import type { AiCategory, ProposedCategoryDraft, TopicExtractDecision } from './types';
 import { TOPIC_FEW_SHOT } from './topicFewShot';
 
+export const TOPIC_NO_MATCH = 'NO_MATCH';
+
 export function topicExtractBatchSize(leafCount: number, requested = 20): number {
   if (leafCount > 34) return Math.min(requested, 8);
   if (leafCount > 28) return Math.min(requested, 12);
@@ -194,8 +196,11 @@ export function buildTopicExtractPrompt(
   requireAssignment = false
 ): string {
   const catalogMarkdown = formatGroupedCatalogMarkdown(topicCatalog);
-  const matchExamples = TOPIC_FEW_SHOT.map((example) => ({
-    semanticAnalysis: 'semanticAnalysis' in example
+  const matchExamples: Array<{
+    semanticAnalysis: Record<string, unknown>;
+    taxonomyMatch: Record<string, unknown>;
+  }> = TOPIC_FEW_SHOT.map((example) => ({
+    semanticAnalysis: ('semanticAnalysis' in example && example.semanticAnalysis
       ? example.semanticAnalysis
       : {
           semanticLabel: example.title,
@@ -214,9 +219,36 @@ export function buildTopicExtractPrompt(
               )
               ? 'dead_or_error'
               : 'substantive',
-        },
-    taxonomyMatch: example.output,
+        }) as Record<string, unknown>,
+    taxonomyMatch: { matchStatus: 'MATCH', ...example.output },
   }));
+  matchExamples.push({
+    semanticAnalysis: {
+      semanticLabel: 'Competitive memory sculpture',
+      primarySubject: 'A new participatory art practice with no matching taxonomy domain',
+      likelySavePurpose: 'Revisit the rules and examples for this practice',
+      contentKind: 'event explainer',
+      secondaryThemes: [],
+      freeTopics: ['memory sculpture', 'participatory competition'],
+      evidence: 'The page documents competitions involving physical memory sculptures.',
+      contentState: 'substantive',
+    },
+    taxonomyMatch: {
+      matchStatus: TOPIC_NO_MATCH,
+      skip: false,
+      topicIds: [],
+      topicPaths: [],
+      primaryParentId: undefined,
+      parentCandidates: [],
+      novelTopicSuggestion: {
+        name: 'Competitive memory sculpture',
+        description: 'Participatory competitions involving physical memory sculptures.',
+        canonicalTags: ['memory-sculpture', 'participatory-art'],
+      },
+      confidence: 0.86,
+      reason: 'No existing parent has a defensible semantic fit.',
+    },
+  });
   const rules = [
     'The semantic pass already described each item without taxonomy influence. Match that analysis; do not reinterpret isolated words.',
     ...TOPIC_CATALOG_RULES,
@@ -237,7 +269,7 @@ export function buildTopicExtractPrompt(
     'The primary topicPath leaf must be under primaryParentId, and primaryParentId must be the first parentCandidates entry.',
     'Use judgment: if the item clearly belongs to a parent domain, pick the best leaf — specific if it fits, otherwise that parent\'s *-general. Do NOT force-fit unrelated categories.',
     'If a parent fits but no specific leaf fits, use that parent\'s *-general leaf.',
-    'If no parent has a defensible semantic fit, leave topicIds empty and return exactly one novelTopicSuggestion in the free topic\'s own words. Do not force-fit.',
+    `If no parent has a defensible semantic fit, return matchStatus: "${TOPIC_NO_MATCH}", leave topicIds empty, and return exactly one novelTopicSuggestion in the free topic\'s own words. Do not force-fit.`,
     'A novelTopicSuggestion is recorded as evidence only. Classify never creates it; clustered Discover decides later whether it deserves a category.',
     'Dead links: 404/5xx/placeholder → link-quality; never generic-low-signal for those (use page-not-found or placeholder-junk).',
     'Return one result object per item in items[] — same itemId, no omissions.',
@@ -273,6 +305,7 @@ export function buildTopicExtractPrompt(
       results: [
         {
           itemId: 'string — must match every item above',
+          matchStatus: 'MATCH or NO_MATCH',
           skip: false,
           topicIds: ['leafId from catalog', 'max 3'],
           topicPaths: [['parentId', 'leafId']],
@@ -305,6 +338,41 @@ export function topicRowToDecision(
     return { itemId, decisionType: 'none', confidence, reason, needsReclassify: false, status: 'ok' };
   }
 
+  const proposedList = Array.isArray(raw.proposed) ? raw.proposed : [];
+  const p = (raw.novelTopicSuggestion ?? proposedList[0] ?? raw.proposedCategory) as Record<string, unknown> | undefined;
+  let proposal: ProposedCategoryDraft | undefined;
+  if (p && typeof p === 'object' && typeof p.name === 'string' && p.name.trim()) {
+    const canonicalTags = Array.isArray(p.canonicalTags)
+      ? (p.canonicalTags as string[])
+          .map((t) => (typeof t === 'string' ? normalizeTag(t) : null))
+          .filter((t): t is string => Boolean(t))
+          .slice(0, 6)
+      : [];
+    proposal = {
+      name: p.name.trim().slice(0, 120),
+      description: (typeof p.description === 'string' ? p.description : '').trim().slice(0, 300),
+      canonicalTags: canonicalTags.length ? canonicalTags : ['misc'],
+      parentId: typeof p.parentId === 'string' ? p.parentId : undefined,
+    };
+  }
+
+  const explicitNoMatch =
+    raw.matchStatus === TOPIC_NO_MATCH ||
+    raw.match === TOPIC_NO_MATCH ||
+    raw.noMatch === true;
+  if (explicitNoMatch) {
+    return {
+      itemId,
+      decisionType: 'none',
+      proposedCategory: proposal,
+      novelTopicSuggestion: proposal,
+      confidence,
+      reason,
+      needsReclassify: false,
+      status: 'ok',
+    };
+  }
+
   const topicIds = resolveTopicAssignments(
     raw as { topicPaths?: string[][]; topicIds?: string[]; categoryIds?: string[] },
     categoryIds,
@@ -322,33 +390,44 @@ export function topicRowToDecision(
     };
   }
 
-  const proposedList = Array.isArray(raw.proposed) ? raw.proposed : [];
-  const p = (raw.novelTopicSuggestion ?? proposedList[0] ?? raw.proposedCategory) as Record<string, unknown> | undefined;
-  if (p && typeof p === 'object' && typeof p.name === 'string' && p.name.trim()) {
-    const canonicalTags = Array.isArray(p.canonicalTags)
-      ? (p.canonicalTags as string[])
-          .map((t) => (typeof t === 'string' ? normalizeTag(t) : null))
-          .filter((t): t is string => Boolean(t))
-          .slice(0, 6)
-      : [];
-    const draft: ProposedCategoryDraft = {
-      name: p.name.trim().slice(0, 120),
-      description: (typeof p.description === 'string' ? p.description : '').trim().slice(0, 300),
-      canonicalTags: canonicalTags.length ? canonicalTags : ['misc'],
-      parentId: typeof p.parentId === 'string' ? p.parentId : undefined,
-    };
+  if (proposal) {
     return {
       itemId,
-      decisionType: 'new_category',
-      proposedCategory: draft,
+      decisionType: 'none',
+      proposedCategory: proposal,
+      novelTopicSuggestion: proposal,
       confidence,
       reason,
-      needsReclassify: true,
+      needsReclassify: false,
       status: 'ok',
     };
   }
 
   return { itemId, decisionType: 'none', confidence, reason, needsReclassify: false, status: 'ok' };
+}
+
+/** Convert taxonomy-free analysis into durable proposal evidence after a rejected match. */
+export function novelTopicSuggestionFromDecision(
+  decision: Pick<
+    TopicExtractDecision,
+    'novelTopicSuggestion' | 'proposedCategory' | 'semanticLabel' | 'primarySubject' |
+    'semanticEvidence' | 'freeTopics'
+  >
+): ProposedCategoryDraft | undefined {
+  if (decision.novelTopicSuggestion?.name.trim()) return decision.novelTopicSuggestion;
+  if (decision.proposedCategory?.name.trim()) return decision.proposedCategory;
+  const name = decision.semanticLabel?.trim() || decision.freeTopics?.[0]?.trim() || decision.primarySubject?.trim();
+  if (!name) return undefined;
+  const canonicalTags = [...new Set(
+    (decision.freeTopics ?? [])
+      .map((topic) => normalizeTag(topic))
+      .filter((topic): topic is string => Boolean(topic))
+  )].slice(0, 6);
+  return {
+    name: name.slice(0, 120),
+    description: decision.semanticEvidence?.trim().slice(0, 300),
+    canonicalTags: canonicalTags.length ? canonicalTags : ['misc'],
+  };
 }
 
 async function callFreeTopicExtractBatch(
@@ -407,7 +486,7 @@ export async function callTopicExtractBatch(
           {
             role: 'system',
             content:
-              'You match an independent bookmark-purpose analysis to an existing two-level taxonomy (JSON only). Primary classification answers why the user would retrieve this exact link, using explicit intent first and inferred save purpose second; incidental themes do not outrank the saved object. Rank plausible parents, then choose a leaf under the best-fitting parent. Prefer specific leaves over *-general. If no parent fits, return one novelTopicSuggestion; never force-fit or create taxonomy. link-quality removal: 404, 5xx, example.com, fetch fail. Login walls → login-auth-required (attention, not removal). Never link-quality when the analysis has a real subject. Adult → adult-erotic-content.' +
+              `You match an independent bookmark-purpose analysis to an existing two-level taxonomy (JSON only). Primary classification answers why the user would retrieve this exact link, using explicit intent first and inferred save purpose second; incidental themes do not outrank the saved object. Rank plausible parents, then choose a leaf under the best-fitting parent. Prefer specific leaves over *-general. If no parent fits, return matchStatus: "${TOPIC_NO_MATCH}" plus one novelTopicSuggestion; never force-fit or create taxonomy. link-quality removal: 404, 5xx, example.com, fetch fail. Login walls → login-auth-required (attention, not removal). Never link-quality when the analysis has a real subject. Adult → adult-erotic-content.` +
               (requireAssignment
                 ? ' These inputs are eligible: every result MUST assign a valid existing leaf or record one novelTopicSuggestion; empty/skip is invalid and force-fitting is forbidden.'
                 : ''),
@@ -593,7 +672,10 @@ export async function resolveTopicExtractBatchWithRetry(
   let pending = await runBatch(batchItems.filter((item) => analyses.has(item.itemId)));
 
   const declined = batchItems.filter(
-    (item) => decisions.get(item.itemId)?.decisionType === 'none'
+    (item) => {
+      const decision = decisions.get(item.itemId);
+      return decision?.decisionType === 'none' && !decision.proposedCategory;
+    }
   );
   if (declined.length > 0) {
     for (const item of declined) decisions.delete(item.itemId);
