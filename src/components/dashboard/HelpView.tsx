@@ -195,12 +195,13 @@ export const HELP_TOPICS: HelpTopic[] = [
           { icon: Search, term: 'Home · Search', description: <>Search without leaving the current Home context. Search state is retained when you return to Overview.</> },
           { icon: Tags, term: 'Home · Categories', description: <>Browse topical AI categories across All Library or the current project. Select several categories to show items that belong to any selected topic.</> },
           { icon: BookMarked, term: 'Library', description: <>Browse the full catalog with All items, Links, Notes, Favorites &amp; pins, and Workspace views.</> },
-          { icon: PanelLeft, term: 'Inspector / Item', description: <>Selecting an item opens its editable details. <strong>Add to workspace…</strong> files it into a working set without leaving the page; use <strong>View workspace</strong> in that picker only when you want to navigate there.</> },
+          { icon: PanelLeft, term: 'Inspector / Item', description: <>Selecting an item updates the shared Inspector without navigating. The selection follows you when a page restores its open detail. Categories appear before the bounded, scrollable summary; <strong>Add to workspace…</strong> files the item without leaving the page.</> },
         ]} />
         <ul>
           <li>Use the context row to switch between <strong>All Library</strong> and recently used projects.</li>
           <li>Use list/gallery view for density, then use the local filter to narrow the visible list without leaving it.</li>
           <li>Click the displayed URL to visit a page. Clicking elsewhere on an item row selects it instead.</li>
+          <li>The Inspector shows up to three compact category assignments initially. Use <strong>More</strong> to review the rest inside its bounded category list.</li>
         </ul>
       </>
     ),
@@ -319,7 +320,7 @@ export const HELP_TOPICS: HelpTopic[] = [
             <>Review detected format, valid/invalid rows, duplicates, and the proposed destination. Inbox / Incoming is the safe default.</>,
             <>Filter and select the rows you actually want, then commit them to the database.</>,
             <>After the bookmarks are saved, choose whether to run enrichment. Importing and AI processing are separate decisions.</>,
-            <>Read the completion report for imported, merged, skipped, restored, or failed rows.</>,
+            <>Read the completion report for imported, merged, skipped, restored, unavailable, or incomplete rows. A mixed result is an informational completion report, not a failed import.</>,
           ]} />
         <Callout tone="success" title="Saved before optional AI">
           A processing cancellation keeps database work already committed. Verify the report rather than assuming every selected row ran through AI.
@@ -361,23 +362,28 @@ export const HELP_TOPICS: HelpTopic[] = [
     title: 'Enrichment, classification, and AI categories',
     summary: 'Inspect what happened, understand what is suggested, and rerun only the scope you intend.',
     icon: Workflow,
-    keywords: ['enrichment', 'pipeline', 'fetch', 'browser tab', 'authenticated', 'resume', 'cancel', 'sleep', 'ai', 'embed', 'classification', 'taxonomy', 'status', 'retry', 'discover'],
+    keywords: ['enrichment', 'pipeline', 'fetch', 'fetch v2', 'legacy', 'browser tab', 'authenticated', 'resume', 'cancel', 'sleep', 'ai', 'embed', 'classification', 'taxonomy', 'status', 'retry', 'discover', 'no match', 'suggested topic', 'category manager'],
     content: (
       <>
         <DefinitionGrid entries={[
           { icon: Workflow, term: 'Shared job', description: <>Import, Enrichment, the side panel, and item actions submit to the same background pipeline. Pages observe jobs; they do not run separate copies.</> },
-          { icon: ExternalLink, term: 'Browser-first fetch', description: <>Homebase first reads the rendered page through an authenticated browser tab, so signed-in content can be captured. Temporary fetch tabs open inactive in the job's dashboard window and close after use.</> },
+          { icon: ExternalLink, term: 'Fetch service v2', description: <>The default acquisition service collects bounded candidates from the signed-in Chrome page and applicable local document, structured, site-aware, or public readers, then keeps the strongest useful result. Single and bulk jobs use this same service. Legacy remains selectable in Settings for temporary comparison or rollback.</> },
           { icon: ShieldCheck, term: 'Durable progress', description: <>Navigation, refresh, another dashboard, sleep, or an extension restart does not erase completed stages. Resume continues pending work instead of starting the batch at item one.</> },
           { icon: Workflow, term: 'Enrichment review', description: <>Inspect fetch and AI quality, failures, raw/extracted content, and the next available action.</> },
           { icon: Tags, term: 'Classification review', description: <>Review readiness, blockers, assigned categories, and suggested categories before reruns.</> },
           { icon: FolderTree, term: 'AI categories', description: <>The library-wide topics used by classification. <strong>All categories</strong> shows every group and category; these remain separate from your manual collections.</> },
+          { icon: Search, term: 'Two classification signals', description: <>A purpose-aware LLM and a local exact embedding comparison contribute independently. Strong results are combined additively; rerunning does not erase an accepted category merely because a later pass omits it.</> },
+          { icon: HelpCircle, term: 'No matching category', description: <>If no existing parent topic is defensible, Homebase leaves the item unassigned and stores its free-form topic as review evidence. It remains eligible for Discover and category management instead of being forced into an unrelated General category.</> },
         ]} />
         <ul>
-          <li>For PDFs, Homebase downloads bytes through the signed-in tab and extracts text locally. It does not depend on scraping Chrome's PDF viewer.</li>
+          <li>For local and remote PDFs, Fetch v2 transfers document bytes in bounded chunks and extracts text locally. It does not depend on scraping Chrome's PDF viewer.</li>
+          <li>Authenticated browser capture reads the rendered page without activating temporary tabs in your current work. Applicable readers can run as independent candidates; one broken adapter must not discard useful generic page text.</li>
           <li><strong>Fetched</strong> means useful page text was saved. <strong>Enriched</strong> means later AI work also succeeded. Missing, invalid, rate-limited, or out-of-credit AI settings do not discard a successful fetch.</li>
           <li>Click a status badge for item-specific meaning and suggested next steps.</li>
           <li>Use per-item actions while diagnosing; use selected/bulk actions only after confirming their scope and expected AI cost.</li>
-          <li>Suggested categories are not assigned categories. Accept/reject signals should remain visible and distinct.</li>
+          <li>A full single-item job runs its own scoped Discover/classify sequence. A bulk job completes fetch/AI and embedding waves, runs Discover once for the submitted scope, then classifies each eligible item once against that settled taxonomy.</li>
+          <li>Suggested categories are not assigned categories. Accept, reject, remove, choose a primary, or open <strong>Manage</strong> to search existing parents/children and create a missing structure. Changes are additive and item-local rejection does not suppress a category globally.</li>
+          <li>A <strong>Suggested topic · no existing category matched</strong> message is evidence, not an assignment. Review it in the same full category manager from the Inspector or side panel.</li>
           <li>Cancel or closing the job's owner dashboard stops at a safe stage boundary; completed writes are retained. Resume binds the job to an open dashboard and continues what remains.</li>
         </ul>
         <Callout title="Failures are stage-specific">
@@ -424,13 +430,13 @@ export const HELP_TOPICS: HelpTopic[] = [
     title: 'Settings, shortcuts, and troubleshooting',
     summary: 'Adjust appearance, configure optional AI, move quickly, and collect useful evidence when something fails.',
     icon: Settings,
-    keywords: ['settings', 'theme', 'font', 'shortcut', 'keyboard', 'troubleshoot', 'console', 'reload', 'api key'],
+    keywords: ['settings', 'theme', 'font', 'shortcut', 'keyboard', 'troubleshoot', 'console', 'reload', 'api key', 'fetch v2', 'legacy fetch'],
     content: (
       <>
         <h3>Settings</h3>
         <ul>
           <li><strong>General:</strong> dashboard theme, font size, and browser Home/New Tab guidance.</li>
-          <li><strong>AI &amp; processing:</strong> provider, model routing, API key, and a test prompt. AI is optional and user-triggered. If a key is missing or the provider rejects a request (authentication, credits, rate limit, timeout, network, or model/server error), the initiating view explains the failure; successful fetched text remains available to keyword search.</li>
+          <li><strong>AI &amp; processing:</strong> provider, model routing, API key, fetch-service selector, and a test prompt. Fetch v2 is the default; Legacy remains available as a deliberate rollback choice. AI is optional and user-triggered. If a key is missing or the provider rejects a request (authentication, credits, rate limit, timeout, network, or model/server error), the initiating view explains the failure; successful fetched text remains available to keyword search.</li>
           <li><strong>Backup &amp; restore:</strong> folder health, mirror status, snapshots, restore, and conflict choices.</li>
           <li><strong>Advanced:</strong> taxonomy repair and diagnostics. Use destructive controls only after reading their confirmation.</li>
         </ul>

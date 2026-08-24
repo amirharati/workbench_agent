@@ -189,6 +189,30 @@ export function loadRestoredBrowseItemId(
   ).selectedItemId;
 }
 
+export function resolveBrowseContextSelectedItemId(
+  activeView: DashboardView,
+  restoredItemId: string | null,
+  currentItemId: string | null
+): string | null {
+  // Library and Notes can be restored synchronously from their shared page
+  // state. Other browse surfaces own richer local selection state and publish
+  // it after mounting; clearing here can race that publication and leave a
+  // visible detail pane disconnected from the shell Inspector.
+  return activeView === 'bookmarks' || activeView === 'notes'
+    ? restoredItemId
+    : currentItemId;
+}
+
+export function resolveInspectorItemFromSources(
+  itemId: string | null,
+  items: Item[],
+  resolvedItem: Item | null
+): Item | null {
+  if (!itemId) return null;
+  return items.find((item) => item.id === itemId) ??
+    (resolvedItem?.id === itemId ? resolvedItem : null);
+}
+
 interface DashboardLayoutProps {
   windows: WindowGroup[];
   projects: Project[];
@@ -373,8 +397,13 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
   useEffect(() => {
     if (previousBrowseContextRef.current === browseContextKey) return;
     previousBrowseContextRef.current = browseContextKey;
-    setSelectedBrowseItemId(
-      loadRestoredBrowseItemId(activeView, scopeProjectId, scopeCollectionId)
+    const restoredItemId = loadRestoredBrowseItemId(
+      activeView,
+      scopeProjectId,
+      scopeCollectionId
+    );
+    setSelectedBrowseItemId((currentItemId) =>
+      resolveBrowseContextSelectedItemId(activeView, restoredItemId, currentItemId)
     );
   }, [activeView, browseContextKey, scopeCollectionId, scopeProjectId]);
 
@@ -1497,22 +1526,25 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   const [inspectorResolvedItem, setInspectorResolvedItem] = React.useState<Item | null>(null);
   const [inspectorItemLoading, setInspectorItemLoading] = React.useState(false);
+  const [inspectorLookupItemId, setInspectorLookupItemId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!inspectorItemId) {
       setInspectorResolvedItem(null);
       setInspectorItemLoading(false);
+      setInspectorLookupItemId(null);
       return;
     }
     const fromList = items.find((i) => i.id === inspectorItemId);
     if (fromList) {
-      setInspectorResolvedItem(fromList);
       setInspectorItemLoading(false);
+      setInspectorLookupItemId(inspectorItemId);
       return;
     }
     let cancelled = false;
     setInspectorResolvedItem(null);
     setInspectorItemLoading(true);
+    setInspectorLookupItemId(inspectorItemId);
     void getItem(inspectorItemId)
       .then((item) => {
         if (!cancelled) setInspectorResolvedItem(item ?? null);
@@ -1525,9 +1557,16 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     };
   }, [inspectorItemId, items]);
 
-  const inspectorItem = inspectorResolvedItem?.id === inspectorItemId
-    ? inspectorResolvedItem
-    : null;
+  const inspectorItem = resolveInspectorItemFromSources(
+    inspectorItemId,
+    items,
+    inspectorResolvedItem
+  );
+  const inspectorSelectionLoading = Boolean(
+    inspectorItemId &&
+    !inspectorItem &&
+    (inspectorLookupItemId !== inspectorItemId || inspectorItemLoading)
+  );
   const inspectorWorkspaceAction = inspectorItem ? (
     <WorkspaceDestinationPicker
       item={inspectorItem}
@@ -1929,7 +1968,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
         {!isFullPageView && (
           <RightPanel
             activeItem={inspectorItem}
-            activeItemLoading={inspectorItemLoading}
+            activeItemLoading={inspectorSelectionLoading}
             aiSettings={aiSettings}
             scopeProjectId={scopeProjectId}
             scopeCollectionId={scopeCollectionId}

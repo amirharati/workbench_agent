@@ -20,8 +20,13 @@ describe('HelpView', () => {
     expect(markup).toContain('Backup, restore, and recovery');
     expect(markup).toContain('workbench.sqlite');
     expect(markup).toContain('workbench-content.sqlite');
-    expect(markup).toContain('Browser-first fetch');
+    expect(markup).toContain('Fetch service v2');
     expect(markup).toContain('Durable progress');
+    expect(markup).toContain('Two classification signals');
+    expect(markup).toContain('No matching category');
+    expect(markup).toContain('Suggested topic · no existing category matched');
+    expect(markup).toContain('A mixed result is an informational completion report');
+    expect(markup).toContain('Use <strong>More</strong>');
     expect(markup).toContain('Copy, move, remove, and restore');
     expect(markup).not.toContain('Drag the horizontal divider');
     expect(markup).not.toContain('tab strip appears at the bottom of Home');
@@ -33,6 +38,11 @@ describe('HelpView', () => {
     expect(filterHelpTopics('dropbox').map((topic) => topic.id)).toEqual(['first-run']);
     expect(filterHelpTopics('named workspace').map((topic) => topic.id)).toContain('workspaces-tabs');
     expect(filterHelpTopics('Safety recovery').map((topic) => topic.id)).toContain('backup-restore');
+    expect(filterHelpTopics('no match').map((topic) => topic.id)).toContain('enrichment');
+    expect(filterHelpTopics('legacy fetch').map((topic) => topic.id)).toEqual(expect.arrayContaining([
+      'enrichment',
+      'settings-shortcuts',
+    ]));
     expect(filterHelpTopics('no-such-help-topic')).toEqual([]);
     expect(filterHelpTopics('')).toBe(HELP_TOPICS);
   });

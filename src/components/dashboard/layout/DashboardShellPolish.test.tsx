@@ -13,10 +13,13 @@ import {
   isFullMiddleDashboardView,
   isFullPageDashboardView,
   loadRestoredBrowseItemId,
+  resolveBrowseContextSelectedItemId,
+  resolveInspectorItemFromSources,
   resolveRememberedProjectCollection,
   resolveShellInspectorItemId,
 } from './DashboardLayout';
 import { SHELL_LAYOUT_DEFAULTS } from '../../../lib/shell/shellLayoutState';
+import type { Item } from '../../../lib/db';
 
 describe('dashboard shell polish contracts', () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -170,6 +173,31 @@ describe('dashboard shell polish contracts', () => {
     expect(loadRestoredBrowseItemId('bookmarks', 'all', 'all')).toBe('restored-item');
     expect(loadRestoredBrowseItemId('pipeline', 'all', 'all')).toBeNull();
     localStorage.clear();
+  });
+
+  it('does not clear a locally restored Home selection during shell navigation sync', () => {
+    expect(resolveBrowseContextSelectedItemId('home', null, 'visible-home-item'))
+      .toBe('visible-home-item');
+    expect(resolveBrowseContextSelectedItemId('pipeline', null, 'visible-hub-item'))
+      .toBe('visible-hub-item');
+    expect(resolveBrowseContextSelectedItemId('bookmarks', null, 'stale-library-item'))
+      .toBeNull();
+  });
+
+  it('resolves an in-memory selected item synchronously before async lookup effects', () => {
+    const selected = {
+      id: 'selected-item',
+      title: 'Selected',
+      url: 'https://example.com/selected',
+    } as Item;
+    const stale = {
+      id: 'stale-item',
+      title: 'Stale',
+      url: 'https://example.com/stale',
+    } as Item;
+
+    expect(resolveInspectorItemFromSources(selected.id, [selected], stale)).toBe(selected);
+    expect(resolveInspectorItemFromSources(selected.id, [], stale)).toBeNull();
   });
 
   it('shows a loading state instead of a false empty Inspector for a restored item', () => {
