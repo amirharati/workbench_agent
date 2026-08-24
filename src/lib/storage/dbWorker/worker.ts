@@ -61,6 +61,7 @@ import {
   listRecoverablePipelineJobs,
   listVisiblePipelineJobs,
   recoverExpiredPipelineTasks,
+  requeuePipelineTaskForRuntimeRestart,
   acknowledgePipelinePause,
   requestPipelineCancellation,
   requestPipelinePause,
@@ -169,6 +170,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'pipelineClaimNextTask',
   'pipelineHeartbeatTask',
   'pipelineFinishTask',
+  'pipelineRequeueTaskForRuntimeRestart',
   'pipelineYieldJob',
   'pipelineCommitEmbeddingSignals',
   'pipelineCommitClassification',
@@ -649,6 +651,11 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
       return finishPipelineTask(
         await getPipelineDatabase(),
         args[0] as Parameters<typeof finishPipelineTask>[1]
+      );
+    case 'pipelineRequeueTaskForRuntimeRestart':
+      return requeuePipelineTaskForRuntimeRestart(
+        await getPipelineDatabase(),
+        args[0] as Parameters<typeof requeuePipelineTaskForRuntimeRestart>[1]
       );
     case 'pipelineYieldJob':
       return yieldPipelineJob(

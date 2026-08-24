@@ -8,11 +8,12 @@ const OFFSCREEN_URL = 'offscreen.html';
 // Must match the DB and content worker protocol in src/offscreen/offscreen.ts.
 // A mismatch makes each newly started service worker tear down the otherwise
 // valid offscreen owner, which is especially disruptive during extension reloads.
-const DB_OWNER_PROTOCOL_VERSION = 26;
+const DB_OWNER_PROTOCOL_VERSION = 27;
 const PIPELINE_RECOVERY_ALARM = 'pipeline-recovery-wake';
 const PIPELINE_JOB_HOSTS_KEY = 'pipelineJobHosts';
 let offscreenCreating = null;
 let offscreenProtocolVerified = false;
+let offscreenVerifiedGeneration = null;
 const browserFetchService = globalThis.HomebaseBrowserFetchService.createBrowserFetchService(chrome);
 const acquisitionV2BrowserService = globalThis.HomebaseAcquisitionV2BrowserService.createAcquisitionV2BrowserService(chrome);
 const pipelineJobHosts = new Map();
@@ -108,7 +109,18 @@ async function getOffscreenContexts() {
   return (await chrome.offscreen.hasDocument()) ? [{ documentUrl: OFFSCREEN_URL }] : [];
 }
 
-async function probeDbOwnerProtocol() {
+async function readCurrentOffscreenGeneration() {
+  const documentUrl = chrome.runtime.getURL(OFFSCREEN_URL);
+  const response = await fetch(documentUrl, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`Could not read current offscreen runtime (${response.status})`);
+  const html = await response.text();
+  const moduleScript = html.match(/<script\b[^>]*\btype=["']module["'][^>]*>/i)?.[0];
+  const src = moduleScript?.match(/\bsrc=["']([^"']+)["']/i)?.[1];
+  if (!src) throw new Error('Current offscreen runtime entry was not found');
+  return new URL(src, documentUrl).href;
+}
+
+async function probeDbOwnerProtocol(expectedGeneration) {
   let timeoutId;
   try {
     const response = await Promise.race([
@@ -123,8 +135,19 @@ async function probeDbOwnerProtocol() {
         );
       }),
     ]);
-    if (response?.version === DB_OWNER_PROTOCOL_VERSION) {
+    if (
+      response?.version === DB_OWNER_PROTOCOL_VERSION &&
+      (!expectedGeneration || response?.generation === expectedGeneration)
+    ) {
       return { status: 'current', response };
+    }
+    if (
+      response?.version === DB_OWNER_PROTOCOL_VERSION &&
+      expectedGeneration &&
+      response?.generation !== expectedGeneration &&
+      typeof response?.pipelineActiveJobId === 'string'
+    ) {
+      return { status: 'stale-active', response };
     }
     if (
       typeof response?.version === 'number' &&
@@ -141,13 +164,14 @@ async function probeDbOwnerProtocol() {
   }
 }
 
-async function waitForCurrentDbOwnerProtocol() {
+async function waitForCurrentDbOwnerProtocol(expectedGeneration) {
   let mismatchSignature = null;
   let mismatchConfirmations = 0;
   for (const waitMs of OFFSCREEN_PROTOCOL_PROBE_DELAYS_MS) {
     if (waitMs > 0) await delay(waitMs);
-    const probe = await probeDbOwnerProtocol();
+    const probe = await probeDbOwnerProtocol(expectedGeneration);
     if (probe.status === 'current') return { status: 'current', probe };
+    if (probe.status === 'stale-active') return { status: 'stale-active', probe };
     if (probe.status === 'mismatch') {
       const signature = `${probe.response.coreVersion}:${probe.response.contentVersion}`;
       if (signature === mismatchSignature) mismatchConfirmations += 1;
@@ -170,16 +194,28 @@ async function waitForOffscreenClose() {
   throw new Error('Offscreen owner did not finish closing');
 }
 
-async function ensureOffscreenDocument() {
+async function ensureOffscreenDocument(options = {}) {
   if (offscreenCreating) return offscreenCreating;
   offscreenCreating = (async () => {
     const existingContexts = await getOffscreenContexts();
     if (existingContexts.length > 0) {
-      if (offscreenProtocolVerified) return;
-      const protocol = await waitForCurrentDbOwnerProtocol();
+      if (offscreenProtocolVerified && !options.verifyGeneration) return;
+      const expectedGeneration = options.verifyGeneration
+        ? await readCurrentOffscreenGeneration()
+        : null;
+      if (
+        offscreenProtocolVerified &&
+        expectedGeneration &&
+        offscreenVerifiedGeneration === expectedGeneration
+      ) return;
+      const protocol = await waitForCurrentDbOwnerProtocol(expectedGeneration);
       if (protocol.status === 'current') {
         offscreenProtocolVerified = true;
+        offscreenVerifiedGeneration = protocol.probe.response?.generation ?? expectedGeneration;
         return;
+      }
+      if (protocol.status === 'stale-active') {
+        throw new Error('The previous processing runtime is finishing a durable stage; retry shortly');
       }
       if (protocol.status !== 'mismatch') {
         // A retained owner may still be loading or being invalidated by Chrome.
@@ -191,6 +227,7 @@ async function ensureOffscreenDocument() {
       await chrome.offscreen.closeDocument();
       await waitForOffscreenClose();
       offscreenProtocolVerified = false;
+      offscreenVerifiedGeneration = null;
     }
     await notifyDbOwnerLost();
     await chrome.offscreen.createDocument({
@@ -198,7 +235,8 @@ async function ensureOffscreenDocument() {
       reasons: ['WORKERS'],
       justification: 'Shared core SQLite, folder content-store, and pipeline workers',
     });
-    const createdProtocol = await waitForCurrentDbOwnerProtocol();
+    const expectedGeneration = await readCurrentOffscreenGeneration();
+    const createdProtocol = await waitForCurrentDbOwnerProtocol(expectedGeneration);
     if (createdProtocol.status !== 'current') {
       throw new Error(
         createdProtocol.status === 'mismatch'
@@ -207,12 +245,50 @@ async function ensureOffscreenDocument() {
       );
     }
     offscreenProtocolVerified = true;
+    offscreenVerifiedGeneration = createdProtocol.probe.response?.generation ?? expectedGeneration;
   })();
   try {
     await offscreenCreating;
   } finally {
     offscreenCreating = null;
   }
+}
+
+async function restartOffscreenPipelineRuntime() {
+  if (offscreenCreating) await offscreenCreating;
+  offscreenCreating = (async () => {
+    if ((await getOffscreenContexts()).length > 0) {
+      await chrome.offscreen.closeDocument();
+      await waitForOffscreenClose();
+    }
+    offscreenProtocolVerified = false;
+    offscreenVerifiedGeneration = null;
+    await notifyDbOwnerLost();
+    await chrome.offscreen.createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['WORKERS'],
+      justification: 'Replace stale processing runtime and resume durable pipeline work',
+    });
+    const expectedGeneration = await readCurrentOffscreenGeneration();
+    const createdProtocol = await waitForCurrentDbOwnerProtocol(expectedGeneration);
+    if (createdProtocol.status !== 'current') {
+      throw new Error('Replacement processing runtime did not become ready');
+    }
+    offscreenProtocolVerified = true;
+    offscreenVerifiedGeneration = createdProtocol.probe.response?.generation ?? expectedGeneration;
+  })();
+  try {
+    await offscreenCreating;
+  } finally {
+    offscreenCreating = null;
+  }
+  await loadPipelineJobHosts();
+  const response = await chrome.runtime.sendMessage({
+    target: 'pipeline-offscreen-owner',
+    action: 'recover',
+    hostedJobIds: [...pipelineJobHosts.keys()],
+  });
+  if (response?.active) armPipelineRecoveryAlarm();
 }
 
 // Contextual panels are presentation state only. Database, content, and pipeline
@@ -605,7 +681,7 @@ function armPipelineRecoveryAlarm() {
 }
 
 async function wakePipelineCoordinator() {
-  await ensureOffscreenDocument();
+  await ensureOffscreenDocument({ verifyGeneration: true });
   await loadPipelineJobHosts();
   const response = await chrome.runtime.sendMessage({
     target: 'pipeline-offscreen-owner',
@@ -645,6 +721,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     armPipelineRecoveryAlarm();
     sendResponse({ ok: true });
     return false;
+  }
+  if (message?.type === 'pipeline-runtime-restart-required') {
+    void restartOffscreenPipelineRuntime()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => {
+        console.error('[pipeline] runtime replacement failed:', error);
+        armPipelineRecoveryAlarm();
+        sendResponse({ ok: false, error: String(error) });
+      });
+    return true;
   }
   if (message?.target === 'db-owner' || message?.target === 'content-owner') {
     return false;
@@ -750,7 +836,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target === 'pipeline-offscreen') {
     (async () => {
       try {
-        await ensureOffscreenDocument();
+        const verifiesGeneration = ['start-job', 'resume', 'recover'].includes(message.action);
+        await ensureOffscreenDocument({ verifyGeneration: verifiesGeneration });
         const ownerTabId = sender.tab?.id;
         const ownerWindowId = sender.tab?.windowId;
         const forwarded = message.action === 'start-job'

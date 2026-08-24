@@ -1938,6 +1938,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
             recentQueries={activeSearch.state.recentQueries}
             currentSearchQuery={activeSearch.state.query}
             onRerunSearch={handleRerunSearch}
+            onBrowseCategory={handleBrowseCategory}
             onOpenItemInTab={activeView === 'home' || isSearchSurface ? handleAddItemToWorkspace : undefined}
             workspaceAction={inspectorWorkspaceAction}
             renderWorkspaceActionForItem={renderSimilarWorkspaceAction}

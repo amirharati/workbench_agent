@@ -8,22 +8,46 @@ import { useToast } from '../ToastContainer';
 
 export type CategoryReviewFeedback = (message: string, type: 'success' | 'error') => void;
 
-export function CategoryChip({ label, muted }: { label: string; muted?: boolean }) {
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        padding: '2px 8px',
-        borderRadius: 999,
-        border: '1px solid var(--border)',
-        background: muted ? 'transparent' : 'var(--accent-weak)',
-        color: muted ? 'var(--text-faint)' : 'var(--accent)',
-        fontSize: 'var(--text-xs)',
-      }}
-    >
-      {label}
-    </span>
-  );
+export function CategoryChip({
+  label,
+  muted,
+  onClick,
+  title,
+}: {
+  label: string;
+  muted?: boolean;
+  onClick?: () => void;
+  title?: string;
+}) {
+  const style = {
+    display: 'inline-flex',
+    padding: '2px 8px',
+    borderRadius: 999,
+    border: '1px solid var(--border)',
+    background: muted ? 'transparent' : 'var(--accent-weak)',
+    color: muted ? 'var(--text-faint)' : 'var(--accent)',
+    fontSize: 'var(--text-xs)',
+  } as const;
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={title ?? `View all bookmarks in ${label}`}
+        style={{
+          ...style,
+          font: 'inherit',
+          lineHeight: 1.35,
+          cursor: 'pointer',
+        }}
+      >
+        {label}
+      </button>
+    );
+  }
+
+  return <span style={style}>{label}</span>;
 }
 
 function ReviewActionButton({

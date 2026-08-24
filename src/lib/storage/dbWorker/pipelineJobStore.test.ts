@@ -8,6 +8,7 @@ import {
   finishPipelineTask,
   getPipelineJobSnapshot,
   recoverExpiredPipelineTasks,
+  requeuePipelineTaskForRuntimeRestart,
   requestPipelinePause,
   requestPipelineCancellation,
   resumePipelineJob,
@@ -151,6 +152,42 @@ describe('durable pipeline job store', () => {
     });
     expect(committed.accepted).toBe(true);
     expect(claimNextPipelineTask(db, 'owner-a', 5_000, 400)?.task.stage).toBe('fetch');
+  });
+
+  it('requeues only the interrupted stage when the coordinator runtime changes', () => {
+    submitPipelineJob(db, {
+      id: 'runtime-job',
+      dedupeKey: 'runtime:item-1',
+      action: 'full_digest_v2',
+      source: 'sidebar',
+      itemIds: ['item-1'],
+      stages: ['enrich', 'embed', 'classify', 'finalize'],
+      now: 100,
+    });
+    const enrich = claimNextPipelineTask(db, 'old-runtime', 5_000, 200, 'runtime-job')!;
+    finishPipelineTask(db, {
+      jobId: 'runtime-job', itemId: 'item-1', stage: 'enrich', ownerId: 'old-runtime',
+      jobLeaseEpoch: enrich.jobLeaseEpoch, taskLeaseEpoch: enrich.taskLeaseEpoch,
+      outcome: 'completed', resultRef: 'enrich:ok:processed', now: 201,
+    });
+    const embed = claimNextPipelineTask(db, 'old-runtime', 5_000, 300, 'runtime-job')!;
+
+    const requeued = requeuePipelineTaskForRuntimeRestart(db, {
+      jobId: 'runtime-job', itemId: 'item-1', stage: 'embed', ownerId: 'old-runtime',
+      jobLeaseEpoch: embed.jobLeaseEpoch, taskLeaseEpoch: embed.taskLeaseEpoch,
+      error: 'Failed to fetch dynamically imported module: old-chunk.js', now: 301,
+    });
+
+    expect(requeued.accepted).toBe(true);
+    expect(requeued.snapshot?.job.status).toBe('queued');
+    expect(requeued.snapshot?.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: 'enrich', status: 'completed', result_ref: 'enrich:ok:processed' }),
+      expect.objectContaining({ stage: 'embed', status: 'pending' }),
+      expect.objectContaining({ stage: 'classify', status: 'pending' }),
+      expect.objectContaining({ stage: 'finalize', status: 'pending' }),
+    ]));
+    expect(claimNextPipelineTask(db, 'new-runtime', 5_000, 400, 'runtime-job')?.task.stage)
+      .toBe('embed');
   });
 
   it('can restrict a claim to the accepted job', () => {

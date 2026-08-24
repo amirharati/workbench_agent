@@ -20,6 +20,8 @@ type ProtocolReply = {
   version: number;
   coreVersion?: number;
   contentVersion?: number;
+  generation?: string;
+  pipelineActiveJobId?: string | null;
 };
 
 function loadServiceWorker(options: {
@@ -29,6 +31,8 @@ function loadServiceWorker(options: {
 }) {
   let offscreenExists = true;
   let created = false;
+  const currentOffscreenGeneration =
+    'chrome-extension://test-extension/assets/offscreen-current.js';
   const runtimeListeners: Array<(
     message: Record<string, unknown>,
     sender: Record<string, unknown>,
@@ -86,10 +90,22 @@ function loadServiceWorker(options: {
     Object.assign(sessionValues, values);
   });
   const runtimeSendMessage = vi.fn(async (message: Record<string, unknown>) => {
-    if (message.target === 'db-owner-control') return options.protocolReply(created);
+    if (message.target === 'db-owner-control') {
+      return {
+        generation: currentOffscreenGeneration,
+        ...(await options.protocolReply(created)),
+      };
+    }
     if (message.target === 'db-owner') return { id: message.id, ok: true, result: 'pong' };
+    if (message.target === 'pipeline-offscreen-owner') return { ok: true, active: false };
     return undefined;
   });
+  const fetchRuntime = vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    text: async () =>
+      '<script type="module" crossorigin src="./assets/offscreen-current.js"></script>',
+  }));
 
   const event = () => ({ addListener: vi.fn() });
   const chrome = {
@@ -169,8 +185,8 @@ function loadServiceWorker(options: {
       }),
     },
   };
-  const evaluate = new Function('chrome', 'importScripts', 'globalThis', source);
-  evaluate(chrome, () => {}, isolatedGlobal);
+  const evaluate = new Function('chrome', 'importScripts', 'globalThis', 'fetch', source);
+  evaluate(chrome, () => {}, isolatedGlobal, fetchRuntime);
 
   async function pingDbOwner(): Promise<unknown> {
     const listener = runtimeListeners[0];
@@ -208,6 +224,36 @@ function loadServiceWorker(options: {
     });
   }
 
+  async function startPipelineJob(): Promise<unknown> {
+    const listener = runtimeListeners[0];
+    return new Promise((resolve, reject) => {
+      const handled = listener(
+        {
+          target: 'pipeline-offscreen',
+          action: 'start-job',
+          requestId: 'pipeline-test',
+          itemIds: ['item-1'],
+          options: {},
+        },
+        { tab: { id: 1, windowId: 1 } },
+        resolve
+      );
+      if (handled !== true) reject(new Error('Pipeline request was not handled asynchronously'));
+    });
+  }
+
+  async function requestPipelineRuntimeRestart(): Promise<unknown> {
+    const listener = runtimeListeners[0];
+    return new Promise((resolve, reject) => {
+      const handled = listener(
+        { type: 'pipeline-runtime-restart-required', requestId: 'pipeline-test' },
+        {},
+        resolve
+      );
+      if (handled !== true) reject(new Error('Runtime restart was not handled asynchronously'));
+    });
+  }
+
   return {
     actionClickedListeners,
     closeDocument,
@@ -221,6 +267,8 @@ function loadServiceWorker(options: {
     pingDbOwner,
     requestBrowserExtract,
     requestBrowserPdf,
+    startPipelineJob,
+    requestPipelineRuntimeRestart,
     runtimeSendMessage,
     sessionSet,
     sessionValues,
@@ -228,6 +276,7 @@ function loadServiceWorker(options: {
     setBadgeText,
     getSidePanelOptions,
     setPanelBehavior,
+    fetchRuntime,
     setSidePanelOptions,
     sidePanelClosedListeners,
     sidePanelOpenedListeners,
@@ -251,6 +300,61 @@ describe('service-worker owner lifecycle', () => {
     await expect(worker.pingDbOwner()).resolves.toMatchObject({ ok: true, result: 'pong' });
     expect(worker.closeDocument).not.toHaveBeenCalled();
     expect(worker.createDocument).not.toHaveBeenCalled();
+  });
+
+  it('replaces an idle retained owner from an older built module generation before a new job', async () => {
+    const worker = loadServiceWorker({
+      protocolReply: (created) => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+        generation: created
+          ? 'chrome-extension://test-extension/assets/offscreen-current.js'
+          : 'chrome-extension://test-extension/assets/offscreen-old.js',
+        pipelineActiveJobId: null,
+      }),
+    });
+
+    await expect(worker.startPipelineJob()).resolves.toMatchObject({ ok: true });
+    expect(worker.closeDocument).toHaveBeenCalledTimes(1);
+    expect(worker.createDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not interrupt an active durable stage solely to replace its runtime generation', async () => {
+    const worker = loadServiceWorker({
+      protocolReply: () => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+        generation: 'chrome-extension://test-extension/assets/offscreen-old.js',
+        pipelineActiveJobId: 'active-job',
+      }),
+    });
+
+    await expect(worker.startPipelineJob()).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining('finishing a durable stage'),
+    });
+    expect(worker.closeDocument).not.toHaveBeenCalled();
+    expect(worker.createDocument).not.toHaveBeenCalled();
+  });
+
+  it('replaces the coordinator and asks the fresh runtime to recover a safely requeued stage', async () => {
+    const worker = loadServiceWorker({
+      protocolReply: () => ({
+        version: currentProtocolVersion,
+        coreVersion: currentProtocolVersion,
+        contentVersion: currentProtocolVersion,
+      }),
+    });
+
+    await expect(worker.requestPipelineRuntimeRestart()).resolves.toMatchObject({ ok: true });
+    expect(worker.closeDocument).toHaveBeenCalledTimes(1);
+    expect(worker.createDocument).toHaveBeenCalledTimes(1);
+    expect(worker.runtimeSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      target: 'pipeline-offscreen-owner',
+      action: 'recover',
+    }));
   });
 
   it('replaces an explicitly incompatible owner once', async () => {

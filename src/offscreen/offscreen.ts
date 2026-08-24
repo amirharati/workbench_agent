@@ -21,7 +21,10 @@ import { wouldMirrorShrinkWorkbenchSqlite } from '../lib/folderMirrorGuard';
 import { syncClock } from '../lib/time/clock';
 import { markDbOwnerReady, setLocalDbRpcTransport } from '../lib/storage/dbClient';
 import { setLocalContentRpcTransport } from '../lib/storage/content/contentClient';
-import { installOffscreenPipelineHost } from '../lib/pipeline/offscreenPipelineHost';
+import {
+  getActivePipelineJobId,
+  installOffscreenPipelineHost,
+} from '../lib/pipeline/offscreenPipelineHost';
 import { DB_OWNER_PROTOCOL_VERSION } from '../lib/storage/dbOwnerProtocol';
 
 void syncClock();
@@ -420,6 +423,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             : 0,
         coreVersion,
         contentVersion,
+        generation: import.meta.url,
+        pipelineActiveJobId: getActivePipelineJobId(),
       }))
       .catch((error) => sendResponse({
         version: 0,

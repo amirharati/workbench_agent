@@ -21,6 +21,7 @@ interface InspectorTabProps {
   currentQuery?: string;
   recentQueries?: string[];
   onRerunSearch?: (query: string) => void;
+  onBrowseCategory?: (categoryId: string, name: string) => void;
   onOpenItemInTab?: (item: Item) => void;
   workspaceAction?: React.ReactNode;
   renderWorkspaceActionForItem?: (itemId: string, title: string) => React.ReactNode;
@@ -187,19 +188,19 @@ function SearchInspectorChrome({
 function ItemInspectorBody({
   item,
   isSearchSurface,
-  enrichmentPrimaryInItemTab = false,
   recentQueries,
   currentQuery,
   onRerunSearch,
+  onBrowseCategory,
   workspaceAction,
   renderWorkspaceActionForItem,
 }: {
   item: Item;
   isSearchSurface: boolean;
-  enrichmentPrimaryInItemTab?: boolean;
   recentQueries: string[];
   currentQuery?: string;
   onRerunSearch?: (query: string) => void;
+  onBrowseCategory?: (categoryId: string, name: string) => void;
   workspaceAction?: React.ReactNode;
   renderWorkspaceActionForItem?: (itemId: string, title: string) => React.ReactNode;
 }) {
@@ -211,7 +212,7 @@ function ItemInspectorBody({
     similarError,
     reload,
   } = useInspectorItemData(item.id);
-  const [summaryOpen, setSummaryOpen] = useState(!enrichmentPrimaryInItemTab);
+  const [summaryOpen, setSummaryOpen] = useState(true);
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const badge = context ? resolvePipelineBadge(context) : null;
   const failureLabel = context?.enrichment
@@ -220,11 +221,19 @@ function ItemInspectorBody({
   const stageHint = context ? formatPipelineStageHint(context) : undefined;
 
   useEffect(() => {
-    setSummaryOpen(!enrichmentPrimaryInItemTab);
+    setSummaryOpen(true);
     setManageCategoriesOpen(false);
-  }, [item.id, enrichmentPrimaryInItemTab]);
+  }, [item.id]);
 
-  const hasEnrichment = Boolean(context?.summary || (context?.keyPoints.length ?? 0) > 0);
+  const enrichmentTags = context
+    ? [...(context.enrichment?.aiTags ?? []), ...(context.item.tags ?? [])]
+    : [];
+  const hasEnrichment = Boolean(
+    context?.summary ||
+    enrichmentTags.length > 0 ||
+    (context?.keyPoints.length ?? 0) > 0 ||
+    (context?.references.length ?? 0) > 0
+  );
 
   return (
     <>
@@ -312,54 +321,7 @@ function ItemInspectorBody({
 
       {!loading && context && (
         <>
-          {hasEnrichment && (
-            <>
-              <button
-                type="button"
-                onClick={() => setSummaryOpen((v) => !v)}
-                style={{
-                  all: 'unset',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 600,
-                  color: 'var(--text-muted)',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.4,
-                }}
-              >
-                {summaryOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                AI summary
-              </button>
-              {!summaryOpen && enrichmentPrimaryInItemTab && (
-                <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--text-faint)', lineHeight: 1.5 }}>
-                  Full summary and key points are in the item tab.
-                </p>
-              )}
-              {summaryOpen && (
-                <EnrichmentContent
-                  summary={context.summary}
-                  keyPoints={context.keyPoints}
-                  references={context.references}
-                  compact
-                  showKeyPoints={!enrichmentPrimaryInItemTab}
-                />
-              )}
-            </>
-          )}
-
-          {!hasEnrichment && (
-            <EnrichmentContent
-              summary={context.summary}
-              keyPoints={context.keyPoints}
-              references={context.references}
-              compact
-            />
-          )}
-
-          <section>
+          <section className="ui-inspector__categories">
             <div
               style={{
                 display: 'flex',
@@ -403,7 +365,13 @@ function ItemInspectorBody({
                 {context.acceptedLinks.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
                     {context.acceptedLinks.map((l) => (
-                      <CategoryChip key={`a-${l.categoryId}`} label={l.name} />
+                      <CategoryChip
+                        key={`a-${l.categoryId}`}
+                        label={l.name}
+                        onClick={onBrowseCategory
+                          ? () => onBrowseCategory(l.categoryId, l.name)
+                          : undefined}
+                      />
                     ))}
                   </div>
                 )}
@@ -423,6 +391,48 @@ function ItemInspectorBody({
               </>
             )}
           </section>
+
+          {hasEnrichment ? (
+            <section className="ui-inspector__summary">
+              <button
+                type="button"
+                className="ui-inspector__summary-toggle"
+                aria-expanded={summaryOpen}
+                onClick={() => setSummaryOpen((v) => !v)}
+              >
+                <span>
+                  {summaryOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  AI summary
+                </span>
+                {summaryOpen ? <small>Scrollable</small> : null}
+              </button>
+              {summaryOpen ? (
+                <div className="scrollbar ui-inspector__summary-content" tabIndex={0} aria-label="AI summary content">
+                  <EnrichmentContent
+                    summary={context.summary}
+                    tags={enrichmentTags}
+                    keyPoints={context.keyPoints}
+                    references={context.references}
+                    compact
+                    showKeyPoints
+                  />
+                </div>
+              ) : null}
+            </section>
+          ) : (
+            <section className="ui-inspector__summary ui-inspector__summary--empty">
+              <div className="ui-inspector__summary-heading">AI summary</div>
+              <div className="scrollbar ui-inspector__summary-content" tabIndex={0} aria-label="AI summary content">
+                <EnrichmentContent
+                  summary={context.summary}
+                  tags={enrichmentTags}
+                  keyPoints={context.keyPoints}
+                  references={context.references}
+                  compact
+                />
+              </div>
+            </section>
+          )}
 
         </>
       )}
@@ -467,10 +477,10 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
   activeItem,
   activeItemLoading = false,
   isSearchSurface = false,
-  enrichmentPrimaryInItemTab = false,
   currentQuery,
   recentQueries = [],
   onRerunSearch,
+  onBrowseCategory,
   workspaceAction,
   renderWorkspaceActionForItem,
 }) => {
@@ -516,10 +526,10 @@ export const InspectorTab: React.FC<InspectorTabProps> = ({
     <ItemInspectorBody
       item={activeItem!}
       isSearchSurface={isSearchSurface}
-      enrichmentPrimaryInItemTab={enrichmentPrimaryInItemTab}
       recentQueries={recentQueries}
       currentQuery={currentQuery}
       onRerunSearch={onRerunSearch}
+      onBrowseCategory={onBrowseCategory}
       workspaceAction={workspaceAction}
       renderWorkspaceActionForItem={renderWorkspaceActionForItem}
     />

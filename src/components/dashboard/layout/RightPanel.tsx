@@ -27,6 +27,7 @@ interface RightPanelProps {
   recentQueries?: string[];
   currentSearchQuery?: string;
   onRerunSearch?: (query: string) => void;
+  onBrowseCategory?: (categoryId: string, name: string) => void;
   onOpenItemInTab?: (item: Item) => void;
   workspaceAction?: React.ReactNode;
   renderWorkspaceActionForItem?: (itemId: string, title: string) => React.ReactNode;
@@ -53,6 +54,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   recentQueries,
   currentSearchQuery,
   onRerunSearch,
+  onBrowseCategory,
   onOpenItemInTab,
   workspaceAction,
   renderWorkspaceActionForItem,
@@ -119,6 +121,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 currentQuery={currentSearchQuery}
                 recentQueries={recentQueries}
                 onRerunSearch={onRerunSearch}
+                onBrowseCategory={onBrowseCategory}
                 onOpenItemInTab={onOpenItemInTab}
                 workspaceAction={workspaceAction}
                 renderWorkspaceActionForItem={renderWorkspaceActionForItem}

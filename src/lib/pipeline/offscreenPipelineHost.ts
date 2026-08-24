@@ -49,6 +49,10 @@ let activeJobId: string | null = null;
 const ownerId = `pipeline-coordinator:${crypto.randomUUID()}`;
 const LEASE_LOST_REASON = 'pipeline-lease-lost';
 
+export function getActivePipelineJobId(): string | null {
+  return activeJobId;
+}
+
 function broadcastProgress(
   requestId: string,
   progress: PipelineOffscreenProgressEvent['progress']
@@ -251,6 +255,20 @@ async function executeQueuedJob(entry: QueuedPipelineJob): Promise<'yielded' | '
       shouldYieldAfterStage: () => hasHigherPriorityWaiting(entry),
       shouldPauseAfterStage: () => pauseRequestedJobs.has(jobId),
     }));
+    if (execution.runtimeRestartRequired) {
+      broadcastProgress(jobId, {
+        phase: 'prep',
+        label: 'Updating the processing runtime, then resuming from the last completed step…',
+        current: execution.snapshot.job.completed_items,
+        total: Math.max(execution.snapshot.job.total_items, 1),
+      });
+      armRecoveryWake();
+      chrome.runtime.sendMessage({
+        type: 'pipeline-runtime-restart-required',
+        requestId: jobId,
+      }).catch(() => {});
+      return 'finished';
+    }
     if (execution.paused) {
       pauseRequestedJobs.delete(jobId);
       broadcastProgress(jobId, {

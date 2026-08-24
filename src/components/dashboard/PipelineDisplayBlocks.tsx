@@ -27,6 +27,7 @@ export const ListPipelineBadge: React.FC<{ badge?: PipelineBadge | null }> = ({ 
 
 interface EnrichmentContentProps {
   summary?: string;
+  tags?: string[];
   keyPoints: string[];
   references?: EnrichmentReference[];
   compact?: boolean;
@@ -37,6 +38,7 @@ interface EnrichmentContentProps {
 
 export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
   summary,
+  tags = [],
   keyPoints,
   references = [],
   compact,
@@ -44,10 +46,16 @@ export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
   showKeyPoints = true,
   showReferences = true,
 }) => {
+  const visibleTags = [...new Map(
+    tags
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+      .map((tag) => [tag.toLocaleLowerCase(), tag] as const)
+  ).values()];
   const visibleKeyPoints = showKeyPoints ? keyPoints : [];
   const visibleReferences = showReferences ? references : [];
 
-  if (!summary && visibleKeyPoints.length === 0 && visibleReferences.length === 0) {
+  if (!summary && visibleTags.length === 0 && visibleKeyPoints.length === 0 && visibleReferences.length === 0) {
     return (
       <div
         style={{
@@ -81,6 +89,33 @@ export const EnrichmentContent: React.FC<EnrichmentContentProps> = ({
           >
             {summary}
           </p>
+        </div>
+      )}
+      {visibleTags.length > 0 && (
+        <div>
+          <SectionLabel>Tags</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            {visibleTags.map((tag) => (
+              <span
+                key={tag.toLocaleLowerCase()}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  minWidth: 0,
+                  padding: '2px 7px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 999,
+                  background: 'var(--bg)',
+                  color: 'var(--text-muted)',
+                  fontSize: 'var(--text-xs)',
+                  lineHeight: 1.35,
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
         </div>
       )}
       {visibleKeyPoints.length > 0 && (

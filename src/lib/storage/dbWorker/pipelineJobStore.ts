@@ -525,6 +525,65 @@ export function finishPipelineTask(
 }
 
 /**
+ * A long-lived extension context can outlive a rebuilt set of hashed JS chunks.
+ * Dynamic-module load failures happen before the requested module executes, so
+ * the currently claimed stage is safe to retry under a fresh coordinator. Keep
+ * all earlier durable stage commits and revoke both fenced leases atomically.
+ */
+export function requeuePipelineTaskForRuntimeRestart(
+  db: Database,
+  input: {
+    jobId: string;
+    itemId: string;
+    stage: string;
+    ownerId: string;
+    jobLeaseEpoch: number;
+    taskLeaseEpoch: number;
+    error?: string;
+    now?: number;
+  }
+): { accepted: boolean; snapshot: PipelineJobSnapshot | null } {
+  const now = input.now ?? Date.now();
+  return transaction(db, () => {
+    const task = one<PipelineTaskRow>(
+      db,
+      `SELECT * FROM pipeline_tasks
+       WHERE job_id = ? AND item_id = ? AND stage = ? AND status = 'running'
+         AND lease_owner = ? AND lease_epoch = ?;`,
+      [input.jobId, input.itemId, input.stage, input.ownerId, input.taskLeaseEpoch]
+    );
+    const job = one<PipelineJobRow>(
+      db,
+      `SELECT * FROM pipeline_jobs
+       WHERE id = ? AND status IN ('running', 'pause_requested')
+         AND lease_owner = ? AND lease_epoch = ? AND cancel_requested_at IS NULL;`,
+      [input.jobId, input.ownerId, input.jobLeaseEpoch]
+    );
+    if (!task || !job) {
+      return { accepted: false, snapshot: getPipelineJobSnapshot(db, input.jobId) };
+    }
+
+    db.exec({
+      sql: `UPDATE pipeline_tasks
+            SET status = 'pending', lease_owner = NULL, lease_expires_at = NULL,
+                lease_epoch = lease_epoch + 1, started_at = NULL, finished_at = NULL,
+                result_ref = NULL, last_error = NULL, updated_at = ?
+            WHERE job_id = ? AND item_id = ? AND stage = ?;`,
+      bind: [now, input.jobId, input.itemId, input.stage],
+    });
+    db.exec({
+      sql: `UPDATE pipeline_jobs
+            SET status = 'queued', lease_owner = NULL, lease_expires_at = NULL,
+                lease_epoch = lease_epoch + 1, heartbeat_at = NULL,
+                finished_at = NULL, last_error = NULL, updated_at = ?
+            WHERE id = ?;`,
+      bind: [now, input.jobId],
+    });
+    return { accepted: true, snapshot: getPipelineJobSnapshot(db, input.jobId) };
+  });
+}
+
+/**
  * Cooperatively release a job between durable stages so the coordinator can run a
  * higher-priority job. No task is interrupted and every completed stage stays
  * committed. The fenced job lease is revoked before the job returns to queue.

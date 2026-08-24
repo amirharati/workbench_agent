@@ -66,8 +66,20 @@ export type DurablePipelineRunResult = {
   snapshot: PipelineJobSnapshot;
   yielded: boolean;
   paused?: boolean;
+  /** The claimed stage was safely requeued because this JS generation vanished. */
+  runtimeRestartRequired?: boolean;
   result?: BatchDigestResult;
 };
+
+export function isRuntimeModuleLoadError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('failed to fetch dynamically imported module') ||
+    normalized.includes('error loading dynamically imported module') ||
+    normalized.includes('importing a module script failed') ||
+    normalized.includes('chunkloaderror') ||
+    (normalized.includes('loading chunk') && normalized.includes('failed'));
+}
 
 function abortError(): DOMException {
   return new DOMException('Cancelled', 'AbortError');
@@ -514,6 +526,24 @@ export async function runDurablePipelineJob(
     } catch (error) {
       if (input.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
         throw abortError();
+      }
+      if (isRuntimeModuleLoadError(error) && claim.task.attempts <= 2) {
+        const requeued = await dbRpc<{ accepted: boolean; snapshot: PipelineJobSnapshot | null }>(
+          'pipelineRequeueTaskForRuntimeRestart',
+          [{
+            ...leaseInput,
+            error: error instanceof Error ? error.message : String(error),
+          }],
+          { priority: 'high' }
+        );
+        if (requeued.accepted && requeued.snapshot) {
+          finalSnapshot = requeued.snapshot;
+          return {
+            snapshot: requeued.snapshot,
+            yielded: false,
+            runtimeRestartRequired: true,
+          };
+        }
       }
       const failedStage = await dbRpc<{ accepted: boolean; snapshot: PipelineJobSnapshot | null }>(
         'pipelineFinishTask',

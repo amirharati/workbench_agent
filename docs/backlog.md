@@ -87,6 +87,13 @@ Condensed from `docs/old/` (`backlog.md`, `dashboard_backlog*.md`, `STATUS_REVIE
   removes an active category merely because a later LLM run omits it. Design a separate, explicit
   pruning pass with provenance/support counts, repeated negative evidence, ancestor-General
   suppression, search weighting, review UI, and an absolute lock on user-accepted categories.
+- [ ] **Post-V3 metric-classifier/index upgrade — explicit carry-forward:** V3 uses exact worker-owned
+  category-profile scoring plus bounded accepted-example neighbors, with no new dependency. After dogfood,
+  benchmark 20k/100k libraries behind `SimilarityIndex`; evaluate a maintained browser-WASM ANN backend,
+  multiple prototypes/medoids for multimodal categories, calibrated per-category thresholds/ensemble weights,
+  quantization/batched scoring, canonical category aliases/merge, and richer reviewed positive/negative evidence.
+  SQLite remains authoritative and every ANN index must be disposable/rebuildable. Master plan:
+  [`CATEGORY_CLASSIFICATION_PLAN.md`](CATEGORY_CLASSIFICATION_PLAN.md).
 
 **Data integrity — automated file backup** — design: [`DATA_BACKUP_AND_INTEGRITY.md`](DATA_BACKUP_AND_INTEGRITY.md)
 
