@@ -36,6 +36,32 @@ function putTopicParent(store: SqliteStore): void {
   });
 }
 
+function putLinkQualityParent(store: SqliteStore): void {
+  store.putCategory({
+    id: 'link-quality',
+    name: 'Link quality & attention',
+    kind: 'parent',
+    status: 'approved',
+    assignable: false,
+    created_at: 1,
+    updated_at: 1,
+  });
+}
+
+function linkQualityCategory(id: string): AiCategory {
+  return {
+    id,
+    name: id,
+    kind: 'leaf',
+    status: 'approved',
+    assignable: true,
+    parentId: 'link-quality',
+    parentName: 'Link quality & attention',
+    created_at: 1,
+    updated_at: 1,
+  };
+}
+
 function link(
   categoryId: string,
   overrides: Partial<ReturnType<SqliteStore['getLinksByItem']>[number]> = {}
@@ -397,6 +423,90 @@ describe('pipeline stage signal ownership', () => {
     expect(store.getLinksByItem('item-1')[0]?.status).toBe('rejected');
     expect(store.getSignal('item-1')?.classifyState).toBe('pending_discover');
     expect(store.getSignal('item-1')?.llmReview?.categoryIds).toEqual([]);
+    db.close();
+  });
+
+  it('replaces active AI failure categories when a topical classification succeeds', async () => {
+    const sqlite = await initSqlite3();
+    const db = new sqlite.oo1.DB();
+    db.exec('PRAGMA foreign_keys = ON;');
+    initSchema(db, 8);
+    db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
+    const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putTopicParent(store);
+    putLinkQualityParent(store);
+    store.putCategory(linkQualityCategory('seed_enrich-fetch-failed'));
+    store.putCategory(linkQualityCategory('seed_generic-low-signal'));
+    store.putCategory(linkQualityCategory('seed_page-not-found'));
+    store.putSignal(signal({
+      classifyState: 'classified_removal',
+      llmReview: { decisionType: 'existing', categoryIds: ['seed_enrich-fetch-failed'] },
+    }));
+    store.putLink(link('seed_enrich-fetch-failed'));
+    store.putLink(link('seed_generic-low-signal', {
+      status: 'accepted',
+      isPrimary: false,
+    }));
+    store.putLink(link('seed_page-not-found', {
+      status: 'rejected',
+      isPrimary: false,
+    }));
+
+    commitClassificationInStore(store, {
+      categories: [category('video-education')],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [link('video-education', { updated_at: 4 })],
+        signal: signal({
+          classifyState: 'classified',
+          llmReview: { decisionType: 'existing', categoryIds: ['video-education'] },
+        }),
+      }],
+    });
+
+    const links = store.getLinksByItem('item-1');
+    expect(links.find((row) => row.categoryId === 'seed_enrich-fetch-failed')).toBeUndefined();
+    expect(links.find((row) => row.categoryId === 'seed_generic-low-signal')).toBeUndefined();
+    expect(links.find((row) => row.categoryId === 'seed_page-not-found')?.status).toBe('rejected');
+    expect(links.find((row) => row.categoryId === 'video-education')?.isPrimary).toBe(true);
+    expect(store.getSignal('item-1')?.classifyState).toBe('classified');
+    db.close();
+  });
+
+  it('clears a resolved failure assignment before a replacement category exists', async () => {
+    const sqlite = await initSqlite3();
+    const db = new sqlite.oo1.DB();
+    db.exec('PRAGMA foreign_keys = ON;');
+    initSchema(db, 8);
+    db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://example.com', 1, 1)");
+    const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putLinkQualityParent(store);
+    store.putCategory(linkQualityCategory('seed_enrich-fetch-failed'));
+    store.putSignal(signal({
+      classifyState: 'classified_removal',
+      llmReview: { decisionType: 'existing', categoryIds: ['seed_enrich-fetch-failed'] },
+    }));
+    store.putLink(link('seed_enrich-fetch-failed'));
+
+    commitClassificationInStore(store, {
+      categories: [],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        removeResolvedLinkQuality: true,
+        links: [],
+        signal: signal({
+          classifyState: 'pending_classify',
+          discoverState: 'none',
+          llmReview: undefined,
+          lastClassifiedAt: undefined,
+        }),
+      }],
+    });
+
+    expect(store.getLinksByItem('item-1')).toEqual([]);
+    expect(store.getSignal('item-1')?.classifyState).toBe('pending_classify');
     db.close();
   });
 });

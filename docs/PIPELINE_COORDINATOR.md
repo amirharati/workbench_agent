@@ -149,6 +149,17 @@ Unexpected model proposals can resolve only to an already-existing exact leaf or
 result is persisted, a taxonomy-wide parent-consistency check rejects a selected parent with no item evidence when
 another seeded parent has direct evidence. Discover is the sole owner of taxonomy growth.
 
+The same durable Classify stage also runs an independent local metric classifier. The DB worker exactly compares
+the stored item vector with every compatible topical category definition/member/prototype profile, then builds a
+bounded disposable exact top-K shard from manually accepted examples belonging to the strongest profile candidates.
+It returns decomposed definition, aggregate, and neighbor evidence rather than one opaque score. A deterministic
+resolver unions strong metric suggestions with the LLM leaves: agreement strengthens the result, compatible broad
+and narrow leaves may coexist, and a metric-specific leaf may repair an LLM General fallback. The LLM still sees
+the complete taxonomy and is never restricted to the metric shortlist. Metric/profile unavailability does not fail
+LLM classification, and an LLM provider failure does not erase a valid strong metric result. Both inputs and the
+ensemble decision are retained in the existing classification review JSON; the DB worker commits the additive links
+once through the same fenced classification transaction.
+
 Stage-only actions use the same engine:
 
 - `reextract -> embed -> classify -> finalize`
@@ -168,8 +179,9 @@ Manual taxonomy management uses the same additive evidence model but does not ru
 classification path. Taxonomy and Inspector open one shared category manager; the page submits a command and
 the core DB worker atomically creates/attaches a category or updates an item/category link. User-created
 categories are `manual`, user attachments are accepted evidence, and making a category primary only demotes
-the old primary—it does not delete other active categories. Remove/Reject persists a rejected link so a later
-stochastic classify run cannot silently resurrect it. Classify may record a one-item novel-topic draft, but it
+the old primary—it does not delete other active categories. Remove/Reject persists an item-category rejected link
+so neither classifier can silently resurrect that pair; the category remains fully eligible for every other
+bookmark. Classify may record a one-item novel-topic draft, but it
 never creates that category automatically; the user can review the draft in the same manager, while automatic
 taxonomy growth remains owned by clustered Discover.
 

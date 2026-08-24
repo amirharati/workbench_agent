@@ -35,6 +35,21 @@ const hangukPrepared = prepareExtractInput(
 );
 assert(!hangukPrepared.shouldSkip, 'HangukQuant should not skip LLM');
 
+const acceptedBodyWithChromeWords = `# Account access research
+
+This article studies how sign in systems affect authenticated research workflows.
+Sign in to reproduce the experiment with account-specific material.`;
+const acceptedPrepared = prepareExtractInput(
+  'Account access research',
+  acceptedBodyWithChromeWords,
+  'article'
+);
+assert(!acceptedPrepared.shouldSkip, 'substantive account-access article should be accepted');
+assert(
+  acceptedPrepared.body === acceptedBodyWithChromeWords,
+  'accepted AI body must preserve lines that chrome heuristics inspect'
+);
+
 assert(hasXExtractSignal(SYNDICATION_IMAGE_ONLY), 'syndication image-only has signal');
 assert(isTrulyEmptyExtractInput('', undefined, 'x'), 'blank X is empty');
 assert(isTrulyEmptyExtractInput('   ', 'Welcome', 'article'), 'chrome-only article empty');

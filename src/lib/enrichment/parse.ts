@@ -23,24 +23,23 @@ export function parseFetchedContent(
   parsedTitle?: string
 ): ParsedEnrichment {
   const title = parsedTitle || extractMarkdownTitle(markdown);
-  let snippet = '';
+  // The selected fetch candidate is already the canonical content evidence.
+  // Normalize only transport whitespace. Source-aware helpers may observe the
+  // body to add structured hints, but must never replace, filter, or shrink it.
+  let snippet = normalizeFetchedBody(markdown);
   let quotedText: string | undefined;
   let quotedAuthor: string | undefined;
   let channel: string | undefined;
   let description: string | undefined;
 
   if (sourceKind === 'x') {
-    const x = parseXContent(markdown);
-    snippet = x.combined;
+    const x = parseXMetadata(markdown);
     quotedText = x.quotedText;
     quotedAuthor = x.quotedAuthor;
   } else if (sourceKind === 'video') {
-    const v = parseVideoContent(markdown, title);
-    snippet = v.snippet;
+    const v = parseVideoMetadata(markdown);
     channel = v.channel;
     description = v.description;
-  } else {
-    snippet = extractArticleBody(markdown);
   }
 
   if (!snippet.trim()) {
@@ -69,41 +68,21 @@ function extractMarkdownTitle(md: string): string | undefined {
   return undefined;
 }
 
-function extractArticleBody(md: string): string {
-  const skipLine = (line: string): boolean => {
-    const t = line.trim();
-    if (!t) return false;
-    const lower = t.toLowerCase();
-    if (/^!\[/.test(t)) return true;
-    if (/^https?:\/\//.test(t) && t.length < 120) return true;
-    if (/sign in|log in|subscribe to|accept cookies|cookie policy|privacy policy/i.test(lower)) {
-      return true;
-    }
-    if (/^#{1,3}\s+(menu|navigation|footer|related|comments)\b/i.test(t)) return true;
-    return false;
-  };
-
-  const lines = md.split('\n');
-  const body: string[] = [];
-  let pastTitle = false;
-  for (const line of lines) {
-    if (!pastTitle && /^#\s+/.test(line)) {
-      pastTitle = true;
-      continue;
-    }
-    if (skipLine(line)) continue;
-    body.push(line);
-  }
-  return body.join('\n').trim();
+function normalizeFetchedBody(markdown: string): string {
+  return markdown
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, ''))
+    .join('\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
 }
 
-function parseXContent(md: string): {
-  combined: string;
+function parseXMetadata(md: string): {
   quotedText?: string;
   quotedAuthor?: string;
 } {
   const lines = md.split('\n');
-  const blocks: string[] = [];
   let quotedText: string | undefined;
   let quotedAuthor: string | undefined;
   let parentHandle: string | undefined;
@@ -187,16 +166,10 @@ function parseXContent(md: string): {
     }
   }
 
-  for (const line of lines) {
-    if (line.trim() && !line.startsWith('![')) blocks.push(line);
-  }
-
-  const combined = blocks.join('\n').trim();
-  return { combined, quotedText, quotedAuthor };
+  return { quotedText, quotedAuthor };
 }
 
-function parseVideoContent(md: string, title?: string): {
-  snippet: string;
+function parseVideoMetadata(md: string): {
   channel?: string;
   description?: string;
 } {
@@ -214,10 +187,7 @@ function parseVideoContent(md: string, title?: string): {
     description = lines.slice(bodyStart, bodyStart + 8).join(' ').slice(0, 2000);
   }
 
-  const parts = [title, channel, description].filter(Boolean) as string[];
-  const snippet = parts.length > 0 ? parts.join('\n\n') : extractArticleBody(md);
-
-  return { snippet, channel, description };
+  return { channel, description };
 }
 
 export function snippetIsUseful(snippet: string, localBundle: string): boolean {

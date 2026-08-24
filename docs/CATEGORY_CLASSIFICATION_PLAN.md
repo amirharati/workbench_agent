@@ -1,7 +1,8 @@
 # Dual-signal category classification
 
-Status: V3 implementation plan agreed on 2026-08-23. This document is the durable source of truth for the
-classification work; live bugs and acceptance evidence remain tracked in `V3_RELEASE_ISSUES.md`.
+Status: V3 exact-classifier implementation completed on 2026-08-23; live acceptance remains. This document is
+the durable source of truth for the classification work; live bugs and acceptance evidence remain tracked in
+`V3_RELEASE_ISSUES.md`.
 
 ## Goal
 
@@ -61,10 +62,11 @@ separately retained measurements:
   category-profile candidates. Use a small top-neighbor aggregate rather than one maximum so a single bad
   attachment cannot dominate.
 
-Profile ranking is exact across all categories. Example ranking reuses the current worker similarity-index
-interface and is bounded for bulk safety; it must never hydrate vectors into a dashboard tab. The first
-implementation records raw component scores and support counts so thresholds can be evaluated rather than hidden
-inside one opaque number.
+Profile ranking is exact across all categories. Example ranking uses the current worker similarity-index interface
+to build a bounded disposable shard containing only the current item and recent manually accepted examples for the
+strongest profile candidates. It therefore never warms the full-library index on the pipeline critical path and
+never hydrates vectors into a dashboard tab. The first implementation records raw component scores and support
+counts so thresholds can be evaluated rather than hidden inside one opaque number.
 
 ### Deterministic ensemble
 
@@ -80,8 +82,9 @@ call, produces the final additive suggestion set:
 - existing accepted categories remain locked, existing active suggestions are not deleted by omission, and at
   most the product's bounded number of new suggestions is committed per run.
 
-Initial thresholds and component weights are configuration constants covered by fixtures. They are accepted only
-after the evaluation corpus demonstrates useful separation; they must not be tuned to one Airbnb example.
+Initial conservative thresholds and component weights are configuration constants covered by fixtures, including
+the observed Airbnb broad/narrow score boundary. They remain provisional until the broader acceptance corpus
+demonstrates useful separation; final tuning must not optimize only for Airbnb.
 
 For V3, link rows continue to use the existing `ai`/`suggested` representation. The existing JSON classification
 snapshot is extended to retain the LLM candidates, metric candidates and component scores, ensemble decision, and

@@ -368,6 +368,7 @@ function ItemInspectorBody({
                       <CategoryChip
                         key={`a-${l.categoryId}`}
                         label={l.name}
+                        categoryId={l.categoryId}
                         onClick={onBrowseCategory
                           ? () => onBrowseCategory(l.categoryId, l.name)
                           : undefined}

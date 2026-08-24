@@ -19,6 +19,7 @@ import { getActiveTabBookmarkContext } from '../lib/tabUrlCapture';
 import { SidePanelView } from './SidePanelView';
 import type { SessionExternalLink } from './SidePanelExternalSection';
 import { runWithDbPriority } from '../lib/storage/dbRpcPriority';
+import { isFileUrl, isValidBookmarkUrl } from '../lib/utils';
 
 function toStatusMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -42,6 +43,27 @@ function itemsMatchingUrl(items: Item[], tabUrl: string): Item[] {
       !!item.url &&
       normalizeBookmarkUrl(item.url) === target
   );
+}
+
+export function resolveSidePanelSavedPageStatus(
+  saveUrl: string,
+  result: {
+    updatedPlacementNotes?: boolean;
+    addedToCollections: string[];
+    alreadyInCollections: string[];
+    merged?: boolean;
+  }
+): string | null {
+  if (!saveUrl || !isValidBookmarkUrl(saveUrl)) return null;
+  let status = isFileUrl(saveUrl) ? 'Local file saved' : 'Bookmark added';
+  if (result.updatedPlacementNotes && result.addedToCollections.length === 0) {
+    status = 'Notes saved';
+  } else if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
+    status = 'Already saved in this collection';
+  } else if (result.merged && result.addedToCollections.length > 0) {
+    status = 'Added to collection';
+  }
+  return status;
 }
 
 async function refreshOpenTabsIntoWorkingSet(): Promise<void> {
@@ -238,16 +260,9 @@ export const SidePanelConnected: React.FC<SidePanelConnectedProps> = ({
           ...(data.notes !== undefined ? { notes: data.notes } : {}),
         });
 
-        if (saveUrl && /^https?:\/\//i.test(saveUrl)) {
-          let statusPrefix = 'Bookmark added';
-          if (result.updatedPlacementNotes && result.addedToCollections.length === 0) {
-            statusPrefix = 'Notes saved';
-          } else if (result.alreadyInCollections.length > 0 && result.addedToCollections.length === 0) {
-            statusPrefix = 'Already saved in this collection';
-          } else if (result.merged && result.addedToCollections.length > 0) {
-            statusPrefix = 'Added to collection';
-          }
-          showStatus(statusPrefix);
+        const savedPageStatus = resolveSidePanelSavedPageStatus(saveUrl, result);
+        if (savedPageStatus) {
+          showStatus(savedPageStatus);
           const optimistic = findActiveItemsByUrlInReadBuffer(saveUrl);
           if (optimistic.length) setFastItems(optimistic);
         } else {

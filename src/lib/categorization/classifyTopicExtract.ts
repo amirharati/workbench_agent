@@ -90,6 +90,11 @@ import {
 } from './discoverPolicy';
 import { DISCOVER_MAP_BATCH_SIZE, runDiscoverMapReduce } from './discoverMapReduce';
 import { planDiscoverMapBatches, sliceDiscoverMapPool } from './discoverPolicy';
+import { resolveCategoryClassificationEnsemble } from './categoryMetricClassifier';
+import {
+  getItemCategoryMetricEvidence,
+  prepareCategoryMetricProfiles,
+} from './categoryMetricClassifierService';
 
 const COUNTABLE_STATUSES = new Set(['suggested', 'accepted']);
 
@@ -344,7 +349,15 @@ export async function markItemsPendingClassify(itemIds: string[]): Promise<void>
   const { loadScopedPipelineRows } = await import('../pipeline/scopedPipelineRows');
   const scoped = await loadScopedPipelineRows(itemIds);
   const primaryCategoryByItem = new Map<string, string>();
+  const activeLinkQualityItems = new Set<string>();
   for (const l of scoped.links) {
+    if (
+      COUNTABLE_STATUSES.has(l.status) &&
+      l.source === 'ai' &&
+      isLinkQualityLeafId(l.categoryId)
+    ) {
+      activeLinkQualityItems.add(l.itemId);
+    }
     if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
       primaryCategoryByItem.set(l.itemId, l.categoryId);
     }
@@ -356,11 +369,24 @@ export async function markItemsPendingClassify(itemIds: string[]): Promise<void>
     signal: AiItemSignal;
     links: AiItemCategoryLink[];
     removeAiSuggested: boolean;
+    removeResolvedLinkQuality?: boolean;
   }> = [];
   for (const itemId of itemIds) {
     const prev = scoped.signalByItem.get(itemId);
     const primaryId = primaryCategoryByItem.get(itemId);
-    if (primaryId) continue;
+    const hasResolvedLinkQuality = activeLinkQualityItems.has(itemId);
+    if (primaryId && !isLinkQualityLeafId(primaryId)) {
+      if (hasResolvedLinkQuality && prev) {
+        itemWrites.push({
+          itemId,
+          signal: prev,
+          links: [],
+          removeAiSuggested: false,
+          removeResolvedLinkQuality: true,
+        });
+      }
+      continue;
+    }
     const next: AiItemSignal = {
       itemId,
       textHash: prev?.textHash ?? '',
@@ -380,7 +406,13 @@ export async function markItemsPendingClassify(itemIds: string[]): Promise<void>
       lastProcessedAt: now,
       inputQualityTier: prev?.inputQualityTier,
     };
-    itemWrites.push({ itemId, signal: next, links: [], removeAiSuggested: false });
+    itemWrites.push({
+      itemId,
+      signal: next,
+      links: [],
+      removeAiSuggested: false,
+      removeResolvedLinkQuality: hasResolvedLinkQuality,
+    });
   }
   if (itemWrites.length) {
     await commitPipelineClassification({ categories: [], itemWrites });
@@ -1567,6 +1599,7 @@ export async function classifyIncremental(
       signal: AiItemSignal;
       links: AiItemCategoryLink[];
       removeAiSuggested: boolean;
+      removeResolvedLinkQuality?: boolean;
     }> = [];
     throwIfAborted(opts.signal);
     const batch = batches[batchIdx];
@@ -1578,6 +1611,10 @@ export async function classifyIncremental(
       total: batches.length,
     });
     await yieldToUi();
+    await prepareCategoryMetricProfiles();
+    const metricEvidencePromise = Promise.all(
+      batch.map((item) => getItemCategoryMetricEvidence(item.itemId))
+    );
     const batchResult = await resolveTopicExtractBatchWithRetry(
       aiSettings,
       categories,
@@ -1595,6 +1632,9 @@ export async function classifyIncremental(
           total: batches.length,
         });
       }
+    );
+    const metricEvidenceByItem = new Map(
+      (await metricEvidencePromise).map((evidence) => [evidence.itemId, evidence])
     );
     throwIfAborted(opts.signal);
     const normalized = batchResult.decisions;
@@ -1615,6 +1655,42 @@ export async function classifyIncremental(
       const meta = toProcess.find((x) => x.batch.itemId === batchItem.itemId);
       const hash = meta?.hash ?? '';
       let decision = normalized.get(batchItem.itemId);
+      const metricEvidence = metricEvidenceByItem.get(batchItem.itemId);
+      const llmCategoryIds =
+        decision?.decisionType === 'existing' ? decision.categoryIds ?? [] : [];
+      const skipMetricForLinkQuality = Boolean(
+        llmCategoryIds[0] && isLinkQualityLeafId(llmCategoryIds[0])
+      );
+      const ensemble = resolveCategoryClassificationEnsemble({
+        llmCategoryIds,
+        metricCandidates: skipMetricForLinkQuality
+          ? []
+          : metricEvidence?.candidates.filter((candidate) => categoryIds.has(candidate.categoryId)),
+        rejectedCategoryIds: new Set(metricEvidence?.rejectedCategoryIds ?? []),
+      });
+      if (!skipMetricForLinkQuality && ensemble.categoryIds.length) {
+        decision = {
+          ...decision,
+          itemId: batchItem.itemId,
+          decisionType: 'existing',
+          categoryIds: ensemble.categoryIds,
+          status: 'ok',
+          reason: [decision?.reason, ensemble.reason].filter(Boolean).join(' '),
+          needsReclassify: false,
+        };
+      } else if (llmCategoryIds.length && !ensemble.categoryIds.length) {
+        decision = {
+          ...decision,
+          itemId: batchItem.itemId,
+          decisionType: 'none',
+          categoryIds: [],
+          status: 'ok',
+          reason: [decision?.reason, 'All proposed categories were rejected for this bookmark.']
+            .filter(Boolean)
+            .join(' '),
+          needsReclassify: false,
+        };
+      }
       const prevSignal = signalByItem.get(batchItem.itemId);
       const prevRetry = prevSignal?.classifyRetryCount ?? 0;
 
@@ -1758,7 +1834,16 @@ export async function classifyIncremental(
           }
         }
       } else if (decision.decisionType === 'existing' && decision.categoryIds?.length) {
-        const assignments = assignmentsFromCategoryIds(decision.categoryIds);
+        const metricCandidateById = new Map(
+          (metricEvidence?.candidates ?? []).map((candidate) => [candidate.categoryId, candidate])
+        );
+        const llmCategoryIdSet = new Set(llmCategoryIds);
+        const assignments = assignmentsFromCategoryIds(decision.categoryIds).map((assignment) => ({
+          ...assignment,
+          score: llmCategoryIdSet.has(assignment.categoryId)
+            ? assignment.score
+            : metricCandidateById.get(assignment.categoryId)?.score ?? assignment.score,
+        }));
         for (const a of assignments) {
           links.push({
             id: aiLinkId(batchItem.itemId, a.categoryId),
@@ -2010,7 +2095,7 @@ export async function classifyIncremental(
             categoryIds: decision?.categoryIds,
             confidence: decision?.confidence,
             reason: decision?.reason,
-            classifyMode: 'semantic-then-taxonomy',
+            classifyMode: 'semantic-taxonomy+exact-metric',
             semanticLabel: decision?.semanticLabel,
             primarySubject: decision?.primarySubject,
             likelySavePurpose: decision?.likelySavePurpose,
@@ -2023,11 +2108,24 @@ export async function classifyIncremental(
             parentCandidates: decision?.parentCandidates,
             primaryParentId: decision?.primaryParentId,
             novelTopicSuggestion: decision?.novelTopicSuggestion,
+            llmCategoryIds,
+            metricCandidates: metricEvidence?.candidates,
+            metricProfileCount: metricEvidence?.profileCount,
+            metricAcceptedExampleCount: metricEvidence?.acceptedExampleCount,
+            metricError: metricEvidence?.error,
+            ensembleCategoryIds: ensemble.categoryIds,
+            ensembleReason: ensemble.reason,
           },
         };
       }
 
-      batchWrites.push({ itemId: batchItem.itemId, signal, links, removeAiSuggested });
+      batchWrites.push({
+        itemId: batchItem.itemId,
+        signal,
+        links,
+        removeAiSuggested,
+        removeResolvedLinkQuality: true,
+      });
       signalByItem.set(batchItem.itemId, signal);
     }
 

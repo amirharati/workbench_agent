@@ -4,6 +4,10 @@ import {
   rejectAiCategoryLinkByIds,
   CategoryReviewError,
 } from '../../lib/categorization/categoryReview';
+import {
+  isLinkQualityAttentionLeafId,
+  isLinkQualityRemovalLeafId,
+} from '../../lib/categorization/linkQuality';
 import { useToast } from '../ToastContainer';
 
 export type CategoryReviewFeedback = (message: string, type: 'success' | 'error') => void;
@@ -13,20 +17,39 @@ export function CategoryChip({
   muted,
   onClick,
   title,
+  categoryId,
 }: {
   label: string;
   muted?: boolean;
   onClick?: () => void;
   title?: string;
+  categoryId?: string;
 }) {
+  const danger = isLinkQualityRemovalLeafId(categoryId);
+  const warning = isLinkQualityAttentionLeafId(categoryId);
   const style = {
     display: 'inline-flex',
     padding: '2px 8px',
     borderRadius: 999,
-    border: '1px solid var(--border)',
-    background: muted ? 'transparent' : 'var(--accent-weak)',
-    color: muted ? 'var(--text-faint)' : 'var(--accent)',
+    border: `1px solid ${
+      danger ? 'var(--error)' : warning ? 'var(--warning-border)' : 'var(--border)'
+    }`,
+    background: danger
+      ? 'var(--error-weak)'
+      : warning
+        ? 'var(--warning-weak)'
+        : muted
+          ? 'transparent'
+          : 'var(--accent-weak)',
+    color: danger
+      ? 'var(--error)'
+      : warning
+        ? 'var(--warning)'
+        : muted
+          ? 'var(--text-faint)'
+          : 'var(--accent)',
     fontSize: 'var(--text-xs)',
+    fontWeight: danger || warning ? 650 : undefined,
   } as const;
 
   if (onClick) {
@@ -145,7 +168,11 @@ export function SuggestedCategoryRow({
       }}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-        <CategoryChip label={`${link.name} (suggested)`} muted />
+        <CategoryChip
+          label={`${link.name} (suggested)`}
+          categoryId={link.categoryId}
+          muted
+        />
         {link.score > 0 && (
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
             {Math.round(link.score * 100)}%

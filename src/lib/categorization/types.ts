@@ -102,6 +102,24 @@ export interface LlmReviewSnapshot {
   parentCandidates?: Array<{ parentId: string; similarity: number; reason?: string }>;
   primaryParentId?: string;
   novelTopicSuggestion?: ProposedCategoryDraft;
+  /** Independent exact local classifier evidence retained for audit/review. */
+  metricCandidates?: Array<{
+    categoryId: string;
+    score: number;
+    profileScore: number;
+    definitionScore: number;
+    aggregateScore: number;
+    exampleScore: number;
+    exampleCount: number;
+    memberCount: number;
+    reason?: string;
+  }>;
+  metricProfileCount?: number;
+  metricAcceptedExampleCount?: number;
+  metricError?: string;
+  llmCategoryIds?: string[];
+  ensembleCategoryIds?: string[];
+  ensembleReason?: string;
 }
 
 export interface AiItemSignal {

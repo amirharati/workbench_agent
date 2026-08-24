@@ -23,6 +23,12 @@ export interface PipelineClassificationWrite {
   signal: AiItemSignal;
   links: AiItemCategoryLink[];
   removeAiSuggested: boolean;
+  /**
+   * Link-quality assignments describe the last failed/limited pipeline result,
+   * not the bookmark's durable subject. Clear active AI-owned diagnostics once
+   * a later run has enough content to enter normal classification.
+   */
+  removeResolvedLinkQuality?: boolean;
 }
 
 export interface PipelineClassificationCommitInput {
@@ -273,7 +279,22 @@ export function commitClassificationInStore(
         throw new Error('Classification commit itemId mismatch');
       }
       const existingSignal = store.getSignal(write.itemId);
-      const existingLinks = store.getLinksByItem(write.itemId);
+      let existingLinks = store.getLinksByItem(write.itemId);
+      const incomingHasTopicalCategory = write.links.some(
+        (link) => isCountableAiLink(link) && !isLinkQualityLeafId(link.categoryId)
+      );
+      if (write.removeResolvedLinkQuality || incomingHasTopicalCategory) {
+        for (const link of existingLinks) {
+          if (
+            link.source === 'ai' &&
+            (link.status === 'suggested' || link.status === 'accepted') &&
+            isLinkQualityLeafId(link.categoryId)
+          ) {
+            store.deleteLink(link.id);
+          }
+        }
+        existingLinks = store.getLinksByItem(write.itemId);
+      }
       const existingPrimary = existingLinks.find(isCountableAiPrimary);
       const incomingHasPrimary = write.links.some(isCountableAiPrimary);
       const additive = !write.removeAiSuggested && write.links.length > 0;
@@ -326,7 +347,7 @@ export function commitClassificationInStore(
         }
       }
       const merged = mergeClassificationSignal(existingSignal, write.signal);
-      const next = additive && additivePrimary
+      let next = additive && additivePrimary
         ? {
             ...merged,
             ...stateForAdditivePrimary(additivePrimary, existingSignal),
@@ -373,6 +394,25 @@ export function commitClassificationInStore(
               'Kept previous category because reclassification produced no replacement',
           }
         : merged;
+      if (next.llmReview?.categoryIds?.some(isLinkQualityLeafId)) {
+        const activeCategoryIds = new Set(
+          store.getLinksByItem(write.itemId)
+            .filter(isCountableAiLink)
+            .map((link) => link.categoryId)
+        );
+        const categoryIds = next.llmReview.categoryIds.filter(
+          (categoryId) => !isLinkQualityLeafId(categoryId) || activeCategoryIds.has(categoryId)
+        );
+        if (categoryIds.length !== next.llmReview.categoryIds.length) {
+          next = {
+            ...next,
+            llmReview: {
+              ...next.llmReview,
+              categoryIds,
+            },
+          };
+        }
+      }
       store.putSignal(next);
       committedSignals.push(next);
     }

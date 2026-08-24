@@ -45,6 +45,12 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
   const hasData = hasPartialPipelineData(context);
   const stageHint = context ? formatPipelineStageHint(context) : undefined;
   const fetchedSnippet = context?.enrichment?.snippet?.trim() || '';
+  const enrichmentTags = useMemo(
+    () => context
+      ? [...(context.enrichment?.aiTags ?? []), ...(context.item.tags ?? [])]
+      : [],
+    [context]
+  );
   const preview = useMemo(() => {
     if (!context) return '';
     return truncate(context.summary || fetchedSnippet, 420);
@@ -162,47 +168,74 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {context.acceptedLinks.length > 0
                     ? context.acceptedLinks.slice(0, 3).map((link) => (
-                        <CategoryChip key={link.categoryId} label={link.name} />
+                        <CategoryChip
+                          key={link.categoryId}
+                          label={link.name}
+                          categoryId={link.categoryId}
+                        />
                       ))
                     : context.primaryCategoryName
-                      ? <CategoryChip label={context.primaryCategoryName} />
+                      ? (
+                          <CategoryChip
+                            label={context.primaryCategoryName}
+                            categoryId={context.primaryCategoryId ?? undefined}
+                          />
+                        )
                       : null}
                 </div>
               ) : null}
             </>
           ) : (
             <>
-              <EnrichmentContent
-                summary={context.summary}
-                keyPoints={context.keyPoints}
-                references={context.references}
-                emptyMessage={fetchedSnippet ? undefined : 'No summary is available yet.'}
-              />
-              {!context.summary && context.keyPoints.length === 0 && fetchedSnippet ? (
-                <section>
-                  <div
-                    style={{
-                      marginBottom: 4,
-                      fontSize: 'var(--text-xs)',
-                      fontWeight: 650,
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    Fetched excerpt
-                  </div>
-                  <p
-                    className="side-panel-digest-copy"
-                    style={{
-                      margin: 0,
-                      whiteSpace: 'pre-wrap',
-                    }}
-                  >
-                    {fetchedSnippet}
-                  </p>
-                </section>
-              ) : null}
+              <section className="side-panel-digest-content-shell">
+                <div className="side-panel-digest-content-heading">
+                  <span>AI summary</span>
+                  <small>Scrollable</small>
+                </div>
+                <div
+                  className="scrollbar side-panel-digest-content"
+                  tabIndex={0}
+                  aria-label="AI digest content"
+                >
+                  <EnrichmentContent
+                    summary={context.summary}
+                    tags={enrichmentTags}
+                    keyPoints={context.keyPoints}
+                    references={context.references}
+                    compact
+                    emptyMessage={fetchedSnippet ? undefined : 'No summary is available yet.'}
+                  />
+                  {!context.summary &&
+                  enrichmentTags.length === 0 &&
+                  context.keyPoints.length === 0 &&
+                  context.references.length === 0 &&
+                  fetchedSnippet ? (
+                    <section>
+                      <div
+                        style={{
+                          marginBottom: 4,
+                          fontSize: 'var(--text-xs)',
+                          fontWeight: 650,
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        Fetched excerpt
+                      </div>
+                      <p
+                        className="side-panel-digest-copy"
+                        style={{
+                          margin: 0,
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        {fetchedSnippet}
+                      </p>
+                    </section>
+                  ) : null}
+                </div>
+              </section>
 
-              <section>
+              <section className="side-panel-digest-categories">
                 <div
                   style={{
                     marginBottom: 4,
@@ -221,7 +254,10 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                 {context.primaryCategoryName &&
                 context.acceptedLinks.length === 0 &&
                 context.suggestedLinks.length === 0 ? (
-                  <CategoryChip label={context.primaryCategoryName} />
+                  <CategoryChip
+                    label={context.primaryCategoryName}
+                    categoryId={context.primaryCategoryId ?? undefined}
+                  />
                 ) : null}
                 {context.acceptedLinks.length === 0 && context.suggestedLinks.length === 0 ? (
                   <p className="side-panel-supporting-copy" style={{ margin: 0 }}>
@@ -236,7 +272,11 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                     {context.acceptedLinks.length > 0 ? (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
                         {context.acceptedLinks.map((link) => (
-                          <CategoryChip key={`accepted-${link.categoryId}`} label={link.name} />
+                          <CategoryChip
+                            key={`accepted-${link.categoryId}`}
+                            label={link.name}
+                            categoryId={link.categoryId}
+                          />
                         ))}
                       </div>
                     ) : null}

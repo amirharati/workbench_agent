@@ -30,6 +30,14 @@ import {
   type DashboardStartupProjection,
 } from '../../dashboardStartupProjection';
 import { cosineSimilarity, l2Normalize, meanVector } from '../../categorization/math';
+import {
+  CATEGORY_METRIC_EXAMPLES_PER_CATEGORY,
+  CATEGORY_METRIC_NEIGHBOR_LIMIT,
+  CATEGORY_METRIC_PROFILE_CANDIDATE_LIMIT,
+  CATEGORY_METRIC_RESULT_LIMIT,
+  rankCategoryMetricCandidates,
+  type CategoryMetricProfileEvidence,
+} from '../../categorization/categoryMetricClassifier';
 import { hashText } from '../../categorization/textHash';
 import { WorkerSimilarityIndex } from '../../search/similarityIndex';
 import type { AiCategorySearchProfile, AiItemCategoryLink, AiItemSignal } from '../../categorization/types';
@@ -158,6 +166,7 @@ const READ_ONLY_RPC_METHODS = new Set([
   'putCategorySearchMetadataEmbeddings',
   'rankCategorySearchProfiles',
   'rankCategoryManagementProfiles',
+  'rankItemCategoryMetricEvidence',
   'findSimilarVectorScores',
   'getPendingEmbeddingItemIds',
   'getDashboardStartupProjection',
@@ -1165,6 +1174,134 @@ async function handleMethod(method: string, args: unknown[]): Promise<unknown> {
         .sort((left, right) => right.score - left.score)
         .slice(0, limit);
       return { matches, profileCount: profiles.length };
+    }
+    case 'rankItemCategoryMetricEvidence': {
+      const itemId = typeof args[0] === 'string' ? args[0].trim() : '';
+      if (!itemId) throw new Error('rankItemCategoryMetricEvidence requires itemId');
+      const store = await getIdbCompatStore();
+      const rejectedCategoryIds = new Set(
+        store.getLinksByItem(itemId)
+          .filter((link) => link.status === 'rejected')
+          .map((link) => link.categoryId)
+      );
+      const signal = store.getSignal(itemId);
+      if (!signal?.embedding?.length || !signal.embeddingModel) {
+        return {
+          itemId,
+          embeddingAvailable: false,
+          candidates: [],
+          rejectedCategoryIds: [...rejectedCategoryIds],
+          profileCount: 0,
+          acceptedExampleCount: 0,
+        };
+      }
+
+      const profiles = store.sqlite
+        .getAllCategorySearchProfiles()
+        .filter((profile) => {
+          const category = store.getCategory(profile.categoryId);
+          return (
+            profile.embeddingModel === signal.embeddingModel &&
+            profile.prototypeEmbedding.length === signal.embedding.length &&
+            Boolean(category && isSearchableTopicCategory(category)) &&
+            !rejectedCategoryIds.has(profile.categoryId)
+          );
+        });
+
+      const profileEvidence: CategoryMetricProfileEvidence[] = profiles
+        .map((profile) => ({
+          categoryId: profile.categoryId,
+          profileScore: scoreCategoryProfileVector(signal.embedding, profile.prototypeEmbedding),
+          definitionScore: scoreCategoryProfileVector(signal.embedding, profile.metadataEmbedding),
+          aggregateScore: scoreCategoryProfileVector(signal.embedding, profile.memberCentroid),
+          memberCount: profile.memberCount,
+          acceptedNeighborScores: [] as number[],
+        }))
+        .sort((left, right) =>
+          Math.max(right.profileScore, right.definitionScore, right.aggregateScore) -
+            Math.max(left.profileScore, left.definitionScore, left.aggregateScore) ||
+          left.categoryId.localeCompare(right.categoryId)
+        )
+        .slice(0, CATEGORY_METRIC_PROFILE_CANDIDATE_LIMIT);
+
+      const evidenceByCategoryId = new Map(
+        profileEvidence.map((evidence) => [evidence.categoryId, evidence])
+      );
+      const categoryIdsByExampleItem = new Map<string, Set<string>>();
+      for (const evidence of profileEvidence) {
+        const acceptedExamples = store.getLinksByCategory(evidence.categoryId)
+          .filter(
+            (link) =>
+              link.itemId !== itemId &&
+              link.status === 'accepted' &&
+              link.source === 'manual'
+          )
+          .sort((left, right) => right.updated_at - left.updated_at || left.itemId.localeCompare(right.itemId))
+          .slice(0, CATEGORY_METRIC_EXAMPLES_PER_CATEGORY);
+        for (const link of acceptedExamples) {
+          const categories = categoryIdsByExampleItem.get(link.itemId) ?? new Set<string>();
+          categories.add(evidence.categoryId);
+          categoryIdsByExampleItem.set(link.itemId, categories);
+        }
+      }
+
+      let indexSize = 0;
+      let neighborQueryMs = 0;
+      if (categoryIdsByExampleItem.size) {
+        // Build a bounded disposable exact shard instead of warming the full
+        // library index on the classification critical path.
+        const exampleIndex = new WorkerSimilarityIndex();
+        exampleIndex.load([
+          {
+            itemId,
+            embeddingModel: signal.embeddingModel,
+            embedding: signal.embedding,
+          },
+          ...[...categoryIdsByExampleItem.keys()]
+            .map((exampleItemId) => {
+              const exampleSignal = store.getSignal(exampleItemId);
+              return exampleSignal?.embedding?.length === signal.embedding.length &&
+                exampleSignal.embeddingModel === signal.embeddingModel
+                ? {
+                    itemId: exampleItemId,
+                    embeddingModel: exampleSignal.embeddingModel,
+                    embedding: exampleSignal.embedding,
+                  }
+                : null;
+            })
+            .filter((row): row is { itemId: string; embeddingModel: string; embedding: number[] } => Boolean(row)),
+        ]);
+        const queryStartedAt = performance.now();
+        const neighbors = exampleIndex.query(itemId, {
+          limit: CATEGORY_METRIC_NEIGHBOR_LIMIT,
+          allowedItemIds: new Set(categoryIdsByExampleItem.keys()),
+        });
+        neighborQueryMs = Math.round(performance.now() - queryStartedAt);
+        indexSize = exampleIndex.size;
+        for (const hit of neighbors.hits) {
+          // SimilarityIndex exposes cosine mapped from [-1,1] to [0,1]. The
+          // category profiles use raw normalized cosine, so compare like with like.
+          const cosine = Math.max(0, Math.min(1, hit.score * 2 - 1));
+          for (const categoryId of categoryIdsByExampleItem.get(hit.itemId) ?? []) {
+            evidenceByCategoryId.get(categoryId)?.acceptedNeighborScores?.push(cosine);
+          }
+        }
+      }
+
+      return {
+        itemId,
+        embeddingAvailable: true,
+        candidates: rankCategoryMetricCandidates(
+          profileEvidence,
+          rejectedCategoryIds,
+          CATEGORY_METRIC_RESULT_LIMIT
+        ),
+        rejectedCategoryIds: [...rejectedCategoryIds],
+        profileCount: profiles.length,
+        acceptedExampleCount: Math.max(0, indexSize - 1),
+        indexSize,
+        neighborQueryMs,
+      };
     }
     case 'findSimilarVectorScores': {
       const itemId = typeof args[0] === 'string' ? args[0] : '';

@@ -165,16 +165,19 @@ export function prepareExtractInput(
   rawBody: string,
   sourceKind?: SourceKind
 ): PrepareExtractInputResult {
-  const filtered = prefilterExtractBody(rawBody);
+  const canonicalBody = rawBody.trim();
+  // Chrome heuristics are assessment-only. They may decide that a capture is
+  // empty/unusable, but must never delete lines from an accepted AI input.
+  const filtered = prefilterExtractBody(canonicalBody);
   const substantive = substantiveBodyLength(filtered);
 
   if (sourceKind === 'video' && isDescriptiveTitle(title)) {
-    return { body: filtered, shouldSkip: false, substantiveLength: substantive };
+    return { body: canonicalBody, shouldSkip: false, substantiveLength: substantive };
   }
   if (sourceKind === 'x') {
     const trulyEmpty = isTrulyEmptyExtractInput(filtered, title, 'x');
     return {
-      body: filtered,
+      body: canonicalBody,
       shouldSkip: trulyEmpty,
       substantiveLength: substantive,
       skipReason: trulyEmpty ? 'No tweet content after chrome strip' : undefined,
@@ -182,16 +185,16 @@ export function prepareExtractInput(
   }
 
   if (substantive >= MIN_BODY_AFTER_CHROME_STRIP) {
-    return { body: filtered, shouldSkip: false, substantiveLength: substantive };
+    return { body: canonicalBody, shouldSkip: false, substantiveLength: substantive };
   }
 
   if (substantive >= 50 && isDescriptiveTitle(title)) {
-    return { body: filtered, shouldSkip: false, substantiveLength: substantive };
+    return { body: canonicalBody, shouldSkip: false, substantiveLength: substantive };
   }
 
   if (filtered.length < 40 && !isDescriptiveTitle(title)) {
     return {
-      body: filtered,
+      body: canonicalBody,
       shouldSkip: true,
       skipReason: 'Only login/form chrome after strip',
       substantiveLength: substantive,
@@ -200,14 +203,14 @@ export function prepareExtractInput(
 
   if (substantive < 40) {
     return {
-      body: filtered,
+      body: canonicalBody,
       shouldSkip: true,
       skipReason: `Only ${substantive} chars after removing login/cookie chrome`,
       substantiveLength: substantive,
     };
   }
 
-  return { body: filtered, shouldSkip: false, substantiveLength: substantive };
+  return { body: canonicalBody, shouldSkip: false, substantiveLength: substantive };
 }
 
 /** @deprecated Use prepareExtractInput — kept for categorization eligibility hints. */
