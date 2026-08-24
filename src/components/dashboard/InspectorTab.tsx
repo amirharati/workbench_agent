@@ -10,6 +10,8 @@ import { ItemSimilarSectionView } from './SearchDiscoveryBlocks';
 import { ItemDigestQuickActions } from './ItemDigestQuickActions';
 import {
   CategoryChip,
+  CategoryOverflowToggle,
+  COMPACT_CATEGORY_LIMIT,
   SuggestedCategoryRow,
   UnmatchedTopicSuggestion,
 } from '../shared/CategoryReviewRows';
@@ -218,6 +220,7 @@ function ItemInspectorBody({
   } = useInspectorItemData(item.id);
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const badge = context ? resolvePipelineBadge(context) : null;
   const failureLabel = context?.enrichment
     ? resolveEnrichmentFailureLabel(context.enrichment)
@@ -226,10 +229,25 @@ function ItemInspectorBody({
   const unmatchedTopic = context?.acceptedLinks.length === 0 && context.suggestedLinks.length === 0
     ? context.signal?.llmReview?.novelTopicSuggestion
     : undefined;
+  const visibleAcceptedLinks = context
+    ? categoriesExpanded
+      ? context.acceptedLinks
+      : context.acceptedLinks.slice(0, COMPACT_CATEGORY_LIMIT)
+    : [];
+  const suggestedSlots = Math.max(0, COMPACT_CATEGORY_LIMIT - visibleAcceptedLinks.length);
+  const visibleSuggestedLinks = context
+    ? categoriesExpanded
+      ? context.suggestedLinks
+      : context.suggestedLinks.slice(0, suggestedSlots)
+    : [];
+  const categoryOverflowCount = context
+    ? Math.max(0, context.acceptedLinks.length + context.suggestedLinks.length - COMPACT_CATEGORY_LIMIT)
+    : 0;
 
   useEffect(() => {
     setSummaryOpen(true);
     setManageCategoriesOpen(false);
+    setCategoriesExpanded(false);
   }, [item.id]);
 
   const enrichmentTags = context
@@ -334,13 +352,13 @@ function ItemInspectorBody({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: 8,
-                fontSize: 'var(--text-xs)',
+                gap: 5,
+                fontSize: '10px',
                 fontWeight: 600,
                 color: 'var(--text-muted)',
                 textTransform: 'uppercase',
-                letterSpacing: 0.4,
-                marginBottom: 4,
+                letterSpacing: 0.3,
+                marginBottom: 3,
               }}
             >
               <span>Categories</span>
@@ -348,17 +366,17 @@ function ItemInspectorBody({
                 type="button"
                 className="ui-button ui-button--compact ui-button--secondary"
                 onClick={() => setManageCategoriesOpen(true)}
-                style={{ textTransform: 'none', letterSpacing: 0 }}
+                style={{ minHeight: 22, padding: '1px 5px', fontSize: 9, textTransform: 'none', letterSpacing: 0 }}
               >
-                <Tags size={12} /> Manage
+                <Tags size={10} /> Manage
               </button>
             </div>
             <p
               style={{
-                margin: '0 0 8px',
-                fontSize: 'var(--text-xs)',
+                margin: '0 0 5px',
+                fontSize: '9px',
                 color: 'var(--text-faint)',
-                lineHeight: 1.45,
+                lineHeight: 1.3,
               }}
             >
               AI categories are semantic tags; Collections are manual folders.
@@ -378,34 +396,40 @@ function ItemInspectorBody({
               </p>
             ) : (
               <>
-                {context.acceptedLinks.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-                    {context.acceptedLinks.map((l) => (
-                      <CategoryChip
-                        key={`a-${l.categoryId}`}
-                        label={l.name}
-                        parentLabel={l.parentName}
-                        categoryId={l.categoryId}
-                        onClick={onBrowseCategory
-                          ? () => onBrowseCategory(l.categoryId, l.name)
-                          : undefined}
-                      />
-                    ))}
-                  </div>
-                )}
-                {context.suggestedLinks.length > 0 && (
-                  <div>
-                    {context.suggestedLinks.map((l) => (
-                      <SuggestedCategoryRow
-                        key={`s-${l.categoryId}`}
-                        itemId={item.id}
-                        link={l}
-                        onDone={reload}
-                        onEdit={() => setManageCategoriesOpen(true)}
-                      />
-                    ))}
-                  </div>
-                )}
+                <div
+                  className="scrollbar ui-compact-category-list"
+                  data-expanded={categoriesExpanded ? 'true' : 'false'}
+                >
+                  {visibleAcceptedLinks.length > 0 && (
+                    <div className="ui-compact-category-list__chips">
+                      {visibleAcceptedLinks.map((l) => (
+                        <CategoryChip
+                          key={`a-${l.categoryId}`}
+                          label={l.name}
+                          parentLabel={l.parentName}
+                          categoryId={l.categoryId}
+                          onClick={onBrowseCategory
+                            ? () => onBrowseCategory(l.categoryId, l.name)
+                            : undefined}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {visibleSuggestedLinks.map((l) => (
+                    <SuggestedCategoryRow
+                      key={`s-${l.categoryId}`}
+                      itemId={item.id}
+                      link={l}
+                      onDone={reload}
+                      onEdit={() => setManageCategoriesOpen(true)}
+                    />
+                  ))}
+                </div>
+                <CategoryOverflowToggle
+                  hiddenCount={categoryOverflowCount}
+                  expanded={categoriesExpanded}
+                  onToggle={() => setCategoriesExpanded((value) => !value)}
+                />
               </>
             )}
           </section>

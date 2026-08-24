@@ -14,7 +14,12 @@ vi.mock('../../hooks/useInspectorItemData', () => ({
       references: [],
       enrichment: { aiTags: ['machine learning', 'deployment'] },
       item: { tags: ['Deployment', 'manual tag'] },
-      acceptedLinks: [{ categoryId: 'topic', name: 'Model deployment' }],
+      acceptedLinks: [
+        { categoryId: 'topic', name: 'Model deployment' },
+        { categoryId: 'topic-2', name: 'MLOps' },
+        { categoryId: 'topic-3', name: 'AI infrastructure' },
+        { categoryId: 'topic-4', name: 'Production monitoring' },
+      ],
       suggestedLinks: [],
     },
     similar: [],
@@ -40,10 +45,17 @@ vi.mock('./PipelineDisplayBlocks', () => ({
 vi.mock('./SearchDiscoveryBlocks', () => ({ ItemSimilarSectionView: () => <div>Similar</div> }));
 vi.mock('./ItemDigestQuickActions', () => ({ ItemDigestQuickActions: () => <div>Actions</div> }));
 vi.mock('../shared/CategoryReviewRows', () => ({
+  COMPACT_CATEGORY_LIMIT: 3,
   CategoryChip: ({ label, onClick }: { label: string; onClick?: () => void }) => (
     <button type="button" onClick={onClick}>{label}</button>
   ),
+  CategoryOverflowToggle: ({ hiddenCount, expanded, onToggle }: { hiddenCount: number; expanded: boolean; onToggle: () => void }) => (
+    !expanded && hiddenCount <= 0
+      ? null
+      : <button type="button" onClick={onToggle}>{expanded ? 'Show less' : `More (${hiddenCount})`}</button>
+  ),
   SuggestedCategoryRow: () => null,
+  UnmatchedTopicSuggestion: () => null,
 }));
 vi.mock('./BookmarkUrlLink', () => ({ ExtensionPageUrlLink: () => <span>URL</span> }));
 vi.mock('./LinkVisual', () => ({ LinkVisual: () => <span>Icon</span> }));
@@ -120,6 +132,26 @@ describe('InspectorTab information order', () => {
     expect(category).toBeDefined();
     await act(async () => category!.click());
     expect(onBrowseCategory).toHaveBeenCalledWith('topic', 'Model deployment');
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows only three categories until More is clicked', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<InspectorTab activeItem={item} />));
+
+    expect(host.textContent).not.toContain('Production monitoring');
+    const more = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent === 'More (1)');
+    expect(more).toBeDefined();
+    await act(async () => more!.click());
+    expect(host.textContent).toContain('Production monitoring');
+    expect(host.textContent).toContain('Show less');
+    const categoryList = host.querySelector('.ui-compact-category-list');
+    expect(categoryList?.classList.contains('scrollbar')).toBe(true);
+    expect(categoryList?.getAttribute('data-expanded')).toBe('true');
 
     await act(async () => root.unmount());
   });

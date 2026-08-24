@@ -800,6 +800,50 @@ button:disabled {
   line-height: var(--leading-normal);
 }
 
+.ui-category-overflow-toggle {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.ui-category-overflow-toggle:hover,
+.ui-category-overflow-toggle:focus-visible {
+  background: var(--accent-weak);
+  outline: none;
+}
+
+.ui-compact-category-list {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ui-compact-category-list__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.ui-compact-category-list[data-expanded='true'] {
+  max-height: clamp(100px, 18vh, 150px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 3px 4px 3px 0;
+  border-block: 1px solid var(--border);
+}
+
 .ui-category-manager__row span {
   overflow: hidden;
   color: var(--text-faint);
@@ -6288,9 +6332,9 @@ button.ui-taxonomy__leaf:hover .ui-taxonomy__leaf-arrow {
 }
 
 .side-panel-digest-categories {
-  padding: 9px 10px;
+  padding: 6px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 5px;
   background: var(--bg-subtle);
 }
 
@@ -6734,9 +6778,9 @@ button.ui-taxonomy__leaf:hover .ui-taxonomy__leaf-arrow {
 
 .ui-inspector__categories {
   flex: 0 0 auto;
-  padding: 10px;
+  padding: 6px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 5px;
   background: var(--bg-subtle);
 }
 

@@ -5,9 +5,11 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SidePanelDigestPanel } from './SidePanelDigestPanel';
 
+const contextOverride = vi.hoisted(() => ({ value: null as Record<string, unknown> | null }));
+
 vi.mock('../hooks/useItemPipelineContext', () => ({
   useItemPipelineContext: () => ({
-    context: {
+    context: contextOverride.value ?? {
       item: {
         id: 'item-1',
         url: 'https://example.com',
@@ -57,7 +59,13 @@ vi.mock('./dashboard/PipelineDisplayBlocks', () => ({
   ),
 }));
 vi.mock('./shared/CategoryReviewRows', () => ({
+  COMPACT_CATEGORY_LIMIT: 3,
   CategoryChip: ({ label }: { label: string }) => <span>{label}</span>,
+  CategoryOverflowToggle: ({ hiddenCount, expanded, onToggle }: { hiddenCount: number; expanded: boolean; onToggle: () => void }) => (
+    !expanded && hiddenCount <= 0
+      ? null
+      : <button type="button" onClick={onToggle}>{expanded ? 'Show less' : `More (${hiddenCount})`}</button>
+  ),
   SuggestedCategoryRow: () => null,
   UnmatchedTopicSuggestion: ({ name, onReview }: { name: string; onReview: () => void }) => (
     <div><span>{name}</span><button type="button" onClick={onReview}>Review categories</button></div>
@@ -72,6 +80,7 @@ describe('SidePanelDigestPanel information layout', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    contextOverride.value = null;
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
       .IS_REACT_ACT_ENVIRONMENT = false;
   });
@@ -120,6 +129,41 @@ describe('SidePanelDigestPanel information layout', () => {
     expect(review).toBeDefined();
     await act(async () => review!.click());
     expect(onManageCategories).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
+
+  it('keeps the side-panel category preview to three until More is clicked', async () => {
+    contextOverride.value = {
+      item: { id: 'item-1', url: 'https://example.com', title: 'Example item', tags: [] },
+      enrichment: { snippet: 'Fetched excerpt', aiTags: [] },
+      summary: 'Summary',
+      keyPoints: [],
+      references: [],
+      acceptedLinks: [
+        { categoryId: 'one', name: 'One', isPrimary: true },
+        { categoryId: 'two', name: 'Two', isPrimary: false },
+        { categoryId: 'three', name: 'Three', isPrimary: false },
+        { categoryId: 'four', name: 'Four', isPrimary: false },
+      ],
+      suggestedLinks: [],
+      primaryCategoryName: 'One',
+      classifyState: 'classified',
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<SidePanelDigestPanel itemId="item-1" />));
+
+    expect(host.textContent).not.toContain('Four');
+    const more = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent === 'More (1)');
+    expect(more).toBeDefined();
+    await act(async () => more!.click());
+    expect(host.textContent).toContain('Four');
+    const categoryList = host.querySelector('.ui-compact-category-list');
+    expect(categoryList?.classList.contains('scrollbar')).toBe(true);
+    expect(categoryList?.getAttribute('data-expanded')).toBe('true');
 
     await act(async () => root.unmount());
   });

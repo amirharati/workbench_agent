@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, ExternalLink, Tags } from 'lucide-react';
 import { useItemPipelineContext } from '../hooks/useItemPipelineContext';
 import { resolvePipelineBadge } from '../lib/pipeline';
@@ -11,6 +11,8 @@ import { ItemDigestQuickActions } from './dashboard/ItemDigestQuickActions';
 import { EnrichmentContent, ItemPipelineBadge } from './dashboard/PipelineDisplayBlocks';
 import {
   CategoryChip,
+  CategoryOverflowToggle,
+  COMPACT_CATEGORY_LIMIT,
   SuggestedCategoryRow,
   UnmatchedTopicSuggestion,
   type CategoryReviewFeedback,
@@ -36,6 +38,7 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
 }) => {
   const { context, loading, reload } = useItemPipelineContext(itemId);
   const [expanded, setExpanded] = useState(false);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(
     null
   );
@@ -64,6 +67,24 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
       ? context.signal?.llmReview?.novelTopicSuggestion
       : undefined;
   const openCategoryManager = onManageCategories ?? onOpenInApp;
+  const visibleAcceptedLinks = context
+    ? categoriesExpanded
+      ? context.acceptedLinks
+      : context.acceptedLinks.slice(0, COMPACT_CATEGORY_LIMIT)
+    : [];
+  const suggestedSlots = Math.max(0, COMPACT_CATEGORY_LIMIT - visibleAcceptedLinks.length);
+  const visibleSuggestedLinks = context
+    ? categoriesExpanded
+      ? context.suggestedLinks
+      : context.suggestedLinks.slice(0, suggestedSlots)
+    : [];
+  const categoryOverflowCount = context
+    ? Math.max(0, context.acceptedLinks.length + context.suggestedLinks.length - COMPACT_CATEGORY_LIMIT)
+    : 0;
+
+  useEffect(() => {
+    setCategoriesExpanded(false);
+  }, [itemId]);
 
   return (
     <Panel
@@ -173,26 +194,46 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                   ))}
                 </ul>
               ) : null}
-              {context.acceptedLinks.length > 0 || context.primaryCategoryName ? (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {context.acceptedLinks.length > 0
-                    ? context.acceptedLinks.slice(0, 3).map((link) => (
-                        <CategoryChip
-                          key={link.categoryId}
-                          label={link.name}
-                          categoryId={link.categoryId}
-                        />
-                      ))
-                    : context.primaryCategoryName
-                      ? (
+              {context.acceptedLinks.length > 0 || context.suggestedLinks.length > 0 || context.primaryCategoryName ? (
+                <div
+                  className="scrollbar ui-compact-category-list"
+                  data-expanded={categoriesExpanded ? 'true' : 'false'}
+                >
+                  <div className="ui-compact-category-list__chips">
+                    {context.acceptedLinks.length > 0
+                      ? visibleAcceptedLinks.map((link) => (
                           <CategoryChip
-                            label={context.primaryCategoryName}
-                            categoryId={context.primaryCategoryId ?? undefined}
+                            key={link.categoryId}
+                            label={link.name}
+                            parentLabel={link.parentName}
+                            categoryId={link.categoryId}
                           />
-                        )
-                      : null}
+                        ))
+                      : context.primaryCategoryName
+                        ? (
+                            <CategoryChip
+                              label={context.primaryCategoryName}
+                              categoryId={context.primaryCategoryId ?? undefined}
+                            />
+                          )
+                        : null}
+                    {visibleSuggestedLinks.map((link) => (
+                      <CategoryChip
+                        key={`preview-suggested-${link.categoryId}`}
+                        label={`${link.name} (suggested)`}
+                        parentLabel={link.parentName}
+                        categoryId={link.categoryId}
+                        muted
+                      />
+                    ))}
+                  </div>
                 </div>
               ) : null}
+              <CategoryOverflowToggle
+                hiddenCount={categoryOverflowCount}
+                expanded={categoriesExpanded}
+                onToggle={() => setCategoriesExpanded((value) => !value)}
+              />
               {unmatchedTopic ? (
                 <UnmatchedTopicSuggestion
                   name={unmatchedTopic.name}
@@ -254,17 +295,17 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
               <section className="side-panel-digest-categories">
                 <div
                   style={{
-                    marginBottom: 4,
-                    fontSize: 'var(--text-xs)',
+                    marginBottom: 3,
+                    fontSize: '10px',
                     fontWeight: 650,
                     color: 'var(--text-muted)',
                     textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
+                    letterSpacing: '0.03em',
                   }}
                 >
                   Categories
                 </div>
-                <p className="side-panel-supporting-copy" style={{ margin: '0 0 6px' }}>
+                <p className="side-panel-supporting-copy" style={{ margin: '0 0 5px', fontSize: 9, lineHeight: 1.3 }}>
                   AI categories are separate from project collections.
                 </p>
                 {context.primaryCategoryName &&
@@ -295,28 +336,38 @@ export const SidePanelDigestPanel: React.FC<SidePanelDigestPanelProps> = ({
                   </p>
                 ) : (
                   <>
-                    {context.acceptedLinks.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-                        {context.acceptedLinks.map((link) => (
-                          <CategoryChip
-                            key={`accepted-${link.categoryId}`}
-                            label={link.name}
-                            parentLabel={link.parentName}
-                            categoryId={link.categoryId}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                    {context.suggestedLinks.map((link) => (
-                      <SuggestedCategoryRow
-                        key={`suggested-${link.categoryId}`}
-                        itemId={context.item.id}
-                        link={link}
-                        onDone={reload}
-                        onEdit={openCategoryManager}
-                        feedback={onFeedback}
-                      />
-                    ))}
+                    <div
+                      className="scrollbar ui-compact-category-list"
+                      data-expanded={categoriesExpanded ? 'true' : 'false'}
+                    >
+                      {visibleAcceptedLinks.length > 0 ? (
+                        <div className="ui-compact-category-list__chips">
+                          {visibleAcceptedLinks.map((link) => (
+                            <CategoryChip
+                              key={`accepted-${link.categoryId}`}
+                              label={link.name}
+                              parentLabel={link.parentName}
+                              categoryId={link.categoryId}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                      {visibleSuggestedLinks.map((link) => (
+                        <SuggestedCategoryRow
+                          key={`suggested-${link.categoryId}`}
+                          itemId={context.item.id}
+                          link={link}
+                          onDone={reload}
+                          onEdit={openCategoryManager}
+                          feedback={onFeedback}
+                        />
+                      ))}
+                    </div>
+                    <CategoryOverflowToggle
+                      hiddenCount={categoryOverflowCount}
+                      expanded={categoriesExpanded}
+                      onToggle={() => setCategoriesExpanded((value) => !value)}
+                    />
                   </>
                 )}
               </section>

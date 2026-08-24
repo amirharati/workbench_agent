@@ -11,6 +11,29 @@ import {
 import { useToast } from '../ToastContainer';
 
 export type CategoryReviewFeedback = (message: string, type: 'success' | 'error') => void;
+export const COMPACT_CATEGORY_LIMIT = 3;
+
+export function CategoryOverflowToggle({
+  hiddenCount,
+  expanded,
+  onToggle,
+}: {
+  hiddenCount: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  if (!expanded && hiddenCount <= 0) return null;
+  return (
+    <button
+      className="ui-category-overflow-toggle"
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+    >
+      {expanded ? 'Show less' : `More (${hiddenCount})`}
+    </button>
+  );
+}
 
 export function UnmatchedTopicSuggestion({
   name,
@@ -63,9 +86,9 @@ export function CategoryChip({
     display: 'inline-flex',
     flexDirection: 'column',
     alignItems: 'flex-start',
-    gap: 1,
-    padding: '2px 8px',
-    borderRadius: 999,
+    gap: 0,
+    padding: '1px 5px',
+    borderRadius: 4,
     border: `1px solid ${
       danger ? 'var(--error)' : warning ? 'var(--warning-border)' : 'var(--border)'
     }`,
@@ -83,7 +106,7 @@ export function CategoryChip({
         : muted
           ? 'var(--text-faint)'
           : 'var(--accent)',
-    fontSize: 'var(--text-xs)',
+    fontSize: '9px',
     fontWeight: danger || warning ? 650 : undefined,
   } as const;
 
@@ -95,14 +118,14 @@ export function CategoryChip({
         title={title ?? `View all bookmarks in ${label}`}
         style={{
           ...style,
-          font: 'inherit',
-          lineHeight: 1.35,
+          fontFamily: 'inherit',
+          lineHeight: 1.2,
           cursor: 'pointer',
         }}
       >
         <span>{label}</span>
         {visibleParent ? (
-          <small style={{ color: 'var(--text-faint)', fontSize: '10px', fontWeight: 500, lineHeight: 1.2 }}>
+          <small style={{ color: 'var(--text-faint)', fontSize: '8px', fontWeight: 500, lineHeight: 1.1 }}>
             {visibleParent}
           </small>
         ) : null}
@@ -114,7 +137,7 @@ export function CategoryChip({
     <span style={style}>
       <span>{label}</span>
       {visibleParent ? (
-        <small style={{ color: 'var(--text-faint)', fontSize: '10px', fontWeight: 500, lineHeight: 1.2 }}>
+        <small style={{ color: 'var(--text-faint)', fontSize: '8px', fontWeight: 500, lineHeight: 1.1 }}>
           {visibleParent}
         </small>
       ) : null}
@@ -141,12 +164,12 @@ function ReviewActionButton({
       onClick={onClick}
       disabled={disabled}
       style={{
-        padding: '2px 8px',
+        padding: '1px 4px',
         borderRadius: 'var(--radius-sm)',
         border: `1px solid ${isAccept ? 'var(--accent)' : 'var(--border)'}`,
         background: isAccept ? 'var(--accent-weak)' : 'transparent',
         color: isAccept ? 'var(--accent)' : 'var(--text-muted)',
-        fontSize: 'var(--text-xs)',
+        fontSize: '9px',
         fontWeight: 600,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
@@ -210,13 +233,15 @@ export function SuggestedCategoryRow({
     <div
       style={{
         display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-        padding: '6px 0',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 3,
+        padding: '3px 0',
         borderBottom: '1px solid var(--border)',
       }}
     >
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 3, minWidth: 0 }}>
         <CategoryChip
           label={`${link.name} (suggested)`}
           parentLabel={link.parentName}
@@ -224,12 +249,12 @@ export function SuggestedCategoryRow({
           muted
         />
         {link.score > 0 && (
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-faint)' }}>
+          <span style={{ fontSize: '9px', color: 'var(--text-faint)' }}>
             {Math.round(link.score * 100)}%
           </span>
         )}
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginLeft: 'auto' }}>
         <ReviewActionButton
           label="Accept"
           variant="accept"
@@ -244,7 +269,7 @@ export function SuggestedCategoryRow({
         />
         {onEdit ? (
           <ReviewActionButton
-            label="Manage categories"
+            label="Manage"
             variant="edit"
             disabled={busy !== null}
             onClick={onEdit}
