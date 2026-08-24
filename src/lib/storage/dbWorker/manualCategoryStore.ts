@@ -103,16 +103,6 @@ function validateDraft(store: ManualCategoryStore, draft: ManualCategoryDraftInp
   if (draft.kind !== 'leaf' && draft.kind !== 'parent') {
     throw new Error('Category kind must be parent or child');
   }
-  const normalizedName = normalizeCategoryName(name);
-  const duplicate = store
-    .getAllCategories()
-    .find(
-      (category) =>
-        category.status !== 'deprecated' &&
-        normalizeCategoryName(category.name) === normalizedName
-    );
-  if (duplicate) throw new Error(`A category named “${duplicate.name}” already exists`);
-
   const parent = draft.kind === 'leaf' && draft.parentId
     ? store.getCategory(draft.parentId)
     : undefined;
@@ -122,6 +112,21 @@ function validateDraft(store: ManualCategoryStore, draft: ManualCategoryDraftInp
   ) {
     throw new Error('Choose an active topic parent');
   }
+  const normalizedName = normalizeCategoryName(name);
+  const duplicate = store.getAllCategories().find(
+    (category) =>
+      category.status !== 'deprecated' &&
+      category.kind === draft.kind &&
+      (draft.kind === 'parent' || category.parentId === parent?.id) &&
+      normalizeCategoryName(category.name) === normalizedName
+  );
+  if (duplicate) {
+    throw new Error(
+      draft.kind === 'leaf'
+        ? `A child named “${duplicate.name}” already exists under ${parent?.name}`
+        : `A parent named “${duplicate.name}” already exists`
+    );
+  }
   const canonicalTags = [...new Set((draft.canonicalTags ?? []).map((tag) => tag.trim()).filter(Boolean))]
     .slice(0, 20);
   return { name, description, kind: draft.kind, parent, canonicalTags };
@@ -130,7 +135,11 @@ function validateDraft(store: ManualCategoryStore, draft: ManualCategoryDraftInp
 function validateCategoryName(
   store: ManualCategoryStore,
   nameInput: string,
-  excludeIds: Set<string> = new Set()
+  options: {
+    excludeIds?: Set<string>;
+    kind: AiCategoryKind;
+    parentId?: string | null;
+  }
 ): string {
   const name = nameInput?.trim() ?? '';
   if (!name) throw new Error('Category name is required');
@@ -138,11 +147,19 @@ function validateCategoryName(
   const normalizedName = normalizeCategoryName(name);
   const duplicate = store.getAllCategories().find(
     (candidate) =>
-      !excludeIds.has(candidate.id) &&
+      !options.excludeIds?.has(candidate.id) &&
       candidate.status !== 'deprecated' &&
+      candidate.kind === options.kind &&
+      (options.kind === 'parent' || candidate.parentId === options.parentId) &&
       normalizeCategoryName(candidate.name) === normalizedName
   );
-  if (duplicate) throw new Error(`A category named “${duplicate.name}” already exists`);
+  if (duplicate) {
+    throw new Error(
+      options.kind === 'leaf'
+        ? `A child named “${duplicate.name}” already exists under this parent`
+        : `A parent named “${duplicate.name}” already exists`
+    );
+  }
   return name;
 }
 
@@ -163,9 +180,22 @@ export function createManualCategoryInStore(
   const valid = validateDraft(store, draft);
   const itemId = options.itemId?.trim() ?? '';
   if (itemId && !store.getItem(itemId)) throw new Error('Bookmark not found');
+
+  const idBase = `manual_${categorySlug(valid.name)}`;
+  let categoryId = idBase;
+  let suffix = 2;
+  while (
+    store.getCategory(categoryId) ||
+    (valid.kind === 'parent' && store.getCategory(generalLeafId(categoryId)))
+  ) {
+    categoryId = `${idBase}-${suffix++}`;
+  }
   const namedChildInput = valid.kind === 'parent' && draft.child?.name?.trim()
     ? {
-        name: validateCategoryName(store, draft.child.name),
+        name: validateCategoryName(store, draft.child.name, {
+          kind: 'leaf',
+          parentId: categoryId,
+        }),
         description: validateDescription(draft.child.description),
         canonicalTags: [...new Set(
           (draft.child.canonicalTags ?? []).map((tag) => tag.trim()).filter(Boolean)
@@ -179,15 +209,6 @@ export function createManualCategoryInStore(
     throw new Error('Parent and child need different names');
   }
 
-  const idBase = `manual_${categorySlug(valid.name)}`;
-  let categoryId = idBase;
-  let suffix = 2;
-  while (
-    store.getCategory(categoryId) ||
-    (valid.kind === 'parent' && store.getCategory(generalLeafId(categoryId)))
-  ) {
-    categoryId = `${idBase}-${suffix++}`;
-  }
   const category: AiCategory = {
     id: categoryId,
     name: valid.name,
@@ -312,7 +333,11 @@ export function updateManualCategoryInStore(
     : [];
   const fallback = children.find((candidate) => candidate.isGeneralFallback);
   const excludedIds = new Set([category.id, ...(fallback ? [fallback.id] : [])]);
-  const name = validateCategoryName(store, input.name, excludedIds);
+  const name = validateCategoryName(store, input.name, {
+    excludeIds: excludedIds,
+    kind: category.kind,
+    parentId: category.parentId,
+  });
   const description = validateDescription(input.description);
   const updatedCategory: AiCategory = {
     ...category,
@@ -321,7 +346,13 @@ export function updateManualCategoryInStore(
     updated_at: now,
   };
   const fallbackDefinition = fallback ? buildGeneralLeafDefinition(updatedCategory) : null;
-  if (fallbackDefinition) validateCategoryName(store, fallbackDefinition.name, excludedIds);
+  if (fallbackDefinition) {
+    validateCategoryName(store, fallbackDefinition.name, {
+      excludeIds: excludedIds,
+      kind: 'leaf',
+      parentId: updatedCategory.id,
+    });
+  }
 
   store.withTransaction(() => {
     store.putCategory(updatedCategory);

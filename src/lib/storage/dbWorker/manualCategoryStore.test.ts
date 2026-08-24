@@ -101,6 +101,30 @@ describe('manual category worker transactions', () => {
     expect(store.getAllCategories()).toHaveLength(2);
   });
 
+  it('allows the same child name under different parents while keeping each path distinct', () => {
+    const store = makeStore();
+    store.putCategory(leaf('technology-traders', 'Traders'));
+    store.putCategory({
+      id: 'finance', name: 'Finance', kind: 'parent', status: 'approved', source: 'seed',
+      assignable: false, created_at: 1, updated_at: 1,
+    });
+
+    const result = createManualCategoryInStore(store, {
+      name: 'Traders',
+      description: 'People and communities engaged in financial trading.',
+      kind: 'leaf',
+      parentId: 'finance',
+    }, {}, 10);
+
+    expect(result.category).toMatchObject({
+      id: 'manual_traders',
+      name: 'Traders',
+      parentId: 'finance',
+      parentName: 'Finance',
+    });
+    expect(store.getCategory('technology-traders')).toMatchObject({ parentId: 'technology' });
+  });
+
   it('adds categories without replacing the primary, then explicitly changes and removes it', () => {
     const store = makeStore();
     store.putCategory(leaf('one', 'One'));

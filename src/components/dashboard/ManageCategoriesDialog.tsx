@@ -6,6 +6,7 @@ import {
   findSimilarCategories,
   getCategoryManagementSnapshot,
   manageItemCategory,
+  proposeCategoryDescription,
   proposeCategoryStructure,
   updateManualCategory,
   type CategoryDraft,
@@ -52,7 +53,7 @@ function localIntentMatches(
   categories: AiCategory[]
 ): CategorySimilarityMatch[] {
   const byId = new Map(categories.map((category) => [category.id, category]));
-  return rankCategoryNames(intent, '', categories, 16)
+  return rankCategoryNames(intent, '', categories, 24)
     .map((match) => {
       const category = byId.get(match.categoryId);
       return category
@@ -90,6 +91,14 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
   const [makePrimary, setMakePrimary] = useState(true);
   const [similar, setSimilar] = useState<CategorySimilarityResult | null>(null);
   const [checkingSimilar, setCheckingSimilar] = useState(false);
+  const [parentQuery, setParentQuery] = useState('');
+  const [parentSimilar, setParentSimilar] = useState<CategorySimilarityResult | null>(null);
+  const [checkingParents, setCheckingParents] = useState(false);
+  const [childSimilar, setChildSimilar] = useState<CategorySimilarityResult | null>(null);
+  const [checkingChildren, setCheckingChildren] = useState(false);
+  const [descriptionBusy, setDescriptionBusy] = useState<'parent' | 'child' | null>(null);
+  const [browseAllParents, setBrowseAllParents] = useState(false);
+  const [selectedExistingParentId, setSelectedExistingParentId] = useState<string | null>(null);
   const [creationOpen, setCreationOpen] = useState(false);
   const [expandedParentId, setExpandedParentId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
@@ -97,8 +106,13 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
   const [editDescription, setEditDescription] = useState('');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const similaritySeq = useRef(0);
+  const parentSimilaritySeq = useRef(0);
+  const childSimilaritySeq = useRef(0);
+  const descriptionSeq = useRef(0);
   const proposalSeq = useRef(0);
   const similarityCache = useRef(new Map<string, CategorySimilarityResult>());
+  const parentSimilarityCache = useRef(new Map<string, CategorySimilarityResult>());
+  const childSimilarityCache = useRef(new Map<string, CategorySimilarityResult>());
   const creationSectionRef = useRef<HTMLElement>(null);
   const editingSectionRef = useRef<HTMLElement>(null);
   const deleteConfirmRef = useRef<HTMLDivElement>(null);
@@ -132,6 +146,9 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
       setSnapshot(next);
       setDraft(nextDraft);
       setIntent(nextDraft.name);
+      setParentQuery(
+        next.categories.find((category) => category.id === nextDraft.parentId)?.name ?? nextDraft.name
+      );
       setCreationOpen(Boolean(next.signal?.llmReview?.novelTopicSuggestion));
       setLoading(false);
     }).catch((error) => {
@@ -173,14 +190,15 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
     [draftKey, categories]
   );
   useEffect(() => {
+    const seq = ++similaritySeq.current;
     setSimilar(null);
-    if (normalizeCategoryName(intent).length < 3 || !categories.length) return;
+    setCheckingSimilar(false);
+    if (normalizeCategoryName(intent).length < 2 || !categories.length) return;
     const cached = similarityCache.current.get(draftKey);
     if (cached) {
       setSimilar(cached);
       return;
     }
-    const seq = ++similaritySeq.current;
     const timer = window.setTimeout(() => {
       setCheckingSimilar(true);
       void findSimilarCategories({ ...draft, name: intent, description: '' }, categories)
@@ -200,11 +218,11 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
         .finally(() => {
           if (seq === similaritySeq.current) setCheckingSimilar(false);
         });
-    }, 700);
+    }, 450);
     return () => window.clearTimeout(timer);
   }, [draftKey, categories]);
 
-  const intentMatches = (similar?.matches?.length ? similar.matches : localMatches).slice(0, 12);
+  const intentMatches = (similar?.matches?.length ? similar.matches : localMatches).slice(0, 20);
   const matchedParents = intentMatches
     .filter((match) => match.category.kind === 'parent')
     .slice(0, 4);
@@ -218,11 +236,103 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
         })
     : [];
 
+  const parentIntent = draft.kind === 'parent' ? draft.name : parentQuery;
+  const parentIntentKey = normalizeCategoryName(parentIntent);
+  const localParentFieldMatches = useMemo(
+    () => localIntentMatches(parentIntent, categories),
+    [parentIntentKey, categories]
+  );
+  useEffect(() => {
+    const seq = ++parentSimilaritySeq.current;
+    setParentSimilar(null);
+    setCheckingParents(false);
+    if (parentIntentKey.length < 2 || !categories.length || !creationOpen) return;
+    const cached = parentSimilarityCache.current.get(parentIntentKey);
+    if (cached) {
+      setParentSimilar(cached);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setCheckingParents(true);
+      void findSimilarCategories(
+        { name: parentIntent, description: '', kind: 'parent', canonicalTags: [] },
+        categories
+      ).then((result) => {
+        parentSimilarityCache.current.set(parentIntentKey, result);
+        if (seq === parentSimilaritySeq.current) setParentSimilar(result);
+      }).catch((error) => {
+        if (seq === parentSimilaritySeq.current) {
+          setParentSimilar({
+            matches: localParentFieldMatches,
+            semanticAvailable: false,
+            semanticWarning: String(error),
+          });
+        }
+      }).finally(() => {
+        if (seq === parentSimilaritySeq.current) setCheckingParents(false);
+      });
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [parentIntentKey, categories, creationOpen]);
+
+  const parentFieldMatches = (
+    parentSimilar?.matches?.length ? parentSimilar.matches : localParentFieldMatches
+  )
+    .filter((match) => match.category.kind === 'parent')
+    .slice(0, 10);
+
+  const childIntent = draft.kind === 'parent' ? draft.child?.name ?? '' : draft.name;
+  const childIntentKey = normalizeCategoryName(childIntent);
+  const localChildMatches = useMemo(
+    () => localIntentMatches(childIntent, categories),
+    [childIntentKey, categories]
+  );
+  useEffect(() => {
+    const seq = ++childSimilaritySeq.current;
+    setChildSimilar(null);
+    setCheckingChildren(false);
+    if (childIntentKey.length < 2 || !categories.length || !creationOpen) return;
+    const cached = childSimilarityCache.current.get(childIntentKey);
+    if (cached) {
+      setChildSimilar(cached);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setCheckingChildren(true);
+      void findSimilarCategories(
+        { name: childIntent, description: '', kind: 'leaf', canonicalTags: [] },
+        categories
+      ).then((result) => {
+        childSimilarityCache.current.set(childIntentKey, result);
+        if (seq === childSimilaritySeq.current) setChildSimilar(result);
+      }).catch((error) => {
+        if (seq === childSimilaritySeq.current) {
+          setChildSimilar({
+            matches: localChildMatches,
+            semanticAvailable: false,
+            semanticWarning: String(error),
+          });
+        }
+      }).finally(() => {
+        if (seq === childSimilaritySeq.current) setCheckingChildren(false);
+      });
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [childIntentKey, categories, creationOpen]);
+
+  const childMatchesByName = new Map<string, CategorySimilarityMatch>();
+  for (const match of childSimilar?.matches?.length ? childSimilar.matches : localChildMatches) {
+    if (match.category.kind !== 'leaf') continue;
+    const key = normalizeCategoryName(match.category.name);
+    if (!childMatchesByName.has(key)) childMatchesByName.set(key, match);
+  }
+  const childMatches = [...childMatchesByName.values()].slice(0, 10);
+
   const runItemAction = async (
     categoryId: string,
     action: 'add' | 'accept' | 'reject' | 'remove' | 'primary'
-  ) => {
-    if (!itemId) return;
+  ): Promise<boolean> => {
+    if (!itemId) return false;
     setBusyKey(`${action}:${categoryId}`);
     try {
       await manageItemCategory(itemId, categoryId, action);
@@ -237,8 +347,10 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
               ? 'Primary category updated'
               : 'Category added',
       });
+      return true;
     } catch (error) {
       addToast({ type: 'error', message: `Could not update category: ${String(error)}` });
+      return false;
     } finally {
       setBusyKey(null);
     }
@@ -246,8 +358,13 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
 
   const chooseNewChild = (parentId?: string) => {
     const seq = ++proposalSeq.current;
+    descriptionSeq.current += 1;
+    setDescriptionBusy(null);
+    setSelectedExistingParentId(null);
     const parent = parentId ? categoryById.get(parentId) : undefined;
     setDraft({ name: intent.trim(), description: '', kind: 'leaf', parentId, canonicalTags: [] });
+    setParentQuery(parent?.name ?? intent.trim());
+    setBrowseAllParents(false);
     setCreationOpen(true);
     setProposalLoading(true);
     setProposalWarning(null);
@@ -277,6 +394,9 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
 
   const chooseNewParent = () => {
     const seq = ++proposalSeq.current;
+    descriptionSeq.current += 1;
+    setDescriptionBusy(null);
+    setSelectedExistingParentId(null);
     setDraft({
       name: intent.trim(),
       description: '',
@@ -284,6 +404,8 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
       canonicalTags: [],
       child: { name: '', description: '', canonicalTags: [] },
     });
+    setParentQuery(intent.trim());
+    setBrowseAllParents(false);
     setCreationOpen(true);
     setProposalLoading(true);
     setProposalWarning(null);
@@ -312,6 +434,157 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
     }).finally(() => {
       if (seq === proposalSeq.current) setProposalLoading(false);
     });
+  };
+
+  const generateChildDescription = async (
+    name: string,
+    parent: Pick<AiCategory, 'name' | 'description'> | undefined
+  ) => {
+    if (name.trim().length < 2 || !parent) return;
+    const seq = ++descriptionSeq.current;
+    setDescriptionBusy('child');
+    setDraft((value) => value.kind === 'parent'
+      ? {
+          ...value,
+          child: {
+            ...(value.child ?? { name: name.trim() }),
+            description: '',
+          },
+        }
+      : { ...value, description: '' });
+    try {
+      const result = await proposeCategoryDescription({
+        name: name.trim(),
+        kind: 'leaf',
+        parent,
+      });
+      if (seq !== descriptionSeq.current) return;
+      setDraft((value) => value.kind === 'parent'
+        ? {
+            ...value,
+            child: {
+              ...(value.child ?? { name: name.trim() }),
+              description: result.description,
+            },
+          }
+        : { ...value, description: result.description });
+      setProposalWarning(result.warning ?? null);
+    } catch (error) {
+      if (seq === descriptionSeq.current) setProposalWarning(String(error));
+    } finally {
+      if (seq === descriptionSeq.current) setDescriptionBusy(null);
+    }
+  };
+
+  const selectParent = (parent: AiCategory) => {
+    setDraft((value) => ({ ...value, parentId: parent.id }));
+    setParentQuery(parent.name);
+    setBrowseAllParents(false);
+    const childName = draft.kind === 'parent' ? draft.child?.name ?? '' : draft.name;
+    if (childName.trim()) void generateChildDescription(childName, parent);
+  };
+
+  const useExistingParentForDraft = (parent: AiCategory) => {
+    if (draft.kind !== 'parent') {
+      selectParent(parent);
+      return;
+    }
+    setSelectedExistingParentId(parent.id);
+    setParentQuery(parent.name);
+    setBrowseAllParents(false);
+    setProposalWarning(null);
+    const childName = draft.child?.name ?? '';
+    if (childName.trim()) void generateChildDescription(childName, parent);
+  };
+
+  const draftForSubmission = (): CategoryDraft => {
+    if (draft.kind !== 'parent' || !selectedExistingParentId) return draft;
+    return {
+      name: draft.child?.name?.trim() || intent.trim(),
+      description: draft.child?.description ?? '',
+      kind: 'leaf',
+      parentId: selectedExistingParentId,
+      canonicalTags: draft.child?.canonicalTags ?? [],
+    };
+  };
+
+  const reuseChildName = (category: AiCategory) => {
+    if (category.kind !== 'leaf') return;
+    const parent = draft.kind === 'parent'
+      ? categoryById.get(selectedExistingParentId ?? '') ?? {
+          name: draft.name,
+          description: draft.description,
+        }
+      : categoryById.get(draft.parentId ?? '');
+    if (draft.kind === 'parent') {
+      setDraft((value) => ({
+        ...value,
+        child: {
+          name: category.name,
+          description: '',
+          canonicalTags: category.canonicalTags ?? [],
+        },
+      }));
+    } else {
+      setDraft((value) => ({
+        ...value,
+        name: category.name,
+        description: '',
+        canonicalTags: category.canonicalTags ?? [],
+      }));
+    }
+    void generateChildDescription(category.name, parent);
+  };
+
+  const refreshDraftDescription = async (field: 'parent' | 'child') => {
+    const name = field === 'parent'
+      ? draft.name.trim()
+      : draft.kind === 'parent'
+        ? draft.child?.name?.trim() ?? ''
+        : draft.name.trim();
+    if (name.length < 2) return;
+    const seq = ++descriptionSeq.current;
+    setDescriptionBusy(field);
+    const parentContext = field === 'child'
+      ? draft.kind === 'parent'
+        ? categoryById.get(selectedExistingParentId ?? '') ?? {
+            name: draft.name,
+            description: draft.description,
+          }
+        : selectedParent
+      : undefined;
+    try {
+      const result = await proposeCategoryDescription({
+        name,
+        kind: field === 'parent' ? 'parent' : 'leaf',
+        parent: parentContext,
+      });
+      if (seq !== descriptionSeq.current) return;
+      if (result.description) {
+        setDraft((value) => field === 'parent'
+          ? { ...value, description: result.description }
+          : value.kind === 'parent'
+            ? {
+                ...value,
+                child: {
+                  ...(value.child ?? { name }),
+                  description: result.description,
+                },
+              }
+            : { ...value, description: result.description });
+      }
+      setProposalWarning(result.warning ?? null);
+      if (field === 'parent' && draft.kind === 'parent' && draft.child?.name.trim()) {
+        void generateChildDescription(draft.child.name, {
+          name,
+          description: result.description,
+        });
+      }
+    } catch (error) {
+      if (seq === descriptionSeq.current) setProposalWarning(String(error));
+    } finally {
+      if (seq === descriptionSeq.current) setDescriptionBusy(null);
+    }
   };
 
   const beginEdit = (category: AiCategory) => {
@@ -372,7 +645,7 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
   const create = async () => {
     setBusyKey('create');
     try {
-      const result = await createManualCategory(draft, { itemId, makePrimary });
+      const result = await createManualCategory(draftForSubmission(), { itemId, makePrimary });
       if (itemId) {
         const attached = result.links?.find(
           (link) =>
@@ -400,6 +673,13 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
       setCreationOpen(false);
       setProposalWarning(null);
       setExpandedParentId(null);
+      setParentQuery('');
+      setParentSimilar(null);
+      setChildSimilar(null);
+      setBrowseAllParents(false);
+      setSelectedExistingParentId(null);
+      descriptionSeq.current += 1;
+      setDescriptionBusy(null);
     } catch (error) {
       addToast({ type: 'error', message: `Could not create category: ${String(error)}` });
     } finally {
@@ -407,29 +687,240 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
     }
   };
 
+  const submissionDraft = draftForSubmission();
   const exactDuplicate = categories.find(
-    (category) => normalizeCategoryName(category.name) === normalizeCategoryName(draft.name)
+    (category) =>
+      category.kind === submissionDraft.kind &&
+      (submissionDraft.kind === 'parent' || category.parentId === submissionDraft.parentId) &&
+      normalizeCategoryName(category.name) === normalizeCategoryName(submissionDraft.name)
   );
-  const childExactDuplicate = draft.child?.name
-    ? categories.find(
-        (category) => normalizeCategoryName(category.name) === normalizeCategoryName(draft.child!.name)
-      )
-    : undefined;
   const canCreate =
-    Boolean(draft.name.trim()) &&
+    Boolean(submissionDraft.name.trim()) &&
     !exactDuplicate &&
-    !childExactDuplicate &&
-    (draft.kind !== 'parent' || Boolean(draft.child?.name.trim())) &&
-    (draft.kind !== 'parent' || normalizeCategoryName(draft.name) !== normalizeCategoryName(draft.child?.name ?? '')) &&
-    (draft.kind === 'parent' || Boolean(draft.parentId)) &&
+    (submissionDraft.kind !== 'parent' || Boolean(submissionDraft.child?.name.trim())) &&
+    (submissionDraft.kind !== 'parent' || normalizeCategoryName(submissionDraft.name) !== normalizeCategoryName(submissionDraft.child?.name ?? '')) &&
+    (submissionDraft.kind === 'parent' || Boolean(submissionDraft.parentId)) &&
     busyKey == null &&
-    !proposalLoading;
+    !proposalLoading &&
+    descriptionBusy == null;
+  const canAddExistingChild = Boolean(
+    itemId &&
+    exactDuplicate?.kind === 'leaf' &&
+    !activeCategoryIds.has(exactDuplicate.id) &&
+    busyKey == null &&
+    !proposalLoading
+  );
+  const submitCreation = async () => {
+    if (canAddExistingChild && exactDuplicate) {
+      const added = await runItemAction(exactDuplicate.id, 'add');
+      if (added) {
+        setCreationOpen(false);
+        setSelectedExistingParentId(null);
+      }
+      return;
+    }
+    await create();
+  };
   const hasIntent = normalizeCategoryName(intent).length >= 2;
   const proposedDraft = snapshot?.signal?.llmReview?.novelTopicSuggestion;
   const editingCategory = editingCategoryId ? categoryById.get(editingCategoryId) : undefined;
   const editingChildren = editingCategory?.kind === 'parent'
     ? categories.filter((category) => category.parentId === editingCategory.id)
     : [];
+  const selectedParent = draft.parentId ? categoryById.get(draft.parentId) : undefined;
+  const selectedStructureParent = selectedExistingParentId
+    ? categoryById.get(selectedExistingParentId)
+    : undefined;
+
+  const renderChildMatches = (bounded = false) => childIntentKey.length >= 2 ? (
+    <div className={`ui-category-manager__parent-results ui-category-manager__field-matches${bounded ? ' ui-category-manager__field-matches--bounded' : ''}`}>
+      <div className="ui-category-manager__parent-results-heading">
+        <span>Existing matches for this child</span>
+        <span>
+          {checkingChildren
+            ? 'Searching meaning…'
+            : childSimilar?.semanticAvailable
+              ? 'Semantic + name search'
+              : 'Name search'}
+          </span>
+      </div>
+      <div className={bounded ? 'ui-category-manager__match-scroll' : undefined}>
+        {childMatches.length ? childMatches.slice(0, 8).map((match) => {
+          const category = match.category;
+          return (
+            <div className="ui-category-manager__parent-result" key={category.id}>
+              <div>
+                <strong>{category.name}</strong>
+                <span>
+                  {Math.round(match.score * 100)}% match
+                  {category.description ? ` · ${category.description}` : ''}
+                </span>
+              </div>
+              <button
+                className="ui-button ui-button--compact ui-button--secondary"
+                type="button"
+                onClick={() => reuseChildName(category)}
+              >
+                Use child
+              </button>
+            </div>
+          );
+        }) : !checkingChildren ? (
+          <p className="ui-category-manager__muted">No similar existing category found.</p>
+        ) : null}
+        {childSimilar?.semanticWarning ? (
+          <p className="ui-category-manager__warning">{childSimilar.semanticWarning}</p>
+        ) : null}
+      </div>
+    </div>
+  ) : null;
+
+  const renderProposedParentMatches = () => parentIntentKey.length >= 2 ? (
+    <div className="ui-category-manager__parent-results ui-category-manager__field-matches ui-category-manager__field-matches--bounded ui-category-manager__parent-results--duplicate-check">
+      <div className="ui-category-manager__parent-results-heading">
+        <span>Existing matches for this parent</span>
+        <span>
+          {checkingParents
+            ? 'Searching meaning…'
+            : parentSimilar?.semanticAvailable
+              ? 'Semantic + name search'
+              : 'Name search'}
+        </span>
+      </div>
+      <div className="ui-category-manager__match-scroll">
+        {parentFieldMatches.length ? parentFieldMatches.slice(0, 8).map((match) => (
+          <div className="ui-category-manager__parent-result" key={match.category.id}>
+            <div>
+              <strong>{match.category.name}</strong>
+              <span>
+                {Math.round(match.score * 100)}% match
+                {match.category.description ? ` · ${match.category.description}` : ''}
+              </span>
+            </div>
+            <button
+              className={`ui-button ui-button--compact ${selectedExistingParentId === match.category.id ? 'ui-button--primary' : 'ui-button--secondary'}`}
+              type="button"
+              disabled={proposalLoading || selectedExistingParentId === match.category.id}
+              onClick={() => useExistingParentForDraft(match.category)}
+            >
+              {selectedExistingParentId === match.category.id ? 'Selected' : 'Use parent'}
+            </button>
+          </div>
+        )) : !checkingParents ? (
+          <p className="ui-category-manager__muted">No similar existing parent found.</p>
+        ) : null}
+      </div>
+    </div>
+  ) : null;
+
+  const renderParentFinder = () => (
+    <div className="ui-category-manager__parent-finder">
+      <label className="ui-form__group">
+        <span className="ui-form__label">Find a parent</span>
+        <span className="ui-category-manager__search ui-category-manager__search--parent">
+          <Search size={15} />
+          <input
+            className="ui-field"
+            disabled={proposalLoading}
+            value={parentQuery}
+            onChange={(event) => {
+              const value = event.target.value;
+              setParentQuery(value);
+              if (
+                selectedParent &&
+                normalizeCategoryName(value) !== normalizeCategoryName(selectedParent.name)
+              ) {
+                setDraft((current) => ({ ...current, parentId: undefined }));
+              }
+            }}
+            placeholder="Search by name or meaning, e.g. AI"
+          />
+        </span>
+        <span className="ui-form__help">
+          Search checks parent names, descriptions, tags, and semantic meaning.
+        </span>
+      </label>
+
+      {selectedParent ? (
+        <div className="ui-category-manager__selected-parent">
+          <div>
+            <span>Selected parent</span>
+            <strong>{selectedParent.name}</strong>
+            {selectedParent.description ? <small>{selectedParent.description}</small> : null}
+          </div>
+          <Check size={15} />
+        </div>
+      ) : null}
+
+      {parentIntentKey.length >= 2 ? (
+        <div className="ui-category-manager__parent-results">
+          <div className="ui-category-manager__parent-results-heading">
+            <span>Best matching parents</span>
+            <span>
+              {checkingParents
+                ? 'Searching meaning…'
+                : parentSimilar?.semanticAvailable
+                  ? 'Semantic + name search'
+                  : 'Name search'}
+            </span>
+          </div>
+          {parentFieldMatches.length ? parentFieldMatches.slice(0, 10).map((match) => (
+            <div className="ui-category-manager__parent-result" key={match.category.id}>
+              <div>
+                <strong>{match.category.name}</strong>
+                <span>
+                  {Math.round(match.score * 100)}% match
+                  {match.category.description ? ` · ${match.category.description}` : ''}
+                </span>
+              </div>
+              <button
+                className="ui-button ui-button--compact ui-button--secondary"
+                type="button"
+                disabled={proposalLoading || draft.parentId === match.category.id}
+                onClick={() => selectParent(match.category)}
+              >
+                {draft.parentId === match.category.id ? 'Selected' : 'Use parent'}
+              </button>
+            </div>
+          )) : !checkingParents ? (
+            <p className="ui-category-manager__muted">No matching parent yet. Try a broader idea.</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <button
+        className="ui-button ui-button--compact ui-button--ghost ui-category-manager__browse-all"
+        type="button"
+        onClick={() => setBrowseAllParents((value) => !value)}
+      >
+        {browseAllParents ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        Browse all parents instead
+      </button>
+      {browseAllParents ? (
+        <label className="ui-form__group ui-category-manager__parent-fallback">
+          <span className="ui-form__label">All parents</span>
+          <select
+            className="ui-field"
+            aria-label="Browse all parents"
+            disabled={proposalLoading}
+            value={draft.parentId ?? ''}
+            onChange={(event) => {
+              const parent = categoryById.get(event.target.value);
+              if (parent) selectParent(parent);
+            }}
+          >
+            <option value="">Choose a parent…</option>
+            {[...parents]
+              .sort((left, right) => left.name.localeCompare(right.name))
+              .map((parent) => <option value={parent.id} key={parent.id}>{parent.name}</option>)}
+          </select>
+        </label>
+      ) : null}
+      {parentSimilar?.semanticWarning ? (
+        <p className="ui-category-manager__warning">{parentSimilar.semanticWarning}</p>
+      ) : null}
+    </div>
+  );
 
   const renderEditAction = (category: AiCategory) => isUserEditableCategory(category) ? (
     <button
@@ -597,10 +1088,16 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
               <section className="ui-dialog__section">
                 <div className="ui-category-manager__section-heading">
                   <div>
-                    <h3 className="ui-dialog__section-title">Existing matches</h3>
-                    <p>Parents and children are searched together.</p>
+                    <h3 className="ui-dialog__section-title">Best existing matches</h3>
+                    <p>Parents and children are ranked by name, description, tags, and semantic meaning.</p>
                   </div>
-                  {checkingSimilar ? <span>Checking meaning…</span> : null}
+                  <span>
+                    {checkingSimilar
+                      ? 'Searching meaning…'
+                      : similar?.semanticAvailable
+                        ? 'Semantic + name search'
+                        : 'Name search'}
+                  </span>
                 </div>
                 {!intentMatches.length && !checkingSimilar ? (
                   <p className="ui-category-manager__muted">No close existing category found yet.</p>
@@ -642,6 +1139,9 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
                     })}
                   </div>
                 )}
+                {similar?.semanticWarning ? (
+                  <p className="ui-category-manager__warning">{similar.semanticWarning}</p>
+                ) : null}
               </section>
 
               <section className="ui-dialog__section ui-category-manager__new-options">
@@ -681,64 +1181,176 @@ export const ManageCategoriesDialog: React.FC<ManageCategoriesDialogProps> = ({
                   {proposalWarning ? <p className="ui-category-manager__warning">{proposalWarning}</p> : null}
                   {draft.kind === 'leaf' ? (
                     <>
-                      <label className="ui-form__group">
-                        <span className="ui-form__label">Parent</span>
-                        <select className="ui-field" disabled={proposalLoading} value={draft.parentId ?? ''} onChange={(event) => setDraft((value) => ({ ...value, parentId: event.target.value || undefined }))}>
-                          <option value="">Choose a parent…</option>
-                          {[...parents].sort((left, right) => left.name.localeCompare(right.name)).map((parent) => <option value={parent.id} key={parent.id}>{parent.name}</option>)}
-                        </select>
-                      </label>
+                      {renderParentFinder()}
                       <label className="ui-form__group">
                         <span className="ui-form__label">Child category name</span>
-                        <input className="ui-field" disabled={proposalLoading} value={draft.name} onChange={(event) => setDraft((value) => ({ ...value, name: event.target.value }))} placeholder="Child category name" />
+                        <input
+                          className="ui-field"
+                          disabled={proposalLoading}
+                          value={draft.name}
+                          onChange={(event) => {
+                            descriptionSeq.current += 1;
+                            setDescriptionBusy(null);
+                            setDraft((value) => ({
+                              ...value,
+                              name: event.target.value,
+                              description: '',
+                            }));
+                          }}
+                          onBlur={() => void refreshDraftDescription('child')}
+                          placeholder="Child category name"
+                        />
                       </label>
+                      {renderChildMatches()}
                       <label className="ui-form__group">
-                        <span className="ui-form__label">Child description <span className="ui-form__optional">optional</span></span>
-                        <textarea className="ui-field ui-category-manager__description" disabled={proposalLoading} value={draft.description} onChange={(event) => setDraft((value) => ({ ...value, description: event.target.value }))} placeholder="What belongs in this child category?" />
+                        <span className="ui-form__label">Child description <span className="ui-form__optional">{descriptionBusy === 'child' ? 'updating from name…' : 'optional'}</span></span>
+                        <textarea
+                          className="ui-field ui-category-manager__description"
+                          disabled={proposalLoading}
+                          value={draft.description}
+                          onChange={(event) => {
+                            descriptionSeq.current += 1;
+                            setDescriptionBusy(null);
+                            setDraft((value) => ({ ...value, description: event.target.value }));
+                          }}
+                          placeholder="What belongs in this child category?"
+                        />
                       </label>
                     </>
                   ) : (
                     <>
-                      <div className="ui-form__grid">
-                        <label className="ui-form__group">
-                          <span className="ui-form__label">Parent category name</span>
-                          <input className="ui-field" disabled={proposalLoading} value={draft.name} onChange={(event) => setDraft((value) => ({ ...value, name: event.target.value }))} placeholder="Broad parent name" />
-                        </label>
-                        <label className="ui-form__group">
-                          <span className="ui-form__label">Child category name</span>
-                          <input className="ui-field" disabled={proposalLoading} value={draft.child?.name ?? ''} onChange={(event) => setDraft((value) => ({ ...value, child: { ...(value.child ?? { description: '' }), name: event.target.value } }))} placeholder="Specific child name" />
-                        </label>
-                      </div>
-                      <div className="ui-form__grid">
-                        <label className="ui-form__group">
-                          <span className="ui-form__label">Parent description <span className="ui-form__optional">optional</span></span>
-                          <textarea className="ui-field ui-category-manager__description" disabled={proposalLoading} value={draft.description} onChange={(event) => setDraft((value) => ({ ...value, description: event.target.value }))} placeholder="What broad domain belongs here?" />
-                        </label>
-                        <label className="ui-form__group">
-                          <span className="ui-form__label">Child description <span className="ui-form__optional">optional</span></span>
-                          <textarea className="ui-field ui-category-manager__description" disabled={proposalLoading} value={draft.child?.description ?? ''} onChange={(event) => setDraft((value) => ({ ...value, child: { ...(value.child ?? { name: '' }), description: event.target.value } }))} placeholder="What narrower topic belongs here?" />
-                        </label>
+                      <div className="ui-category-manager__structure-grid">
+                        <section className="ui-category-manager__structure-column" aria-label="Parent category proposal">
+                          <label className="ui-form__group">
+                            <span className="ui-form__label">Parent category name</span>
+                            <input
+                              className="ui-field"
+                              disabled={proposalLoading}
+                              value={draft.name}
+                              onChange={(event) => {
+                                descriptionSeq.current += 1;
+                                setDescriptionBusy(null);
+                                setSelectedExistingParentId(null);
+                                setDraft((value) => ({
+                                  ...value,
+                                  name: event.target.value,
+                                  description: '',
+                                  child: value.child
+                                    ? { ...value.child, description: '' }
+                                    : value.child,
+                                }));
+                              }}
+                              onBlur={() => void refreshDraftDescription('parent')}
+                              placeholder="Broad parent name"
+                            />
+                          </label>
+                          {selectedStructureParent ? (
+                            <div className="ui-category-manager__selected-parent">
+                              <div>
+                                <span>Selected existing parent</span>
+                                <strong>{selectedStructureParent.name}</strong>
+                                {selectedStructureParent.description ? <small>{selectedStructureParent.description}</small> : null}
+                              </div>
+                              <Check size={15} />
+                            </div>
+                          ) : null}
+                          {renderProposedParentMatches()}
+                          <label className="ui-form__group ui-category-manager__structure-description">
+                            <span className="ui-form__label">Parent description <span className="ui-form__optional">{descriptionBusy === 'parent' ? 'updating from name…' : 'optional'}</span></span>
+                            <textarea
+                              className="ui-field ui-category-manager__description"
+                              disabled={proposalLoading}
+                              value={draft.description}
+                              onChange={(event) => {
+                                descriptionSeq.current += 1;
+                                setDescriptionBusy(null);
+                                setDraft((value) => ({ ...value, description: event.target.value }));
+                              }}
+                              onBlur={() => {
+                                if (draft.child?.name.trim()) {
+                                  void generateChildDescription(
+                                    draft.child.name,
+                                    categoryById.get(selectedExistingParentId ?? '') ?? {
+                                      name: draft.name,
+                                      description: draft.description,
+                                    }
+                                  );
+                                }
+                              }}
+                              placeholder="What broad domain belongs here?"
+                            />
+                          </label>
+                        </section>
+                        <section className="ui-category-manager__structure-column" aria-label="Child category proposal">
+                          <label className="ui-form__group">
+                            <span className="ui-form__label">Child category name</span>
+                            <input
+                              className="ui-field"
+                              disabled={proposalLoading}
+                              value={draft.child?.name ?? ''}
+                              onChange={(event) => {
+                                descriptionSeq.current += 1;
+                                setDescriptionBusy(null);
+                                setDraft((value) => ({
+                                  ...value,
+                                  child: {
+                                    ...(value.child ?? {}),
+                                    name: event.target.value,
+                                    description: '',
+                                  },
+                                }));
+                              }}
+                              onBlur={() => void refreshDraftDescription('child')}
+                              placeholder="Specific child name"
+                            />
+                          </label>
+                          {renderChildMatches(true)}
+                          <label className="ui-form__group ui-category-manager__structure-description">
+                            <span className="ui-form__label">Child description <span className="ui-form__optional">{descriptionBusy === 'child' ? 'updating from name…' : 'optional'}</span></span>
+                            <textarea
+                              className="ui-field ui-category-manager__description"
+                              disabled={proposalLoading}
+                              value={draft.child?.description ?? ''}
+                              onChange={(event) => {
+                                descriptionSeq.current += 1;
+                                setDescriptionBusy(null);
+                                setDraft((value) => ({
+                                  ...value,
+                                  child: {
+                                    ...(value.child ?? { name: '' }),
+                                    description: event.target.value,
+                                  },
+                                }));
+                              }}
+                              placeholder="What narrower topic belongs here?"
+                            />
+                          </label>
+                        </section>
                       </div>
                       <div className="ui-category-manager__notice">
-                        <span>Homebase will also add the standard “Other ({draft.name || 'parent'})” fallback. {itemId ? 'This bookmark will be assigned to the named child above.' : ''}</span>
+                        <span>
+                          {selectedStructureParent
+                            ? `The child above will be created under ${selectedStructureParent.name}. Choosing or editing a child does not change this parent.`
+                            : `Homebase will also add the standard “Other (${draft.name || 'parent'})” fallback. ${itemId ? 'This bookmark will be assigned to the named child above.' : ''}`}
+                        </span>
                       </div>
                     </>
                   )}
                   {exactDuplicate ? (
-                    <div className="ui-category-manager__duplicate"><strong>Already exists:</strong> {categoryPath(exactDuplicate)}. Use the existing category above.</div>
+                    <div className={canAddExistingChild ? 'ui-category-manager__notice' : 'ui-category-manager__duplicate'}>
+                      <strong>{activeCategoryIds.has(exactDuplicate.id) ? 'Already added:' : 'Already exists:'}</strong>{' '}
+                      {categoryPath(exactDuplicate)}.
+                      {canAddExistingChild ? ' Confirm below to add the existing child.' : ''}
+                    </div>
                   ) : null}
-                  {childExactDuplicate ? (
-                    <div className="ui-category-manager__duplicate"><strong>Child already exists:</strong> {categoryPath(childExactDuplicate)}. Use the existing category above.</div>
-                  ) : null}
-                  {draft.kind === 'parent' && draft.child?.name && normalizeCategoryName(draft.name) === normalizeCategoryName(draft.child.name) ? (
+                  {submissionDraft.kind === 'parent' && submissionDraft.child?.name && normalizeCategoryName(submissionDraft.name) === normalizeCategoryName(submissionDraft.child.name) ? (
                     <div className="ui-category-manager__duplicate">Parent and child need different names.</div>
                   ) : null}
-                  {similar?.semanticWarning ? <p className="ui-category-manager__warning">{similar.semanticWarning}</p> : null}
-                  {itemId && draft.kind === 'leaf' ? (
+                  {itemId && submissionDraft.kind === 'leaf' ? (
                     <label className="ui-category-manager__checkbox"><input type="checkbox" checked={makePrimary} onChange={(event) => setMakePrimary(event.target.checked)} /> Make this the primary category</label>
                   ) : null}
                   <div className="ui-category-manager__create-actions">
-                    <button className="ui-button ui-button--primary" type="button" disabled={!canCreate} onClick={() => void create()}><Plus size={14} /> {busyKey === 'create' ? 'Creating…' : draft.kind === 'parent' ? 'Create parent + child' : itemId ? 'Create and add child' : 'Create child'}</button>
+                    <button className="ui-button ui-button--primary" type="button" disabled={!canCreate && !canAddExistingChild} onClick={() => void submitCreation()}><Plus size={14} /> {busyKey ? 'Saving…' : canAddExistingChild ? 'Add existing child' : submissionDraft.kind === 'parent' ? 'Create parent + child' : itemId ? 'Create and add child' : 'Create child'}</button>
                   </div>
                 </section>
               ) : null}

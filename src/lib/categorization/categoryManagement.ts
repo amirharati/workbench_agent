@@ -36,6 +36,12 @@ export type CategoryStructureProposal = {
   warning?: string;
 };
 
+export type CategoryDescriptionSuggestion = {
+  description: string;
+  generated: boolean;
+  warning?: string;
+};
+
 export type CategoryManagementSnapshot = {
   categories: AiCategory[];
   links: AiItemCategoryLink[];
@@ -109,7 +115,7 @@ export async function findSimilarCategories(
       const ranked = await dbRpc<{
         matches: Array<{ categoryId: string; score: number }>;
         profileCount: number;
-      }>('rankCategoryManagementProfiles', [embedding, DEFAULT_EMBEDDING_MODEL, 20], {
+      }>('rankCategoryManagementProfiles', [embedding, DEFAULT_EMBEDDING_MODEL, 50], {
         priority: 'high',
       });
       semanticMatches = ranked.matches;
@@ -138,7 +144,7 @@ export async function findSimilarCategories(
     .filter((match): match is CategorySimilarityMatch => match != null)
     .filter((match) => match.exact || match.score >= 0.28)
     .sort((left, right) => Number(right.exact) - Number(left.exact) || right.score - left.score)
-    .slice(0, 12);
+    .slice(0, 20);
 
   return {
     matches,
@@ -211,6 +217,8 @@ export async function proposeCategoryStructure(input: {
               'A parent is a broad durable domain. A child is a narrower retrieval topic.',
               'Never use General, Other, Miscellaneous, the same name for parent and child, or explanatory sentences as names.',
               'Descriptions are one short sentence explaining what belongs there.',
+              'The child description must be scoped by its parent: describe the intersection of the child name and parent domain, not the child name in isolation.',
+              'For example, Toronto under Rentals means rental properties or rental activity in Toronto, not general information about Toronto.',
               `Required shape: ${expected}`,
             ].join(' '),
           },
@@ -256,6 +264,72 @@ export async function proposeCategoryStructure(input: {
       input.mode,
       `AI naming was unavailable: ${error instanceof Error ? error.message : String(error)}. Enter the final names manually.`
     );
+  }
+}
+
+/** Generate a description for an exact editable name within its current taxonomy context. */
+export async function proposeCategoryDescription(input: {
+  name: string;
+  kind: AiCategoryKind;
+  parent?: Pick<AiCategory, 'name' | 'description'>;
+  signal?: AbortSignal;
+}): Promise<CategoryDescriptionSuggestion> {
+  const name = input.name.trim();
+  if (!name) return { description: '', generated: false };
+  const settings = await loadAISettings();
+  if (settings.provider === 'openrouter' && !settings.apiKey.trim()) {
+    return {
+      description: '',
+      generated: false,
+      warning: 'AI description refresh is unavailable because no API key is configured.',
+    };
+  }
+  try {
+    const response = await runAICompletion(
+      { ...settings, temperature: 0.1, maxOutputTokens: Math.max(160, settings.maxOutputTokens) },
+      {
+        taskType: 'general',
+        signal: input.signal,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              'Write one concise taxonomy description for the exact category name provided.',
+              'Do not rename the category.',
+              'Explain what belongs in it in one sentence.',
+              'For a child, the supplied parent is binding context. Describe the intersection of child and parent, never the child in isolation.',
+              'Example: Toronto under Rentals describes Toronto rental properties or rental activity, not Toronto generally.',
+              'Return only JSON: {"description":"..."}.',
+            ].join(' '),
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              exactName: name,
+              kind: input.kind === 'parent' ? 'broad parent' : 'specific child',
+              parent: input.parent ?? null,
+            }),
+          },
+        ],
+      }
+    );
+    const parsed = JSON.parse(stripJsonFences(response.text)) as Record<string, unknown>;
+    const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
+    if (!description) {
+      return {
+        description: '',
+        generated: false,
+        warning: 'AI did not return a description. You can enter one manually.',
+      };
+    }
+    return { description, generated: true };
+  } catch (error) {
+    if (input.signal?.aborted) throw error;
+    return {
+      description: '',
+      generated: false,
+      warning: `AI description refresh was unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 
