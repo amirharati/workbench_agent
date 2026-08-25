@@ -35,7 +35,6 @@ import {
 } from '../../../hooks/useLibrarySearch';
 import { addProjectToSwitcher, rememberProjectAccess, rememberRecentCollection } from '../homeScope';
 import {
-  loadItemIdsForCategory,
   loadItemIdsForPipelineQueue,
   type CategoryBrowseFilter,
   type PipelineBrowseFilter,
@@ -438,6 +437,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     };
   });
   const [categoryBrowse, setCategoryBrowse] = useState<CategoryBrowseFilter | null>(null);
+  const [focusedCategory, setFocusedCategory] = useState<{ categoryId: string; name: string } | null>(null);
   const [pipelineBrowse, setPipelineBrowse] = useState<PipelineBrowseFilter | null>(null);
   const [batchConfirm, setBatchConfirm] = useState<{
     kind: PipelineQueueKind;
@@ -808,13 +808,30 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     pipeline.cancel();
   }, [pipeline]);
 
-  const handleBrowseCategory = useCallback(async (categoryId: string, name: string) => {
-    const itemIds = await loadItemIdsForCategory(categoryId);
+  const handleBrowseCategory = useCallback((categoryId: string, name: string) => {
     setPipelineBrowse(null);
-    setCategoryBrowse({ categoryId, name, itemIds });
+    setCategoryBrowse(null);
+    setFocusedCategory({ categoryId, name });
     setScopeProjectId('all');
     setScopeCollectionId('all');
-    setActiveView('bookmarks');
+    setScopeNavigationRevision((revision) => revision + 1);
+    setSelectedBrowseItemId(null);
+    setGlobalTabState((prev) => {
+      const next = { ...prev, activeTabId: null, homeSection: 'categories' as const };
+      saveGlobalTabState(next);
+      return next;
+    });
+    setActiveView('home');
+    patchNavigationState({
+      activeView: 'home',
+      scopeProjectId: 'all',
+      scopeCollectionId: 'all',
+    });
+  }, []);
+
+  const handleExitFocusedCategory = useCallback(() => {
+    setFocusedCategory(null);
+    setSelectedBrowseItemId(null);
   }, []);
 
   const handleClearCategoryBrowse = useCallback(() => {
@@ -1739,6 +1756,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
                 categoryBrowse={categoryBrowse}
                 onClearCategoryBrowse={handleClearCategoryBrowse}
                 onBrowseCategory={handleBrowseCategory}
+                focusedCategory={focusedCategory}
+                onExitFocusedCategory={handleExitFocusedCategory}
                 pipelineBrowse={pipelineBrowse}
                 onClearPipelineBrowse={handleClearPipelineBrowse}
                 onBatchProcessQueue={handleBatchProcessQueue}
@@ -1809,6 +1828,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               categoryBrowse={categoryBrowse}
               onClearCategoryBrowse={handleClearCategoryBrowse}
               onBrowseCategory={handleBrowseCategory}
+              focusedCategory={focusedCategory}
+              onExitFocusedCategory={handleExitFocusedCategory}
               pipelineBrowse={pipelineBrowse}
               onClearPipelineBrowse={handleClearPipelineBrowse}
               onBatchProcessQueue={handleBatchProcessQueue}
@@ -1893,6 +1914,8 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
               categoryBrowse={categoryBrowse}
               onClearCategoryBrowse={handleClearCategoryBrowse}
               onBrowseCategory={handleBrowseCategory}
+              focusedCategory={focusedCategory}
+              onExitFocusedCategory={handleExitFocusedCategory}
               pipelineBrowse={pipelineBrowse}
               onClearPipelineBrowse={handleClearPipelineBrowse}
               shellLayout={shellLayout}

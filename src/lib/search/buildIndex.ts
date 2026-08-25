@@ -26,7 +26,6 @@ export function buildSearchIndex(input: BuildSearchIndexInput): SearchIndex {
   const categoryById = new Map(categories.map((c) => [c.id, c]));
   const links = (input.links ?? []).filter(
     (l) =>
-      l.source === 'ai' &&
       COUNTABLE_LINK_STATUSES.has(l.status) &&
       categoryById.has(l.categoryId)
   );

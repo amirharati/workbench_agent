@@ -80,6 +80,8 @@ interface HomeViewProps {
   workingSearch?: LibrarySearchApi;
   onOpenItemFromSearch?: (item: Item, origin?: { projectId?: string; collectionId?: string }) => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
+  focusedCategory?: { categoryId: string; name: string } | null;
+  onExitFocusedCategory?: () => void;
   onBatchProcessQueue?: (kind: import('../../lib/pipeline').PipelineQueueKind) => Promise<void>;
   onOpenPipelineHub?: () => void;
   batchRunning?: boolean;
@@ -104,7 +106,7 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, onSearchQueryChange, librarySearch, onOpenPipelineHub, onBrowseCategory: _onBrowseCategory, scopeProjectId = 'all', scopeCollectionId = 'all', scopeNavigationRevision = 0, recentProjectIds = [], recentProjectAccessIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSelectedBrowseItemChange, libraryLoading = false, libraryHydrateProgress = null
+  items, collections, projects, workspaces, homeState, onHomeStateChange, onUpdateItem, onDeleteBookmark, onCreateProject, onCreateCollection, onSearchQueryChange, librarySearch, onOpenPipelineHub, onBrowseCategory, focusedCategory, onExitFocusedCategory, scopeProjectId = 'all', scopeCollectionId = 'all', scopeNavigationRevision = 0, recentProjectIds = [], recentProjectAccessIds = [], onSelectProjectScope, onReorderProjectScopes, onCloseProjectScope, onSelectCollectionScope, onResetScope, onSelectedBrowseItemChange, libraryLoading = false, libraryHydrateProgress = null
 }) => {
   const [homeItemContextMenu, setHomeItemContextMenu] = React.useState<{
     item: Item;
@@ -1173,6 +1175,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
           items={scopeProjectId === 'all' ? items : projectItems}
           scopeLabel={activeProject?.name ?? 'All Library'}
           scopeKey={scopeProjectId}
+          focusedCategory={focusedCategory}
+          onExitFocusedCategory={onExitFocusedCategory}
           onSelectedItemChange={onSelectedBrowseItemChange}
         />
       ) : librarySearch ? (
@@ -1331,6 +1335,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onCloseSearchTab={librarySearch.closeSearchTab}
           onOpenTagTab={librarySearch.openTagTab}
           onOpenCategoryTab={librarySearch.openCategoryTab}
+          onBrowseCategory={onBrowseCategory}
         />
         </div>
         </div>

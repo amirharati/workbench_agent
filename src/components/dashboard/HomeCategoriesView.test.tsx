@@ -93,4 +93,49 @@ describe('HomeCategoriesView', () => {
 
     await act(async () => root.unmount());
   });
+
+  it('shows exact focused membership without replacing the saved explorer selection', async () => {
+    localStorage.setItem(
+      'workbench-home-category-selection:all',
+      JSON.stringify(['trading'])
+    );
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onExitFocusedCategory = vi.fn();
+
+    await act(async () => root.render(
+      <HomeCategoriesView
+        items={items}
+        scopeLabel="All Library"
+        scopeKey="all"
+        focusedCategory={{ categoryId: 'investing', name: 'Investing' }}
+        onExitFocusedCategory={onExitFocusedCategory}
+      />
+    ));
+
+    expect(host.textContent).toContain('Exact category membership');
+    expect(host.textContent).toContain('Long-term portfolio');
+    expect(host.textContent).not.toContain('Trading systems');
+    expect(localStorage.getItem('workbench-home-category-selection:all')).toBe(
+      JSON.stringify(['trading'])
+    );
+
+    const back = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes('All categories'));
+    await act(async () => back?.click());
+    expect(onExitFocusedCategory).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.render(
+      <HomeCategoriesView
+        items={items}
+        scopeLabel="All Library"
+        scopeKey="all"
+      />
+    ));
+    expect(host.textContent).toContain('Trading systems');
+    expect(host.textContent).not.toContain('Long-term portfolio');
+
+    await act(async () => root.unmount());
+  });
 });

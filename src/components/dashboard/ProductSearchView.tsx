@@ -725,7 +725,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                 void onRunSearch(name);
               }
             }}
-            onCategoryOpen={onOpenCategoryTab ?? onBrowseCategory}
+            onCategoryOpen={onBrowseCategory ?? onOpenCategoryTab}
             onTagClick={(tag) => {
               if (onOpenTagTab) onOpenTagTab(tag);
               else {

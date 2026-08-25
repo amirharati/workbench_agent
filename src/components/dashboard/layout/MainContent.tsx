@@ -154,6 +154,8 @@ interface MainContentProps {
   categoryBrowse?: CategoryBrowseFilter | null;
   onClearCategoryBrowse?: () => void;
   onBrowseCategory?: (categoryId: string, name: string) => void;
+  focusedCategory?: { categoryId: string; name: string } | null;
+  onExitFocusedCategory?: () => void;
   pipelineBrowse?: PipelineBrowseFilter | null;
   onClearPipelineBrowse?: () => void;
   onBatchProcessQueue?: (kind: PipelineQueueKind) => Promise<void>;
@@ -231,6 +233,8 @@ export const MainContent: React.FC<MainContentProps> = ({
   categoryBrowse,
   onClearCategoryBrowse,
   onBrowseCategory,
+  focusedCategory,
+  onExitFocusedCategory,
   pipelineBrowse,
   onClearPipelineBrowse,
   onBatchProcessQueue,
@@ -893,6 +897,8 @@ export const MainContent: React.FC<MainContentProps> = ({
             renderListTab={renderListTab}
             statusBar={statusBar}
             onBrowseCategory={onBrowseCategory}
+            focusedCategory={focusedCategory}
+            onExitFocusedCategory={onExitFocusedCategory}
             onBatchProcessQueue={onBatchProcessQueue}
             onOpenPipelineHub={onOpenPipelineHub}
             batchRunning={batchRunning}

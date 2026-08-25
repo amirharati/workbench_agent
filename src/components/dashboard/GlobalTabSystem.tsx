@@ -508,7 +508,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
   scopeProjectId = 'all',
   scopeCollectionId = 'all',
   onSwitchScopeForItem,
-  onBrowseCategory: _onBrowseCategory,
+  onBrowseCategory,
   homeContent,
   workspaceHeader,
   strictProjectScope = false,
@@ -1261,6 +1261,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             onCloseSearchTab={librarySearch.closeSearchTab}
             onOpenTagTab={librarySearch.openTagTab}
             onOpenCategoryTab={librarySearch.openCategoryTab}
+            onBrowseCategory={onBrowseCategory}
           />
         )}
         {activeTab?.kind === 'search' && !librarySearch && (

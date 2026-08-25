@@ -4978,6 +4978,36 @@ button.ui-taxonomy__leaf:hover .ui-taxonomy__leaf-arrow {
   cursor: pointer;
 }
 
+.ui-home-categories__taxonomy-header--focus button {
+  flex: 0 0 auto;
+}
+
+.ui-home-categories__focus-details {
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.ui-home-categories__focus-details > strong {
+  color: var(--text);
+  font-size: var(--text-base);
+}
+
+.ui-home-categories__focus-details > span,
+.ui-home-categories__focus-details > small {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.ui-home-categories__focus-details > p {
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
 .ui-home-categories__filter {
   height: 31px;
   margin: 9px 10px 5px;

@@ -179,11 +179,12 @@ describe('ProductSearchView empty state', () => {
     host.remove();
   });
 
-  it('opens category and tag results in Search tabs without rewriting the current query', async () => {
+  it('opens categories in the canonical Categories view while keeping tags in Search tabs', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
     const onOpenCategoryTab = vi.fn();
+    const onBrowseCategory = vi.fn();
     const onOpenTagTab = vi.fn();
     const onRunSearch = vi.fn();
 
@@ -227,6 +228,7 @@ describe('ProductSearchView empty state', () => {
           onRunSearch={onRunSearch}
           onOpenItem={vi.fn()}
           onOpenCategoryTab={onOpenCategoryTab}
+          onBrowseCategory={onBrowseCategory}
           onOpenTagTab={onOpenTagTab}
         />
       );
@@ -236,10 +238,11 @@ describe('ProductSearchView empty state', () => {
       'button[title="Open the full Automatic Speech Recognition category"]'
     );
     await act(async () => categoryButton?.click());
-    expect(onOpenCategoryTab).toHaveBeenCalledWith(
+    expect(onBrowseCategory).toHaveBeenCalledWith(
       'speech-asr',
       'Automatic Speech Recognition'
     );
+    expect(onOpenCategoryTab).not.toHaveBeenCalled();
     const tagButton = [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('speech recognition'));
     await act(async () => tagButton?.click());

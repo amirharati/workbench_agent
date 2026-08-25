@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Item } from '../db';
 import type { AiCategory, AiItemCategoryLink } from '../categorization/types';
 import { buildSearchIndex } from './buildIndex';
+import { hybridSearch } from './hybridSearch';
+import { matchesParsedSearchQuery, parseSearchQuery } from './queryLanguage';
 
 const item: Item = {
   id: 'item-1',
@@ -60,5 +62,31 @@ describe('buildSearchIndex topic boundary', () => {
     expect(index.documents[0].categoryIds).toEqual([topic.id]);
     expect(index.documents[0].primaryCategoryId).toBe(topic.id);
     expect(index.itemsByCategory.has(redirect.id)).toBe(false);
+  });
+
+  it('indexes accepted manual category assignments for exact category search', () => {
+    const planning = category('weekly-planning-tools', 'Weekly Planning Tools', 'productivity');
+    const manualLink: AiItemCategoryLink = {
+      ...link(planning.id, true),
+      source: 'manual',
+      status: 'accepted',
+    };
+    const index = buildSearchIndex({
+      items: [item],
+      categories: [planning],
+      links: [manualLink],
+    });
+
+    expect(index.documents[0].categoryIds).toEqual([planning.id]);
+    expect(index.itemsByCategory.get(planning.id)).toEqual([item.id]);
+    expect(matchesParsedSearchQuery(
+      index.documents[0],
+      parseSearchQuery('category:"Weekly Planning Tools"'),
+      index
+    )).toBe(true);
+    expect(hybridSearch(index, {
+      query: 'category:"Weekly Planning Tools"',
+      mode: 'lexical-only',
+    }).results.map((row) => row.itemId)).toEqual([item.id]);
   });
 });

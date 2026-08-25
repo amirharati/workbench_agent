@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, FileText, Search, Tags, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, FileText, Search, Tags, X } from 'lucide-react';
 import type { Item } from '../../lib/db';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import {
@@ -56,11 +56,15 @@ export function HomeCategoriesView({
   items,
   scopeLabel,
   scopeKey,
+  focusedCategory,
+  onExitFocusedCategory,
   onSelectedItemChange,
 }: {
   items: Item[];
   scopeLabel: string;
   scopeKey: string;
+  focusedCategory?: { categoryId: string; name: string } | null;
+  onExitFocusedCategory?: () => void;
   onSelectedItemChange?: (item: Item | null) => void;
 }) {
   const selectionStorageKey = `workbench-home-category-selection:${scopeKey}`;
@@ -131,11 +135,12 @@ export function HomeCategoriesView({
   }, [groups]);
 
   useEffect(() => {
+    if (!snapshot) return;
     setSelectedCategoryIds((current) => {
       const next = current.filter((id) => availableCategoryIds.has(id));
       return next.length === current.length ? current : next;
     });
-  }, [availableCategoryIds]);
+  }, [availableCategoryIds, snapshot]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleGroups = useMemo(() => groups
@@ -164,23 +169,44 @@ export function HomeCategoriesView({
     () => new Set(selectedCategoryIds),
     [selectedCategoryIds]
   );
+  const focusedCategoryRow = useMemo(
+    () => focusedCategory && snapshot
+      ? snapshot.categories.find((category) => category.id === focusedCategory.categoryId) ?? null
+      : null,
+    [focusedCategory, snapshot]
+  );
+  const focusedParent = useMemo(() => {
+    if (!focusedCategoryRow?.parentId || !snapshot) return null;
+    return snapshot.categories.find((category) => category.id === focusedCategoryRow.parentId) ?? null;
+  }, [focusedCategoryRow, snapshot]);
+  const focusedCategoryIds = useMemo(() => {
+    if (!focusedCategory) return null;
+    if (focusedCategoryRow?.kind === 'parent') {
+      return new Set(
+        groups.find((group) => group.id === focusedCategory.categoryId)?.leaves
+          .map((leaf) => leaf.category.id) ?? []
+      );
+    }
+    return new Set([focusedCategory.categoryId]);
+  }, [focusedCategory, focusedCategoryRow, groups]);
+  const resultCategorySet = focusedCategoryIds ?? selectedCategorySet;
   const expandedGroupSet = useMemo(() => new Set(expandedGroupIds), [expandedGroupIds]);
   const selectedItemIds = useMemo(() => {
     const ids = new Set<string>();
     for (const group of groups) {
       for (const leaf of group.leaves) {
-        if (!selectedCategorySet.has(leaf.category.id)) continue;
+        if (!resultCategorySet.has(leaf.category.id)) continue;
         for (const itemId of leaf.itemIds) ids.add(itemId);
       }
     }
     return ids;
-  }, [groups, selectedCategorySet]);
+  }, [groups, resultCategorySet]);
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const categoryNamesByItem = useMemo(() => {
     const names = new Map<string, string[]>();
     for (const group of groups) {
       for (const leaf of group.leaves) {
-        if (!selectedCategorySet.has(leaf.category.id)) continue;
+        if (!resultCategorySet.has(leaf.category.id)) continue;
         for (const itemId of leaf.itemIds) {
           const current = names.get(itemId) ?? [];
           current.push(leaf.category.name);
@@ -189,7 +215,7 @@ export function HomeCategoriesView({
       }
     }
     return names;
-  }, [groups, selectedCategorySet]);
+  }, [groups, resultCategorySet]);
   const resultItems = useMemo(() => [...selectedItemIds]
     .map((id) => itemsById.get(id))
     .filter((item): item is Item => Boolean(item))
@@ -200,6 +226,11 @@ export function HomeCategoriesView({
     setSelectedItemId(null);
     onSelectedItemChange?.(null);
   }, [onSelectedItemChange, selectedItemId, selectedItemIds]);
+
+  useEffect(() => {
+    setSelectedItemId(null);
+    onSelectedItemChange?.(null);
+  }, [focusedCategory?.categoryId, onSelectedItemChange]);
 
   const entries = useMemo<ContentBrowseEntry[]>(() => resultItems.map((item) => ({
     id: item.id,
@@ -229,6 +260,44 @@ export function HomeCategoriesView({
 
   return (
     <div className="ui-home-categories">
+      {focusedCategory ? (
+        <aside className="ui-home-categories__taxonomy" aria-label={`Focused category ${focusedCategory.name}`}>
+          <div className="ui-home-categories__taxonomy-header ui-home-categories__taxonomy-header--focus">
+            <div>
+              <strong>{focusedCategoryRow?.name ?? focusedCategory.name}</strong>
+              <span>
+                {focusedParent?.name
+                  ? `Under ${focusedParent.name}`
+                  : focusedCategoryRow?.kind === 'parent'
+                    ? 'Parent category and its children'
+                    : 'Exact category membership'}
+              </span>
+            </div>
+            <button type="button" onClick={onExitFocusedCategory} title="Back to all categories">
+              <ArrowLeft size={12} /> All categories
+            </button>
+          </div>
+          <div className="scrollbar ui-home-categories__groups ui-home-categories__focus">
+            <div className="ui-home-categories__section-label">Focused category</div>
+            {loading && !snapshot ? (
+              <div className="ui-home-categories__status">Loading category…</div>
+            ) : error && !snapshot ? (
+              <div className="ui-home-categories__status" data-error="true">Could not load category: {error}</div>
+            ) : (
+              <div className="ui-home-categories__focus-details">
+                <strong>{focusedCategoryRow?.name ?? focusedCategory.name}</strong>
+                {focusedParent?.name ? <span>{focusedParent.name}</span> : null}
+                {focusedCategoryRow?.description ? <p>{focusedCategoryRow.description}</p> : null}
+                <small>{categorySourceLabel(focusedCategoryRow?.source)} category</small>
+              </div>
+            )}
+          </div>
+          <div className="ui-home-categories__selection-summary">
+            {refreshing ? 'Refreshing… · ' : ''}
+            {selectedItemIds.size} {selectedItemIds.size === 1 ? 'item' : 'items'} in {scopeLabel}
+          </div>
+        </aside>
+      ) : (
       <aside className="ui-home-categories__taxonomy" aria-label={`${scopeLabel} categories`}>
         <div className="ui-home-categories__taxonomy-header">
           <div>
@@ -283,10 +352,13 @@ export function HomeCategoriesView({
             : 'Select one or more child categories to browse their items'}
         </div>
       </aside>
+      )}
 
       <main className="ui-home-categories__results">
         <ContentBrowser
-          title={selectedCategoryIds.length > 0 ? 'Category results' : 'Select categories'}
+          title={focusedCategory
+            ? focusedCategoryRow?.name ?? focusedCategory.name
+            : selectedCategoryIds.length > 0 ? 'Category results' : 'Select categories'}
           entries={entries}
           selectedId={selectedItemId}
           onSelect={(itemId) => {
@@ -296,13 +368,15 @@ export function HomeCategoriesView({
           }}
           mode={browseMode}
           onModeChange={setBrowseMode}
-          emptyMessage={selectedCategoryIds.length > 0
-            ? 'No items belong to the selected categories in this scope.'
-            : 'Select one or more categories from the list.'}
+          emptyMessage={focusedCategory
+            ? 'No items belong to this category in All Library.'
+            : selectedCategoryIds.length > 0
+              ? 'No items belong to the selected categories in this scope.'
+              : 'Select one or more categories from the list.'}
           ariaLabel={`${scopeLabel} category results`}
-          headerActions={selectedCategoryIds.length > 0 ? (
+          headerActions={focusedCategory || selectedCategoryIds.length > 0 ? (
             <span className="ui-home-categories__result-rule">
-              <Tags size={12} /> Any selected category
+              <Tags size={12} /> {focusedCategory ? 'Exact category membership' : 'Any selected category'}
             </span>
           ) : undefined}
         />
