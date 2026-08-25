@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CategoryChip,
   CategoryOverflowToggle,
+  SuggestedCategoryRow,
   UnmatchedTopicSuggestion,
 } from './CategoryReviewRows';
 
@@ -75,5 +76,19 @@ describe('CategoryChip link-quality styling', () => {
     expect(collapsed).toContain('More (4)');
     expect(collapsed).toContain('aria-expanded="false"');
     expect(expanded).toContain('Show less');
+  });
+
+  it('makes a suggested category label browsable when a category route is available', () => {
+    const markup = renderToStaticMarkup(
+      <SuggestedCategoryRow
+        itemId="item-a"
+        link={{ categoryId: 'topic-a', name: 'Planning tools', score: 0.8 }}
+        onDone={() => undefined}
+        onBrowse={() => undefined}
+      />
+    );
+
+    expect(markup).toContain('title="View all bookmarks in Planning tools (suggested)"');
+    expect(markup).toContain('<button');
   });
 });

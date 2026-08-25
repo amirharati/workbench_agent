@@ -2206,6 +2206,7 @@ export const MainContent: React.FC<MainContentProps> = ({
             onSelectProjectScope={onSelectProjectScope}
             onWorkspacesChanged={onWorkspacesChanged}
             onAddBookmark={onAddBookmark}
+            onSelectedItemChange={onSelectedBrowseItemChange}
           />
         );
       case 'collections':

@@ -32,6 +32,47 @@ import { LinkVisual } from './LinkVisual';
 
 type WorkspaceFilter = 'all' | 'project' | 'browser';
 
+export const WORKSPACES_PAGE_STATE_KEY = 'workbench:workspaces-page-state:v1';
+
+type WorkspacesPageState = {
+  selectedWorkspaceKey: string | null;
+  selectedEntryByWorkspace: Record<string, string | null>;
+};
+
+function loadWorkspacesPageState(): WorkspacesPageState {
+  if (typeof window === 'undefined') {
+    return { selectedWorkspaceKey: null, selectedEntryByWorkspace: {} };
+  }
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(WORKSPACES_PAGE_STATE_KEY) ?? '{}') as {
+      selectedWorkspaceKey?: unknown;
+      selectedEntryByWorkspace?: unknown;
+    };
+    const selectedWorkspaceKey = typeof parsed.selectedWorkspaceKey === 'string'
+      ? parsed.selectedWorkspaceKey
+      : null;
+    const selectedEntryByWorkspace = parsed.selectedEntryByWorkspace
+      && typeof parsed.selectedEntryByWorkspace === 'object'
+      && !Array.isArray(parsed.selectedEntryByWorkspace)
+      ? Object.fromEntries(Object.entries(parsed.selectedEntryByWorkspace).filter(
+          ([key, value]) => key.length > 0 && (typeof value === 'string' || value === null)
+        )) as Record<string, string | null>
+      : {};
+    return { selectedWorkspaceKey, selectedEntryByWorkspace };
+  } catch {
+    return { selectedWorkspaceKey: null, selectedEntryByWorkspace: {} };
+  }
+}
+
+function saveWorkspacesPageState(state: WorkspacesPageState): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(WORKSPACES_PAGE_STATE_KEY, JSON.stringify(state));
+  } catch {
+    // Selection persistence is helpful but must never block workspace browsing.
+  }
+}
+
 type ProjectWorkspaceRow = {
   key: string;
   kind: 'project';
@@ -77,6 +118,7 @@ interface WorkspacesViewProps {
   onSelectProjectScope?: (projectId: string | 'all') => void;
   onWorkspacesChanged?: () => Promise<void>;
   onAddBookmark?: (url: string, title?: string, collectionId?: string, options?: { silent?: boolean; successMessage?: string }) => Promise<string | undefined>;
+  onSelectedItemChange?: (item: Item | null) => void;
 }
 
 function projectWorkspaceRows(
@@ -151,10 +193,14 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   onSelectProjectScope,
   onWorkspacesChanged,
   onAddBookmark,
+  onSelectedItemChange,
 }) => {
+  const initialPageState = useMemo(loadWorkspacesPageState, []);
   const [filter, setFilter] = useState<WorkspaceFilter>('all');
   const [query, setQuery] = useState('');
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(
+    initialPageState.selectedWorkspaceKey
+  );
   const [targetProjectId, setTargetProjectId] = useState(
     scopeProjectId !== 'all' ? scopeProjectId : projects[0]?.id ?? ''
   );
@@ -168,7 +214,9 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
     scopeProjectId !== 'all' ? scopeProjectId : projects[0]?.id ?? ''
   );
   const [workspaceManagerMode, setWorkspaceManagerMode] = useState<'list' | 'create' | null>(null);
-  const [workspaceEntrySelection, setWorkspaceEntrySelection] = useState<Record<string, string | null>>({});
+  const [workspaceEntrySelection, setWorkspaceEntrySelection] = useState<Record<string, string | null>>(
+    initialPageState.selectedEntryByWorkspace
+  );
   const [workspaceEntryBrowseMode, setWorkspaceEntryBrowseMode] = useContentBrowseMode(
     'workbench:workspaces-page-entry-view:v1'
   );
@@ -240,6 +288,13 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   }, [rows, selectedKey]);
 
   useEffect(() => {
+    saveWorkspacesPageState({
+      selectedWorkspaceKey: selectedKey,
+      selectedEntryByWorkspace: workspaceEntrySelection,
+    });
+  }, [selectedKey, workspaceEntrySelection]);
+
+  useEffect(() => {
     if (targetProjectId && projects.some((project) => project.id === targetProjectId)) return;
     setTargetProjectId(projects[0]?.id ?? '');
   }, [projects, targetProjectId]);
@@ -260,6 +315,12 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
   }, [targetWorkspaceKey, workspaceTargets]);
 
   const itemById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const itemByNormalizedUrl = useMemo(() => new Map(
+    items.flatMap((item) => {
+      const url = item.url?.trim() || item.urlRaw?.trim();
+      return url ? [[normalizeBookmarkUrl(url), item] as const] : [];
+    })
+  ), [items]);
 
   const tabLabel = (tab: GlobalTab) => {
     if (tab.kind === 'item') return itemById.get(tab.itemId)?.title || 'Missing library item';
@@ -370,9 +431,33 @@ export const WorkspacesView: React.FC<WorkspacesViewProps> = ({
           }))
         )
       : [];
-  const selectedWorkspaceEntryId = selected
+  const rememberedWorkspaceEntryId = selected
     ? workspaceEntrySelection[selected.key] ?? null
     : null;
+  const selectedWorkspaceEntryId = rememberedWorkspaceEntryId
+    && selectedWorkspaceEntries.some((entry) => entry.id === rememberedWorkspaceEntryId)
+    ? rememberedWorkspaceEntryId
+    : null;
+
+  const selectedWorkspaceItem = useMemo(() => {
+    if (!selected || !selectedWorkspaceEntryId) return null;
+    if (selected.kind === 'project') {
+      const tab = selected.tabs.find((entry) => entry.id === selectedWorkspaceEntryId);
+      return tab?.kind === 'item' ? itemById.get(tab.itemId) ?? null : null;
+    }
+    const selectedTab = selected.workspace.windows
+      .flatMap((windowGroup) => windowGroup.tabs.map((tab, tabIndex) => ({
+        id: `${windowGroup.id}:${tabIndex}`,
+        tab,
+      })))
+      .find((entry) => entry.id === selectedWorkspaceEntryId)?.tab;
+    if (!selectedTab?.url) return null;
+    return itemByNormalizedUrl.get(normalizeBookmarkUrl(selectedTab.url)) ?? null;
+  }, [itemById, itemByNormalizedUrl, selected, selectedWorkspaceEntryId]);
+
+  useEffect(() => {
+    onSelectedItemChange?.(selectedWorkspaceItem);
+  }, [onSelectedItemChange, selectedWorkspaceItem]);
 
   const selectWorkspaceEntry = (entryId: string) => {
     if (!selected) return;

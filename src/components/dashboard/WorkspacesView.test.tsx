@@ -3,11 +3,15 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Item, Project, Workspace } from '../../lib/db';
 import type { GlobalTabState } from './GlobalTabSystem';
 import { getProjectSessionWorkspaceKey, getProjectWorkspaceTabs } from './workspaceSession';
-import { getWorkspaceTabUrl, WorkspacesView } from './WorkspacesView';
+import {
+  getWorkspaceTabUrl,
+  WORKSPACES_PAGE_STATE_KEY,
+  WorkspacesView,
+} from './WorkspacesView';
 
 const project: Project = { id: 'project-a', name: 'Research', isDefault: false, created_at: 1, updated_at: 1 };
 const item: Item = { id: 'item-a', title: 'Docs', url: 'https://example.com/docs', collectionIds: [], tags: [], source: 'bookmark', created_at: 1, updated_at: 1 };
@@ -23,6 +27,10 @@ const homeState: GlobalTabState = {
 
 describe('WorkspacesView', () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
 
   it('resolves direct URLs for URL-bearing workspace entries only', () => {
     const itemById = new Map([[item.id, item]]);
@@ -127,6 +135,7 @@ describe('WorkspacesView', () => {
     document.body.appendChild(host);
     const root = createRoot(host);
     const onHomeStateChange = vi.fn();
+    const onSelectedItemChange = vi.fn();
     const projectWorkspaceKey = getProjectSessionWorkspaceKey(project.id);
     const state: GlobalTabState = {
       ...homeState,
@@ -149,6 +158,7 @@ describe('WorkspacesView', () => {
           homeState={state}
           scopeProjectId={project.id}
           onHomeStateChange={onHomeStateChange}
+          onSelectedItemChange={onSelectedItemChange}
         />
       );
     });
@@ -164,6 +174,7 @@ describe('WorkspacesView', () => {
     await act(async () => entry?.click());
     expect(entry?.getAttribute('data-selected')).toBe('true');
     expect(browser?.querySelector('[aria-label="Preview Docs"]')).not.toBeNull();
+    expect(onSelectedItemChange).toHaveBeenLastCalledWith(item);
 
     await act(async () => browser?.querySelector<HTMLButtonElement>('[aria-label="Gallery view"]')?.click());
     expect(browser?.querySelector('[data-content-view="gallery"]')).not.toBeNull();
@@ -177,6 +188,67 @@ describe('WorkspacesView', () => {
     expect(getProjectWorkspaceTabs(nextState, project.id, projectWorkspaceKey)).toEqual([]);
 
     await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it('restores the last browsed workspace and selected entry after remounting', async () => {
+    const projectWorkspaceKey = getProjectSessionWorkspaceKey(project.id);
+    const state: GlobalTabState = {
+      ...homeState,
+      workspaceSessionSnapshots: {
+        ...homeState.workspaceSessionSnapshots,
+        [projectWorkspaceKey]: [
+          { kind: 'item', id: 'live-item', itemId: item.id, scopeProjectId: project.id },
+        ],
+      },
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const firstRoot = createRoot(host);
+
+    await act(async () => {
+      firstRoot.render(
+        <WorkspacesView
+          projects={[project]}
+          items={[item]}
+          workspaces={[]}
+          homeState={state}
+          scopeProjectId={project.id}
+          onHomeStateChange={vi.fn()}
+        />
+      );
+    });
+    const generalWorkspace = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Research — General'));
+    await act(async () => generalWorkspace?.click());
+    const firstEntry = host.querySelector<HTMLElement>('[data-content-entry]');
+    await act(async () => firstEntry?.click());
+    expect(JSON.parse(localStorage.getItem(WORKSPACES_PAGE_STATE_KEY) ?? '{}')).toMatchObject({
+      selectedWorkspaceKey: `project:${project.id}:live`,
+      selectedEntryByWorkspace: { [`project:${project.id}:live`]: 'live-item' },
+    });
+    await act(async () => firstRoot.unmount());
+
+    const restoredSelection = vi.fn();
+    const secondRoot = createRoot(host);
+    await act(async () => {
+      secondRoot.render(
+        <WorkspacesView
+          projects={[project]}
+          items={[item]}
+          workspaces={[]}
+          homeState={state}
+          scopeProjectId={project.id}
+          onHomeStateChange={vi.fn()}
+          onSelectedItemChange={restoredSelection}
+        />
+      );
+    });
+    expect(host.querySelector('[aria-label="Research — General entries"]')).not.toBeNull();
+    expect(host.querySelector('[data-content-entry]')?.getAttribute('data-selected')).toBe('true');
+    expect(restoredSelection).toHaveBeenLastCalledWith(item);
+
+    await act(async () => secondRoot.unmount());
     host.remove();
   });
 });

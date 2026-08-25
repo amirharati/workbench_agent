@@ -493,6 +493,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const [search, setSearch] = useState(hubSaved.enrichmentSearch);
   const [debouncedSearch, setDebouncedSearch] = useState(hubSaved.enrichmentSearch);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(
+    hubSaved.enrichmentSelectedItemId
+  );
   const [inspectState, setInspectState] = useState<{ ids: string[]; index: number } | null>(null);
   /** Preserve list order + show rows that left the filter after hub actions until filters change. */
   const [displayOrderIds, setDisplayOrderIds] = useState<string[] | null>(null);
@@ -526,9 +529,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
         enrichmentOutcomeLabel: outcomeLabel,
         enrichmentSearch: search,
         enrichmentTrashSuggestionsOnly: trashSuggestionsOnly,
+        enrichmentSelectedItemId: focusedItemId,
       },
     });
-  }, [activeHubView, hubLane, outcomeLabel, search, trashSuggestionsOnly]);
+  }, [activeHubView, focusedItemId, hubLane, outcomeLabel, search, trashSuggestionsOnly]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -1057,6 +1061,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
       const multiSelected = selectedIds.has(itemId) && selectedIds.size > 1;
       const ids = multiSelected ? getOrderedSelectedIds() : [itemId];
       const index = Math.max(0, ids.indexOf(itemId));
+      setFocusedItemId(itemId);
       setInspectState({ ids, index });
       setStatusHelpItemId(null);
     },
@@ -1237,14 +1242,27 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   const lastSyncedInspectorItemIdRef = useRef<string | null>(null);
   useEffect(() => {
     const activeItem = activeInspectRow?.item ?? null;
-    if (!activeItem) {
+    if (!activeItem || activeItem.id === focusedItemId) return;
+    setFocusedItemId(activeItem.id);
+  }, [activeInspectRow, focusedItemId]);
+
+  const focusedItem = useMemo(() => {
+    if (!focusedItemId) return null;
+    return items.find((item) => item.id === focusedItemId)
+      ?? rows.find((row) => row.item.id === focusedItemId)?.item
+      ?? tableRowsForList.find((row) => row.item.id === focusedItemId)?.item
+      ?? null;
+  }, [focusedItemId, items, rows, tableRowsForList]);
+
+  useEffect(() => {
+    if (!focusedItem) {
       lastSyncedInspectorItemIdRef.current = null;
       return;
     }
-    if (lastSyncedInspectorItemIdRef.current === activeItem.id) return;
-    lastSyncedInspectorItemIdRef.current = activeItem.id;
-    onOpenItem?.(activeItem);
-  }, [activeInspectRow, onOpenItem]);
+    if (lastSyncedInspectorItemIdRef.current === focusedItem.id) return;
+    lastSyncedInspectorItemIdRef.current = focusedItem.id;
+    onOpenItem?.(focusedItem);
+  }, [focusedItem, onOpenItem]);
 
   return (
     <div
@@ -1606,8 +1624,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
             const showStatusHelp = statusHelpItemId === item.id;
             const isInInspectSet = inspectState?.ids.includes(item.id) ?? false;
             const isRecentUpdate = recentUpdateIdSet.has(item.id);
-            const isCurrentInspect =
-              inspectState != null && inspectState.ids[inspectState.index] === item.id;
+            const isCurrentInspect = focusedItemId === item.id;
             return (
               <div
                 key={item.id}
@@ -1622,7 +1639,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                   data-inspect-set={isInInspectSet ? 'true' : 'false'}
                   data-checked={selectedIds.has(item.id) ? 'true' : 'false'}
                   data-recent={isRecentUpdate ? 'true' : 'false'}
-                  onSelectItem={onOpenItem ? () => onOpenItem(item) : undefined}
+                  onSelectItem={() => setFocusedItemId(item.id)}
                   onDoubleClick={(event) => {
                     if ((event.target as HTMLElement).closest('button, input, a')) return;
                     openPeek(item.id, { itemIds: peekItemIds, sourceLabel: 'Enrichment Hub' });
@@ -1634,7 +1651,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                     padding: '10px 12px',
                     alignItems: 'center',
                     fontSize: 'var(--text-sm)',
-                    cursor: onOpenItem ? 'pointer' : undefined,
+                    cursor: 'pointer',
                   }}
                 >
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1644,7 +1661,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                       onChange={(e) => {
                         const checked = e.target.checked;
                         toggleSelect(item.id, checked);
-                        if (checked) onOpenItem?.(item);
+                        if (checked) setFocusedItemId(item.id);
                       }}
                       aria-label={`Select ${item.title || item.url}`}
                     />
@@ -1748,7 +1765,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                       onClick={(event) => {
                         event.stopPropagation();
                         handleInspectClick(item.id);
-                        onOpenItem?.(item);
                       }}
                       title={
                         inspectState?.ids.includes(item.id)

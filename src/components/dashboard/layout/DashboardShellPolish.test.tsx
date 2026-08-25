@@ -165,6 +165,18 @@ describe('dashboard shell polish contracts', () => {
     })).toBe('hub-item');
   });
 
+  it('renders Workspaces beside the shared Inspector and uses its selected item', () => {
+    expect(isFullPageDashboardView('workspaces')).toBe(false);
+    expect(isFullMiddleDashboardView('workspaces')).toBe(true);
+    expect(resolveShellInspectorItemId({
+      activeView: 'workspaces',
+      isSearchSurface: false,
+      selectedSearchItemId: null,
+      selectedBrowseItemId: 'workspace-item',
+      activeGlobalTab: { kind: 'item', id: 'old-tab', itemId: 'old-item' },
+    })).toBe('workspace-item');
+  });
+
   it('restores the Library selection before the child view reports its hydrated item', () => {
     localStorage.setItem(
       'workbench:library-page-state:v1:library:all:all',

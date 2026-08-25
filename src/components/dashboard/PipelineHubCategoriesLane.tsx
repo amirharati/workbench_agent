@@ -211,6 +211,9 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(
+    hubSaved.categoriesSelectedItemId
+  );
   const [inspectState, setInspectState] = useState<{ ids: string[]; index: number } | null>(null);
   const [pageLimit, setPageLimit] = useState(PAGE_SIZE);
   const [retryManualRows, setRetryManualRows] = useState<ManualReviewRetryRow[] | null>(null);
@@ -236,9 +239,10 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
         categoriesSubTab: subTab,
         categoriesFilter: filter,
         categoriesSearch: search,
+        categoriesSelectedItemId: focusedItemId,
       },
     });
-  }, [subTab, filter, search]);
+  }, [focusedItemId, subTab, filter, search]);
 
   const filterSessionKey = useMemo(
     () =>
@@ -691,14 +695,32 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   };
 
   const openInspect = (item: Item) => {
+    setFocusedItemId(item.id);
     setInspectState({ ids: [item.id], index: 0 });
-    onOpenItem?.(item);
   };
 
   const inspectRow = inspectState
     ? tableRowsForList.find((r) => r.item.id === inspectState.ids[inspectState.index]) ??
       scopedRows.find((r) => r.item.id === inspectState.ids[inspectState.index])
     : null;
+
+  const focusedItem = useMemo(() => {
+    if (!focusedItemId) return null;
+    return tableRowsForList.find((row) => row.item.id === focusedItemId)?.item
+      ?? scopedRows.find((row) => row.item.id === focusedItemId)?.item
+      ?? allRows.find((row) => row.item.id === focusedItemId)?.item
+      ?? null;
+  }, [allRows, focusedItemId, scopedRows, tableRowsForList]);
+  const lastSyncedInspectorItemIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusedItem) {
+      lastSyncedInspectorItemIdRef.current = null;
+      return;
+    }
+    if (lastSyncedInspectorItemIdRef.current === focusedItem.id) return;
+    lastSyncedInspectorItemIdRef.current = focusedItem.id;
+    onOpenItem?.(focusedItem);
+  }, [focusedItem, onOpenItem]);
 
   const laneTabStyle = (active: boolean): React.CSSProperties => ({
     padding: '6px 12px',
@@ -924,8 +946,7 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                 const topicPresentation = topicSourcePresentation(row);
                 const isRecentUpdate = recentUpdateIdSet.has(row.item.id);
                 const stillMatchesFilter = filteredRows.some((r) => r.item.id === row.item.id);
-                const isCurrentInspect =
-                  inspectState != null && inspectState.ids[inspectState.index] === row.item.id;
+                const isCurrentInspect = focusedItemId === row.item.id;
                 return (
                   <div
                     key={row.item.id}

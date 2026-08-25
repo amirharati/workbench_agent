@@ -24,8 +24,10 @@ export type PipelineHubPersistedState = {
   enrichmentTrashSuggestionsOnly: boolean;
   enrichmentFailureCategory: string;
   enrichmentFailureStage: string;
+  enrichmentSelectedItemId: string | null;
   categoriesFilter: string;
   categoriesSearch: string;
+  categoriesSelectedItemId: string | null;
 };
 
 export type NavigationPersistedState = {
@@ -49,8 +51,10 @@ export const PIPELINE_HUB_STATE_DEFAULT: PipelineHubPersistedState = {
   enrichmentTrashSuggestionsOnly: false,
   enrichmentFailureCategory: 'all',
   enrichmentFailureStage: 'all',
+  enrichmentSelectedItemId: null,
   categoriesFilter: 'needs_attention',
   categoriesSearch: '',
+  categoriesSelectedItemId: null,
 };
 
 export const NAVIGATION_STATE_DEFAULT: NavigationPersistedState = {
@@ -100,8 +104,12 @@ function normalizePipelineHub(raw: Partial<PipelineHubPersistedState> | undefine
       typeof raw?.enrichmentFailureCategory === 'string' ? raw.enrichmentFailureCategory : 'all',
     enrichmentFailureStage:
       typeof raw?.enrichmentFailureStage === 'string' ? raw.enrichmentFailureStage : 'all',
+    enrichmentSelectedItemId:
+      typeof raw?.enrichmentSelectedItemId === 'string' ? raw.enrichmentSelectedItemId : null,
     categoriesFilter: typeof raw?.categoriesFilter === 'string' ? raw.categoriesFilter : base.categoriesFilter,
     categoriesSearch: typeof raw?.categoriesSearch === 'string' ? raw.categoriesSearch : '',
+    categoriesSelectedItemId:
+      typeof raw?.categoriesSelectedItemId === 'string' ? raw.categoriesSelectedItemId : null,
   };
 }
 

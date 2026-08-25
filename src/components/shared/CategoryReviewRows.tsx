@@ -186,12 +186,14 @@ export function SuggestedCategoryRow({
   link,
   onDone,
   onEdit,
+  onBrowse,
   feedback,
 }: {
   itemId: string;
   link: { categoryId: string; name: string; parentName?: string; score: number };
   onDone: () => void;
   onEdit?: () => void;
+  onBrowse?: (categoryId: string, name: string) => void;
   feedback?: CategoryReviewFeedback;
 }) {
   const { addToast } = useToast();
@@ -247,6 +249,7 @@ export function SuggestedCategoryRow({
           parentLabel={link.parentName}
           categoryId={link.categoryId}
           muted
+          onClick={onBrowse ? () => onBrowse(link.categoryId, link.name) : undefined}
         />
         {link.score > 0 && (
           <span style={{ fontSize: '9px', color: 'var(--text-faint)' }}>

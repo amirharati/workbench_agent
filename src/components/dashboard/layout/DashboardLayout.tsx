@@ -134,13 +134,19 @@ export function resolveRememberedProjectCollection(
 const FULL_PAGE_VIEWS = new Set<DashboardView>([
   'settings',
   'trash',
-  'workspaces',
   'tab-commander',
   'import-studio',
   'help',
 ]);
 /** Keep the right Inspector visible beside the primary browse surfaces. */
-const FULL_MIDDLE_VIEWS = new Set<DashboardView>(['home', 'search', 'pipeline', 'bookmarks', 'notes']);
+const FULL_MIDDLE_VIEWS = new Set<DashboardView>([
+  'home',
+  'search',
+  'pipeline',
+  'bookmarks',
+  'notes',
+  'workspaces',
+]);
 
 export function isFullPageDashboardView(activeView: DashboardView): boolean {
   return FULL_PAGE_VIEWS.has(activeView);
@@ -166,7 +172,12 @@ export function resolveShellInspectorItemId({
   if (isSearchSurface) return selectedSearchItemId;
   // Library and Notes own their visible selection independently of the Home
   // workspace entries. Their selection must therefore win over a stale entry.
-  if (activeView === 'bookmarks' || activeView === 'notes' || activeView === 'pipeline') {
+  if (
+    activeView === 'bookmarks'
+    || activeView === 'notes'
+    || activeView === 'pipeline'
+    || activeView === 'workspaces'
+  ) {
     return selectedBrowseItemId;
   }
   if (activeGlobalTab?.kind === 'item') return activeGlobalTab.itemId;

@@ -422,6 +422,7 @@ function ItemInspectorBody({
                       link={l}
                       onDone={reload}
                       onEdit={() => setManageCategoriesOpen(true)}
+                      onBrowse={onBrowseCategory}
                     />
                   ))}
                 </div>
