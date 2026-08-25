@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ContentBrowser } from './ContentBrowser';
+import { ListPipelineBadge } from './PipelineDisplayBlocks';
 
 describe('ContentBrowser', () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -129,7 +130,7 @@ describe('ContentBrowser', () => {
           id: 'link-a',
           title: 'A useful article with a longer title',
           icon: 'L',
-          subtitle: 'https://example.com/a/very/long/path/that/must/not/paint/under/the/card/actions',
+          subtitle: <span>https://example.com/a/very/long/path/that/must/not/paint/under/the/card/actions</span>,
           meta: 'Jul 22',
           actions: <button type="button">Open</button>,
         }]}
@@ -145,6 +146,49 @@ describe('ContentBrowser', () => {
     host.innerHTML = markup;
     expect(host.querySelector('.ui-content-browser__footer')?.textContent).toBe('Jul 22');
     expect(host.querySelector('.ui-content-browser__controls')?.textContent).toBe('Open');
+    expect(host.querySelector('.ui-content-browser__subtitle')?.getAttribute('data-url')).toBe('true');
+    expect(host.querySelector('.ui-content-browser__subtitle')?.getAttribute('title')).toBe(
+      'https://example.com/a/very/long/path/that/must/not/paint/under/the/card/actions'
+    );
+  });
+
+  it('keeps list URLs in the compact text column after the leading icon', () => {
+    const markup = renderToStaticMarkup(
+      <ContentBrowser
+        title="Library"
+        entries={[{
+          id: 'link-a',
+          title: 'A useful article',
+          icon: (
+            <span className="ui-content-browser__item-kind">
+              <span>Site icon</span>
+              <ListPipelineBadge badge={{ kind: 'ready', variant: 'success', label: 'Enriched' }} />
+            </span>
+          ),
+          subtitle: <span>https://example.com/a/very/long/path/that/should/truncate/to/the/available/list/width</span>,
+          actions: <button type="button">Open</button>,
+        }]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        mode="list"
+        onModeChange={vi.fn()}
+        emptyMessage="Nothing here"
+      />
+    );
+
+    const host = document.createElement('div');
+    host.innerHTML = markup;
+    const entry = host.querySelector('[data-content-entry]');
+    const leading = entry?.querySelector('[data-content-leading]');
+    const copy = entry?.querySelector('.ui-content-browser__copy');
+    const controls = entry?.querySelector('.ui-content-browser__controls');
+    const subtitle = entry?.querySelector('.ui-content-browser__subtitle');
+    expect(leading?.nextElementSibling).toBe(copy);
+    expect(copy?.nextElementSibling).toBe(controls);
+    expect(leading?.querySelector('.ui-list-pipeline-badge')?.getAttribute('title')).toBe('Enriched');
+    expect(leading?.querySelector('.ui-status-badge__label')?.textContent).toBe('Enriched');
+    expect(subtitle?.getAttribute('data-url')).toBe('true');
+    expect(subtitle?.getAttribute('title')).toContain('/available/list/width');
   });
 
   it('mounts a bounded first batch for large libraries', () => {

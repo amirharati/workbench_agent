@@ -86,6 +86,26 @@ describe('HomeCategoriesView', () => {
     expect(host.textContent).toContain('Trading systems');
     expect(host.textContent).toContain('2 selected · showing items in any selected category');
 
+    const financeParent = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Select all child categories under Finance"]'
+    );
+    expect(financeParent?.checked).toBe(false);
+    expect(financeParent?.indeterminate).toBe(true);
+
+    await act(async () => financeParent?.click());
+    expect(host.textContent).toContain('Long-term portfolio');
+    expect(host.textContent).toContain('Trading systems');
+    expect(host.textContent).toContain('3 selected · showing items in any selected category');
+
+    await act(async () => financeParent?.click());
+    expect(host.textContent).not.toContain('Long-term portfolio');
+    expect(host.textContent).not.toContain('Trading systems');
+    expect(host.textContent).toContain('Select one or more child categories');
+
+    await act(async () => financeParent?.click());
+    expect(host.textContent).toContain('Long-term portfolio');
+    expect(host.textContent).toContain('Trading systems');
+
     const tradingRow = [...host.querySelectorAll<HTMLElement>('[data-content-entry]')]
       .find((row) => row.textContent?.includes('Trading systems'));
     await act(async () => tradingRow?.click());
@@ -135,6 +155,37 @@ describe('HomeCategoriesView', () => {
     ));
     expect(host.textContent).toContain('Trading systems');
     expect(host.textContent).not.toContain('Long-term portfolio');
+
+    await act(async () => root.unmount());
+  });
+
+  it('changes browsing context without navigating away from Categories', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onScopeValueChange = vi.fn();
+
+    await act(async () => root.render(
+      <HomeCategoriesView
+        items={items}
+        scopeLabel="Research"
+        scopeKey="project-research"
+        scopeOptions={[
+          { value: 'project', label: 'Research' },
+          { value: 'all', label: 'All Library' },
+        ]}
+        scopeValue="project"
+        onScopeValueChange={onScopeValueChange}
+      />
+    ));
+
+    const scope = host.querySelector<HTMLSelectElement>('[aria-label="Categories scope"]');
+    expect(scope?.value).toBe('project');
+    await act(async () => {
+      scope!.value = 'all';
+      scope!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(onScopeValueChange).toHaveBeenCalledWith('all');
 
     await act(async () => root.unmount());
   });

@@ -76,40 +76,6 @@ function structuredTabFromQuery(query: string): { kind: 'tag' | 'category'; valu
   return { kind: atoms[0].kind as 'tag' | 'category', value: atoms[0].value };
 }
 
-/**
- * Treat shell navigation as a new Search default only after the user actually
- * changes shell scope. On the first render, Search has already restored its
- * own last-used filters and must not be reset to the surrounding Home scope.
- */
-export function useSearchNavigationScope(
-  filters: SearchFilters,
-  setFilters: (filters: SearchFilters) => void,
-  scopeProjectId: string | 'all',
-  scopeCollectionId: string | 'all'
-): void {
-  const previousScopeRef = useRef({ scopeProjectId, scopeCollectionId });
-  const filtersRef = useRef(filters);
-  const setFiltersRef = useRef(setFilters);
-  filtersRef.current = filters;
-  setFiltersRef.current = setFilters;
-
-  useEffect(() => {
-    const previous = previousScopeRef.current;
-    if (
-      previous.scopeProjectId === scopeProjectId &&
-      previous.scopeCollectionId === scopeCollectionId
-    ) {
-      return;
-    }
-    previousScopeRef.current = { scopeProjectId, scopeCollectionId };
-    setFiltersRef.current({
-      ...filtersRef.current,
-      projectId: scopeProjectId === 'all' ? undefined : scopeProjectId,
-      collectionId: scopeCollectionId === 'all' ? undefined : scopeCollectionId,
-    });
-  }, [scopeCollectionId, scopeProjectId]);
-}
-
 function loadRecentQueries(): string[] {
   try {
     const raw = localStorage.getItem(LIBRARY_SEARCH_HISTORY_KEY);
@@ -655,6 +621,45 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
     openDerivedSearchTab({ kind: 'category', value: name, categoryId });
   }, [openDerivedSearchTab]);
 
+  const openBlankSearchTab = useCallback(() => {
+    hasInteractedRef.current = true;
+    const currentState = stateRef.current;
+    const id = `search-${Date.now()}-${++tabSequenceRef.current}`;
+    const next: LibrarySearchState = {
+      ...currentState,
+      query: '',
+      filters: {
+        ...currentState.filters,
+        categoryId: undefined,
+        tag: undefined,
+      },
+      loading: false,
+      error: null,
+      result: null,
+      selectedItemId: null,
+      indexEmpty: false,
+      restoring: false,
+    };
+    const nextTabs: LibrarySearchTabRecord[] = [
+      ...searchTabsRef.current.map((tab) =>
+        tab.id === activeSearchTabIdRef.current ? { ...tab, state: currentState } : tab
+      ),
+      {
+        id,
+        kind: 'search',
+        label: 'Search',
+        state: next,
+      },
+    ];
+    ++requestRevisionRef.current;
+    searchTabsRef.current = nextTabs;
+    setSearchTabs(nextTabs);
+    activeSearchTabIdRef.current = id;
+    setActiveSearchTabId(id);
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
   const selectSearchTab = useCallback((id: string) => {
     if (id === activeSearchTabIdRef.current) return;
     const target = searchTabsRef.current.find((tab) => tab.id === id);
@@ -725,6 +730,7 @@ export function useLibrarySearch(onError?: (message: string) => void, storageKey
     openSearch,
     openTagTab,
     openCategoryTab,
+    openBlankSearchTab,
     selectSearchTab,
     closeSearchTab,
   };

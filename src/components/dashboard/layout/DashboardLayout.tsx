@@ -29,7 +29,6 @@ import { CommandPalette } from '../CommandPalette';
 import { ManageCategoriesDialog } from '../ManageCategoriesDialog';
 import {
   useLibrarySearch,
-  useSearchNavigationScope,
   LIBRARY_SEARCH_TAB_ID,
   loadLastSearchQuery,
 } from '../../../hooks/useLibrarySearch';
@@ -462,13 +461,6 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
     [globalTabState, projects, scopeProjectId, workspaces]
   );
   const prevSearchViewRef = useRef(false);
-
-  useSearchNavigationScope(
-    librarySearch.state.filters,
-    librarySearch.setFilters,
-    scopeProjectId,
-    scopeCollectionId
-  );
 
   const handleGlobalTabStateChange = (next: GlobalTabState) => {
     setGlobalTabState(next);

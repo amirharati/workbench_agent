@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, Loader2, Search, X } from 'lucide-react';
+import { Eye, Loader2, Plus, Search, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { SearchResult } from '../../lib/search';
 import type { LibrarySearchState, LibrarySearchTab } from '../../hooks/useLibrarySearch';
@@ -47,6 +47,7 @@ interface ProductSearchViewProps {
   scopeOptions?: Array<{ value: string; label: string }>;
   scopeValue?: string;
   onScopeValueChange?: (value: string) => void;
+  collectionSelectionDisabled?: boolean;
   workspaceDestinations?: WorkspaceDestination[];
   recentWorkspaceDestinationKeys?: readonly string[];
   isItemInWorkspace?: (item: Item, destination: WorkspaceDestination) => boolean;
@@ -57,6 +58,7 @@ interface ProductSearchViewProps {
   activeSearchTabId?: string;
   onSelectSearchTab?: (id: string) => void;
   onCloseSearchTab?: (id: string) => void;
+  onNewSearchTab?: () => void;
   onOpenTagTab?: (tag: string) => void;
   onOpenCategoryTab?: (categoryId: string, name: string) => void;
 }
@@ -104,6 +106,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   scopeOptions,
   scopeValue,
   onScopeValueChange,
+  collectionSelectionDisabled = false,
   workspaceDestinations = [],
   recentWorkspaceDestinationKeys,
   isItemInWorkspace,
@@ -114,6 +117,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   activeSearchTabId,
   onSelectSearchTab,
   onCloseSearchTab,
+  onNewSearchTab,
   onOpenTagTab,
   onOpenCategoryTab,
 }) => {
@@ -300,6 +304,18 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                 </div>
               );
             })}
+            <button
+              type="button"
+              className="ui-search-tabs__add"
+              aria-label="New search tab"
+              title="New search tab"
+              onClick={() => {
+                onNewSearchTab?.();
+                window.setTimeout(() => inputRef.current?.focus(), 0);
+              }}
+            >
+              <Plus size={13} aria-hidden="true" />
+            </button>
           </div>
         ) : null}
 
@@ -448,7 +464,9 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
             </span>
           ) : null}
           <select
+            aria-label="Collection filter"
             value={collectionFilter}
+            disabled={collectionSelectionDisabled}
             onChange={(e) => {
               const val = e.target.value;
               onFiltersChange({
@@ -463,7 +481,10 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               background: 'var(--input-bg, var(--bg-input))',
               color: 'var(--text)',
               fontSize: 'var(--text-xs)',
+              opacity: collectionSelectionDisabled ? 0.48 : 1,
+              cursor: collectionSelectionDisabled ? 'not-allowed' : undefined,
             }}
+            title={collectionSelectionDisabled ? 'Choose a project context to filter by collection' : 'Filter search by collection'}
           >
             <option value="all">All collections</option>
             {collections.map((c) => (
@@ -725,7 +746,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                 void onRunSearch(name);
               }
             }}
-            onCategoryOpen={onBrowseCategory ?? onOpenCategoryTab}
+            onCategoryOpen={onOpenCategoryTab ?? onBrowseCategory}
             onTagClick={(tag) => {
               if (onOpenTagTab) onOpenTagTab(tag);
               else {

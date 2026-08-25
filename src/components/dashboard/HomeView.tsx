@@ -23,7 +23,7 @@ import {
   type WorkspaceViewGroup,
 } from './AllLibraryWorkspaceOverview';
 import type { AllLibraryView } from './AllLibraryWorkspaceOverview';
-import { homePageUiKey, loadPageUiState, savePageUiState } from '../../lib/shell/pageUiState';
+import { homeContextUiKey, homePageUiKey, loadPageUiState, savePageUiState } from '../../lib/shell/pageUiState';
 import {
   activateProjectWorkspace,
   activateSavedProjectWorkspace,
@@ -53,6 +53,7 @@ import {
 import { uiPatterns } from '../../styles/uiPatterns';
 
 type LibrarySearchApi = ReturnType<typeof useLibrarySearch>;
+type HomeContextScope = 'project' | 'collection' | 'all';
 
 const SEARCH_COMPANION_DEFAULT_HEIGHT = 330;
 const SEARCH_COMPANION_MIN_HEIGHT = 170;
@@ -61,6 +62,18 @@ const SEARCH_RESULTS_MIN_HEIGHT = 220;
 function normalizeSearchCompanionHeight(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return SEARCH_COMPANION_DEFAULT_HEIGHT;
   return Math.max(SEARCH_COMPANION_MIN_HEIGHT, Math.min(720, Math.round(value)));
+}
+
+function normalizeHomeContextScope(
+  value: unknown,
+  scopeProjectId: string | 'all',
+  scopeCollectionId: string | 'all',
+  allowCollection: boolean
+): HomeContextScope {
+  if (scopeProjectId === 'all') return 'all';
+  if (value === 'all') return 'all';
+  if (allowCollection && value === 'collection' && scopeCollectionId !== 'all') return 'collection';
+  return 'project';
 }
 
 // ===== Props =====
@@ -119,6 +132,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   }, [onDeleteBookmark]);
   const [draggedProjectId, setDraggedProjectId] = React.useState<string | null>(null);
   const pageUiKey = homePageUiKey(scopeProjectId, scopeCollectionId);
+  const contextUiKey = homeContextUiKey(scopeProjectId);
   const [initialPageUi] = React.useState(() => loadPageUiState(pageUiKey, {
     selectedOverviewItemId: null as string | null,
     selectedAllLibraryWorkspaceTabId: null as string | null,
@@ -153,6 +167,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [searchCompanionHeight, setSearchCompanionHeight] = React.useState(() =>
     normalizeSearchCompanionHeight(initialPageUi.searchCompanionHeight)
   );
+  const [initialContextUi] = React.useState(() => loadPageUiState(contextUiKey, {
+    searchScope: scopeProjectId === 'all' ? 'all' as HomeContextScope : 'project' as HomeContextScope,
+    categoriesScope: scopeProjectId === 'all' ? 'all' as HomeContextScope : 'project' as HomeContextScope,
+  }));
+  const [searchContextScope, setSearchContextScope] = React.useState<HomeContextScope>(() =>
+    normalizeHomeContextScope(initialContextUi.searchScope, scopeProjectId, scopeCollectionId, true)
+  );
+  const [categoriesContextScope, setCategoriesContextScope] = React.useState<HomeContextScope>(() =>
+    normalizeHomeContextScope(initialContextUi.categoriesScope, scopeProjectId, scopeCollectionId, false)
+  );
+  const searchContextInitializedRef = React.useRef(false);
   const searchLayoutRef = React.useRef<HTMLDivElement>(null);
   const searchCompanionRef = React.useRef<HTMLDivElement>(null);
   const [searchCollectionBrowseMode, setSearchCollectionBrowseMode] = useContentBrowseMode(
@@ -174,6 +199,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
       searchCompanionHeight,
     });
   }, [allLibraryActiveView, allLibraryItemFilter, allLibraryWorkspaceView, pageUiKey, projectLauncherQuery, searchCompanionCollectionId, searchCompanionHeight, searchCompanionView, selectedAllLibraryWorkspaceTabId, selectedOverviewItemId]);
+
+  React.useEffect(() => {
+    savePageUiState(contextUiKey, {
+      searchScope: searchContextScope,
+      categoriesScope: categoriesContextScope,
+    });
+  }, [categoriesContextScope, contextUiKey, searchContextScope]);
 
   const resizeSearchCompanion = React.useCallback((delta: number) => {
     setSearchCompanionHeight((previous) => {
@@ -595,10 +627,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
     onSelectedBrowseItemChange?.(null);
   };
 
-  const effectiveSearchScopeLabel = librarySearch?.state.filters.collectionId
-    ? collections.find((collection) => collection.id === librarySearch.state.filters.collectionId)?.name ?? 'Collection'
-    : librarySearch?.state.filters.projectId
-      ? projects.find((project) => project.id === librarySearch.state.filters.projectId)?.name ?? 'Project'
+  const effectiveSearchScopeLabel = searchContextScope === 'collection'
+    ? activeCollection?.name ?? 'Collection'
+    : searchContextScope === 'project'
+      ? activeProject?.name ?? 'Project'
       : 'All Library';
   const filteredSearchCollection = librarySearch?.state.filters.collectionId
     ? collections.find((collection) => collection.id === librarySearch.state.filters.collectionId)
@@ -654,21 +686,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }));
   }, [searchCompanionCollectionItems, selectedSearchCompanionCollection]);
   const searchScopeOptions = [
-    ...(filteredSearchCollection ? [{ value: `collection:${filteredSearchCollection.id}`, label: filteredSearchCollection.name }] : []),
-    ...(activeCollection && activeCollection.id !== filteredSearchCollection?.id ? [{ value: `collection:${activeCollection.id}`, label: activeCollection.name }] : []),
-    ...(activeProject ? [{ value: `project:${activeProject.id}`, label: activeProject.name }] : []),
-    ...(filteredSearchProject && filteredSearchProject.id !== activeProject?.id ? [{ value: `project:${filteredSearchProject.id}`, label: filteredSearchProject.name }] : []),
+    ...(activeCollection ? [{ value: 'collection', label: activeCollection.name }] : []),
+    ...(activeProject ? [{ value: 'project', label: activeProject.name }] : []),
     { value: 'all', label: 'All Library' },
   ];
-  const searchScopeValue = filteredSearchCollection
-    ? `collection:${filteredSearchCollection.id}`
-    : filteredSearchProject
-      ? `project:${filteredSearchProject.id}`
-      : 'all';
-  const changeSearchScope = (value: string) => {
+  const searchScopeValue = searchContextScope;
+  const collectionSelectionDisabled = searchContextScope === 'all';
+  const applySearchScope = React.useCallback((nextScope: HomeContextScope) => {
     if (!librarySearch) return;
-    const projectId = value.startsWith('project:') ? value.slice('project:'.length) : undefined;
-    const collectionId = value.startsWith('collection:') ? value.slice('collection:'.length) : undefined;
+    const projectId = nextScope === 'project' && scopeProjectId !== 'all' ? scopeProjectId : undefined;
+    const collectionId = nextScope === 'collection' && scopeCollectionId !== 'all' ? scopeCollectionId : undefined;
     const filters = {
       ...librarySearch.state.filters,
       projectId,
@@ -681,6 +708,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
     };
     if (snapshot.query.trim()) librarySearch.openSearch(snapshot);
     else librarySearch.setFilters(filters);
+  }, [librarySearch, scopeCollectionId, scopeProjectId]);
+  const changeSearchScope = (value: string) => {
+    const nextScope = normalizeHomeContextScope(value, scopeProjectId, scopeCollectionId, true);
+    setSearchContextScope(nextScope);
+    searchContextInitializedRef.current = true;
+    applySearchScope(nextScope);
   };
   const getWorkspaceEntryScopeLabel = (tab: GlobalTab) => {
     if (tab.kind !== 'search') return tab.scopeProjectId ? undefined : 'Global';
@@ -925,13 +958,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
     homeState.homeSection === 'search' || homeState.homeSection === 'categories'
       ? homeState.homeSection
       : 'overview';
+  React.useEffect(() => {
+    if (homeSection !== 'search' || searchContextInitializedRef.current) return;
+    searchContextInitializedRef.current = true;
+    applySearchScope(searchContextScope);
+  }, [applySearchScope, homeSection, searchContextScope]);
   const openAllLibraryScope = () => {
-    onHomeStateChange({ ...homeState, activeTabId: null, homeSection: 'overview' });
+    onHomeStateChange({ ...homeState, activeTabId: null });
     onResetScope?.();
   };
 
   const openProjectScope = (projectId: string) => {
-    onHomeStateChange({ ...homeState, activeTabId: null, homeSection: 'overview' });
+    onHomeStateChange({ ...homeState, activeTabId: null });
     onSelectProjectScope?.(projectId);
   };
 
@@ -1171,10 +1209,18 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </div>
       ) : homeSection === 'categories' ? (
         <HomeCategoriesView
-          key={scopeProjectId}
-          items={scopeProjectId === 'all' ? items : projectItems}
-          scopeLabel={activeProject?.name ?? 'All Library'}
-          scopeKey={scopeProjectId}
+          key={`${scopeProjectId}:${categoriesContextScope}`}
+          items={categoriesContextScope === 'all' || scopeProjectId === 'all' ? items : projectItems}
+          scopeLabel={categoriesContextScope === 'all' || scopeProjectId === 'all' ? 'All Library' : activeProject?.name ?? 'Project'}
+          scopeKey={categoriesContextScope === 'all' || scopeProjectId === 'all' ? 'all' : scopeProjectId}
+          scopeOptions={activeProject ? [
+            { value: 'project', label: activeProject.name },
+            { value: 'all', label: 'All Library' },
+          ] : [{ value: 'all', label: 'All Library' }]}
+          scopeValue={categoriesContextScope === 'all' || scopeProjectId === 'all' ? 'all' : 'project'}
+          onScopeValueChange={(value) => setCategoriesContextScope(
+            normalizeHomeContextScope(value, scopeProjectId, scopeCollectionId, false)
+          )}
           focusedCategory={focusedCategory}
           onExitFocusedCategory={onExitFocusedCategory}
           onSelectedItemChange={onSelectedBrowseItemChange}
@@ -1202,13 +1248,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
             <button
               type="button"
-              aria-pressed={searchCompanionView === 'collection'}
+              aria-pressed={!collectionSelectionDisabled && searchCompanionView === 'collection'}
+              disabled={collectionSelectionDisabled}
               onClick={() => setSearchCompanionView('collection')}
+              title={collectionSelectionDisabled ? 'Choose a project context to browse its collections' : 'Browse a collection'}
             >
               <Folder size={12} /> Collection
             </button>
           </div>
-          {searchCompanionView === 'workspace' ? (
+          {searchCompanionView === 'workspace' || collectionSelectionDisabled ? (
             <ContentBrowser
               title={activeWorkspaceDestination?.workspaceName ?? 'Global workspace'}
               entries={searchCompanionWorkspaceEntries}
@@ -1314,6 +1362,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           scopeOptions={searchScopeOptions}
           scopeValue={searchScopeValue}
           onScopeValueChange={changeSearchScope}
+          collectionSelectionDisabled={collectionSelectionDisabled}
           workspaceAction={librarySearch.state.query.trim() ? (
             <WorkspaceDestinationPicker
               subjectTitle={`Search: ${librarySearch.state.query.trim()}`}
@@ -1333,6 +1382,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           activeSearchTabId={librarySearch.activeSearchTabId}
           onSelectSearchTab={librarySearch.selectSearchTab}
           onCloseSearchTab={librarySearch.closeSearchTab}
+          onNewSearchTab={librarySearch.openBlankSearchTab}
           onOpenTagTab={librarySearch.openTagTab}
           onOpenCategoryTab={librarySearch.openCategoryTab}
           onBrowseCategory={onBrowseCategory}

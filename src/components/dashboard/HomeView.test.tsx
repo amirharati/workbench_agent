@@ -150,4 +150,138 @@ describe('HomeView search scope', () => {
     await act(async () => host.querySelector<HTMLElement>('[data-content-entry]')?.click());
     expect(setSelectedItemId).toHaveBeenCalledWith(projectItem.id);
   });
+
+  it('preserves the current Home section when switching project scope', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    roots.push(root);
+    const onHomeStateChange = vi.fn();
+    const onSelectProjectScope = vi.fn();
+    const librarySearch = {
+      state: {
+        query: '', filters: {}, mode: 'hybrid' as const, loading: false, error: null,
+        result: null, selectedItemId: null, recentQueries: [], indexEmpty: false, restoring: false,
+      },
+      setQuery: vi.fn(), setFilters: vi.fn(), setMode: vi.fn(), setSelectedItemId: vi.fn(),
+      runSearch: vi.fn(), clearRecentQueries: vi.fn(), openSearch: vi.fn(),
+      searchTabs: [], activeSearchTabId: 'search-root', selectSearchTab: vi.fn(),
+      closeSearchTab: vi.fn(), openTagTab: vi.fn(), openCategoryTab: vi.fn(),
+    };
+
+    await act(async () => root.render(
+      <HomeView
+        items={[projectItem, globalResultItem]}
+        collections={[collectionA, collectionB]}
+        projects={[projectA, projectB]}
+        workspaces={[]}
+        homeState={{
+          tabs: [], activeTabId: null, bottomLayout: 'tabs', isSidebarCollapsed: false,
+          homeSection: 'search',
+        }}
+        onHomeStateChange={onHomeStateChange}
+        onSearchQueryChange={vi.fn()}
+        librarySearch={librarySearch as never}
+        scopeProjectId={projectA.id}
+        scopeCollectionId="all"
+        recentProjectIds={[projectA.id, projectB.id]}
+        onSelectProjectScope={onSelectProjectScope}
+      />
+    ));
+
+    const writingProject = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Writing'));
+    await act(async () => writingProject?.click());
+
+    expect(onSelectProjectScope).toHaveBeenCalledWith(projectB.id);
+    expect(onHomeStateChange).toHaveBeenCalledWith(expect.objectContaining({
+      activeTabId: null,
+      homeSection: 'search',
+    }));
+  });
+
+  it('remembers an All Library Search context inside a project without changing the project shell', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    roots.push(root);
+    const setFilters = vi.fn();
+    const onSelectProjectScope = vi.fn();
+    const librarySearch = {
+      state: {
+        query: '', filters: {}, mode: 'hybrid' as const, loading: false, error: null,
+        result: null, selectedItemId: null, recentQueries: [], indexEmpty: false, restoring: false,
+      },
+      setQuery: vi.fn(), setFilters, setMode: vi.fn(), setSelectedItemId: vi.fn(),
+      runSearch: vi.fn(), clearRecentQueries: vi.fn(), openSearch: vi.fn(),
+      searchTabs: [], activeSearchTabId: 'search-root', selectSearchTab: vi.fn(),
+      closeSearchTab: vi.fn(), openBlankSearchTab: vi.fn(), openTagTab: vi.fn(), openCategoryTab: vi.fn(),
+    };
+
+    await act(async () => root.render(
+      <HomeView
+        items={[projectItem, globalResultItem]}
+        collections={[collectionA, collectionB]}
+        projects={[projectA, projectB]}
+        workspaces={[]}
+        homeState={{
+          tabs: [], activeTabId: null, bottomLayout: 'tabs', isSidebarCollapsed: false,
+          homeSection: 'search',
+        }}
+        onHomeStateChange={vi.fn()}
+        onSearchQueryChange={vi.fn()}
+        librarySearch={librarySearch as never}
+        scopeProjectId={projectA.id}
+        scopeCollectionId="all"
+        recentProjectIds={[projectA.id]}
+        onSelectProjectScope={onSelectProjectScope}
+      />
+    ));
+
+    const scope = host.querySelector<HTMLSelectElement>('[aria-label="Search scope"]');
+    expect(scope?.value).toBe('project');
+    expect([...scope!.options].map((option) => option.textContent)).toEqual(['Research', 'All Library']);
+
+    await act(async () => {
+      scope!.value = 'all';
+      scope!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    expect(setFilters).toHaveBeenLastCalledWith(expect.objectContaining({
+      projectId: undefined,
+      collectionId: undefined,
+    }));
+    const collectionCompanion = [...host.querySelectorAll<HTMLButtonElement>('.ui-search-companion__switcher button')]
+      .find((button) => button.textContent?.includes('Collection'));
+    expect(collectionCompanion?.disabled).toBe(true);
+    expect(collectionCompanion?.getAttribute('aria-pressed')).toBe('false');
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="Collection filter"]')?.disabled).toBe(true);
+    expect(onSelectProjectScope).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem('workbench:home-context-state:v1:project-a') ?? '{}')).toMatchObject({
+      searchScope: 'all',
+    });
+  });
+
+  it('offers project and All Library contexts on the Categories page', () => {
+    const markup = renderToStaticMarkup(
+      <HomeView
+        items={[projectItem, globalResultItem]}
+        collections={[collectionA, collectionB]}
+        projects={[projectA, projectB]}
+        workspaces={[]}
+        homeState={{
+          tabs: [], activeTabId: null, bottomLayout: 'tabs', isSidebarCollapsed: false,
+          homeSection: 'categories',
+        }}
+        onHomeStateChange={vi.fn()}
+        onSearchQueryChange={vi.fn()}
+        scopeProjectId={projectA.id}
+        scopeCollectionId="all"
+      />
+    );
+
+    expect(markup).toContain('aria-label="Categories scope"');
+    expect(markup).toContain('Research');
+    expect(markup).toContain('All Library');
+  });
 });

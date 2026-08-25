@@ -22,7 +22,11 @@ export const ItemPipelineBadge: React.FC<{ badge?: PipelineBadge | null }> = ({ 
 /** Badge for list/search rows — hides Ready and Not processed. */
 export const ListPipelineBadge: React.FC<{ badge?: PipelineBadge | null }> = ({ badge }) => {
   if (!shouldShowListPipelineBadge(badge)) return null;
-  return <ItemPipelineBadge badge={badge} />;
+  return (
+    <span className="ui-list-pipeline-badge" title={badge.label} aria-label={badge.label}>
+      <ItemPipelineBadge badge={badge} />
+    </span>
+  );
 };
 
 interface EnrichmentContentProps {

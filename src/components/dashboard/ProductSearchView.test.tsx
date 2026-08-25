@@ -179,7 +179,7 @@ describe('ProductSearchView empty state', () => {
     host.remove();
   });
 
-  it('opens categories in the canonical Categories view while keeping tags in Search tabs', async () => {
+  it('keeps category and tag exploration inside Search tabs', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -238,11 +238,11 @@ describe('ProductSearchView empty state', () => {
       'button[title="Open the full Automatic Speech Recognition category"]'
     );
     await act(async () => categoryButton?.click());
-    expect(onBrowseCategory).toHaveBeenCalledWith(
+    expect(onOpenCategoryTab).toHaveBeenCalledWith(
       'speech-asr',
       'Automatic Speech Recognition'
     );
-    expect(onOpenCategoryTab).not.toHaveBeenCalled();
+    expect(onBrowseCategory).not.toHaveBeenCalled();
     const tagButton = [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('speech recognition'));
     await act(async () => tagButton?.click());
@@ -259,6 +259,7 @@ describe('ProductSearchView empty state', () => {
     const root = createRoot(host);
     const onSelectSearchTab = vi.fn();
     const onCloseSearchTab = vi.fn();
+    const onNewSearchTab = vi.fn();
 
     await act(async () => {
       root.render(
@@ -279,6 +280,7 @@ describe('ProductSearchView empty state', () => {
           activeSearchTabId="root"
           onSelectSearchTab={onSelectSearchTab}
           onCloseSearchTab={onCloseSearchTab}
+          onNewSearchTab={onNewSearchTab}
         />
       );
     });
@@ -290,6 +292,10 @@ describe('ProductSearchView empty state', () => {
     const closeTag = host.querySelector<HTMLButtonElement>('[aria-label="Close Tag: machine learning"]');
     await act(async () => closeTag?.click());
     expect(onCloseSearchTab).toHaveBeenCalledWith('tag');
+
+    const addSearch = host.querySelector<HTMLButtonElement>('[aria-label="New search tab"]');
+    await act(async () => addSearch?.click());
+    expect(onNewSearchTab).toHaveBeenCalledTimes(1);
 
     await act(async () => root.unmount());
     host.remove();

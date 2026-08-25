@@ -50,7 +50,14 @@ interface ContentBrowserProps {
 function readableNodeText(node: React.ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') return String(node);
   if (Array.isArray(node)) return node.map(readableNodeText).join(' ');
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
+    return readableNodeText(node.props.children);
+  }
   return '';
+}
+
+function isUrlText(value: string): boolean {
+  return /^(?:https?|file|chrome|chrome-extension):\/\//i.test(value.trim());
 }
 
 const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
@@ -79,6 +86,8 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
   const reorderProps = entry.reorderTarget
     ? getReorderTargetProps(dragItem.id, entry.reorderTarget)
     : {};
+  const subtitleText = readableNodeText(entry.subtitle).trim();
+  const subtitleIsUrl = isUrlText(subtitleText);
   return (
     <ItemResultRow
       ref={selectedEntryRef}
@@ -107,7 +116,15 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
       <span className="ui-content-browser__copy">
         <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>
-        {entry.subtitle && <span className="ui-content-browser__subtitle">{entry.subtitle}</span>}
+        {entry.subtitle && (
+          <span
+            className="ui-content-browser__subtitle"
+            data-url={subtitleIsUrl ? 'true' : undefined}
+            title={subtitleIsUrl ? subtitleText : undefined}
+          >
+            {entry.subtitle}
+          </span>
+        )}
       </span>
       {entry.meta && (
         <span className="ui-content-browser__footer">

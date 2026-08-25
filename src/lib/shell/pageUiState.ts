@@ -20,6 +20,7 @@ export function savePageUiState<T>(key: string, state: T): void {
 
 export const LIBRARY_PAGE_UI_KEY = 'workbench:library-page-state:v1';
 export const HOME_PAGE_UI_KEY = 'workbench:home-page-state:v1';
+export const HOME_CONTEXT_UI_KEY = 'workbench:home-context-state:v1';
 
 export function libraryPageUiKey(
   view: 'library' | 'notes',
@@ -31,6 +32,10 @@ export function libraryPageUiKey(
 
 export function homePageUiKey(projectId: string, collectionId: string): string {
   return `${HOME_PAGE_UI_KEY}:${projectId}:${collectionId}`;
+}
+
+export function homeContextUiKey(projectId: string): string {
+  return `${HOME_CONTEXT_UI_KEY}:${projectId}`;
 }
 
 export function projectPageUiKey(projectId: string, collectionId: string): string {

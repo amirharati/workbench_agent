@@ -1259,6 +1259,7 @@ export const GlobalTabSystem: React.FC<GlobalTabSystemProps> = ({
             activeSearchTabId={librarySearch.activeSearchTabId}
             onSelectSearchTab={librarySearch.selectSearchTab}
             onCloseSearchTab={librarySearch.closeSearchTab}
+            onNewSearchTab={librarySearch.openBlankSearchTab}
             onOpenTagTab={librarySearch.openTagTab}
             onOpenCategoryTab={librarySearch.openCategoryTab}
             onBrowseCategory={onBrowseCategory}

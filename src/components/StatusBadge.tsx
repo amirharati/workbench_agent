@@ -19,6 +19,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ variant, children }) =
   const { bg, color, icon } = VARIANT_STYLES[variant];
   return (
     <span
+      className="ui-status-badge"
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -33,8 +34,8 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ variant, children }) =
         whiteSpace: 'nowrap',
       }}
     >
-      <span style={{ fontSize: '0.65em', lineHeight: 1 }}>{icon}</span>
-      {children}
+      <span className="ui-status-badge__icon" style={{ fontSize: '0.65em', lineHeight: 1 }}>{icon}</span>
+      <span className="ui-status-badge__label">{children}</span>
     </span>
   );
 };

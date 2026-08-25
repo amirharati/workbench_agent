@@ -56,6 +56,9 @@ export function HomeCategoriesView({
   items,
   scopeLabel,
   scopeKey,
+  scopeOptions,
+  scopeValue,
+  onScopeValueChange,
   focusedCategory,
   onExitFocusedCategory,
   onSelectedItemChange,
@@ -63,6 +66,9 @@ export function HomeCategoriesView({
   items: Item[];
   scopeLabel: string;
   scopeKey: string;
+  scopeOptions?: Array<{ value: string; label: string }>;
+  scopeValue?: string;
+  onScopeValueChange?: (value: string) => void;
   focusedCategory?: { categoryId: string; name: string } | null;
   onExitFocusedCategory?: () => void;
   onSelectedItemChange?: (item: Item | null) => void;
@@ -254,6 +260,16 @@ export function HomeCategoriesView({
     );
   };
 
+  const toggleCategoryGroup = (categoryIds: string[]) => {
+    setSelectedCategoryIds((current) => {
+      const selected = new Set(current);
+      const allSelected = categoryIds.every((id) => selected.has(id));
+      if (allSelected) categoryIds.forEach((id) => selected.delete(id));
+      else categoryIds.forEach((id) => selected.add(id));
+      return [...selected];
+    });
+  };
+
   const categorizedItemCount = useMemo(() => new Set(
     groups.flatMap((group) => group.leaves.flatMap((leaf) => leaf.itemIds))
   ).size, [groups]);
@@ -277,6 +293,14 @@ export function HomeCategoriesView({
               <ArrowLeft size={12} /> All categories
             </button>
           </div>
+          {scopeOptions && scopeOptions.length > 1 && scopeValue && onScopeValueChange ? (
+            <label className="ui-home-categories__scope">
+              <span>Browse in</span>
+              <select aria-label="Categories scope" value={scopeValue} onChange={(event) => onScopeValueChange(event.target.value)}>
+                {scopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+          ) : null}
           <div className="scrollbar ui-home-categories__groups ui-home-categories__focus">
             <div className="ui-home-categories__section-label">Focused category</div>
             {loading && !snapshot ? (
@@ -310,6 +334,14 @@ export function HomeCategoriesView({
             </button>
           ) : null}
         </div>
+        {scopeOptions && scopeOptions.length > 1 && scopeValue && onScopeValueChange ? (
+          <label className="ui-home-categories__scope">
+            <span>Browse in</span>
+            <select aria-label="Categories scope" value={scopeValue} onChange={(event) => onScopeValueChange(event.target.value)}>
+              {scopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+        ) : null}
         <label className="ui-home-categories__filter">
           <Search size={13} aria-hidden="true" />
           <input
@@ -369,7 +401,7 @@ export function HomeCategoriesView({
           mode={browseMode}
           onModeChange={setBrowseMode}
           emptyMessage={focusedCategory
-            ? 'No items belong to this category in All Library.'
+            ? `No items belong to this category in ${scopeLabel}.`
             : selectedCategoryIds.length > 0
               ? 'No items belong to the selected categories in this scope.'
               : 'Select one or more categories from the list.'}
@@ -387,6 +419,9 @@ export function HomeCategoriesView({
   function renderCategoryGroup(group: (typeof visibleGroups)[number], status = false) {
             const groupItemCount = new Set(group.leaves.flatMap((leaf) => leaf.itemIds)).size;
             const selectedCount = group.leaves.filter((leaf) => selectedCategorySet.has(leaf.category.id)).length;
+            const childCategoryIds = group.leaves.map((leaf) => leaf.category.id);
+            const allChildrenSelected = childCategoryIds.length > 0 && selectedCount === childCategoryIds.length;
+            const someChildrenSelected = selectedCount > 0 && !allChildrenSelected;
             return (
               <details
                 key={group.id}
@@ -402,6 +437,18 @@ export function HomeCategoriesView({
                 }}
               >
                 <summary>
+                  <input
+                    className="ui-home-categories__group-checkbox"
+                    type="checkbox"
+                    checked={allChildrenSelected}
+                    ref={(node) => {
+                      if (node) node.indeterminate = someChildrenSelected;
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={() => toggleCategoryGroup(childCategoryIds)}
+                    aria-label={`Select all child categories under ${group.name}`}
+                    title={`Select all child categories under ${group.name}`}
+                  />
                   <ChevronDown size={12} aria-hidden="true" />
                   <span className="ui-home-categories__group-name">
                     <strong>{group.name}</strong>
