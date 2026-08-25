@@ -7827,6 +7827,57 @@ button.ui-taxonomy__leaf:hover .ui-taxonomy__leaf-arrow {
   font-weight: 650;
 }
 
+.ui-bulk-transfer-destinations__catalog {
+  display: grid;
+  gap: 9px;
+}
+
+.ui-bulk-transfer-destinations__catalog > h3 {
+  margin-bottom: 0;
+}
+
+.ui-bulk-transfer-project {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.ui-bulk-transfer-project__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ui-bulk-transfer-project__header strong {
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.ui-bulk-transfer-project__header small {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.ui-bulk-transfer-project__group + .ui-bulk-transfer-project__group {
+  margin-top: 10px;
+}
+
+.ui-bulk-transfer-project__group h4 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 5px;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .ui-item-transfer-dialog h2 {
   margin: 0;
   color: var(--text);
@@ -7949,6 +8000,16 @@ button.ui-taxonomy__leaf:hover .ui-taxonomy__leaf-arrow {
   .ui-item-drop-tray__targets,
   .ui-item-transfer-dialog__actions {
     grid-template-columns: 1fr;
+  }
+
+  .ui-bulk-transfer-project__header {
+    display: block;
+  }
+
+  .ui-bulk-transfer-project__header small {
+    display: block;
+    margin-top: 2px;
+    white-space: normal;
   }
 }
 

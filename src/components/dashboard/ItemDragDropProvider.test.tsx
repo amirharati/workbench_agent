@@ -372,4 +372,68 @@ describe('ItemDragDropProvider', () => {
       'copy'
     );
   });
+
+  it('keeps quick targets duplicated in the complete open-project hierarchy', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    roots.push({ root, host });
+    const onTransfer = vi.fn().mockResolvedValue({ message: 'Added 2 items' });
+    await act(async () => {
+      root.render(
+        <ToastProvider>
+          <ItemDragDropProvider
+            projects={[
+              { id: 'project-a', name: 'Project A', isDefault: false, created_at: 1, updated_at: 1 },
+              { id: 'project-b', name: 'Project B', isDefault: false, created_at: 1, updated_at: 1 },
+              { id: 'project-c', name: 'Closed project', isDefault: false, created_at: 1, updated_at: 1 },
+            ]}
+            collections={[
+              { id: 'collection-a', name: 'Reading', isDefault: false, created_at: 1, updated_at: 1, primaryProjectId: 'project-a', projectIds: ['project-a'] },
+              { id: 'collection-b', name: 'Archive', isDefault: false, created_at: 1, updated_at: 1, primaryProjectId: 'project-b', projectIds: ['project-b'] },
+              { id: 'collection-c', name: 'Hidden', isDefault: false, created_at: 1, updated_at: 1, primaryProjectId: 'project-c', projectIds: ['project-c'] },
+            ]}
+            workspaceDestinations={[
+              { key: 'workspace:global', projectId: 'all', projectName: 'Global', workspaceName: 'Global workspace', path: 'Global workspace', kind: 'global', isCurrent: false },
+              { key: 'workspace:project-a:general', projectId: 'project-a', projectName: 'Project A', workspaceName: 'General', path: 'Project A — General', kind: 'live', isCurrent: true },
+              { key: 'workspace:project-b:general', projectId: 'project-b', projectName: 'Project B', workspaceName: 'General', path: 'Project B — General', kind: 'live', isCurrent: false },
+              { key: 'workspace:project-c:general', projectId: 'project-c', projectName: 'Closed project', workspaceName: 'General', path: 'Closed project — General', kind: 'live', isCurrent: false },
+            ]}
+            currentProjectId="project-a"
+            openProjectIds={['project-a', 'project-b']}
+            isInTarget={() => false}
+            onTransfer={onTransfer}
+            onReorderWorkspaceItem={vi.fn()}
+          >
+            <BulkTestSurface />
+          </ItemDragDropProvider>
+        </ToastProvider>
+      );
+    });
+
+    await act(async () => host.querySelector<HTMLButtonElement>('button')?.click());
+    let dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+    const readingButton = [...dialog.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Reading'));
+    await act(async () => readingButton?.click());
+
+    await act(async () => host.querySelector<HTMLButtonElement>('button')?.click());
+    dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+    const quickSection = [...dialog.querySelectorAll('section')]
+      .find((section) => section.querySelector(':scope > h3')?.textContent === 'Quick access');
+    expect(quickSection?.textContent).toContain('Reading');
+
+    const global = dialog.querySelector<HTMLElement>('[data-project-id="all"]');
+    expect(global?.textContent).toContain('Global workspace');
+    const projectA = dialog.querySelector<HTMLElement>('[data-project-id="project-a"]');
+    expect(projectA?.textContent).toContain('Workspaces');
+    expect(projectA?.textContent).toContain('General');
+    expect(projectA?.textContent).toContain('Collections');
+    expect(projectA?.textContent).toContain('Reading');
+    const projectB = dialog.querySelector<HTMLElement>('[data-project-id="project-b"]');
+    expect(projectB?.textContent).toContain('General');
+    expect(projectB?.textContent).toContain('Archive');
+    expect(dialog.textContent).not.toContain('Closed project');
+    expect(dialog.textContent).not.toContain('Hidden');
+  });
 });

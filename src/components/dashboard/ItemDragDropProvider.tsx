@@ -439,13 +439,16 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     }
     return targets;
   }, [projectTargets, workspaceDestinations]);
+  const globalTarget = useMemo(
+    () => [...visibleTargets.values()].find((target) => target.kind === 'workspace' && target.projectId === 'all'),
+    [visibleTargets]
+  );
   const quickTargets = useMemo(() => {
-    const globalTarget = [...visibleTargets.values()].find((target) => target.kind === 'workspace' && target.projectId === 'all');
     const recent = recentTargets
       .map((target) => visibleTargets.get(itemDropTargetKey(target)))
       .filter((target): target is ItemDropTarget => target != null && target !== globalTarget);
     return globalTarget ? [globalTarget, ...recent] : recent;
-  }, [recentTargets, visibleTargets]);
+  }, [globalTarget, recentTargets, visibleTargets]);
   const currentProjectTarget = currentProjectId === 'all'
     ? undefined
     : projectTargets.find(({ project }) => project.id === currentProjectId);
@@ -562,7 +565,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     void runTransfer(payload, target, 'copy');
   };
 
-  const renderDestinationButton = (target: ItemDropTarget, index?: number) => {
+  const renderDestinationButton = (target: ItemDropTarget, index?: number, compact = false) => {
     const payloadIds = pendingDestination ? itemIdsFromDragPayload(pendingDestination) : [];
     const presentCount = payloadIds.filter((itemId) => isInTarget(itemId, target)).length;
     const sameSource = pendingDestination?.source.kind === target.kind &&
@@ -578,7 +581,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       >
         <Icon size={14} />
         <span>
-          <strong>{target.containerLabel}</strong>
+          <strong>{displayTargetName(target, compact)}</strong>
           <small>{sameSource
             ? 'Current source'
             : presentCount > 0
@@ -647,23 +650,54 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
             <div className="ui-bulk-transfer-destinations scrollbar">
               {quickTargets.length > 0 ? (
                 <section>
-                  <h3>Quick destinations</h3>
+                  <h3>Quick access</h3>
                   <div className="ui-item-transfer-dialog__actions">{quickTargets.map((target, index) => renderDestinationButton(target, index))}</div>
                 </section>
               ) : null}
-              {projectTargets.map(({ project, workspaces, collections: projectCollections }) => {
-                const remainingTargets = [...workspaces, ...projectCollections]
-                  .filter((target) => !quickTargets.some((quick) => itemDropTargetKey(quick) === itemDropTargetKey(target)));
-                if (!remainingTargets.length) return null;
-                return (
-                  <section key={project.id}>
-                    <h3>{project.name}{project.id === currentProjectId ? ' · Current project' : ''}</h3>
-                    <div className="ui-item-transfer-dialog__actions">
-                      {remainingTargets.map((target) => renderDestinationButton(target))}
+              <section className="ui-bulk-transfer-destinations__catalog">
+                <h3>All available destinations</h3>
+                {globalTarget ? (
+                  <div className="ui-bulk-transfer-project" data-project-id="all">
+                    <div className="ui-bulk-transfer-project__header">
+                      <strong>Global</strong>
+                      <small>Available from every project</small>
                     </div>
-                  </section>
-                );
-              })}
+                    <div className="ui-item-transfer-dialog__actions">
+                      {renderDestinationButton(globalTarget, quickTargets.length ? undefined : 0, true)}
+                    </div>
+                  </div>
+                ) : null}
+                {projectTargets.map(({ project, workspaces, collections: projectCollections }) => (
+                  <div className="ui-bulk-transfer-project" data-project-id={project.id} key={project.id}>
+                    <div className="ui-bulk-transfer-project__header">
+                      <strong>{project.name}{project.id === currentProjectId ? ' · Current project' : ''}</strong>
+                      <small>{workspaces.length} workspace{workspaces.length === 1 ? '' : 's'} · {projectCollections.length} collection{projectCollections.length === 1 ? '' : 's'}</small>
+                    </div>
+                    {workspaces.length > 0 ? (
+                      <div className="ui-bulk-transfer-project__group">
+                        <h4><Layers3 size={11} /> Workspaces</h4>
+                        <div className="ui-item-transfer-dialog__actions">
+                          {workspaces.map((target) => renderDestinationButton(target, undefined, true))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {projectCollections.length > 0 ? (
+                      <div className="ui-bulk-transfer-project__group">
+                        <h4><Folder size={11} /> Collections</h4>
+                        <div className="ui-item-transfer-dialog__actions">
+                          {projectCollections.map((target) => renderDestinationButton(target, undefined, true))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {workspaces.length === 0 && projectCollections.length === 0 ? (
+                      <div className="ui-item-drop-tray__empty">No available destinations in this project.</div>
+                    ) : null}
+                  </div>
+                ))}
+                {!globalTarget && projectTargets.length === 0 ? (
+                  <div className="ui-item-drop-tray__empty">Open a project from Home to make its collections and workspaces available.</div>
+                ) : null}
+              </section>
             </div>
           </section>
         </div>
