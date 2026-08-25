@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, ExternalLink, FileText, Folder, Layers3 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Database, ExternalLink, FileText, Folder, Layers3, Tags } from 'lucide-react';
 import { getItem, type Collection, type Item, type Project, type UpdateItemOptions } from '../../lib/db';
 import { loadRawBody } from '../../lib/enrichment/rawBodyStore';
 import { useInspectorItemData } from '../../hooks/useInspectorItemData';
@@ -7,6 +7,7 @@ import { DialogShell } from './DialogShell';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 import { openBookmarkInBrowser } from './BookmarkUrlLink';
 import { LinkVisual } from './LinkVisual';
+import { EnrichmentContent } from './PipelineDisplayBlocks';
 import type { WorkspaceDestination } from './workspaceDestinations';
 
 export interface ItemPeekOptions {
@@ -95,6 +96,7 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
   const [rawBody, setRawBody] = useState<string | null>(null);
   const [rawLoading, setRawLoading] = useState(false);
   const [rawUnavailable, setRawUnavailable] = useState(false);
+  const [showStoredSource, setShowStoredSource] = useState(false);
   const [workspaceKey, setWorkspaceKey] = useState(activeWorkspaceKey);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
 
@@ -167,10 +169,14 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
   const rawRef = context?.enrichment?.rawRef;
 
   useEffect(() => {
+    setShowStoredSource(false);
     setRawBody(null);
     setRawUnavailable(false);
     setRawLoading(false);
-    if (!request || !rawRef) return;
+  }, [request?.itemId]);
+
+  useEffect(() => {
+    if (!request?.itemId || !rawRef || !showStoredSource) return;
     let cancelled = false;
     setRawLoading(true);
     void loadRawBody(rawRef)
@@ -186,7 +192,7 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
         if (!cancelled) setRawLoading(false);
       });
     return () => { cancelled = true; };
-  }, [rawRef, request?.itemId]);
+  }, [rawRef, request?.itemId, showStoredSource]);
 
   useEffect(() => {
     setWorkspaceKey(activeWorkspaceKey);
@@ -202,11 +208,18 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
   const selectedWorkspace = workspaceDestinations.find((destination) => destination.key === workspaceKey)
     ?? workspaceDestinations.find((destination) => destination.key === activeWorkspaceKey)
     ?? workspaceDestinations[0];
-  const previewText = cleanStoredPreviewMarkdown(
-    rawBody ?? item?.notes?.trim() ?? context?.summary?.trim() ?? ''
-  );
-  const truncated = previewText.length > MAX_PREVIEW_CHARS;
-  const displayedPreview = truncated ? previewText.slice(0, MAX_PREVIEW_CHARS) : previewText;
+  const sourceText = cleanStoredPreviewMarkdown(rawBody ?? '');
+  const sourceTruncated = sourceText.length > MAX_PREVIEW_CHARS;
+  const displayedSource = sourceTruncated ? sourceText.slice(0, MAX_PREVIEW_CHARS) : sourceText;
+  const enrichmentTags = [...new Map(
+    [...(context?.enrichment?.aiTags ?? []), ...(item?.tags ?? [])]
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+      .map((tag) => [tag.toLocaleLowerCase(), tag] as const)
+  ).values()];
+  const acceptedCategories = context?.acceptedLinks ?? [];
+  const suggestedCategories = context?.suggestedLinks ?? [];
+  const hasNotes = Boolean(item?.notes?.trim());
 
   return (
     <ItemPeekContext.Provider value={contextValue}>
@@ -244,21 +257,81 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
                     {item.url ? <button type="button" className="ui-item-peek__url" onClick={() => void openBookmarkInBrowser(item)} title="Open original in Chrome">{item.url}</button> : null}
                   </header>
                   <article className="ui-item-peek__document">
-                    {rawLoading || (contextLoading && !previewText) ? (
-                      <div className="ui-item-peek__empty">Loading stored preview…</div>
-                    ) : displayedPreview ? (
-                      <>
-                        <React.Suspense fallback={<div className="ui-item-peek__empty">Formatting preview…</div>}>
-                          <ItemPeekMarkdown markdown={displayedPreview} />
+                    {item.url ? (
+                      <section className="ui-item-peek__section" aria-label="Saved item summary">
+                        {contextLoading && !context ? (
+                          <div className="ui-item-peek__section-loading">Loading saved details…</div>
+                        ) : (
+                          <EnrichmentContent
+                            summary={context?.summary}
+                            tags={enrichmentTags}
+                            keyPoints={context?.keyPoints ?? []}
+                            references={context?.references ?? []}
+                            emptyMessage="No AI summary is available yet. The title, URL, notes, and organization are still preserved."
+                          />
+                        )}
+                      </section>
+                    ) : null}
+
+                    {hasNotes ? (
+                      <section className="ui-item-peek__section" aria-label="Notes">
+                        <h4>Notes</h4>
+                        <React.Suspense fallback={<div className="ui-item-peek__section-loading">Formatting notes…</div>}>
+                          <ItemPeekMarkdown markdown={item.notes!.trim()} />
                         </React.Suspense>
-                        {truncated ? <p className="ui-item-peek__notice">Preview truncated for performance. Open the original for the complete page.</p> : null}
-                      </>
-                    ) : (
-                      <div className="ui-item-peek__empty">
-                        <strong>No stored content preview yet.</strong>
-                        <span>{rawUnavailable ? 'The saved content reference could not be read.' : item.url ? 'Fetch this link through Enrichment, or open the original page.' : 'This note is empty.'}</span>
-                      </div>
-                    )}
+                      </section>
+                    ) : !item.url ? (
+                      <div className="ui-item-peek__empty"><strong>This note is empty.</strong></div>
+                    ) : null}
+
+                    {acceptedCategories.length || suggestedCategories.length ? (
+                      <section className="ui-item-peek__section" aria-label="Categories">
+                        <h4><Tags size={13} /> Categories</h4>
+                        <div className="ui-item-peek__categories">
+                          {acceptedCategories.map((category) => (
+                            <span className="ui-item-peek__category" data-state="accepted" key={`accepted-${category.categoryId}`}>
+                              <strong>{category.name}</strong>
+                              {category.parentName ? <small>{category.parentName}</small> : null}
+                            </span>
+                          ))}
+                          {suggestedCategories.map((category) => (
+                            <span className="ui-item-peek__category" data-state="suggested" key={`suggested-${category.categoryId}`}>
+                              <strong>{category.name}</strong>
+                              <small>{category.parentName ? `${category.parentName} · Suggested` : 'Suggested'}</small>
+                            </span>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {rawRef ? (
+                      <section className="ui-item-peek__source-section">
+                        <button
+                          className="ui-button ui-button--secondary ui-button--compact"
+                          type="button"
+                          aria-expanded={showStoredSource}
+                          onClick={() => setShowStoredSource((visible) => !visible)}
+                        >
+                          <Database size={13} /> {showStoredSource ? 'Hide stored source' : 'View stored source'}
+                        </button>
+                        <span>The extracted source is diagnostic material, not the item preview.</span>
+                        {showStoredSource ? (
+                          <div className="ui-item-peek__source">
+                            <h4>Stored source text</h4>
+                            {rawLoading ? (
+                              <div className="ui-item-peek__section-loading">Loading stored source…</div>
+                            ) : displayedSource ? (
+                              <>
+                                <pre>{displayedSource}</pre>
+                                {sourceTruncated ? <p className="ui-item-peek__notice">Stored source truncated for performance.</p> : null}
+                              </>
+                            ) : (
+                              <p>{rawUnavailable ? 'The stored source could not be read.' : 'No stored source text is available.'}</p>
+                            )}
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
                   </article>
                 </>
               ) : <div className="ui-item-peek__empty">This item is no longer available.</div>}

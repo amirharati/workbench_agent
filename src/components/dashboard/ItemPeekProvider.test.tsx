@@ -4,9 +4,33 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Item } from '../../lib/db';
 
+vi.mock('../../lib/enrichment/rawBodyStore', () => ({
+  loadRawBody: vi.fn().mockResolvedValue(
+    '<!-- enrichment-meta\n{"providerId":"hybrid"}\n-->\n\n# Raw reconstructed page\n\nNavigation noise'
+  ),
+}));
+
 vi.mock('../../hooks/useInspectorItemData', () => ({
-  useInspectorItemData: () => ({
-    context: null,
+  useInspectorItemData: (itemId?: string) => ({
+    context: itemId === 'link-1' ? {
+      item: {
+        id: 'link-1',
+        title: 'Saved article',
+        url: 'https://example.com/article',
+        notes: 'Remember this for the housing review.',
+        collectionIds: [],
+        tags: ['manual tag'],
+        source: 'manual',
+        created_at: 3,
+        updated_at: 3,
+      },
+      enrichment: { rawRef: 'raw/link-1', aiTags: ['AI tag'] },
+      summary: 'A concise explanation of the saved article.',
+      keyPoints: ['First useful point'],
+      references: [{ url: 'https://example.com/source', label: 'Supporting source', followed: true }],
+      acceptedLinks: [{ categoryId: 'housing', name: 'Housing', parentName: 'Places', isPrimary: true }],
+      suggestedLinks: [{ categoryId: 'rentals', name: 'Rentals', parentName: 'Travel', isPrimary: false, score: 0.76 }],
+    } : null,
     contextLoading: false,
     similar: null,
     similarLoading: false,
@@ -21,11 +45,17 @@ import { cleanStoredPreviewMarkdown, ItemPeekProvider, useItemPeek } from './Ite
 const items: Item[] = [
   { id: 'note-1', title: 'First note', url: '', notes: '# First body\n\n[Reference](https://example.com)', collectionIds: [], tags: [], source: 'manual', created_at: 1, updated_at: 1 },
   { id: 'note-2', title: 'Second note', url: '', notes: 'Second body', collectionIds: [], tags: [], source: 'manual', created_at: 2, updated_at: 2 },
+  { id: 'link-1', title: 'Saved article', url: 'https://example.com/article', notes: 'Remember this for the housing review.', collectionIds: [], tags: ['manual tag'], source: 'manual', created_at: 3, updated_at: 3 },
 ];
 
 function Surface() {
   const { openPeek } = useItemPeek();
-  return <button type="button" onClick={() => openPeek('note-1', { itemIds: ['note-1', 'note-2'], sourceLabel: 'Test list' })}>Open preview</button>;
+  return (
+    <>
+      <button type="button" onClick={() => openPeek('note-1', { itemIds: ['note-1', 'note-2'], sourceLabel: 'Test list' })}>Open note preview</button>
+      <button type="button" onClick={() => openPeek('link-1', { sourceLabel: 'Test list' })}>Open link preview</button>
+    </>
+  );
 }
 
 describe('ItemPeekProvider', () => {
@@ -85,12 +115,12 @@ describe('ItemPeekProvider', () => {
     expect(reference?.href).toBe('https://example.com/');
     expect(reference?.target).toBe('_blank');
     expect(dialog?.textContent).toContain('Opened from Test list');
-    expect(host.textContent).toContain('Open preview');
+    expect(host.textContent).toContain('Open note preview');
 
     const close = dialog?.querySelector<HTMLButtonElement>('[aria-label="Close Preview"]');
     await act(async () => close?.click());
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-    expect(host.textContent).toContain('Open preview');
+    expect(host.textContent).toContain('Open note preview');
   });
 
   it('moves through the originating result order', async () => {
@@ -106,5 +136,35 @@ describe('ItemPeekProvider', () => {
   it('removes the private enrichment header before rendering stored Markdown', () => {
     const stored = '<!-- enrichment-meta\n{"providerId":"hybrid"}\n-->\n\n# Visible article';
     expect(cleanStoredPreviewMarkdown(stored)).toBe('# Visible article');
+  });
+
+  it('shows structured saved information and keeps the raw fetch dump secondary', async () => {
+    const { host } = await renderProvider();
+    const openLink = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === 'Open link preview');
+    await act(async () => openLink?.click());
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('Saved article');
+    expect(dialog?.textContent).toContain('https://example.com/article');
+    expect(dialog?.textContent).toContain('A concise explanation of the saved article.');
+    expect(dialog?.textContent).toContain('First useful point');
+    expect(dialog?.textContent).toContain('AI tag');
+    expect(dialog?.textContent).toContain('manual tag');
+    expect(dialog?.textContent).toContain('Remember this for the housing review.');
+    expect(dialog?.textContent).toContain('Housing');
+    expect(dialog?.textContent).toContain('Rentals');
+    expect(dialog?.textContent).not.toContain('Raw reconstructed page');
+
+    const showSource = [...(dialog?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+      .find((button) => button.textContent?.includes('View stored source'));
+    await act(async () => {
+      showSource?.click();
+      await Promise.resolve();
+    });
+
+    expect(dialog?.querySelector('.ui-item-peek__source pre')?.textContent).toContain('# Raw reconstructed page');
+    expect(dialog?.querySelector('.ui-item-peek__source pre')?.textContent).not.toContain('enrichment-meta');
+    expect(dialog?.querySelector('.ui-item-peek__source h1')).toBeNull();
   });
 });
