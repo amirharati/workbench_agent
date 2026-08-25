@@ -7,6 +7,8 @@ const INTERACTIVE_CHILD_SELECTOR = 'button, a, input, select, textarea, [content
 export interface ItemResultRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onSelect'> {
   item: { id: string; title?: string; url?: string };
   dragSource?: ItemDragSource;
+  /** When this row belongs to a multi-selection, dragging it transports the full selection. */
+  dragItems?: readonly { id: string; title?: string; url?: string }[];
   /** A browser/snapshot URL that has not yet become a library item. */
   dragUrl?: string;
   selected?: boolean;
@@ -20,6 +22,7 @@ export interface ItemResultRowProps extends Omit<React.HTMLAttributes<HTMLDivEle
 export const ItemResultRow = React.forwardRef<HTMLDivElement, ItemResultRowProps>(function ItemResultRow({
   item,
   dragSource,
+  dragItems,
   dragUrl,
   selected = false,
   onSelectItem,
@@ -35,7 +38,7 @@ export const ItemResultRow = React.forwardRef<HTMLDivElement, ItemResultRowProps
   const dragProps = dragSource
     ? dragUrl
       ? getUrlDragProps({ url: dragUrl, title: item.title }, dragSource)
-      : getDragProps(item, dragSource)
+      : getDragProps(item, dragSource, dragItems)
     : null;
 
   return (

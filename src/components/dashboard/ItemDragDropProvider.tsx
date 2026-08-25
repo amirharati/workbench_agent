@@ -8,6 +8,7 @@ import {
   createItemDragPayload,
   createUrlDragPayload,
   decideItemDrop,
+  itemIdsFromDragPayload,
   itemDragSourceProps,
   readItemDragPayload,
   type ItemDragPayload,
@@ -24,6 +25,7 @@ export interface ItemTransferResult {
 
 interface ItemDragDropContextValue {
   activePayload: ItemDragPayload | null;
+  beginItemTransfer: ItemDragSourceContextValue['beginItemTransfer'];
   getDragProps: ItemDragSourceContextValue['getDragProps'];
   getUrlDragProps: ItemDragSourceContextValue['getUrlDragProps'];
   getDropTargetProps: (target: ItemDropTarget) => ItemDropTargetProps;
@@ -37,12 +39,17 @@ interface ItemDragDropContextValue {
 interface ItemDragSourceContextValue {
   getDragProps: (
     item: { id: string; title?: string; url?: string },
-    source: ItemDragSource
+    source: ItemDragSource,
+    selectedItems?: readonly { id: string; title?: string; url?: string }[]
   ) => ReturnType<typeof itemDragSourceProps>;
   getUrlDragProps: (
     link: { url: string; title?: string },
     source: ItemDragSource
   ) => ReturnType<typeof itemDragSourceProps>;
+  beginItemTransfer: (
+    items: readonly { id: string; title?: string; url?: string }[],
+    source: ItemDragSource
+  ) => void;
 }
 
 type ItemDropTargetProps = React.HTMLAttributes<HTMLElement> & {
@@ -64,11 +71,13 @@ const emptyUrlDragProps: ItemDragSourceContextValue['getUrlDragProps'] = () => (
   onDragStart: () => {},
   onDragEnd: () => {},
 });
+const emptyBeginItemTransfer: ItemDragSourceContextValue['beginItemTransfer'] = () => {};
 
 export function useItemDragSource(): ItemDragSourceContextValue {
   return useContext(ItemDragSourceContext) ?? {
     getDragProps: emptyDragProps,
     getUrlDragProps: emptyUrlDragProps,
+    beginItemTransfer: emptyBeginItemTransfer,
   };
 }
 
@@ -77,6 +86,7 @@ export function useItemDragDrop(): ItemDragDropContextValue {
   if (!context) {
     return {
       activePayload: null,
+      beginItemTransfer: emptyBeginItemTransfer,
       getDragProps: emptyDragProps,
       getUrlDragProps: emptyUrlDragProps,
       getDropTargetProps: () => ({}),
@@ -162,6 +172,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
   const [reorderOverItemId, setReorderOverItemId] = useState<string | null>(null);
   const [pendingChoice, setPendingChoice] = useState<PendingChoice | null>(null);
   const [pendingCollectionChoice, setPendingCollectionChoice] = useState<PendingCollectionChoice | null>(null);
+  const [pendingDestination, setPendingDestination] = useState<ItemDragPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [recentTargets, setRecentTargets] = useState<ItemDropTarget[]>([]);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -173,8 +184,8 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     setReorderOverItemId(null);
   }, []);
 
-  const getDragProps = useCallback<ItemDragSourceContextValue['getDragProps']>((item, source) => {
-    const payload = createItemDragPayload(item, source);
+  const getDragProps = useCallback<ItemDragSourceContextValue['getDragProps']>((item, source, selectedItems) => {
+    const payload = createItemDragPayload(item, source, selectedItems);
     return itemDragSourceProps(payload, {
       onStart: (nextPayload, sourceElement) => {
         const rect = sourceElement.getBoundingClientRect();
@@ -188,6 +199,14 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       onEnd: clearDrag,
     });
   }, [clearDrag]);
+
+  const beginItemTransfer = useCallback<ItemDragSourceContextValue['beginItemTransfer']>((selectedItems, source) => {
+    const items = [...new Map(
+      selectedItems.filter((item) => item.id).map((item) => [item.id, item] as const)
+    ).values()];
+    if (!items.length) return;
+    setPendingDestination(createItemDragPayload(items[0], source, items));
+  }, []);
 
   const getUrlDragProps = useCallback<ItemDragSourceContextValue['getUrlDragProps']>((link, source) => {
     const payload = createUrlDragPayload(link, source);
@@ -223,6 +242,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
         ...previous.filter((candidate) => itemDropTargetKey(candidate) !== itemDropTargetKey(target)),
       ].slice(0, 5));
       setPendingChoice(null);
+      setPendingDestination(null);
     } catch (error) {
       addToast({
         type: 'error',
@@ -330,6 +350,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       if (
         !payload ||
         payload.entity !== 'item' ||
+        itemIdsFromDragPayload(payload).length !== 1 ||
         payload.itemId === beforeItemId ||
         payload.source.kind !== 'workspace' ||
         target.kind !== 'workspace' ||
@@ -349,6 +370,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       if (
         !payload ||
         payload.entity !== 'item' ||
+        itemIdsFromDragPayload(payload).length !== 1 ||
         payload.itemId === beforeItemId ||
         payload.source.kind !== 'workspace' ||
         target.kind !== 'workspace' ||
@@ -507,21 +529,67 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     );
   };
   const contextValue = useMemo(
-    () => ({ activePayload, getDragProps, getUrlDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps }),
-    [activePayload, getDragProps, getUrlDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps]
+    () => ({ activePayload, beginItemTransfer, getDragProps, getUrlDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps }),
+    [activePayload, beginItemTransfer, getDragProps, getUrlDragProps, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps]
   );
-  const sourceContextValue = useMemo(() => ({ getDragProps, getUrlDragProps }), [getDragProps, getUrlDragProps]);
+  const sourceContextValue = useMemo(
+    () => ({ beginItemTransfer, getDragProps, getUrlDragProps }),
+    [beginItemTransfer, getDragProps, getUrlDragProps]
+  );
   useEffect(() => {
-    if (!pendingChoice && !pendingCollectionChoice) return;
+    if (!pendingChoice && !pendingCollectionChoice && !pendingDestination) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !busy) {
         setPendingChoice(null);
         setPendingCollectionChoice(null);
+        setPendingDestination(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [busy, pendingChoice, pendingCollectionChoice]);
+  }, [busy, pendingChoice, pendingCollectionChoice, pendingDestination]);
+
+  const choosePendingDestination = (target: ItemDropTarget) => {
+    if (!pendingDestination) return;
+    const payload = pendingDestination;
+    const decision = decideItemDrop(payload.source, target);
+    if (decision.kind === 'same-container') return;
+    setPendingDestination(null);
+    if (decision.kind === 'choose') {
+      setPendingChoice({ payload, target });
+      return;
+    }
+    void runTransfer(payload, target, 'copy');
+  };
+
+  const renderDestinationButton = (target: ItemDropTarget, index?: number) => {
+    const payloadIds = pendingDestination ? itemIdsFromDragPayload(pendingDestination) : [];
+    const presentCount = payloadIds.filter((itemId) => isInTarget(itemId, target)).length;
+    const sameSource = pendingDestination?.source.kind === target.kind &&
+      pendingDestination.source.containerId === target.containerId;
+    const Icon = target.kind === 'workspace' ? Layers3 : Folder;
+    return (
+      <button
+        type="button"
+        key={itemDropTargetKey(target)}
+        autoFocus={index === 0}
+        disabled={busy || sameSource}
+        onClick={() => choosePendingDestination(target)}
+      >
+        <Icon size={14} />
+        <span>
+          <strong>{target.containerLabel}</strong>
+          <small>{sameSource
+            ? 'Current source'
+            : presentCount > 0
+              ? `${presentCount} of ${payloadIds.length} already here`
+              : target.kind === pendingDestination?.source.kind
+                ? 'Choose Copy or Move next'
+                : `Copy ${payloadIds.length === 1 ? 'item' : `${payloadIds.length} items`} here`}</small>
+        </span>
+      </button>
+    );
+  };
 
   return (
     <ItemDragSourceContext.Provider value={sourceContextValue}>
@@ -570,6 +638,37 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
         </aside>
       ) : null}
 
+      {pendingDestination ? (
+        <div className="ui-item-transfer-dialog-backdrop" role="presentation" onMouseDown={() => { if (!busy) setPendingDestination(null); }}>
+          <section className="ui-item-transfer-dialog ui-item-transfer-dialog--destinations" role="dialog" aria-modal="true" aria-labelledby="item-destination-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="ui-item-transfer-dialog__close" type="button" onClick={() => setPendingDestination(null)} disabled={busy} aria-label="Cancel destination choice"><X size={14} /></button>
+            <h2 id="item-destination-title">Organize {itemIdsFromDragPayload(pendingDestination).length} {itemIdsFromDragPayload(pendingDestination).length === 1 ? 'item' : 'items'}</h2>
+            <p>Choose a workspace or collection. Cross-type transfers copy; moving is offered only between two workspaces or two collections.</p>
+            <div className="ui-bulk-transfer-destinations scrollbar">
+              {quickTargets.length > 0 ? (
+                <section>
+                  <h3>Quick destinations</h3>
+                  <div className="ui-item-transfer-dialog__actions">{quickTargets.map((target, index) => renderDestinationButton(target, index))}</div>
+                </section>
+              ) : null}
+              {projectTargets.map(({ project, workspaces, collections: projectCollections }) => {
+                const remainingTargets = [...workspaces, ...projectCollections]
+                  .filter((target) => !quickTargets.some((quick) => itemDropTargetKey(quick) === itemDropTargetKey(target)));
+                if (!remainingTargets.length) return null;
+                return (
+                  <section key={project.id}>
+                    <h3>{project.name}{project.id === currentProjectId ? ' · Current project' : ''}</h3>
+                    <div className="ui-item-transfer-dialog__actions">
+                      {remainingTargets.map((target) => renderDestinationButton(target))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {pendingCollectionChoice ? (
         <div className="ui-item-transfer-dialog-backdrop" role="presentation" onMouseDown={() => setPendingCollectionChoice(null)}>
           <section className="ui-item-transfer-dialog" role="dialog" aria-modal="true" aria-labelledby="item-collection-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -610,18 +709,18 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
         <div className="ui-item-transfer-dialog-backdrop" role="presentation" onMouseDown={() => { if (!busy) setPendingChoice(null); }}>
           <section className="ui-item-transfer-dialog" role="dialog" aria-modal="true" aria-labelledby="item-transfer-title" onMouseDown={(event) => event.stopPropagation()}>
             <button className="ui-item-transfer-dialog__close" type="button" onClick={() => setPendingChoice(null)} disabled={busy} aria-label="Cancel transfer"><X size={14} /></button>
-            <h2 id="item-transfer-title">Copy or move this item?</h2>
+            <h2 id="item-transfer-title">Copy or move {itemIdsFromDragPayload(pendingChoice.payload).length === 1 ? 'this item' : `${itemIdsFromDragPayload(pendingChoice.payload).length} items`}?</h2>
             <p>
               “{pendingChoice.payload.itemLabel}” is currently in <strong>{pendingChoice.payload.source.kind === 'reference' ? 'this result list' : pendingChoice.payload.source.containerLabel}</strong>.
             </p>
             <div className="ui-item-transfer-dialog__actions">
               <button type="button" autoFocus disabled={busy} onClick={() => void runTransfer(pendingChoice.payload, pendingChoice.target, 'copy')}>
                 <Copy size={14} />
-                <span><strong>Copy to {pendingChoice.target.containerLabel}</strong><small>Keep it in the source too</small></span>
+                <span><strong>Copy to {pendingChoice.target.containerLabel}</strong><small>Keep {itemIdsFromDragPayload(pendingChoice.payload).length === 1 ? 'it' : 'them'} in the source too</small></span>
               </button>
               <button type="button" disabled={busy} onClick={() => void runTransfer(pendingChoice.payload, pendingChoice.target, 'move')}>
                 <MoveRight size={14} />
-                <span><strong>Move to {pendingChoice.target.containerLabel}</strong><small>Add it here, then remove it from the source</small></span>
+                <span><strong>Move to {pendingChoice.target.containerLabel}</strong><small>Add {itemIdsFromDragPayload(pendingChoice.payload).length === 1 ? 'it' : 'them'} here, then remove {itemIdsFromDragPayload(pendingChoice.payload).length === 1 ? 'it' : 'them'} from the source</small></span>
               </button>
             </div>
           </section>

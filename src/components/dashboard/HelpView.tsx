@@ -332,19 +332,21 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: 'move-remove',
     group: 'Daily workflows',
     title: 'Copy, move, remove, and restore',
-    summary: 'Understand what drag and drop changes, and how to recover items or containers safely.',
+    summary: 'Organize one item or a filtered group, understand copy/move rules, and recover safely.',
     icon: Trash2,
-    keywords: ['drag', 'drop', 'copy', 'move', 'remove', 'delete', 'trash', 'restore', 'undo', 'workspace', 'collection', 'project'],
+    keywords: ['drag', 'drop', 'copy', 'move', 'batch', 'bulk', 'select all', 'filtered', 'remove', 'delete', 'trash', 'restore', 'undo', 'workspace', 'collection', 'project'],
     content: (
       <>
         <DefinitionGrid entries={[
           { icon: Search, term: 'Result → container', description: <>Dragging from Search, Similar, All Library, Favorites, Recent, or Enrichment adds the item to the destination. The source result is never removed.</> },
           { icon: Layers3, term: 'Same container type', description: <>Workspace to workspace and collection to collection can Copy or Move. Homebase asks which action you intend.</> },
           { icon: FolderTree, term: 'Different container types', description: <>Workspace to collection, or collection to workspace, always copies. Their roles are different, so the source membership remains.</> },
+          { icon: Layers3, term: 'Group selection', description: <>Choose <strong>Select</strong> in a list or Search, optionally filter first, then use <strong>Select all filtered</strong> and <strong>Organize selected</strong>. Dragging any selected row carries the same group.</> },
           { icon: Trash2, term: 'Trash', description: <>Removing an item from every saved location moves it to Trash. Restore returns it; Delete permanently or Empty trash cannot be undone.</> },
         ]} />
         <ul>
           <li><strong>All Library</strong> is a source view, never a drop destination.</li>
+          <li>A Search selection means the current result set. A list selection can include every item or only the items matching its quick filter.</li>
           <li>Removing an entry from a workspace removes only that reference. It does not delete the library item or its enrichment.</li>
           <li>When an item has several collection placements, the removal dialog shows them so you can remove selected locations or move the item to Trash.</li>
           <li>Deleted projects and collections appear in Trash as complete recoverable containers. Restoring the container restores its saved structure.</li>

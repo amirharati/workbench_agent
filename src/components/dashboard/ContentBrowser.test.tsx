@@ -250,4 +250,46 @@ describe('ContentBrowser', () => {
 
     await act(async () => root.unmount());
   });
+
+  it('selects all filtered items without selecting hidden results', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const entries = [
+      { id: 'alpha', title: 'Architecture article', icon: 'L', dragSource: { kind: 'reference' as const, label: 'Library' } },
+      { id: 'beta', title: 'Cooking article', icon: 'L', dragSource: { kind: 'reference' as const, label: 'Library' } },
+    ];
+
+    await act(async () => {
+      root.render(
+        <ContentBrowser
+          title="Library"
+          entries={entries}
+          selectedId={null}
+          onSelect={vi.fn()}
+          mode="list"
+          onModeChange={vi.fn()}
+          emptyMessage="Nothing here"
+        />
+      );
+    });
+
+    const selectButton = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.trim() === 'Select');
+    await act(async () => selectButton?.click());
+    const input = host.querySelector<HTMLInputElement>('[aria-label="Filter Library"]');
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      valueSetter?.call(input, 'cooking');
+      input?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const selectFiltered = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Select all filtered'));
+    await act(async () => selectFiltered?.click());
+
+    expect(host.textContent).toContain('1 selected');
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Select Cooking article"]')?.checked).toBe(true);
+    expect(host.querySelector('[aria-label="Select Architecture article"]')).toBeNull();
+    await act(async () => root.unmount());
+  });
 });

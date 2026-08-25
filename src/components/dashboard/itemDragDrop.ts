@@ -37,6 +37,8 @@ export interface ItemDragPayload {
   version: typeof ITEM_DRAG_VERSION;
   entity: 'item' | 'url';
   itemId: string;
+  /** Ordered canonical item IDs. `itemId` remains the lead item for v1 compatibility. */
+  itemIds?: string[];
   itemLabel: string;
   /** Present only for an unsaved browser or snapshot URL. */
   url?: string;
@@ -50,15 +52,30 @@ export type ItemDropDecision =
 
 export function createItemDragPayload(
   item: { id: string; title?: string; url?: string },
-  source: ItemDragSource
+  source: ItemDragSource,
+  selectedItems?: readonly { id: string; title?: string; url?: string }[]
 ): ItemDragPayload {
+  const items = [...new Map(
+    [item, ...(selectedItems ?? [])]
+      .filter((candidate) => candidate.id)
+      .map((candidate) => [candidate.id, candidate] as const)
+  ).values()];
+  const itemIds = items.map((candidate) => candidate.id);
   return {
     version: ITEM_DRAG_VERSION,
     entity: 'item',
     itemId: item.id,
-    itemLabel: item.title?.trim() || item.url?.trim() || 'Untitled',
+    ...(itemIds.length > 1 ? { itemIds } : {}),
+    itemLabel: itemIds.length > 1
+      ? `${itemIds.length} selected items`
+      : item.title?.trim() || item.url?.trim() || 'Untitled',
     source,
   };
+}
+
+export function itemIdsFromDragPayload(payload: ItemDragPayload): string[] {
+  if (payload.entity !== 'item') return [];
+  return [...new Set([payload.itemId, ...(payload.itemIds ?? [])].filter(Boolean))];
 }
 
 export function createUrlDragPayload(
@@ -109,6 +126,10 @@ export function readItemDragPayload(dataTransfer: DataTransfer): ItemDragPayload
       !value.source ||
       typeof value.source !== 'object'
     ) return null;
+    if (value.itemIds !== undefined && (
+      !Array.isArray(value.itemIds) ||
+      value.itemIds.some((itemId) => typeof itemId !== 'string' || !itemId)
+    )) return null;
     if (value.entity === 'url' && (typeof value.url !== 'string' || !/^https?:\/\//i.test(value.url))) return null;
     const source = value.source as ItemDragSource;
     if (source.kind === 'reference') return value as ItemDragPayload;

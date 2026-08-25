@@ -70,7 +70,7 @@ import { buildWorkspaceDestinations, rememberWorkspaceDestination, type Workspac
 import { WorkspaceDestinationPicker } from '../WorkspaceDestinationPicker';
 import { ItemDragDropProvider, type ItemTransferResult } from '../ItemDragDropProvider';
 import { ItemPeekProvider } from '../ItemPeekProvider';
-import type { ItemDragPayload, ItemDropTarget, ItemTransferOperation } from '../itemDragDrop';
+import { itemIdsFromDragPayload, type ItemDragPayload, type ItemDropTarget, type ItemTransferOperation } from '../itemDragDrop';
 import { buildCollectionTransferPatch } from '../../../lib/collectionTransfer';
 import {
   clearDashboardOpenItemIntent,
@@ -1281,6 +1281,132 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
           targetWorkspaceKey: target.containerId,
           itemId: item.id,
         })),
+      };
+    }
+    const payloadItemIds = itemIdsFromDragPayload(payload);
+    if (payloadItemIds.length > 1) {
+      const knownItems = new Map(items.map((candidate) => [candidate.id, candidate]));
+      const missingIds = payloadItemIds.filter((itemId) => !knownItems.has(itemId));
+      if (missingIds.length) {
+        const loaded = await Promise.all(missingIds.map((itemId) => getItem(itemId)));
+        loaded.forEach((item) => { if (item) knownItems.set(item.id, item); });
+      }
+      const selectedItems = payloadItemIds
+        .map((itemId) => knownItems.get(itemId))
+        .filter((item): item is Item => item != null);
+      if (selectedItems.length !== payloadItemIds.length) {
+        throw new Error('One or more selected items are no longer available. Refresh the list and try again.');
+      }
+      const transferItems = [...new Map([...items, ...selectedItems].map((item) => [item.id, item] as const)).values()];
+
+      if (target.kind === 'workspace') {
+        const targetProjectId = target.projectId ?? getWorkspaceProjectId(globalTabState, target.containerId);
+        const targetPresence = new Map(selectedItems.map((item) => [item.id, workspaceTargetContainsItem({
+          state: globalTabState,
+          projectId: targetProjectId,
+          targetWorkspaceKey: target.containerId,
+          itemId: item.id,
+          items: transferItems,
+        })]));
+        const movable = operation === 'move' && payload.source.kind === 'workspace';
+        const sourceProjectId = payload.source.kind === 'workspace'
+          ? payload.source.projectId ?? getWorkspaceProjectId(globalTabState, payload.source.containerId)
+          : 'all';
+        mutateWorkspaceState((state) => selectedItems.reduce((nextState, selectedItem) => {
+          if (movable && payload.source.kind === 'workspace') {
+            return transferItemBetweenWorkspaceTargets({
+              state: nextState,
+              item: selectedItem,
+              items: transferItems,
+              sourceProjectId,
+              sourceWorkspaceKey: payload.source.containerId,
+              targetProjectId,
+              targetWorkspaceKey: target.containerId,
+              mode: 'move',
+            });
+          }
+          return addItemToWorkspaceTarget({
+            state: nextState,
+            projectId: targetProjectId,
+            targetWorkspaceKey: target.containerId,
+            item: selectedItem,
+            items: transferItems,
+          });
+        }, state), target.containerId);
+        return {
+          message: `${movable ? 'Moved' : 'Added'} ${selectedItems.length} items ${movable ? 'to' : 'into'} ${target.containerLabel}`,
+          undo: () => mutateWorkspaceState((state) => selectedItems.reduce((nextState, selectedItem) => {
+            if (!movable) {
+              return targetPresence.get(selectedItem.id)
+                ? nextState
+                : removeItemFromWorkspaceTarget({
+                    state: nextState,
+                    projectId: targetProjectId,
+                    targetWorkspaceKey: target.containerId,
+                    itemId: selectedItem.id,
+                  });
+            }
+            if (payload.source.kind !== 'workspace') return nextState;
+            return targetPresence.get(selectedItem.id)
+              ? addItemToWorkspaceTarget({
+                  state: nextState,
+                  projectId: sourceProjectId,
+                  targetWorkspaceKey: payload.source.containerId,
+                  item: selectedItem,
+                  items: transferItems,
+                })
+              : transferItemBetweenWorkspaceTargets({
+                  state: nextState,
+                  item: selectedItem,
+                  items: transferItems,
+                  sourceProjectId: targetProjectId,
+                  sourceWorkspaceKey: target.containerId,
+                  targetProjectId: sourceProjectId,
+                  targetWorkspaceKey: payload.source.containerId,
+                  mode: 'move',
+                });
+          }, state)),
+        };
+      }
+
+      if (!onUpdateBookmark) throw new Error('Collection updates are unavailable.');
+      const moving = operation === 'move' && payload.source.kind === 'collection';
+      const changes = selectedItems.map((selectedItem) => ({
+        item: selectedItem,
+        patch: buildCollectionTransferPatch({
+          item: selectedItem,
+          sourceCollectionId: moving && payload.source.kind === 'collection' ? payload.source.containerId : undefined,
+          targetCollectionId: target.containerId,
+          operation: moving ? 'move' : 'copy',
+        }),
+      })).filter(({ patch }) => patch.changed);
+      if (!changes.length) return { message: `All ${selectedItems.length} items are already in ${target.containerLabel}` };
+      const completed: typeof changes = [];
+      try {
+        for (const change of changes) {
+          await onUpdateBookmark(change.item.id, {
+            collectionIds: change.patch.collectionIds,
+            placements: change.patch.placements,
+          });
+          completed.push(change);
+        }
+      } catch (error) {
+        await Promise.allSettled(completed.map(({ item: previous }) => onUpdateBookmark(previous.id, {
+          collectionIds: previous.collectionIds,
+          placements: previous.placements,
+        })));
+        throw error;
+      }
+      return {
+        message: `${moving ? 'Moved' : 'Added'} ${changes.length} item${changes.length === 1 ? '' : 's'} ${moving ? 'to' : 'into'} ${target.containerLabel}`,
+        undo: async () => {
+          for (const { item: previous } of changes) {
+            await onUpdateBookmark(previous.id, {
+              collectionIds: previous.collectionIds,
+              placements: previous.placements,
+            });
+          }
+        },
       };
     }
     const item = items.find((candidate) => candidate.id === payload.itemId) ??

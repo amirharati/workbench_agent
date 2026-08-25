@@ -57,6 +57,21 @@ function ProjectTestSurface({
   </>;
 }
 
+function BulkTestSurface() {
+  const { beginItemTransfer } = useItemDragDrop();
+  return (
+    <button
+      type="button"
+      onClick={() => beginItemTransfer(
+        [{ id: 'item-1', title: 'One' }, { id: 'item-2', title: 'Two' }],
+        { kind: 'reference', label: 'Search results' }
+      )}
+    >
+      Organize two
+    </button>
+  );
+}
+
 describe('ItemDragDropProvider', () => {
   const roots: Array<{ root: ReturnType<typeof createRoot>; host: HTMLElement }> = [];
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -309,6 +324,51 @@ describe('ItemDragDropProvider', () => {
     expect(onTransfer).toHaveBeenCalledWith(
       expect.objectContaining({ itemId: 'item-1' }),
       expect.objectContaining({ containerId: 'collection-1', containerLabel: 'Research' }),
+      'copy'
+    );
+  });
+
+  it('opens one destination chooser for a multi-item selection', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    roots.push({ root, host });
+    const onTransfer = vi.fn().mockResolvedValue({ message: 'Added 2 items' });
+    await act(async () => {
+      root.render(
+        <ToastProvider>
+          <ItemDragDropProvider
+            projects={[]}
+            collections={[]}
+            workspaceDestinations={[{
+              key: 'workspace:global',
+              projectId: 'all',
+              projectName: 'Global',
+              workspaceName: 'Global workspace',
+              path: 'Global workspace',
+              kind: 'global',
+              isCurrent: true,
+            }]}
+            isInTarget={() => false}
+            onTransfer={onTransfer}
+            onReorderWorkspaceItem={vi.fn()}
+          >
+            <BulkTestSurface />
+          </ItemDragDropProvider>
+        </ToastProvider>
+      );
+    });
+
+    await act(async () => host.querySelector<HTMLButtonElement>('button')?.click());
+    const dialog = host.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('Organize 2 items');
+    const destination = [...(dialog?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+      .find((button) => button.textContent?.includes('Global workspace'));
+    await act(async () => destination?.click());
+
+    expect(onTransfer).toHaveBeenCalledWith(
+      expect.objectContaining({ itemIds: ['item-1', 'item-2'] }),
+      expect.objectContaining({ containerId: 'workspace:global' }),
       'copy'
     );
   });

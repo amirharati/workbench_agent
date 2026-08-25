@@ -4,6 +4,7 @@ import {
   createItemDragPayload,
   createUrlDragPayload,
   decideItemDrop,
+  itemIdsFromDragPayload,
   readItemDragPayload,
   writeItemDragPayload,
 } from './itemDragDrop';
@@ -59,5 +60,20 @@ describe('item drag/drop contract', () => {
 
     expect(dataTransfer.effectAllowed).toBe('copy');
     expect(readItemDragPayload(dataTransfer)).toEqual(payload);
+  });
+
+  it('round-trips a canonical multi-item selection without changing source semantics', () => {
+    const dataTransfer = transfer();
+    const payload = createItemDragPayload(
+      { id: 'item-1', title: 'One' },
+      collection,
+      [{ id: 'item-1', title: 'One' }, { id: 'item-2', title: 'Two' }, { id: 'item-2', title: 'Duplicate' }]
+    );
+    writeItemDragPayload(dataTransfer, payload);
+
+    expect(payload.itemLabel).toBe('2 selected items');
+    expect(itemIdsFromDragPayload(payload)).toEqual(['item-1', 'item-2']);
+    expect(readItemDragPayload(dataTransfer)).toEqual(payload);
+    expect(decideItemDrop(payload.source, { ...collection, containerId: 'collection-b' })).toEqual({ kind: 'choose' });
   });
 });

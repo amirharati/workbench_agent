@@ -568,4 +568,39 @@ describe('ProductSearchView empty state', () => {
     await act(async () => root.unmount());
     document.body.innerHTML = '';
   });
+
+  it('supports selecting the current search result set as a group', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(
+        <ProductSearchView
+          items={[item]}
+          collections={[collection]}
+          projects={[project]}
+          state={resultState}
+          onQueryChange={vi.fn()}
+          onFiltersChange={vi.fn()}
+          onModeChange={vi.fn()}
+          onSelectedItemIdChange={vi.fn()}
+          onRunSearch={vi.fn()}
+          onOpenItem={vi.fn()}
+        />
+      );
+    });
+
+    const selectResults = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Select results'));
+    await act(async () => selectResults?.click());
+    const selectAll = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Select all results'));
+    await act(async () => selectAll?.click());
+
+    expect(host.textContent).toContain('1 selected');
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Select Python guide"]')?.checked).toBe(true);
+    expect([...host.querySelectorAll<HTMLButtonElement>('button')].some((button) => button.textContent?.includes('Organize selected'))).toBe(true);
+    await act(async () => root.unmount());
+    document.body.innerHTML = '';
+  });
 });

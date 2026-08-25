@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, Loader2, Plus, Search, X } from 'lucide-react';
+import { CheckSquare2, Eye, Loader2, Plus, Search, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { SearchResult } from '../../lib/search';
 import type { LibrarySearchState, LibrarySearchTab } from '../../hooks/useLibrarySearch';
@@ -17,6 +17,7 @@ import type { WorkspaceDestination } from './workspaceDestinations';
 import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
 import { LinkVisual } from './LinkVisual';
+import { useItemDragDrop } from './ItemDragDropProvider';
 
 interface ProductSearchViewProps {
   items: Item[];
@@ -122,13 +123,25 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   onOpenCategoryTab,
 }) => {
   const { openPeek } = useItemPeek();
+  const { beginItemTransfer } = useItemDragDrop();
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedResultIds, setSelectedResultIds] = useState<Set<string>>(new Set());
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const resultItemIds = useMemo(
     () => state.result?.results.map((r) => r.itemId) ?? [],
     [state.result]
   );
+  const resultItems = useMemo(
+    () => resultItemIds.map((itemId) => itemsById.get(itemId)).filter((item): item is Item => item != null),
+    [itemsById, resultItemIds]
+  );
+  const selectedResultItems = useMemo(
+    () => resultItems.filter((item) => selectedResultIds.has(item.id)),
+    [resultItems, selectedResultIds]
+  );
+  const allResultsSelected = resultItems.length > 0 && resultItems.every((item) => selectedResultIds.has(item.id));
   const contextProject = projects.find((project) => project.id === organizationContextProjectId);
   const contextCollection = organizationCollections.find(
     (collection) => collection.id === organizationContextCollectionId
@@ -172,6 +185,23 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
       return () => window.clearTimeout(t);
     }
   }, [autofocus]);
+
+  useEffect(() => {
+    const available = new Set(resultItemIds);
+    setSelectedResultIds((current) => {
+      const next = new Set([...current].filter((itemId) => available.has(itemId)));
+      return next.size === current.size ? current : next;
+    });
+  }, [resultItemIds]);
+
+  const toggleResultSelection = (itemId: string) => {
+    setSelectedResultIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const exclusionBelongsToContext =
@@ -729,6 +759,39 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
         </div>
       )}
 
+      {hasResults ? (
+        <div className="ui-content-browser__selection-bar ui-product-search__selection-bar" role="toolbar" aria-label="Search result selection">
+          <button
+            className="ui-button ui-button--secondary ui-button--compact"
+            type="button"
+            aria-pressed={selectionMode}
+            onClick={() => {
+              if (selectionMode) setSelectedResultIds(new Set());
+              setSelectionMode(!selectionMode);
+            }}
+          >
+            <CheckSquare2 size={12} /> {selectionMode ? 'Done' : 'Select results'}
+          </button>
+          {selectionMode ? (
+            <>
+              <strong>{selectedResultItems.length} selected</strong>
+              <button className="ui-button ui-button--secondary ui-button--compact" type="button" onClick={() => setSelectedResultIds(allResultsSelected ? new Set() : new Set(resultItems.map((item) => item.id)))}>
+                {allResultsSelected ? 'Clear results' : 'Select all results'}
+              </button>
+              {selectedResultIds.size > 0 ? <button className="ui-button ui-button--secondary ui-button--compact" type="button" onClick={() => setSelectedResultIds(new Set())}>Clear</button> : null}
+              <button
+                className="ui-button ui-button--primary ui-button--compact"
+                type="button"
+                disabled={!selectedResultItems.length}
+                onClick={() => beginItemTransfer(selectedResultItems, { kind: 'reference', label: 'Search results' })}
+              >
+                Organize selected…
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       <div
         className="ui-product-search__body"
         data-has-discovery={hasDiscovery ? 'true' : 'false'}
@@ -787,9 +850,16 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               key={row.itemId}
               item={item ?? { id: row.itemId, title: row.title, url: row.url }}
               dragSource={item ? { kind: 'reference', label: 'Search results' } : undefined}
+              dragItems={item && selectedResultIds.has(item.id) ? selectedResultItems : undefined}
               selected={isSelected}
-              onSelectItem={() => onSelectedItemIdChange(row.itemId)}
-              onDoubleClick={() => openPeek(row.itemId, { itemIds: resultItemIds, sourceLabel: 'Search results' })}
+              data-selection-mode={selectionMode ? 'true' : undefined}
+              data-bulk-selected={item && selectedResultIds.has(item.id) ? 'true' : undefined}
+              onSelectItem={() => selectionMode && item
+                ? toggleResultSelection(item.id)
+                : onSelectedItemIdChange(row.itemId)}
+              onDoubleClick={() => {
+                if (!selectionMode) openPeek(row.itemId, { itemIds: resultItemIds, sourceLabel: 'Search results' });
+              }}
               onContextMenu={(e) => {
                 if (!item) return;
                 e.preventDefault();
@@ -805,6 +875,15 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                 transition: 'border-color 0.12s ease',
               }}
             >
+              {selectionMode && item ? (
+                <input
+                  className="ui-product-search__selection-checkbox"
+                  type="checkbox"
+                  checked={selectedResultIds.has(item.id)}
+                  onChange={() => toggleResultSelection(item.id)}
+                  aria-label={`Select ${row.title || 'item'}`}
+                />
+              ) : null}
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
