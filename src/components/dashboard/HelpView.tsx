@@ -342,7 +342,13 @@ export const HELP_TOPICS: HelpTopic[] = [
           { icon: Layers3, term: 'Same container type', description: <>Workspace to workspace and collection to collection can Copy or Move. Homebase asks which action you intend.</> },
           { icon: FolderTree, term: 'Different container types', description: <>Workspace to collection, or collection to workspace, always copies. Their roles are different, so the source membership remains.</> },
           { icon: Layers3, term: 'Group selection', description: <>Choose <strong>Select</strong> in a list or Search, optionally filter first, then use <strong>Select all filtered</strong> and <strong>Organize selected</strong>. Dragging any selected row carries the same group.</> },
+          { icon: Search, term: 'Destination browser', description: <>Quick access keeps recent destinations close. The current project opens first; select any other open project to see its workspaces and collections without navigating away. Search can find any available project, workspace, or collection.</> },
           { icon: Trash2, term: 'Trash', description: <>Removing an item from every saved location moves it to Trash. Restore returns it; Delete permanently or Empty trash cannot be undone.</> },
+        ]} />
+        <GuideSteps steps={[
+          <>For the fastest path, drag directly onto a visible workspace or collection.</>,
+          <>When a project contains many destinations, release the drag over the <strong>project</strong>. Homebase freezes the item or selected group in the destination browser, so you can release the mouse and finish with ordinary clicks.</>,
+          <>On a wide dashboard, choose projects on the left and destinations on the right. On a narrow dashboard, use <strong>Projects and quick access</strong> to move back through the same catalog. Neither view changes the page behind it.</>,
         ]} />
         <ul>
           <li><strong>All Library</strong> is a source view, never a drop destination.</li>

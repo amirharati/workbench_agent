@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { Copy, Folder, GripVertical, Layers3, MoveRight, X } from 'lucide-react';
+import { ArrowLeft, Copy, Folder, GripVertical, Layers3, MoveRight, Search, X } from 'lucide-react';
 import type { Collection, Project } from '../../lib/db';
 import { useToast } from '../ToastContainer';
 import type { WorkspaceDestination } from './workspaceDestinations';
@@ -173,6 +173,8 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
   const [pendingChoice, setPendingChoice] = useState<PendingChoice | null>(null);
   const [pendingCollectionChoice, setPendingCollectionChoice] = useState<PendingCollectionChoice | null>(null);
   const [pendingDestination, setPendingDestination] = useState<ItemDragPayload | null>(null);
+  const [destinationProjectId, setDestinationProjectId] = useState<string | 'all' | null>(null);
+  const [destinationQuery, setDestinationQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [recentTargets, setRecentTargets] = useState<ItemDropTarget[]>([]);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -182,6 +184,18 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     setActivePayload(null);
     setDragOverTargetId(null);
     setReorderOverItemId(null);
+  }, []);
+
+  const openDestinationChooser = useCallback((payload: ItemDragPayload, projectId?: string | 'all' | null) => {
+    setDestinationQuery('');
+    setDestinationProjectId(projectId ?? (currentProjectId !== 'all' ? currentProjectId : 'all'));
+    setPendingDestination(payload);
+  }, [currentProjectId]);
+
+  const closeDestinationChooser = useCallback(() => {
+    setPendingDestination(null);
+    setDestinationQuery('');
+    setDestinationProjectId(null);
   }, []);
 
   const getDragProps = useCallback<ItemDragSourceContextValue['getDragProps']>((item, source, selectedItems) => {
@@ -205,8 +219,8 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       selectedItems.filter((item) => item.id).map((item) => [item.id, item] as const)
     ).values()];
     if (!items.length) return;
-    setPendingDestination(createItemDragPayload(items[0], source, items));
-  }, []);
+    openDestinationChooser(createItemDragPayload(items[0], source, items));
+  }, [openDestinationChooser]);
 
   const getUrlDragProps = useCallback<ItemDragSourceContextValue['getUrlDragProps']>((link, source) => {
     const payload = createUrlDragPayload(link, source);
@@ -242,7 +256,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
         ...previous.filter((candidate) => itemDropTargetKey(candidate) !== itemDropTargetKey(target)),
       ].slice(0, 5));
       setPendingChoice(null);
-      setPendingDestination(null);
+      closeDestinationChooser();
     } catch (error) {
       addToast({
         type: 'error',
@@ -251,7 +265,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
     } finally {
       setBusy(false);
     }
-  }, [addToast, onTransfer]);
+  }, [addToast, closeDestinationChooser, onTransfer]);
 
   const resolveDrop = useCallback((payload: ItemDragPayload, target: ItemDropTarget) => {
     const decision = decideItemDrop(payload.source, target);
@@ -455,6 +469,22 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
   const recentProjectTargets = currentProjectTarget
     ? projectTargets.filter(({ project }) => project.id !== currentProjectTarget.project.id)
     : projectTargets;
+  const selectedDestinationProject = destinationProjectId === 'all'
+    ? null
+    : projectTargets.find(({ project }) => project.id === destinationProjectId);
+  const destinationSearchResults = useMemo(() => {
+    const query = destinationQuery.trim().toLocaleLowerCase();
+    if (!query) return [];
+    return [...visibleTargets.values()].filter((target) => {
+      const projectName = target.projectId === 'all'
+        ? 'global'
+        : projectById.get(target.projectId ?? '')?.name ?? '';
+      return [target.containerLabel, projectName, target.kind]
+        .join(' ')
+        .toLocaleLowerCase()
+        .includes(query);
+    });
+  }, [destinationQuery, projectById, visibleTargets]);
   useEffect(() => {
     if (!activePayload) setExpandedProjectId(null);
   }, [activePayload]);
@@ -501,12 +531,18 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
         onDrop={(event) => {
           event.preventDefault();
           event.stopPropagation();
+          const payload = readItemDragPayload(event.dataTransfer) ?? activePayload;
+          clearDrag();
+          if (payload) openDestinationChooser(payload, project.id);
         }}
       >
         <div className="ui-item-drop-project__header">
           <Folder size={13} />
           <strong>{project.name}</strong>
-          <small>{workspaces.length} workspace{workspaces.length === 1 ? '' : 's'} · {projectCollections.length} collection{projectCollections.length === 1 ? '' : 's'}</small>
+          <span className="ui-item-drop-project__meta">
+            <small>{workspaces.length} workspace{workspaces.length === 1 ? '' : 's'} · {projectCollections.length} collection{projectCollections.length === 1 ? '' : 's'}</small>
+            <small className="ui-item-drop-project__browse-hint">Release to browse</small>
+          </span>
         </div>
         {expanded ? (
           <div className="ui-item-drop-project__destinations scrollbar">
@@ -545,19 +581,19 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       if (event.key === 'Escape' && !busy) {
         setPendingChoice(null);
         setPendingCollectionChoice(null);
-        setPendingDestination(null);
+        closeDestinationChooser();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [busy, pendingChoice, pendingCollectionChoice, pendingDestination]);
+  }, [busy, closeDestinationChooser, pendingChoice, pendingCollectionChoice, pendingDestination]);
 
   const choosePendingDestination = (target: ItemDropTarget) => {
     if (!pendingDestination) return;
     const payload = pendingDestination;
     const decision = decideItemDrop(payload.source, target);
     if (decision.kind === 'same-container') return;
-    setPendingDestination(null);
+    closeDestinationChooser();
     if (decision.kind === 'choose') {
       setPendingChoice({ payload, target });
       return;
@@ -608,7 +644,7 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
             <span className="ui-item-drop-tray__drag-icon"><GripVertical size={14} /></span>
             <span>
               <strong>Place “{activePayload.itemLabel}”</strong>
-              <small>Drop onto a destination. Move over an open project to reveal its destinations.</small>
+              <small>Drop directly, or release over a project to keep choosing without holding the mouse.</small>
             </span>
           </div>
           <div className="ui-item-drop-tray__groups scrollbar">
@@ -642,62 +678,139 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
       ) : null}
 
       {pendingDestination ? (
-        <div className="ui-item-transfer-dialog-backdrop" role="presentation" onMouseDown={() => { if (!busy) setPendingDestination(null); }}>
+        <div className="ui-item-transfer-dialog-backdrop" role="presentation" onMouseDown={() => { if (!busy) closeDestinationChooser(); }}>
           <section className="ui-item-transfer-dialog ui-item-transfer-dialog--destinations" role="dialog" aria-modal="true" aria-labelledby="item-destination-title" onMouseDown={(event) => event.stopPropagation()}>
-            <button className="ui-item-transfer-dialog__close" type="button" onClick={() => setPendingDestination(null)} disabled={busy} aria-label="Cancel destination choice"><X size={14} /></button>
+            <button className="ui-item-transfer-dialog__close" type="button" onClick={closeDestinationChooser} disabled={busy} aria-label="Cancel destination choice"><X size={14} /></button>
             <h2 id="item-destination-title">Organize {itemIdsFromDragPayload(pendingDestination).length} {itemIdsFromDragPayload(pendingDestination).length === 1 ? 'item' : 'items'}</h2>
-            <p>Choose a workspace or collection. Cross-type transfers copy; moving is offered only between two workspaces or two collections.</p>
-            <div className="ui-bulk-transfer-destinations scrollbar">
-              {quickTargets.length > 0 ? (
-                <section>
-                  <h3>Quick access</h3>
-                  <div className="ui-item-transfer-dialog__actions">{quickTargets.map((target, index) => renderDestinationButton(target, index))}</div>
-                </section>
+            <p>Choose a workspace or collection. Selecting a project only browses its destinations and never changes the page behind this window.</p>
+            <label className="ui-bulk-transfer-search">
+              <Search size={14} aria-hidden="true" />
+              <input
+                type="search"
+                value={destinationQuery}
+                onChange={(event) => setDestinationQuery(event.target.value)}
+                placeholder="Find a project, workspace, or collection…"
+                aria-label="Find a transfer destination"
+              />
+              {destinationQuery ? (
+                <button type="button" onClick={() => setDestinationQuery('')} aria-label="Clear destination search"><X size={13} /></button>
               ) : null}
-              <section className="ui-bulk-transfer-destinations__catalog">
-                <h3>All available destinations</h3>
-                {globalTarget ? (
-                  <div className="ui-bulk-transfer-project" data-project-id="all">
-                    <div className="ui-bulk-transfer-project__header">
-                      <strong>Global</strong>
+            </label>
+            <div
+              className="ui-bulk-transfer-browser"
+              data-project-open={destinationProjectId != null ? 'true' : 'false'}
+              data-searching={destinationQuery.trim() ? 'true' : 'false'}
+            >
+              <aside className="ui-bulk-transfer-browser__rail scrollbar" aria-label="Destination projects">
+                {quickTargets.length > 0 ? (
+                  <section className="ui-bulk-transfer-browser__quick">
+                    <h3>Quick access</h3>
+                    <div className="ui-item-transfer-dialog__actions">
+                      {quickTargets.map((target, index) => renderDestinationButton(target, index))}
+                    </div>
+                  </section>
+                ) : null}
+                <section>
+                  <h3>Available locations</h3>
+                  <div className="ui-bulk-transfer-project-list">
+                    {globalTarget ? (
+                      <button
+                        type="button"
+                        data-selected={destinationProjectId === 'all' ? 'true' : 'false'}
+                        aria-pressed={destinationProjectId === 'all'}
+                        onClick={() => { setDestinationProjectId('all'); setDestinationQuery(''); }}
+                      >
+                        <Layers3 size={14} />
+                        <span><strong>Global</strong><small>Global workspace</small></span>
+                      </button>
+                    ) : null}
+                    {projectTargets.map(({ project, workspaces, collections: projectCollections }) => (
+                      <button
+                        type="button"
+                        key={project.id}
+                        data-project-select-id={project.id}
+                        data-current={project.id === currentProjectId ? 'true' : 'false'}
+                        data-selected={destinationProjectId === project.id ? 'true' : 'false'}
+                        aria-pressed={destinationProjectId === project.id}
+                        onClick={() => { setDestinationProjectId(project.id); setDestinationQuery(''); }}
+                      >
+                        <Folder size={14} />
+                        <span>
+                          <strong>{project.name}</strong>
+                          <small>{workspaces.length} workspace{workspaces.length === 1 ? '' : 's'} · {projectCollections.length} collection{projectCollections.length === 1 ? '' : 's'}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              </aside>
+
+              <main className="ui-bulk-transfer-browser__panel scrollbar" aria-label="Available workspaces and collections">
+                <button
+                  className="ui-bulk-transfer-browser__back"
+                  type="button"
+                  onClick={() => { setDestinationProjectId(null); setDestinationQuery(''); }}
+                >
+                  <ArrowLeft size={14} /> Projects and quick access
+                </button>
+                {destinationQuery.trim() ? (
+                  <section className="ui-bulk-transfer-results">
+                    <div className="ui-bulk-transfer-panel-heading">
+                      <span><Search size={13} /> Matching destinations</span>
+                      <small>{destinationSearchResults.length} result{destinationSearchResults.length === 1 ? '' : 's'}</small>
+                    </div>
+                    {destinationSearchResults.length > 0 ? (
+                      <div className="ui-item-transfer-dialog__actions">
+                        {destinationSearchResults.map((target) => renderDestinationButton(target))}
+                      </div>
+                    ) : (
+                      <div className="ui-item-drop-tray__empty">No open-project destination matches “{destinationQuery.trim()}”.</div>
+                    )}
+                  </section>
+                ) : destinationProjectId === 'all' && globalTarget ? (
+                  <section data-project-id="all">
+                    <div className="ui-bulk-transfer-panel-heading">
+                      <span><Layers3 size={13} /> Global</span>
                       <small>Available from every project</small>
                     </div>
                     <div className="ui-item-transfer-dialog__actions">
-                      {renderDestinationButton(globalTarget, quickTargets.length ? undefined : 0, true)}
+                      {renderDestinationButton(globalTarget, undefined, true)}
                     </div>
-                  </div>
-                ) : null}
-                {projectTargets.map(({ project, workspaces, collections: projectCollections }) => (
-                  <div className="ui-bulk-transfer-project" data-project-id={project.id} key={project.id}>
-                    <div className="ui-bulk-transfer-project__header">
-                      <strong>{project.name}{project.id === currentProjectId ? ' · Current project' : ''}</strong>
-                      <small>{workspaces.length} workspace{workspaces.length === 1 ? '' : 's'} · {projectCollections.length} collection{projectCollections.length === 1 ? '' : 's'}</small>
+                  </section>
+                ) : selectedDestinationProject ? (
+                  <section data-project-id={selectedDestinationProject.project.id}>
+                    <div className="ui-bulk-transfer-panel-heading">
+                      <span><Folder size={13} /> {selectedDestinationProject.project.name}</span>
+                      <small>{selectedDestinationProject.project.id === currentProjectId ? 'Current project' : 'Open project'}</small>
                     </div>
-                    {workspaces.length > 0 ? (
+                    {selectedDestinationProject.workspaces.length > 0 ? (
                       <div className="ui-bulk-transfer-project__group">
                         <h4><Layers3 size={11} /> Workspaces</h4>
                         <div className="ui-item-transfer-dialog__actions">
-                          {workspaces.map((target) => renderDestinationButton(target, undefined, true))}
+                          {selectedDestinationProject.workspaces.map((target) => renderDestinationButton(target, undefined, true))}
                         </div>
                       </div>
                     ) : null}
-                    {projectCollections.length > 0 ? (
+                    {selectedDestinationProject.collections.length > 0 ? (
                       <div className="ui-bulk-transfer-project__group">
                         <h4><Folder size={11} /> Collections</h4>
                         <div className="ui-item-transfer-dialog__actions">
-                          {projectCollections.map((target) => renderDestinationButton(target, undefined, true))}
+                          {selectedDestinationProject.collections.map((target) => renderDestinationButton(target, undefined, true))}
                         </div>
                       </div>
                     ) : null}
-                    {workspaces.length === 0 && projectCollections.length === 0 ? (
+                    {selectedDestinationProject.workspaces.length === 0 && selectedDestinationProject.collections.length === 0 ? (
                       <div className="ui-item-drop-tray__empty">No available destinations in this project.</div>
                     ) : null}
+                  </section>
+                ) : (
+                  <div className="ui-bulk-transfer-browser__empty">
+                    <Folder size={22} />
+                    <strong>Choose an open project</strong>
+                    <small>Its workspaces and collections will appear here.</small>
                   </div>
-                ))}
-                {!globalTarget && projectTargets.length === 0 ? (
-                  <div className="ui-item-drop-tray__empty">Open a project from Home to make its collections and workspaces available.</div>
-                ) : null}
-              </section>
+                )}
+              </main>
             </div>
           </section>
         </div>

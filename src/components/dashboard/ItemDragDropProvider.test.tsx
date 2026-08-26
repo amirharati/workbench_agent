@@ -423,17 +423,95 @@ describe('ItemDragDropProvider', () => {
       .find((section) => section.querySelector(':scope > h3')?.textContent === 'Quick access');
     expect(quickSection?.textContent).toContain('Reading');
 
+    const globalSelector = [...dialog.querySelectorAll<HTMLButtonElement>('.ui-bulk-transfer-project-list > button')]
+      .find((button) => button.textContent?.includes('Global'));
+    await act(async () => globalSelector?.click());
     const global = dialog.querySelector<HTMLElement>('[data-project-id="all"]');
     expect(global?.textContent).toContain('Global workspace');
+
+    const projectASelector = dialog.querySelector<HTMLButtonElement>('[data-project-select-id="project-a"]');
+    await act(async () => projectASelector?.click());
     const projectA = dialog.querySelector<HTMLElement>('[data-project-id="project-a"]');
     expect(projectA?.textContent).toContain('Workspaces');
     expect(projectA?.textContent).toContain('General');
     expect(projectA?.textContent).toContain('Collections');
     expect(projectA?.textContent).toContain('Reading');
+
+    const projectBSelector = dialog.querySelector<HTMLButtonElement>('[data-project-select-id="project-b"]');
+    await act(async () => projectBSelector?.click());
     const projectB = dialog.querySelector<HTMLElement>('[data-project-id="project-b"]');
     expect(projectB?.textContent).toContain('General');
     expect(projectB?.textContent).toContain('Archive');
+
+    const search = dialog.querySelector<HTMLInputElement>('[aria-label="Find a transfer destination"]')!;
+    await act(async () => {
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      valueSetter?.call(search, 'Archive');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const searchResults = dialog.querySelector<HTMLElement>('.ui-bulk-transfer-results');
+    expect(searchResults?.textContent).toContain('1 result');
+    expect(searchResults?.textContent).toContain('Project B · Archive');
+    expect(searchResults?.textContent).not.toContain('Reading');
     expect(dialog.textContent).not.toContain('Closed project');
     expect(dialog.textContent).not.toContain('Hidden');
+  });
+
+  it('freezes a drag on a project so the mouse can be released before choosing a destination', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    roots.push({ root, host });
+    const onTransfer = vi.fn().mockResolvedValue({ message: 'Added item' });
+    await act(async () => {
+      root.render(
+        <ToastProvider>
+          <ItemDragDropProvider
+            projects={[
+              { id: 'project-a', name: 'Current project', isDefault: false, created_at: 1, updated_at: 1 },
+              { id: 'project-b', name: 'Other project', isDefault: false, created_at: 1, updated_at: 1 },
+            ]}
+            collections={[
+              { id: 'collection-b', name: 'Research', isDefault: false, created_at: 1, updated_at: 1, primaryProjectId: 'project-b', projectIds: ['project-b'] },
+            ]}
+            workspaceDestinations={[
+              { key: 'workspace:global', projectId: 'all', projectName: 'Global', workspaceName: 'Global workspace', path: 'Global workspace', kind: 'global', isCurrent: false },
+              { key: 'workspace:project-a:general', projectId: 'project-a', projectName: 'Current project', workspaceName: 'General', path: 'Current project — General', kind: 'live', isCurrent: true },
+              { key: 'workspace:project-b:general', projectId: 'project-b', projectName: 'Other project', workspaceName: 'General', path: 'Other project — General', kind: 'live', isCurrent: false },
+            ]}
+            currentProjectId="project-a"
+            openProjectIds={['project-a', 'project-b']}
+            isInTarget={() => false}
+            onTransfer={onTransfer}
+            onReorderWorkspaceItem={vi.fn()}
+          >
+            <TestSurface source={{ kind: 'reference', label: 'Search' }} target={{ kind: 'workspace', containerId: 'unused', containerLabel: 'Unused', projectId: 'project-a' }} />
+          </ItemDragDropProvider>
+        </ToastProvider>
+      );
+    });
+
+    const dataTransfer = mockDataTransfer();
+    await act(async () => {
+      dispatchDrag(host.querySelector('[data-testid="source"]')!, 'dragstart', dataTransfer);
+    });
+    await act(async () => {
+      dispatchDrag(host.querySelector('[data-project-id="project-b"]')!, 'drop', dataTransfer);
+    });
+
+    expect(host.querySelector('[aria-label="Destinations for One"]')).toBeNull();
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.textContent).toContain('Other project');
+    expect(dialog.textContent).toContain('Research');
+    expect(dialog.querySelector('[data-project-select-id="project-b"]')?.getAttribute('aria-pressed')).toBe('true');
+
+    const research = [...dialog.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Research'));
+    await act(async () => research?.click());
+    expect(onTransfer).toHaveBeenCalledWith(
+      expect.objectContaining({ itemId: 'item-1' }),
+      expect.objectContaining({ containerId: 'collection-b' }),
+      'copy'
+    );
   });
 });

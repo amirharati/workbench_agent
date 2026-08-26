@@ -28,6 +28,9 @@ describe('HelpView', () => {
     expect(markup).toContain('A mixed result is an informational completion report');
     expect(markup).toContain('Use <strong>More</strong>');
     expect(markup).toContain('Copy, move, remove, and restore');
+    expect(markup).toContain('Destination browser');
+    expect(markup).toContain('release the drag over the <strong>project</strong>');
+    expect(markup).toContain('Projects and quick access');
     expect(markup).not.toContain('Drag the horizontal divider');
     expect(markup).not.toContain('tab strip appears at the bottom of Home');
     expect(markup).not.toContain('Processing Digest');

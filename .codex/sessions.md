@@ -571,3 +571,11 @@
 - Summary: Fixed the shared multi-select destination chooser so Quick access no longer removes destinations from the full catalog. It now always shows Global and every open project with separately labelled, selectable Workspaces and Collections; closed projects remain excluded. ContentBrowser and Product Search continue to use this one shared chooser.
 - Status: Uncommitted pending live extension acceptance. Thirty-two focused provider/list/Search tests, TypeScript, production build, and `git diff --check` pass; existing Vite warnings are unchanged.
 - Next steps: Reload the extension and open Organize selected from a collection, workspace, Library, and Search. Confirm the same Quick access plus complete Global/open-project hierarchy appears in each.
+
+## 2026-08-25 - Add adaptive and frozen transfer browsing
+- Session ID: unknown
+- Agent: codex
+- Summary: Replaced the vertically expanding group selector with one searchable project/detail browser. The current project opens first, other open projects switch in place without navigation, and narrow screens use a project drill-down. Native dragging keeps direct targets but releasing over a project now freezes the item/group into the persistent chooser so users can release the mouse before selecting a workspace or collection.
+- Commits/PRs: Prior catalog checkpoint `a0311b8` (`Keep group destinations complete across views`); adaptive/frozen chooser checkpoint committed at the end of this session.
+- Status: Implementation and Help coverage complete and ready for live extension acceptance. Thirty-seven focused provider/list/Search/Help tests, TypeScript, production build, and `git diff --check` pass; the only test output is the pre-existing `ReactDOMTestUtils.act` deprecation warning and existing Vite chunk warnings.
+- Next steps: Reload and test direct drop plus release-over-project from single and selected-group rows at wide and narrow dashboard sizes.
