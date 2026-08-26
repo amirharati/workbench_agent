@@ -13,6 +13,7 @@ import {
   type ClassifyPendingBlocker,
 } from './classifyQueueBlocker';
 import { hasSpecificPrimaryTopic } from './categorizationFairGame';
+import { isLinkQualityAttentionLeafId } from './linkQuality';
 import { getCategorizationQueueStats } from './classifyTopicExtract';
 import { getPipelineCatalog, type PipelineCatalog } from '../pipeline/pipelineCatalog';
 import type { AiCategory, ClassifyState, ClassifyInputQualityTier } from './types';
@@ -45,7 +46,11 @@ export const PIPELINE_QUEUE_FILTER_OPTIONS: Array<{
   },
   { id: 'classified_general', label: 'General / Other' },
   { id: 'classified_removal', label: 'Removal candidate (junk/broken)' },
-  { id: 'classified_attention', label: 'Needs attention (login/auth)' },
+  {
+    id: 'classified_attention',
+    label: 'Quality warning',
+    hint: 'Login/auth, media, or redirect warning; an item may also have a normal topic',
+  },
   { id: 'manual_review', label: 'Manual review' },
   { id: 'ineligible', label: 'Ineligible' },
   { id: 'no_signal', label: 'No signal', hint: 'AI ok but no classify signal row' },
@@ -124,6 +129,9 @@ export interface PipelineQueueItemRow {
   primaryLinkStatus?: 'accepted' | 'suggested' | null;
   parentCategoryName?: string | null;
   topicPath?: string | null;
+  /** Active attention diagnostics, including secondary warnings beside a normal topic. */
+  attentionCategoryIds?: string[];
+  attentionCategoryNames?: string[];
   eligible: boolean;
   eligibilityReason?: string;
   classifyRetryCount?: number;
@@ -161,7 +169,16 @@ export function buildPipelineQueueRowsFromCatalog(
   const rows: PipelineQueueItemRow[] = [];
   const acceptedPrimaryByItem = new Map<string, string>();
   const suggestedPrimaryByItem = new Map<string, string>();
+  const attentionCategoryIdsByItem = new Map<string, string[]>();
   for (const link of catalog.links) {
+    if (
+      COUNTABLE_STATUSES.has(link.status) &&
+      isLinkQualityAttentionLeafId(link.categoryId)
+    ) {
+      const ids = attentionCategoryIdsByItem.get(link.itemId) ?? [];
+      if (!ids.includes(link.categoryId)) ids.push(link.categoryId);
+      attentionCategoryIdsByItem.set(link.itemId, ids);
+    }
     if (!link.isPrimary || !COUNTABLE_STATUSES.has(link.status)) continue;
     if (link.status === 'accepted') acceptedPrimaryByItem.set(link.itemId, link.categoryId);
     else if (link.status === 'suggested') suggestedPrimaryByItem.set(link.itemId, link.categoryId);
@@ -183,6 +200,10 @@ export function buildPipelineQueueRowsFromCatalog(
       leaf && parentName ? `${parentName} › ${leaf.name}` : leaf?.name ?? null;
     const embedFailed = signal?.signalStatus === 'embed_failed';
     const enrichmentStatusLabel = hubAlignedEnrichmentStatusLabel(enrichment, embedFailed);
+    const attentionCategoryIds = attentionCategoryIdsByItem.get(item.id) ?? [];
+    const attentionCategoryNames = attentionCategoryIds
+      .map((categoryId) => catalog.categoryById.get(categoryId)?.name)
+      .filter((name): name is string => Boolean(name));
 
     const row: PipelineQueueItemRow = {
       item,
@@ -198,6 +219,8 @@ export function buildPipelineQueueRowsFromCatalog(
           : null,
       parentCategoryName: parentName,
       topicPath,
+      attentionCategoryIds,
+      attentionCategoryNames,
       eligible: eligibility.eligible,
       eligibilityReason: signal?.eligibilityReason ?? eligibility.reason,
       classifyRetryCount: signal?.classifyRetryCount,
@@ -212,7 +235,7 @@ export function buildPipelineQueueRowsFromCatalog(
 
     if (q) {
       const hay =
-        `${item.title || ''} ${item.url || ''} ${topicPath || ''} ${effectiveSt || ''} ${blocker.label} ${blocker.detail}`.toLowerCase();
+        `${item.title || ''} ${item.url || ''} ${topicPath || ''} ${attentionCategoryNames.join(' ')} ${effectiveSt || ''} ${blocker.label} ${blocker.detail}`.toLowerCase();
       if (!hay.includes(q)) continue;
     }
 
@@ -288,6 +311,9 @@ function matchesPipelineFilter(
   }
   if (filter === 'classified') {
     return st === 'classified' && !enrichIncomplete;
+  }
+  if (filter === 'classified_attention') {
+    return st === 'classified_attention' || Boolean(row.attentionCategoryIds?.length);
   }
   return st === filter;
 }

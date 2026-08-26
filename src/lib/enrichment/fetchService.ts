@@ -1235,6 +1235,11 @@ export async function enrichOne(
       const tier2Applied = applied.length > 0
         ? [...new Set([...(existing.tier2Applied || []), ...applied])]
         : existing.tier2Applied;
+      const keepRedirectReview = Boolean(
+        existing.pendingFetchReview &&
+        existing.pendingFetchReviewReason === 'url_redirect' &&
+        redirectContext.redirectClass !== 'none'
+      );
       await saveEnrichment({
         ...existing,
         textHash,
@@ -1243,8 +1248,8 @@ export async function enrichOne(
         fetchedAt: now,
         fetchSourceId: fetchResult.fetchSourceId,
         references: hardFailure ? existing.references : references,
-        pendingFetchReview: false,
-        pendingFetchReviewReason: undefined,
+        pendingFetchReview: keepRedirectReview,
+        pendingFetchReviewReason: keepRedirectReview ? 'url_redirect' : undefined,
         reviewRawRef: undefined,
         tier2Applied,
         updated_at: now,

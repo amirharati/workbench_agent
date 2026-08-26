@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Plus, RefreshCw, Search } from 'lucide-react';
+import { ArrowRight, ChevronRight, Plus, RefreshCw, Search } from 'lucide-react';
 import { subscribeToDataChanges } from '../../lib/dataChangeNotifier';
 import { isLinkQualityTaxonomyParent } from '../../lib/categorization/classificationPresentation';
+import {
+  findSimilarCategories,
+  type CategorySimilarityMatch,
+} from '../../lib/categorization/categoryManagement';
 import {
   getTaxonomyTreeWithCounts,
   type TaxonomyLeafRow,
@@ -39,6 +43,7 @@ const RELOAD_REASONS = new Set([
   'import.bulk',
   'pipeline.clear',
 ]);
+const ORPHAN_PARENT_ID = '__categories_without_parent__';
 
 export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({
   onBrowseCategory,
@@ -51,6 +56,10 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
+  const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
+  const [searchMatches, setSearchMatches] = useState<CategorySimilarityMatch[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchWarning, setSearchWarning] = useState<string | undefined>();
   const [createOpen, setCreateOpen] = useState(false);
   const taxonomyRef = useRef(taxonomy);
   taxonomyRef.current = taxonomy;
@@ -94,41 +103,101 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({
     });
   }, [reload]);
 
-  const q = query.trim().toLowerCase();
-  const filtered = useMemo(() => {
-    if (!taxonomy) return taxonomy;
-
-    const matchesCategory = (category: TaxonomyParentRow['category'] | TaxonomyLeafRow['category']) =>
-      [category.name, category.description, category.source]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q));
-
-    const parents = taxonomy.parents
-      .map((row) => {
-        let leaves = row.leaves;
-        if (q) {
-          const parentMatch = matchesCategory(row.category);
-          leaves = row.leaves.filter((leaf) => parentMatch || matchesCategory(leaf.category));
-          if (!parentMatch && leaves.length === 0) return null;
-          return { ...row, leaves: parentMatch ? row.leaves : leaves };
-        }
-        return { ...row, leaves };
-      })
-      .filter((row): row is TaxonomyParentRow => row != null);
-
-    let orphanLeaves = taxonomy.orphanLeaves;
-    if (q) {
-      orphanLeaves = orphanLeaves.filter((leaf) => matchesCategory(leaf.category));
-    }
-
-    return { ...taxonomy, parents, orphanLeaves };
-  }, [taxonomy, q]);
-
-  const data = filtered ?? taxonomy;
-  const { topicParents, pipelineParents } = splitTaxonomyParents(data?.parents ?? []);
-  const orphanLeaves = data?.orphanLeaves ?? [];
+  const searchQuery = query.trim();
+  const allCategories = useMemo(
+    () => taxonomy
+      ? [
+          ...taxonomy.parents.flatMap((row) => [row.category, ...row.leaves.map((leaf) => leaf.category)]),
+          ...taxonomy.orphanLeaves.map((leaf) => leaf.category),
+        ]
+      : [],
+    [taxonomy]
+  );
+  const { topicParents, pipelineParents } = useMemo(
+    () => splitTaxonomyParents(taxonomy?.parents ?? []),
+    [taxonomy]
+  );
+  const orphanLeaves = taxonomy?.orphanLeaves ?? [];
+  const selectedParent = useMemo(
+    () => taxonomy?.parents.find((row) => row.category.id === selectedParentId) ?? null,
+    [taxonomy, selectedParentId]
+  );
   const hasTaxonomyRows =
-    (data?.parents.length ?? 0) > 0 || orphanLeaves.length > 0;
+    (taxonomy?.parents.length ?? 0) > 0 || orphanLeaves.length > 0;
+
+  useEffect(() => {
+    if (!taxonomy) return;
+    if (!taxonomy.parents.length) {
+      const next = orphanLeaves.length ? ORPHAN_PARENT_ID : null;
+      if (selectedParentId !== next) setSelectedParentId(next);
+      return;
+    }
+    if (selectedParentId === ORPHAN_PARENT_ID && orphanLeaves.length) return;
+    if (selectedParentId && taxonomy.parents.some((row) => row.category.id === selectedParentId)) return;
+    setSelectedParentId(
+      topicParents[0]?.category.id
+      ?? pipelineParents[0]?.category.id
+      ?? (orphanLeaves.length ? ORPHAN_PARENT_ID : null)
+    );
+  }, [taxonomy, selectedParentId, topicParents, pipelineParents, orphanLeaves.length]);
+
+  useEffect(() => {
+    if (!searchQuery || !allCategories.length) {
+      setSearchMatches([]);
+      setSearching(false);
+      setSearchWarning(undefined);
+      return;
+    }
+    setSearchMatches([]);
+    setSearchWarning(undefined);
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      const normalized = searchQuery.toLocaleLowerCase();
+      const directMatches: CategorySimilarityMatch[] = allCategories
+        .map((category) => {
+          const name = category.name.toLocaleLowerCase();
+          const description = (category.description ?? '').toLocaleLowerCase();
+          const exact = name === normalized;
+          const score = exact ? 1 : name.includes(normalized) ? 0.78 : description.includes(normalized) ? 0.52 : 0;
+          return { category, score, lexicalScore: score, semanticScore: 0, exact };
+        })
+        .filter((match) => match.score > 0);
+      setSearchMatches(
+        directMatches
+          .sort((left, right) => Number(right.exact) - Number(left.exact) || right.score - left.score)
+          .slice(0, 40)
+      );
+
+      void findSimilarCategories(
+        { name: searchQuery, description: '', kind: 'leaf' },
+        allCategories
+      ).then((result) => {
+        if (!active) return;
+        const byId = new Map<string, CategorySimilarityMatch>();
+        for (const match of [...directMatches, ...result.matches]) {
+          const existing = byId.get(match.category.id);
+          if (!existing || match.score > existing.score) byId.set(match.category.id, match);
+        }
+        setSearchMatches(
+          [...byId.values()]
+            .sort((left, right) => Number(right.exact) - Number(left.exact) || right.score - left.score)
+            .slice(0, 40)
+        );
+        setSearchWarning(result.semanticWarning);
+      }).catch((error) => {
+        if (!active) return;
+        setSearchMatches(directMatches);
+        setSearchWarning(`Semantic search unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      }).finally(() => {
+        if (active) setSearching(false);
+      });
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [allCategories, searchQuery]);
 
   return (
     <div
@@ -195,16 +264,16 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({
         </div>
       )}
 
-      {data && (
+      {taxonomy && (
         <div className="ui-taxonomy__summary">
           <span>
-            <strong>{data.totals.parents}</strong> parent categories
+            <strong>{taxonomy.totals.parents}</strong> parent categories
           </span>
           <span>
-            <strong>{data.totals.leaves}</strong> child categories
+            <strong>{taxonomy.totals.leaves}</strong> child categories
           </span>
           <span>
-            <strong>{data.totals.itemsWithPrimary}</strong> bookmarks assigned
+            <strong>{taxonomy.totals.itemsWithPrimary}</strong> bookmarks assigned
           </span>
         </div>
       )}
@@ -216,7 +285,7 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search categories…"
+            placeholder="Search parents and children by name or meaning…"
             style={{
               flex: 1,
               border: 'none',
@@ -229,57 +298,90 @@ export const AiCategoriesView: React.FC<AiCategoriesViewProps> = ({
         </div>
       </div>
 
-      {loading && !data ? (
+      {loading && !taxonomy ? (
         <p style={{ color: 'var(--text-faint)', fontSize: 'var(--text-sm)' }}>Loading categories…</p>
       ) : !hasTaxonomyRows ? (
         <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
           {taxonomy
-            ? q
+            ? searchQuery
               ? 'No categories match your filter.'
               : 'The starter categories are still loading. Reopen this view if they do not appear shortly.'
             : 'Loading categories…'}
         </p>
       ) : (
         <div className="ui-taxonomy__browser" data-refreshing={refreshing ? 'true' : 'false'}>
-          <div className="ui-taxonomy__section-heading">
-            <div>
-              <h3>Topic hierarchy</h3>
-              <p>Parent categories contain the child categories used to organize bookmarks.</p>
+          {searchQuery ? (
+            <CategorySearchResults
+              matches={searchMatches}
+              parents={taxonomy?.parents ?? []}
+              searching={searching}
+              warning={searchWarning}
+              onBrowse={onBrowseCategory}
+            />
+          ) : (
+            <div className="ui-taxonomy__hierarchy">
+              <nav className="ui-taxonomy__parent-nav" aria-label="Category parents">
+                <ParentNavSection
+                  label="Topics"
+                  rows={topicParents}
+                  selectedParentId={selectedParentId}
+                  onSelect={setSelectedParentId}
+                />
+                {pipelineParents.length ? (
+                  <ParentNavSection
+                    label="Page status"
+                    rows={pipelineParents}
+                    selectedParentId={selectedParentId}
+                    onSelect={setSelectedParentId}
+                    variant="status"
+                  />
+                ) : null}
+                {orphanLeaves.length ? (
+                  <section className="ui-taxonomy__parent-nav-section">
+                    <h3>Needs organization</h3>
+                    <div className="ui-taxonomy__parent-nav-list">
+                      <button
+                        type="button"
+                        className="ui-taxonomy__parent-nav-item"
+                        data-selected={selectedParentId === ORPHAN_PARENT_ID ? 'true' : 'false'}
+                        onClick={() => setSelectedParentId(ORPHAN_PARENT_ID)}
+                      >
+                        <span>
+                          <strong>Without a parent</strong>
+                          <small>{orphanLeaves.length} {orphanLeaves.length === 1 ? 'category' : 'categories'}</small>
+                        </span>
+                        <ChevronRight size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+              </nav>
+              <div className="ui-taxonomy__parent-detail">
+                {selectedParent ? (
+                  <CategoryGroup
+                    row={selectedParent}
+                    variant={isLinkQualityTaxonomyParent(selectedParent.category.id) ? 'status' : 'topic'}
+                    onBrowse={onBrowseCategory}
+                  />
+                ) : null}
+                {selectedParentId === ORPHAN_PARENT_ID && orphanLeaves.length > 0 ? (
+                  <section className="ui-taxonomy__orphans">
+                    <div className="ui-taxonomy__section-heading">
+                      <div>
+                        <h3>Categories without a parent</h3>
+                        <p>Categories not attached to a parent yet.</p>
+                      </div>
+                      <span>{orphanLeaves.length}</span>
+                    </div>
+                    <div className="ui-taxonomy__children ui-taxonomy__children--standalone">
+                      {orphanLeaves.map((leaf) => (
+                        <CategoryLeaf key={leaf.category.id} leaf={leaf} onBrowse={onBrowseCategory} />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </div>
             </div>
-            <span>{topicParents.length} parents</span>
-          </div>
-          <div className="ui-taxonomy__groups">
-          {topicParents.map((row) => (
-            <CategoryGroup
-              key={row.category.id}
-              row={row}
-              onBrowse={onBrowseCategory}
-            />
-          ))}
-          </div>
-
-          {pipelineParents.length > 0 ? (
-            <PageStatusCategories
-              parents={pipelineParents}
-              onBrowse={onBrowseCategory}
-            />
-          ) : null}
-
-          {orphanLeaves.length > 0 && (
-            <section className="ui-taxonomy__orphans">
-              <div className="ui-taxonomy__section-heading">
-                <div>
-                  <h3>Categories without a parent</h3>
-                  <p>These categories are part of the hierarchy but are not attached to a parent yet.</p>
-                </div>
-                <span>{orphanLeaves.length} categories</span>
-              </div>
-              <div className="ui-taxonomy__children ui-taxonomy__children--standalone">
-                {orphanLeaves.map((leaf) => (
-                  <CategoryLeaf key={leaf.category.id} leaf={leaf} onBrowse={onBrowseCategory} />
-                ))}
-              </div>
-            </section>
           )}
         </div>
       )}
@@ -311,27 +413,110 @@ function CategoryCount({ value }: { value: number }) {
   );
 }
 
-function PageStatusCategories({
-  parents,
-  onBrowse,
+function ParentNavSection({
+  label,
+  rows,
+  selectedParentId,
+  onSelect,
+  variant = 'topic',
 }: {
-  parents: TaxonomyParentRow[];
-  onBrowse?: (categoryId: string, name: string) => void;
+  label: string;
+  rows: TaxonomyParentRow[];
+  selectedParentId: string | null;
+  onSelect: (categoryId: string) => void;
+  variant?: 'topic' | 'status';
 }) {
   return (
-    <section className="ui-taxonomy__status-section">
-      <div className="ui-taxonomy__section-heading">
-        <div>
-          <h3>Page status hierarchy</h3>
-          <p>Non-topic categories for broken, low-content, redirected, or sign-in-only pages.</p>
-        </div>
-        <span>{parents.length} {parents.length === 1 ? 'parent' : 'parents'}</span>
-      </div>
-      <div className="ui-taxonomy__groups">
-        {parents.map((row) => (
-          <CategoryGroup key={row.category.id} row={row} variant="status" onBrowse={onBrowse} />
+    <section className="ui-taxonomy__parent-nav-section" data-variant={variant}>
+      <h3>{label}</h3>
+      <div className="ui-taxonomy__parent-nav-list">
+        {rows.map((row) => (
+          <button
+            key={row.category.id}
+            type="button"
+            className="ui-taxonomy__parent-nav-item"
+            data-selected={selectedParentId === row.category.id ? 'true' : 'false'}
+            onClick={() => onSelect(row.category.id)}
+          >
+            <span>
+              <strong>{row.category.name}</strong>
+              <small>{row.leaves.length} {row.leaves.length === 1 ? 'child' : 'children'} · {row.itemCount} saved</small>
+            </span>
+            <ChevronRight size={14} aria-hidden="true" />
+          </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+function CategorySearchResults({
+  matches,
+  parents,
+  searching,
+  warning,
+  onBrowse,
+}: {
+  matches: CategorySimilarityMatch[];
+  parents: TaxonomyParentRow[];
+  searching: boolean;
+  warning?: string;
+  onBrowse?: (categoryId: string, name: string) => void;
+}) {
+  const parentById = new Map(parents.map((row) => [row.category.id, row]));
+  const countsById = new Map<string, number>();
+  for (const parent of parents) {
+    countsById.set(parent.category.id, parent.itemCount);
+    for (const leaf of parent.leaves) countsById.set(leaf.category.id, leaf.itemCount);
+  }
+
+  return (
+    <section className="ui-taxonomy__search-results" aria-live="polite">
+      <div className="ui-taxonomy__section-heading">
+        <div>
+          <h3>Category investigation</h3>
+          <p>Keyword and semantic matches across parents and children.</p>
+        </div>
+        <span>{searching ? 'Comparing meaning…' : `${matches.length} matches`}</span>
+      </div>
+      {warning ? <p className="ui-taxonomy__search-warning">{warning}</p> : null}
+      {!searching && matches.length === 0 ? (
+        <p className="ui-taxonomy__empty-search">No matching parent or child categories.</p>
+      ) : (
+        <div className="ui-taxonomy__search-grid">
+          {matches.map((match) => {
+            const parent = match.category.kind === 'leaf' && match.category.parentId
+              ? parentById.get(match.category.parentId)
+              : undefined;
+            const content = (
+              <>
+                <div className="ui-taxonomy__search-result-copy">
+                  <span>{match.category.kind === 'parent' ? 'Parent' : parent?.category.name ?? 'Child without parent'}</span>
+                  <strong>{match.category.name}</strong>
+                  {match.category.description ? <p>{match.category.description}</p> : null}
+                </div>
+                <div className="ui-taxonomy__search-result-meta">
+                  <span>{Math.round(match.score * 100)}% match</span>
+                  <CategoryCount value={countsById.get(match.category.id) ?? match.category.itemCount ?? 0} />
+                  {onBrowse ? <ArrowRight size={14} /> : null}
+                </div>
+              </>
+            );
+            return onBrowse ? (
+              <button
+                type="button"
+                key={match.category.id}
+                className="ui-taxonomy__search-result"
+                onClick={() => onBrowse(match.category.id, match.category.name)}
+              >
+                {content}
+              </button>
+            ) : (
+              <div key={match.category.id} className="ui-taxonomy__search-result">{content}</div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

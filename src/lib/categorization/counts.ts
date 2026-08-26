@@ -1,5 +1,9 @@
 import type { AiCategory, AiItemCategoryLink } from './types';
-import { classifyStateForLinkQualityLeaf, isLinkQualityLeafId } from './linkQuality';
+import {
+  classifyStateForLinkQualityLeaf,
+  isLinkQualityLeafId,
+  isLinkQualityRedirectMismatchLeafId,
+} from './linkQuality';
 import { isGeneralLeafId } from './taxonomyCatalog';
 
 const COUNTABLE_STATUSES = new Set(['suggested', 'accepted']);
@@ -93,15 +97,41 @@ export function applyCountsToCategories(
 
 export function primaryLeafIdFromLinks(links: AiItemCategoryLink[]): string | null {
   const primary = links.find(
-    (l) => l.isPrimary && COUNTABLE_STATUSES.has(l.status)
+    (l) =>
+      l.isPrimary &&
+      COUNTABLE_STATUSES.has(l.status) &&
+      !isLinkQualityRedirectMismatchLeafId(l.categoryId)
   );
-  return primary?.categoryId ?? null;
+  if (primary) return primary.categoryId;
+  const fallback = links
+    .filter(
+      (link) =>
+        COUNTABLE_STATUSES.has(link.status) &&
+        !isLinkQualityRedirectMismatchLeafId(link.categoryId)
+    )
+    .sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'accepted' ? -1 : 1;
+      return b.score - a.score || b.updated_at - a.updated_at;
+    })[0];
+  return fallback?.categoryId ?? null;
 }
 
 /** User-confirmed primary category (accepted only — not AI suggestions). */
 export function verifiedPrimaryLeafIdFromLinks(links: AiItemCategoryLink[]): string | null {
-  const primary = links.find((l) => l.isPrimary && l.status === 'accepted');
-  return primary?.categoryId ?? null;
+  const primary = links.find(
+    (link) =>
+      link.isPrimary &&
+      link.status === 'accepted' &&
+      !isLinkQualityRedirectMismatchLeafId(link.categoryId)
+  );
+  if (primary) return primary.categoryId;
+  return links
+    .filter(
+      (link) =>
+        link.status === 'accepted' &&
+        !isLinkQualityRedirectMismatchLeafId(link.categoryId)
+    )
+    .sort((a, b) => b.score - a.score || b.updated_at - a.updated_at)[0]?.categoryId ?? null;
 }
 
 export function classifyStateFromPrimary(leafId: string | null, eligible: boolean): import('./types').ClassifyState {

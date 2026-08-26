@@ -910,6 +910,13 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   );
 
   tableRowsForListRef.current = tableRowsForList;
+  const visibleRecentUpdateCount = useMemo(
+    () => tableRowsForList.reduce(
+      (count, row) => count + (recentUpdateIdSet.has(row.item.id) ? 1 : 0),
+      0
+    ),
+    [tableRowsForList, recentUpdateIdSet]
+  );
 
   useEffect(() => {
     setDisplayOrderIds(null);
@@ -923,15 +930,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     const inBase = new Set(base.map((r) => r.item.id));
     const extra = inspectState.ids
       .filter((id) => !inBase.has(id))
-      .map(
-        (id) =>
-          tableRowsForList.find((r) => r.item.id === id) ??
-          scopedRows.find((r) => r.item.id === id) ??
-          rows.find((r) => r.item.id === id)
-      )
+      .map((id) => tableRowsForList.find((r) => r.item.id === id))
       .filter((r): r is EnrichmentHubRow => r != null);
     return extra.length ? [...base, ...extra] : base;
-  }, [tableRowsForList, pageLimit, inspectState?.ids, scopedRows, rows]);
+  }, [tableRowsForList, pageLimit, inspectState?.ids]);
 
   const statusHelpRow = useMemo(
     () =>
@@ -949,11 +951,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
   useEffect(() => {
     setSelectedIds((prev) => {
       const visible = new Set(filteredRows.map((r) => r.item.id));
-      const pinned = new Set([...(inspectState?.ids ?? []), ...recentUpdateIds]);
-      const next = new Set([...prev].filter((id) => visible.has(id) || pinned.has(id)));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [filteredRows, inspectState?.ids, recentUpdateIds]);
+  }, [filteredRows]);
 
   const hasMoreToShow =
     tableRowsForList.length > pageLimit || rows.length < totalInScope;
@@ -1754,17 +1755,6 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                       {statusBadge.text}
                       <HelpCircle size={11} style={{ opacity: 0.75, flexShrink: 0 }} />
                     </button>
-                    {isRecentUpdate ? (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: 'var(--text-faint)',
-                          lineHeight: 1.2,
-                        }}
-                      >
-                        No longer matches filter
-                      </span>
-                    ) : null}
                   </div>
                   <div
                     className="ui-pipeline-table__next-step"
@@ -1896,8 +1886,8 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           <> · {rows.length} loaded of {totalInScope} matching</>
         ) : null}
         {loadingMore ? ' · loading more…' : null}
-        {recentUpdateIds.length > 0
-          ? ` · ${recentUpdateIds.length} just updated (shown until you change filters)`
+        {visibleRecentUpdateCount > 0
+          ? ` · ${visibleRecentUpdateCount} just updated in this view`
           : ''}
         {counts && counts.failed > 0 ? (
           <> · {counts.failed} enrich failures in library</>

@@ -177,6 +177,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [categoriesContextScope, setCategoriesContextScope] = React.useState<HomeContextScope>(() =>
     normalizeHomeContextScope(initialContextUi.categoriesScope, scopeProjectId, scopeCollectionId, false)
   );
+  const homeSection =
+    homeState.homeSection === 'search' || homeState.homeSection === 'categories'
+      ? homeState.homeSection
+      : 'overview';
   const searchContextInitializedRef = React.useRef(false);
   const searchLayoutRef = React.useRef<HTMLDivElement>(null);
   const searchCompanionRef = React.useRef<HTMLDivElement>(null);
@@ -303,6 +307,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   );
 
   React.useEffect(() => {
+    if (homeSection !== 'overview') return;
     if (selectedOverviewItemId) {
       if (selectedOverviewItem) {
         onSelectedBrowseItemChange?.(selectedOverviewItem);
@@ -322,7 +327,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         setSelectedAllLibraryWorkspaceTabId(null);
       }
     }
-  }, [homeState.tabs.length, items, onSelectedBrowseItemChange, selectedAllLibraryWorkspaceTab, selectedAllLibraryWorkspaceTabId, selectedOverviewItem, selectedOverviewItemId]);
+  }, [homeSection, homeState.tabs.length, items, onSelectedBrowseItemChange, selectedAllLibraryWorkspaceTab, selectedAllLibraryWorkspaceTabId, selectedOverviewItem, selectedOverviewItemId]);
 
   React.useEffect(() => {
     if (
@@ -954,10 +959,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setHomeItemContextMenu({ item, x: e.clientX, y: e.clientY });
   };
 
-  const homeSection =
-    homeState.homeSection === 'search' || homeState.homeSection === 'categories'
-      ? homeState.homeSection
-      : 'overview';
   React.useEffect(() => {
     if (homeSection !== 'search' || searchContextInitializedRef.current) return;
     searchContextInitializedRef.current = true;

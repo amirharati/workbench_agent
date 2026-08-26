@@ -284,4 +284,57 @@ describe('HomeView search scope', () => {
     expect(markup).toContain('Research');
     expect(markup).toContain('All Library');
   });
+
+  it('does not republish a hidden Overview selection while Categories owns the inspector', async () => {
+    localStorage.setItem('workbench:home-page-state:v1:project-a:all', JSON.stringify({
+      selectedOverviewItemId: projectItem.id,
+    }));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    roots.push(root);
+    const onSelectedBrowseItemChange = vi.fn();
+
+    await act(async () => root.render(
+      <HomeView
+        items={[projectItem, globalResultItem]}
+        collections={[collectionA, collectionB]}
+        projects={[projectA, projectB]}
+        workspaces={[]}
+        homeState={{
+          tabs: [], activeTabId: null, bottomLayout: 'tabs', isSidebarCollapsed: false,
+          homeSection: 'categories',
+        }}
+        onHomeStateChange={vi.fn()}
+        onSearchQueryChange={vi.fn()}
+        scopeProjectId={projectA.id}
+        scopeCollectionId="all"
+        onSelectedBrowseItemChange={onSelectedBrowseItemChange}
+      />
+    ));
+
+    expect(onSelectedBrowseItemChange).not.toHaveBeenCalledWith(projectItem);
+
+    await act(async () => root.render(
+      <HomeView
+        items={[{ ...projectItem, updated_at: 3 }, globalResultItem]}
+        collections={[collectionA, collectionB]}
+        projects={[projectA, projectB]}
+        workspaces={[]}
+        homeState={{
+          tabs: [], activeTabId: null, bottomLayout: 'tabs', isSidebarCollapsed: false,
+          homeSection: 'categories',
+        }}
+        onHomeStateChange={vi.fn()}
+        onSearchQueryChange={vi.fn()}
+        scopeProjectId={projectA.id}
+        scopeCollectionId="all"
+        onSelectedBrowseItemChange={onSelectedBrowseItemChange}
+      />
+    ));
+
+    expect(onSelectedBrowseItemChange).not.toHaveBeenCalledWith(expect.objectContaining({
+      id: projectItem.id,
+    }));
+  });
 });

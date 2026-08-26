@@ -7,7 +7,11 @@ import {
   assessCategorizationEligibility,
   fetchFailedWithoutUsableBody,
 } from '../enrichment/categorizationEligibility';
-import { buildCategorizationText } from '../enrichment/categorizationText';
+import {
+  buildCategorizationText,
+  categorizationSourceTitle,
+  isRedirectedFinalDestination,
+} from '../enrichment/categorizationText';
 import {
   applyCountsToCategories,
   classifyStateFromPrimary,
@@ -25,6 +29,7 @@ import {
   fetchAttemptedForLinkQuality,
   findLinkQualityCategory,
   isLinkQualityLeafId,
+  isLinkQualityRedirectMismatchLeafId,
   classifyStateForLinkQualityLeaf,
   linkQualityCategoryAllowed,
   type LinkQualityDetectInput,
@@ -145,14 +150,15 @@ export async function getScopedCategorizationStats(
     if (enrichment?.aiStatus === 'ok') stats.aiReady++;
     
     const hints = { aiTags: enrichment?.aiTags };
-    const eligibility = assessCategorizationEligibility(item, enrichment, hints);
+    const sourceItem = categorizationSourceItem(item, enrichment);
+    const eligibility = assessCategorizationEligibility(sourceItem, enrichment, hints);
     
     if (!eligibility.eligible) {
       stats.ineligible++;
       continue;
     }
     
-    const classifyText = buildCategorizationText(item, enrichment, {
+    const classifyText = buildCategorizationText(sourceItem, enrichment, {
       includeSnippet: false,
       ...hints,
     });
@@ -188,7 +194,34 @@ function assignmentsFromCategoryIds(categoryIds: string[]): Array<{
   }));
 }
 
-async function buildClassifyBatchItem(
+function redirectWarningLink(
+  itemId: string,
+  category: AiCategory,
+  now: number
+): AiItemCategoryLink {
+  return {
+    id: aiLinkId(itemId, category.id),
+    itemId,
+    categoryId: category.id,
+    score: 0.94,
+    isPrimary: false,
+    source: 'ai',
+    status: 'suggested',
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+function categorizationSourceItem(
+  item: Item,
+  enrichment?: ItemEnrichment
+): Item {
+  if (!isRedirectedFinalDestination(enrichment)) return item;
+  const title = categorizationSourceTitle(item, enrichment);
+  return title === item.title ? item : { ...item, title };
+}
+
+export async function buildClassifyBatchItem(
   item: Item,
   enrichment: ItemEnrichment | undefined
 ): Promise<{
@@ -199,8 +232,11 @@ async function buildClassifyBatchItem(
   eligibilityReason?: string;
   qualityTier?: 'high' | 'medium' | 'low';
 }> {
+  const classifyFinalDestination = isRedirectedFinalDestination(enrichment);
+  const sourceTitle = categorizationSourceTitle(item, enrichment);
+  const effectiveItem = categorizationSourceItem(item, enrichment);
   const hints = { aiTags: enrichment?.aiTags };
-  const eligibility = assessCategorizationEligibility(item, enrichment, hints);
+  const eligibility = assessCategorizationEligibility(effectiveItem, enrichment, hints);
   if (!eligibility.eligible) {
     return {
       batch: null,
@@ -210,8 +246,9 @@ async function buildClassifyBatchItem(
       eligibilityReason: eligibility.reason,
     };
   }
-  const classifyText = buildCategorizationText(item, enrichment, {
+  const classifyText = buildCategorizationText(effectiveItem, enrichment, {
     includeSnippet: false,
+    includeHost: !classifyFinalDestination,
     ...hints,
   });
   const hash = await hashText(classifyText);
@@ -222,7 +259,7 @@ async function buildClassifyBatchItem(
     qualityTier: eligibility.qualityTier,
     batch: {
       itemId: item.id,
-      title: item.title,
+      title: sourceTitle,
       textForClassification: classifyText,
       enrichmentAiTags: enrichment?.aiTags,
     },
@@ -295,7 +332,10 @@ export async function listItemIdsWithoutCategory(itemIds?: string[]): Promise<st
   for (const item of items) {
     if (scope && !scope.has(item.id)) continue;
     const enrichment = enrichByItem.get(item.id);
-    const eligibility = assessCategorizationEligibility(item, enrichment);
+    const eligibility = assessCategorizationEligibility(
+      categorizationSourceItem(item, enrichment),
+      enrichment
+    );
     const sig = signalByItem.get(item.id);
     const st = sig?.classifyState;
     const primaryId = primaryByItem.get(item.id);
@@ -350,14 +390,15 @@ export async function markItemsPendingClassify(itemIds: string[]): Promise<void>
   const { loadScopedPipelineRows } = await import('../pipeline/scopedPipelineRows');
   const scoped = await loadScopedPipelineRows(itemIds);
   const primaryCategoryByItem = new Map<string, string>();
-  const activeLinkQualityItems = new Set<string>();
+  const activeResolvedLinkQualityItems = new Set<string>();
   for (const l of scoped.links) {
     if (
       COUNTABLE_STATUSES.has(l.status) &&
       l.source === 'ai' &&
-      isLinkQualityLeafId(l.categoryId)
+      isLinkQualityLeafId(l.categoryId) &&
+      !isLinkQualityRedirectMismatchLeafId(l.categoryId)
     ) {
-      activeLinkQualityItems.add(l.itemId);
+      activeResolvedLinkQualityItems.add(l.itemId);
     }
     if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
       primaryCategoryByItem.set(l.itemId, l.categoryId);
@@ -375,7 +416,7 @@ export async function markItemsPendingClassify(itemIds: string[]): Promise<void>
   for (const itemId of itemIds) {
     const prev = scoped.signalByItem.get(itemId);
     const primaryId = primaryCategoryByItem.get(itemId);
-    const hasResolvedLinkQuality = activeLinkQualityItems.has(itemId);
+    const hasResolvedLinkQuality = activeResolvedLinkQualityItems.has(itemId);
     if (primaryId && !isLinkQualityLeafId(primaryId)) {
       if (hasResolvedLinkQuality && prev) {
         itemWrites.push({
@@ -473,7 +514,10 @@ export async function reconcileStaleIneligibleSignals(): Promise<number> {
     if (hasSpecificPrimaryTopic(primaryId, sig.classifyState)) continue;
 
     const enrichment = enrichByItem.get(sig.itemId);
-    const eligibility = assessCategorizationEligibility(item, enrichment);
+    const eligibility = assessCategorizationEligibility(
+      categorizationSourceItem(item, enrichment),
+      enrichment
+    );
     if (!eligibility.eligible) continue;
 
     itemWrites.push({
@@ -1239,6 +1283,16 @@ export async function classifyIncremental(
   let enrichByItem: Map<string, ItemEnrichment>;
   let signalByItem: Map<string, AiItemSignal>;
   let primaryCategoryByItem: Map<string, string>;
+  const activeLinkQualityIdsByItem = new Map<string, Set<string>>();
+
+  const rememberActiveLinkQuality = (links: AiItemCategoryLink[]) => {
+    for (const link of links) {
+      if (!COUNTABLE_STATUSES.has(link.status) || !isLinkQualityLeafId(link.categoryId)) continue;
+      const ids = activeLinkQualityIdsByItem.get(link.itemId) ?? new Set<string>();
+      ids.add(link.categoryId);
+      activeLinkQualityIdsByItem.set(link.itemId, ids);
+    }
+  };
 
   if (opts.itemIds?.length) {
     const { loadScopedPipelineRows } = await import('../pipeline/scopedPipelineRows');
@@ -1247,6 +1301,7 @@ export async function classifyIncremental(
     enrichByItem = scoped.enrichByItem;
     signalByItem = scoped.signalByItem;
     primaryCategoryByItem = scoped.primaryCategoryByItem;
+    rememberActiveLinkQuality(scoped.links);
   } else {
     // Unscoped drain — still need full signal rows when writing classify state back.
     items = await db.getAll('items');
@@ -1261,6 +1316,7 @@ export async function classifyIncremental(
     const allLinks = db.objectStoreNames.contains('ai_item_category_links')
       ? await db.getAll('ai_item_category_links')
       : [];
+    rememberActiveLinkQuality(allLinks);
     primaryCategoryByItem = new Map<string, string>();
     for (const l of allLinks) {
       if (l.isPrimary && COUNTABLE_STATUSES.has(l.status)) {
@@ -1274,6 +1330,7 @@ export async function classifyIncremental(
     batch: ClassifyBatchItem;
     hash: string;
     qualityTier?: 'high' | 'medium' | 'low';
+    redirectWarning?: { category: AiCategory; reason: string };
   }> = [];
   const gateWrites: Array<{ itemId: string; signal: AiItemSignal }> = [];
   const preBatchWrites: Array<{
@@ -1281,6 +1338,7 @@ export async function classifyIncremental(
     signal: AiItemSignal;
     links: AiItemCategoryLink[];
     removeAiSuggested: boolean;
+    removeResolvedLinkQuality?: boolean;
   }> = [];
   const summary = emptyTopicClassifySummary();
 
@@ -1292,11 +1350,6 @@ export async function classifyIncremental(
     const prev = signalByItem.get(item.id);
     const st = prev?.classifyState;
     const primaryId = primaryCategoryByItem.get(item.id);
-
-    if (st === 'manual_only' && !opts.forceReclassify) {
-      summary.skippedManualReview++;
-      continue;
-    }
 
     if (!built.eligible || !built.batch) {
       const lq =
@@ -1437,53 +1490,41 @@ export async function classifyIncremental(
     }
 
     const redirectAttention = detectUrlRedirectMismatchAttention(enrichment);
-    if (redirectAttention) {
-      const lqLeaf = findLinkQualityCategory(categories, redirectAttention.leafId);
-      if (lqLeaf) {
-        const now = Date.now();
-        summary.assignedPrimary++;
-        preBatchWrites.push({
+    const redirectCategory = redirectAttention
+      ? findLinkQualityCategory(categories, redirectAttention.leafId)
+      : undefined;
+    const redirectWarning = redirectAttention && redirectCategory
+      ? { category: redirectCategory, reason: redirectAttention.reason }
+      : undefined;
+
+    const reconcileRedirectWarning = () => {
+      if (!prev) return;
+      const activeQualityIds = activeLinkQualityIdsByItem.get(item.id);
+      if (!redirectWarning && !activeQualityIds?.size) return;
+      const now = Date.now();
+      preBatchWrites.push({
+        itemId: item.id,
+        removeAiSuggested: false,
+        removeResolvedLinkQuality: true,
+        links: redirectWarning
+          ? [redirectWarningLink(item.id, redirectWarning.category, now)]
+          : [],
+        signal: {
+          ...prev,
           itemId: item.id,
-          removeAiSuggested: false,
-          links: [
-            {
-              id: aiLinkId(item.id, lqLeaf.id),
-              itemId: item.id,
-              categoryId: lqLeaf.id,
-              score: 0.94,
-              isPrimary: true,
-              source: 'ai',
-              status: 'suggested',
-              created_at: now,
-              updated_at: now,
-            },
-          ],
-          signal: {
-            itemId: item.id,
-            textHash: prev?.textHash ?? '',
-            classifyTextHash: built.hash || prev?.classifyTextHash || '',
-            embeddingModel: prev?.embeddingModel ?? '',
-            embedding: prev?.embedding ?? [],
-            derivedTags: prev?.derivedTags ?? [],
-            signalStatus: 'ok',
-            classifyState: 'classified_attention',
-            discoverState: 'none',
-            isNovelty: false,
-            lastClassifySkipReason: redirectAttention.reason,
-            lastProcessedAt: now,
-            lastClassifiedAt: now,
-            classifyRetryCount: prev?.classifyRetryCount ?? 0,
-            llmReview: {
-              decisionType: 'existing',
-              categoryIds: [lqLeaf.id],
-              confidence: 0.94,
-              reason: redirectAttention.reason,
-              classifyMode: 'redirect-mismatch-attention',
-            },
-          },
-        });
-        continue;
-      }
+          lastProcessedAt: now,
+        },
+      });
+    };
+
+    if (
+      st === 'manual_only' &&
+      !isLinkQualityLeafId(primaryId) &&
+      !opts.forceReclassify
+    ) {
+      summary.skippedManualReview++;
+      reconcileRedirectWarning();
+      continue;
     }
 
     if (built.qualityTier) {
@@ -1533,6 +1574,7 @@ export async function classifyIncremental(
               },
         });
       }
+      reconcileRedirectWarning();
       continue;
     }
 
@@ -1558,6 +1600,7 @@ export async function classifyIncremental(
           },
         });
       }
+      reconcileRedirectWarning();
       continue;
     }
 
@@ -1566,6 +1609,7 @@ export async function classifyIncremental(
       batch: built.batch,
       hash: built.hash,
       qualityTier: built.qualityTier,
+      redirectWarning,
     });
     if (opts.maxItems && toProcess.length >= opts.maxItems) break;
   }
@@ -1716,6 +1760,33 @@ export async function classifyIncremental(
           needsReclassify: false,
         };
       }
+      if (decision?.decisionType === 'existing' && decision.categoryIds?.length) {
+        const redirectWarnings = decision.categoryIds.filter(
+          isLinkQualityRedirectMismatchLeafId
+        );
+        if (redirectWarnings.length) {
+          const primaryEligible = decision.categoryIds.filter(
+            (categoryId) => !isLinkQualityRedirectMismatchLeafId(categoryId)
+          );
+          decision = primaryEligible.length
+            ? {
+                ...decision,
+                categoryIds: [...primaryEligible, ...redirectWarnings],
+                reason: [decision.reason, 'URL redirect mismatch retained as a secondary warning.']
+                  .filter(Boolean)
+                  .join(' '),
+              }
+            : {
+                ...decision,
+                decisionType: 'none',
+                categoryIds: [],
+                reason: [
+                  decision.reason,
+                  'URL redirect mismatch is diagnostic only and cannot be the primary category.',
+                ].filter(Boolean).join(' '),
+              };
+        }
+      }
       const prevSignal = signalByItem.get(batchItem.itemId);
       const prevRetry = prevSignal?.classifyRetryCount ?? 0;
 
@@ -1798,22 +1869,32 @@ export async function classifyIncremental(
             })
           : null;
         if (lq && lqLeaf && lqInput && linkQualityCategoryAllowed(lqLeaf.id, lqInput)) {
+          const redirectOnlyWarning = isLinkQualityRedirectMismatchLeafId(lqLeaf.id);
           links.push({
             id: aiLinkId(batchItem.itemId, lqLeaf.id),
             itemId: batchItem.itemId,
             categoryId: lqLeaf.id,
             score: 0.9,
-            isPrimary: true,
+            isPrimary: !redirectOnlyWarning,
             source: 'ai',
             status: 'suggested',
             created_at: now,
             updated_at: now,
           });
-          classifyState = classifyStateForLinkQualityLeaf(lqLeaf.id);
-          retryCount = prevRetry;
-          summary.assignedPrimary++;
-          if (classifyState === 'classified_removal') summary.classifiedRemoval++;
-          lastClassifySkipReason = lq.reason;
+          if (redirectOnlyWarning) {
+            classifyState = 'pending_discover';
+            retryCount = prevRetry;
+            summary.unassigned++;
+            summary.pendingDiscover++;
+            lastClassifySkipReason =
+              'URL redirect mismatch saved as a warning; still needs a primary category';
+          } else {
+            classifyState = classifyStateForLinkQualityLeaf(lqLeaf.id);
+            retryCount = prevRetry;
+            summary.assignedPrimary++;
+            if (classifyState === 'classified_removal') summary.classifiedRemoval++;
+            lastClassifySkipReason = lq.reason;
+          }
         } else if (decision.novelTopicSuggestion || decision.proposedCategory) {
           classifyState = 'pending_discover';
           retryCount = prevRetry;
@@ -2053,6 +2134,25 @@ export async function classifyIncremental(
         });
       }
 
+      if (meta?.redirectWarning) {
+        const existingWarning = links.find(
+          (link) => link.categoryId === meta.redirectWarning!.category.id
+        );
+        if (existingWarning) {
+          existingWarning.score = Math.max(existingWarning.score, 0.94);
+          existingWarning.isPrimary = false;
+        } else {
+          links.push(
+            redirectWarningLink(
+              batchItem.itemId,
+              meta.redirectWarning.category,
+              now
+            )
+          );
+        }
+        summary.assignedSecondary++;
+      }
+
       const previousPrimaryId = primaryCategoryByItem.get(batchItem.itemId);
       const replacementPrimary = links.find(
         (link) => link.isPrimary && COUNTABLE_STATUSES.has(link.status)
@@ -2066,7 +2166,10 @@ export async function classifyIncremental(
         previousPrimaryId &&
           (
             !replacementPrimary ||
-            prevSignal?.classifyState === 'manual_only' ||
+            (
+              prevSignal?.classifyState === 'manual_only' &&
+              !isLinkQualityLeafId(previousPrimaryId)
+            ) ||
             evidenceStrength(previousPrimaryId) > evidenceStrength(replacementPrimary.categoryId)
           )
       );
@@ -2321,7 +2424,8 @@ export async function discoverBatch(
     const enrichment = enrichByItem.get(item.id);
     
     const hints = { aiTags: enrichment?.aiTags };
-    const eligibility = assessCategorizationEligibility(item, enrichment, hints);
+    const sourceItem = categorizationSourceItem(item, enrichment);
+    const eligibility = assessCategorizationEligibility(sourceItem, enrichment, hints);
     
     if (!eligibility.eligible) {
       runSummary.skippedIneligible++;
@@ -2359,11 +2463,11 @@ export async function discoverBatch(
 
     const summaryText =
       enrichment?.aiStatus === 'ok' ? enrichment.summary?.trim() || '' : '';
-    const classifyText = buildCategorizationText(item, enrichment, {
+    const classifyText = buildCategorizationText(sourceItem, enrichment, {
       includeSnippet: false,
       ...hints,
     });
-    const text = classifyText.trim() || summaryText || (item.title || '').trim();
+    const text = classifyText.trim() || summaryText || (sourceItem.title || '').trim();
     if (text.length < 40 && summaryText.length < 40) {
       runSummary.skippedTooShort++;
       continue;
@@ -2371,7 +2475,7 @@ export async function discoverBatch(
 
     samples.push({
       itemId: item.id,
-      title: item.title || '',
+      title: sourceItem.title || '',
       aiSummary: summaryText || text.slice(0, 2000),
       stuckKind,
       novelTopicSuggestion: prev?.llmReview?.novelTopicSuggestion,

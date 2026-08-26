@@ -13,6 +13,8 @@ export const LEAN_TEXT_MIN_FOR_SNIPPET_FALLBACK = 80;
 export interface BuildCategorizationTextOptions {
   /** Include capped fetch snippet (default false — lean path for embeddings). */
   includeSnippet?: boolean;
+  /** Include the saved URL host (default true). Disable when classifying a redirected final page. */
+  includeHost?: boolean;
   snippetMaxChars?: number;
   aiTags?: string[];
   aiSummary?: string;
@@ -50,6 +52,25 @@ function hostFromUrl(url: string): string | null {
   }
 }
 
+export function isRedirectedFinalDestination(
+  enrichment?: ItemEnrichment | null
+): boolean {
+  return Boolean(
+    enrichment?.pendingFetchReview &&
+    enrichment.pendingFetchReviewReason === 'url_redirect'
+  );
+}
+
+export function categorizationSourceTitle(
+  item: Pick<Item, 'title'>,
+  enrichment?: ItemEnrichment | null
+): string {
+  if (isRedirectedFinalDestination(enrichment) && enrichment?.fetchedTitle?.trim()) {
+    return enrichment.fetchedTitle.trim();
+  }
+  return (item.title || '').trim();
+}
+
 /**
  * Char count of lean fields only (no snippet) — used for min-length and fallback.
  */
@@ -59,12 +80,14 @@ export function substantiveTextLength(
   options?: BuildCategorizationTextOptions
 ): number {
   let n = 0;
-  const title = (item.title || '').trim();
+  const title = categorizationSourceTitle(item, enrichment);
   if (title) n += title.length;
   const notes = getPlacementNotes(item);
   if (notes) n += notes.length;
-  const host = hostFromUrl(item.url || '');
-  if (host) n += host.length;
+  if (!isRedirectedFinalDestination(enrichment)) {
+    const host = hostFromUrl(item.url || '');
+    if (host) n += host.length;
+  }
 
   const tags = options?.aiTags ?? enrichment?.aiTags;
   if (tags?.length) n += tags.join(' ').length;
@@ -95,11 +118,15 @@ export function buildCategorizationText(
   options?: BuildCategorizationTextOptions
 ): string {
   const lines: string[] = [];
-  const title = (item.title || '').trim();
+  const title = categorizationSourceTitle(item, enrichment);
   if (title) lines.push(`Title: ${title}`);
 
-  const host = hostFromUrl(item.url || '');
-  if (host) lines.push(`Host: ${host}`);
+  const includeHost =
+    options?.includeHost ?? !isRedirectedFinalDestination(enrichment);
+  if (includeHost) {
+    const host = hostFromUrl(item.url || '');
+    if (host) lines.push(`Host: ${host}`);
+  }
 
   const localNotes = getPlacementNotes(item);
   if (localNotes) lines.push(`Notes:\n${localNotes}`);

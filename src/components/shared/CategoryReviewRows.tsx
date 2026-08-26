@@ -7,6 +7,7 @@ import {
 import {
   isLinkQualityAttentionLeafId,
   isLinkQualityRemovalLeafId,
+  isLinkQualityRedirectMismatchLeafId,
 } from '../../lib/categorization/linkQuality';
 import { useToast } from '../ToastContainer';
 
@@ -190,7 +191,13 @@ export function SuggestedCategoryRow({
   feedback,
 }: {
   itemId: string;
-  link: { categoryId: string; name: string; parentName?: string; score: number };
+  link: {
+    categoryId: string;
+    name: string;
+    parentName?: string;
+    score: number;
+    isPrimary?: boolean;
+  };
   onDone: () => void;
   onEdit?: () => void;
   onBrowse?: (categoryId: string, name: string) => void;
@@ -198,6 +205,12 @@ export function SuggestedCategoryRow({
 }) {
   const { addToast } = useToast();
   const [busy, setBusy] = useState<'accept' | 'reject' | null>(null);
+  const redirectWarning = isLinkQualityRedirectMismatchLeafId(link.categoryId);
+  const reviewLabel = redirectWarning
+    ? `${link.name} (warning)`
+    : link.isPrimary
+      ? `${link.name} (suggested · primary)`
+      : `${link.name} (suggested)`;
 
   const notify = (message: string, type: 'success' | 'error') => {
     if (feedback) {
@@ -245,7 +258,7 @@ export function SuggestedCategoryRow({
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 3, minWidth: 0 }}>
         <CategoryChip
-          label={`${link.name} (suggested)`}
+          label={reviewLabel}
           parentLabel={link.parentName}
           categoryId={link.categoryId}
           muted

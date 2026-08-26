@@ -72,6 +72,7 @@ function rowStateColor(row: PipelineQueueItemRow): string {
     if (row.enrichmentStatusLabel.startsWith('Embed ·')) return 'var(--error, #f85149)';
     return 'var(--er-warn, #d29922)';
   }
+  if (row.attentionCategoryIds?.length) return 'var(--er-warn, #d29922)';
   const stateLabel = rowStateLabel(row);
   if (stateLabel === 'Removal candidate') return 'var(--error, #f85149)';
   if (stateLabel === 'Needs attention' || stateLabel === 'General / Other') {
@@ -102,7 +103,11 @@ function rowStateLabel(row: PipelineQueueItemRow): string {
     eligible: row.eligible,
     eligibilityReason: row.eligibilityReason,
   });
-  return displayClassifyStateLabel(row.classifyState, blocker, row.enrichmentStatusLabel);
+  const label = displayClassifyStateLabel(row.classifyState, blocker, row.enrichmentStatusLabel);
+  if (row.attentionCategoryIds?.length && row.classifyState === 'classified') {
+    return 'Has topic · warning';
+  }
+  return label;
 }
 
 function formatTime(ts?: number): string {
@@ -447,6 +452,13 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   );
 
   tableRowsForListRef.current = tableRowsForList;
+  const visibleRecentUpdateCount = useMemo(
+    () => tableRowsForList.reduce(
+      (count, row) => count + (recentUpdateIdSet.has(row.item.id) ? 1 : 0),
+      0
+    ),
+    [tableRowsForList, recentUpdateIdSet]
+  );
 
   useEffect(() => {
     setDisplayOrderIds(null);
@@ -462,11 +474,10 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
   useEffect(() => {
     setSelectedIds((prev) => {
       const visible = new Set(filteredRows.map((r) => r.item.id));
-      const pinned = new Set([...(inspectState?.ids ?? []), ...recentUpdateIds]);
-      const next = new Set([...prev].filter((id) => visible.has(id) || pinned.has(id)));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [filteredRows, inspectState?.ids, recentUpdateIds]);
+  }, [filteredRows]);
 
   const allSelected =
     visibleRows.length > 0 && visibleRows.every((r) => selectedIds.has(r.item.id));
@@ -866,8 +877,8 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
             <span className="ui-pipeline-hub__filter-summary">
               {tableRowsForList.length} in view · filter:{' '}
               {PIPELINE_QUEUE_FILTER_OPTIONS.find((o) => o.id === filter)?.label}
-              {recentUpdateIds.length > 0
-                ? ` · ${recentUpdateIds.length} just updated (shown until you change filters)`
+              {visibleRecentUpdateCount > 0
+                ? ` · ${visibleRecentUpdateCount} just updated in this view`
                 : ''}
             </span>
           </div>
@@ -945,7 +956,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                 const st = row.classifyState;
                 const topicPresentation = topicSourcePresentation(row);
                 const isRecentUpdate = recentUpdateIdSet.has(row.item.id);
-                const stillMatchesFilter = filteredRows.some((r) => r.item.id === row.item.id);
                 const isCurrentInspect = focusedItemId === row.item.id;
                 return (
                   <div
@@ -1005,11 +1015,6 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                           ) : null}
                         </div>
                         <BookmarkUrlLink item={row.item} style={{ marginTop: 0 }} />
-                        {isRecentUpdate && !stillMatchesFilter ? (
-                          <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2 }}>
-                            No longer matches filter
-                          </div>
-                        ) : null}
                       </div>
                       <span
                         className="ui-pipeline-table__state"
@@ -1046,7 +1051,11 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
                         }}
-                        title={row.topicPath ?? undefined}
+                        title={
+                          [row.topicPath, ...(row.attentionCategoryNames ?? [])]
+                            .filter(Boolean)
+                            .join(' · ') || undefined
+                        }
                       >
                         {row.topicPath ? (
                           <>
@@ -1066,7 +1075,22 @@ export const PipelineHubCategoriesLane: React.FC<PipelineHubCategoriesLaneProps>
                             >
                               {topicSourceLabel(row)}
                             </span>
+                            {row.attentionCategoryNames?.length ? (
+                              <span
+                                style={{
+                                  marginLeft: 6,
+                                  color: 'var(--er-warn, #d29922)',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                ⚠ {row.attentionCategoryNames.join(', ')}
+                              </span>
+                            ) : null}
                           </>
+                        ) : row.attentionCategoryNames?.length ? (
+                          <span style={{ color: 'var(--er-warn, #d29922)', fontWeight: 600 }}>
+                            ⚠ {row.attentionCategoryNames.join(', ')}
+                          </span>
                         ) : (
                           '—'
                         )}

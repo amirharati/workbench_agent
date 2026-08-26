@@ -474,6 +474,124 @@ describe('pipeline stage signal ownership', () => {
     db.close();
   });
 
+  it('never promotes a redirect mismatch warning and resolves it on a clean rerun', async () => {
+    const sqlite = await initSqlite3();
+    const db = new sqlite.oo1.DB();
+    db.exec('PRAGMA foreign_keys = ON;');
+    initSchema(db, 8);
+    db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://short.example/path', 1, 1)");
+    const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putTopicParent(store);
+    putLinkQualityParent(store);
+    store.putCategory(linkQualityCategory('seed_url-redirect-mismatch'));
+    store.putSignal(signal({ classifyState: 'pending_classify', llmReview: undefined }));
+    commitClassificationInStore(store, {
+      categories: [],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [link('seed_url-redirect-mismatch', { status: 'accepted' })],
+        signal: signal({
+          classifyState: 'classified_attention',
+          llmReview: { decisionType: 'existing', categoryIds: ['seed_url-redirect-mismatch'] },
+        }),
+      }],
+    });
+    expect(store.getLinksByItem('item-1')).toEqual([
+      expect.objectContaining({
+        categoryId: 'seed_url-redirect-mismatch',
+        isPrimary: false,
+        status: 'accepted',
+      }),
+    ]);
+    expect(store.getSignal('item-1')?.classifyState).toBe('pending_discover');
+
+    commitClassificationInStore(store, {
+      categories: [category('housing-rentals')],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        removeResolvedLinkQuality: true,
+        links: [
+          link('housing-rentals', { updated_at: 4 }),
+          link('seed_url-redirect-mismatch', { isPrimary: false, updated_at: 4 }),
+        ],
+        signal: signal({
+          classifyState: 'classified',
+          llmReview: {
+            decisionType: 'existing',
+            categoryIds: ['housing-rentals', 'seed_url-redirect-mismatch'],
+          },
+        }),
+      }],
+    });
+
+    let links = store.getLinksByItem('item-1');
+    expect(links.find((row) => row.categoryId === 'housing-rentals')?.isPrimary).toBe(true);
+    expect(links.find((row) => row.categoryId === 'seed_url-redirect-mismatch')).toMatchObject({
+      isPrimary: false,
+      status: 'accepted',
+    });
+    expect(store.getSignal('item-1')?.classifyState).toBe('classified');
+
+    commitClassificationInStore(store, {
+      categories: [],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        removeResolvedLinkQuality: true,
+        links: [link('housing-rentals', { updated_at: 5 })],
+        signal: signal({
+          classifyState: 'classified',
+          llmReview: { decisionType: 'existing', categoryIds: ['housing-rentals'] },
+        }),
+      }],
+    });
+
+    links = store.getLinksByItem('item-1');
+    expect(links.find((row) => row.categoryId === 'seed_url-redirect-mismatch')).toBeUndefined();
+    expect(links.find((row) => row.categoryId === 'housing-rentals')?.isPrimary).toBe(true);
+    db.close();
+  });
+
+  it('keeps a removal/error category primary over redirect mismatch', async () => {
+    const sqlite = await initSqlite3();
+    const db = new sqlite.oo1.DB();
+    db.exec('PRAGMA foreign_keys = ON;');
+    initSchema(db, 8);
+    db.exec("INSERT INTO items (id, url, created_at, updated_at) VALUES ('item-1', 'https://short.example/path', 1, 1)");
+    const store = new SqliteStore(createConnectionFromDatabase(db, 'memory'));
+    putLinkQualityParent(store);
+    store.putCategory(linkQualityCategory('seed_page-not-found'));
+    store.putCategory(linkQualityCategory('seed_url-redirect-mismatch'));
+    store.putSignal(signal({ classifyState: 'pending_classify', llmReview: undefined }));
+
+    commitClassificationInStore(store, {
+      categories: [],
+      itemWrites: [{
+        itemId: 'item-1',
+        removeAiSuggested: false,
+        links: [
+          link('seed_url-redirect-mismatch', { updated_at: 4 }),
+          link('seed_page-not-found', { isPrimary: false, updated_at: 3 }),
+        ],
+        signal: signal({
+          classifyState: 'classified_attention',
+          llmReview: {
+            decisionType: 'existing',
+            categoryIds: ['seed_url-redirect-mismatch', 'seed_page-not-found'],
+          },
+        }),
+      }],
+    });
+
+    const links = store.getLinksByItem('item-1');
+    expect(links.find((row) => row.categoryId === 'seed_page-not-found')?.isPrimary).toBe(true);
+    expect(links.find((row) => row.categoryId === 'seed_url-redirect-mismatch')?.isPrimary).toBe(false);
+    expect(store.getSignal('item-1')?.classifyState).toBe('classified_removal');
+    db.close();
+  });
+
   it('clears a resolved failure assignment before a replacement category exists', async () => {
     const sqlite = await initSqlite3();
     const db = new sqlite.oo1.DB();

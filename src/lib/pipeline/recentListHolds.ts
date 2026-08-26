@@ -2,34 +2,32 @@
 export type RecentHoldRow = { item: { id: string } };
 
 /**
- * Keep rows visible after an action even when they no longer match filters,
- * until the user changes filters (filterSessionKey reset).
+ * Preserve the pre-action ordering for rows that still match the active
+ * filters. Recently updated rows may remain highlighted, but a hold must never
+ * make a non-matching row visible: filter counts and rendered rows share the
+ * same membership invariant.
  */
 export function buildDisplayListWithRecentHolds<T extends RecentHoldRow>(
   filteredRows: T[],
   displayOrderIds: string[] | null,
-  recentUpdateIds: ReadonlySet<string>,
-  ...rowSources: T[][]
+  _recentUpdateIds: ReadonlySet<string>,
+  ..._rowSources: T[][]
 ): T[] {
-  if (recentUpdateIds.size === 0) return filteredRows;
+  if (!displayOrderIds) return filteredRows;
 
-  const freshById = new Map<string, T>();
-  for (const source of rowSources) {
-    for (const row of source) freshById.set(row.item.id, row);
+  const filteredById = new Map(filteredRows.map((row) => [row.item.id, row]));
+  const ordered: T[] = [];
+  const included = new Set<string>();
+  for (const id of displayOrderIds) {
+    const row = filteredById.get(id);
+    if (!row) continue;
+    ordered.push(row);
+    included.add(id);
   }
-
-  const filteredIds = new Set(filteredRows.map((r) => r.item.id));
-  let order = displayOrderIds ?? filteredRows.map((r) => r.item.id);
   for (const row of filteredRows) {
-    if (!order.includes(row.item.id)) order = [...order, row.item.id];
+    if (!included.has(row.item.id)) ordered.push(row);
   }
-
-  return order
-    .map((id) => freshById.get(id))
-    .filter((row): row is T => {
-      if (!row) return false;
-      return filteredIds.has(row.item.id) || recentUpdateIds.has(row.item.id);
-    });
+  return ordered;
 }
 
 export function computeRecentUpdateIds<T extends RecentHoldRow>(input: {

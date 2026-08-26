@@ -91,4 +91,30 @@ describe('CategoryChip link-quality styling', () => {
     expect(markup).toContain('title="View all bookmarks in Planning tools (suggested)"');
     expect(markup).toContain('<button');
   });
+
+  it('labels a redirect as a warning and a real primary category explicitly', () => {
+    const warning = renderToStaticMarkup(
+      <SuggestedCategoryRow
+        itemId="item-a"
+        link={{
+          categoryId: 'seed_url-redirect-mismatch',
+          name: 'URL redirect mismatch',
+          score: 0.94,
+          isPrimary: false,
+        }}
+        onDone={() => undefined}
+      />
+    );
+    const primary = renderToStaticMarkup(
+      <SuggestedCategoryRow
+        itemId="item-a"
+        link={{ categoryId: 'asr', name: 'ASR', score: 0.9, isPrimary: true }}
+        onDone={() => undefined}
+      />
+    );
+
+    expect(warning).toContain('URL redirect mismatch (warning)');
+    expect(warning).not.toContain('primary');
+    expect(primary).toContain('ASR (suggested · primary)');
+  });
 });

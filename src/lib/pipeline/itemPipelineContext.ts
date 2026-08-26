@@ -5,6 +5,7 @@ import { getAiCategories } from '../categorization';
 import { hasSpecificPrimaryTopic } from '../categorization/categorizationFairGame';
 import { linkCountsForCategories, primaryLeafIdFromLinks, resolveEffectiveClassifyState } from '../categorization/counts';
 import { isGeneralLeafId } from '../categorization/taxonomyCatalog';
+import { isLinkQualityRedirectMismatchLeafId } from '../categorization/linkQuality';
 import type { AiCategory, AiItemCategoryLink, AiItemSignal, ClassifyState } from '../categorization/types';
 import {
   AI_NOT_CONFIGURED_AFTER_FETCH_MESSAGE,
@@ -234,20 +235,31 @@ function buildContextForItem(
       categoryId: l.categoryId,
       name: category?.name ?? l.categoryId,
       parentName,
-      isPrimary: l.isPrimary,
+      isPrimary: l.categoryId === primaryCategoryId,
       score: l.score,
     };
+  };
+
+  const compareCategoryLinks = (
+    a: ReturnType<typeof mapLink>,
+    b: ReturnType<typeof mapLink>
+  ) => {
+    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    const aRedirect = isLinkQualityRedirectMismatchLeafId(a.categoryId);
+    const bRedirect = isLinkQualityRedirectMismatchLeafId(b.categoryId);
+    if (aRedirect !== bRedirect) return aRedirect ? 1 : -1;
+    return b.score - a.score || a.name.localeCompare(b.name);
   };
 
   const acceptedLinks = itemLinks
     .filter((l) => l.status === 'accepted')
     .map((l) => mapLink(l))
-    .sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0));
+    .sort(compareCategoryLinks);
 
   const suggestedLinks = itemLinks
     .filter((l) => l.status === 'suggested')
     .map((l) => mapLink(l))
-    .sort((a, b) => b.score - a.score);
+    .sort(compareCategoryLinks);
 
   const primaryLeaf = primaryCategoryId ? categoryById.get(primaryCategoryId) : undefined;
   const parentName = primaryLeaf?.parentId

@@ -90,6 +90,15 @@ export function resolveClassifyQueueBlocker(input: {
   }
 
   if (st === 'classified_attention') {
+    if (enrichment?.pendingFetchReviewReason === 'url_redirect') {
+      return {
+        code: 'ready_for_classify',
+        label: 'URL redirect mismatch',
+        detail: 'The saved URL resolved to a different final page; classification uses that fetched page',
+        hint: 'Review the destination or re-digest after the redirect changes',
+        stateLabel: 'Redirect warning',
+      };
+    }
     return {
       code: 'ready_for_classify',
       label: 'Login/auth required (re-fetch when signed in)',

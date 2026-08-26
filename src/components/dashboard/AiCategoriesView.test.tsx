@@ -41,6 +41,19 @@ const getTaxonomyTreeWithCounts = vi.hoisted(() => vi.fn(async () => ({
   orphanLeaves: [],
   totals: { parents: 1, leaves: 2, itemsWithPrimary: 3, itemsWithPrimaryEnrichIncomplete: 0 },
 })));
+const findSimilarCategories = vi.hoisted(() => vi.fn(async (
+  _draft: unknown,
+  categories: Array<{ id: string }>
+) => ({
+  matches: [{
+    category: categories.find((category: { id: string }) => category.id === 'investing'),
+    score: 0.91,
+    lexicalScore: 0.5,
+    semanticScore: 0.91,
+    exact: false,
+  }],
+  semanticAvailable: true,
+})));
 
 vi.mock('../../lib/categorization/devQueries', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/categorization/devQueries')>()),
@@ -51,9 +64,15 @@ vi.mock('../../lib/dataChangeNotifier', () => ({
   subscribeToDataChanges: () => () => {},
 }));
 
+vi.mock('../../lib/categorization/categoryManagement', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/categorization/categoryManagement')>()),
+  findSimilarCategories,
+}));
+
 describe('AiCategoriesView', () => {
   beforeEach(() => {
     getTaxonomyTreeWithCounts.mockClear();
+    findSimilarCategories.mockClear();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
@@ -62,7 +81,7 @@ describe('AiCategoriesView', () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
-  it('shows every category in a plain, expanded category list', async () => {
+  it('shows parent navigation and the selected parent children without a long expanded page', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -74,7 +93,7 @@ describe('AiCategoriesView', () => {
 
     expect(host.textContent).toContain('All categories');
     expect(host.textContent).toContain('Complete parent and child hierarchy');
-    expect(host.textContent).toContain('Topic hierarchy');
+    expect(host.textContent).toContain('Topics');
     expect(host.textContent).toContain('Finance');
     expect(host.textContent).toContain('Money and markets.');
     expect(host.textContent).toContain('Investing');
@@ -85,6 +104,7 @@ describe('AiCategoriesView', () => {
     expect(host.textContent).not.toContain('Show empty topic leaves');
     expect(host.textContent).not.toContain('Primary');
     expect(host.querySelector('[aria-expanded]')).toBeNull();
+    expect(host.querySelector('.ui-taxonomy__parent-nav-item')?.getAttribute('data-selected')).toBe('true');
 
     const investing = [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Investing'));
@@ -92,6 +112,33 @@ describe('AiCategoriesView', () => {
     expect(onBrowseCategory).toHaveBeenCalledWith('investing', 'Investing');
 
     await act(async () => root.unmount());
+  });
+
+  it('uses semantic and keyword category search and keeps the parent context visible', async () => {
+    vi.useFakeTimers();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<AiCategoriesView embedded />));
+
+    const input = host.querySelector<HTMLInputElement>('input[type="search"]');
+    await act(async () => {
+      if (input) {
+        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        valueSetter?.call(input, 'long term portfolio');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(findSimilarCategories).toHaveBeenCalled();
+    expect(host.textContent).toContain('Category investigation');
+    expect(host.textContent).toContain('Keyword and semantic matches');
+    expect(host.textContent).toContain('Finance');
+    expect(host.textContent).toContain('Investing');
+
+    await act(async () => root.unmount());
+    vi.useRealTimers();
   });
 
   it('labels creation as bookmark-scoped when the hub retains a current item', async () => {

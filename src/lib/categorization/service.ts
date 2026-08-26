@@ -1,7 +1,11 @@
 import { embedTexts } from '../ai/openrouterEmbeddings';
 import { loadAISettings } from '../ai/settings';
 import { assessCategorizationEligibility } from '../enrichment/categorizationEligibility';
-import { buildCategorizationEmbedText } from '../enrichment/categorizationText';
+import {
+  buildCategorizationEmbedText,
+  categorizationSourceTitle,
+  isRedirectedFinalDestination,
+} from '../enrichment/categorizationText';
 import { getDB } from '../db';
 import {
   commitPipelineClassification,
@@ -140,10 +144,14 @@ export async function runCategorizationOnItems(
 
   const pipelineItems: PipelineItemInput[] = items.map((item) => {
     const enrichment = enrichByItem.get(item.id);
+    const sourceTitle = categorizationSourceTitle(item, enrichment);
+    const effectiveItem = isRedirectedFinalDestination(enrichment)
+      ? { ...item, title: sourceTitle }
+      : item;
     const hints = { aiTags: enrichment?.aiTags };
-    const eligibility = assessCategorizationEligibility(item, enrichment, hints);
+    const eligibility = assessCategorizationEligibility(effectiveItem, enrichment, hints);
     const { text } = buildCategorizationEmbedText(
-      item,
+      effectiveItem,
       enrichment,
       {
         includeSnippet: opts.includeSnippet ?? false,
@@ -153,7 +161,7 @@ export async function runCategorizationOnItems(
     );
     return {
       itemId: item.id,
-      title: item.title,
+      title: sourceTitle,
       url: item.url,
       text,
       enrichmentAiTags: enrichment?.aiTags,
@@ -264,14 +272,18 @@ export async function clusterNoveltyPool(_opts: { embeddingModel?: string } = {}
   const inputs = novelty.map((s) => {
     const item = itemById.get(s.itemId);
     const enrichment = enrichByItem.get(s.itemId);
+    const sourceTitle = item ? categorizationSourceTitle(item, enrichment) : '';
+    const effectiveItem = item && isRedirectedFinalDestination(enrichment)
+      ? { ...item, title: sourceTitle }
+      : item;
     const { text } = item
-      ? buildCategorizationEmbedText(item, enrichment, { aiTags: enrichment?.aiTags })
+      ? buildCategorizationEmbedText(effectiveItem!, enrichment, { aiTags: enrichment?.aiTags })
       : { text: '' };
     return {
       itemId: s.itemId,
       embedding: s.embedding,
       text,
-      title: item?.title,
+      title: sourceTitle || undefined,
       aiTags: enrichment?.aiTags,
     };
   });

@@ -8,6 +8,7 @@ import {
   classifyStateForLinkQualityLeaf,
   isLinkQualityLeafId,
   isLinkQualityParentId,
+  isLinkQualityRedirectMismatchLeafId,
 } from '../../categorization/linkQuality';
 import { isGeneralLeafId } from '../../categorization/taxonomyCatalog';
 
@@ -146,15 +147,16 @@ function isCountableAiLink(link: AiItemCategoryLink): boolean {
 }
 
 function categoryStrength(categoryId: string): number {
+  if (isLinkQualityRedirectMismatchLeafId(categoryId)) return -1;
   if (isLinkQualityLeafId(categoryId)) return 0;
   if (isGeneralLeafId(categoryId)) return 1;
   return 2;
 }
 
 /**
- * Pick one UI/queue primary from an additive category set. Accepted evidence
- * is locked. A more recent model-selected primary may correct an equally
- * specific earlier suggestion; the earlier category remains as secondary.
+ * Pick one UI/queue primary from an additive category set. Accepted topical
+ * evidence is locked against equally specific suggestions, but a diagnostic
+ * warning can never outrank a real topic. Earlier evidence remains secondary.
  */
 export function selectAdditivePrimary(
   links: AiItemCategoryLink[],
@@ -162,24 +164,38 @@ export function selectAdditivePrimary(
 ): AiItemCategoryLink | undefined {
   const active = links.filter(isCountableAiLink);
   if (!active.length) return undefined;
+  const primaryEligible = active.filter(
+    (link) => !isLinkQualityRedirectMismatchLeafId(link.categoryId)
+  );
+  if (!primaryEligible.length) return undefined;
+  const strongest = Math.max(
+    ...primaryEligible.map((link) => categoryStrength(link.categoryId))
+  );
 
-  const acceptedPrimary = active.find(
-    (link) => link.status === 'accepted' && link.isPrimary
+  const acceptedPrimary = primaryEligible.find(
+    (link) =>
+      link.status === 'accepted' &&
+      link.isPrimary &&
+      categoryStrength(link.categoryId) === strongest
   );
   if (acceptedPrimary) return acceptedPrimary;
 
-  const accepted = active
-    .filter((link) => link.status === 'accepted')
+  const accepted = primaryEligible
+    .filter(
+      (link) =>
+        link.status === 'accepted' && categoryStrength(link.categoryId) === strongest
+    )
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))[0];
   if (accepted) return accepted;
 
   const previous = previousPrimaryId
-    ? active.find((link) => link.id === previousPrimaryId || link.categoryId === previousPrimaryId)
+    ? primaryEligible.find(
+        (link) => link.id === previousPrimaryId || link.categoryId === previousPrimaryId
+      )
     : undefined;
-  const strongest = Math.max(...active.map((link) => categoryStrength(link.categoryId)));
   if (previous && categoryStrength(previous.categoryId) > strongest) return previous;
 
-  return active
+  return primaryEligible
     .filter((link) => categoryStrength(link.categoryId) === strongest)
     .sort((a, b) => {
       if (a.updated_at !== b.updated_at) return b.updated_at - a.updated_at;
@@ -195,17 +211,17 @@ function stateForAdditivePrimary(
   AiItemSignal,
   'classifyState' | 'discoverState' | 'isNovelty' | 'classifyRetryCount'
 > {
-  if (primary.status === 'accepted' || existingSignal?.classifyState === 'manual_only') {
+  if (isLinkQualityLeafId(primary.categoryId)) {
     return {
-      classifyState: 'manual_only',
+      classifyState: classifyStateForLinkQualityLeaf(primary.categoryId),
       discoverState: 'none',
       isNovelty: false,
       classifyRetryCount: 0,
     };
   }
-  if (isLinkQualityLeafId(primary.categoryId)) {
+  if (primary.status === 'accepted' || existingSignal?.classifyState === 'manual_only') {
     return {
-      classifyState: classifyStateForLinkQualityLeaf(primary.categoryId),
+      classifyState: 'manual_only',
       discoverState: 'none',
       isNovelty: false,
       classifyRetryCount: 0,
@@ -280,6 +296,9 @@ export function commitClassificationInStore(
       }
       const existingSignal = store.getSignal(write.itemId);
       let existingLinks = store.getLinksByItem(write.itemId);
+      const incomingActiveCategoryIds = new Set(
+        write.links.filter(isCountableAiLink).map((link) => link.categoryId)
+      );
       const incomingHasTopicalCategory = write.links.some(
         (link) => isCountableAiLink(link) && !isLinkQualityLeafId(link.categoryId)
       );
@@ -288,7 +307,11 @@ export function commitClassificationInStore(
           if (
             link.source === 'ai' &&
             (link.status === 'suggested' || link.status === 'accepted') &&
-            isLinkQualityLeafId(link.categoryId)
+            isLinkQualityLeafId(link.categoryId) &&
+            !(
+              isLinkQualityRedirectMismatchLeafId(link.categoryId) &&
+              incomingActiveCategoryIds.has(link.categoryId)
+            )
           ) {
             store.deleteLink(link.id);
           }
@@ -296,7 +319,11 @@ export function commitClassificationInStore(
         existingLinks = store.getLinksByItem(write.itemId);
       }
       const existingPrimary = existingLinks.find(isCountableAiPrimary);
-      const incomingHasPrimary = write.links.some(isCountableAiPrimary);
+      const incomingHasPrimary = write.links.some(
+        (link) =>
+          isCountableAiPrimary(link) &&
+          !isLinkQualityRedirectMismatchLeafId(link.categoryId)
+      );
       const additive = !write.removeAiSuggested && write.links.length > 0;
       const preservePreviousAssignment = Boolean(
         write.removeAiSuggested && existingPrimary && !incomingHasPrimary
@@ -311,7 +338,10 @@ export function commitClassificationInStore(
           throw new Error(`Classification link itemId mismatch for ${write.itemId}`);
         }
         assertAssignableCategoryHierarchy(store, link.categoryId);
-        const previous = existingLinks.find((row) => row.id === link.id);
+        const normalizedLink = isLinkQualityRedirectMismatchLeafId(link.categoryId)
+          ? { ...link, isPrimary: false }
+          : link;
+        const previous = existingLinks.find((row) => row.id === normalizedLink.id);
         // A user rejection is durable negative evidence. Normal reruns may add
         // other categories but must never silently resurrect this one.
         if (additive && previous?.status === 'rejected') continue;
@@ -319,11 +349,14 @@ export function commitClassificationInStore(
           additive && previous
             ? {
                 ...previous,
-                score: Math.max(previous.score, link.score),
-                status: previous.status === 'accepted' ? 'accepted' : link.status,
-                updated_at: Math.max(previous.updated_at, link.updated_at),
+                score: Math.max(previous.score, normalizedLink.score),
+                isPrimary: isLinkQualityRedirectMismatchLeafId(previous.categoryId)
+                  ? false
+                  : previous.isPrimary,
+                status: previous.status === 'accepted' ? 'accepted' : normalizedLink.status,
+                updated_at: Math.max(previous.updated_at, normalizedLink.updated_at),
               }
-            : link
+            : normalizedLink
         );
       }
       let additivePrimary: AiItemCategoryLink | undefined;
@@ -331,22 +364,27 @@ export function commitClassificationInStore(
       if (additive) {
         additiveLinks = store.getLinksByItem(write.itemId).filter(isCountableAiLink);
         additivePrimary = selectAdditivePrimary(additiveLinks, existingPrimary?.categoryId);
-        if (additivePrimary) {
-          const updatedAt = Math.max(
-            write.signal.lastProcessedAt,
-            ...additiveLinks.map((link) => link.updated_at)
-          );
-          for (const link of additiveLinks) {
-            const shouldBePrimary = link.id === additivePrimary.id;
-            if (link.isPrimary !== shouldBePrimary) {
-              store.putLink({ ...link, isPrimary: shouldBePrimary, updated_at: updatedAt });
-            }
+        const updatedAt = Math.max(
+          write.signal.lastProcessedAt,
+          ...additiveLinks.map((link) => link.updated_at)
+        );
+        for (const link of additiveLinks) {
+          const shouldBePrimary = link.id === additivePrimary?.id;
+          if (link.isPrimary !== shouldBePrimary) {
+            store.putLink({ ...link, isPrimary: shouldBePrimary, updated_at: updatedAt });
           }
+        }
+        if (additivePrimary) {
           additiveLinks = store.getLinksByItem(write.itemId).filter(isCountableAiLink);
           additivePrimary = additiveLinks.find(isCountableAiPrimary);
         }
       }
       const merged = mergeClassificationSignal(existingSignal, write.signal);
+      const hasOnlyRedirectWarnings =
+        additiveLinks.length > 0 &&
+        additiveLinks.every((link) =>
+          isLinkQualityRedirectMismatchLeafId(link.categoryId)
+        );
       let next = additive && additivePrimary
         ? {
             ...merged,
@@ -364,17 +402,25 @@ export function commitClassificationInStore(
         ? {
             ...merged,
             classifyState:
-              existingSignal && !classifyStateRequiresPrimary(existingSignal.classifyState)
+              hasOnlyRedirectWarnings
+                ? 'pending_discover'
+                : existingSignal && !classifyStateRequiresPrimary(existingSignal.classifyState)
                 ? existingSignal.classifyState
                 : 'pending_discover',
-            discoverState: existingSignal?.discoverState ?? 'pending',
+            discoverState: hasOnlyRedirectWarnings
+              ? 'pending'
+              : existingSignal?.discoverState ?? 'pending',
             isNovelty: true,
             llmReview: {
               ...merged.llmReview,
-              categoryIds: [],
+              categoryIds: additiveLinks.map((link) => link.categoryId),
             },
             lastClassifySkipReason:
-              'Classification produced only previously rejected categories; kept them rejected',
+              additiveLinks.some((link) =>
+                isLinkQualityRedirectMismatchLeafId(link.categoryId)
+              )
+                ? 'Stored URL redirect mismatch as a secondary warning; still needs a primary category'
+                : 'Classification produced only previously rejected categories; kept them rejected',
           }
         : preservePreviousAssignment && existingSignal
         ? {

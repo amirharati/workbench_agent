@@ -30,6 +30,7 @@ import { ExtensionPageUrlLink } from '../BookmarkUrlLink';
 import { BookmarksLibraryView } from '../BookmarksLibraryView';
 import { HubActionConfirmModal } from '../HubActionConfirmModal';
 import { WorkspaceDestinationPicker } from '../WorkspaceDestinationPicker';
+import { AppErrorBoundary } from '../../AppErrorBoundary';
 import { buildWorkspaceDestinations, rememberWorkspaceDestination, type WorkspaceDestination } from '../workspaceDestinations';
 import {
   activateWorkspace,
@@ -2564,14 +2565,16 @@ export const MainContent: React.FC<MainContentProps> = ({
         />
         {showImportStudio && (
           <div style={{ position: 'fixed', inset: 0, background: 'var(--bg)', zIndex: 'var(--layer-dropdown)' }}>
-            <React.Suspense fallback={<LazyViewFallback />}>
-              <ImportStudioView
-                projects={projects}
-                collections={collections}
-                onBack={() => setShowImportStudio(false)}
-                onImported={onRefresh}
-              />
-            </React.Suspense>
+            <AppErrorBoundary context="Import Studio" compact>
+              <React.Suspense fallback={<LazyViewFallback />}>
+                <ImportStudioView
+                  projects={projects}
+                  collections={collections}
+                  onBack={() => setShowImportStudio(false)}
+                  onImported={onRefresh}
+                />
+              </React.Suspense>
+            </AppErrorBoundary>
           </div>
         )}
 
@@ -2673,9 +2676,11 @@ export const MainContent: React.FC<MainContentProps> = ({
           scrollPaddingBottom: usesContainedScroller ? 0 : 'var(--scroll-footer-safe-bottom)',
         }}
       >
-        <React.Suspense fallback={<LazyViewFallback />}>
-          {renderContent()}
-        </React.Suspense>
+        <AppErrorBoundary resetKey={activeView} context={activeView === 'pipeline' ? 'Enrichment Hub' : 'this page'} compact>
+          <React.Suspense fallback={<LazyViewFallback />}>
+            {renderContent()}
+          </React.Suspense>
+        </AppErrorBoundary>
       </div>
 
       {/* Top-level create modals (Projects / Collections / Bookmarks / Notes) */}
