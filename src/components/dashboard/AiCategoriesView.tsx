@@ -13,6 +13,7 @@ import {
 } from '../../lib/categorization/devQueries';
 import type { Item } from '../../lib/db';
 import { ManageCategoriesDialog } from './ManageCategoriesDialog';
+import { categoryColorStyle } from '../shared/categoryColor';
 
 interface AiCategoriesViewProps {
   onBrowseCategory?: (categoryId: string, name: string) => void;
@@ -435,6 +436,10 @@ function ParentNavSection({
             key={row.category.id}
             type="button"
             className="ui-taxonomy__parent-nav-item"
+            style={categoryColorStyle({
+              categoryId: row.category.id,
+              label: row.category.name,
+            })}
             data-selected={selectedParentId === row.category.id ? 'true' : 'false'}
             onClick={() => onSelect(row.category.id)}
           >
@@ -507,12 +512,27 @@ function CategorySearchResults({
                 type="button"
                 key={match.category.id}
                 className="ui-taxonomy__search-result"
+                style={categoryColorStyle({
+                  categoryId: match.category.id,
+                  label: match.category.name,
+                  parentLabel: parent?.category.name,
+                })}
                 onClick={() => onBrowse(match.category.id, match.category.name)}
               >
                 {content}
               </button>
             ) : (
-              <div key={match.category.id} className="ui-taxonomy__search-result">{content}</div>
+              <div
+                key={match.category.id}
+                className="ui-taxonomy__search-result"
+                style={categoryColorStyle({
+                  categoryId: match.category.id,
+                  label: match.category.name,
+                  parentLabel: parent?.category.name,
+                })}
+              >
+                {content}
+              </div>
             );
           })}
         </div>
@@ -531,7 +551,11 @@ function CategoryGroup({
   variant?: 'topic' | 'status';
 }) {
   return (
-    <section className="ui-taxonomy__group" data-variant={variant}>
+    <section
+      className="ui-taxonomy__group"
+      data-variant={variant}
+      style={categoryColorStyle({ categoryId: row.category.id, label: row.category.name })}
+    >
       <header className="ui-taxonomy__group-header">
         <div className="ui-taxonomy__group-copy">
           <div className="ui-taxonomy__category-meta">
@@ -597,11 +621,25 @@ function CategoryLeaf({
     <button
       type="button"
       className="ui-taxonomy__leaf"
+      style={categoryColorStyle({
+        categoryId: leaf.category.id,
+        label: leaf.category.name,
+        parentLabel: leaf.category.parentName ?? undefined,
+      })}
       onClick={() => onBrowse(leaf.category.id, leaf.category.name)}
     >
       {content}
     </button>
   ) : (
-    <div className="ui-taxonomy__leaf">{content}</div>
+    <div
+      className="ui-taxonomy__leaf"
+      style={categoryColorStyle({
+        categoryId: leaf.category.id,
+        label: leaf.category.name,
+        parentLabel: leaf.category.parentName ?? undefined,
+      })}
+    >
+      {content}
+    </div>
   );
 }

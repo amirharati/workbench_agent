@@ -6,8 +6,18 @@ import {
   SuggestedCategoryRow,
   UnmatchedTopicSuggestion,
 } from './CategoryReviewRows';
+import { categoryColorStyle } from './categoryColor';
 
 describe('CategoryChip link-quality styling', () => {
+  it('keeps category-family colors deterministic', () => {
+    const first = categoryColorStyle({ categoryId: 'asr', parentLabel: 'Machine learning & AI research' });
+    const sibling = categoryColorStyle({ categoryId: 'nlp', parentLabel: 'Machine learning & AI research' });
+    const repeated = categoryColorStyle({ categoryId: 'asr', parentLabel: 'Machine learning & AI research' });
+
+    expect(first).toEqual(sibling);
+    expect(first).toEqual(repeated);
+  });
+
   it('renders removal/failure categories as errors', () => {
     const markup = renderToStaticMarkup(
       <CategoryChip
@@ -17,8 +27,8 @@ describe('CategoryChip link-quality styling', () => {
       />
     );
 
-    expect(markup).toContain('var(--error-weak)');
-    expect(markup).toContain('var(--error)');
+    expect(markup).toContain('data-tone="danger"');
+    expect(markup).toContain('var(--category-label-bg)');
   });
 
   it('renders attention categories as warnings and normal topics as categories', () => {
@@ -29,10 +39,9 @@ describe('CategoryChip link-quality styling', () => {
       <CategoryChip label="Machine learning" categoryId="seed_machine-learning" />
     );
 
-    expect(warning).toContain('var(--warning-weak)');
-    expect(warning).toContain('var(--warning)');
-    expect(topic).toContain('var(--accent-weak)');
-    expect(topic).toContain('var(--accent)');
+    expect(warning).toContain('data-tone="warning"');
+    expect(topic).toContain('data-tone="topic"');
+    expect(topic).toContain('--category-hue:');
   });
 
   it('shows a child parent as secondary text without repeating a parent label', () => {

@@ -3515,7 +3515,7 @@ button.ui-scope-chip {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 5px minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   padding: 7px 8px;
@@ -3528,15 +3528,24 @@ button.ui-scope-chip {
   cursor: pointer;
 }
 
+.ui-taxonomy__parent-nav-item::before {
+  width: 5px;
+  height: 24px;
+  border-radius: 999px;
+  background: hsl(var(--category-hue, 212) 68% 52%);
+  content: '';
+  opacity: 0.72;
+}
+
 .ui-taxonomy__parent-nav-item:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
 
 .ui-taxonomy__parent-nav-item[data-selected='true'] {
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
-  background: var(--accent-weak);
-  color: var(--accent-hover);
+  border-color: color-mix(in srgb, hsl(var(--category-hue, 212) 68% 52%) 42%, var(--border));
+  background: color-mix(in srgb, hsl(var(--category-hue, 212) 68% 52%) 12%, var(--bg-raised));
+  color: color-mix(in srgb, hsl(var(--category-hue, 212) 68% 52%) 72%, var(--text));
 }
 
 .ui-taxonomy__parent-nav-item strong,
@@ -3587,6 +3596,7 @@ button.ui-scope-chip {
   gap: 10px;
   padding: 10px 11px;
   border: 1px solid var(--border);
+  border-left: 3px solid hsl(var(--category-hue, 212) 68% 52%);
   border-radius: var(--radius-md);
   background: var(--bg-raised);
   color: inherit;
@@ -3690,6 +3700,7 @@ button.ui-taxonomy__search-result:hover {
   border-radius: var(--radius-lg);
   background: var(--bg-raised);
   box-shadow: var(--shadow-sm);
+  border-top-color: color-mix(in srgb, hsl(var(--category-hue, 212) 68% 52%) 54%, var(--border));
 }
 
 .ui-taxonomy__group[data-variant='status'] {
@@ -3857,7 +3868,7 @@ button.ui-taxonomy__leaf:hover {
   width: 7px;
   height: 1px;
   margin: 16px 0 0 -12px;
-  background: var(--border-strong);
+  background: hsl(var(--category-hue, 212) 62% 54%);
 }
 
 .ui-taxonomy__leaf-copy strong {
@@ -5400,15 +5411,67 @@ button.ui-taxonomy__leaf:hover .ui-taxonomy__leaf-arrow {
   overflow: hidden;
 }
 
+/* Stable semantic category palette. Topic families receive a deterministic
+   hue; pipeline warnings/removal labels keep their stronger product meaning. */
+.ui-category-label {
+  --category-base: hsl(var(--category-hue, 212) 72% 50%);
+  --category-label-border: color-mix(in srgb, var(--category-base) 42%, var(--border));
+  --category-label-bg: color-mix(in srgb, var(--category-base) 14%, var(--bg-raised));
+  --category-label-text: color-mix(in srgb, var(--category-base) 74%, var(--text));
+}
+
+.ui-category-label[data-muted='true'] {
+  --category-label-border: color-mix(in srgb, var(--category-base) 32%, var(--border));
+  --category-label-bg: color-mix(in srgb, var(--category-base) 9%, var(--bg-raised));
+  --category-label-text: color-mix(in srgb, var(--category-base) 62%, var(--text));
+}
+
+.ui-category-label[data-tone='warning'] {
+  --category-label-border: var(--warning-border);
+  --category-label-bg: var(--warning-weak);
+  --category-label-text: var(--warning);
+}
+
+.ui-category-label[data-tone='danger'] {
+  --category-label-border: var(--error);
+  --category-label-bg: var(--error-weak);
+  --category-label-text: var(--error);
+}
+
+.ui-category-label--compact {
+  display: inline-flex;
+  max-width: 190px;
+  align-items: center;
+  padding: 1px 6px;
+  overflow: hidden;
+  border: 1px solid var(--category-label-border);
+  border-radius: 999px;
+  background: var(--category-label-bg);
+  color: var(--category-label-text);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-category-name {
+  color: color-mix(
+    in srgb,
+    hsl(var(--category-hue, 212) 70% 50%) 70%,
+    var(--text)
+  ) !important;
+}
+
 .ui-home-categories__item-label {
   min-width: 0;
   max-width: 150px;
   padding: 2px 5px;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--category-label-border, var(--border));
   border-radius: var(--radius-sm);
-  background: var(--bg-subtle);
-  color: var(--text-muted);
+  background: var(--category-label-bg, var(--bg-subtle));
+  color: var(--category-label-text, var(--text-muted));
   font-size: 9px;
   line-height: 1.2;
   text-overflow: ellipsis;

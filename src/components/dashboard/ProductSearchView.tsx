@@ -18,6 +18,7 @@ import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
 import { LinkVisual } from './LinkVisual';
 import { useItemDragDrop } from './ItemDragDropProvider';
+import { categoryColorStyle } from '../shared/categoryColor';
 
 interface ProductSearchViewProps {
   items: Item[];
@@ -936,7 +937,13 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                     {row.primaryCategoryName && (
                       <>
                         <span style={{ color: 'var(--text-faint)' }}>·</span>
-                        <span style={{ color: 'var(--text-muted)' }}>{row.primaryCategoryName}</span>
+                        <span
+                          className="ui-category-label ui-category-label--compact"
+                          data-tone="topic"
+                          style={categoryColorStyle({ label: row.primaryCategoryName })}
+                        >
+                          {row.primaryCategoryName}
+                        </span>
                       </>
                     )}
                   </div>
@@ -962,13 +969,9 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                       {row.breakdown.matchedCategories.slice(0, 4).map((cat) => (
                         <span
                           key={cat}
-                          style={{
-                            padding: '1px 6px',
-                            borderRadius: 999,
-                            border: '1px solid var(--border)',
-                            fontSize: 'var(--text-xs)',
-                            color: 'var(--text-faint)',
-                          }}
+                          className="ui-category-label ui-category-label--compact"
+                          data-tone="topic"
+                          style={categoryColorStyle({ label: cat })}
                         >
                           {cat}
                         </span>

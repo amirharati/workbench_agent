@@ -7,6 +7,7 @@ import { useInspectorItemData } from '../../hooks/useInspectorItemData';
 import { ExtensionPageUrlLink } from './BookmarkUrlLink';
 import { ItemResultRow } from './ItemResultRow';
 import { useItemPeek } from './ItemPeekProvider';
+import { categoryColorStyle } from '../shared/categoryColor';
 
 const chipStyle: CSSProperties = {
   display: 'inline-flex',
@@ -85,7 +86,18 @@ function LinkRow({
         </div>
         <div className="ui-related-link-row__meta">
           {domain}
-          {category ? ` · ${category}` : ''}
+          {category ? (
+            <>
+              {' · '}
+              <span
+                className="ui-category-label ui-category-label--compact"
+                data-tone="topic"
+                style={categoryColorStyle({ label: category })}
+              >
+                {category}
+              </span>
+            </>
+          ) : null}
           {!hideScore && score != null ? ` · ${score.toFixed(2)}` : ''}
         </div>
       </div>
@@ -162,7 +174,16 @@ export function SearchRelatedPanel({
               <button
                 key={t.categoryId}
                 type="button"
-                style={{ ...chipStyle, fontSize: chipFontSize }}
+                className="ui-category-label"
+                data-tone="topic"
+                style={{
+                  ...chipStyle,
+                  ...categoryColorStyle({ categoryId: t.categoryId, label: t.name }),
+                  border: '1px solid var(--category-label-border)',
+                  background: 'var(--category-label-bg)',
+                  color: 'var(--category-label-text)',
+                  fontSize: chipFontSize,
+                }}
                 onClick={() => {
                   if (onCategoryOpen) onCategoryOpen(t.categoryId, t.name);
                   else onTopicClick?.(t.name);

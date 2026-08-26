@@ -10,6 +10,7 @@ import {
   isLinkQualityRedirectMismatchLeafId,
 } from '../../lib/categorization/linkQuality';
 import { useToast } from '../ToastContainer';
+import { categoryColorStyle } from './categoryColor';
 
 export type CategoryReviewFeedback = (message: string, type: 'success' | 'error') => void;
 export const COMPACT_CATEGORY_LIMIT = 3;
@@ -90,31 +91,21 @@ export function CategoryChip({
     gap: 0,
     padding: '1px 5px',
     borderRadius: 4,
-    border: `1px solid ${
-      danger ? 'var(--error)' : warning ? 'var(--warning-border)' : 'var(--border)'
-    }`,
-    background: danger
-      ? 'var(--error-weak)'
-      : warning
-        ? 'var(--warning-weak)'
-        : muted
-          ? 'transparent'
-          : 'var(--accent-weak)',
-    color: danger
-      ? 'var(--error)'
-      : warning
-        ? 'var(--warning)'
-        : muted
-          ? 'var(--text-faint)'
-          : 'var(--accent)',
+    border: '1px solid var(--category-label-border)',
+    background: 'var(--category-label-bg)',
+    color: 'var(--category-label-text)',
     fontSize: '9px',
     fontWeight: danger || warning ? 650 : undefined,
+    ...categoryColorStyle({ categoryId, label, parentLabel }),
   } as const;
 
   if (onClick) {
     return (
       <button
         type="button"
+        className="ui-category-label"
+        data-tone={danger ? 'danger' : warning ? 'warning' : 'topic'}
+        data-muted={muted ? 'true' : 'false'}
         onClick={onClick}
         title={title ?? `View all bookmarks in ${label}`}
         style={{
@@ -135,7 +126,12 @@ export function CategoryChip({
   }
 
   return (
-    <span style={style}>
+    <span
+      className="ui-category-label"
+      data-tone={danger ? 'danger' : warning ? 'warning' : 'topic'}
+      data-muted={muted ? 'true' : 'false'}
+      style={style}
+    >
       <span>{label}</span>
       {visibleParent ? (
         <small style={{ color: 'var(--text-faint)', fontSize: '8px', fontWeight: 500, lineHeight: 1.1 }}>

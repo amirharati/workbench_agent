@@ -18,6 +18,7 @@ import {
 import { normalizeCategoryName, rankCategoryNames } from '../../lib/categorization/categorySimilarity';
 import type { AiCategory } from '../../lib/categorization/types';
 import { isManageableTopicCategory } from '../../lib/search/categorySearchProfiles';
+import { categoryColorStyle } from '../shared/categoryColor';
 import { useToast } from '../ToastContainer';
 import { DialogShell } from './DialogShell';
 
@@ -40,7 +41,16 @@ function CategoryNameWithParent({ category }: { category: AiCategory }) {
     : undefined;
   return (
     <>
-      <strong>{category.name}</strong>
+      <strong
+        className="ui-category-name"
+        style={categoryColorStyle({
+          categoryId: category.id,
+          label: category.name,
+          parentLabel: category.parentName ?? undefined,
+        })}
+      >
+        {category.name}
+      </strong>
       {parentName ? (
         <small className="ui-category-manager__category-parent">{parentName}</small>
       ) : null}

@@ -10,6 +10,7 @@ import {
 import { ContentBrowser, useContentBrowseMode, type ContentBrowseEntry } from './ContentBrowser';
 import { LinkVisual } from './LinkVisual';
 import { isLinkQualityTaxonomyParent } from '../../lib/categorization/classificationPresentation';
+import { categoryColorStyle } from '../shared/categoryColor';
 
 const RELOAD_REASONS = new Set([
   'item.add',
@@ -275,7 +276,14 @@ export function HomeCategoriesView({
       meta: categoryNames.length > 0 ? (
         <span className="ui-home-categories__item-labels" title={categoryNames.join(', ')}>
           {categoryNames.slice(0, 2).map((name, index) => (
-            <span className="ui-home-categories__item-label" key={`${name}-${index}`}>{name}</span>
+            <span
+              className="ui-category-label ui-home-categories__item-label"
+              data-tone="topic"
+              style={categoryColorStyle({ label: name })}
+              key={`${name}-${index}`}
+            >
+              {name}
+            </span>
           ))}
           {categoryNames.length > 2 ? (
             <span className="ui-home-categories__item-label ui-home-categories__item-label--more">

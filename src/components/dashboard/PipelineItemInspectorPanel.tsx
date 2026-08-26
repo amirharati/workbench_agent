@@ -39,6 +39,7 @@ import { EnrichmentContent } from './PipelineDisplayBlocks';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
 import { BookmarkUrlLink, openBookmarkInBrowser } from './BookmarkUrlLink';
 import { LinkVisual } from './LinkVisual';
+import { CategoryChip } from '../shared/CategoryReviewRows';
 
 interface PipelineItemInspectorPanelProps {
   item: Item;
@@ -1021,10 +1022,12 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
               <div style={{ color: 'var(--text-muted)' }}>
                 <span style={{ color: 'var(--text-faint)' }}>Accepted: </span>
                 {context.acceptedLinks.map((l) => (
-                  <span key={l.categoryId} style={{ marginRight: 6 }}>
-                    {l.name}
-                    {l.isPrimary ? ' ★' : ''}
-                  </span>
+                  <CategoryChip
+                    key={l.categoryId}
+                    label={`${l.name}${l.isPrimary ? ' ★' : ''}`}
+                    parentLabel={l.parentName}
+                    categoryId={l.categoryId}
+                  />
                 ))}
               </div>
             ) : null}
@@ -1038,10 +1041,13 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
                     : 'Model selected (not accepted): '}
                 </span>
                 {context.suggestedLinks.map((l) => (
-                  <span key={l.categoryId} style={{ marginRight: 6 }}>
-                    {l.name}
-                    {l.isPrimary ? ' ★' : ''}
-                  </span>
+                  <CategoryChip
+                    key={l.categoryId}
+                    label={`${l.name}${l.isPrimary ? ' ★' : ''}`}
+                    parentLabel={l.parentName}
+                    categoryId={l.categoryId}
+                    muted
+                  />
                 ))}
                 <span style={{ color: 'var(--text-faint)' }}>
                   {isQueuedClassifyState(context.classifyState)
@@ -1066,9 +1072,17 @@ export const PipelineItemInspectorPanel: React.FC<PipelineItemInspectorPanelProp
             ) : null}
             {context && context.acceptedLinks.length + context.suggestedLinks.length > 1 ? (
               <MetaLine label="All categories">
-                {[...context.acceptedLinks, ...context.suggestedLinks]
-                  .map((link) => `${link.name}${link.isPrimary ? ' ★' : ''}`)
-                  .join(', ')}
+                <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
+                  {[...context.acceptedLinks, ...context.suggestedLinks].map((link) => (
+                    <CategoryChip
+                      key={link.categoryId}
+                      label={`${link.name}${link.isPrimary ? ' ★' : ''}`}
+                      parentLabel={link.parentName}
+                      categoryId={link.categoryId}
+                      muted
+                    />
+                  ))}
+                </span>
               </MetaLine>
             ) : null}
           </StageBody>

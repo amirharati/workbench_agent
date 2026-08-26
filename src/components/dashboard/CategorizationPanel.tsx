@@ -31,6 +31,7 @@ import type {
 } from '../../lib/categorization';
 import type { TopicClassifyResult } from '../../lib/categorization/types';
 import { HubActionConfirmModal } from './HubActionConfirmModal';
+import { CategoryChip } from '../shared/CategoryReviewRows';
 
 export type CategorizationPanelProps = {
   /** Items with AI summary in enrichment Results list. */
@@ -918,11 +919,13 @@ export function ItemCategoryLinks({ itemId }: { itemId: string }) {
       >
         AI categories
       </h3>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 'var(--dev-fs-base)' }}>
+      <ul style={{ margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 5, listStyle: 'none' }}>
         {links.map((l) => (
           <li key={l.categoryId}>
-            {names.get(l.categoryId) ?? l.categoryId}
-            {l.isPrimary ? ' (primary)' : ''}
+            <CategoryChip
+              label={`${names.get(l.categoryId) ?? l.categoryId}${l.isPrimary ? ' (primary)' : ''}`}
+              categoryId={l.categoryId}
+            />
           </li>
         ))}
       </ul>
