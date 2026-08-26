@@ -63,13 +63,28 @@ describe('HomeCategoriesView', () => {
 
     expect(loadCategoryBrowseSnapshot).toHaveBeenCalledWith(['one', 'two']);
     expect(host.textContent).toContain('Research categories');
+    expect(host.textContent).toContain('1 parent · 2 children with items · 2 categorized items');
     expect(host.textContent).toContain('Select one or more categories');
+    expect(host.textContent).not.toContain('No assignments yet');
+    expect(host.textContent).not.toContain('Page status & errors');
+    expect(host.textContent).not.toContain('Page not found');
+    expect(host.textContent).toContain('Seed');
+    expect(host.textContent).toContain('Discovered');
+
+    const hideEmpty = [...host.querySelectorAll('label')]
+      .find((label) => label.textContent?.includes('Hide empty'))
+      ?.querySelector<HTMLInputElement>('input');
+    expect(hideEmpty?.checked).toBe(true);
+    await act(async () => hideEmpty?.click());
+    expect(localStorage.getItem('workbench-home-category-hide-empty:project-research')).toBe('false');
+    expect(host.textContent).toContain('2 parents · 4 children · 2 categorized items');
     expect(host.textContent).toContain('No assignments yet');
     expect(host.textContent).toContain('Page status & errors');
     expect(host.textContent).toContain('Page not found');
-    expect(host.textContent).toContain('Seed');
-    expect(host.textContent).toContain('Discovered');
-    expect(host.textContent).not.toContain('Show empty categories');
+    await act(async () => hideEmpty?.click());
+    expect(localStorage.getItem('workbench-home-category-hide-empty:project-research')).toBe('true');
+    expect(host.textContent).not.toContain('No assignments yet');
+    expect(host.textContent).not.toContain('Page status & errors');
 
     const investing = [...host.querySelectorAll('label')]
       .find((label) => label.textContent?.includes('Investing'))
@@ -85,17 +100,14 @@ describe('HomeCategoriesView', () => {
     expect(host.textContent).toContain('Long-term portfolio');
     expect(host.textContent).toContain('Trading systems');
     expect(host.textContent).toContain('2 selected · showing items in any selected category');
+    expect(host.querySelectorAll('.ui-home-categories__item-labels').length).toBe(2);
+    expect(host.querySelectorAll('.ui-home-categories__item-label').length).toBe(2);
 
     const financeParent = host.querySelector<HTMLInputElement>(
       'input[aria-label="Select all child categories under Finance"]'
     );
-    expect(financeParent?.checked).toBe(false);
-    expect(financeParent?.indeterminate).toBe(true);
-
-    await act(async () => financeParent?.click());
-    expect(host.textContent).toContain('Long-term portfolio');
-    expect(host.textContent).toContain('Trading systems');
-    expect(host.textContent).toContain('3 selected · showing items in any selected category');
+    expect(financeParent?.checked).toBe(true);
+    expect(financeParent?.indeterminate).toBe(false);
 
     await act(async () => financeParent?.click());
     expect(host.textContent).not.toContain('Long-term portfolio');
@@ -105,6 +117,7 @@ describe('HomeCategoriesView', () => {
     await act(async () => financeParent?.click());
     expect(host.textContent).toContain('Long-term portfolio');
     expect(host.textContent).toContain('Trading systems');
+    expect(host.textContent).toContain('2 selected · showing items in any selected category');
 
     const tradingRow = [...host.querySelectorAll<HTMLElement>('[data-content-entry]')]
       .find((row) => row.textContent?.includes('Trading systems'));

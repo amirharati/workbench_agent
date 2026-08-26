@@ -20,7 +20,7 @@ import {
   assertCanCreateCollectionInProject,
   INBOX_PROJECT_NAME,
   INCOMING_COLLECTION_NAME,
-  UNFILED_COLLECTION_NAME,
+  DEFAULT_COLLECTION_NAME,
 } from './systemDataModel';
 
 export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
@@ -501,7 +501,7 @@ async function ensureDefaultCollectionForProject(db: IDBPDatabase<TabManagerDB>,
   if (!existing) {
     await db.put('collections', {
       id,
-      name: UNFILED_COLLECTION_NAME,
+      name: DEFAULT_COLLECTION_NAME,
       color: '#3b82f6',
       isDefault: true,
       created_at: now,

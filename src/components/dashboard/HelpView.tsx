@@ -193,7 +193,7 @@ export const HELP_TOPICS: HelpTopic[] = [
         <DefinitionGrid entries={[
           { icon: Home, term: 'Home · Overview', description: <>Resume recent material, open projects, browse Favorites &amp; pins, and see the active workspace.</> },
           { icon: Search, term: 'Home · Search', description: <>Search without leaving the current Home context. Search state is retained when you return to Overview.</> },
-          { icon: Tags, term: 'Home · Categories', description: <>Browse topical AI categories across All Library or the current project. Select several categories to show items that belong to any selected topic.</> },
+          { icon: Tags, term: 'Home · Categories', description: <>Browse topical AI categories across All Library or the current project. <strong>Hide empty</strong> is on by default for that context; turn it off to inspect the complete taxonomy. Select several categories to show items that belong to any selected topic.</> },
           { icon: BookMarked, term: 'Library', description: <>Browse the full catalog with All items, Links, Notes, Favorites &amp; pins, and Workspace views.</> },
           { icon: PanelLeft, term: 'Inspector / Item', description: <>Selecting an item updates the shared Inspector without navigating. The selection follows you when a page restores its open detail. Categories appear before the bounded, scrollable summary; <strong>Add to workspace…</strong> files the item without leaving the page.</> },
         ]} />
@@ -234,13 +234,13 @@ export const HELP_TOPICS: HelpTopic[] = [
     title: 'Projects and collections',
     summary: 'Keep durable work grouped without losing the ability to browse the whole library.',
     icon: FolderTree,
-    keywords: ['project', 'collection', 'incoming', 'inbox', 'unfiled', 'scope', 'pin', 'delete'],
+    keywords: ['project', 'collection', 'incoming', 'inbox', 'default', 'scope', 'pin', 'delete'],
     content: (
       <>
         <ul>
           <li>Select a project in the sidebar or Home context row. The project page keeps All items, Pinned, Collection, and Workspace as explicit views.</li>
           <li>Selecting a collection changes the visible project material; it does not create a new workspace.</li>
-          <li>Normal projects have an <strong>Unfiled</strong> destination for material not assigned to a named collection.</li>
+          <li>Normal projects have a <strong>Default</strong> collection for material not assigned to a named collection.</li>
           <li><strong>Inbox</strong> is the unscoped capture project and intentionally has one <strong>Incoming</strong> collection. Additional Inbox collections are not allowed.</li>
           <li>Deleting a collection keeps its items; material with no remaining named placement is reassigned to the safe default destination described by the confirmation.</li>
         </ul>
@@ -447,6 +447,7 @@ export const HELP_TOPICS: HelpTopic[] = [
           <li><strong>AI &amp; processing:</strong> provider, model routing, API key, fetch-service selector, and a test prompt. Fetch v2 is the default; Legacy remains available as a deliberate rollback choice. AI is optional and user-triggered. If a key is missing or the provider rejects a request (authentication, credits, rate limit, timeout, network, or model/server error), the initiating view explains the failure; successful fetched text remains available to keyword search.</li>
           <li><strong>Backup &amp; restore:</strong> folder health, mirror status, snapshots, restore, and conflict choices.</li>
           <li><strong>Advanced:</strong> taxonomy repair and diagnostics. Use destructive controls only after reading their confirmation.</li>
+          <li><strong>Ask:</strong> clearly marked not implemented; it is the next major feature planned for the Inspector panel. The visible controls are only an early prototype.</li>
         </ul>
         <h3>Keyboard</h3>
         <div className="ui-help__shortcuts">
@@ -454,7 +455,6 @@ export const HELP_TOPICS: HelpTopic[] = [
           <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>W</Kbd></>}>Close the active workspace entry when focus is not inside an editor.</ShortcutRow>
           <ShortcutRow keys={<Kbd>Esc</Kbd>}>Close the command palette, menus, or dialogs.</ShortcutRow>
           <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>S</Kbd></>}>Save while editing a note.</ShortcutRow>
-          <ShortcutRow keys={<><Kbd>{mod}</Kbd><Kbd>Enter</Kbd></>}>Submit the current prompt in Ask.</ShortcutRow>
         </div>
         <h3>Troubleshooting evidence</h3>
         <ul>

@@ -44,6 +44,22 @@ function saveSelectedCategories(storageKey: string, categoryIds: string[]): void
   }
 }
 
+function loadHideEmptyCategories(storageKey: string): boolean {
+  try {
+    return localStorage.getItem(storageKey) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function saveHideEmptyCategories(storageKey: string, hideEmpty: boolean): void {
+  try {
+    localStorage.setItem(storageKey, String(hideEmpty));
+  } catch {
+    // This is a display preference, never canonical category data.
+  }
+}
+
 function categorySourceLabel(source?: string): string {
   if (source === 'seed') return 'Seed';
   if (source === 'discovered') return 'Discovered';
@@ -74,11 +90,15 @@ export function HomeCategoriesView({
   onSelectedItemChange?: (item: Item | null) => void;
 }) {
   const selectionStorageKey = `workbench-home-category-selection:${scopeKey}`;
+  const emptyFilterStorageKey = `workbench-home-category-hide-empty:${scopeKey}`;
   const [snapshot, setSnapshot] = useState<CategoryBrowseSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [hideEmptyCategories, setHideEmptyCategories] = useState(() =>
+    loadHideEmptyCategories(emptyFilterStorageKey)
+  );
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>(() =>
     loadSelectedCategories(selectionStorageKey)
   );
@@ -124,6 +144,10 @@ export function HomeCategoriesView({
     saveSelectedCategories(selectionStorageKey, selectedCategoryIds);
   }, [selectedCategoryIds, selectionStorageKey]);
 
+  useEffect(() => {
+    setHideEmptyCategories(loadHideEmptyCategories(emptyFilterStorageKey));
+  }, [emptyFilterStorageKey]);
+
   const groups = useMemo(
     () => snapshot ? buildCategoryBrowseGroups(snapshot) : [],
     [snapshot]
@@ -153,6 +177,7 @@ export function HomeCategoriesView({
     .map((group) => {
       const parentMatches = group.name.toLowerCase().includes(normalizedQuery);
       const leaves = group.leaves.filter((leaf) => {
+        if (hideEmptyCategories && leaf.itemIds.length === 0) return false;
         return !normalizedQuery || parentMatches ||
           leaf.category.name.toLowerCase().includes(normalizedQuery) ||
           leaf.category.description?.toLowerCase().includes(normalizedQuery) ||
@@ -160,7 +185,7 @@ export function HomeCategoriesView({
       });
       return { ...group, leaves };
     })
-    .filter((group) => group.leaves.length > 0), [groups, normalizedQuery]);
+    .filter((group) => group.leaves.length > 0), [groups, hideEmptyCategories, normalizedQuery]);
 
   const topicGroups = useMemo(
     () => visibleGroups.filter((group) => !isLinkQualityTaxonomyParent(group.id)),
@@ -238,20 +263,34 @@ export function HomeCategoriesView({
     onSelectedItemChange?.(null);
   }, [focusedCategory?.categoryId, onSelectedItemChange]);
 
-  const entries = useMemo<ContentBrowseEntry[]>(() => resultItems.map((item) => ({
-    id: item.id,
-    title: item.title || 'Untitled',
-    icon: item.url
-      ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
-      : <FileText size={14} aria-hidden="true" />,
-    subtitle: item.url || item.notes?.trim() || 'Note',
-    meta: (categoryNamesByItem.get(item.id) ?? []).join(' · '),
-    searchText: [item.url, item.notes, ...(item.tags ?? []), ...(categoryNamesByItem.get(item.id) ?? [])]
-      .filter(Boolean)
-      .join(' '),
-    dragSource: { kind: 'reference', label: `${scopeLabel} categories` },
-    dragItem: item,
-  })), [categoryNamesByItem, resultItems, scopeLabel]);
+  const entries = useMemo<ContentBrowseEntry[]>(() => resultItems.map((item) => {
+    const categoryNames = categoryNamesByItem.get(item.id) ?? [];
+    return {
+      id: item.id,
+      title: item.title || 'Untitled',
+      icon: item.url
+        ? <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
+        : <FileText size={14} aria-hidden="true" />,
+      subtitle: item.url || item.notes?.trim() || 'Note',
+      meta: categoryNames.length > 0 ? (
+        <span className="ui-home-categories__item-labels" title={categoryNames.join(', ')}>
+          {categoryNames.slice(0, 2).map((name, index) => (
+            <span className="ui-home-categories__item-label" key={`${name}-${index}`}>{name}</span>
+          ))}
+          {categoryNames.length > 2 ? (
+            <span className="ui-home-categories__item-label ui-home-categories__item-label--more">
+              +{categoryNames.length - 2}
+            </span>
+          ) : null}
+        </span>
+      ) : undefined,
+      searchText: [item.url, item.notes, ...(item.tags ?? []), ...categoryNames]
+        .filter(Boolean)
+        .join(' '),
+      dragSource: { kind: 'reference', label: `${scopeLabel} categories` },
+      dragItem: item,
+    };
+  }), [categoryNamesByItem, resultItems, scopeLabel]);
 
   const toggleCategory = (categoryId: string) => {
     setSelectedCategoryIds((current) => current.includes(categoryId)
@@ -273,6 +312,16 @@ export function HomeCategoriesView({
   const categorizedItemCount = useMemo(() => new Set(
     groups.flatMap((group) => group.leaves.flatMap((leaf) => leaf.itemIds))
   ).size, [groups]);
+  const nonEmptyHierarchyCounts = useMemo(() => {
+    const nonEmptyGroups = groups.filter((group) => group.leaves.some((leaf) => leaf.itemIds.length > 0));
+    return {
+      parents: nonEmptyGroups.length,
+      children: nonEmptyGroups.reduce(
+        (count, group) => count + group.leaves.filter((leaf) => leaf.itemIds.length > 0).length,
+        0
+      ),
+    };
+  }, [groups]);
 
   return (
     <div className="ui-home-categories">
@@ -326,7 +375,9 @@ export function HomeCategoriesView({
         <div className="ui-home-categories__taxonomy-header">
           <div>
             <strong>{scopeLabel} categories</strong>
-            <span>{groups.length} parents · {groups.reduce((count, group) => count + group.leaves.length, 0)} children · {categorizedItemCount} categorized items</span>
+            <span>{hideEmptyCategories
+              ? `${nonEmptyHierarchyCounts.parents} ${nonEmptyHierarchyCounts.parents === 1 ? 'parent' : 'parents'} · ${nonEmptyHierarchyCounts.children} ${nonEmptyHierarchyCounts.children === 1 ? 'child' : 'children'} with items · ${categorizedItemCount} categorized items`
+              : `${groups.length} parents · ${groups.reduce((count, group) => count + group.leaves.length, 0)} children · ${categorizedItemCount} categorized items`}</span>
           </div>
           {selectedCategoryIds.length > 0 ? (
             <button type="button" onClick={() => setSelectedCategoryIds([])} title="Clear selected categories">
@@ -342,28 +393,45 @@ export function HomeCategoriesView({
             </select>
           </label>
         ) : null}
-        <label className="ui-home-categories__filter">
-          <Search size={13} aria-hidden="true" />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter categories…"
-            aria-label="Filter categories"
-          />
-          {query ? (
-            <button type="button" onClick={() => setQuery('')} aria-label="Clear category filter">
-              <X size={11} />
-            </button>
-          ) : null}
-        </label>
+        <div className="ui-home-categories__filter-row">
+          <label className="ui-home-categories__filter">
+            <Search size={13} aria-hidden="true" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Filter categories…"
+              aria-label="Filter categories"
+            />
+            {query ? (
+              <button type="button" onClick={() => setQuery('')} aria-label="Clear category filter">
+                <X size={11} />
+              </button>
+            ) : null}
+          </label>
+          <label className="ui-home-categories__empty-filter" title="Hide parent and child categories with no items in this browsing context">
+            <input
+              type="checkbox"
+              checked={hideEmptyCategories}
+              onChange={(event) => {
+                setHideEmptyCategories(event.target.checked);
+                saveHideEmptyCategories(emptyFilterStorageKey, event.target.checked);
+              }}
+            />
+            <span>Hide empty</span>
+          </label>
+        </div>
         <div className="scrollbar ui-home-categories__groups">
           {loading && !snapshot ? (
             <div className="ui-home-categories__status">Loading categories…</div>
           ) : error && !snapshot ? (
             <div className="ui-home-categories__status" data-error="true">Could not load categories: {error}</div>
           ) : visibleGroups.length === 0 ? (
-            <div className="ui-home-categories__status">No categories match this view.</div>
+            <div className="ui-home-categories__status">
+              {hideEmptyCategories && !normalizedQuery
+                ? 'No categories have items in this context. Turn off Hide empty to see the full hierarchy.'
+                : 'No categories match this view.'}
+            </div>
           ) : (
             <>
               {topicGroups.length > 0 ? <div className="ui-home-categories__section-label">Topic hierarchy</div> : null}

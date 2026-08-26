@@ -57,15 +57,15 @@ Search may be deliberately broadened. A saved workspace search always snapshots 
 Canonical rules for a fresh development installation:
 
 - Unscoped capture goes to Inbox.
-- Project-scoped capture goes to that project's system `Unfiled` collection.
+- Project-scoped capture goes to that project's system `Default` collection.
 - Collection-scoped capture goes to that collection.
 - Every active item has at least one placement.
 - Inbox has exactly one system collection named `Incoming` and exposes no collection-management UI.
-- Every normal project has a system collection named `Unfiled` for project-scoped captures without an explicit collection.
+- Every normal project has a system collection named `Default` for project-scoped captures without an explicit collection.
 - `Move to project` removes the Inbox placement by default.
 - `Add to project` preserves Inbox and adds another placement.
 
-Internal compatibility identifiers may retain their historical names, but fresh data presents only the Inbox, Incoming, and Unfiled product language. No legacy-data migration is planned before release; development data is reset after the model changes.
+Internal compatibility identifiers may retain their historical names, but fresh data presents only the Inbox, Incoming, and Default product language. No legacy-data migration is planned before release; development data is reset after the model changes.
 
 ## Delivery checkpoints
 
@@ -147,14 +147,14 @@ Implementation: complete for fresh-install testing.
 - Replace scattered project, recent, favorite, trash, processing, and analytics cards with one reusable Browse panel.
 - Keep Processing and Trash as secondary utilities rather than primary Home content.
 - Move recent search discovery into Search's empty state.
-- Use `Inbox / Incoming` for unscoped captures and `Unfiled` for project-scoped captures without a chosen collection.
+- Use `Inbox / Incoming` for unscoped captures and `Default` for project-scoped captures without a chosen collection.
 - Reset development data through uninstall/reinstall and a new backup folder after this checkpoint rather than maintaining a pre-release migration path.
 
 Acceptance:
 
 - Home has one primary search action, one current-work area, and one library-browsing area.
 - A clean installation creates Inbox and Incoming automatically.
-- Creating a normal project creates its Unfiled collection automatically.
+- Creating a normal project creates its Default collection automatically.
 - Unscoped and project-scoped capture paths never produce unplaced items.
 
 ## Review boundary

@@ -747,14 +747,14 @@ export function reorderItemInWorkspaceTarget({
   projectId: string | 'all';
   workspaceKey: string;
   itemId: string;
-  beforeItemId: string;
+  beforeItemId: string | null;
 }): GlobalTabState {
-  if (itemId === beforeItemId) return state;
+  if (beforeItemId != null && itemId === beforeItemId) return state;
   const tabs = getProjectWorkspaceTabs(state, projectId, workspaceKey);
   const sourceIndex = tabs.findIndex((entry) => entry.kind === 'item' && entry.itemId === itemId);
-  const initialTargetIndex = tabs.findIndex(
-    (entry) => entry.kind === 'item' && entry.itemId === beforeItemId
-  );
+  const initialTargetIndex = beforeItemId == null
+    ? tabs.length
+    : tabs.findIndex((entry) => entry.kind === 'item' && entry.itemId === beforeItemId);
   if (sourceIndex < 0 || initialTargetIndex < 0) return state;
   const nextTabs = [...tabs];
   const [entry] = nextTabs.splice(sourceIndex, 1);

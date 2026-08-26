@@ -67,6 +67,21 @@ export function resolvePipelineHubView(
   return categoriesSubTab === 'taxonomy' ? 'taxonomy' : 'classification';
 }
 
+export function resolvePipelineHubRowInspectState(
+  current: { ids: string[]; index: number } | null,
+  itemId: string,
+  orderedSelectedIds: string[]
+): { ids: string[]; index: number } | null {
+  if (!current) return null;
+  if (current.ids.includes(itemId)) {
+    return { ...current, index: current.ids.indexOf(itemId) };
+  }
+  const ids = orderedSelectedIds.length > 1 && orderedSelectedIds.includes(itemId)
+    ? orderedSelectedIds
+    : [itemId];
+  return { ids, index: Math.max(0, ids.indexOf(itemId)) };
+}
+
 export function PipelineHubViewTabs({
   activeView,
   onChange,
@@ -1081,6 +1096,18 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
     [inspectState, openInspect]
   );
 
+  const handleRowSelect = useCallback((itemId: string) => {
+    setFocusedItemId(itemId);
+    if (inspectState) {
+      setInspectState(resolvePipelineHubRowInspectState(
+        inspectState,
+        itemId,
+        getOrderedSelectedIds()
+      ));
+      setStatusHelpItemId(null);
+    }
+  }, [getOrderedSelectedIds, inspectState]);
+
   const inspectItemLabels = useMemo(() => {
     if (!inspectState) return {};
     return Object.fromEntries(
@@ -1569,12 +1596,9 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
           alignItems: 'start',
         }}
       >
-        <div style={{ minWidth: 0, overflowX: 'auto' }}>
+        <div style={{ minWidth: 0 }}>
           <div
             className="ui-pipeline-table"
-            style={{
-              minWidth: activeInspectRow ? 820 : undefined,
-            }}
           >
         <div
           className="ui-pipeline-table__header"
@@ -1639,7 +1663,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                   data-inspect-set={isInInspectSet ? 'true' : 'false'}
                   data-checked={selectedIds.has(item.id) ? 'true' : 'false'}
                   data-recent={isRecentUpdate ? 'true' : 'false'}
-                  onSelectItem={() => setFocusedItemId(item.id)}
+                  onSelectItem={() => handleRowSelect(item.id)}
                   onDoubleClick={(event) => {
                     if ((event.target as HTMLElement).closest('button, input, a')) return;
                     openPeek(item.id, { itemIds: peekItemIds, sourceLabel: 'Enrichment Hub' });
@@ -1666,21 +1690,19 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                       aria-label={`Select ${item.title || item.url}`}
                     />
                   </label>
-                  <div style={{ minWidth: 0 }}>
+                  <div className="ui-pipeline-table__item-copy">
                     <div
+                      className="ui-pipeline-table__item-title"
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         gap: 7,
                         fontWeight: 500,
                         color: 'var(--text)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
                       }}
                     >
                       <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
-                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title || item.url || 'Untitled'}</span>
+                      <span className="ui-pipeline-table__item-title-text">{item.title || item.url || 'Untitled'}</span>
                       {isRecentUpdate ? (
                         <span
                           style={{
@@ -1694,7 +1716,7 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                         </span>
                       ) : null}
                     </div>
-                    <BookmarkUrlLink item={item} />
+                    <BookmarkUrlLink item={item} className="ui-pipeline-table__item-url" />
                     {trashSuggestion ? (
                       <div
                         style={{
@@ -1745,12 +1767,10 @@ export const PipelineHubView: React.FC<PipelineHubViewProps> = ({
                     ) : null}
                   </div>
                   <div
+                    className="ui-pipeline-table__next-step"
                     style={{
                       fontSize: 'var(--text-xs)',
                       color: 'var(--text-muted)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
                     }}
                     title={nextStep}
                   >

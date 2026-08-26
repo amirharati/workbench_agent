@@ -579,3 +579,10 @@
 - Commits/PRs: Prior catalog checkpoint `a0311b8` (`Keep group destinations complete across views`); adaptive/frozen chooser checkpoint committed at the end of this session.
 - Status: Implementation and Help coverage complete and ready for live extension acceptance. Thirty-seven focused provider/list/Search/Help tests, TypeScript, production build, and `git diff --check` pass; the only test output is the pre-existing `ReactDOMTestUtils.act` deprecation warning and existing Vite chunk warnings.
 - Next steps: Reload and test direct drop plus release-over-project from single and selected-group rows at wide and narrow dashboard sizes.
+
+## 2026-08-26 - Hide empty categories by context
+- Session ID: unknown
+- Agent: codex
+- Summary: Home Categories hides empty branches by default per context and now renders item-category metadata as compact bounded labels that cannot overlap titles/actions. Workspace lists expose a true Drop at end destination; an open Enrichment detail follows ordinary row selection and its long text wraps without horizontal scrolling. Fresh projects now create a collection named Default instead of Unfiled with no legacy migration. Ask is visibly marked Not implemented and identified as the next major Inspector feature while its early prototype remains intact.
+- Status: Uncommitted pending live visual acceptance. Focused Categories/Home/Help, organization naming, shell, drag/reorder, and Enrichment tests, TypeScript, production build, and `git diff --check` pass; existing Vite chunk warnings are unchanged.
+- Next steps: Reload and test category labels in list/gallery at narrow widths, Categories context filtering, moving first/middle workspace links to the final position, Enrichment selection/wrapping, and the Ask notice. The current database will retain Unfiled; verify Default after the planned clean reinstall or by creating a new project.

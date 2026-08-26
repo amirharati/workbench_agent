@@ -11,6 +11,7 @@ describe('HelpView', () => {
     expect(markup).toContain('aria-label="Search Help"');
     expect(markup).toContain('How Homebase is organized');
     expect(markup).toContain('Home · Overview');
+    expect(markup).toContain('<strong>Hide empty</strong> is on by default');
     expect(markup).toContain('Inbox / Incoming');
     expect(markup).toContain('Add to workspace');
     expect(markup).toContain('Organize…');

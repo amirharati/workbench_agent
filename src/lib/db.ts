@@ -42,7 +42,7 @@ import {
   assertCanCreateCollectionInProject,
   INBOX_PROJECT_NAME,
   INCOMING_COLLECTION_NAME,
-  UNFILED_COLLECTION_NAME,
+  DEFAULT_COLLECTION_NAME,
 } from './systemDataModel';
 
 export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
@@ -496,7 +496,7 @@ async function ensureDefaultCollectionForProject(store: IdbCompatStore, projectI
   if (!existing) {
     store.putCollection({
       id,
-      name: UNFILED_COLLECTION_NAME,
+      name: DEFAULT_COLLECTION_NAME,
       color: '#3b82f6',
       isDefault: true,
       created_at: now,
@@ -957,7 +957,7 @@ export const addProject = async (name: string, description?: string) => {
   };
   const defaultCollection: Collection = {
     id: `collection_${id}_unsorted`,
-    name: UNFILED_COLLECTION_NAME,
+    name: DEFAULT_COLLECTION_NAME,
     color: '#3b82f6',
     isDefault: true,
     created_at: now,
@@ -965,7 +965,7 @@ export const addProject = async (name: string, description?: string) => {
     primaryProjectId: id,
     projectIds: [id],
   };
-  // Project + its required Unfiled collection become durable atomically in one worker RPC.
+  // Project + its required Default collection become durable atomically in one worker RPC.
   await applyBatchMutations([
     { kind: 'put', storeName: 'projects', value: project },
     { kind: 'put', storeName: 'collections', value: defaultCollection },

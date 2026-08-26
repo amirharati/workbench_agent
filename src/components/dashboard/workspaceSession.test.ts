@@ -428,6 +428,25 @@ describe('workspace sessions', () => {
     expect(reordered.tabs.map((entry) => entry.id)).toEqual(['two', 'one', 'search']);
   });
 
+  it('moves a saved item after the final workspace entry', () => {
+    const state: GlobalTabState = {
+      ...GLOBAL_TAB_STATE_DEFAULT,
+      tabs: [
+        { kind: 'item', id: 'one', itemId: 'one' },
+        { kind: 'search', id: 'search', query: 'topic', mode: 'hybrid' },
+        { kind: 'item', id: 'two', itemId: 'two' },
+      ],
+    };
+    const reordered = reorderItemInWorkspaceTarget({
+      state,
+      projectId: 'all',
+      workspaceKey: GLOBAL_WORKSPACE_KEY,
+      itemId: 'one',
+      beforeItemId: null,
+    });
+    expect(reordered.tabs.map((entry) => entry.id)).toEqual(['search', 'two', 'one']);
+  });
+
   it('activates project General and named workspaces only through explicit calls', () => {
     const projectKey = getProjectSessionWorkspaceKey('project-a');
     const state: GlobalTabState = { ...GLOBAL_TAB_STATE_DEFAULT, workspaceSessionSnapshots: { [projectKey]: [] } };

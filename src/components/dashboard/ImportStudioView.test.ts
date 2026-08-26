@@ -40,7 +40,7 @@ describe('Import Studio workflow', () => {
 
   it('uses user-facing Inbox, project, and collection destination labels', () => {
     expect(resolveImportDestinationLabel([project], [collection], '', '')).toBe('Inbox / Incoming');
-    expect(resolveImportDestinationLabel([project], [collection], project.id, '')).toBe('Research / Unfiled');
+    expect(resolveImportDestinationLabel([project], [collection], project.id, '')).toBe('Research / Default');
     expect(resolveImportDestinationLabel([project], [collection], project.id, collection.id)).toBe('Reading');
   });
 

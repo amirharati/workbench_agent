@@ -1527,7 +1527,7 @@ const DashboardLayoutInner: React.FC<DashboardLayoutProps> = ({
 
   const handleWorkspaceItemReorder = useCallback((
     itemId: string,
-    beforeItemId: string,
+    beforeItemId: string | null,
     target: ItemDropTarget
   ) => {
     const projectId = target.projectId ?? getWorkspaceProjectId(globalTabState, target.containerId);

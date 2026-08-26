@@ -115,13 +115,13 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
   const isAllProject = project.id === ALL_PROJECTS_ID;
 
   const projectCollections = useMemo(() => {
-    const projectUnfiledId = `collection_${project.id}_unsorted`;
+    const projectDefaultCollectionId = `collection_${project.id}_unsorted`;
     
     // For "All" project, show ALL collections (aggregates everything)
     if (isAllProject) {
       return collections.filter((c) => {
         // Include the aggregate project's system collection.
-        if (c.id === projectUnfiledId) return true;
+        if (c.id === projectDefaultCollectionId) return true;
         // Exclude other system collections (they're internal per-project).
         if (c.isDefault) return false;
         // Include all other collections from all projects
@@ -138,11 +138,11 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
           (Array.isArray(c.projectIds) && c.projectIds.includes(project.id));
         if (!belongsToProject) return false;
 
-        // Include the current project's Unfiled collection.
-        if (c.id === projectUnfiledId) return true;
+        // Include the current project's Default collection.
+        if (c.id === projectDefaultCollectionId) return true;
 
         // Exclude other system collections.
-        if (c.isDefault && c.id !== projectUnfiledId) return false;
+        if (c.isDefault && c.id !== projectDefaultCollectionId) return false;
 
         // Include all other collections
         return true;

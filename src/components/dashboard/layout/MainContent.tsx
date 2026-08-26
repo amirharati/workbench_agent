@@ -1080,18 +1080,18 @@ export const MainContent: React.FC<MainContentProps> = ({
             return collections.filter((c) => !c.isDefault);
           }
           
-          const projectUnfiledId = `collection_${pid}_unsorted`;
+          const projectDefaultCollectionId = `collection_${pid}_unsorted`;
           return collections.filter((c) => {
             // Must belong to this project
             const belongsToProject =
               c.primaryProjectId === pid || (Array.isArray(c.projectIds) && c.projectIds.includes(pid));
             if (!belongsToProject) return false;
 
-            // Include the current project's Unfiled collection.
-            if (c.id === projectUnfiledId) return true;
+            // Include the current project's Default collection.
+            if (c.id === projectDefaultCollectionId) return true;
 
             // Exclude other system collections.
-            if (c.isDefault && c.id !== projectUnfiledId) return false;
+            if (c.isDefault && c.id !== projectDefaultCollectionId) return false;
 
             // Include all other collections
             return true;

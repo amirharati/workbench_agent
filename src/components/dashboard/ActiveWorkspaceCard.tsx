@@ -51,7 +51,7 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
   allowRemove = true,
   maxListHeight = 224,
 }) => {
-  const { getDropTargetProps, getReorderTargetProps } = useItemDragDrop();
+  const { activePayload, getDropTargetProps, getReorderTargetProps } = useItemDragDrop();
   const { openPeek } = useItemPeek();
   const [filterQuery, setFilterQuery] = useState('');
   const searchIndex = useMemo(
@@ -206,6 +206,23 @@ export const ActiveWorkspaceCard: React.FC<ActiveWorkspaceCardProps> = ({
             </ItemResultRow>
           );
         })}
+        {activePayload?.entity === 'item' &&
+        (activePayload.itemIds?.length ?? 1) === 1 &&
+        activePayload.source.kind === 'workspace' &&
+        activePayload.source.containerId === workspaceKey ? (
+          <div
+            className="ui-content-browser__reorder-end"
+            aria-label="Move to end of list"
+            {...getReorderTargetProps(null, {
+              kind: 'workspace',
+              containerId: workspaceKey,
+              containerLabel: title,
+              projectId,
+            })}
+          >
+            Drop at end
+          </div>
+        ) : null}
       </div>
     )}
   </section>;

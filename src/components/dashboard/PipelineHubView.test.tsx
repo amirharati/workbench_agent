@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { PipelineHubViewTabs, resolvePipelineHubView } from './PipelineHubView';
+import { PipelineHubViewTabs, resolvePipelineHubRowInspectState, resolvePipelineHubView } from './PipelineHubView';
 
 describe('PipelineHubView navigation', () => {
   it('restores the flat review destination from the previous nested state', () => {
@@ -23,5 +23,23 @@ describe('PipelineHubView navigation', () => {
     expect(markup.match(/ui-pipeline-hub__view-tab/g)).toHaveLength(3);
     expect(markup.match(/role="tab"/g)).toHaveLength(3);
     expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
+  });
+});
+
+describe('PipelineHubView row inspection', () => {
+  it('moves an open inspector to a newly selected row', () => {
+    expect(resolvePipelineHubRowInspectState(
+      { ids: ['first'], index: 0 },
+      'second',
+      []
+    )).toEqual({ ids: ['second'], index: 0 });
+  });
+
+  it('moves within the existing inspected selection without discarding it', () => {
+    expect(resolvePipelineHubRowInspectState(
+      { ids: ['first', 'second'], index: 0 },
+      'second',
+      ['first', 'second']
+    )).toEqual({ ids: ['first', 'second'], index: 1 });
   });
 });

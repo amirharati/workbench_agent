@@ -31,7 +31,7 @@ interface ItemDragDropContextValue {
   getDropTargetProps: (target: ItemDropTarget) => ItemDropTargetProps;
   getProjectCollectionDropTargetProps: (target: ProjectCollectionDropTarget) => ItemDropTargetProps;
   getReorderTargetProps: (
-    beforeItemId: string,
+    beforeItemId: string | null,
     target: ItemDropTarget
   ) => ItemDropTargetProps;
 }
@@ -114,7 +114,7 @@ interface ItemDragDropProviderProps {
   ) => ItemTransferResult | Promise<ItemTransferResult>;
   onReorderWorkspaceItem: (
     itemId: string,
-    beforeItemId: string,
+    beforeItemId: string | null,
     target: ItemDropTarget
   ) => void;
 }
@@ -356,47 +356,50 @@ export const ItemDragDropProvider: React.FC<ItemDragDropProviderProps> = ({
   }, [activePayload, clearDrag, dragOverTargetId, resolveDrop]);
 
   const getReorderTargetProps = useCallback((
-    beforeItemId: string,
+    beforeItemId: string | null,
     target: ItemDropTarget
-  ): ItemDropTargetProps => ({
-    onDragOver: (event) => {
-      const payload = activePayload ?? readItemDragPayload(event.dataTransfer);
-      if (
-        !payload ||
-        payload.entity !== 'item' ||
-        itemIdsFromDragPayload(payload).length !== 1 ||
-        payload.itemId === beforeItemId ||
-        payload.source.kind !== 'workspace' ||
-        target.kind !== 'workspace' ||
-        payload.source.containerId !== target.containerId
-      ) return;
-      event.preventDefault();
-      event.stopPropagation();
-      event.dataTransfer.dropEffect = 'move';
-      setReorderOverItemId(beforeItemId);
-    },
-    onDragLeave: (event) => {
-      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-      setReorderOverItemId((current) => current === beforeItemId ? null : current);
-    },
-    onDrop: (event) => {
-      const payload = readItemDragPayload(event.dataTransfer) ?? activePayload;
-      if (
-        !payload ||
-        payload.entity !== 'item' ||
-        itemIdsFromDragPayload(payload).length !== 1 ||
-        payload.itemId === beforeItemId ||
-        payload.source.kind !== 'workspace' ||
-        target.kind !== 'workspace' ||
-        payload.source.containerId !== target.containerId
-      ) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onReorderWorkspaceItem(payload.itemId, beforeItemId, target);
-      clearDrag();
-    },
-    'data-reorder-over': reorderOverItemId === beforeItemId ? 'true' : 'false',
-  }), [activePayload, clearDrag, onReorderWorkspaceItem, reorderOverItemId]);
+  ): ItemDropTargetProps => {
+    const reorderTargetKey = beforeItemId ?? `end:${target.containerId}`;
+    return {
+      onDragOver: (event) => {
+        const payload = activePayload ?? readItemDragPayload(event.dataTransfer);
+        if (
+          !payload ||
+          payload.entity !== 'item' ||
+          itemIdsFromDragPayload(payload).length !== 1 ||
+          (beforeItemId != null && payload.itemId === beforeItemId) ||
+          payload.source.kind !== 'workspace' ||
+          target.kind !== 'workspace' ||
+          payload.source.containerId !== target.containerId
+        ) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = 'move';
+        setReorderOverItemId(reorderTargetKey);
+      },
+      onDragLeave: (event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setReorderOverItemId((current) => current === reorderTargetKey ? null : current);
+      },
+      onDrop: (event) => {
+        const payload = readItemDragPayload(event.dataTransfer) ?? activePayload;
+        if (
+          !payload ||
+          payload.entity !== 'item' ||
+          itemIdsFromDragPayload(payload).length !== 1 ||
+          (beforeItemId != null && payload.itemId === beforeItemId) ||
+          payload.source.kind !== 'workspace' ||
+          target.kind !== 'workspace' ||
+          payload.source.containerId !== target.containerId
+        ) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onReorderWorkspaceItem(payload.itemId, beforeItemId, target);
+        clearDrag();
+      },
+      'data-reorder-over': reorderOverItemId === reorderTargetKey ? 'true' : 'false',
+    };
+  }, [activePayload, clearDrag, onReorderWorkspaceItem, reorderOverItemId]);
 
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),

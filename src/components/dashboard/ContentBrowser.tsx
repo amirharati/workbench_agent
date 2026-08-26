@@ -249,7 +249,7 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   projectCollectionDropTarget,
   multiSelect = true,
 }) => {
-  const { beginItemTransfer, getDropTargetProps, getProjectCollectionDropTargetProps } = useItemDragDrop();
+  const { activePayload, beginItemTransfer, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps } = useItemDragDrop();
   const [filterQuery, setFilterQuery] = useState('');
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
@@ -350,6 +350,12 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
   }, [filteredEntries.length, renderLimit]);
 
   const renderedEntries = filteredEntries.slice(0, renderLimit);
+  const endReorderTarget = [...renderedEntries].reverse().find((entry) => entry.reorderTarget)?.reorderTarget;
+  const showEndReorderTarget = !!endReorderTarget &&
+    activePayload?.entity === 'item' &&
+    (activePayload.itemIds?.length ?? 1) === 1 &&
+    activePayload.source.kind === 'workspace' &&
+    activePayload.source.containerId === endReorderTarget.containerId;
   const previewItemIds = useMemo(
     () => filteredEntries.filter((entry) => entry.dragSource && !entry.dragUrl).map((entry) => (entry.dragItem ?? { id: entry.id }).id),
     [filteredEntries]
@@ -461,6 +467,15 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
       {renderedEntries.length < filteredEntries.length ? (
         <div className="ui-content-browser__loading" role="status">
           Loading more… {renderedEntries.length} of {filteredEntries.length}
+        </div>
+      ) : null}
+      {showEndReorderTarget && endReorderTarget ? (
+        <div
+          className="ui-content-browser__reorder-end"
+          aria-label="Move to end of list"
+          {...getReorderTargetProps(null, endReorderTarget)}
+        >
+          Drop at end
         </div>
       ) : null}
     </div>

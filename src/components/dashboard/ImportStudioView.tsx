@@ -38,7 +38,7 @@ import {
 } from '../../lib/import/bookmarkFileImport';
 import { ImportReportOverlay } from './ImportReportOverlay';
 import { uiPatterns } from '../../styles/uiPatterns';
-import { INCOMING_COLLECTION_NAME, UNFILED_COLLECTION_NAME } from '../../lib/systemDataModel';
+import { DEFAULT_COLLECTION_NAME, INCOMING_COLLECTION_NAME } from '../../lib/systemDataModel';
 
 export type ImportSource = 'file' | 'chrome' | 'assistant';
 
@@ -82,7 +82,7 @@ export function resolveImportDestinationLabel(
   }
   if (projectId) {
     const projectName = projects.find((project) => project.id === projectId)?.name || 'Selected project';
-    return `${projectName} / ${UNFILED_COLLECTION_NAME}`;
+    return `${projectName} / ${DEFAULT_COLLECTION_NAME}`;
   }
   return `Inbox / ${INCOMING_COLLECTION_NAME}`;
 }
@@ -926,7 +926,7 @@ export const ImportStudioView: React.FC<ImportStudioViewProps> = ({
             disabled={committing || processing}
             style={selectStyle}
           >
-            <option value="">{UNFILED_COLLECTION_NAME} (default)</option>
+            <option value="">{DEFAULT_COLLECTION_NAME}</option>
             {filteredCollections.filter((collection) => !collection.isDefault).map((collection) => (
               <option key={collection.id} value={collection.id}>{collection.name}</option>
             ))}

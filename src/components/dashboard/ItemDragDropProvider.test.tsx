@@ -72,6 +72,20 @@ function BulkTestSurface() {
   );
 }
 
+function ReorderEndTestSurface({ target }: { target: ItemDropTarget }) {
+  const { getDragProps, getReorderTargetProps } = useItemDragDrop();
+  const source: ItemDragSource = {
+    kind: 'workspace',
+    containerId: target.containerId,
+    containerLabel: target.containerLabel,
+    projectId: target.projectId,
+  };
+  return <>
+    <div data-testid="source" {...getDragProps(savedItem, source)}>Source</div>
+    <div data-testid="reorder-end" {...getReorderTargetProps(null, target)}>Drop at end</div>
+  </>;
+}
+
 describe('ItemDragDropProvider', () => {
   const roots: Array<{ root: ReturnType<typeof createRoot>; host: HTMLElement }> = [];
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -86,6 +100,45 @@ describe('ItemDragDropProvider', () => {
   it('places the destination tray away from the drag source', () => {
     expect(chooseItemDropTraySide({ left: 900, right: 1180, viewportWidth: 1200 })).toBe('left');
     expect(chooseItemDropTraySide({ left: 20, right: 320, viewportWidth: 1200 })).toBe('right');
+  });
+
+  it('supports an explicit end-of-workspace reorder target', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    roots.push({ root, host });
+    const onReorder = vi.fn();
+    const target: ItemDropTarget = {
+      kind: 'workspace',
+      containerId: 'workspace-a',
+      containerLabel: 'Workspace A',
+      projectId: 'project-a',
+    };
+    await act(async () => {
+      root.render(
+        <ToastProvider>
+          <ItemDragDropProvider
+            projects={[]}
+            collections={[]}
+            workspaceDestinations={[]}
+            isInTarget={() => false}
+            onTransfer={vi.fn()}
+            onReorderWorkspaceItem={onReorder}
+          >
+            <ReorderEndTestSurface target={target} />
+          </ItemDragDropProvider>
+        </ToastProvider>
+      );
+    });
+
+    const dataTransfer = mockDataTransfer();
+    await act(async () => {
+      dispatchDrag(host.querySelector('[data-testid="source"]')!, 'dragstart', dataTransfer);
+      dispatchDrag(host.querySelector('[data-testid="reorder-end"]')!, 'dragover', dataTransfer);
+      dispatchDrag(host.querySelector('[data-testid="reorder-end"]')!, 'drop', dataTransfer);
+    });
+
+    expect(onReorder).toHaveBeenCalledWith('item-1', null, target);
   });
 
   async function renderSurface(source: ItemDragSource, onTransfer = vi.fn()) {

@@ -122,6 +122,11 @@ export const AskTab: React.FC<AskTabProps> = ({
         overflow: 'hidden',
       }}
     >
+      <div className="ui-ask-tab__status" role="note">
+        <strong>Not implemented</strong>
+        <span>Ask is the next major feature planned for this panel. The controls below are an early prototype, not a finished workflow.</span>
+      </div>
+
       {/* Context selector */}
       <select
         value={context}

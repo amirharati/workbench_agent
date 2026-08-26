@@ -31,7 +31,7 @@ import {
   assertCanCreateCollectionInProject,
   INBOX_PROJECT_NAME,
   INCOMING_COLLECTION_NAME,
-  UNFILED_COLLECTION_NAME,
+  DEFAULT_COLLECTION_NAME,
 } from './systemDataModel';
 
 export type { AiCategory, AiItemCategoryLink, AiItemSignal, AiTaxonomyState };
@@ -333,7 +333,7 @@ async function ensureDefaultCollectionForProject(store: IdbCompatStore, projectI
   if (!existing) {
     store.putCollection({
       id,
-      name: UNFILED_COLLECTION_NAME,
+      name: DEFAULT_COLLECTION_NAME,
       color: '#3b82f6',
       isDefault: true,
       created_at: now,
@@ -763,7 +763,7 @@ export const deleteProjectAtomic = async (
   );
   const changedWorkspaces = allWorkspaces.filter((workspace) => workspace.projectId === id);
   const now = nowTs();
-  const destinationUnfiledId = await ensureDefaultCollectionForProject(store, destinationProjectId);
+  const destinationDefaultCollectionId = await ensureDefaultCollectionForProject(store, destinationProjectId);
   const undoId = crypto.randomUUID();
   const trashEntry: ContainerTrashEntry = {
     id: undoId,
@@ -807,7 +807,7 @@ export const deleteProjectAtomic = async (
       for (const item of affectedItems) {
         const active = (item.collectionIds || []).filter((collectionId) => !removableCollectionIds.has(collectionId));
         const wasUnplaced = active.length === 0;
-        const nextActive = wasUnplaced ? [destinationUnfiledId] : active;
+        const nextActive = wasUnplaced ? [destinationDefaultCollectionId] : active;
         const synced = syncItemPlacementsWithCollectionIds(item, nextActive, now);
         const removedPlacements = { ...(synced.removedPlacements || {}) };
         for (const removedId of removableCollectionIds) delete removedPlacements[removedId];
@@ -880,7 +880,7 @@ export const addCollection = async (name: string, color?: string, projectId?: st
 /**
  * Delete a collection as one container mutation. Items are never deleted: an
  * item whose last active placement was here is relocated to its project's
- * Unfiled collection. Historical tombstones for this deleted container cannot
+ * Default collection. Historical tombstones for this deleted container cannot
  * be restored and are discarded at the same time.
  */
 export const deleteCollectionAtomic = async (

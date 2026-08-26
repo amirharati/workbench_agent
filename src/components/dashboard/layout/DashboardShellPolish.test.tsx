@@ -79,7 +79,26 @@ describe('dashboard shell polish contracts', () => {
     expect(markup).toContain('aria-label="Inspector tools"');
     expect(markup).toContain('--right-panel-user-width:420px');
     expect(markup).toContain('class="right-panel__tab" data-active="true" role="tab" aria-selected="true"');
+    expect(markup).toContain('Not implemented');
     expect(markup).toContain('aria-label="Collapse Inspector panel"');
+  });
+
+  it('marks Ask as the next unfinished Inspector feature', () => {
+    const markup = renderToStaticMarkup(
+      <RightPanel
+        activeItem={null}
+        scopeProjectId="all"
+        scopeCollectionId="all"
+        isCollapsed={false}
+        activeTab="ask"
+        onCollapsedChange={vi.fn()}
+        onActiveTabChange={vi.fn()}
+      />
+    );
+
+    expect(markup).toContain('ui-ask-tab__status');
+    expect(markup).toContain('Ask is the next major feature planned for this panel');
+    expect(markup).toContain('early prototype');
   });
 
   it('starts the Inspector wider and persists it as shell layout state', () => {

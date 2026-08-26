@@ -96,7 +96,12 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                 aria-selected={activeTab === tab}
                 onClick={() => onActiveTabChange(tab)}
               >
-                {tab === 'inspector' ? 'Inspector' : 'Ask'}
+                {tab === 'inspector' ? 'Inspector' : (
+                  <>
+                    <span>Ask</span>
+                    <span className="right-panel__tab-status">Not implemented</span>
+                  </>
+                )}
               </button>
             ))}
 
