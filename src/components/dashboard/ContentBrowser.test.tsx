@@ -94,6 +94,7 @@ describe('ContentBrowser', () => {
     expect(host.querySelectorAll('[data-has-preview="true"]')).toHaveLength(2);
     expect(host.querySelector('.ui-link-visual--thumbnail')).not.toBeNull();
     expect(host.querySelector('.ui-content-browser__preview-note')).not.toBeNull();
+    expect(host.querySelectorAll('.ui-generated-link-cover')).toHaveLength(2);
   });
 
   it('uses the complete row as the shared drag surface', () => {

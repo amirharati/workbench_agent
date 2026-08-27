@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Eye, FileText, Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
+import { Eye, Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
 import type { ItemDragSource, ItemDropTarget, ProjectCollectionDropTarget } from './itemDragDrop';
 import { useItemPeek } from './ItemPeekProvider';
 import { ItemResultRow } from './ItemResultRow';
-import { LinkVisual } from './LinkVisual';
+import { GeneratedLinkCover, LinkVisual } from './LinkVisual';
 
 export type ContentBrowseMode = 'list' | 'gallery';
 
@@ -129,7 +129,7 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       variant="thumbnail"
     />
   ) : (
-    <span className="ui-content-browser__preview-note"><FileText size={24} /></span>
+    <span className="ui-content-browser__preview-note" aria-hidden="true" />
   ));
   return (
     <ItemResultRow
@@ -167,7 +167,12 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
           aria-label={`Select ${entry.title || 'item'}`}
         />
       ) : null}
-      {showPreview ? <span className="ui-content-browser__preview">{galleryPreview}</span> : null}
+      {showPreview ? (
+        <span className="ui-content-browser__preview">
+          {galleryPreview}
+          {!entry.preview ? <GeneratedLinkCover url={previewUrl} title={entry.title} /> : null}
+        </span>
+      ) : null}
       <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
       <span className="ui-content-browser__copy">
         <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>

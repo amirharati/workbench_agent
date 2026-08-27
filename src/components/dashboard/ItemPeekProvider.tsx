@@ -6,7 +6,7 @@ import { useInspectorItemData } from '../../hooks/useInspectorItemData';
 import { DialogShell } from './DialogShell';
 import { ItemOrganizationEditor } from './ItemOrganizationEditor';
 import { openBookmarkInBrowser } from './BookmarkUrlLink';
-import { LinkVisual } from './LinkVisual';
+import { GeneratedLinkCover, LinkVisual } from './LinkVisual';
 import { EnrichmentContent } from './PipelineDisplayBlocks';
 import type { WorkspaceDestination } from './workspaceDestinations';
 
@@ -112,6 +112,14 @@ function PeekGalleryCard({
       aria-label={`Preview ${item?.title || 'saved item'}`}
       onClick={() => onOpen(itemId)}
     >
+      <span className="ui-item-peek__gallery-strip">
+        {item?.url ? (
+          <LinkVisual url={item.url} title={item.title} favicon={item.favicon} />
+        ) : (
+          <FileText size={14} aria-hidden="true" />
+        )}
+        <small title={item?.url || undefined}>{peekGalleryLabel(item)}</small>
+      </span>
       <span className="ui-item-peek__gallery-visual">
         {item?.url ? (
           <LinkVisual
@@ -121,12 +129,10 @@ function PeekGalleryCard({
             previewImage={previewImage}
             variant="thumbnail"
           />
-        ) : (
-          <span className="ui-item-peek__gallery-note"><FileText size={24} /></span>
-        )}
+        ) : null}
+        <GeneratedLinkCover url={item?.url} title={item?.title || 'Saved item'} />
       </span>
       <strong title={item?.title || 'Saved item'}>{item?.title || 'Saved item'}</strong>
-      <small title={item?.url || undefined}>{peekGalleryLabel(item)}</small>
     </button>
   );
 }
