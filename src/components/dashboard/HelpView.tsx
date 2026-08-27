@@ -267,6 +267,7 @@ export const HELP_TOPICS: HelpTopic[] = [
             <>Open <strong>Home · Search</strong> or press <Kbd>{mod}</Kbd> + <Kbd>K</Kbd>.</>,
             <>Choose All Library, a project, or a collection as the search scope.</>,
             <>Select a result to inspect it. Use <strong>Add to workspace…</strong> for temporary working context or <strong>Organize…</strong> for permanent membership.</>,
+            <>Open <strong>Preview</strong> to review an item without leaving Search. Previous/Next follows the result order, and <strong>Gallery</strong> lets you visually choose another result from that same set.</>,
             <>Use <strong>Add to workspace…</strong> beside the search title when you want a frozen search entry; choose and confirm its destination in the modal.</>,
           ]} />
         <DefinitionGrid entries={[

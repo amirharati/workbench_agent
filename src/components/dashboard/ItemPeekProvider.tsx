@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Database, ExternalLink, FileText, Folder, Layers3, Tags } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Database, ExternalLink, FileText, Folder, LayoutGrid, Layers3, Tags } from 'lucide-react';
 import { getItem, type Collection, type Item, type Project, type UpdateItemOptions } from '../../lib/db';
 import { loadRawBody } from '../../lib/enrichment/rawBodyStore';
 import { useInspectorItemData } from '../../hooks/useInspectorItemData';
@@ -57,6 +57,7 @@ interface ItemPeekProviderProps {
 }
 
 const MAX_PREVIEW_CHARS = 500_000;
+const GALLERY_PAGE_SIZE = 6;
 const ItemPeekMarkdown = React.lazy(() => import('./ItemPeekMarkdown'));
 
 export function cleanStoredPreviewMarkdown(value: string): string {
@@ -111,12 +112,21 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
   const currentIndex = request ? request.itemIds.indexOf(request.itemId) : -1;
   const canGoPrevious = currentIndex > 0;
   const canGoNext = Boolean(request && currentIndex >= 0 && currentIndex < request.itemIds.length - 1);
+  const galleryPageCount = request ? Math.max(1, Math.ceil(request.itemIds.length / GALLERY_PAGE_SIZE)) : 1;
+  const galleryPageIndex = Math.max(0, Math.floor(Math.max(currentIndex, 0) / GALLERY_PAGE_SIZE));
+  const galleryPageStart = galleryPageIndex * GALLERY_PAGE_SIZE;
+  const galleryItemIds = request?.itemIds.slice(galleryPageStart, galleryPageStart + GALLERY_PAGE_SIZE) ?? [];
+  const itemsById = useMemo(() => new Map(items.map((candidate) => [candidate.id, candidate])), [items]);
 
   const goToIndex = useCallback((index: number) => {
     setRequest((current) => {
       const itemId = current?.itemIds[index];
       return current && itemId ? { ...current, itemId } : current;
     });
+  }, []);
+
+  const openGalleryItem = useCallback((itemId: string) => {
+    setRequest((current) => current?.itemIds.includes(itemId) ? { ...current, itemId } : current);
   }, []);
 
   useEffect(() => {
@@ -244,6 +254,66 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
             </div>
           )}
         >
+          <div className="ui-item-peek__stack">
+          {request.itemIds.length > 1 ? (
+            <section className="ui-item-peek__gallery" aria-label="Preview gallery">
+              <header>
+                <div>
+                  <span className="ui-item-peek__kind"><LayoutGrid size={13} /> Gallery</span>
+                  <span>{galleryPageStart + 1}–{Math.min(galleryPageStart + GALLERY_PAGE_SIZE, request.itemIds.length)} of {request.itemIds.length}</span>
+                </div>
+                <div className="ui-item-peek__gallery-paging">
+                  <button className="ui-button ui-button--secondary ui-button--compact" type="button" aria-label="Previous gallery page" disabled={galleryPageIndex <= 0} onClick={() => goToIndex(Math.max(0, galleryPageStart - GALLERY_PAGE_SIZE))}><ArrowLeft size={13} /></button>
+                  <button className="ui-button ui-button--secondary ui-button--compact" type="button" aria-label="Next gallery page" disabled={galleryPageIndex >= galleryPageCount - 1} onClick={() => goToIndex(Math.min(request.itemIds.length - 1, galleryPageStart + GALLERY_PAGE_SIZE))}><ArrowRight size={13} /></button>
+                </div>
+              </header>
+              <div className="ui-item-peek__gallery-grid">
+                {galleryItemIds.map((itemId) => {
+                  const galleryItem = itemsById.get(itemId);
+                  const isCurrent = itemId === request.itemId;
+                  const previewImage = typeof galleryItem?.metadata?.previewImage === 'string'
+                    ? galleryItem.metadata.previewImage
+                    : undefined;
+                  return (
+                    <article
+                      className="ui-item-peek__gallery-card"
+                      key={itemId}
+                      aria-current={isCurrent ? 'true' : undefined}
+                    >
+                      <span className="ui-item-peek__gallery-visual">
+                        {galleryItem?.url ? (
+                          <LinkVisual
+                            url={galleryItem.url}
+                            title={galleryItem.title}
+                            favicon={galleryItem.favicon}
+                            previewImage={previewImage}
+                            variant="thumbnail"
+                          />
+                        ) : (
+                          <span className="ui-item-peek__gallery-note"><FileText size={24} /></span>
+                        )}
+                      </span>
+                      <strong title={galleryItem?.title || 'Saved item'}>{galleryItem?.title || 'Saved item'}</strong>
+                      <small title={galleryItem?.url || undefined}>
+                        {galleryItem?.url ? (() => {
+                          try { return new URL(galleryItem.url).hostname.replace(/^www\./, ''); }
+                          catch { return galleryItem.url; }
+                        })() : 'Note'}
+                      </small>
+                      <button
+                        className="ui-button ui-button--secondary ui-button--compact"
+                        type="button"
+                        aria-label={`See full preview for ${galleryItem?.title || 'saved item'}`}
+                        onClick={() => openGalleryItem(itemId)}
+                      >
+                        See full
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
           <div className="ui-item-peek__layout">
             <main className="ui-item-peek__content scrollbar">
               {itemLoading ? <div className="ui-item-peek__empty">Loading item…</div> : item ? (
@@ -389,6 +459,7 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
                 {workspaceNotice ? <div className="ui-status" data-tone="success" role="status">{workspaceNotice}</div> : null}
               </section>
             </aside>
+          </div>
           </div>
         </DialogShell>
       ) : null}

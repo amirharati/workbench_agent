@@ -133,6 +133,25 @@ describe('ItemPeekProvider', () => {
     expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('2 of 2');
   });
 
+  it('browses the originating result order as a visual gallery', async () => {
+    const { host } = await renderProvider();
+    await act(async () => host.querySelector<HTMLButtonElement>('button')?.click());
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.querySelector('[aria-label="Preview gallery"]')).not.toBeNull();
+    expect(dialog?.textContent).toContain('First note');
+    expect(dialog?.textContent).toContain('Second note');
+    expect(dialog?.textContent).toContain('First body');
+    expect(dialog?.querySelector('.ui-item-peek__gallery-card[aria-current="true"] strong')?.textContent).toBe('First note');
+
+    const second = dialog?.querySelector<HTMLButtonElement>('[aria-label="See full preview for Second note"]');
+    await act(async () => second?.click());
+    expect(dialog?.querySelector('[aria-label="Preview gallery"]')).not.toBeNull();
+    expect(dialog?.textContent).toContain('Second body');
+    expect(dialog?.textContent).toContain('2 of 2');
+    expect(dialog?.querySelector('.ui-item-peek__gallery-card[aria-current="true"] strong')?.textContent).toBe('Second note');
+  });
+
   it('removes the private enrichment header before rendering stored Markdown', () => {
     const stored = '<!-- enrichment-meta\n{"providerId":"hybrid"}\n-->\n\n# Visible article';
     expect(cleanStoredPreviewMarkdown(stored)).toBe('# Visible article');
