@@ -304,6 +304,7 @@ export const BookmarksLibraryView: React.FC<BookmarksLibraryViewProps> = ({
         : item.notes?.trim() || 'Empty note',
       searchText: buildItemQuickFilterText(item, projects, collections),
       dragSource: { kind: 'reference' as const, label: 'All Library' },
+      dragItem: item,
       meta: new Date(item.updated_at ?? item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       actions: (
         <>

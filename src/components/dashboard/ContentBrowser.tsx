@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Eye, Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
+import { Eye, FileText, Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
 import type { ItemDragSource, ItemDropTarget, ProjectCollectionDropTarget } from './itemDragDrop';
 import { useItemPeek } from './ItemPeekProvider';
 import { ItemResultRow } from './ItemResultRow';
+import { LinkVisual } from './LinkVisual';
 
 export type ContentBrowseMode = 'list' | 'gallery';
 
@@ -23,7 +24,13 @@ export interface ContentBrowseEntry {
   onContextMenu?: (event: React.MouseEvent) => void;
   /** Omit for non-item rows. Result lists use `reference`; containers identify the exact membership. */
   dragSource?: ItemDragSource;
-  dragItem?: { id: string; title?: string; url?: string };
+  dragItem?: {
+    id: string;
+    title?: string;
+    url?: string;
+    favicon?: string;
+    metadata?: Record<string, unknown>;
+  };
   /** Raw browser/snapshot URL; it becomes a library item only when dropped. */
   dragUrl?: string;
   reorderTarget?: ItemDropTarget;
@@ -109,6 +116,21 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
     : {};
   const subtitleText = readableNodeText(entry.subtitle).trim();
   const subtitleIsUrl = isUrlText(subtitleText);
+  const previewUrl = dragItem.url || entry.dragUrl || (subtitleIsUrl ? subtitleText : undefined);
+  const previewImage = typeof dragItem.metadata?.previewImage === 'string'
+    ? dragItem.metadata.previewImage
+    : undefined;
+  const galleryPreview = entry.preview ?? (previewUrl ? (
+    <LinkVisual
+      url={previewUrl}
+      title={entry.title}
+      favicon={dragItem.favicon}
+      previewImage={previewImage}
+      variant="thumbnail"
+    />
+  ) : (
+    <span className="ui-content-browser__preview-note"><FileText size={24} /></span>
+  ));
   return (
     <ItemResultRow
       ref={selectedEntryRef}
@@ -134,7 +156,7 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       }}
       onContextMenu={entry.onContextMenu}
       className="ui-content-browser__entry"
-      data-has-preview={showPreview && entry.preview ? 'true' : undefined}
+      data-has-preview={showPreview ? 'true' : undefined}
     >
       {selectionEnabled && entry.dragSource && !entry.dragUrl ? (
         <input
@@ -145,7 +167,7 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
           aria-label={`Select ${entry.title || 'item'}`}
         />
       ) : null}
-      {showPreview && entry.preview ? <span className="ui-content-browser__preview">{entry.preview}</span> : null}
+      {showPreview ? <span className="ui-content-browser__preview">{galleryPreview}</span> : null}
       <span className="ui-content-browser__leading" data-content-leading="true">{entry.icon}</span>
       <span className="ui-content-browser__copy">
         <span className="ui-content-browser__entry-title" title={entry.title || 'Untitled'}>{entry.title || 'Untitled'}</span>

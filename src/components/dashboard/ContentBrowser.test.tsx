@@ -61,6 +61,41 @@ describe('ContentBrowser', () => {
     expect(markup).toContain('data-has-preview="true"');
   });
 
+  it('builds a consistent gallery visual for saved links and notes', () => {
+    const markup = renderToStaticMarkup(
+      <ContentBrowser
+        title="Library"
+        entries={[
+          {
+            id: 'link-a',
+            title: 'Visual article',
+            icon: 'A',
+            subtitle: 'https://example.com/article',
+            dragItem: {
+              id: 'link-a',
+              title: 'Visual article',
+              url: 'https://example.com/article',
+              favicon: 'https://example.com/favicon.ico',
+              metadata: { previewImage: 'https://example.com/card.jpg' },
+            },
+          },
+          { id: 'note-a', title: 'Planning note', icon: 'N', subtitle: 'Working copy' },
+        ]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        mode="gallery"
+        onModeChange={vi.fn()}
+        emptyMessage="Nothing here"
+      />
+    );
+
+    const host = document.createElement('div');
+    host.innerHTML = markup;
+    expect(host.querySelectorAll('[data-has-preview="true"]')).toHaveLength(2);
+    expect(host.querySelector('.ui-link-visual--thumbnail')).not.toBeNull();
+    expect(host.querySelector('.ui-content-browser__preview-note')).not.toBeNull();
+  });
+
   it('uses the complete row as the shared drag surface', () => {
     const markup = renderToStaticMarkup(
       <ContentBrowser

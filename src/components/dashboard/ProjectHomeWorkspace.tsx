@@ -507,6 +507,7 @@ export const ProjectHomeWorkspace: React.FC<ProjectHomeWorkspaceProps> = ({
             projectId: project.id,
           }
         : { kind: 'reference' as const, label: browseSource === 'pinned' ? 'Pinned' : 'Project items' },
+      dragItem: item,
       actions: (
         <>
           <ItemFavoriteButton item={item} onUpdateItem={onUpdateItem} />
