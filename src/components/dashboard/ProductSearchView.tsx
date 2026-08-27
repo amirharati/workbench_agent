@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckSquare2, Eye, Loader2, Plus, Search, X } from 'lucide-react';
+import { Eye, Loader2, Plus, Search, X } from 'lucide-react';
 import type { Collection, Item, Project, UpdateItemOptions } from '../../lib/db';
 import type { SearchResult } from '../../lib/search';
 import type { LibrarySearchState, LibrarySearchTab } from '../../hooks/useLibrarySearch';
@@ -127,7 +127,6 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
   const { beginItemTransfer } = useItemDragDrop();
   const inputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ item: Item; x: number; y: number } | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedResultIds, setSelectedResultIds] = useState<Set<string>>(new Set());
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const resultItemIds = useMemo(
@@ -762,34 +761,31 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
 
       {hasResults ? (
         <div className="ui-content-browser__selection-bar ui-product-search__selection-bar" role="toolbar" aria-label="Search result selection">
+          <strong>{selectedResultItems.length} selected</strong>
           <button
             className="ui-button ui-button--secondary ui-button--compact"
             type="button"
-            aria-pressed={selectionMode}
-            onClick={() => {
-              if (selectionMode) setSelectedResultIds(new Set());
-              setSelectionMode(!selectionMode);
-            }}
+            disabled={allResultsSelected}
+            onClick={() => setSelectedResultIds(new Set(resultItems.map((item) => item.id)))}
           >
-            <CheckSquare2 size={12} /> {selectionMode ? 'Done' : 'Select results'}
+            Select all results
           </button>
-          {selectionMode ? (
-            <>
-              <strong>{selectedResultItems.length} selected</strong>
-              <button className="ui-button ui-button--secondary ui-button--compact" type="button" onClick={() => setSelectedResultIds(allResultsSelected ? new Set() : new Set(resultItems.map((item) => item.id)))}>
-                {allResultsSelected ? 'Clear results' : 'Select all results'}
-              </button>
-              {selectedResultIds.size > 0 ? <button className="ui-button ui-button--secondary ui-button--compact" type="button" onClick={() => setSelectedResultIds(new Set())}>Clear</button> : null}
-              <button
-                className="ui-button ui-button--primary ui-button--compact"
-                type="button"
-                disabled={!selectedResultItems.length}
-                onClick={() => beginItemTransfer(selectedResultItems, { kind: 'reference', label: 'Search results' })}
-              >
-                Organize selected…
-              </button>
-            </>
-          ) : null}
+          <button
+            className="ui-button ui-button--secondary ui-button--compact"
+            type="button"
+            disabled={!selectedResultItems.length}
+            onClick={() => setSelectedResultIds(new Set())}
+          >
+            Clear
+          </button>
+          <button
+            className="ui-button ui-button--primary ui-button--compact"
+            type="button"
+            disabled={!selectedResultItems.length}
+            onClick={() => beginItemTransfer(selectedResultItems, { kind: 'reference', label: 'Search results' })}
+          >
+            Organize selected…
+          </button>
         </div>
       ) : null}
 
@@ -853,13 +849,11 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
               dragSource={item ? { kind: 'reference', label: 'Search results' } : undefined}
               dragItems={item && selectedResultIds.has(item.id) ? selectedResultItems : undefined}
               selected={isSelected}
-              data-selection-mode={selectionMode ? 'true' : undefined}
+              data-selection-mode="true"
               data-bulk-selected={item && selectedResultIds.has(item.id) ? 'true' : undefined}
-              onSelectItem={() => selectionMode && item
-                ? toggleResultSelection(item.id)
-                : onSelectedItemIdChange(row.itemId)}
+              onSelectItem={() => onSelectedItemIdChange(row.itemId)}
               onDoubleClick={() => {
-                if (!selectionMode) openPeek(row.itemId, { itemIds: resultItemIds, sourceLabel: 'Search results' });
+                openPeek(row.itemId, { itemIds: resultItemIds, sourceLabel: 'Search results' });
               }}
               onContextMenu={(e) => {
                 if (!item) return;
@@ -876,7 +870,7 @@ export const ProductSearchView: React.FC<ProductSearchViewProps> = ({
                 transition: 'border-color 0.12s ease',
               }}
             >
-              {selectionMode && item ? (
+              {item ? (
                 <input
                   className="ui-product-search__selection-checkbox"
                   type="checkbox"

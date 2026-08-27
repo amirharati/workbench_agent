@@ -274,9 +274,12 @@ describe('ContentBrowser', () => {
       );
     });
 
-    const selectButton = [...host.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.trim() === 'Select');
-    await act(async () => selectButton?.click());
+    expect(host.textContent).not.toContain('Done');
+    expect(host.textContent).toContain('0 selected');
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Select Architecture article"]')).not.toBeNull();
+    const organize = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Organize selected'));
+    expect(organize?.disabled).toBe(true);
     const input = host.querySelector<HTMLInputElement>('[aria-label="Filter Library"]');
     await act(async () => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
@@ -290,6 +293,14 @@ describe('ContentBrowser', () => {
     expect(host.textContent).toContain('1 selected');
     expect(host.querySelector<HTMLInputElement>('[aria-label="Select Cooking article"]')?.checked).toBe(true);
     expect(host.querySelector('[aria-label="Select Architecture article"]')).toBeNull();
+    expect(organize?.disabled).toBe(false);
+
+    const clear = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.trim() === 'Clear');
+    await act(async () => clear?.click());
+    expect(host.textContent).toContain('0 selected');
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Select Cooking article"]')?.checked).toBe(false);
+    expect(organize?.disabled).toBe(true);
     await act(async () => root.unmount());
   });
 });

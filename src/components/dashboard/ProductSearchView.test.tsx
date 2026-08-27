@@ -406,7 +406,7 @@ describe('ProductSearchView empty state', () => {
     expect(host.textContent).toContain('Preview');
     expect(host.textContent).not.toContain('Add to active workspace');
 
-    const organize = [...host.querySelectorAll('button')].find((button) => button.textContent?.includes('Organize'));
+    const organize = [...host.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Organize…');
     await act(async () => organize?.click());
 
     const dialog = document.querySelector('[role="dialog"]');
@@ -590,16 +590,27 @@ describe('ProductSearchView empty state', () => {
       );
     });
 
-    const selectResults = [...host.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent?.includes('Select results'));
-    await act(async () => selectResults?.click());
+    expect(host.textContent).not.toContain('Select results');
+    expect(host.textContent).toContain('0 selected');
+    const organize = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Organize selected'));
+    expect(organize?.disabled).toBe(true);
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Select Python guide"]')).not.toBeNull();
+
     const selectAll = [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Select all results'));
     await act(async () => selectAll?.click());
 
     expect(host.textContent).toContain('1 selected');
     expect(host.querySelector<HTMLInputElement>('[aria-label="Select Python guide"]')?.checked).toBe(true);
-    expect([...host.querySelectorAll<HTMLButtonElement>('button')].some((button) => button.textContent?.includes('Organize selected'))).toBe(true);
+    expect(organize?.disabled).toBe(false);
+
+    const clear = [...host.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.trim() === 'Clear');
+    await act(async () => clear?.click());
+    expect(host.textContent).toContain('0 selected');
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Select Python guide"]')?.checked).toBe(false);
+    expect(organize?.disabled).toBe(true);
     await act(async () => root.unmount());
     document.body.innerHTML = '';
   });

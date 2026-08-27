@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckSquare2, Eye, Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
+import { Eye, Grid2X2, GripVertical, List, Search, X } from 'lucide-react';
 import { uiPatterns } from '../../styles/uiPatterns';
 import { buildQuickFilterText, matchesQuickFilter } from '../../lib/itemQuickFilter';
 import { useItemDragDrop } from './ItemDragDropProvider';
@@ -75,7 +75,7 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
   selectedEntryRef,
   previewItemIds,
   showPreview,
-  selectionMode,
+  selectionEnabled,
   checked,
   onToggle,
   selectedDragItems,
@@ -87,7 +87,7 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
   selectedEntryRef?: React.RefObject<HTMLDivElement>;
   previewItemIds: readonly string[];
   showPreview: boolean;
-  selectionMode: boolean;
+  selectionEnabled: boolean;
   checked: boolean;
   onToggle: (id: string) => void;
   selectedDragItems: readonly { id: string; title?: string; url?: string }[];
@@ -117,14 +117,14 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       dragItems={checked ? selectedDragItems : undefined}
       dragUrl={entry.dragUrl}
       selected={selected}
-      onSelectItem={() => selectionMode && entry.dragSource && !entry.dragUrl ? onToggle(entry.id) : onSelect(entry.id)}
+      onSelectItem={() => onSelect(entry.id)}
       aria-current={selected ? 'true' : undefined}
       data-content-entry
-      data-selection-mode={selectionMode ? 'true' : undefined}
+      data-selection-mode={selectionEnabled && entry.dragSource && !entry.dragUrl ? 'true' : undefined}
       data-bulk-selected={checked ? 'true' : undefined}
       {...reorderProps}
       onDoubleClick={(event) => {
-        if (selectionMode || !entry.dragSource || entry.dragUrl || (event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+        if (!entry.dragSource || entry.dragUrl || (event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
         openPeek(dragItem.id, {
           itemIds: previewItemIds,
           sourceLabel: entry.dragSource.kind === 'reference'
@@ -136,7 +136,7 @@ const ContentBrowserEntryRow = React.memo(function ContentBrowserEntryRow({
       className="ui-content-browser__entry"
       data-has-preview={showPreview && entry.preview ? 'true' : undefined}
     >
-      {selectionMode && entry.dragSource && !entry.dragUrl ? (
+      {selectionEnabled && entry.dragSource && !entry.dragUrl ? (
         <input
           className="ui-content-browser__selection-checkbox"
           type="checkbox"
@@ -251,7 +251,6 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
 }) => {
   const { activePayload, beginItemTransfer, getDropTargetProps, getProjectCollectionDropTargetProps, getReorderTargetProps } = useItemDragDrop();
   const [filterQuery, setFilterQuery] = useState('');
-  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
   const [renderLimit, setRenderLimit] = useState(60);
   const selectedEntryRef = React.useRef<HTMLDivElement>(null);
@@ -329,11 +328,10 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
     });
   }, []);
 
-  const toggleFilteredSelection = () => {
+  const selectAllFiltered = () => {
     setSelectedEntryIds((current) => {
       const next = new Set(current);
-      if (allFilteredSelected) selectableEntries.forEach((entry) => next.delete(entry.id));
-      else selectableEntries.forEach((entry) => next.add(entry.id));
+      selectableEntries.forEach((entry) => next.add(entry.id));
       return next;
     });
   };
@@ -406,35 +404,20 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
       ) : null}
       <div className="ui-content-browser__header-actions">
         {headerActions}
-        {multiSelect && entries.some((entry) => entry.dragSource && !entry.dragUrl) ? (
-          <button
-            className="ui-button ui-button--secondary ui-button--compact"
-            type="button"
-            aria-pressed={selectionMode}
-            onClick={() => {
-              if (selectionMode) setSelectedEntryIds(new Set());
-              setSelectionMode(!selectionMode);
-            }}
-          >
-            <CheckSquare2 size={12} /> {selectionMode ? 'Done' : 'Select'}
-          </button>
-        ) : null}
         <div className="ui-content-browser__view-toggle" role="group" aria-label={`${title} view`}>
           <button className="ui-content-browser__view-button" type="button" aria-label="List view" aria-pressed={mode === 'list'} title="List view" onClick={() => onModeChange('list')}><List size={13} /></button>
           <button className="ui-content-browser__view-button" type="button" aria-label="Gallery view" aria-pressed={mode === 'gallery'} title="Gallery view" onClick={() => onModeChange('gallery')}><Grid2X2 size={13} /></button>
         </div>
       </div>
     </div>
-    {selectionMode ? (
+    {multiSelect && entries.some((entry) => entry.dragSource && !entry.dragUrl) ? (
       <div className="ui-content-browser__selection-bar" role="toolbar" aria-label={`${title} selection`}>
         <strong>{selectedDragItems.length} selected</strong>
         <span>{filterQuery.trim() ? `${selectableEntries.length} filtered items` : `${selectableEntries.length} available`}</span>
-        <button className="ui-button ui-button--secondary ui-button--compact" type="button" disabled={!selectableEntries.length} onClick={toggleFilteredSelection}>
-          {allFilteredSelected ? 'Clear filtered' : 'Select all filtered'}
+        <button className="ui-button ui-button--secondary ui-button--compact" type="button" disabled={!selectableEntries.length || allFilteredSelected} onClick={selectAllFiltered}>
+          {filterQuery.trim() ? 'Select all filtered' : 'Select all'}
         </button>
-        {selectedEntryIds.size > 0 ? (
-          <button className="ui-button ui-button--secondary ui-button--compact" type="button" onClick={() => setSelectedEntryIds(new Set())}>Clear all</button>
-        ) : null}
+        <button className="ui-button ui-button--secondary ui-button--compact" type="button" disabled={!selectedDragItems.length} onClick={() => setSelectedEntryIds(new Set())}>Clear</button>
         <button
           className="ui-button ui-button--primary ui-button--compact"
           type="button"
@@ -457,7 +440,7 @@ export const ContentBrowser: React.FC<ContentBrowserProps> = ({
           selectedEntryRef={entry.id === selectedId ? selectedEntryRef : undefined}
           previewItemIds={previewItemIds}
           showPreview={mode === 'gallery'}
-          selectionMode={selectionMode}
+          selectionEnabled={multiSelect}
           checked={selectedEntryIds.has(entry.id)}
           onToggle={toggleSelection}
           selectedDragItems={selectedDragItems}
