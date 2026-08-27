@@ -45,6 +45,12 @@ import { cleanStoredPreviewMarkdown, ItemPeekProvider, useItemPeek } from './Ite
 const items: Item[] = [
   { id: 'note-1', title: 'First note', url: '', notes: '# First body\n\n[Reference](https://example.com)', collectionIds: [], tags: [], source: 'manual', created_at: 1, updated_at: 1 },
   { id: 'note-2', title: 'Second note', url: '', notes: 'Second body', collectionIds: [], tags: [], source: 'manual', created_at: 2, updated_at: 2 },
+  { id: 'note-3', title: 'Third note', url: '', notes: 'Third body', collectionIds: [], tags: [], source: 'manual', created_at: 3, updated_at: 3 },
+  { id: 'note-4', title: 'Fourth note', url: '', notes: 'Fourth body', collectionIds: [], tags: [], source: 'manual', created_at: 4, updated_at: 4 },
+  { id: 'note-5', title: 'Fifth note', url: '', notes: 'Fifth body', collectionIds: [], tags: [], source: 'manual', created_at: 5, updated_at: 5 },
+  { id: 'note-6', title: 'Sixth note', url: '', notes: 'Sixth body', collectionIds: [], tags: [], source: 'manual', created_at: 6, updated_at: 6 },
+  { id: 'note-7', title: 'Seventh note', url: '', notes: 'Seventh body', collectionIds: [], tags: [], source: 'manual', created_at: 7, updated_at: 7 },
+  { id: 'note-8', title: 'Eighth note', url: '', notes: 'Eighth body', collectionIds: [], tags: [], source: 'manual', created_at: 8, updated_at: 8 },
   { id: 'link-1', title: 'Saved article', url: 'https://example.com/article', notes: 'Remember this for the housing review.', collectionIds: [], tags: ['manual tag'], source: 'manual', created_at: 3, updated_at: 3 },
 ];
 
@@ -52,7 +58,7 @@ function Surface() {
   const { openPeek } = useItemPeek();
   return (
     <>
-      <button type="button" onClick={() => openPeek('note-1', { itemIds: ['note-1', 'note-2'], sourceLabel: 'Test list' })}>Open note preview</button>
+      <button type="button" onClick={() => openPeek('note-1', { itemIds: items.filter((item) => item.id.startsWith('note-')).map((item) => item.id), sourceLabel: 'Test list' })}>Open note preview</button>
       <button type="button" onClick={() => openPeek('link-1', { sourceLabel: 'Test list' })}>Open link preview</button>
     </>
   );
@@ -130,7 +136,7 @@ describe('ItemPeekProvider', () => {
       .find((button) => button.textContent?.includes('Next'));
     await act(async () => next?.click());
     expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('Second note');
-    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('2 of 2');
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain('2 of 8');
   });
 
   it('browses the originating result order as a visual gallery', async () => {
@@ -144,12 +150,32 @@ describe('ItemPeekProvider', () => {
     expect(dialog?.textContent).toContain('First body');
     expect(dialog?.querySelector('.ui-item-peek__gallery-card[aria-current="true"] strong')?.textContent).toBe('First note');
 
-    const second = dialog?.querySelector<HTMLButtonElement>('[aria-label="See full preview for Second note"]');
+    const second = dialog?.querySelector<HTMLButtonElement>('[aria-label="Preview Second note"]');
     await act(async () => second?.click());
     expect(dialog?.querySelector('[aria-label="Preview gallery"]')).not.toBeNull();
     expect(dialog?.textContent).toContain('Second body');
-    expect(dialog?.textContent).toContain('2 of 2');
+    expect(dialog?.textContent).toContain('2 of 8');
     expect(dialog?.querySelector('.ui-item-peek__gallery-card[aria-current="true"] strong')?.textContent).toBe('Second note');
+  });
+
+  it('opens a full gallery for non-linear browsing of large result sets', async () => {
+    const { host } = await renderProvider();
+    await act(async () => host.querySelector<HTMLButtonElement>('button')?.click());
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    const seeFullGallery = [...(dialog?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+      .find((button) => button.textContent?.trim() === 'See full gallery');
+    await act(async () => seeFullGallery?.click());
+
+    expect(dialog?.querySelector('[aria-label="Full preview gallery"]')).not.toBeNull();
+    expect(dialog?.textContent).toContain('Seventh note');
+    expect(dialog?.textContent).toContain('Eighth note');
+
+    const seventh = dialog?.querySelector<HTMLButtonElement>('[aria-label="Preview Seventh note"]');
+    await act(async () => seventh?.click());
+    expect(dialog?.querySelector('[aria-label="Full preview gallery"]')).toBeNull();
+    expect(dialog?.textContent).toContain('Seventh body');
+    expect(dialog?.textContent).toContain('7 of 8');
   });
 
   it('removes the private enrichment header before rendering stored Markdown', () => {

@@ -57,7 +57,8 @@ interface ItemPeekProviderProps {
 }
 
 const MAX_PREVIEW_CHARS = 500_000;
-const GALLERY_PAGE_SIZE = 6;
+const COMPACT_GALLERY_PAGE_SIZE = 6;
+const FULL_GALLERY_PAGE_SIZE = 60;
 const ItemPeekMarkdown = React.lazy(() => import('./ItemPeekMarkdown'));
 
 export function cleanStoredPreviewMarkdown(value: string): string {
@@ -75,6 +76,59 @@ function normalizePeekOrder(itemId: string, itemIds?: readonly string[]): string
   const ordered = [...new Set((itemIds ?? []).filter(Boolean))];
   if (!ordered.includes(itemId)) ordered.unshift(itemId);
   return ordered;
+}
+
+function peekGalleryLabel(item?: Item): string {
+  if (!item?.url) return 'Note';
+  try {
+    return new URL(item.url).hostname.replace(/^www\./, '');
+  } catch {
+    return item.url;
+  }
+}
+
+function PeekGalleryCard({
+  itemId,
+  item,
+  current,
+  variant,
+  onOpen,
+}: {
+  itemId: string;
+  item?: Item;
+  current: boolean;
+  variant: 'compact' | 'full';
+  onOpen: (itemId: string) => void;
+}) {
+  const previewImage = typeof item?.metadata?.previewImage === 'string'
+    ? item.metadata.previewImage
+    : undefined;
+  return (
+    <button
+      className="ui-item-peek__gallery-card"
+      data-variant={variant}
+      type="button"
+      aria-current={current ? 'true' : undefined}
+      aria-label={`Preview ${item?.title || 'saved item'}`}
+      onClick={() => onOpen(itemId)}
+    >
+      <span className="ui-item-peek__gallery-visual">
+        {item?.url ? (
+          <LinkVisual
+            url={item.url}
+            title={item.title}
+            favicon={item.favicon}
+            previewImage={previewImage}
+            variant="thumbnail"
+          />
+        ) : (
+          <span className="ui-item-peek__gallery-note"><FileText size={24} /></span>
+        )}
+      </span>
+      <strong title={item?.title || 'Saved item'}>{item?.title || 'Saved item'}</strong>
+      <small title={item?.url || undefined}>{peekGalleryLabel(item)}</small>
+    </button>
+  );
 }
 
 export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
@@ -100,22 +154,35 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
   const [showStoredSource, setShowStoredSource] = useState(false);
   const [workspaceKey, setWorkspaceKey] = useState(activeWorkspaceKey);
   const [workspaceNotice, setWorkspaceNotice] = useState<string | null>(null);
+  const [compactGalleryPage, setCompactGalleryPage] = useState(0);
+  const [fullGalleryPage, setFullGalleryPage] = useState(0);
+  const [fullGalleryOpen, setFullGalleryOpen] = useState(false);
 
   const openPeek = useCallback((itemId: string, options?: ItemPeekOptions) => {
+    const itemIds = normalizePeekOrder(itemId, options?.itemIds);
+    const itemIndex = Math.max(0, itemIds.indexOf(itemId));
+    setCompactGalleryPage(Math.floor(itemIndex / COMPACT_GALLERY_PAGE_SIZE));
+    setFullGalleryPage(Math.floor(itemIndex / FULL_GALLERY_PAGE_SIZE));
+    setFullGalleryOpen(false);
     setRequest({
       itemId,
-      itemIds: normalizePeekOrder(itemId, options?.itemIds),
+      itemIds,
       sourceLabel: options?.sourceLabel,
     });
   }, []);
-  const closePeek = useCallback(() => setRequest(null), []);
+  const closePeek = useCallback(() => {
+    setRequest(null);
+    setFullGalleryOpen(false);
+  }, []);
   const currentIndex = request ? request.itemIds.indexOf(request.itemId) : -1;
   const canGoPrevious = currentIndex > 0;
   const canGoNext = Boolean(request && currentIndex >= 0 && currentIndex < request.itemIds.length - 1);
-  const galleryPageCount = request ? Math.max(1, Math.ceil(request.itemIds.length / GALLERY_PAGE_SIZE)) : 1;
-  const galleryPageIndex = Math.max(0, Math.floor(Math.max(currentIndex, 0) / GALLERY_PAGE_SIZE));
-  const galleryPageStart = galleryPageIndex * GALLERY_PAGE_SIZE;
-  const galleryItemIds = request?.itemIds.slice(galleryPageStart, galleryPageStart + GALLERY_PAGE_SIZE) ?? [];
+  const compactGalleryPageCount = request ? Math.max(1, Math.ceil(request.itemIds.length / COMPACT_GALLERY_PAGE_SIZE)) : 1;
+  const compactGalleryPageStart = compactGalleryPage * COMPACT_GALLERY_PAGE_SIZE;
+  const compactGalleryItemIds = request?.itemIds.slice(compactGalleryPageStart, compactGalleryPageStart + COMPACT_GALLERY_PAGE_SIZE) ?? [];
+  const fullGalleryPageCount = request ? Math.max(1, Math.ceil(request.itemIds.length / FULL_GALLERY_PAGE_SIZE)) : 1;
+  const fullGalleryPageStart = fullGalleryPage * FULL_GALLERY_PAGE_SIZE;
+  const fullGalleryItemIds = request?.itemIds.slice(fullGalleryPageStart, fullGalleryPageStart + FULL_GALLERY_PAGE_SIZE) ?? [];
   const itemsById = useMemo(() => new Map(items.map((candidate) => [candidate.id, candidate])), [items]);
 
   const goToIndex = useCallback((index: number) => {
@@ -127,7 +194,13 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
 
   const openGalleryItem = useCallback((itemId: string) => {
     setRequest((current) => current?.itemIds.includes(itemId) ? { ...current, itemId } : current);
+    setFullGalleryOpen(false);
   }, []);
+
+  useEffect(() => {
+    if (currentIndex < 0) return;
+    setCompactGalleryPage(Math.floor(currentIndex / COMPACT_GALLERY_PAGE_SIZE));
+  }, [currentIndex]);
 
   useEffect(() => {
     if (!request) return;
@@ -245,72 +318,100 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
           bodyStyle={{ padding: 0, overflow: 'hidden' }}
           footer={(
             <div className="ui-item-peek__footer">
-              <span>{request.itemIds.length > 1 ? `${currentIndex + 1} of ${request.itemIds.length}` : 'Previewing one item'}</span>
-              <div>
-                <button className="ui-button ui-button--secondary" type="button" disabled={!canGoPrevious} onClick={() => goToIndex(currentIndex - 1)}><ArrowLeft size={13} /> Previous</button>
-                <button className="ui-button ui-button--secondary" type="button" disabled={!canGoNext} onClick={() => goToIndex(currentIndex + 1)}>Next <ArrowRight size={13} /></button>
-                {item?.url ? <button className="ui-button ui-button--primary" type="button" onClick={() => void openBookmarkInBrowser(item)}><ExternalLink size={13} /> Open original</button> : null}
-              </div>
+              <span>{fullGalleryOpen ? `Full gallery · ${request.itemIds.length} items` : request.itemIds.length > 1 ? `${currentIndex + 1} of ${request.itemIds.length}` : 'Previewing one item'}</span>
+              {fullGalleryOpen ? (
+                <button className="ui-button ui-button--secondary" type="button" onClick={() => setFullGalleryOpen(false)}>Back to preview</button>
+              ) : (
+                <div>
+                  <button className="ui-button ui-button--secondary" type="button" disabled={!canGoPrevious} onClick={() => goToIndex(currentIndex - 1)}><ArrowLeft size={13} /> Previous</button>
+                  <button className="ui-button ui-button--secondary" type="button" disabled={!canGoNext} onClick={() => goToIndex(currentIndex + 1)}>Next <ArrowRight size={13} /></button>
+                  {item?.url ? <button className="ui-button ui-button--primary" type="button" onClick={() => void openBookmarkInBrowser(item)}><ExternalLink size={13} /> Open original</button> : null}
+                </div>
+              )}
             </div>
           )}
         >
+          {fullGalleryOpen ? (
+            <section className="ui-item-peek__full-gallery scrollbar" aria-label="Full preview gallery">
+              <header>
+                <div>
+                  <span className="ui-item-peek__kind"><LayoutGrid size={13} /> Full gallery</span>
+                  <h3>{request.sourceLabel || 'Preview items'}</h3>
+                  <p>Choose any card to open its full preview.</p>
+                </div>
+                <div className="ui-item-peek__full-gallery-paging" aria-label="Full gallery pages">
+                  <button className="ui-button ui-button--secondary ui-button--compact" type="button" aria-label="Previous full gallery page" disabled={fullGalleryPage <= 0} onClick={() => setFullGalleryPage((page) => Math.max(0, page - 1))}><ArrowLeft size={13} /></button>
+                  <label>
+                    Page
+                    <input
+                      type="number"
+                      min={1}
+                      max={fullGalleryPageCount}
+                      value={fullGalleryPage + 1}
+                      aria-label="Full gallery page"
+                      onChange={(event) => {
+                        const page = Number(event.target.value);
+                        if (Number.isFinite(page)) setFullGalleryPage(Math.min(fullGalleryPageCount - 1, Math.max(0, Math.trunc(page) - 1)));
+                      }}
+                    />
+                    of {fullGalleryPageCount}
+                  </label>
+                  <button className="ui-button ui-button--secondary ui-button--compact" type="button" aria-label="Next full gallery page" disabled={fullGalleryPage >= fullGalleryPageCount - 1} onClick={() => setFullGalleryPage((page) => Math.min(fullGalleryPageCount - 1, page + 1))}><ArrowRight size={13} /></button>
+                </div>
+              </header>
+              <div className="ui-item-peek__full-gallery-grid">
+                {fullGalleryItemIds.map((itemId) => (
+                  <PeekGalleryCard
+                    key={itemId}
+                    itemId={itemId}
+                    item={itemsById.get(itemId)}
+                    current={itemId === request.itemId}
+                    variant="full"
+                    onOpen={openGalleryItem}
+                  />
+                ))}
+              </div>
+              <div className="ui-item-peek__full-gallery-range">
+                Showing {fullGalleryPageStart + 1}–{Math.min(fullGalleryPageStart + FULL_GALLERY_PAGE_SIZE, request.itemIds.length)} of {request.itemIds.length}
+              </div>
+            </section>
+          ) : (
           <div className="ui-item-peek__stack">
           {request.itemIds.length > 1 ? (
             <section className="ui-item-peek__gallery" aria-label="Preview gallery">
               <header>
                 <div>
                   <span className="ui-item-peek__kind"><LayoutGrid size={13} /> Gallery</span>
-                  <span>{galleryPageStart + 1}–{Math.min(galleryPageStart + GALLERY_PAGE_SIZE, request.itemIds.length)} of {request.itemIds.length}</span>
+                  <span>{compactGalleryPageStart + 1}–{Math.min(compactGalleryPageStart + COMPACT_GALLERY_PAGE_SIZE, request.itemIds.length)} of {request.itemIds.length}</span>
                 </div>
                 <div className="ui-item-peek__gallery-paging">
-                  <button className="ui-button ui-button--secondary ui-button--compact" type="button" aria-label="Previous gallery page" disabled={galleryPageIndex <= 0} onClick={() => goToIndex(Math.max(0, galleryPageStart - GALLERY_PAGE_SIZE))}><ArrowLeft size={13} /></button>
-                  <button className="ui-button ui-button--secondary ui-button--compact" type="button" aria-label="Next gallery page" disabled={galleryPageIndex >= galleryPageCount - 1} onClick={() => goToIndex(Math.min(request.itemIds.length - 1, galleryPageStart + GALLERY_PAGE_SIZE))}><ArrowRight size={13} /></button>
+                  {request.itemIds.length > COMPACT_GALLERY_PAGE_SIZE ? (
+                    <button
+                      className="ui-button ui-button--secondary ui-button--compact"
+                      type="button"
+                      onClick={() => {
+                        setFullGalleryPage(Math.floor(Math.max(currentIndex, 0) / FULL_GALLERY_PAGE_SIZE));
+                        setFullGalleryOpen(true);
+                      }}
+                    >
+                      See full gallery
+                    </button>
+                  ) : null}
+                  <button className="ui-button ui-button--secondary ui-button--compact" type="button" aria-label="Previous gallery page" disabled={compactGalleryPage <= 0} onClick={() => setCompactGalleryPage((page) => Math.max(0, page - 1))}><ArrowLeft size={13} /></button>
+                  <button className="ui-button ui-button--secondary ui-button--compact" type="button" aria-label="Next gallery page" disabled={compactGalleryPage >= compactGalleryPageCount - 1} onClick={() => setCompactGalleryPage((page) => Math.min(compactGalleryPageCount - 1, page + 1))}><ArrowRight size={13} /></button>
                 </div>
               </header>
               <div className="ui-item-peek__gallery-grid">
-                {galleryItemIds.map((itemId) => {
-                  const galleryItem = itemsById.get(itemId);
-                  const isCurrent = itemId === request.itemId;
-                  const previewImage = typeof galleryItem?.metadata?.previewImage === 'string'
-                    ? galleryItem.metadata.previewImage
-                    : undefined;
-                  return (
-                    <article
-                      className="ui-item-peek__gallery-card"
-                      key={itemId}
-                      aria-current={isCurrent ? 'true' : undefined}
-                    >
-                      <span className="ui-item-peek__gallery-visual">
-                        {galleryItem?.url ? (
-                          <LinkVisual
-                            url={galleryItem.url}
-                            title={galleryItem.title}
-                            favicon={galleryItem.favicon}
-                            previewImage={previewImage}
-                            variant="thumbnail"
-                          />
-                        ) : (
-                          <span className="ui-item-peek__gallery-note"><FileText size={24} /></span>
-                        )}
-                      </span>
-                      <strong title={galleryItem?.title || 'Saved item'}>{galleryItem?.title || 'Saved item'}</strong>
-                      <small title={galleryItem?.url || undefined}>
-                        {galleryItem?.url ? (() => {
-                          try { return new URL(galleryItem.url).hostname.replace(/^www\./, ''); }
-                          catch { return galleryItem.url; }
-                        })() : 'Note'}
-                      </small>
-                      <button
-                        className="ui-button ui-button--secondary ui-button--compact"
-                        type="button"
-                        aria-label={`See full preview for ${galleryItem?.title || 'saved item'}`}
-                        onClick={() => openGalleryItem(itemId)}
-                      >
-                        See full
-                      </button>
-                    </article>
-                  );
-                })}
+                {compactGalleryItemIds.map((itemId) => (
+                  <PeekGalleryCard
+                    key={itemId}
+                    itemId={itemId}
+                    item={itemsById.get(itemId)}
+                    current={itemId === request.itemId}
+                    variant="compact"
+                    onOpen={openGalleryItem}
+                  />
+                ))}
               </div>
             </section>
           ) : null}
@@ -461,6 +562,7 @@ export const ItemPeekProvider: React.FC<ItemPeekProviderProps> = ({
             </aside>
           </div>
           </div>
+          )}
         </DialogShell>
       ) : null}
     </ItemPeekContext.Provider>
